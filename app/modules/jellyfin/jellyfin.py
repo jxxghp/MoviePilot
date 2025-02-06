@@ -156,10 +156,9 @@ class Jellyfin:
                     link = f"{self._playhost or self._host}web/index.html#!" \
                            f"/tv.html?topParentId={library.get('Id')}"
                 case _:
-                    # FIXME
                     library_type = MediaType.UNKNOWN.value
                     link = f"{self._playhost or self._host}web/index.html#!" \
-                           f"/movies.html?topParentId={library.get('Id')}"
+                           f"/library.html?topParentId={library.get('Id')}"
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 schemas.MediaServerLibrary(
