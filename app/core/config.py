@@ -236,7 +236,8 @@ class ConfigModel(BaseModel):
                                  "doubanio.com",
                                  "lain.bgm.tv",
                                  "raw.githubusercontent.com",
-                                 "github.com"]
+                                 "github.com",
+                                 "thetvdb.com"]
     )
     # 允许的图片文件后缀格式
     SECURITY_IMAGE_SUFFIXES: List[str] = Field(
