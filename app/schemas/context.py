@@ -242,6 +242,19 @@ class Context(BaseModel):
     torrent_info: Optional[TorrentInfo] = None
 
 
+class MediaSeason(BaseModel):
+    """
+    季信息
+    """
+    air_date: Optional[str] = None
+    episode_count: Optional[int] = None
+    name: Optional[str] = None
+    overview: Optional[str] = None
+    poster_path: Optional[str] = None
+    season_number: Optional[int] = None
+    vote_average: Optional[float] = None
+
+
 class MediaPerson(BaseModel):
     """
     媒体人物信息
