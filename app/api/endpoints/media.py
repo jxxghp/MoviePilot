@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.media import MediaChain
+from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import Context
 from app.core.event import eventmanager
@@ -74,6 +75,7 @@ def search(title: str,
     """
     模糊搜索媒体/人物信息列表 media：媒体信息，person：人物信息
     """
+
     def __get_source(obj: Union[schemas.MediaInfo, schemas.MediaPerson, dict]):
         """
         获取对象属性
@@ -133,9 +135,52 @@ def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return MediaChain().media_category() or {}
 
 
+@router.get("/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason])
+def seasons(mediaid: str = None,
+            title: str = None,
+            year: int = None,
+            season: int = None,
+            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询媒体季信息
+    """
+    if mediaid:
+        if mediaid.startswith("tmdb:"):
+            tmdbid = int(mediaid[5:])
+            seasons_info = TmdbChain().tmdb_seasons(tmdbid=tmdbid)
+            if seasons_info:
+                if season:
+                    return [sea for sea in seasons_info if sea.season_number == season]
+                return seasons_info
+    if title:
+        meta = MetaInfo(title)
+        if year:
+            meta.year = year
+        mediainfo = MediaChain().recognize_media(meta, mtype=MediaType.TV)
+        if mediainfo:
+            if settings.RECOGNIZE_SOURCE == "themoviedb":
+                seasons_info = TmdbChain().tmdb_seasons(tmdbid=mediainfo.tmdb_id)
+                if seasons_info:
+                    if season:
+                        return [sea for sea in seasons_info if sea.season_number == season]
+                    return seasons_info
+            else:
+                sea = season or 1
+                return schemas.MediaSeason(
+                    season_number=sea,
+                    poster_path=mediainfo.poster_path,
+                    name=f"第 {sea} 季",
+                    air_date=mediainfo.release_date,
+                    overview=mediainfo.overview,
+                    vote_average=mediainfo.vote_average,
+                    episode_count=mediainfo.number_of_episodes
+                )
+    return []
+
+
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
-def media_info(mediaid: str, type_name: str, title: str = None, year: int = None,
-               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def detail(mediaid: str, type_name: str, title: str = None, year: int = None,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
     """
