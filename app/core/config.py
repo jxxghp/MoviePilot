@@ -237,7 +237,13 @@ class ConfigModel(BaseModel):
                                  "lain.bgm.tv",
                                  "raw.githubusercontent.com",
                                  "github.com",
-                                 "thetvdb.com"]
+                                 "thetvdb.com",
+                                 "cctvpic.com",
+                                 "iqiyipic.com",
+                                 "hdslb.com",
+                                 "cmvideo.cn",
+                                 "ykimg.com",
+                                 "qpic.cn"]
     )
     # 允许的图片文件后缀格式
     SECURITY_IMAGE_SUFFIXES: List[str] = Field(
