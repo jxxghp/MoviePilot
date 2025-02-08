@@ -118,7 +118,7 @@ class ConfigModel(BaseModel):
     # 自动检查和更新站点资源包（站点索引、认证等）
     AUTO_UPDATE_RESOURCE: bool = True
     # 是否启用DOH解析域名
-    DOH_ENABLE: bool = True
+    DOH_ENABLE: bool = False
     # 使用 DOH 解析的域名列表
     DOH_DOMAINS: str = ("api.themoviedb.org,"
                         "api.tmdb.org,"
