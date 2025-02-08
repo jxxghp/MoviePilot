@@ -4,36 +4,10 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.bangumi import BangumiChain
-from app.chain.recommend import RecommendChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 
 router = APIRouter()
-
-
-@router.get("/calendar", summary="Bangumi每日放送", response_model=List[schemas.MediaInfo])
-def calendar(page: int = 1,
-             count: int = 30,
-             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    浏览Bangumi每日放送
-    """
-    return RecommendChain().bangumi_calendar(page=page, count=count)
-
-
-@router.get("/subjects", summary="搜索Bangumi", response_model=List[schemas.MediaInfo])
-def bangumi_subjects(type: int = 2,
-                     cat: int = None,
-                     sort: str = 'rank',
-                     year: int = None,
-                     page: int = 1,
-                     count: int = 30,
-                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    搜索Bangumi
-    """
-    return RecommendChain().bangumi_discover(type=type, cat=cat, sort=sort, year=year,
-                                             page=page, count=count)
 
 
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
