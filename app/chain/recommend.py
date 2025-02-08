@@ -1,7 +1,7 @@
 import io
 import tempfile
 from pathlib import Path
-from typing import Any, List
+from typing import List
 
 from PIL import Image
 
@@ -224,23 +224,6 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         medias = self.bangumichain.calendar()
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]] if medias else []
-
-    @log_execution_time(logger=logger)
-    @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def bangumi_discover(self, type: int = 2,
-                         cat: int = None,
-                         sort: str = 'rank',
-                         year: int = None,
-                         count: int = 30,
-                         page: int = 1) -> List[dict]:
-        """
-        搜索Bangumi
-        """
-        medias = self.bangumichain.discover(type=type, cat=cat, sort=sort, year=year,
-                                            limit=count, offset=(page - 1) * count)
-        if medias:
-            return [media.to_dict() for media in medias]
-        return []
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)

@@ -81,10 +81,12 @@ class ChainEventType(Enum):
     ResourceSelection = "resource.selection"
     # 资源下载
     ResourceDownload = "resource.download"
-    # 发现数据源
+    # 探索数据源
     DiscoverSource = "discover.source"
     # 媒体识别转换
     MediaRecognizeConvert = "media.recognize.convert"
+    # 推荐数据源
+    RecommendSource = "recommend.source"
 
 
 # 系统配置Key字典

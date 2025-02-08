@@ -3,7 +3,6 @@ from typing import List, Any
 from fastapi import APIRouter, Depends
 
 from app import schemas
-from app.chain.recommend import RecommendChain
 from app.chain.tmdb import TmdbChain
 from app.core.security import verify_token
 from app.schemas.types import MediaType
@@ -112,65 +111,6 @@ def tmdb_person_credits(person_id: int,
     if medias:
         return [media.to_dict() for media in medias]
     return []
-
-
-@router.get("/movies", summary="TMDB电影", response_model=List[schemas.MediaInfo])
-def tmdb_movies(sort_by: str = "popularity.desc",
-                with_genres: str = "",
-                with_original_language: str = "",
-                with_keywords: str = "",
-                with_watch_providers: str = "",
-                vote_average: float = 0,
-                vote_count: int = 0,
-                release_date: str = "",
-                page: int = 1,
-                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    浏览TMDB电影信息
-    """
-    return RecommendChain().tmdb_movies(sort_by=sort_by,
-                                        with_genres=with_genres,
-                                        with_original_language=with_original_language,
-                                        with_keywords=with_keywords,
-                                        with_watch_providers=with_watch_providers,
-                                        vote_average=vote_average,
-                                        vote_count=vote_count,
-                                        release_date=release_date,
-                                        page=page)
-
-
-@router.get("/tvs", summary="TMDB剧集", response_model=List[schemas.MediaInfo])
-def tmdb_tvs(sort_by: str = "popularity.desc",
-             with_genres: str = "",
-             with_original_language: str = "",
-             with_keywords: str = "",
-             with_watch_providers: str = "",
-             vote_average: float = 0,
-             vote_count: int = 0,
-             release_date: str = "",
-             page: int = 1,
-             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    浏览TMDB剧集信息
-    """
-    return RecommendChain().tmdb_tvs(sort_by=sort_by,
-                                     with_genres=with_genres,
-                                     with_original_language=with_original_language,
-                                     with_keywords=with_keywords,
-                                     with_watch_providers=with_watch_providers,
-                                     vote_average=vote_average,
-                                     vote_count=vote_count,
-                                     release_date=release_date,
-                                     page=page)
-
-
-@router.get("/trending", summary="TMDB流行趋势", response_model=List[schemas.MediaInfo])
-def tmdb_trending(page: int = 1,
-                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    TMDB流行趋势
-    """
-    return RecommendChain().tmdb_trending(page=page)
 
 
 @router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
