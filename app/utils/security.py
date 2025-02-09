@@ -65,7 +65,6 @@ class SecurityUtils:
             netloc = parsed_url.netloc.lower()
             if not netloc:
                 return False
-            netloc_no_port = netloc.split(":")[0]
 
             # 检查每个允许的域名
             allowed_domains = {d.lower() for d in allowed_domains}
@@ -79,7 +78,7 @@ class SecurityUtils:
                         return True
                 else:
                     # 非严格模式下，允许子域名匹配
-                    if netloc_no_port == allowed_netloc or netloc_no_port.endswith('.' + allowed_netloc):
+                    if netloc == allowed_netloc or netloc.endswith('.' + allowed_netloc):
                         return True
 
             return False
