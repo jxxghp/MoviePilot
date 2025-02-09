@@ -243,7 +243,8 @@ class ConfigModel(BaseModel):
                                  "hdslb.com",
                                  "cmvideo.cn",
                                  "ykimg.com",
-                                 "qpic.cn"]
+                                 "qpic.cn",
+                                 "http://wapx.cmvideo.cn:8080"]
     )
     # 允许的图片文件后缀格式
     SECURITY_IMAGE_SUFFIXES: List[str] = Field(
