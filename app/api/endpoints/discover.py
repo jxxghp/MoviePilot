@@ -6,9 +6,10 @@ from app import schemas
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.schemas import DiscoverSourceEventData
-from app.schemas.types import ChainEventType
+from app.schemas.types import ChainEventType, MediaType
 from chain.bangumi import BangumiChain
-from chain.recommend import RecommendChain
+from chain.douban import DoubanChain
+from chain.tmdb import TmdbChain
 
 router = APIRouter()
 
@@ -56,7 +57,9 @@ def douban_movies(sort: str = "R",
     """
     浏览豆瓣电影信息
     """
-    return RecommendChain().douban_movies(sort=sort, tags=tags, page=page, count=count)
+    movies = DoubanChain().douban_discover(mtype=MediaType.MOVIE,
+                                           sort=sort, tags=tags, page=page, count=count)
+    return [media.to_dict() for media in movies] if movies else []
 
 
 @router.get("/douban_tvs", summary="探索豆瓣剧集", response_model=List[schemas.MediaInfo])
@@ -68,7 +71,9 @@ def douban_tvs(sort: str = "R",
     """
     浏览豆瓣剧集信息
     """
-    return RecommendChain().douban_tvs(sort=sort, tags=tags, page=page, count=count)
+    tvs = DoubanChain().douban_discover(mtype=MediaType.TV,
+                                        sort=sort, tags=tags, page=page, count=count)
+    return [media.to_dict() for media in tvs] if tvs else []
 
 
 @router.get("/tmdb_movies", summary="探索TMDB电影", response_model=List[schemas.MediaInfo])
@@ -85,15 +90,17 @@ def tmdb_movies(sort_by: str = "popularity.desc",
     """
     浏览TMDB电影信息
     """
-    return RecommendChain().tmdb_movies(sort_by=sort_by,
-                                        with_genres=with_genres,
-                                        with_original_language=with_original_language,
-                                        with_keywords=with_keywords,
-                                        with_watch_providers=with_watch_providers,
-                                        vote_average=vote_average,
-                                        vote_count=vote_count,
-                                        release_date=release_date,
-                                        page=page)
+    movies = TmdbChain().tmdb_discover(mtype=MediaType.MOVIE,
+                                       sort_by=sort_by,
+                                       with_genres=with_genres,
+                                       with_original_language=with_original_language,
+                                       with_keywords=with_keywords,
+                                       with_watch_providers=with_watch_providers,
+                                       vote_average=vote_average,
+                                       vote_count=vote_count,
+                                       release_date=release_date,
+                                       page=page)
+    return [movie.to_dict() for movie in movies] if movies else []
 
 
 @router.get("/tmdb_tvs", summary="探索TMDB剧集", response_model=List[schemas.MediaInfo])
@@ -110,12 +117,14 @@ def tmdb_tvs(sort_by: str = "popularity.desc",
     """
     浏览TMDB剧集信息
     """
-    return RecommendChain().tmdb_tvs(sort_by=sort_by,
-                                     with_genres=with_genres,
-                                     with_original_language=with_original_language,
-                                     with_keywords=with_keywords,
-                                     with_watch_providers=with_watch_providers,
-                                     vote_average=vote_average,
-                                     vote_count=vote_count,
-                                     release_date=release_date,
-                                     page=page)
+    tvs = TmdbChain().tmdb_discover(mtype=MediaType.TV,
+                                    sort_by=sort_by,
+                                    with_genres=with_genres,
+                                    with_original_language=with_original_language,
+                                    with_keywords=with_keywords,
+                                    with_watch_providers=with_watch_providers,
+                                    vote_average=vote_average,
+                                    vote_count=vote_count,
+                                    release_date=release_date,
+                                    page=page)
+    return [tv.to_dict() for tv in tvs] if tvs else []
