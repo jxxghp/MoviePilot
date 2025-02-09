@@ -241,7 +241,7 @@ class ConfigModel(BaseModel):
                                  "cctvpic.com",
                                  "iqiyipic.com",
                                  "hdslb.com",
-                                 "cmvideo.cn",
+                                 "cmvideo.cn:8080",
                                  "ykimg.com",
                                  "qpic.cn"]
     )
