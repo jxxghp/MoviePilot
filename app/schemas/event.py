@@ -244,6 +244,7 @@ class DiscoverMediaSource(BaseModel):
     api_path: str = Field(..., description="媒体数据源API地址")
     filter_params: Optional[Dict[str, Any]] = Field(default=None, description="过滤参数")
     filter_ui: Optional[List[dict]] = Field(default=[], description="过滤参数UI配置")
+    depends: Optional[Dict[str, list]] = Field(default=None, description="UI依赖关系字典")
 
 
 class DiscoverSourceEventData(ChainEventData):
