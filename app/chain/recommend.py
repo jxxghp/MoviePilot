@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 
 from app.chain import ChainBase
@@ -115,6 +116,10 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         # 生成缓存路径
         sanitized_path = SecurityUtils.sanitize_url_path(url)
         cache_path = settings.CACHE_PATH / "images" / sanitized_path
+
+        # 没有文件类型，则添加后缀，在恶意文件类型和实际需求下的折衷选择
+        if not cache_path.suffix:
+            cache_path = cache_path.with_suffix(".jpg")
 
         # 确保缓存路径和文件类型合法
         if not SecurityUtils.is_safe_path(settings.CACHE_PATH, cache_path, settings.SECURITY_IMAGE_SUFFIXES):

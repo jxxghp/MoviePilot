@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import aiofiles
+import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
@@ -50,7 +51,6 @@ def fetch_image(
     """
     处理图片缓存逻辑，支持HTTP缓存和磁盘缓存
     """
-
     if not url:
         raise HTTPException(status_code=404, detail="URL not provided")
 
@@ -67,6 +67,10 @@ def fetch_image(
         # 生成缓存路径
         sanitized_path = SecurityUtils.sanitize_url_path(url)
         cache_path = settings.CACHE_PATH / "images" / sanitized_path
+
+        # 没有文件类型，则添加后缀，在恶意文件类型和实际需求下的折衷选择
+        if not cache_path.suffix:
+            cache_path = cache_path.with_suffix(".jpg")
 
         # 确保缓存路径和文件类型合法
         if not SecurityUtils.is_safe_path(settings.CACHE_PATH, cache_path, settings.SECURITY_IMAGE_SUFFIXES):
@@ -88,7 +92,8 @@ def fetch_image(
     # 请求远程图片
     referer = "https://movie.douban.com/" if "doubanio.com" in url else None
     proxies = settings.PROXY if proxy else None
-    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=url)
+    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer,
+                            accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
     if not response:
         raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
 
