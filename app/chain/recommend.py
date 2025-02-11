@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 
 from app.chain import ChainBase

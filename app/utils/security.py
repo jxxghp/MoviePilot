@@ -42,7 +42,7 @@ class SecurityUtils:
     @staticmethod
     def is_safe_url(url: str, allowed_domains: Union[Set[str], List[str]], strict: bool = False) -> bool:
         """
-        验证URL是否在允许的域名列表中，包括带有端口的域名。
+        验证URL是否在允许的域名列表中，包括带有端口的域名
 
         :param url: 需要验证的 URL
         :param allowed_domains: 允许的域名集合，域名可以包含端口

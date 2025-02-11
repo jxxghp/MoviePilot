@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import aiofiles
+import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
@@ -91,7 +92,8 @@ def fetch_image(
     # 请求远程图片
     referer = "https://movie.douban.com/" if "doubanio.com" in url else None
     proxies = settings.PROXY if proxy else None
-    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=url)
+    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer,
+                            accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
     if not response:
         raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
 
