@@ -670,13 +670,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 self.jobview.add_task(task, state=curr_task.state if curr_task else "waiting")
 
             # 获取集数据
-            if not task.episodes_info and task.mediainfo.type == MediaType.TV:
-                if task.meta.begin_season is None:
-                    task.meta.begin_season = 1
-                task.mediainfo.season = task.mediainfo.season or task.meta.begin_season
+            if task.mediainfo.type == MediaType.TV and not task.episodes_info:
                 task.episodes_info = self.tmdbchain.tmdb_episodes(
                     tmdbid=task.mediainfo.tmdb_id,
-                    season=task.mediainfo.season
+                    season=task.mediainfo.season or task.meta.begin_season or 1
                 )
 
             # 查询整理目标目录
