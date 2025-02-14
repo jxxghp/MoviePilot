@@ -6,7 +6,6 @@ from typing import Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
 from lxml import etree
-from ruamel.yaml import CommentedMap
 
 from app.chain import ChainBase
 from app.core.config import global_vars, settings
@@ -55,7 +54,7 @@ class SiteChain(ChainBase):
             "yemapt.org": self.__yema_test,
         }
 
-    def refresh_userdata(self, site: CommentedMap = None) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: dict = None) -> Optional[SiteUserData]:
         """
         刷新站点的用户数据
         :param site:  站点

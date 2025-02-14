@@ -1,8 +1,6 @@
 from typing import List, Tuple
 from urllib.parse import quote
 
-from ruamel.yaml import CommentedMap
-
 from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -19,7 +17,7 @@ class TorrentLeech:
     _pageurl = "%storrent/%s"
     _timeout = 15
 
-    def __init__(self, indexer: CommentedMap):
+    def __init__(self, indexer: dict):
         self._indexer = indexer
         if indexer.get('proxy'):
             self._proxy = settings.PROXY
