@@ -3,8 +3,6 @@ import json
 import re
 from typing import Tuple, List
 
-from ruamel.yaml import CommentedMap
-
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
@@ -51,7 +49,7 @@ class MTorrentSpider:
         "7": "DIY 国配 中字"
     }
 
-    def __init__(self, indexer: CommentedMap):
+    def __init__(self, indexer: dict):
         self.systemconfig = SystemConfigOper()
         if indexer:
             self._indexerid = indexer.get('id')

@@ -1,8 +1,6 @@
 import re
 from typing import Tuple, List
 
-from ruamel.yaml import CommentedMap
-
 from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -23,7 +21,7 @@ class TNodeSpider:
     _downloadurl = "%sapi/torrent/download/%s"
     _pageurl = "%storrent/info/%s"
 
-    def __init__(self, indexer: CommentedMap):
+    def __init__(self, indexer: dict):
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')

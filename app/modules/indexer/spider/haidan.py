@@ -1,8 +1,6 @@
 import urllib.parse
 from typing import Tuple, List
 
-from ruamel.yaml import CommentedMap
-
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
@@ -51,7 +49,7 @@ class HaiDanSpider:
         "7": 1
     }
 
-    def __init__(self, indexer: CommentedMap):
+    def __init__(self, indexer: dict):
         self.systemconfig = SystemConfigOper()
         if indexer:
             self._indexerid = indexer.get('id')

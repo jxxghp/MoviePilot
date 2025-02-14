@@ -1,17 +1,14 @@
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
-from ruamel.yaml import CommentedMap
-
 from app.core.config import settings
 from app.core.context import TorrentInfo
 from app.db.site_oper import SiteOper
 from app.helper.module import ModuleHelper
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper, SiteSpider
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
-from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
@@ -76,7 +73,7 @@ class IndexerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def search_torrents(self, site: CommentedMap,
+    def search_torrents(self, site: dict,
                         keywords: List[str] = None,
                         mtype: MediaType = None,
                         page: int = 0) -> List[TorrentInfo]:
@@ -204,7 +201,7 @@ class IndexerModule(_ModuleBase):
             return __remove_duplicate(torrents)
 
     @staticmethod
-    def __spider_search(indexer: CommentedMap,
+    def __spider_search(indexer: dict,
                         search_word: str = None,
                         mtype: MediaType = None,
                         page: int = 0) -> Tuple[bool, List[dict]]:
@@ -217,14 +214,14 @@ class IndexerModule(_ModuleBase):
         :param: timeout: 超时时间
         :return: 是否发生错误, 种子列表
         """
-        _spider = TorrentSpider(indexer=indexer,
-                                mtype=mtype,
-                                keyword=search_word,
-                                page=page)
+        _spider = SiteSpider(indexer=indexer,
+                             mtype=mtype,
+                             keyword=search_word,
+                             page=page)
 
         return _spider.is_error, _spider.get_torrents()
 
-    def refresh_torrents(self, site: CommentedMap) -> Optional[List[TorrentInfo]]:
+    def refresh_torrents(self, site: dict) -> Optional[List[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
@@ -232,7 +229,7 @@ class IndexerModule(_ModuleBase):
         """
         return self.search_torrents(site=site)
 
-    def refresh_userdata(self, site: CommentedMap) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: dict) -> Optional[SiteUserData]:
         """
         刷新站点的用户数据
         :param site:  站点

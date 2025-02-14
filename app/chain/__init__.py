@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from qbittorrentapi import TorrentFilesList
-from ruamel.yaml import CommentedMap
 from transmission_rpc import File
 
 from app.core.config import settings
@@ -308,7 +307,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_collections", name=name)
 
-    def search_torrents(self, site: CommentedMap,
+    def search_torrents(self, site: dict,
                         keywords: List[str],
                         mtype: MediaType = None,
                         page: int = 0) -> List[TorrentInfo]:
@@ -323,7 +322,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_torrents", site=site, keywords=keywords,
                                mtype=mtype, page=page)
 
-    def refresh_torrents(self, site: CommentedMap) -> List[TorrentInfo]:
+    def refresh_torrents(self, site: dict) -> List[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
