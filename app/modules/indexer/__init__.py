@@ -7,11 +7,10 @@ from app.core.config import settings
 from app.core.context import TorrentInfo
 from app.db.site_oper import SiteOper
 from app.helper.module import ModuleHelper
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper, SiteSpider
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
-from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
@@ -217,10 +216,10 @@ class IndexerModule(_ModuleBase):
         :param: timeout: 超时时间
         :return: 是否发生错误, 种子列表
         """
-        _spider = TorrentSpider(indexer=indexer,
-                                mtype=mtype,
-                                keyword=search_word,
-                                page=page)
+        _spider = SiteSpider(indexer=indexer,
+                             mtype=mtype,
+                             keyword=search_word,
+                             page=page)
 
         return _spider.is_error, _spider.get_torrents()
 
