@@ -5,8 +5,8 @@ from Cython.Build import cythonize
 module_list = ['app/helper/sites.py']
 
 setup(
-    name="",
-    author="",
+    name="MoviePilot",
+    author="jxxghp",
     zip_safe=False,
     include_package_data=True,
     ext_modules=cythonize(
