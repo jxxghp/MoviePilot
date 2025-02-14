@@ -255,6 +255,8 @@ class ConfigModel(BaseModel):
     )
     # 启用分词搜索
     TOKENIZED_SEARCH: bool = False
+    # 为指定默认字幕添加.default后缀,默认不启用
+    DEFAULT_SUB: Optional[str] = None
 
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
