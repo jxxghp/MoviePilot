@@ -216,7 +216,7 @@ class IndexerModule(_ModuleBase):
         :param: timeout: 超时时间
         :return: 是否发生错误, 种子列表
         """
-        _spider = SiteSpider(indexer=indexer,
+        _spider = SiteSpider(indexer={k:v for k,v in indexer.items()}, # noqa
                              mtype=mtype,
                              keyword=search_word,
                              page=page)
