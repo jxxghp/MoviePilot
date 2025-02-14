@@ -76,7 +76,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         cache_path = settings.TEMP_PATH / filename
         if cache_path.exists():
-            Path(cache_path).unlink()
+            cache_path.unlink()
 
     def run_module(self, method: str, *args, **kwargs) -> Any:
         """
