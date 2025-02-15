@@ -676,11 +676,15 @@ class FileManagerModule(_ModuleBase):
                         ".zh-tw": ".繁体中文"
                     }
                     new_sub_tag_list = [
-                        new_file_type if t == 0 else "%s%s(%s)" % (new_file_type,
-                                                                   new_sub_tag_dict.get(
-                                                                       new_file_type, ""
-                                                                   ),
-                                                                   t) for t in range(6)
+                        (".default" + new_file_type if (
+                            (settings.DEFAULT_SUB == "zh-cn" and new_file_type == ".chi.zh-cn") or
+                            (settings.DEFAULT_SUB == "zh-tw" and new_file_type == ".zh-tw") or
+                            (settings.DEFAULT_SUB == "eng" and new_file_type == ".eng")
+                        ) else new_file_type) if t == 0 else "%s%s(%s)" % (new_file_type,
+                                                                           new_sub_tag_dict.get(
+                                                                               new_file_type, ""
+                                                                           ),
+                                                                           t) for t in range(6)
                     ]
                     for new_sub_tag in new_sub_tag_list:
                         new_file: Path = target_file.with_name(target_file.stem + new_sub_tag + file_ext)
