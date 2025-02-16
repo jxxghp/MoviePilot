@@ -1,7 +1,8 @@
-from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, List, Tuple
 
 from pydantic import BaseModel, Field
+
+from app.schemas import Context, MediaInfo, FileItem, Site, Subscribe, Notification
 
 
 class Workflow(BaseModel):
@@ -28,8 +29,22 @@ class Action(BaseModel):
     description: Optional[str] = Field(None, description="动作描述")
 
 
-class ActionContext(BaseModel, ABC):
+class ActionContext(BaseModel):
     """
-    动作上下文
+    动作基础上下文，各动作通用数据
+    """
+    content: Optional[str] = Field(None, description="文本类内容")
+    torrents: Optional[List[Context]] = Field([], description="资源列表")
+    medias: Optional[List[MediaInfo]] = Field([], description="媒体列表")
+    fileitems: Optional[List[FileItem]] = Field([], description="文件列表")
+    downloads: Optional[List[Tuple[str, str]]] = Field([], description="下载任务列表")
+    sites: Optional[List[Site]] = Field([], description="站点列表")
+    subscribes: Optional[List[Subscribe]] = Field([], description="订阅列表")
+    messages: Optional[List[Notification]] = Field([], description="消息列表")
+
+
+class ActionParams(BaseModel):
+    """
+    动作基础参数
     """
     pass

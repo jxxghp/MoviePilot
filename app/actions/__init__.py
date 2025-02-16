@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from pydantic.main import BaseModel
 
-from app.schemas import ActionContext
+from app.schemas import ActionContext, ActionParams
 
 
 class BaseAction(BaseModel, ABC):
@@ -21,5 +21,5 @@ class BaseAction(BaseModel, ABC):
         pass
 
     @abstractmethod
-    async def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    async def execute(self, params: ActionParams, context: ActionContext) -> ActionContext:
         raise NotImplementedError
