@@ -21,19 +21,22 @@ class WorkFlowManager(metaclass=Singleton):
         """
         初始化
         """
-        def check_module(module: Any):
+
+        def filter_func(obj: Any):
             """
-            检查模块
+            过滤函数，确保只加载新定义的类
             """
-            if not hasattr(module, 'execute') or not hasattr(module, "name"):
+            if not isinstance(obj, type):
                 return False
-            return True
+            if not hasattr(obj, 'execute') or not hasattr(obj, "name"):
+                return False
+            return obj.__module__.startswith("app.actions")
 
         # 加载所有动作
         self._actions = {}
         actions = ModuleHelper.load(
             "app.actions",
-            filter_func=lambda _, obj: check_module(obj)
+            filter_func=lambda _, obj: filter_func(obj)
         )
         for action in actions:
             logger.debug(f"加载动作: {action.__name__}")
