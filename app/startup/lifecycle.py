@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.startup.modules_initializer import shutdown_modules, start_modules
 from app.startup.plugins_initializer import init_plugins_async
 from app.startup.routers_initializer import init_routers
@@ -16,6 +17,8 @@ async def lifespan(app: FastAPI):
     print("Starting up...")
     # 启动模块
     start_modules(app)
+    # 初始化工作流动作
+    init_workflow(app)
     # 初始化路由
     init_routers(app)
     # 初始化插件
@@ -35,3 +38,6 @@ async def lifespan(app: FastAPI):
             print(f"Error during plugin installation shutdown: {e}")
         # 清理模块
         shutdown_modules(app)
+        # 关闭工作流
+        stop_workflow(app)
+

@@ -1,24 +1,46 @@
+from typing import Dict, Any
+
+from app.actions import BaseAction
+from app.helper.module import ModuleHelper
+from app.log import logger
+from app.utils.singleton import Singleton
 
 
-class WorkFlowManager:
+class WorkFlowManager(metaclass=Singleton):
     """
     工作流管理器
     """
+
+    # 所有动作定义
+    _actions: Dict[str, BaseAction] = {}
+
     def __init__(self):
-        self.workflows = {}
+        self.init()
 
-    def register(self, workflow):
+    def init(self):
         """
-        注册工作流
-        :param workflow: 工作流对象
-        :return:
+        初始化
         """
-        self.workflows[workflow.name] = workflow
+        def check_module(module: Any):
+            """
+            检查模块
+            """
+            if not hasattr(module, 'execute') or not hasattr(module, "name"):
+                return False
+            return True
 
-    def get_workflow(self, name):
+        # 加载所有动作
+        self._actions = {}
+        actions = ModuleHelper.load(
+            "app.actions",
+            filter_func=lambda _, obj: check_module(obj)
+        )
+        for action in actions:
+            logger.debug(f"加载动作: {action.__name__}")
+            self._actions[action.__name__] = action
+
+    def stop(self):
         """
-        获取工作流
-        :param name: 工作流名称
-        :return:
+        停止
         """
-        return self.workflows.get(name)
+        pass

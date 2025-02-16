@@ -32,3 +32,9 @@ class SearchTorrentsAction(BaseAction):
 
     async def execute(self, params: SearchTorrentsParams, context: ActionContext) -> ActionContext:
         pass
+
+    def is_done(self, context: ActionContext) -> bool:
+        pass
+
+    def is_success(self, context: ActionContext) -> bool:
+        pass
