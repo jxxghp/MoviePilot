@@ -23,6 +23,7 @@ class ModuleHelper:
         """
 
         submodules: list = []
+        loaded_modules = set()
         packages = importlib.import_module(package_path)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
             try:
@@ -35,6 +36,9 @@ class ModuleHelper:
                     if name.startswith('_'):
                         continue
                     if isinstance(obj, type) and filter_func(name, obj):
+                        if name in loaded_modules:
+                            continue
+                        loaded_modules.add(name)
                         submodules.append(obj)
             except Exception as err:
                 logger.debug(f'加载模块 {package_name} 失败：{str(err)} - {traceback.format_exc()}')

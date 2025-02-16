@@ -1,8 +1,13 @@
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
-from app.schemas import Context, MediaInfo, FileItem, Site, Subscribe, Notification, DownloadTask
+from app.schemas.context import Context, MediaInfo
+from app.schemas.file import FileItem
+from app.schemas.download import DownloadTask
+from app.schemas.site import Site
+from app.schemas.subscribe import Subscribe
+from app.schemas.message import Notification
 
 
 class Workflow(BaseModel):

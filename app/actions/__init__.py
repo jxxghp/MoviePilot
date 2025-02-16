@@ -21,5 +21,22 @@ class BaseAction(BaseModel, ABC):
         pass
 
     @abstractmethod
-    async def execute(self, params: ActionParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: ActionParams, context: ActionContext) -> ActionContext:
+        """
+        执行动作
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_done(self, context: ActionContext) -> bool:
+        """
+        判断动作是否完成
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_success(self, context: ActionContext) -> bool:
+        """
+        判断动作是否成功
+        """
         raise NotImplementedError
