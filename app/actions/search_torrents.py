@@ -30,11 +30,13 @@ class SearchTorrentsAction(BaseAction):
     def description(self) -> str:
         return "根据关键字搜索站点种子资源"
 
+    @property
+    def done(self) -> bool:
+        return True
+
+    @property
+    def success(self) -> bool:
+        return True
+
     async def execute(self, params: SearchTorrentsParams, context: ActionContext) -> ActionContext:
-        pass
-
-    def is_done(self, context: ActionContext) -> bool:
-        pass
-
-    def is_success(self, context: ActionContext) -> bool:
         pass

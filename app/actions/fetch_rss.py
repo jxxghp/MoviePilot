@@ -33,8 +33,10 @@ class FetchRssAction(BaseAction):
     async def execute(self, params: FetchRssParams, context: ActionContext) -> ActionContext:
         pass
 
-    def is_done(self, context: ActionContext) -> bool:
-        pass
+    @property
+    def done(self) -> bool:
+        return True
 
-    def is_success(self, context: ActionContext) -> bool:
-        pass
+    @property
+    def success(self) -> bool:
+        return True
