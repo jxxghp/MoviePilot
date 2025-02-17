@@ -115,3 +115,9 @@ class SiteUserData(BaseModel):
 class SiteAuth(BaseModel):
     site: Optional[str] = None
     params: Optional[Dict[str, Union[int, str]]] = Field(default_factory=dict)
+
+
+class SiteCategory(BaseModel):
+    id: Optional[int] = None
+    cat: Optional[str] = None
+    desc: Optional[str] = None

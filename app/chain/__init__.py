@@ -322,13 +322,16 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_torrents", site=site, keywords=keywords,
                                mtype=mtype, page=page)
 
-    def refresh_torrents(self, site: dict) -> List[TorrentInfo]:
+    def refresh_torrents(self, site: dict, keyword: str = None, cat: str = None, page: int = 0) -> List[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
+        :param keyword:  标题
+        :param cat:  分类
+        :param page:  页码
         :reutrn: 种子资源列表
         """
-        return self.run_module("refresh_torrents", site=site)
+        return self.run_module("refresh_torrents", site=site, keyword=keyword, cat=cat, page=page)
 
     def filter_torrents(self, rule_groups: List[str],
                         torrent_list: List[TorrentInfo],
