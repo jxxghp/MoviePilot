@@ -4,7 +4,7 @@ from app.chain import ChainBase
 from app.core.workflow import WorkFlowManager
 from app.db.workflow_oper import WorkflowOper
 from app.log import logger
-from app.schemas import Workflow, ActionContext
+from app.schemas import Workflow, ActionContext, Action
 
 
 class WorkflowChain(ChainBase):
@@ -32,7 +32,8 @@ class WorkflowChain(ChainBase):
         # 启用上下文
         context = ActionContext()
         self.workflowoper.start(workflow_id)
-        for action in workflow.actions:
+        for act in workflow.actions:
+            action = Action(**act)
             state, context = self.workflowmanager.excute(action, context)
             self.workflowoper.step(workflow_id, action=action.name, context=context.dict())
             if not state:
