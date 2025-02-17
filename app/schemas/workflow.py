@@ -26,6 +26,9 @@ class Workflow(BaseModel):
     add_time: Optional[str] = Field(None, description="创建时间")
     last_time: Optional[str] = Field(None, description="最后执行时间")
 
+    class Config:
+        orm_mode = True
+
 
 class ActionParams(BaseModel):
     """
