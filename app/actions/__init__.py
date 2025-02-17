@@ -27,16 +27,18 @@ class BaseAction(BaseModel, ABC):
         """
         raise NotImplementedError
 
+    @property
     @abstractmethod
-    def is_done(self, context: ActionContext) -> bool:
+    def done(self) -> bool:
         """
         判断动作是否完成
         """
-        raise NotImplementedError
+        pass
 
+    @property
     @abstractmethod
-    def is_success(self, context: ActionContext) -> bool:
+    def success(self) -> bool:
         """
         判断动作是否成功
         """
-        raise NotImplementedError
+        pass
