@@ -36,3 +36,27 @@ class WorkflowOper(DbOper):
         按名称获取工作流
         """
         return Workflow.get_by_name(self._db, name)
+
+    def start(self, wid: int) -> bool:
+        """
+        启动
+        """
+        return Workflow.start(self._db, wid)
+
+    def success(self, wid: int, result: str = None) -> bool:
+        """
+        成功
+        """
+        return Workflow.success(self._db, wid, result)
+
+    def fail(self, wid: int, result: str) -> bool:
+        """
+        失败
+        """
+        return Workflow.fail(self._db, wid, result)
+
+    def step(self, wid: int, action: str, context: dict) -> bool:
+        """
+        步进
+        """
+        return Workflow.update_current_action(self._db, wid, action, context)

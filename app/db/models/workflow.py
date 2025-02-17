@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, Integer, JSON, Sequence, String
 
-from app.db import Base, db_query
+from app.db import Base, db_query, db_update
 
 
 class Workflow(Base):
@@ -43,3 +43,45 @@ class Workflow(Base):
     @db_query
     def get_by_name(db, name: str):
         return db.query(Workflow).filter(Workflow.name == name).first()
+
+    @staticmethod
+    @db_update
+    def update_state(db, wid: int, state: str):
+        db.query(Workflow).filter(Workflow.id == wid).update({"state": state})
+        return True
+
+    @staticmethod
+    @db_update
+    def start(db, wid: int):
+        db.query(Workflow).filter(Workflow.id == wid).update({
+            "state": 'R'
+        })
+        return True
+
+    @staticmethod
+    @db_update
+    def fail(db, wid: int, result: str):
+        db.query(Workflow).filter(Workflow.id == wid).update({
+            "state": 'F',
+            "result": result,
+            "run_count": Workflow.run_count + 1,
+            "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        return True
+
+    @staticmethod
+    @db_update
+    def success(db, wid: int, result: str = None):
+        db.query(Workflow).filter(Workflow.id == wid).update({
+            "state": 'S',
+            "result": result,
+            "run_count": Workflow.run_count + 1,
+            "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        return True
+
+    @staticmethod
+    @db_update
+    def update_current_action(db, wid: int, action: str, context: dict):
+        db.query(Workflow).filter(Workflow.id == wid).update({"current_action": action, "context": context})
+        return True
