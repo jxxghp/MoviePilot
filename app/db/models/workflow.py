@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, Integer, JSON, Sequence, String
 
-from app.db import Base
+from app.db import Base, db_query
 
 
 class Workflow(Base):
@@ -17,8 +17,8 @@ class Workflow(Base):
     description = Column(String)
     # 定时器
     timer = Column(String)
-    # 状态：N-新建 R-运行中 P-暂停 S-成功 F-失败
-    state = Column(String, nullable=False, index=True, default='N')
+    # 状态：W-等待 R-运行中 P-暂停 S-成功 F-失败
+    state = Column(String, nullable=False, index=True, default='W')
     # 当前执行动作
     current_action = Column(String)
     # 任务执行结果
@@ -33,3 +33,13 @@ class Workflow(Base):
     add_time = Column(String, default=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     # 最后执行时间
     last_time = Column(String)
+
+    @staticmethod
+    @db_query
+    def get_enabled_workflows(db):
+        return db.query(Workflow).filter(Workflow.state != 'P').all()
+
+    @staticmethod
+    @db_query
+    def get_by_name(db, name: str):
+        return db.query(Workflow).filter(Workflow.name == name).first()
