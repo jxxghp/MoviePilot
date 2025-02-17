@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -259,8 +259,36 @@ def site_icon(site_id: int,
     })
 
 
+@router.get("/category/{site_id}", summary="站点分类", response_model=List[schemas.SiteCategory])
+def site_category(site_id: int,
+                  db: Session = Depends(get_db),
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取站点分类
+    """
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    indexer = SitesHelper().get_indexer(site.domain)
+    if not indexer:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site.domain} 不支持",
+        )
+    category: Dict[str, List[dict]] = indexer.get('category') or []
+    if not category:
+        return []
+    return list({category.get('movie') + category.get('tv')})
+
+
 @router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
 def site_resource(site_id: int,
+                  keyword: str = None,
+                  cat: str = None,
+                  page: int = 0,
                   db: Session = Depends(get_db),
                   _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
@@ -272,7 +300,7 @@ def site_resource(site_id: int,
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    torrents = TorrentsChain().browse(domain=site.domain)
+    torrents = TorrentsChain().browse(domain=site.domain, keyword=keyword, cat=cat, page=page)
     if not torrents:
         return []
     return [torrent.to_dict() for torrent in torrents]

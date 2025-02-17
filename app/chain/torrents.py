@@ -73,17 +73,20 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         logger.info(f'种子缓存数据清理完成')
 
     @cached(cache=TTLCache(maxsize=128, ttl=595))
-    def browse(self, domain: str) -> List[TorrentInfo]:
+    def browse(self, domain: str, keyword: str = None, cat: str = None, page: int = 0) -> List[TorrentInfo]:
         """
         浏览站点首页内容，返回种子清单，TTL缓存10分钟
         :param domain: 站点域名
+        :param keyword: 搜索标题
+        :param cat: 搜索分类
+        :param page: 页码
         """
         logger.info(f'开始获取站点 {domain} 最新种子 ...')
         site = self.siteshelper.get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        return self.refresh_torrents(site=site)
+        return self.refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
     @cached(cache=TTLCache(maxsize=128, ttl=295))
     def rss(self, domain: str) -> List[TorrentInfo]:
