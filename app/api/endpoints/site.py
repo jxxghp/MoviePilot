@@ -281,7 +281,12 @@ def site_category(site_id: int,
     category: Dict[str, List[dict]] = indexer.get('category') or []
     if not category:
         return []
-    return list({category.get('movie') + category.get('tv')})
+    result = []
+    for cats in category.values():
+        for cat in cats:
+            if cat not in result:
+                result.append(cat)
+    return result
 
 
 @router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
