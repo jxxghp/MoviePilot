@@ -1,7 +1,6 @@
 from time import sleep
 from typing import Dict, Any, Tuple
 
-from app.actions import BaseAction
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.schemas import Action, ActionContext
@@ -14,7 +13,7 @@ class WorkFlowManager(metaclass=Singleton):
     """
 
     # 所有动作定义
-    _actions: Dict[str, BaseAction] = {}
+    _actions: Dict[str, Any] = {}
 
     def __init__(self):
         self.init()
@@ -59,14 +58,18 @@ class WorkFlowManager(metaclass=Singleton):
         if not context:
             context = ActionContext()
         if action.id in self._actions:
-            action_obj = self._actions[action.id]
+            # 实例化
+            action_obj = self._actions[action.id]()
+            # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
             result_context = action_obj.execute(action.params, context)
             logger.info(f"{action.name} 执行结果: {action_obj.success}")
             if action.loop and action.loop_interval:
                 while not action_obj.done:
+                    # 等待
                     logger.info(f"{action.name} 等待 {action.loop_interval} 秒后继续执行")
                     sleep(action.loop_interval)
+                    # 执行
                     logger.info(f"继续执行动作: {action.id} - {action.name}")
                     result_context = action_obj.execute(action.params, result_context)
                     logger.info(f"{action.name} 执行结果: {action_obj.success}")

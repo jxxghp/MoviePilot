@@ -21,6 +21,8 @@ class TransferTorrent(BaseModel):
     tags: Optional[str] = None
     size: Optional[int] = 0
     userid: Optional[str] = None
+    progress: Optional[float] = 0
+    state: Optional[str] = None
 
 
 class DownloadingTorrent(BaseModel):
