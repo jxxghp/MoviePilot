@@ -2,7 +2,12 @@ from abc import ABC, abstractmethod
 
 from pydantic.main import BaseModel
 
+from app.chain import ChainBase
 from app.schemas import ActionContext, ActionParams
+
+
+class ActionChain(ChainBase):
+    pass
 
 
 class BaseAction(BaseModel, ABC):
@@ -12,6 +17,10 @@ class BaseAction(BaseModel, ABC):
 
     # 完成标志
     _done_flag = False
+
+    def __init__(self):
+        super().__init__()
+        self.chain = ActionChain()
 
     @property
     @abstractmethod

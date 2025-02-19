@@ -578,7 +578,7 @@ class TmdbApi:
                 genre_ids.append(genre.get('id'))
             return genre_ids
 
-        # 查询TMDB详ngeq
+        # 查询TMDB详情
         if mtype == MediaType.MOVIE:
             tmdb_info = self.__get_movie_detail(tmdbid)
             if tmdb_info:
@@ -588,13 +588,20 @@ class TmdbApi:
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
         else:
-            tmdb_info = self.__get_tv_detail(tmdbid)
-            if tmdb_info:
+            tmdb_info_tv = self.__get_tv_detail(tmdbid)
+            tmdb_info_movie = self.__get_movie_detail(tmdbid)
+            if tmdb_info_tv and tmdb_info_movie:
+                tmdb_info = None
+                logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
+            elif tmdb_info_tv:
+                tmdb_info = tmdb_info_tv
                 tmdb_info['media_type'] = MediaType.TV
+            elif tmdb_info_movie:
+                tmdb_info = tmdb_info_movie
+                tmdb_info['media_type'] = MediaType.MOVIE
             else:
-                tmdb_info = self.__get_movie_detail(tmdbid)
-                if tmdb_info:
-                    tmdb_info['media_type'] = MediaType.MOVIE
+                tmdb_info = None
+                logger.warn(f"tmdb_id:{tmdbid} 未查询到媒体信息")
 
         if tmdb_info:
             # 转换genreid

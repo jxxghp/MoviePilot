@@ -118,11 +118,12 @@ class TheMovieDbModule(_ModuleBase):
 
         # 识别匹配
         if not cache_info or not cache:
+            info = None
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
-            elif meta:
+            if not info and meta:
                 info = {}
                 # 简体名称
                 zh_name = zhconv.convert(meta.cn_name, "zh-hans") if meta.cn_name else None
@@ -173,7 +174,7 @@ class TheMovieDbModule(_ModuleBase):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
                                               tmdbid=info.get("id"))
             else:
-                logger.error("识别媒体信息时未提供元数据或tmdbid")
+                logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
                 return None
 
             # 保存到缓存

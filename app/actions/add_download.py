@@ -24,6 +24,11 @@ class AddDownloadAction(BaseAction):
     # 已添加的下载
     _added_downloads = []
 
+    def __init__(self):
+        super().__init__()
+        self.downloadchain = DownloadChain()
+        self.mediachain = MediaChain()
+
     @property
     def name(self) -> str:
         return "添加下载资源"
@@ -44,13 +49,13 @@ class AddDownloadAction(BaseAction):
             if not t.meta_info:
                 t.meta_info = MetaInfo(title=t.title, subtitle=t.description)
             if not t.media_info:
-                t.media_info = MediaChain().recognize_media(meta=t.meta_info)
+                t.media_info = self.mediachain.recognize_media(meta=t.meta_info)
             if not t.media_info:
                 logger.warning(f"{t.title} 未识别到媒体信息，无法下载")
                 continue
-            did = DownloadChain().download_single(context=t,
-                                                  downloader=params.downloader,
-                                                  save_path=params.save_path)
+            did = self.downloadchain.download_single(context=t,
+                                                     downloader=params.downloader,
+                                                     save_path=params.save_path)
             if did:
                 self._added_downloads.append(did)
 
@@ -59,5 +64,6 @@ class AddDownloadAction(BaseAction):
             context.downloads.extend(
                 [DownloadTask(download_id=did, downloader=params.downloader) for did in self._added_downloads]
             )
+
         self.job_done()
         return context

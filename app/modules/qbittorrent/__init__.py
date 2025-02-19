@@ -239,7 +239,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         path=torrent_path,
                         hash=torrent.get('hash'),
                         size=torrent.get('total_size'),
-                        tags=torrent.get('tags')
+                        tags=torrent.get('tags'),
+                        progress=torrent.get('progress') * 100,
+                        state="paused" if torrent.get('state') in ("paused", "pausedDL") else "downloading",
                     ))
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的

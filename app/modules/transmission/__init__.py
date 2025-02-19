@@ -246,7 +246,9 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                         title=torrent.name,
                         path=Path(torrent.download_dir) / torrent.name,
                         hash=torrent.hashString,
-                        tags=",".join(torrent.labels or [])
+                        tags=",".join(torrent.labels or []),
+                        progress=torrent.progress,
+                        state="paused" if torrent.status == "stopped" else "downloading",
                     ))
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
