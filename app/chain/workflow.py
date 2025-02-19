@@ -17,9 +17,11 @@ class WorkflowChain(ChainBase):
         self.workflowoper = WorkflowOper()
         self.workflowmanager = WorkFlowManager()
 
-    def process(self, workflow_id: int) -> bool:
+    def process(self, workflow_id: int, from_begin: bool = True) -> bool:
         """
         处理工作流
+        :param workflow_id: 工作流ID
+        :param from_begin: 是否从头开始，默认为True
         """
         workflow = self.workflowoper.get(workflow_id)
         if not workflow:
@@ -30,9 +32,14 @@ class WorkflowChain(ChainBase):
             return False
         logger.info(f"开始处理 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
         # 启用上下文
-        context = ActionContext()
+        if not from_begin and workflow.current_action:
+            context = ActionContext(**workflow.context)
+        else:
+            context = ActionContext()
         self.workflowoper.start(workflow_id)
         for act in workflow.actions:
+            if not from_begin and act['id'] != workflow.current_action:
+                continue
             action = Action(**act)
             state, context = self.workflowmanager.excute(action, context)
             self.workflowoper.step(workflow_id, action=action.name, context=context.dict())
