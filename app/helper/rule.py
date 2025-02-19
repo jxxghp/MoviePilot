@@ -33,7 +33,7 @@ class RuleHelper:
                 return group
         return None
 
-    def get_rule_group_by_media(self, media: MediaInfo, group_names: list = None) -> List[FilterRuleGroup]:
+    def get_rule_group_by_media(self, media: MediaInfo = None, group_names: list = None) -> List[FilterRuleGroup]:
         """
         根据媒体信息获取规则组
         """
@@ -44,9 +44,9 @@ class RuleHelper:
         for group in rule_groups:
             if not group.media_type:
                 ret_groups.append(group)
-            elif not group.category and group.media_type == media.type.value:
+            elif media and not group.category and group.media_type == media.type.value:
                 ret_groups.append(group)
-            elif group.category == media.category:
+            elif media and group.category == media.category:
                 ret_groups.append(group)
         return ret_groups
 

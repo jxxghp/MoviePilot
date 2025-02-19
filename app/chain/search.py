@@ -61,19 +61,21 @@ class SearchChain(ChainBase):
         self.save_cache(bytes_results, self.__result_temp_file)
         return results
 
-    def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[Context]:
+    def search_by_title(self, title: str, page: int = 0,
+                        sites: List[int] = None, cache_local: bool = True) -> List[Context]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
         :param page: 页码
-        :param site: 站点ID
+        :param sites: 站点ID列表
+        :param cache_local: 是否缓存到本地
         """
         if title:
             logger.info(f'开始搜索资源，关键词：{title} ...')
         else:
-            logger.info(f'开始浏览资源，站点：{site} ...')
+            logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = self.__search_all_sites(keywords=[title], sites=[site] if site else None, page=page) or []
+        torrents = self.__search_all_sites(keywords=[title], sites=sites if sites else None, page=page) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
@@ -81,8 +83,9 @@ class SearchChain(ChainBase):
         contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
                             torrent_info=torrent) for torrent in torrents]
         # 保存到本地文件
-        bytes_results = pickle.dumps(contexts)
-        self.save_cache(bytes_results, self.__result_temp_file)
+        if cache_local:
+            bytes_results = pickle.dumps(contexts)
+            self.save_cache(bytes_results, self.__result_temp_file)
         return contexts
 
     def last_search_results(self) -> List[Context]:

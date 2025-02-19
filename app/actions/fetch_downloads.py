@@ -1,5 +1,4 @@
 from app.actions import BaseAction
-from app.chain.download import DownloadChain
 from app.schemas import ActionParams, ActionContext
 
 
@@ -16,10 +15,6 @@ class FetchDownloadsAction(BaseAction):
     """
 
     _downloads = []
-
-    def __init__(self):
-        super().__init__()
-        self.downloadchain = DownloadChain()
 
     @property
     def name(self) -> str:
@@ -41,7 +36,7 @@ class FetchDownloadsAction(BaseAction):
         """
         self._downloads = context.downloads
         for download in self._downloads:
-            torrents = self.downloadchain.list_torrents(hashs=[download.download_id])
+            torrents = self.chain.list_torrents(hashs=[download.download_id])
             if not torrents:
                 download.completed = True
                 continue

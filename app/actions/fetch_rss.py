@@ -3,7 +3,6 @@ from typing import Optional
 from pydantic import Field
 
 from app.actions import BaseAction
-from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import Context
 from app.core.metainfo import MetaInfo
@@ -22,7 +21,6 @@ class FetchRssParams(ActionParams):
     content_type: Optional[str] = Field(None, description="Content-Type")
     referer: Optional[str] = Field(None, description="Referer")
     ua: Optional[str] = Field(None, description="User-Agent")
-    recognize: Optional[bool] = Field(False, description="是否识别")
 
 
 class FetchRssAction(BaseAction):
@@ -35,7 +33,6 @@ class FetchRssAction(BaseAction):
     def __init__(self):
         super().__init__()
         self.rsshelper = RssHelper()
-        self.mediachain = MediaChain()
 
     @property
     def name(self) -> str:
@@ -83,13 +80,11 @@ class FetchRssAction(BaseAction):
                 size=item.get("size"),
                 pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
             )
-            meta, mediainfo = None, None
-            if params.recognize:
-                meta = MetaInfo(title=torrentinfo.title, subtitle=torrentinfo.description)
-                mediainfo = self.mediachain.recognize_media(meta)
-                if not mediainfo:
-                    logger.warning(f"{torrentinfo.title} 未识别到媒体信息")
-                    continue
+            meta = MetaInfo(title=torrentinfo.title, subtitle=torrentinfo.description)
+            mediainfo = self.chain.recognize_media(meta)
+            if not mediainfo:
+                logger.warning(f"{torrentinfo.title} 未识别到媒体信息")
+                continue
             self._rss_torrents.append(Context(meta_info=meta, media_info=mediainfo, torrent_info=torrentinfo))
 
         if self._rss_torrents:

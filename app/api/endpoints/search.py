@@ -133,12 +133,12 @@ def search_by_id(mediaid: str,
 @router.get("/title", summary="模糊搜索资源", response_model=schemas.Response)
 def search_by_title(keyword: str = None,
                     page: int = 0,
-                    site: int = None,
+                    sites: List[int] = None,
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
     """
-    torrents = SearchChain().search_by_title(title=keyword, page=page, site=site)
+    torrents = SearchChain().search_by_title(title=keyword, page=page, sites=sites)
     if not torrents:
         return schemas.Response(success=False, message="未搜索到任何资源")
     return schemas.Response(success=True, data=[torrent.to_dict() for torrent in torrents])

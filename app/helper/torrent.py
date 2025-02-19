@@ -445,6 +445,26 @@ class TorrentHelper(metaclass=Singleton):
                 logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
                 return False
 
+        # 大小
+        size_range = filter_params.get("size")
+        if size_range.find("-") != -1:
+            # 区间
+            size_min, size_max = size_range.split("-")
+            size_min = float(size_min.strip()) * 1024 * 1024
+            size_max = float(size_max.strip()) * 1024 * 1024
+            if torrent_info.size < size_min or torrent_info.size > size_max:
+                return False
+        elif size_range.startswith(">"):
+            # 大于
+            size_min = float(size_range[1:].strip()) * 1024 * 1024
+            if torrent_info.size < size_min:
+                return False
+        elif size_range.startswith("<"):
+            # 小于
+            size_max = float(size_range[1:].strip()) * 1024 * 1024
+            if torrent_info.size > size_max:
+                return False
+
         return True
 
     @staticmethod
