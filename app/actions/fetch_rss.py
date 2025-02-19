@@ -30,13 +30,9 @@ class FetchRssAction(BaseAction):
     def description(self) -> str:
         return "请求RSS地址获取数据，并解析为资源列表"
 
-    async def execute(self, params: FetchRssParams, context: ActionContext) -> ActionContext:
-        pass
-
-    @property
-    def done(self) -> bool:
-        return True
-
     @property
     def success(self) -> bool:
         return True
+
+    async def execute(self, params: FetchRssParams, context: ActionContext) -> ActionContext:
+        pass

@@ -23,10 +23,6 @@ class AddSubscribeAction(BaseAction):
         return "根据媒体列表添加订阅"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

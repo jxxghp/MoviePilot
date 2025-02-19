@@ -23,10 +23,6 @@ class TransferFileAction(BaseAction):
         return "整理和转移文件"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

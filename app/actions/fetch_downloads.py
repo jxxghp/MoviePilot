@@ -23,10 +23,6 @@ class FetchDownloadsAction(BaseAction):
         return "获取下载任务，更新任务状态"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

@@ -23,10 +23,6 @@ class FilterMediasAction(BaseAction):
         return "过滤媒体数据列表"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

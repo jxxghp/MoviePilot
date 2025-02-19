@@ -23,10 +23,6 @@ class SendEventAction(BaseAction):
         return "发送特定事件"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 
