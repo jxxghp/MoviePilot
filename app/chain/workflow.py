@@ -42,7 +42,7 @@ class WorkflowChain(ChainBase):
                 continue
             action = Action(**act)
             state, context = self.workflowmanager.excute(action, context)
-            self.workflowoper.step(workflow_id, action=action.name, context=context.dict())
+            self.workflowoper.step(workflow_id, action=action.id, context=context.dict())
             if not state:
                 logger.error(f"动作 {action.name} 执行失败，工作流失败")
                 self.workflowoper.fail(workflow_id, result=f"动作 {action.name} 执行失败")
