@@ -31,10 +31,6 @@ class SearchTorrentsAction(BaseAction):
         return "根据关键字搜索站点种子资源"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

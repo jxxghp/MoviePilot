@@ -23,10 +23,6 @@ class SendMessageAction(BaseAction):
         return "发送特定消息"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

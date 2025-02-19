@@ -23,10 +23,6 @@ class FetchMediasAction(BaseAction):
         return "获取媒体数据"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 

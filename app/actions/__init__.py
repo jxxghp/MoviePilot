@@ -10,6 +10,9 @@ class BaseAction(BaseModel, ABC):
     工作流动作基类
     """
 
+    # 完成标志
+    _done_flag = False
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -28,12 +31,11 @@ class BaseAction(BaseModel, ABC):
         raise NotImplementedError
 
     @property
-    @abstractmethod
     def done(self) -> bool:
         """
         判断动作是否完成
         """
-        pass
+        return self._done_flag
 
     @property
     @abstractmethod
@@ -42,3 +44,9 @@ class BaseAction(BaseModel, ABC):
         判断动作是否成功
         """
         pass
+
+    def job_done(self):
+        """
+        标记动作完成
+        """
+        self._done_flag = True

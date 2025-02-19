@@ -23,10 +23,6 @@ class ScrapeFileAction(BaseAction):
         return "刮削媒体信息和图片"
 
     @property
-    def done(self) -> bool:
-        return True
-
-    @property
     def success(self) -> bool:
         return True
 
