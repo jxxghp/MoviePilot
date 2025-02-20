@@ -32,13 +32,13 @@ class WeChat:
     _proxy = None
 
     # 企业微信发送消息URL
-    _send_msg_url = "/cgi-bin/message/send?access_token={access_token}"
+    _send_msg_url = "cgi-bin/message/send?access_token={access_token}"
     # 企业微信获取TokenURL
-    _token_url = "/cgi-bin/gettoken?corpid={corpid}&corpsecret={corpsecret}"
+    _token_url = "cgi-bin/gettoken?corpid={corpid}&corpsecret={corpsecret}"
     # 企业微信创建菜单URL
-    _create_menu_url = "/cgi-bin/menu/create?access_token={access_token}&agentid={agentid}"
+    _create_menu_url = "cgi-bin/menu/create?access_token={access_token}&agentid={agentid}"
     # 企业微信删除菜单URL
-    _delete_menu_url = "/cgi-bin/menu/delete?access_token={access_token}&agentid={agentid}"
+    _delete_menu_url = "cgi-bin/menu/delete?access_token={access_token}&agentid={agentid}"
 
     def __init__(self, WECHAT_CORPID: str = None, WECHAT_APP_SECRET: str = None,
                  WECHAT_APP_ID: str = None, WECHAT_PROXY: str = None, **kwargs):
