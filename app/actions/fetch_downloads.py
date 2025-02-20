@@ -41,6 +41,7 @@ class FetchDownloadsAction(BaseAction):
                 download.completed = True
                 continue
             for t in torrents:
+                download.path = t.path
                 if t.progress >= 100:
                     download.completed = True
 
