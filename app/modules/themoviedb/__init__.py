@@ -173,7 +173,7 @@ class TheMovieDbModule(_ModuleBase):
                 if info and not info.get("genres"):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
                                               tmdbid=info.get("id"))
-            else:
+            elif not info:
                 logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
                 return None
 
