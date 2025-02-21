@@ -63,6 +63,7 @@ class PluginHelper(metaclass=Singleton):
                 return json.loads(res.text)
             except json.JSONDecodeError:
                 logger.error(f"插件包数据解析失败：{res.text}")
+                return None
         return {}
 
     def get_plugin_package_version(self, pid: str, repo_url: str, package_version: str = None) -> Optional[str]:

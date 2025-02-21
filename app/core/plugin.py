@@ -793,10 +793,9 @@ class PluginManager(metaclass=Singleton):
         # 已安装插件
         installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 获取在线插件
-        online_plugins = self.pluginhelper.get_plugins(market, package_version) or {}
-        if not online_plugins:
-            if not package_version:
-                logger.warning(f"获取插件库失败：{market}，请检查 GitHub 网络连接")
+        online_plugins = self.pluginhelper.get_plugins(market, package_version)
+        if online_plugins is None:
+            logger.warning(f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
             return []
         ret_plugins = []
         add_time = len(online_plugins)
