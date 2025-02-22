@@ -67,7 +67,7 @@ class Alist(StorageBase, metaclass=Singleton):
         return self.__generate_token
 
     @property
-    @cached(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5)
+    @cached(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5, skip_empty=True)
     def __generate_token(self) -> str:
         """
         如果设置永久令牌则返回永久令牌，否则使用账号密码生成一个临时 token
