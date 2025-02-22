@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.db import get_db
+from app.db.models.workflow import Workflow
 from app.db.user_oper import get_current_active_superuser, get_current_active_user
 from chain.workflow import WorkflowChain
-from db.models.workflow import Workflow
 
 router = APIRouter()
 
