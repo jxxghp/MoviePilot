@@ -8,6 +8,7 @@ from app.schemas.download import DownloadTask
 from app.schemas.site import Site
 from app.schemas.subscribe import Subscribe
 from app.schemas.message import Notification
+from app.schemas.event import Event
 
 
 class Workflow(BaseModel):
@@ -61,3 +62,4 @@ class ActionContext(BaseModel):
     sites: Optional[List[Site]] = Field([], description="站点列表")
     subscribes: Optional[List[Subscribe]] = Field([], description="订阅列表")
     messages: Optional[List[Notification]] = Field([], description="消息列表")
+    events: Optional[List[Event]] = Field([], description="事件列表")

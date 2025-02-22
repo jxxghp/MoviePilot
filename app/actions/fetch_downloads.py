@@ -1,5 +1,6 @@
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
+from log import logger
 
 
 class FetchDownloadsParams(ActionParams):
@@ -36,6 +37,7 @@ class FetchDownloadsAction(BaseAction):
         """
         self._downloads = context.downloads
         for download in self._downloads:
+            logger.info(f"获取下载任务 {download.download_id} 状态 ...")
             torrents = self.chain.list_torrents(hashs=[download.download_id])
             if not torrents:
                 download.completed = True
@@ -43,6 +45,7 @@ class FetchDownloadsAction(BaseAction):
             for t in torrents:
                 download.path = t.path
                 if t.progress >= 100:
+                    logger.info(f"下载任务 {download.download_id} 已完成")
                     download.completed = True
 
         self.job_done()

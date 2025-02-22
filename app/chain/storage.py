@@ -84,6 +84,12 @@ class StorageChain(ChainBase):
         """
         return self.run_module("rename_file", fileitem=fileitem, name=name)
 
+    def exists(self, fileitem: schemas.FileItem) -> Optional[bool]:
+        """
+        判断文件或目录是否存在
+        """
+        return True if self.get_item(fileitem) else False
+
     def get_item(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         查询目录或文件

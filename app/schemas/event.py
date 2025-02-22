@@ -6,6 +6,15 @@ from pydantic import BaseModel, Field, root_validator
 from app.schemas import MessageChannel, FileItem
 
 
+class Event(BaseModel):
+    """
+    事件模型
+    """
+    event_type: str = Field(..., description="事件类型")
+    event_data: Optional[dict] = Field({}, description="事件数据")
+    priority: Optional[int] = Field(0, description="事件优先级")
+
+
 class BaseEventData(BaseModel):
     """
     事件数据的基类，所有具体事件数据类应继承自此类
