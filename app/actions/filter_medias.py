@@ -56,4 +56,3 @@ class FilterMediasAction(BaseAction):
 
         self.job_done()
         return context
-

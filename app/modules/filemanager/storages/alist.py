@@ -74,7 +74,7 @@ class Alist(StorageBase, metaclass=Singleton):
         缓存2天，提前5分钟更新
         """
         conf = self.get_conf()
-        token =  conf.get("token")
+        token = conf.get("token")
         if token:
             return str(token)
         resp: Response = RequestUtils(headers={

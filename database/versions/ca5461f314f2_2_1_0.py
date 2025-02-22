@@ -7,9 +7,8 @@ Create Date: 2025-02-06 18:28:00.644571
 """
 import contextlib
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import sqlite
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'ca5461f314f2'
