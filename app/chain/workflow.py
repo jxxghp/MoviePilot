@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -21,7 +21,7 @@ class WorkflowChain(ChainBase):
         self.workflowoper = WorkflowOper()
         self.workflowmanager = WorkFlowManager()
 
-    def process(self, workflow_id: int, from_begin: bool = True) -> bool:
+    def process(self, workflow_id: int, from_begin: bool = True) -> Tuple[bool, str]:
         """
         处理工作流
         :param workflow_id: 工作流ID
@@ -57,15 +57,16 @@ class WorkflowChain(ChainBase):
         workflow = self.workflowoper.get(workflow_id)
         if not workflow:
             logger.warn(f"工作流 {workflow_id} 不存在")
-            return False
+            return False, "工作流不存在"
         if not workflow.actions:
             logger.warn(f"工作流 {workflow.name} 无动作")
-            return False
+            return False, "工作流无动作"
         if not workflow.flows:
             logger.warn(f"工作流 {workflow.name} 无流程")
-            return False
+            return False, "工作流无流程"
 
         logger.info(f"开始处理 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
+        self.workflowoper.start(workflow_id)
 
         # 启用上下文
         if not from_begin and workflow.current_action:
@@ -113,8 +114,8 @@ class WorkflowChain(ChainBase):
                                        context=context.dict())
                 if success_count < len(next_actions):
                     logger.error(f"动作 {current_acttion_names} 未全部成功，工作流失败")
-                    self.workflowoper.fail(workflow_id, result=f"动作 {current_acttion_names} 执行失败")
-                    return False
+                    self.workflowoper.fail(workflow_id, result=f"动作 {current_acttion_names} 未全部成功")
+                    return False, f"动作 {current_acttion_names} 未全部成功"
                 else:
                     logger.info(f"动作 {current_acttion_names} 执行完成，耗时：{(end_time - start_time).seconds} 秒")
             else:
@@ -132,12 +133,12 @@ class WorkflowChain(ChainBase):
                 if not state:
                     logger.error(f"动作 {action.name} 执行失败，工作流失败")
                     self.workflowoper.fail(workflow_id, result=f"动作 {action.name} 执行失败")
-                    return False
+                    return False, f"动作 {action.name} 执行失败"
                 logger.info(f"动作 {action.name} 执行完成，耗时：{(end_time - start_time).seconds} 秒")
 
         logger.info(f"工作流 {workflow.name} 执行完成")
         self.workflowoper.success(workflow_id)
-        return True
+        return True, ""
 
     def get_workflows(self) -> List[Workflow]:
         """
