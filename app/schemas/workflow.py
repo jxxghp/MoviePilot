@@ -24,6 +24,7 @@ class Workflow(BaseModel):
     result: Optional[str] = Field(None, description="任务执行结果")
     run_count: Optional[int] = Field(0, description="已执行次数")
     actions: Optional[list] = Field([], description="任务列表")
+    flows: Optional[list] = Field([], description="任务流")
     add_time: Optional[str] = Field(None, description="创建时间")
     last_time: Optional[str] = Field(None, description="最后执行时间")
 
@@ -48,6 +49,9 @@ class Action(BaseModel):
     loop: Optional[bool] = Field(False, description="是否需要循环")
     loop_interval: Optional[int] = Field(0, description="循环间隔 (秒)")
     params: Optional[ActionParams] = Field({}, description="参数")
+    type: Optional[str] = Field(None, description="类型")
+    label: Optional[str] = Field(None, description="标签")
+    position: Optional[dict] = Field({}, description="位置")
 
 
 class ActionContext(BaseModel):
@@ -63,3 +67,13 @@ class ActionContext(BaseModel):
     subscribes: Optional[List[Subscribe]] = Field([], description="订阅列表")
     messages: Optional[List[Notification]] = Field([], description="消息列表")
     events: Optional[List[Event]] = Field([], description="事件列表")
+
+
+class ActionFlow(BaseModel):
+    """
+    工作流流程
+    """
+    id: Optional[str] = Field(None, description="流程ID")
+    source: Optional[str] = Field(None, description="源动作")
+    target: Optional[str] = Field(None, description="目标动作")
+    animated: Optional[bool] = Field(False, description="是否动画流程")

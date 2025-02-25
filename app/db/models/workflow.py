@@ -27,6 +27,8 @@ class Workflow(Base):
     run_count = Column(Integer, default=0)
     # 任务列表
     actions = Column(JSON, default=list)
+    # 任务流
+    flows = Column(JSON, default=list)
     # 执行上下文
     context = Column(JSON, default=dict)
     # 创建时间
