@@ -9,6 +9,7 @@ from app.db import get_db
 from app.db.models.workflow import Workflow
 from app.db.user_oper import get_current_active_user
 from app.chain.workflow import WorkflowChain
+from app.scheduler import Scheduler
 
 router = APIRouter()
 
@@ -67,17 +68,52 @@ def delete_workflow(workflow_id: int,
     """
     删除工作流
     """
+    workflow = Workflow.get(db, workflow_id)
+    if not workflow:
+        return schemas.Response(success=False, message="工作流不存在")
+    Scheduler().remove_workflow_job(workflow)
     Workflow.delete(db, workflow_id)
     return schemas.Response(success=True, message="删除成功")
 
 
-@router.get("/run/{workfow_id}", summary="执行工作流", response_model=schemas.Response)
-def run_workflow(workfow_id: int,
+@router.post("/{workflow_id}/run", summary="执行工作流", response_model=schemas.Response)
+def run_workflow(workflow_id: int,
                  from_begin: bool = True,
                  _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
     """
     执行工作流
     """
-    if WorkflowChain().process(workfow_id, from_begin=from_begin):
-        return schemas.Response(success=True, message="执行成功")
-    return schemas.Response(success=False, message="执行失败")
+    state, errmsg = WorkflowChain().process(workflow_id, from_begin=from_begin)
+    if not state:
+        return schemas.Response(success=False, message=errmsg)
+    return schemas.Response(success=True)
+
+
+@router.post("/{workflow_id}/start", summary="启用工作流", response_model=schemas.Response)
+def start_workflow(workflow_id: int,
+                   db: Session = Depends(get_db),
+                   _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    启用工作流
+    """
+    workflow = Workflow.get(db, workflow_id)
+    if not workflow:
+        return schemas.Response(success=False, message="工作流不存在")
+    Scheduler().remove_workflow_job(workflow)
+    workflow.update_state(db, workflow_id, "W")
+    return schemas.Response(success=True)
+
+
+@router.post("/{workflow_id}/pause", summary="停用工作流", response_model=schemas.Response)
+def pause_workflow(workflow_id: int,
+                   db: Session = Depends(get_db),
+                   _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    停用工作流
+    """
+    workflow = Workflow.get(db, workflow_id)
+    if not workflow:
+        return schemas.Response(success=False, message="工作流不存在")
+    Scheduler().remove_workflow_job(workflow)
+    workflow.update_state(db, workflow_id, "P")
+    return schemas.Response(success=True)
