@@ -49,6 +49,9 @@ class Action(BaseModel):
     loop: Optional[bool] = Field(False, description="是否需要循环")
     loop_interval: Optional[int] = Field(0, description="循环间隔 (秒)")
     params: Optional[ActionParams] = Field({}, description="参数")
+    type: Optional[str] = Field(None, description="类型")
+    label: Optional[str] = Field(None, description="标签")
+    position: Optional[dict] = Field({}, description="位置")
 
 
 class ActionContext(BaseModel):
@@ -73,3 +76,4 @@ class ActionFlow(BaseModel):
     id: Optional[str] = Field(None, description="流程ID")
     source: Optional[str] = Field(None, description="源动作")
     target: Optional[str] = Field(None, description="目标动作")
+    animated: Optional[bool] = Field(False, description="是否动画流程")
