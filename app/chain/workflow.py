@@ -28,6 +28,8 @@ class WorkflowChain(ChainBase):
         :param from_begin: 是否从头开始，默认为True
         """
 
+        _init_action = None
+
         def __get_next_action(_workflow: Workflow, _action: str) -> List[Action]:
             """
             获取下一个动作
@@ -42,7 +44,7 @@ class WorkflowChain(ChainBase):
                         actions.append(Action(**act))
                 return actions
             else:
-                if _action == _workflow.current_action:
+                if _action == _init_action:
                     # 返回当前动作
                     action_ids = _action.split(',')
                     return [Action(**act) for act in _workflow.actions if act.id in action_ids]
@@ -67,6 +69,7 @@ class WorkflowChain(ChainBase):
 
         # 启用上下文
         if not from_begin and workflow.current_action:
+            _init_action = workflow.current_action
             context = ActionContext(**workflow.context)
         else:
             context = ActionContext()
@@ -74,7 +77,7 @@ class WorkflowChain(ChainBase):
         if from_begin:
             current_action = None
         else:
-            current_action = workflow.current_action
+            current_action = _init_action
 
         # 循环执行
         while next_actions := __get_next_action(workflow, current_action):
