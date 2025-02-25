@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.db import get_db
 from app.db.models.workflow import Workflow
-from app.db.user_oper import get_current_active_superuser, get_current_active_user
+from app.db.user_oper import get_current_active_user
 from app.chain.workflow import WorkflowChain
 
 router = APIRouter()
@@ -22,10 +22,10 @@ def list_workflows(db: Session = Depends(get_db),
     return Workflow.list(db)
 
 
-@router.post("/", summary="创建工作流", response_model=schemas.Workflow)
+@router.post("/", summary="创建工作流", response_model=schemas.Response)
 def create_workflow(workflow: schemas.Workflow,
                     db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
     """
     创建工作流
     """
@@ -49,10 +49,10 @@ def get_workflow(workflow_id: int,
     return Workflow.get(db, workflow_id)
 
 
-@router.put("/{workflow_id}", summary="更新工作流", response_model=schemas.Workflow)
+@router.put("/{workflow_id}", summary="更新工作流", response_model=schemas.Response)
 def update_workflow(workflow: schemas.Workflow,
                     db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
     """
     更新工作流
     """
@@ -60,10 +60,10 @@ def update_workflow(workflow: schemas.Workflow,
     return schemas.Response(success=True, message="更新成功")
 
 
-@router.delete("/{workflow_id}", summary="删除工作流", response_model=schemas.Workflow)
+@router.delete("/{workflow_id}", summary="删除工作流", response_model=schemas.Response)
 def delete_workflow(workflow_id: int,
                     db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
     """
     删除工作流
     """
@@ -71,7 +71,7 @@ def delete_workflow(workflow_id: int,
     return schemas.Response(success=True, message="删除成功")
 
 
-@router.get("/run/{workfow_id}", summary="执行工作流", response_model=schemas.Workflow)
+@router.get("/run/{workfow_id}", summary="执行工作流", response_model=schemas.Response)
 def run_workflow(workfow_id: int,
                  from_begin: bool = True,
                  _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
