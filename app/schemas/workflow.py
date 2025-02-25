@@ -24,6 +24,7 @@ class Workflow(BaseModel):
     result: Optional[str] = Field(None, description="任务执行结果")
     run_count: Optional[int] = Field(0, description="已执行次数")
     actions: Optional[list] = Field([], description="任务列表")
+    flows: Optional[list] = Field([], description="任务流")
     add_time: Optional[str] = Field(None, description="创建时间")
     last_time: Optional[str] = Field(None, description="最后执行时间")
 
@@ -63,3 +64,12 @@ class ActionContext(BaseModel):
     subscribes: Optional[List[Subscribe]] = Field([], description="订阅列表")
     messages: Optional[List[Notification]] = Field([], description="消息列表")
     events: Optional[List[Event]] = Field([], description="事件列表")
+
+
+class ActionFlow(BaseModel):
+    """
+    工作流流程
+    """
+    id: Optional[str] = Field(None, description="流程ID")
+    source: Optional[str] = Field(None, description="源动作")
+    target: Optional[str] = Field(None, description="目标动作")
