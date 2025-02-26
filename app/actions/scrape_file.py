@@ -1,9 +1,9 @@
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from chain.media import MediaChain
-from chain.storage import StorageChain
-from core.metainfo import MetaInfoPath
-from log import logger
+from app.chain.media import MediaChain
+from app.chain.storage import StorageChain
+from app.core.metainfo import MetaInfoPath
+from app.log import logger
 
 
 class ScrapeFileParams(ActionParams):

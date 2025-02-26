@@ -4,7 +4,7 @@ from pydantic import Field
 
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from schemas import MediaType
+from app.schemas.types import MediaType
 
 
 class FilterMediasParams(ActionParams):

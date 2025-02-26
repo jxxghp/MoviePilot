@@ -4,12 +4,12 @@ from pydantic import Field
 
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from core.config import settings
-from core.event import eventmanager
-from log import logger
-from schemas import RecommendSourceEventData, MediaInfo
-from schemas.types import ChainEventType
-from utils.http import RequestUtils
+from app.core.config import settings
+from app.core.event import eventmanager
+from app.log import logger
+from app.schemas import RecommendSourceEventData, MediaInfo
+from app.schemas.types import ChainEventType
+from app.utils.http import RequestUtils
 
 
 class FetchMediasParams(ActionParams):

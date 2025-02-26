@@ -43,7 +43,7 @@ class Action(BaseModel):
     """
     动作信息
     """
-    id: Optional[int] = Field(None, description="动作ID")
+    id: Optional[str] = Field(None, description="动作ID")
     type: Optional[str] = Field(None, description="动作类型 (类名)")
     name: Optional[str] = Field(None, description="动作名称")
     description: Optional[str] = Field(None, description="动作描述")

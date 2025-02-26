@@ -2,7 +2,7 @@ import copy
 
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from core.event import eventmanager
+from app.core.event import eventmanager
 
 
 class SendEventParams(ActionParams):
