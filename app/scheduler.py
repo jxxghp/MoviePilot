@@ -494,6 +494,9 @@ class Scheduler(metaclass=Singleton):
         """
         更新工作流定时服务
         """
+        if not self._scheduler:
+            return
+
         # 移除该工作流的全部服务
         self.remove_workflow_job(workflow)
         # 添加工作流服务
@@ -503,6 +506,7 @@ class Scheduler(metaclass=Singleton):
                 self._jobs[job_id] = {
                     "func": WorkflowChain().process,
                     "name": workflow.name,
+                    "provider_name": "工作流",
                     "running": False,
                 }
                 self._scheduler.add_job(
@@ -547,7 +551,7 @@ class Scheduler(metaclass=Singleton):
                         "func": service["func"],
                         "name": service["name"],
                         "pid": pid,
-                        "plugin_name": plugin_name,
+                        "provider_name": plugin_name,
                         "kwargs": service.get("func_kwargs") or {},
                         "running": False,
                     }
@@ -584,14 +588,14 @@ class Scheduler(metaclass=Singleton):
             # 将正在运行的任务提取出来 (保障一次性任务正常显示)
             for job_id, service in self._jobs.items():
                 name = service.get("name")
-                plugin_name = service.get("plugin_name")
-                if service.get("running") and name and plugin_name:
+                provider_name = service.get("provider_name")
+                if service.get("running") and name and provider_name:
                     if name not in added:
                         added.append(name)
                     schedulers.append(schemas.ScheduleInfo(
                         id=job_id,
                         name=name,
-                        provider=plugin_name,
+                        provider=provider_name,
                         status="正在运行",
                     ))
             # 获取其他待执行任务
@@ -611,7 +615,7 @@ class Scheduler(metaclass=Singleton):
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
                     name=job.name,
-                    provider=service.get("plugin_name", "[系统]"),
+                    provider=service.get("provider_name", "[系统]"),
                     status=status,
                     next_run=next_run
                 ))

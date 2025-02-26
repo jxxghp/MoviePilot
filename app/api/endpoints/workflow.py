@@ -57,7 +57,10 @@ def update_workflow(workflow: schemas.Workflow,
     """
     更新工作流
     """
-    Workflow.update(db, workflow)
+    wf = Workflow.get(db, workflow.id)
+    if not wf:
+        return schemas.Response(success=False, message="工作流不存在")
+    wf.update(db, workflow.dict())
     return schemas.Response(success=True, message="更新成功")
 
 
@@ -99,7 +102,7 @@ def start_workflow(workflow_id: int,
     workflow = Workflow.get(db, workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
-    Scheduler().remove_workflow_job(workflow)
+    Scheduler().update_workflow_job(workflow)
     workflow.update_state(db, workflow_id, "W")
     return schemas.Response(success=True)
 
