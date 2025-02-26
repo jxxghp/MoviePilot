@@ -57,24 +57,30 @@ class WorkFlowManager(metaclass=Singleton):
         """
         if not context:
             context = ActionContext()
-        if action.id in self._actions:
+        if action.type in self._actions:
             # 实例化
-            action_obj = self._actions[action.id]()
+            action_obj = self._actions[action.type]()
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
             result_context = action_obj.execute(action.params, context)
-            logger.info(f"{action.name} 执行结果: {action_obj.success}")
+            if action_obj.success:
+                logger.info(f"{action.name} 执行成功")
+            else:
+                logger.error(f"{action.name} 执行失败")
             if action.loop and action.loop_interval:
                 while not action_obj.done:
                     # 等待
-                    logger.info(f"{action.name} 等待 {action.loop_interval} 秒后继续执行")
+                    logger.info(f"{action.name} 等待 {action.loop_interval} 秒后继续执行 ...")
                     sleep(action.loop_interval)
                     # 执行
                     logger.info(f"继续执行动作: {action.id} - {action.name}")
                     result_context = action_obj.execute(action.params, result_context)
-                    logger.info(f"{action.name} 执行结果: {action_obj.success}")
+                    if action_obj.success:
+                        logger.info(f"{action.name} 执行成功")
+                    else:
+                        logger.error(f"{action.name} 执行失败")
             logger.info(f"{action.name} 执行完成")
             return action_obj.success, result_context
         else:
-            logger.error(f"未找到动作: {action.id} - {action.name}")
+            logger.error(f"未找到动作: {action.type} - {action.name}")
             return False, context

@@ -66,7 +66,6 @@ class Workflow(Base):
         db.query(Workflow).filter(Workflow.id == wid).update({
             "state": 'F',
             "result": result,
-            "run_count": Workflow.run_count + 1,
             "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         })
         return True
@@ -84,6 +83,19 @@ class Workflow(Base):
 
     @staticmethod
     @db_update
-    def update_current_action(db, wid: int, action: str, context: dict):
-        db.query(Workflow).filter(Workflow.id == wid).update({"current_action": action, "context": context})
+    def reset(db, wid: int):
+        db.query(Workflow).filter(Workflow.id == wid).update({
+            "state": 'W',
+            "result": None,
+            "current_action": None,
+        })
+        return True
+
+    @staticmethod
+    @db_update
+    def update_current_action(db, wid: int, action_id: int, context: dict):
+        db.query(Workflow).filter(Workflow.id == wid).update({
+            "current_action": f"{Workflow.current_action},{action_id}" if Workflow.current_action else action_id,
+            "context": context
+        })
         return True

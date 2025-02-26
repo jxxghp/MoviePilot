@@ -43,13 +43,13 @@ class Action(BaseModel):
     """
     动作信息
     """
-    id: Optional[str] = Field(None, description="动作ID (类名)")
+    id: Optional[int] = Field(None, description="动作ID")
+    type: Optional[str] = Field(None, description="动作类型 (类名)")
     name: Optional[str] = Field(None, description="动作名称")
     description: Optional[str] = Field(None, description="动作描述")
     loop: Optional[bool] = Field(False, description="是否需要循环")
     loop_interval: Optional[int] = Field(0, description="循环间隔 (秒)")
     params: Optional[ActionParams] = Field({}, description="参数")
-    type: Optional[str] = Field(None, description="类型")
     label: Optional[str] = Field(None, description="标签")
     position: Optional[dict] = Field({}, description="位置")
 
