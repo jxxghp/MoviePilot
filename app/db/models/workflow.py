@@ -19,7 +19,7 @@ class Workflow(Base):
     timer = Column(String)
     # 状态：W-等待 R-运行中 P-暂停 S-成功 F-失败
     state = Column(String, nullable=False, index=True, default='W')
-    # 当前执行动作
+    # 已执行动作（,分隔）
     current_action = Column(String)
     # 任务执行结果
     result = Column(String)

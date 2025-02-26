@@ -99,7 +99,7 @@ def start_workflow(workflow_id: int,
     workflow = Workflow.get(db, workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
-    Scheduler().remove_workflow_job(workflow)
+    Scheduler().update_workflow_job(workflow)
     workflow.update_state(db, workflow_id, "W")
     return schemas.Response(success=True)
 

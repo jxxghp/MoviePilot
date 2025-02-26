@@ -20,7 +20,7 @@ class Workflow(BaseModel):
     description: Optional[str] = Field(None, description="工作流描述")
     timer: Optional[str] = Field(None, description="定时器")
     state: Optional[str] = Field(None, description="状态")
-    current_action: Optional[str] = Field(None, description="当前执行动作")
+    current_action: Optional[str] = Field(None, description="已执行动作")
     result: Optional[str] = Field(None, description="任务执行结果")
     run_count: Optional[int] = Field(0, description="已执行次数")
     actions: Optional[list] = Field([], description="任务列表")

@@ -494,6 +494,9 @@ class Scheduler(metaclass=Singleton):
         """
         更新工作流定时服务
         """
+        if not self._scheduler:
+            return
+
         # 移除该工作流的全部服务
         self.remove_workflow_job(workflow)
         # 添加工作流服务
