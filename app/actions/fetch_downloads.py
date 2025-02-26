@@ -1,6 +1,6 @@
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from log import logger
+from app.log import logger
 
 
 class FetchDownloadsParams(ActionParams):

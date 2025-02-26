@@ -1,8 +1,8 @@
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from chain.storage import StorageChain
-from chain.transfer import TransferChain
-from log import logger
+from app.chain.storage import StorageChain
+from app.chain.transfer import TransferChain
+from app.log import logger
 
 
 class TransferFileParams(ActionParams):
