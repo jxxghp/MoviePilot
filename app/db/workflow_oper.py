@@ -55,7 +55,7 @@ class WorkflowOper(DbOper):
         """
         return Workflow.fail(self._db, wid, result)
 
-    def step(self, wid: int, action_id: int, context: dict) -> bool:
+    def step(self, wid: int, action_id: str, context: dict) -> bool:
         """
         步进
         """
