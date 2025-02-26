@@ -57,7 +57,10 @@ def update_workflow(workflow: schemas.Workflow,
     """
     更新工作流
     """
-    Workflow.update(db, workflow)
+    wf = Workflow.get(db, workflow.id)
+    if not wf:
+        return schemas.Response(success=False, message="工作流不存在")
+    wf.update(db, workflow.dict())
     return schemas.Response(success=True, message="更新成功")
 
 

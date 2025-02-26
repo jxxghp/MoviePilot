@@ -15,7 +15,7 @@ class Workflow(BaseModel):
     """
     工作流信息
     """
-    id: Optional[str] = Field(None, description="工作流ID")
+    id: Optional[int] = Field(None, description="工作流ID")
     name: Optional[str] = Field(None, description="工作流名称")
     description: Optional[str] = Field(None, description="工作流描述")
     timer: Optional[str] = Field(None, description="定时器")
