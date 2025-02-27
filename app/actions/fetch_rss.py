@@ -37,11 +37,11 @@ class FetchRssAction(BaseAction):
 
     @property
     def name(self) -> str:
-        return "获取RSS资源列表"
+        return "获取RSS资源"
 
     @property
     def description(self) -> str:
-        return "请求RSS地址获取数据，并解析为资源列表"
+        return "订阅RSS地址获取资源"
 
     @property
     def data(self) -> dict:

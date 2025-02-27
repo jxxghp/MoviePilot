@@ -32,7 +32,7 @@ class TransferFileAction(BaseAction):
 
     @property
     def description(self) -> str:
-        return "整理和转移文件"
+        return "转移和重命名文件"
 
     @property
     def data(self) -> dict:

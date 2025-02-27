@@ -31,7 +31,7 @@ class AddDownloadAction(BaseAction):
 
     @property
     def name(self) -> str:
-        return "添加下载资源"
+        return "添加下载"
 
     @property
     def description(self) -> str:

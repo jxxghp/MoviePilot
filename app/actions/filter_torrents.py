@@ -34,11 +34,11 @@ class FilterTorrentsAction(BaseAction):
 
     @property
     def name(self) -> str:
-        return "过滤资源数据"
+        return "过滤资源"
 
     @property
     def description(self) -> str:
-        return "过滤资源数据列表"
+        return "对资源列表数据进行过滤"
 
     @property
     def data(self) -> dict:

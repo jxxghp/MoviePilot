@@ -81,13 +81,24 @@ class FetchMediasAction(BaseAction):
 
     __medias = []
 
+    def __init__(self):
+        super().__init__()
+        # 广播事件，请示额外的推荐数据源支持
+        event_data = RecommendSourceEventData()
+        event = eventmanager.send_event(ChainEventType.RecommendSource, event_data)
+        # 使用事件返回的上下文数据
+        if event and event.event_data:
+            event_data: RecommendSourceEventData = event.event_data
+            if event_data.extra_sources:
+                self.__inner_sources.extend([s.dict() for s in event_data.extra_sources])
+
     @property
     def name(self) -> str:
         return "获取媒体数据"
 
     @property
     def description(self) -> str:
-        return "获取媒体数据"
+        return "获取榜单等媒体数据列表"
 
     @property
     def data(self) -> dict:
@@ -110,15 +121,6 @@ class FetchMediasAction(BaseAction):
         """
         获取媒体数据，填充到medias
         """
-        # 广播事件，请示额外的推荐数据源支持
-        event_data = RecommendSourceEventData()
-        event = eventmanager.send_event(ChainEventType.RecommendSource, event_data)
-        # 使用事件返回的上下文数据
-        if event and event.event_data:
-            event_data: RecommendSourceEventData = event.event_data
-            if event_data.extra_sources:
-                self.__inner_sources.extend([s.dict() for s in event_data.extra_sources])
-
         for name in params.sources:
             source = self.__get_source(name)
             if not source:
