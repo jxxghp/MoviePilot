@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
 from app.chain.media import MediaChain
@@ -34,6 +36,10 @@ class ScrapeFileAction(BaseAction):
         return "刮削媒体信息和图片"
 
     @property
+    def data(self) -> dict:
+        return ScrapeFileParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self.__scraped_files else False
 
@@ -46,8 +52,8 @@ class ScrapeFileAction(BaseAction):
                 continue
             if not self.storagechain.exists(fileitem):
                 continue
-            meta = MetaInfoPath(fileitem.path)
-            mediainfo = self.chain.recognize_media(meta)
+            meta = MetaInfoPath(Path(fileitem.path))
+            mediainfo = self.mediachain.recognize_media(meta)
             if not mediainfo:
                 logger.info(f"{fileitem.path} 未识别到媒体信息，无法刮削")
                 continue

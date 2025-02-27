@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from app.actions import BaseAction
+from app.actions import BaseAction, ActionChain
 from app.core.config import settings
 from app.core.context import Context
 from app.core.metainfo import MetaInfo
@@ -33,6 +33,7 @@ class FetchRssAction(BaseAction):
     def __init__(self):
         super().__init__()
         self.rsshelper = RssHelper()
+        self.chain = ActionChain()
 
     @property
     def name(self) -> str:
@@ -41,6 +42,10 @@ class FetchRssAction(BaseAction):
     @property
     def description(self) -> str:
         return "请求RSS地址获取数据，并解析为资源列表"
+
+    @property
+    def data(self) -> dict:
+        return FetchRssParams().dict()
 
     @property
     def success(self) -> bool:

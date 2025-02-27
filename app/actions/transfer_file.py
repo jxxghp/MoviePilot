@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
 from app.chain.storage import StorageChain
@@ -33,6 +35,10 @@ class TransferFileAction(BaseAction):
         return "整理和转移文件"
 
     @property
+    def data(self) -> dict:
+        return TransferFileParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self.__fileitems else False
 
@@ -44,7 +50,7 @@ class TransferFileAction(BaseAction):
             if not download.completed:
                 logger.info(f"下载任务 {download.download_id} 未完成")
                 continue
-            fileitem = self.storagechain.get_file_item(storage="local", path=download.path)
+            fileitem = self.storagechain.get_file_item(storage="local", path=Path(download.path))
             if not fileitem:
                 logger.info(f"文件 {download.path} 不存在")
                 continue

@@ -33,6 +33,10 @@ class FilterMediasAction(BaseAction):
         return "过滤媒体数据列表"
 
     @property
+    def data(self) -> dict:
+        return FilterMediasParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self.__medias else False
 

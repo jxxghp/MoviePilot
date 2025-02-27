@@ -38,6 +38,10 @@ class AddDownloadAction(BaseAction):
         return "根据资源列表添加下载任务"
 
     @property
+    def data(self) -> dict:
+        return AddDownloadParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self._added_downloads else False
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.core.workflow import WorkFlowManager
 from app.db import get_db
 from app.db.models.workflow import Workflow
 from app.db.user_oper import get_current_active_user
@@ -38,6 +39,14 @@ def create_workflow(workflow: schemas.Workflow,
         workflow.state = "P"
     Workflow(**workflow.dict()).create(db)
     return schemas.Response(success=True, message="创建工作流成功")
+
+
+@router.get("/actions", summary="所有动作", response_model=List[dict])
+def list_actions(_: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    获取所有动作
+    """
+    return WorkFlowManager().list_actions()
 
 
 @router.get("/{workflow_id}", summary="工作流详情", response_model=schemas.Workflow)

@@ -34,6 +34,10 @@ class AddSubscribeAction(BaseAction):
         return "根据媒体列表添加订阅"
 
     @property
+    def data(self) -> dict:
+        return AddSubscribeParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self._added_subscribes else False
 

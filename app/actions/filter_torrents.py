@@ -2,7 +2,7 @@ from typing import Optional, List
 
 from pydantic import Field
 
-from app.actions import BaseAction
+from app.actions import BaseAction, ActionChain
 from app.helper.torrent import TorrentHelper
 from app.schemas import ActionParams, ActionContext
 
@@ -30,6 +30,7 @@ class FilterTorrentsAction(BaseAction):
     def __init__(self):
         super().__init__()
         self.torrenthelper = TorrentHelper()
+        self.chain = ActionChain()
 
     @property
     def name(self) -> str:
@@ -38,6 +39,10 @@ class FilterTorrentsAction(BaseAction):
     @property
     def description(self) -> str:
         return "过滤资源数据列表"
+
+    @property
+    def data(self) -> dict:
+        return FilterTorrentsParams().dict()
 
     @property
     def success(self) -> bool:
