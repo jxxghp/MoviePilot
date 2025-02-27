@@ -17,15 +17,13 @@ class SendEventAction(BaseAction):
     发送事件
     """
 
-    __success = False
-
     @property
     def name(self) -> str:
         return "发送事件"
 
     @property
     def description(self) -> str:
-        return "发送特定事件"
+        return "发送队列中的所有事件"
 
     @property
     def data(self) -> dict:
@@ -33,7 +31,7 @@ class SendEventAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return self.__success
+        return self.done
 
     async def execute(self, params: SendEventParams, context: ActionContext) -> ActionContext:
         """
@@ -45,7 +43,6 @@ class SendEventAction(BaseAction):
             for event in copy.deepcopy(context.events):
                 eventmanager.send_event(etype=event.event_type, data=event.event_data)
                 context.events.remove(event)
-                self.__success = True
 
         self.job_done()
         return context
