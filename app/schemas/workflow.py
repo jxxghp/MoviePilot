@@ -48,8 +48,8 @@ class Action(BaseModel):
     type: Optional[str] = Field(None, description="动作类型 (类名)")
     name: Optional[str] = Field(None, description="动作名称")
     description: Optional[str] = Field(None, description="动作描述")
-    data: Optional[ActionParams] = Field({}, description="参数")
     position: Optional[dict] = Field({}, description="位置")
+    data: Optional[dict] = Field({}, description="参数")
 
 
 class ActionContext(BaseModel):

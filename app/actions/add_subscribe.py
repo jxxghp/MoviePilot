@@ -41,7 +41,7 @@ class AddSubscribeAction(BaseAction):
     def success(self) -> bool:
         return True if self._added_subscribes else False
 
-    async def execute(self, params: AddSubscribeParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         将medias中的信息添加订阅，如果订阅不存在的话
         """

@@ -13,7 +13,7 @@ class FetchTorrentsParams(ActionParams):
     获取站点资源参数
     """
     name: str = Field(None, description="资源名称")
-    year: Optional[int] = Field(None, description="年份")
+    year: Optional[str] = Field(None, description="年份")
     type: Optional[str] = Field(None, description="资源类型 (电影/电视剧)")
     season: Optional[int] = Field(None, description="季度")
     sites: Optional[List[int]] = Field([], description="站点列表")
@@ -46,10 +46,11 @@ class FetchTorrentsAction(BaseAction):
     def success(self) -> bool:
         return True if self._torrents else False
 
-    async def execute(self, params: FetchTorrentsParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         搜索站点，获取资源列表
         """
+        params = FetchTorrentsParams(**params)
         torrents = self.searchchain.search_by_title(title=params.name, sites=params.sites)
         for torrent in torrents:
             if params.year and torrent.meta_info.year != params.year:

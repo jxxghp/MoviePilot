@@ -65,16 +65,22 @@ class WorkFlowManager(metaclass=Singleton):
             action_obj = self._actions[action.type]
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
-            result_context = action_obj.execute(action.data, context)
+            try:
+                result_context = action_obj.execute(action.data, context)
+            except Exception as err:
+                logger.error(f"{action.name} 执行失败: {err}")
+                return False, context
             if action_obj.success:
                 logger.info(f"{action.name} 执行成功")
             else:
                 logger.error(f"{action.name} 执行失败")
-            if action.data.loop and action.data.loop_interval:
+            loop = action.data.get("loop")
+            loop_interval = action.data.get("loop_interval")
+            if loop and loop_interval:
                 while not action_obj.done:
                     # 等待
-                    logger.info(f"{action.name} 等待 {action.data.loop_interval} 秒后继续执行 ...")
-                    sleep(action.data.loop_interval)
+                    logger.info(f"{action.name} 等待 {loop_interval} 秒后继续执行 ...")
+                    sleep(loop_interval)
                     # 执行
                     logger.info(f"继续执行动作: {action.id} - {action.name}")
                     result_context = action_obj.execute(action.data, result_context)
