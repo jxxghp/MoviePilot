@@ -30,7 +30,7 @@ class FilterMediasAction(BaseAction):
 
     @property
     def description(self) -> str:
-        return "过滤媒体数据列表"
+        return "对媒体数据列表进行过滤"
 
     @property
     def data(self) -> dict:

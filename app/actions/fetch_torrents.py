@@ -32,7 +32,7 @@ class FetchTorrentsAction(BaseAction):
 
     @property
     def name(self) -> str:
-        return "获取站点资源"
+        return "搜索站点资源"
 
     @property
     def description(self) -> str:
