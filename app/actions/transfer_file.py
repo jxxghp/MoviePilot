@@ -42,7 +42,7 @@ class TransferFileAction(BaseAction):
     def success(self) -> bool:
         return True if self.__fileitems else False
 
-    async def execute(self, params: TransferFileParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         从downloads中整理文件，记录到fileitems
         """

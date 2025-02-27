@@ -1,6 +1,9 @@
+import base64
+import pickle
 import threading
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+from time import sleep
 from typing import List, Tuple
 
 from pydantic.fields import Callable
@@ -60,8 +63,11 @@ class WorkflowExecutor:
                 self.indegree[action_id] = 0
 
         # 初始上下文
-        if workflow.current_action:
-            self.context = ActionContext(**workflow.context)
+        if workflow.current_action and workflow.context:
+            # Base64解码
+            decoded_data = base64.b64decode(workflow.context["content"])
+            # 反序列化数据
+            self.context = pickle.loads(decoded_data)
         else:
             self.context = ActionContext()
 
@@ -79,19 +85,24 @@ class WorkflowExecutor:
                 # 退出条件：队列为空且无运行任务
                 if not self.queue and self.running_tasks == 0:
                     break
+                # 退出条件：出现了错误
+                if not self.success:
+                    break
                 if not self.queue:
+                    sleep(1)
                     continue
+                # 取出队首节点
                 node_id = self.queue.popleft()
                 # 标记任务开始
                 self.running_tasks += 1
 
             # 已停机
-            if not global_vars.is_system_stopped:
+            if global_vars.is_system_stopped:
                 break
 
             # 已执行的跳过
             if (self.workflow.current_action
-                    and str(node_id) in self.workflow.current_action.split(',')):
+                    and node_id in self.workflow.current_action.split(',')):
                 continue
 
             # 提交任务到线程池
@@ -119,7 +130,11 @@ class WorkflowExecutor:
         # 节点执行失败
         if not state:
             self.success = False
-            self.errmsg = f"{action.name} 执行失败"
+            self.errmsg = f"{action.name} 失败"
+            # 标记任务完成
+            with self.lock:
+                self.running_tasks -= 1
+
             return
 
         with self.lock:
@@ -145,12 +160,9 @@ class WorkflowExecutor:
         """
         合并上下文
         """
-        # 遍历上下文，补充缺失的字段
-        self_context_dict = self.context.dict()
         for key, value in context.dict().items():
-            if key not in self_context_dict:
-                self_context_dict[key] = value
-        self.context = ActionContext(**self_context_dict)
+            if not getattr(self.context, key, None):
+                setattr(self.context, key, value)
 
 
 class WorkflowChain(ChainBase):
@@ -173,7 +185,13 @@ class WorkflowChain(ChainBase):
             """
             保存上下文到数据库
             """
-            self.workflowoper.step(workflow_id, action_id=action.id, context=context.dict())
+            # 序列化数据
+            serialized_data = pickle.dumps(context)
+            # 使用Base64编码字节流
+            encoded_data = base64.b64encode(serialized_data).decode('utf-8')
+            self.workflowoper.step(workflow_id, action_id=action.id, context={
+                "content": encoded_data
+            })
 
         # 重置工作流
         if from_begin:
@@ -198,8 +216,8 @@ class WorkflowChain(ChainBase):
         executor = WorkflowExecutor(workflow, step_callback=save_step)
         executor.execute()
 
-        if executor.success:
-            logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}")
+        if not executor.success:
+            logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}！")
             self.workflowoper.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         else:

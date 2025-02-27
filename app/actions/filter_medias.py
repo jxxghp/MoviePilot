@@ -40,10 +40,11 @@ class FilterMediasAction(BaseAction):
     def success(self) -> bool:
         return True if self.__medias else False
 
-    async def execute(self, params: FilterMediasParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         过滤medias中媒体数据
         """
+        params = FilterMediasParams(**params)
         for media in context.medias:
             if params.type and media.type != MediaType(params.type):
                 continue

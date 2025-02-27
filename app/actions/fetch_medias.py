@@ -117,10 +117,11 @@ class FetchMediasAction(BaseAction):
                 return s
         return None
 
-    async def execute(self, params: FetchMediasParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         获取媒体数据，填充到medias
         """
+        params = FetchMediasParams(**params)
         for name in params.sources:
             source = self.__get_source(name)
             if not source:

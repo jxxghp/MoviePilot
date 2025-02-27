@@ -51,10 +51,11 @@ class FetchRssAction(BaseAction):
     def success(self) -> bool:
         return True if self._rss_torrents else False
 
-    async def execute(self, params: FetchRssParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         请求RSS地址获取数据，并解析为资源列表
         """
+        params = FetchRssParams(**params)
         if not params.url:
             return context
 

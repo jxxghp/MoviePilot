@@ -39,7 +39,7 @@ class FetchDownloadsAction(BaseAction):
             return True
         return True if all([d.completed for d in self._downloads]) else False
 
-    async def execute(self, params: FetchDownloadsParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         更新downloads中的下载任务状态
         """

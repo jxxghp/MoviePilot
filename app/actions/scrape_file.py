@@ -43,7 +43,7 @@ class ScrapeFileAction(BaseAction):
     def success(self) -> bool:
         return True if self.__scraped_files else False
 
-    async def execute(self, params: ScrapeFileParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         刮削fileitems中的所有文件
         """

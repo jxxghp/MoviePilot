@@ -33,7 +33,7 @@ class SendEventAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    async def execute(self, params: SendEventParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         发送events中的事件
         """

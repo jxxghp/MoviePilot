@@ -45,10 +45,11 @@ class AddDownloadAction(BaseAction):
     def success(self) -> bool:
         return True if self._added_downloads else False
 
-    async def execute(self, params: AddDownloadParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         将上下文中的torrents添加到下载任务中
         """
+        params = AddDownloadParams(**params)
         for t in context.torrents:
             if not t.meta_info:
                 t.meta_info = MetaInfo(title=t.title, subtitle=t.description)

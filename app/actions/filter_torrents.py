@@ -48,10 +48,11 @@ class FilterTorrentsAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    async def execute(self, params: FilterTorrentsParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         过滤torrents中的资源
         """
+        params = FilterTorrentsParams(**params)
         for torrent in context.torrents:
             if self.torrenthelper.filter_torrent(
                     torrent_info=torrent.torrent_info,

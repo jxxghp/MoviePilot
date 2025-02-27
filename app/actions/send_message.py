@@ -40,7 +40,7 @@ class SendMessageAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    async def execute(self, params: SendMessageParams, context: ActionContext) -> ActionContext:
+    def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         发送messages中的消息
         """
