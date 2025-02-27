@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 
 from pydantic import Field
 
-from app.actions import BaseAction
+from app.actions import BaseAction, ActionChain
 from app.schemas import ActionParams, ActionContext, MessageChannel
 
 
@@ -19,6 +19,10 @@ class SendMessageAction(BaseAction):
     发送消息
     """
 
+    def __init__(self):
+        super().__init__()
+        self.chain = ActionChain()
+
     @property
     def name(self) -> str:
         return "发送消息"
@@ -26,6 +30,10 @@ class SendMessageAction(BaseAction):
     @property
     def description(self) -> str:
         return "发送特定消息"
+
+    @property
+    def data(self) -> dict:
+        return SendMessageParams().dict()
 
     @property
     def success(self) -> bool:

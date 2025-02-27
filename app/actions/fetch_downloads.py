@@ -1,4 +1,4 @@
-from app.actions import BaseAction
+from app.actions import BaseAction, ActionChain
 from app.schemas import ActionParams, ActionContext
 from app.log import logger
 
@@ -17,6 +17,10 @@ class FetchDownloadsAction(BaseAction):
 
     _downloads = []
 
+    def __init__(self):
+        super().__init__()
+        self.chain = ActionChain()
+
     @property
     def name(self) -> str:
         return "获取下载任务"
@@ -24,6 +28,10 @@ class FetchDownloadsAction(BaseAction):
     @property
     def description(self) -> str:
         return "获取下载任务，更新任务状态"
+
+    @property
+    def data(self) -> dict:
+        return FetchDownloadsParams().dict()
 
     @property
     def success(self) -> bool:

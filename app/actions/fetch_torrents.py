@@ -39,6 +39,10 @@ class FetchTorrentsAction(BaseAction):
         return "根据关键字搜索站点种子资源"
 
     @property
+    def data(self) -> dict:
+        return FetchTorrentsParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self._torrents else False
 
@@ -55,7 +59,7 @@ class FetchTorrentsAction(BaseAction):
             if params.season and torrent.meta_info.begin_season != params.season:
                 continue
             # 识别媒体信息
-            torrent.media_info = self.chain.recognize_media(torrent.meta_info)
+            torrent.media_info = self.searchchain.recognize_media(torrent.meta_info)
             if not torrent.media_info:
                 logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
                 continue

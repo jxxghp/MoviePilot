@@ -90,6 +90,10 @@ class FetchMediasAction(BaseAction):
         return "获取媒体数据"
 
     @property
+    def data(self) -> dict:
+        return FetchMediasParams().dict()
+
+    @property
     def success(self) -> bool:
         return True if self.__medias else False
 

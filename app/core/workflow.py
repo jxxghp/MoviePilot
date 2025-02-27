@@ -1,5 +1,5 @@
 from time import sleep
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 
 from app.helper.module import ModuleHelper
 from app.log import logger
@@ -43,7 +43,10 @@ class WorkFlowManager(metaclass=Singleton):
         )
         for action in actions:
             logger.debug(f"加载动作: {action.__name__}")
-            self._actions[action.__name__] = action
+            try:
+                self._actions[action.__name__] = action()
+            except Exception as err:
+                logger.error(f"加载动作失败: {action.__name__} - {err}")
 
     def stop(self):
         """
@@ -59,22 +62,22 @@ class WorkFlowManager(metaclass=Singleton):
             context = ActionContext()
         if action.type in self._actions:
             # 实例化
-            action_obj = self._actions[action.type]()
+            action_obj = self._actions[action.type]
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
-            result_context = action_obj.execute(action.params, context)
+            result_context = action_obj.execute(action.data, context)
             if action_obj.success:
                 logger.info(f"{action.name} 执行成功")
             else:
                 logger.error(f"{action.name} 执行失败")
-            if action.loop and action.loop_interval:
+            if action.data.loop and action.data.loop_interval:
                 while not action_obj.done:
                     # 等待
-                    logger.info(f"{action.name} 等待 {action.loop_interval} 秒后继续执行 ...")
-                    sleep(action.loop_interval)
+                    logger.info(f"{action.name} 等待 {action.data.loop_interval} 秒后继续执行 ...")
+                    sleep(action.data.loop_interval)
                     # 执行
                     logger.info(f"继续执行动作: {action.id} - {action.name}")
-                    result_context = action_obj.execute(action.params, result_context)
+                    result_context = action_obj.execute(action.data, result_context)
                     if action_obj.success:
                         logger.info(f"{action.name} 执行成功")
                     else:
@@ -84,3 +87,19 @@ class WorkFlowManager(metaclass=Singleton):
         else:
             logger.error(f"未找到动作: {action.type} - {action.name}")
             return False, context
+
+    def list_actions(self) -> List[dict]:
+        """
+        获取所有动作
+        """
+        return [
+            {
+                "type": key,
+                "name": action.name,
+                "description": action.description,
+                "data": {
+                    "label": action.name,
+                    **action.data
+                }
+            } for key, action in self._actions.items()
+        ]

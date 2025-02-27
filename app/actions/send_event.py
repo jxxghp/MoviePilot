@@ -28,6 +28,10 @@ class SendEventAction(BaseAction):
         return "发送特定事件"
 
     @property
+    def data(self) -> dict:
+        return SendEventParams().dict()
+
+    @property
     def success(self) -> bool:
         return self.__success
 
