@@ -24,16 +24,19 @@ class SendMessageAction(BaseAction):
         super().__init__()
         self.chain = ActionChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "发送消息"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "发送队列中的所有消息"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return SendMessageParams().dict()
 
     @property

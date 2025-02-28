@@ -27,16 +27,19 @@ class ScrapeFileAction(BaseAction):
         self.storagechain = StorageChain()
         self.mediachain = MediaChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "刮削文件"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "刮削媒体信息和图片"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return ScrapeFileParams().dict()
 
     @property

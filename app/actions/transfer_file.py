@@ -26,16 +26,19 @@ class TransferFileAction(BaseAction):
         self.transferchain = TransferChain()
         self.storagechain = StorageChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "整理文件"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "整理下载队列中的文件"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return TransferFileParams().dict()
 
     @property

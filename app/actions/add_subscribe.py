@@ -1,6 +1,7 @@
 from app.actions import BaseAction
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
+from app.core.context import MediaInfo
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
 from app.schemas import ActionParams, ActionContext
@@ -25,16 +26,19 @@ class AddSubscribeAction(BaseAction):
         self.subscribechain = SubscribeChain()
         self.subscribeoper = SubscribeOper()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "添加订阅"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "根据媒体列表添加订阅"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return AddSubscribeParams().dict()
 
     @property
@@ -46,18 +50,19 @@ class AddSubscribeAction(BaseAction):
         将medias中的信息添加订阅，如果订阅不存在的话
         """
         for media in context.medias:
-            if self.subscribechain.exists(media):
+            mediainfo = MediaInfo()
+            mediainfo.from_dict(media.dict())
+            if self.subscribechain.exists(mediainfo):
                 logger.info(f"{media.title} 已存在订阅")
                 continue
             # 添加订阅
-            sid, message = self.subscribechain.add(mtype=media.type,
-                                                   title=media.title,
-                                                   year=media.year,
-                                                   tmdbid=media.tmdb_id,
-                                                   season=media.season,
-                                                   doubanid=media.douban_id,
-                                                   bangumiid=media.bangumi_id,
-                                                   mediaid=media.media_id,
+            sid, message = self.subscribechain.add(mtype=mediainfo.type,
+                                                   title=mediainfo.title,
+                                                   year=mediainfo.year,
+                                                   tmdbid=mediainfo.tmdb_id,
+                                                   season=mediainfo.season,
+                                                   doubanid=mediainfo.douban_id,
+                                                   bangumiid=mediainfo.bangumi_id,
                                                    username=settings.SUPERUSER)
             if sid:
                 self._added_subscribes.append(sid)

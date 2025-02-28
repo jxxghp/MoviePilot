@@ -44,7 +44,7 @@ class WorkFlowManager(metaclass=Singleton):
         for action in actions:
             logger.debug(f"加载动作: {action.__name__}")
             try:
-                self._actions[action.__name__] = action()
+                self._actions[action.__name__] = action
             except Exception as err:
                 logger.error(f"加载动作失败: {action.__name__} - {err}")
 
@@ -62,7 +62,7 @@ class WorkFlowManager(metaclass=Singleton):
             context = ActionContext()
         if action.type in self._actions:
             # 实例化
-            action_obj = self._actions[action.type]
+            action_obj = self._actions[action.type]()
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
             try:
@@ -70,10 +70,6 @@ class WorkFlowManager(metaclass=Singleton):
             except Exception as err:
                 logger.error(f"{action.name} 执行失败: {err}")
                 return False, context
-            if action_obj.success:
-                logger.info(f"{action.name} 执行成功")
-            else:
-                logger.error(f"{action.name} 执行失败")
             loop = action.data.get("loop")
             loop_interval = action.data.get("loop_interval")
             if loop and loop_interval:
@@ -84,11 +80,10 @@ class WorkFlowManager(metaclass=Singleton):
                     # 执行
                     logger.info(f"继续执行动作: {action.id} - {action.name}")
                     result_context = action_obj.execute(action.data, result_context)
-                    if action_obj.success:
-                        logger.info(f"{action.name} 执行成功")
-                    else:
-                        logger.error(f"{action.name} 执行失败")
-            logger.info(f"{action.name} 执行完成")
+            if action_obj.success:
+                logger.info(f"{action.name} 执行成功")
+            else:
+                logger.error(f"{action.name} 执行失败！")
             return action_obj.success, result_context
         else:
             logger.error(f"未找到动作: {action.type} - {action.name}")
