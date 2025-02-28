@@ -42,7 +42,7 @@ class FetchTorrentsAction(BaseAction):
     @classmethod
     @property
     def description(cls) -> str:
-        return "根据关键字搜索站点种子资源"
+        return "搜索站点种子资源列表"
 
     @classmethod
     @property

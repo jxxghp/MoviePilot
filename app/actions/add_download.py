@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import Field
 
 from app.actions import BaseAction
@@ -13,9 +15,9 @@ class AddDownloadParams(ActionParams):
     """
     添加下载资源参数
     """
-    downloader: str = Field(None, description="下载器")
-    save_path: str = Field(None, description="保存路径")
-    only_lack: bool = Field(False, description="仅下载缺失的资源")
+    downloader: Optional[str] = Field(None, description="下载器")
+    save_path: Optional[str] = Field(None, description="保存路径")
+    only_lack: Optional[bool] = Field(False, description="仅下载缺失的资源")
 
 
 class AddDownloadAction(BaseAction):
