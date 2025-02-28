@@ -97,7 +97,8 @@ class WorkflowExecutor:
                 self.running_tasks += 1
 
             # 已停机
-            if global_vars.is_system_stopped:
+            if global_vars.is_workflow_stopped(self.workflow.id):
+                global_vars.workflow_resume(self.workflow.id)
                 break
 
             # 已执行的跳过
@@ -108,17 +109,18 @@ class WorkflowExecutor:
             # 提交任务到线程池
             future = self.executor.submit(
                 self.execute_node,
+                self.workflow.id,
                 node_id,
                 self.context
             )
             future.add_done_callback(self.on_node_complete)
 
-    def execute_node(self, node_id: int, context: ActionContext) -> Tuple[Action, bool, ActionContext]:
+    def execute_node(self, workflow_id: int, node_id: int, context: ActionContext) -> Tuple[Action, bool, ActionContext]:
         """
         执行单个节点操作，返回修改后的上下文和节点ID
         """
         action = self.actions[node_id]
-        state, result_ctx = self.workflowmanager.excute(action, context=context)
+        state, result_ctx = self.workflowmanager.excute(workflow_id, action, context=context)
         return action, state, result_ctx
 
     def on_node_complete(self, future):
@@ -127,34 +129,31 @@ class WorkflowExecutor:
         """
         action, state, result_ctx = future.result()
 
-        # 节点执行失败
-        if not state:
-            self.success = False
-            self.errmsg = f"{action.name} 失败"
+        try:
+            # 节点执行失败
+            if not state:
+                self.success = False
+                self.errmsg = f"{action.name} 失败"
+                return
+
+            with self.lock:
+                # 更新主上下文
+                self.merge_context(result_ctx)
+                # 回调
+                if self.step_callback:
+                    self.step_callback(action, self.context)
+
+            # 处理后继节点
+            successors = self.adjacency.get(action.id, [])
+            for succ_id in successors:
+                with self.lock:
+                    self.indegree[succ_id] -= 1
+                    if self.indegree[succ_id] == 0:
+                        self.queue.append(succ_id)
+        finally:
             # 标记任务完成
             with self.lock:
                 self.running_tasks -= 1
-
-            return
-
-        with self.lock:
-            # 更新主上下文
-            self.merge_context(result_ctx)
-            # 回调
-            if self.step_callback:
-                self.step_callback(action, self.context)
-
-        # 处理后继节点
-        successors = self.adjacency.get(action.id, [])
-        for succ_id in successors:
-            with self.lock:
-                self.indegree[succ_id] -= 1
-                if self.indegree[succ_id] == 0:
-                    self.queue.append(succ_id)
-
-        # 标记任务完成
-        with self.lock:
-            self.running_tasks -= 1
 
     def merge_context(self, context: ActionContext):
         """
@@ -221,7 +220,7 @@ class WorkflowChain(ChainBase):
             self.workflowoper.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         else:
-            logger.info(f"工作流 {workflow.name} 执行成功")
+            logger.info(f"工作流 {workflow.name} 执行完成")
             self.workflowoper.success(workflow_id)
             return True, ""
 

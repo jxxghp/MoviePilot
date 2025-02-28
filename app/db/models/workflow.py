@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, JSON, Sequence, String
+from sqlalchemy import Column, Integer, JSON, Sequence, String, and_
 
 from app.db import Base, db_query, db_update
 
@@ -63,7 +63,7 @@ class Workflow(Base):
     @staticmethod
     @db_update
     def fail(db, wid: int, result: str):
-        db.query(Workflow).filter(Workflow.id == wid).update({
+        db.query(Workflow).filter(and_(Workflow.id == wid, Workflow.state != "P")).update({
             "state": 'F',
             "result": result,
             "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -73,7 +73,7 @@ class Workflow(Base):
     @staticmethod
     @db_update
     def success(db, wid: int, result: str = None):
-        db.query(Workflow).filter(Workflow.id == wid).update({
+        db.query(Workflow).filter(and_(Workflow.id == wid, Workflow.state != "P")).update({
             "state": 'S',
             "result": result,
             "run_count": Workflow.run_count + 1,

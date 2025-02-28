@@ -4,6 +4,7 @@ from typing import List, Optional, Union
 from pydantic import Field
 
 from app.actions import BaseAction, ActionChain
+from app.core.config import global_vars
 from app.schemas import ActionParams, ActionContext
 
 
@@ -43,11 +44,13 @@ class SendMessageAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         发送messages中的消息
         """
         for message in copy.deepcopy(context.messages):
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if params.client:
                 message.source = params.client
             if params.userid:

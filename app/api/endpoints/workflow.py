@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.core.config import global_vars
 from app.core.workflow import WorkFlowManager
 from app.db import get_db
 from app.db.models.workflow import Workflow
@@ -112,6 +113,7 @@ def start_workflow(workflow_id: int,
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
     Scheduler().update_workflow_job(workflow)
+    global_vars.workflow_resume(workflow_id)
     workflow.update_state(db, workflow_id, "W")
     return schemas.Response(success=True)
 
@@ -127,5 +129,6 @@ def pause_workflow(workflow_id: int,
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
     Scheduler().remove_workflow_job(workflow)
+    global_vars.stop_workflow(workflow_id)
     workflow.update_state(db, workflow_id, "P")
     return schemas.Response(success=True)

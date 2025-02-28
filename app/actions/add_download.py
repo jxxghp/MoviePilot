@@ -3,6 +3,7 @@ from pydantic import Field
 from app.actions import BaseAction
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
+from app.core.config import global_vars
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas import ActionParams, ActionContext, DownloadTask, MediaType
@@ -50,12 +51,14 @@ class AddDownloadAction(BaseAction):
     def success(self) -> bool:
         return not self._has_error
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int,  params: dict, context: ActionContext) -> ActionContext:
         """
         将上下文中的torrents添加到下载任务中
         """
         params = AddDownloadParams(**params)
         for t in context.torrents:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if not t.meta_info:
                 t.meta_info = MetaInfo(title=t.title, subtitle=t.description)
             if not t.media_info:

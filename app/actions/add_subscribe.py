@@ -1,6 +1,6 @@
 from app.actions import BaseAction
 from app.chain.subscribe import SubscribeChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
@@ -46,11 +46,13 @@ class AddSubscribeAction(BaseAction):
     def success(self) -> bool:
         return not self._has_error
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         将medias中的信息添加订阅，如果订阅不存在的话
         """
         for media in context.medias:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             mediainfo = MediaInfo()
             mediainfo.from_dict(media.dict())
             if self.subscribechain.exists(mediainfo):

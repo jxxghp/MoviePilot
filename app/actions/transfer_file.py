@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.actions import BaseAction
+from app.core.config import global_vars
 from app.schemas import ActionParams, ActionContext
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
@@ -46,11 +47,13 @@ class TransferFileAction(BaseAction):
     def success(self) -> bool:
         return not self._has_error
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         从downloads中整理文件，记录到fileitems
         """
         for download in context.downloads:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if not download.completed:
                 logger.info(f"下载任务 {download.download_id} 未完成")
                 continue
