@@ -6,6 +6,7 @@ from pydantic import Field
 
 from app.actions import BaseAction
 from app.core.config import global_vars
+from app.db.transferhistory_oper import TransferHistoryOper
 from app.schemas import ActionParams, ActionContext
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
@@ -32,6 +33,7 @@ class TransferFileAction(BaseAction):
         super().__init__()
         self.transferchain = TransferChain()
         self.storagechain = StorageChain()
+        self.transferhis = TransferHistoryOper()
 
     @classmethod
     @property
@@ -69,6 +71,10 @@ class TransferFileAction(BaseAction):
                 if not fileitem:
                     logger.info(f"文件 {download.path} 不存在")
                     continue
+                transferd = self.transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
+                if transferd:
+                    # 已经整理过的文件不再整理
+                    continue
                 logger.info(f"开始整理文件 {download.path} ...")
                 state, errmsg = self.transferchain.do_transfer(fileitem, background=False)
                 if not state:
@@ -82,6 +88,10 @@ class TransferFileAction(BaseAction):
             for fileitem in copy.deepcopy(context.fileitems):
                 if global_vars.is_workflow_stopped(workflow_id):
                     break
+                transferd = self.transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
+                if transferd:
+                    # 已经整理过的文件不再整理
+                    continue
                 logger.info(f"开始整理文件 {fileitem.path} ...")
                 state, errmsg = self.transferchain.do_transfer(fileitem, background=False)
                 if not state:

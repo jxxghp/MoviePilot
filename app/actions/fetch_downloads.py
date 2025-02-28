@@ -59,6 +59,9 @@ class FetchDownloadsAction(BaseAction):
                 if t.progress >= 100:
                     logger.info(f"下载任务 {download.download_id} 已完成")
                     download.completed = True
+                else:
+                    logger.info(f"下载任务 {download.download_id} 未完成")
+                    download.completed = False
         if all([d.completed for d in self._downloads]):
             self.job_done()
         return context
