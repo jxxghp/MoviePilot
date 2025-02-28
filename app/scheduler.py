@@ -514,7 +514,7 @@ class Scheduler(metaclass=Singleton):
                     trigger=CronTrigger.from_crontab(workflow.timer),
                     id=job_id,
                     name=workflow.name,
-                    kwargs={"job_id": job_id, "workflow_id": job_id},
+                    kwargs={"job_id": job_id, "workflow_id": workflow.id},
                     replace_existing=True
                 )
                 logger.info(f"注册工作流服务：{workflow.name} - {workflow.timer}")
