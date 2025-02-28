@@ -217,7 +217,7 @@ class WorkflowChain(ChainBase):
         executor.execute()
 
         if not executor.success:
-            logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}！")
+            logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}")
             self.workflowoper.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         else:

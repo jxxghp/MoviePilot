@@ -23,6 +23,7 @@ class AddDownloadAction(BaseAction):
 
     # 已添加的下载
     _added_downloads = []
+    _has_error = False
 
     def __init__(self):
         super().__init__()
@@ -46,7 +47,7 @@ class AddDownloadAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self._added_downloads else False
+        return not self._has_error
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
@@ -59,6 +60,7 @@ class AddDownloadAction(BaseAction):
             if not t.media_info:
                 t.media_info = self.mediachain.recognize_media(meta=t.meta_info)
             if not t.media_info:
+                self._has_error = True
                 logger.warning(f"{t.title} 未识别到媒体信息，无法下载")
                 continue
             did = self.downloadchain.download_single(context=t,
@@ -66,6 +68,8 @@ class AddDownloadAction(BaseAction):
                                                      save_path=params.save_path)
             if did:
                 self._added_downloads.append(did)
+            else:
+                self._has_error = True
 
         if self._added_downloads:
             logger.info(f"已添加 {len(self._added_downloads)} 个下载任务")

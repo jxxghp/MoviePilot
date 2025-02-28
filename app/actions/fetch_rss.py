@@ -29,6 +29,7 @@ class FetchRssAction(BaseAction):
     """
 
     _rss_torrents = []
+    _has_error = False
 
     def __init__(self):
         super().__init__()
@@ -52,7 +53,7 @@ class FetchRssAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self._rss_torrents else False
+        return not self._has_error
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
@@ -74,6 +75,11 @@ class FetchRssAction(BaseAction):
                                          proxy=settings.PROXY if params.proxy else None,
                                          timeout=params.timeout,
                                          headers=headers)
+        if rss_items is None or rss_items is False:
+            logger.error(f'RSS地址 {params.url} 请求失败！')
+            self._has_error = True
+            return context
+
         if not rss_items:
             logger.error(f'RSS地址 {params.url} 未获取到RSS数据！')
             return context

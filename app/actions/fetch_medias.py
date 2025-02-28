@@ -25,9 +25,9 @@ class FetchMediasAction(BaseAction):
     获取媒体数据
     """
 
-    __inner_sources = []
+    _inner_sources = []
 
-    __medias = []
+    _medias = []
 
     def __init__(self):
         super().__init__()
@@ -113,7 +113,7 @@ class FetchMediasAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self.__medias else False
+        return True if self._medias else False
 
     def __get_source(self, source: str):
         """
@@ -145,12 +145,12 @@ class FetchMediasAction(BaseAction):
                     results = res.json()
             if results:
                 logger.info(f"{name} 获取到 {len(results)} 条数据")
-                self.__medias.extend([MediaInfo(**r) for r in results])
+                self._medias.extend([MediaInfo(**r) for r in results])
             else:
                 logger.error(f"{name} 获取数据失败")
 
-        if self.__medias:
-            context.medias.extend(self.__medias)
+        if self._medias:
+            context.medias.extend(self._medias)
 
         self.job_done()
         return context

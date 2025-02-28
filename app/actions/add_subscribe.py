@@ -20,6 +20,7 @@ class AddSubscribeAction(BaseAction):
     """
 
     _added_subscribes = []
+    _has_error = False
 
     def __init__(self):
         super().__init__()
@@ -43,7 +44,7 @@ class AddSubscribeAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self._added_subscribes else False
+        return not self._has_error
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
@@ -66,6 +67,8 @@ class AddSubscribeAction(BaseAction):
                                                    username=settings.SUPERUSER)
             if sid:
                 self._added_subscribes.append(sid)
+            else:
+                self._has_error = True
 
         if self._added_subscribes:
             logger.info(f"已添加 {len(self._added_subscribes)} 个订阅")

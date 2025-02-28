@@ -4,7 +4,6 @@ from pydantic import Field
 
 from app.actions import BaseAction
 from app.schemas import ActionParams, ActionContext
-from app.schemas.types import MediaType
 
 
 class FilterMediasParams(ActionParams):
@@ -22,7 +21,7 @@ class FilterMediasAction(BaseAction):
     过滤媒体数据
     """
 
-    __medias = []
+    _medias = []
 
     @classmethod
     @property
@@ -41,7 +40,7 @@ class FilterMediasAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self.__medias else False
+        return self.done
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
@@ -49,7 +48,7 @@ class FilterMediasAction(BaseAction):
         """
         params = FilterMediasParams(**params)
         for media in context.medias:
-            if params.type and media.type != MediaType(params.type):
+            if params.type and media.type != params.type:
                 continue
             if params.category and media.category != params.category:
                 continue
@@ -57,10 +56,10 @@ class FilterMediasAction(BaseAction):
                 continue
             if params.year and media.year != params.year:
                 continue
-            self.__medias.append(media)
+            self._medias.append(media)
 
-        if self.__medias:
-            context.medias = self.__medias
+        if self._medias:
+            context.medias = self._medias
 
         self.job_done()
         return context
