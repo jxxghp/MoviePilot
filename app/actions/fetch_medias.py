@@ -5,7 +5,7 @@ from pydantic import Field
 from app.actions import BaseAction
 from app.chain.recommend import RecommendChain
 from app.schemas import ActionParams, ActionContext
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.event import eventmanager
 from app.log import logger
 from app.schemas import RecommendSourceEventData, MediaInfo
@@ -124,12 +124,14 @@ class FetchMediasAction(BaseAction):
                 return s
         return None
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         获取媒体数据，填充到medias
         """
         params = FetchMediasParams(**params)
         for name in params.sources:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             source = self.__get_source(name)
             if not source:
                 continue

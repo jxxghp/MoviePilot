@@ -1,6 +1,7 @@
 from time import sleep
 from typing import Dict, Any, Tuple, List
 
+from app.core.config import global_vars
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.schemas import Action, ActionContext
@@ -54,7 +55,7 @@ class WorkFlowManager(metaclass=Singleton):
         """
         pass
 
-    def excute(self, action: Action, context: ActionContext = None) -> Tuple[bool, ActionContext]:
+    def excute(self, workflow_id: int, action: Action, context: ActionContext = None) -> Tuple[bool, ActionContext]:
         """
         执行工作流动作
         """
@@ -66,7 +67,7 @@ class WorkFlowManager(metaclass=Singleton):
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
             try:
-                result_context = action_obj.execute(action.data, context)
+                result_context = action_obj.execute(workflow_id, action.data, context)
             except Exception as err:
                 logger.error(f"{action.name} 执行失败: {err}")
                 return False, context
@@ -74,12 +75,14 @@ class WorkFlowManager(metaclass=Singleton):
             loop_interval = action.data.get("loop_interval")
             if loop and loop_interval:
                 while not action_obj.done:
+                    if global_vars.is_workflow_stopped(workflow_id):
+                        break
                     # 等待
                     logger.info(f"{action.name} 等待 {loop_interval} 秒后继续执行 ...")
                     sleep(loop_interval)
                     # 执行
                     logger.info(f"继续执行动作: {action.id} - {action.name}")
-                    result_context = action_obj.execute(action.data, result_context)
+                    result_context = action_obj.execute(workflow_id, action.data, result_context)
             if action_obj.success:
                 logger.info(f"{action.name} 执行成功")
             else:

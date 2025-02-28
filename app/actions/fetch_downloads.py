@@ -1,4 +1,5 @@
 from app.actions import BaseAction, ActionChain
+from app.core.config import global_vars
 from app.schemas import ActionParams, ActionContext
 from app.log import logger
 
@@ -40,12 +41,14 @@ class FetchDownloadsAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         更新downloads中的下载任务状态
         """
         __all_complete = False
         for download in self._downloads:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             logger.info(f"获取下载任务 {download.download_id} 状态 ...")
             torrents = self.chain.list_torrents(hashs=[download.download_id])
             if not torrents:

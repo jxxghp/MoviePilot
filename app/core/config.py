@@ -607,6 +607,8 @@ class GlobalVar(object):
     STOP_EVENT: threading.Event = threading.Event()
     # webpush订阅
     SUBSCRIPTIONS: List[dict] = []
+    # 需应急停止的工作流
+    EMERGENCY_STOP_WORKFLOWS: List[str] = []
 
     def stop_system(self):
         """
@@ -632,6 +634,26 @@ class GlobalVar(object):
         添加webpush订阅
         """
         self.SUBSCRIPTIONS.append(subscription)
+
+    def stop_workflow(self, workflow_id: str):
+        """
+        停止工作流
+        """
+        if workflow_id not in self.EMERGENCY_STOP_WORKFLOWS:
+            self.EMERGENCY_STOP_WORKFLOWS.append(workflow_id)
+
+    def workflow_resume(self, workflow_id: str):
+        """
+        恢复工作流
+        """
+        if workflow_id in self.EMERGENCY_STOP_WORKFLOWS:
+            self.EMERGENCY_STOP_WORKFLOWS.remove(workflow_id)
+
+    def is_workflow_stopped(self, workflow_id: str):
+        """
+        是否停止工作流
+        """
+        return self.is_system_stopped or workflow_id in self.EMERGENCY_STOP_WORKFLOWS
 
 
 # 实例化配置

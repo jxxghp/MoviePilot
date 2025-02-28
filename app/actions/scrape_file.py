@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.actions import BaseAction
+from app.core.config import global_vars
 from app.schemas import ActionParams, ActionContext
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -47,11 +48,13 @@ class ScrapeFileAction(BaseAction):
     def success(self) -> bool:
         return not self._has_error
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         刮削fileitems中的所有文件
         """
         for fileitem in context.fileitems:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if fileitem in self._scraped_files:
                 continue
             if not self.storagechain.exists(fileitem):

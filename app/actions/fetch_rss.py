@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import Field
 
 from app.actions import BaseAction, ActionChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.context import Context
 from app.core.metainfo import MetaInfo
 from app.helper.rss import RssHelper
@@ -55,7 +55,7 @@ class FetchRssAction(BaseAction):
     def success(self) -> bool:
         return not self._has_error
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         请求RSS地址获取数据，并解析为资源列表
         """
@@ -86,6 +86,8 @@ class FetchRssAction(BaseAction):
 
         # 组装种子
         for item in rss_items:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if not item.get("title"):
                 continue
             torrentinfo = TorrentInfo(

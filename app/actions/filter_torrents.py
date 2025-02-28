@@ -3,6 +3,7 @@ from typing import Optional, List
 from pydantic import Field
 
 from app.actions import BaseAction, ActionChain
+from app.core.config import global_vars
 from app.helper.torrent import TorrentHelper
 from app.schemas import ActionParams, ActionContext
 
@@ -51,12 +52,14 @@ class FilterTorrentsAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         过滤torrents中的资源
         """
         params = FilterTorrentsParams(**params)
         for torrent in context.torrents:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if self.torrenthelper.filter_torrent(
                     torrent_info=torrent.torrent_info,
                     filter_params={

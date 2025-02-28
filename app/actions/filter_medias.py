@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import Field
 
 from app.actions import BaseAction
+from app.core.config import global_vars
 from app.schemas import ActionParams, ActionContext
 
 
@@ -42,12 +43,14 @@ class FilterMediasAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    def execute(self, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         过滤medias中媒体数据
         """
         params = FilterMediasParams(**params)
         for media in context.medias:
+            if global_vars.is_workflow_stopped(workflow_id):
+                break
             if params.type and media.type != params.type:
                 continue
             if params.category and media.category != params.category:

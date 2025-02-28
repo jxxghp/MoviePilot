@@ -56,7 +56,7 @@ class BaseAction(ABC):
         self._done_flag = True
 
     @abstractmethod
-    def execute(self, params: ActionParams, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: ActionParams, context: ActionContext) -> ActionContext:
         """
         执行动作
         """
