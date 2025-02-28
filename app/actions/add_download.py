@@ -5,7 +5,7 @@ from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.core.metainfo import MetaInfo
 from app.log import logger
-from app.schemas import ActionParams, ActionContext, DownloadTask
+from app.schemas import ActionParams, ActionContext, DownloadTask, MediaType
 
 
 class AddDownloadParams(ActionParams):
@@ -14,6 +14,7 @@ class AddDownloadParams(ActionParams):
     """
     downloader: str = Field(None, description="下载器")
     save_path: str = Field(None, description="保存路径")
+    only_lack: bool = Field(False, description="仅下载缺失的资源")
 
 
 class AddDownloadAction(BaseAction):
@@ -63,6 +64,27 @@ class AddDownloadAction(BaseAction):
                 self._has_error = True
                 logger.warning(f"{t.title} 未识别到媒体信息，无法下载")
                 continue
+            if params.only_lack:
+                exists_info = self.downloadchain.media_exists(t.media_info)
+                if exists_info:
+                    if t.media_info.type == MediaType.MOVIE:
+                        # 电影
+                        logger.warning(f"{t.title} 媒体库中已存在，跳过")
+                        continue
+                    else:
+                        # 电视剧
+                        exists_seasons = exists_info.seasons or {}
+                        if len(t.meta_info.season_list) > 1:
+                            # 多季不下载
+                            logger.warning(f"{t.meta_info.title} 有多季，跳过")
+                            continue
+                        else:
+                            exists_episodes = exists_seasons.get(t.meta_info.begin_season)
+                            if exists_episodes:
+                                if set(t.meta_info.episode_list).issubset(exists_episodes):
+                                    logger.warning(f"{t.meta_info.title} 第 {t.meta_info.begin_season} 季第 {t.meta_info.episode_list} 集已存在，跳过")
+                                    continue
+
             did = self.downloadchain.download_single(context=t,
                                                      downloader=params.downloader,
                                                      save_path=params.save_path)
