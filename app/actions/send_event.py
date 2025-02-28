@@ -17,16 +17,19 @@ class SendEventAction(BaseAction):
     发送事件
     """
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "发送事件"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "发送队列中的所有事件"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return SendEventParams().dict()
 
     @property

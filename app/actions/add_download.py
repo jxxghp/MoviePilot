@@ -29,16 +29,19 @@ class AddDownloadAction(BaseAction):
         self.downloadchain = DownloadChain()
         self.mediachain = MediaChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "添加下载"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "根据资源列表添加下载任务"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return AddDownloadParams().dict()
 
     @property

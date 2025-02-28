@@ -16,27 +16,23 @@ class BaseAction(ABC):
     # 完成标志
     _done_flag = False
 
+    @classmethod
     @property
     @abstractmethod
-    def name(self) -> str:
+    def name(cls) -> str:
         pass
 
+    @classmethod
     @property
     @abstractmethod
-    def description(self) -> str:
+    def description(cls) -> str:
         pass
 
+    @classmethod
     @property
     @abstractmethod
-    def data(self) -> dict:
+    def data(cls) -> dict:
         pass
-
-    @abstractmethod
-    def execute(self, params: ActionParams, context: ActionContext) -> ActionContext:
-        """
-        执行动作
-        """
-        raise NotImplementedError
 
     @property
     def done(self) -> bool:
@@ -58,3 +54,10 @@ class BaseAction(ABC):
         标记动作完成
         """
         self._done_flag = True
+
+    @abstractmethod
+    def execute(self, params: ActionParams, context: ActionContext) -> ActionContext:
+        """
+        执行动作
+        """
+        raise NotImplementedError

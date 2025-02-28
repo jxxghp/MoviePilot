@@ -30,16 +30,19 @@ class FetchTorrentsAction(BaseAction):
         super().__init__()
         self.searchchain = SearchChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "搜索站点资源"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "根据关键字搜索站点种子资源"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return FetchTorrentsParams().dict()
 
     @property

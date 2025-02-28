@@ -24,16 +24,19 @@ class FilterMediasAction(BaseAction):
 
     __medias = []
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "过滤媒体数据"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "对媒体数据列表进行过滤"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return FilterMediasParams().dict()
 
     @property

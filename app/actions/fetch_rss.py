@@ -35,16 +35,19 @@ class FetchRssAction(BaseAction):
         self.rsshelper = RssHelper()
         self.chain = ActionChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "获取RSS资源"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "订阅RSS地址获取资源"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return FetchRssParams().dict()
 
     @property

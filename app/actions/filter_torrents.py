@@ -32,16 +32,19 @@ class FilterTorrentsAction(BaseAction):
         self.torrenthelper = TorrentHelper()
         self.chain = ActionChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "过滤资源"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "对资源列表数据进行过滤"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return FilterTorrentsParams().dict()
 
     @property

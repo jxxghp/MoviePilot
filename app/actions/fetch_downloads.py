@@ -21,29 +21,30 @@ class FetchDownloadsAction(BaseAction):
         super().__init__()
         self.chain = ActionChain()
 
+    @classmethod
     @property
-    def name(self) -> str:
+    def name(cls) -> str:
         return "获取下载任务"
 
+    @classmethod
     @property
-    def description(self) -> str:
+    def description(cls) -> str:
         return "获取下载任务，更新任务状态"
 
+    @classmethod
     @property
-    def data(self) -> dict:
+    def data(cls) -> dict:
         return FetchDownloadsParams().dict()
 
     @property
     def success(self) -> bool:
-        if not self._downloads:
-            return True
-        return True if all([d.completed for d in self._downloads]) else False
+        return self.done
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         更新downloads中的下载任务状态
         """
-        self._downloads = context.downloads
+        __all_complete = False
         for download in self._downloads:
             logger.info(f"获取下载任务 {download.download_id} 状态 ...")
             torrents = self.chain.list_torrents(hashs=[download.download_id])
@@ -55,6 +56,6 @@ class FetchDownloadsAction(BaseAction):
                 if t.progress >= 100:
                     logger.info(f"下载任务 {download.download_id} 已完成")
                     download.completed = True
-
-        self.job_done()
+        if all([d.completed for d in self._downloads]):
+            self.job_done()
         return context
