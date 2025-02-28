@@ -19,7 +19,8 @@ class TransferFileAction(BaseAction):
     整理文件
     """
 
-    __fileitems = []
+    _fileitems = []
+    _has_error = False
 
     def __init__(self):
         super().__init__()
@@ -43,7 +44,7 @@ class TransferFileAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self.__fileitems else False
+        return not self._has_error
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
@@ -60,13 +61,14 @@ class TransferFileAction(BaseAction):
             logger.info(f"开始整理文件 {download.path} ...")
             state, errmsg = self.transferchain.do_transfer(fileitem, background=False)
             if not state:
+                self._has_error = True
                 logger.error(f"整理文件 {download.path} 失败: {errmsg}")
                 continue
             logger.info(f"整理文件 {download.path} 完成")
-            self.__fileitems.append(fileitem)
+            self._fileitems.append(fileitem)
 
-        if self.__fileitems:
-            context.fileitems.extend(self.__fileitems)
+        if self._fileitems:
+            context.fileitems.extend(self._fileitems)
 
         self.job_done()
         return context

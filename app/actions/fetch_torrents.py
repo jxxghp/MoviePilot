@@ -47,14 +47,14 @@ class FetchTorrentsAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self._torrents else False
+        return self.done
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         搜索站点，获取资源列表
         """
         params = FetchTorrentsParams(**params)
-        torrents = self.searchchain.search_by_title(title=params.name, sites=params.sites)
+        torrents = self.searchchain.search_by_title(title=params.name, sites=params.sites, cache_local=False)
         for torrent in torrents:
             if params.year and torrent.meta_info.year != params.year:
                 continue

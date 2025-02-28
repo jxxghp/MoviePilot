@@ -20,7 +20,8 @@ class ScrapeFileAction(BaseAction):
     刮削文件
     """
 
-    __scraped_files = []
+    _scraped_files = []
+    _has_error = False
 
     def __init__(self):
         super().__init__()
@@ -44,24 +45,25 @@ class ScrapeFileAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self.__scraped_files else False
+        return not self._has_error
 
     def execute(self, params: dict, context: ActionContext) -> ActionContext:
         """
         刮削fileitems中的所有文件
         """
         for fileitem in context.fileitems:
-            if fileitem in self.__scraped_files:
+            if fileitem in self._scraped_files:
                 continue
             if not self.storagechain.exists(fileitem):
                 continue
             meta = MetaInfoPath(Path(fileitem.path))
             mediainfo = self.mediachain.recognize_media(meta)
             if not mediainfo:
+                self._has_error = True
                 logger.info(f"{fileitem.path} 未识别到媒体信息，无法刮削")
                 continue
             self.mediachain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
-            self.__scraped_files.append(fileitem)
+            self._scraped_files.append(fileitem)
 
         self.job_done()
         return context
