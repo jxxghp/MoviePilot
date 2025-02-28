@@ -30,7 +30,7 @@ class FetchDownloadsAction(BaseAction):
     @classmethod
     @property
     def description(cls) -> str:
-        return "获取下载任务，更新任务状态"
+        return "获取下载队列中的任务状态"
 
     @classmethod
     @property
@@ -59,6 +59,9 @@ class FetchDownloadsAction(BaseAction):
                 if t.progress >= 100:
                     logger.info(f"下载任务 {download.download_id} 已完成")
                     download.completed = True
+                else:
+                    logger.info(f"下载任务 {download.download_id} 未完成")
+                    download.completed = False
         if all([d.completed for d in self._downloads]):
             self.job_done()
         return context
