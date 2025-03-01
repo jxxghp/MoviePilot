@@ -3,7 +3,6 @@ import json
 from typing import Optional, Tuple
 from urllib.parse import urljoin
 
-from app.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
 
@@ -12,8 +11,32 @@ class HDDolbySiteUserInfo(SiteParserBase):
     schema = SiteSchema.HDDolby
     request_mode = "apikey"
 
-    # 用户级别字典 FIXME
-    HDDolby_sysRoleList = {}
+    # 用户级别字典
+    HDDolby_sysRoleList = {
+        "0": "Peasant",
+        "1": "User",
+        "2": "Power User",
+        "3": "Elite User",
+        "4": "Crazy User",
+        "5": "Insane User",
+        "6": "Veteran User",
+        "7": "Extreme User",
+        "8": "Ultimate User",
+        "9": "Nexus Master",
+        "10": "VIP",
+        "11": "Retiree",
+        "12": "Helper",
+        "13": "Seeder",
+        "14": "Transferrer",
+        "15": "Uploader",
+        "16": "Torrent Manager",
+        "17": "Forum Moderator",
+        "18": "Coder",
+        "19": "Moderator",
+        "20": "Administrator",
+        "21": "Sysop",
+        "22": "Staff Leader",
+    }
 
     def _parse_site_page(self, html_text: str):
         """
