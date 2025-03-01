@@ -4,10 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 
-from cachetools import cached, TTLCache
 from requests import Response
 
 from app import schemas
+from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
@@ -67,13 +67,16 @@ class Alist(StorageBase, metaclass=Singleton):
         return self.__generate_token
 
     @property
-    @cached(cache=TTLCache(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5))
+    @cached(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5, skip_empty=True)
     def __generate_token(self) -> str:
         """
-        使用账号密码生成一个临时token
+        如果设置永久令牌则返回永久令牌，否则使用账号密码生成一个临时 token
         缓存2天，提前5分钟更新
         """
         conf = self.get_conf()
+        token = conf.get("token")
+        if token:
+            return str(token)
         resp: Response = RequestUtils(headers={
             'Content-Type': 'application/json'
         }).post_res(
@@ -553,15 +556,15 @@ class Alist(StorageBase, metaclass=Singleton):
         :param new_name: 上传后文件名
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = UrlUtils.quote(fileitem.path)
+        encoded_path = UrlUtils.quote((Path(fileitem.path) / path.name).as_posix())
         headers = self.__get_header_with_token()
-        headers.setdefault("Content-Type", "multipart/form-data")
+        headers.setdefault("Content-Type", "application/octet-stream")
         headers.setdefault("As-Task", str(task).lower())
         headers.setdefault("File-Path", encoded_path)
         with open(path, "rb") as f:
             resp: Response = RequestUtils(headers=headers).put_res(
-                self.__get_api_url("/api/fs/form"),
-                data={"file": f},
+                self.__get_api_url("/api/fs/put"),
+                data=f,
             )
 
         if resp.status_code != 200:
@@ -569,7 +572,7 @@ class Alist(StorageBase, metaclass=Singleton):
             return
 
         new_item = self.get_item(Path(fileitem.path) / path.name)
-        if new_name and new_name != path.name:
+        if new_item and new_name and new_name != path.name:
             if self.rename(new_item, new_name):
                 return self.get_item(Path(new_item.path).with_name(new_name))
 

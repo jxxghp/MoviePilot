@@ -2,14 +2,17 @@ import sys
 
 from fastapi import FastAPI
 
+from app.core.cache import close_cache
 from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
+from app.log import logger
 from app.utils.system import SystemUtils
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
     from app.helper.sites import SitesHelper
 except ImportError as e:
+    SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
     print(error_message, file=sys.stderr)
     sys.exit(1)
@@ -26,7 +29,7 @@ from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey
 from app.db import close_database
 from app.db.systemconfig_oper import SystemConfigOper
-from app.chain.command import CommandChain
+from app.command import Command, CommandChain
 
 
 def start_frontend():
@@ -78,13 +81,15 @@ def user_auth():
     """
     用户认证检查
     """
-    if SitesHelper().auth_level >= 2:
+    sites_helper = SitesHelper()
+    if sites_helper.auth_level >= 2:
         return
     auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
-    if auth_conf:
-        SitesHelper().check_user(**auth_conf)
+    status, msg = sites_helper.check_user(**auth_conf) if auth_conf else sites_helper.check_user()
+    if status:
+        logger.info(f"{msg} 用户认证成功")
     else:
-        SitesHelper().check_user()
+        logger.info(f"用户认证失败，{msg}")
 
 
 def check_auth():
@@ -125,6 +130,8 @@ def shutdown_modules(_: FastAPI):
     Monitor().stop()
     # 停止线程池
     ThreadHelper().shutdown()
+    # 停止缓存连接
+    close_cache()
     # 停止数据库连接
     close_database()
     # 停止前端服务
@@ -156,7 +163,7 @@ def start_modules(_: FastAPI):
     # 启动定时服务
     Scheduler()
     # 加载命令
-    CommandChain()
+    Command()
     # 启动前端服务
     start_frontend()
     # 检查认证状态

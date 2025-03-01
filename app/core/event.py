@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional, Union
 from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
 from app.log import logger
-from app.schemas.event import ChainEventData
+from app.schemas import ChainEventData
 from app.schemas.types import ChainEventType, EventType
 from app.utils.limit import ExponentialBackoffRateLimiter
 from app.utils.singleton import Singleton
@@ -293,7 +293,7 @@ class EventManager(metaclass=Singleton):
 
         # 对于类实例（实现了 __call__ 方法）
         if not inspect.isfunction(handler) and hasattr(handler, "__call__"):
-            handler_cls = handler.__class__
+            handler_cls = handler.__class__ # noqa
             return cls.__get_handler_identifier(handler_cls)
 
         # 对于未绑定方法、静态方法、类方法，使用 __qualname__ 提取类信息
@@ -438,12 +438,15 @@ class EventManager(metaclass=Singleton):
 
         # 如果类不在全局变量中，尝试动态导入模块并创建实例
         try:
-            # 导入模块，除了插件，只有chain能响应事件
-            if not class_name.endswith("Chain"):
+            if class_name == "Command":
+                module_name = "app.command"
+                module = importlib.import_module(module_name)
+            elif class_name.endswith("Chain"):
+                module_name = f"app.chain.{class_name[:-5].lower()}"
+                module = importlib.import_module(module_name)
+            else:
                 logger.debug(f"事件处理出错：无效的 Chain 类名: {class_name}，类名必须以 'Chain' 结尾")
                 return None
-            module_name = f"app.chain.{class_name[:-5].lower()}"
-            module = importlib.import_module(module_name)
             if hasattr(module, class_name):
                 class_obj = getattr(module, class_name)()
                 return class_obj

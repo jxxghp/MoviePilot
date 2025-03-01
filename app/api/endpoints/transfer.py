@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -47,13 +47,35 @@ def query_name(path: str, filetype: str,
     })
 
 
+@router.get("/queue", summary="查询整理队列", response_model=List[schemas.TransferJob])
+def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询整理队列
+    :param _: Token校验
+    """
+    return TransferChain().get_queue_tasks()
+
+
+@router.delete("/queue", summary="从整理队列中删除任务", response_model=schemas.Response)
+def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询整理队列
+    :param fileitem: 文件项
+    :param _: Token校验
+    """
+    TransferChain().remove_from_queue(fileitem)
+    return schemas.Response(success=True)
+
+
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
 def manual_transfer(transer_item: ManualTransferItem,
+                    background: bool = False,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
     :param transer_item: 手工整理项
+    :param background: 后台运行
     :param db: 数据库
     :param _: Token校验
     """
@@ -63,7 +85,7 @@ def manual_transfer(transer_item: ManualTransferItem,
         # 查询历史记录
         history: TransferHistory = TransferHistory.get(db, transer_item.logid)
         if not history:
-            return schemas.Response(success=False, message=f"历史记录不存在，ID：{transer_item.logid}")
+            return schemas.Response(success=False, message=f"整理记录不存在，ID：{transer_item.logid}")
         # 强制转移
         force = True
         if history.status and ("move" in history.mode):
@@ -130,7 +152,8 @@ def manual_transfer(transer_item: ManualTransferItem,
         scrape=transer_item.scrape,
         library_type_folder=transer_item.library_type_folder,
         library_category_folder=transer_item.library_category_folder,
-        force=force
+        force=force,
+        background=background
     )
     # 失败
     if not state:

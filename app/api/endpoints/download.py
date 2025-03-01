@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/", summary="正在下载", response_model=List[schemas.DownloadingTorrent])
-def list(
+def current(
         name: str = None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

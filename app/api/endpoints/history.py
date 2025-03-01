@@ -1,10 +1,12 @@
 from typing import List, Any
 
+import jieba
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.storage import StorageChain
+from app.core.config import settings
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
@@ -39,7 +41,7 @@ def delete_download_history(history_in: schemas.DownloadHistory,
     return schemas.Response(success=True)
 
 
-@router.get("/transfer", summary="查询转移历史记录", response_model=schemas.Response)
+@router.get("/transfer", summary="查询整理记录", response_model=schemas.Response)
 def transfer_history(title: str = None,
                      page: int = 1,
                      count: int = 30,
@@ -47,7 +49,7 @@ def transfer_history(title: str = None,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    查询转移历史记录
+    查询整理记录
     """
     if title == "失败":
         title = None
@@ -57,6 +59,9 @@ def transfer_history(title: str = None,
         status = True
 
     if title:
+        if settings.TOKENIZED_SEARCH:
+            words = jieba.cut(title, HMM=False)
+            title = "%".join(words)
         total = TransferHistory.count_by_title(db, title=title, status=status)
         result = TransferHistory.list_by_title(db, title=title, page=page,
                                                count=count, status=status)
@@ -71,14 +76,14 @@ def transfer_history(title: str = None,
                             })
 
 
-@router.delete("/transfer", summary="删除转移历史记录", response_model=schemas.Response)
+@router.delete("/transfer", summary="删除整理记录", response_model=schemas.Response)
 def delete_transfer_history(history_in: schemas.TransferHistory,
                             deletesrc: bool = False,
                             deletedest: bool = False,
                             db: Session = Depends(get_db),
                             _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
-    删除转移历史记录
+    删除整理记录
     """
     history: TransferHistory = TransferHistory.get(db, history_in.id)
     if not history:
@@ -86,9 +91,7 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 册除媒体库文件
     if deletedest and history.dest_fileitem:
         dest_fileitem = schemas.FileItem(**history.dest_fileitem)
-        state = StorageChain().delete_media_file(fileitem=dest_fileitem, mtype=MediaType(history.type))
-        if not state:
-            return schemas.Response(success=False, message=f"{dest_fileitem.path} 删除失败")
+        StorageChain().delete_media_file(fileitem=dest_fileitem, mtype=MediaType(history.type))
 
     # 删除源文件
     if deletesrc and history.src_fileitem:
@@ -109,11 +112,11 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     return schemas.Response(success=True)
 
 
-@router.get("/empty/transfer", summary="清空转移历史记录", response_model=schemas.Response)
+@router.get("/empty/transfer", summary="清空整理记录", response_model=schemas.Response)
 def delete_transfer_history(db: Session = Depends(get_db),
                             _: User = Depends(get_current_active_superuser)) -> Any:
     """
-    清空转移历史记录
+    清空整理记录
     """
     TransferHistory.truncate(db)
     return schemas.Response(success=True)

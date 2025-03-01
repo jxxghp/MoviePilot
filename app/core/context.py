@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
 
@@ -142,7 +142,7 @@ class TorrentInfo:
         """
         返回字典
         """
-        dicts = asdict(self)
+        dicts = vars(self).copy()
         dicts["volume_factor"] = self.volume_factor
         dicts["freedate_diff"] = self.freedate_diff
         return dicts
@@ -178,6 +178,8 @@ class MediaInfo:
     douban_id: str = None
     # Bangumi ID
     bangumi_id: int = None
+    # 合集ID
+    collection_id: int = None
     # 媒体原语种
     original_language: str = None
     # 媒体原发行标题
@@ -260,6 +262,8 @@ class MediaInfo:
     runtime: int = None
     # 下一集
     next_episode_to_air: dict = field(default_factory=dict)
+    # 内容分级
+    content_rating: str = None
 
     def __post_init__(self):
         # 设置媒体信息
@@ -397,6 +401,8 @@ class MediaInfo:
         if info.get("external_ids"):
             self.tvdb_id = info.get("external_ids", {}).get("tvdb_id")
             self.imdb_id = info.get("external_ids", {}).get("imdb_id")
+        # 合集ID
+        self.collection_id = info.get('collection_id')
         # 评分
         self.vote_average = round(float(info.get('vote_average')), 1) if info.get('vote_average') else 0
         # 描述
@@ -740,7 +746,7 @@ class MediaInfo:
         """
         返回字典
         """
-        dicts = asdict(self)
+        dicts = vars(self).copy()
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year

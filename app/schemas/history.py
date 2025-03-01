@@ -46,6 +46,8 @@ class DownloadHistory(BaseModel):
     date: Optional[str] = None
     # 备注
     note: Optional[Any] = None
+    # 自定义媒体类别
+    media_category: Optional[str] = None
 
     class Config:
         orm_mode = True

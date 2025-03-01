@@ -1,8 +1,7 @@
 import re
 from typing import Optional, Tuple, Union
 
-from cachetools import TTLCache, cached
-
+from app.core.cache import cached
 from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
@@ -11,7 +10,6 @@ from app.utils.http import RequestUtils
 
 
 class FanartModule(_ModuleBase):
-
     """
     {
         "name": "The Wheel of Time",
@@ -384,7 +382,7 @@ class FanartModule(_ModuleBase):
                 continue
             if not isinstance(images, list):
                 continue
-            
+
             # 图片属性xx_path
             image_name = self.__name(name)
             if image_name.startswith("season"):
@@ -422,16 +420,19 @@ class FanartModule(_ModuleBase):
         return result
 
     @classmethod
-    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["fanart"], ttl=settings.CACHE_CONF["meta"]))
+    @cached(maxsize=settings.CACHE_CONF["fanart"], ttl=settings.CACHE_CONF["meta"])
     def __request_fanart(cls, media_type: MediaType, queryid: Union[str, int]) -> Optional[dict]:
         if media_type == MediaType.MOVIE:
             image_url = cls._movie_url % queryid
         else:
             image_url = cls._tv_url % queryid
         try:
-            ret = RequestUtils(proxies=cls._proxies, timeout=10).get_res(image_url)
+            ret = RequestUtils(proxies=cls._proxies, timeout=10).get_res(image_url, raise_exception=True)
             if ret:
                 return ret.json()
+            else:
+                logger.debug(f"未能获取到 {queryid} 的Fanart图片")
+                return {}
         except Exception as err:
             logger.error(f"获取{queryid}的Fanart图片失败：{str(err)}")
-        return None
+            return None

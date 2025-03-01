@@ -1,6 +1,6 @@
 from typing import Optional, Dict, List, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MetaInfo(BaseModel):
@@ -39,6 +39,8 @@ class MetaInfo(BaseModel):
     end_episode: Optional[int] = None
     # SxxExx
     season_episode: Optional[str] = None
+    # 集列表
+    episode_list: Optional[List[int]] = Field(default_factory=list)
     # Partx Cd Dvd Disk Disc
     part: Optional[str] = None
     # 识别的资源类型
@@ -65,7 +67,7 @@ class MediaInfo(BaseModel):
     """
     # 来源：themoviedb、douban、bangumi
     source: Optional[str] = None
-    # 类型 电影、电视剧
+    # 类型 电影、电视剧、合集
     type: Optional[str] = None
     # 媒体标题
     title: Optional[str] = None
@@ -87,6 +89,12 @@ class MediaInfo(BaseModel):
     douban_id: Optional[str] = None
     # Bangumi ID
     bangumi_id: Optional[int] = None
+    # 合集ID
+    collection_id: Optional[int] = None
+    # 其它媒体ID前缀
+    mediaid_prefix: Optional[str] = None
+    # 其它媒体ID值
+    media_id: Optional[str] = None
     # 媒体原语种
     original_language: Optional[str] = None
     # 媒体原发行标题
@@ -104,56 +112,56 @@ class MediaInfo(BaseModel):
     # 二级分类
     category: Optional[str] = ""
     # 季季集清单
-    seasons: Optional[Dict[int, list]] = {}
+    seasons: Optional[Dict[int, list]] = Field(default_factory=dict)
     # 季详情
-    season_info: Optional[List[dict]] = []
+    season_info: Optional[List[dict]] = Field(default_factory=list)
     # 别名和译名
-    names: Optional[list] = []
+    names: Optional[list] = Field(default_factory=list)
     # 演员
-    actors: Optional[list] = []
+    actors: Optional[list] = Field(default_factory=list)
     # 导演
-    directors: Optional[list] = []
+    directors: Optional[list] = Field(default_factory=list)
     # 详情链接
     detail_link: Optional[str] = None
     # 其它TMDB属性
     # 是否成人内容
     adult: Optional[bool] = False
     # 创建人
-    created_by: Optional[list] = []
+    created_by: Optional[list] = Field(default_factory=list)
     # 集时长
-    episode_run_time: Optional[list] = []
+    episode_run_time: Optional[list] = Field(default_factory=list)
     # 风格
-    genres: Optional[List[dict]] = []
+    genres: Optional[List[dict]] = Field(default_factory=list)
     # 首播日期
     first_air_date: Optional[str] = None
     # 首页
     homepage: Optional[str] = None
     # 语种
-    languages: Optional[list] = []
+    languages: Optional[list] = Field(default_factory=list)
     # 最后上映日期
     last_air_date: Optional[str] = None
     # 流媒体平台
-    networks: Optional[list] = []
+    networks: Optional[list] = Field(default_factory=list)
     # 集数
     number_of_episodes: Optional[int] = 0
     # 季数
     number_of_seasons: Optional[int] = 0
     # 原产国
-    origin_country: Optional[list] = []
+    origin_country: Optional[list] = Field(default_factory=list)
     # 原名
     original_name: Optional[str] = None
     # 出品公司
-    production_companies: Optional[list] = []
+    production_companies: Optional[list] = Field(default_factory=list)
     # 出品国
-    production_countries: Optional[list] = []
+    production_countries: Optional[list] = Field(default_factory=list)
     # 语种
-    spoken_languages: Optional[list] = []
+    spoken_languages: Optional[list] = Field(default_factory=list)
     # 状态
     status: Optional[str] = None
     # 标签
     tagline: Optional[str] = None
     # 风格ID
-    genre_ids: Optional[list] = []
+    genre_ids: Optional[list] = Field(default_factory=list)
     # 评价数量
     vote_count: Optional[int] = 0
     # 流行度
@@ -161,7 +169,7 @@ class MediaInfo(BaseModel):
     # 时长
     runtime: Optional[int] = None
     # 下一集
-    next_episode_to_air: Optional[dict] = {}
+    next_episode_to_air: Optional[dict] = Field(default_factory=dict)
 
 
 class TorrentInfo(BaseModel):
@@ -213,7 +221,7 @@ class TorrentInfo(BaseModel):
     # HR
     hit_and_run: Optional[bool] = False
     # 种子标签
-    labels: Optional[list] = []
+    labels: Optional[list] = Field(default_factory=list)
     # 种子优先级
     pri_order: Optional[int] = 0
     # 促销
@@ -234,6 +242,19 @@ class Context(BaseModel):
     torrent_info: Optional[TorrentInfo] = None
 
 
+class MediaSeason(BaseModel):
+    """
+    季信息
+    """
+    air_date: Optional[str] = None
+    episode_count: Optional[int] = None
+    name: Optional[str] = None
+    overview: Optional[str] = None
+    poster_path: Optional[str] = None
+    season_number: Optional[int] = None
+    vote_average: Optional[float] = None
+
+
 class MediaPerson(BaseModel):
     """
     媒体人物信息
@@ -245,13 +266,13 @@ class MediaPerson(BaseModel):
     type: Optional[Union[str, int]] = 1
     name: Optional[str] = None
     character: Optional[str] = None
-    images: Optional[dict] = {}
+    images: Optional[dict] = Field(default_factory=dict)
     # themoviedb
     profile_path: Optional[str] = None
     gender: Optional[Union[str, int]] = None
     original_name: Optional[str] = None
     credit_id: Optional[str] = None
-    also_known_as: Optional[list] = []
+    also_known_as: Optional[list] = Field(default_factory=list)
     birthday: Optional[str] = None
     deathday: Optional[str] = None
     imdb_id: Optional[str] = None
@@ -260,11 +281,11 @@ class MediaPerson(BaseModel):
     popularity: Optional[float] = None
     biography: Optional[str] = None
     # douban
-    roles: Optional[list] = []
+    roles: Optional[list] = Field(default_factory=list)
     title: Optional[str] = None
     url: Optional[str] = None
     avatar: Optional[Union[str, dict]] = None
     latin_name: Optional[str] = None
     # bangumi
-    career: Optional[list] = []
+    career: Optional[list] = Field(default_factory=list)
     relation: Optional[str] = None

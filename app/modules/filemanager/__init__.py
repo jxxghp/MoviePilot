@@ -16,8 +16,8 @@ from app.helper.module import ModuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.event import TransferRenameEventData
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage, \
+    TransferRenameEventData, TransferInterceptEventData
 from app.schemas.types import MediaType, ModuleType, ChainEventType, OtherModulesType
 from app.utils.system import SystemUtils
 
@@ -110,7 +110,7 @@ class FileManagerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def support_transtype(self, storage: str) -> Optional[Dict[str, str]]:
+    def support_transtype(self, storage: str) -> Optional[dict]:
         """
         支持的整理方式
         """
@@ -369,10 +369,7 @@ class FileManagerModule(_ModuleBase):
             # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
             # 是否需要刮削
-            if scrape is None:
-                need_scrape = target_directory.scraping
-            else:
-                need_scrape = scrape
+            need_scrape = target_directory.scraping if scrape is None else scrape
             # 目标存储类型
             if not target_storage:
                 target_storage = target_directory.library_storage
@@ -609,12 +606,12 @@ class FileManagerModule(_ModuleBase):
                        r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&]?(cn|ch[si]|sg|zho?|eng)" \
                        r"|简[体中]?)[.\])])" \
                        r"|([\u4e00-\u9fa5]{0,3}[中双][\u4e00-\u9fa5]{0,2}[字文语][\u4e00-\u9fa5]{0,3})" \
-                       r"|简体|简中|JPSC" \
+                       r"|简体|简中|JPSC|sc_jp" \
                        r"|(?<![a-z0-9])gb(?![a-z0-9])"
         _zhtw_sub_re = r"([.\[(](((zh[-_])?(hk|tw|cht|tc))" \
                        r"|(cht|eng)[-_&]?(cht|eng)" \
                        r"|繁[体中]?)[.\])])" \
-                       r"|繁体中[文字]|中[文字]繁体|繁体|JPTC" \
+                       r"|繁体中[文字]|中[文字]繁体|繁体|JPTC|tc_jp" \
                        r"|(?<![a-z0-9])big5(?![a-z0-9])"
         _eng_sub_re = r"[.\[(]eng[.\])]"
 
@@ -679,11 +676,15 @@ class FileManagerModule(_ModuleBase):
                         ".zh-tw": ".繁体中文"
                     }
                     new_sub_tag_list = [
-                        new_file_type if t == 0 else "%s%s(%s)" % (new_file_type,
-                                                                   new_sub_tag_dict.get(
-                                                                       new_file_type, ""
-                                                                   ),
-                                                                   t) for t in range(6)
+                        (".default" + new_file_type if (
+                            (settings.DEFAULT_SUB == "zh-cn" and new_file_type == ".chi.zh-cn") or
+                            (settings.DEFAULT_SUB == "zh-tw" and new_file_type == ".zh-tw") or
+                            (settings.DEFAULT_SUB == "eng" and new_file_type == ".eng")
+                        ) else new_file_type) if t == 0 else "%s%s(%s)" % (new_file_type,
+                                                                           new_sub_tag_dict.get(
+                                                                               new_file_type, ""
+                                                                           ),
+                                                                           t) for t in range(6)
                     ]
                     for new_sub_tag in new_sub_tag_list:
                         new_file: Path = target_file.with_name(target_file.stem + new_sub_tag + file_ext)
@@ -749,11 +750,12 @@ class FileManagerModule(_ModuleBase):
                 logger.error(f"音轨文件 {org_path.name} 整理失败：{str(error)}")
         return True, ""
 
-    def __transfer_dir(self, fileitem: FileItem, transfer_type: str,
+    def __transfer_dir(self, fileitem: FileItem, mediainfo: MediaInfo, transfer_type: str,
                        target_storage: str, target_path: Path) -> Tuple[Optional[FileItem], str]:
         """
         整理整个文件夹
         :param fileitem: 源文件
+        :param mediainfo: 媒体信息
         :param transfer_type: 整理方式
         :param target_storage: 目标存储
         :param target_path: 目标路径
@@ -767,6 +769,22 @@ class FileManagerModule(_ModuleBase):
         target_item = target_oper.get_folder(target_path)
         if not target_item:
             return None, f"获取目标目录失败：{target_path}"
+        event_data = TransferInterceptEventData(
+            fileitem=fileitem,
+            mediainfo=mediainfo,
+            target_storage=target_storage,
+            target_path=target_path,
+            transfer_type=transfer_type
+        )
+        event = eventmanager.send_event(ChainEventType.TransferIntercept, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            # 如果事件被取消，跳过文件整理
+            if event_data.cancel:
+                logger.debug(
+                    f"Transfer dir canceled by event: {event_data.source},"
+                    f"Reason: {event_data.reason}")
+                return None, event_data.reason
         # 处理所有文件
         state, errmsg = self.__transfer_dir_files(fileitem=fileitem,
                                                   target_storage=target_storage,
@@ -815,16 +833,38 @@ class FileManagerModule(_ModuleBase):
         # 返回成功
         return True, ""
 
-    def __transfer_file(self, fileitem: FileItem, target_storage: str, target_file: Path,
+    def __transfer_file(self, fileitem: FileItem, mediainfo: MediaInfo, target_storage: str, target_file: Path,
                         transfer_type: str, over_flag: bool = False) -> Tuple[Optional[FileItem], str]:
         """
         整理一个文件，同时处理其他相关文件
         :param fileitem: 原文件
+        :param mediainfo: 媒体信息
         :param target_storage: 目标存储
         :param target_file: 新文件
         :param transfer_type: 整理方式
         :param over_flag: 是否覆盖，为True时会先删除再整理
         """
+        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
+                    f"操作类型：{transfer_type}")
+        event_data = TransferInterceptEventData(
+            fileitem=fileitem,
+            mediainfo=mediainfo,
+            target_storage=target_storage,
+            target_path=target_file,
+            transfer_type=transfer_type,
+            options={
+                "over_flag": over_flag
+            }
+        )
+        event = eventmanager.send_event(ChainEventType.TransferIntercept, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            # 如果事件被取消，跳过文件整理
+            if event_data.cancel:
+                logger.debug(
+                    f"Transfer file canceled by event: {event_data.source},"
+                    f"Reason: {event_data.reason}")
+                return None, event_data.reason
         if target_storage == "local" and (target_file.exists() or target_file.is_symlink()):
             if not over_flag:
                 logger.warn(f"文件已存在：{target_file}")
@@ -832,8 +872,6 @@ class FileManagerModule(_ModuleBase):
             else:
                 logger.info(f"正在删除已存在的文件：{target_file}")
                 target_file.unlink()
-        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
-                    f"操作类型：{transfer_type}")
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,
@@ -924,18 +962,6 @@ class FileManagerModule(_ModuleBase):
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
 
-        # 计算重命名中的文件夹层数
-        rename_format_level = len(rename_format.split("/")) - 1
-
-        if rename_format_level < 1:
-            # 重命名格式不合法
-            logger.error(f"重命名格式不合法：{rename_format}")
-            return TransferInfo(success=False,
-                                message=f"重命名格式不合法",
-                                fileitem=fileitem,
-                                transfer_type=transfer_type,
-                                need_notify=need_notify)
-
         # 判断是否为文件夹
         if fileitem.type == "dir":
             # 整理整个目录，一般为蓝光原盘
@@ -950,6 +976,7 @@ class FileManagerModule(_ModuleBase):
                 new_path = target_path / fileitem.name
             # 整理目录
             new_diritem, errmsg = self.__transfer_dir(fileitem=fileitem,
+                                                      mediainfo=mediainfo,
                                                       target_storage=target_storage,
                                                       target_path=new_path,
                                                       transfer_type=transfer_type)
@@ -1015,12 +1042,15 @@ class FileManagerModule(_ModuleBase):
             overflag = False
             # 目的操作对象
             target_oper: StorageBase = self.__get_storage_oper(target_storage)
+            # 计算重命名中的文件夹层级
+            rename_format_level = len(rename_format.split("/")) - 1
+            folder_path = new_file.parents[rename_format_level - 1]
             # 目标目录
-            target_diritem = target_oper.get_folder(new_file.parents[rename_format_level - 1])
+            target_diritem = target_oper.get_folder(folder_path)
             if not target_diritem:
-                logger.error(f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败")
+                logger.error(f"目标目录 {folder_path} 获取失败")
                 return TransferInfo(success=False,
-                                    message=f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败",
+                                    message=f"目标目录 {folder_path} 获取失败",
                                     fileitem=fileitem,
                                     fail_list=[fileitem.path],
                                     transfer_type=transfer_type,
@@ -1076,6 +1106,7 @@ class FileManagerModule(_ModuleBase):
                     self.__delete_version_files(target_storage, new_file)
             # 整理文件
             new_item, err_msg = self.__transfer_file(fileitem=fileitem,
+                                                     mediainfo=mediainfo,
                                                      target_storage=target_storage,
                                                      target_file=new_file,
                                                      transfer_type=transfer_type,
@@ -1140,7 +1171,7 @@ class FileManagerModule(_ModuleBase):
                 if episode.episode_number == meta.begin_episode:
                     episode_date = episode.air_date
                     break
-        
+
         return {
             # 标题
             "title": __convert_invalid_characters(mediainfo.title),
@@ -1185,7 +1216,7 @@ class FileManagerModule(_ModuleBase):
             # 集号
             "episode": meta.episode_seqs,
             # 季集 SxxExx
-            "season_episode": "%s%s" % (meta.season, meta.episodes),
+            "season_episode": "%s%s" % (meta.season, meta.episode),
             # 段/节
             "part": meta.part,
             # 剧集标题
@@ -1260,10 +1291,6 @@ class FileManagerModule(_ModuleBase):
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
-            # 计算重命名中的文件夹层数
-            rename_format_level = len(rename_format.split("/")) - 1
-            if rename_format_level < 1:
-                continue
             # 获取路径（重命名路径）
             target_path = self.get_rename_path(
                 path=dir_path,
@@ -1271,13 +1298,19 @@ class FileManagerModule(_ModuleBase):
                 rename_dict=self.__get_naming_dict(meta=MetaInfo(mediainfo.title),
                                                    mediainfo=mediainfo)
             )
+            # 计算重命名中的文件夹层数
+            rename_format_level = len(rename_format.split("/")) - 1
             # 取相对路径的第1层目录
             media_path = target_path.parents[rename_format_level - 1]
             # 检索媒体文件
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:
                 continue
-            media_files = self.list_files(fileitem, True)
+            try:
+                media_files = self.list_files(fileitem, True)
+            except Exception as e:
+                logger.debug(f"获取媒体文件列表失败：{str(e)}")
+                continue
             if media_files:
                 for media_file in media_files:
                     if f".{media_file.extension.lower()}" in settings.RMT_MEDIAEXT:

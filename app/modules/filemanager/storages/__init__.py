@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Union, Dict, Tuple
+from typing import Optional, List, Dict, Tuple
 
 from app import schemas
 from app.helper.storage import StorageHelper
@@ -102,7 +102,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         获取父目录
         """
-        return self.get_folder(Path(fileitem.path).parent)
+        return self.get_item(Path(fileitem.path).parent)
 
     @abstractmethod
     def delete(self, fileitem: schemas.FileItem) -> bool:

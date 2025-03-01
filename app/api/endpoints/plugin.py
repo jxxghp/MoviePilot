@@ -3,7 +3,7 @@ from typing import Annotated, Any, List, Optional
 from fastapi import APIRouter, Depends, Header
 
 from app import schemas
-from app.chain.command import CommandChain
+from app.command import Command
 from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.core.security import verify_apikey, verify_token
@@ -212,7 +212,7 @@ def install(plugin_id: str,
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     # 注册菜单命令
-    CommandChain().init_commands(plugin_id)
+    Command().init_commands(plugin_id)
     # 注册插件API
     register_plugin_api(plugin_id)
     return schemas.Response(success=True)
@@ -280,7 +280,7 @@ def reset_plugin(plugin_id: str,
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     # 注册菜单命令
-    CommandChain().init_commands(plugin_id)
+    Command().init_commands(plugin_id)
     # 注册插件API
     register_plugin_api(plugin_id)
     return schemas.Response(success=True)
@@ -308,7 +308,7 @@ def set_plugin_config(plugin_id: str, conf: dict,
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     # 注册菜单命令
-    CommandChain().init_commands(plugin_id)
+    Command().init_commands(plugin_id)
     # 注册插件API
     register_plugin_api(plugin_id)
     return schemas.Response(success=True)

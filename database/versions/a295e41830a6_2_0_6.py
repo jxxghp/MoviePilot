@@ -5,9 +5,6 @@ Revises: ecf3c693fdf3
 Create Date: 2024-11-14 12:49:13.838120
 
 """
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import sqlite
 
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey

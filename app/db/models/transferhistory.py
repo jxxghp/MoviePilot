@@ -8,7 +8,7 @@ from app.db import db_query, db_update, Base
 
 class TransferHistory(Base):
     """
-    转移历史记录
+    整理记录
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     # 源路径
@@ -43,6 +43,8 @@ class TransferHistory(Base):
     episodes = Column(String)
     # 海报
     image = Column(String)
+    # 下载器
+    downloader = Column(String)
     # 下载器hash
     download_hash = Column(String, index=True)
     # 转移成功状态

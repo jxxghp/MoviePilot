@@ -57,7 +57,7 @@ class MessageOper(DbOper):
 
         # 从kwargs中去掉Message中没有的字段
         for k in list(kwargs.keys()):
-            if k not in Message.__table__.columns.keys():
+            if k not in Message.__table__.columns.keys(): # noqa
                 kwargs.pop(k)
 
         Message(**kwargs).create(self._db)

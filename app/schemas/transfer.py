@@ -1,9 +1,13 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Any, Callable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.history import DownloadHistory
+from app.schemas.context import MetaInfo, MediaInfo
 from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 
 
 class TransferTorrent(BaseModel):
@@ -17,6 +21,8 @@ class TransferTorrent(BaseModel):
     tags: Optional[str] = None
     size: Optional[int] = 0
     userid: Optional[str] = None
+    progress: Optional[float] = 0
+    state: Optional[str] = None
 
 
 class DownloadingTorrent(BaseModel):
@@ -34,15 +40,69 @@ class DownloadingTorrent(BaseModel):
     state: Optional[str] = 'downloading'
     upspeed: Optional[str] = None
     dlspeed: Optional[str] = None
-    media: Optional[dict] = {}
+    media: Optional[dict] = Field(default_factory=dict)
     userid: Optional[str] = None
     username: Optional[str] = None
     left_time: Optional[str] = None
 
 
+class TransferTask(BaseModel):
+    """
+    文件整理任务
+    """
+    fileitem: FileItem
+    meta: Optional[Any] = None
+    mediainfo: Optional[Any] = None
+    target_directory: Optional[TransferDirectoryConf] = None
+    target_storage: Optional[str] = None
+    target_path: Optional[Path] = None
+    transfer_type: Optional[str] = None
+    scrape: Optional[bool] = False
+    library_type_folder: Optional[bool] = False
+    library_category_folder: Optional[bool] = False
+    episodes_info: Optional[List[TmdbEpisode]] = None
+    username: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    download_history: Optional[DownloadHistory] = None
+    manual: Optional[bool] = False
+    background: Optional[bool] = True
+
+    def to_dict(self):
+        """
+        返回字典
+        """
+        dicts = vars(self).copy()
+        dicts["fileitem"] = self.fileitem.dict() if self.fileitem else None
+        dicts["meta"] = self.meta.dict() if self.meta else None
+        dicts["mediainfo"] = self.mediainfo.dict() if self.mediainfo else None
+        dicts["target_directory"] = self.target_directory.dict() if self.target_directory else None
+        return dicts
+
+
+class TransferJobTask(BaseModel):
+    """
+    文件整理作业任务
+    """
+    fileitem: Optional[FileItem] = None
+    meta: Optional[MetaInfo] = None
+    state: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+
+
+class TransferJob(BaseModel):
+    """
+    文件整理作业
+    """
+    media: Optional[MediaInfo] = None
+    season: Optional[int] = None
+    tasks: Optional[List[TransferJobTask]] = Field(default_factory=list)
+
+
 class TransferInfo(BaseModel):
     """
-    文件转移结果信息
+    文件整理结果
     """
     # 是否成功标志
     success: bool = True
@@ -57,13 +117,13 @@ class TransferInfo(BaseModel):
     # 处理文件数
     file_count: Optional[int] = 0
     # 处理文件清单
-    file_list: Optional[list] = []
+    file_list: Optional[list] = Field(default_factory=list)
     # 目标文件清单
-    file_list_new: Optional[list] = []
+    file_list_new: Optional[list] = Field(default_factory=list)
     # 总文件大小
     total_size: Optional[float] = 0
     # 失败清单
-    fail_list: Optional[list] = []
+    fail_list: Optional[list] = Field(default_factory=list)
     # 错误信息
     message: Optional[str] = None
     # 是否需要刮削
@@ -79,6 +139,18 @@ class TransferInfo(BaseModel):
         dicts["fileitem"] = self.fileitem.dict() if self.fileitem else None
         dicts["target_item"] = self.target_item.dict() if self.target_item else None
         return dicts
+
+
+class TransferQueue(BaseModel):
+    """
+    异步整理队列信息
+    """
+    # 任务信息
+    task: Optional[TransferTask] = None
+    # 回调函数
+    callback: Optional[Callable] = None
+    # 整理结果
+    result: Optional[TransferInfo] = None
 
 
 class EpisodeFormat(BaseModel):

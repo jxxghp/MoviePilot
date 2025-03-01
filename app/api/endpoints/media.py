@@ -5,11 +5,14 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.media import MediaChain
+from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import Context
+from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
-from app.schemas import MediaType
+from app.schemas import MediaType, MediaRecognizeConvertEventData
+from app.schemas.types import ChainEventType
 
 router = APIRouter()
 
@@ -72,7 +75,8 @@ def search(title: str,
     """
     模糊搜索媒体/人物信息列表 media：媒体信息，person：人物信息
     """
-    def __get_source(obj: Union[dict, schemas.MediaPerson]):
+
+    def __get_source(obj: Union[schemas.MediaInfo, schemas.MediaPerson, dict]):
         """
         获取对象属性
         """
@@ -85,6 +89,8 @@ def search(title: str,
         _, medias = MediaChain().search(title=title)
         if medias:
             result = [media.to_dict() for media in medias]
+    elif type == "collection":
+        result = MediaChain().search_collections(name=title)
     else:
         result = MediaChain().search_persons(name=title)
     if result:
@@ -117,7 +123,7 @@ def scrape(fileitem: schemas.FileItem,
         if not scrape_path.exists():
             return schemas.Response(success=False, message="刮削路径不存在")
     # 手动刮削
-    chain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+    chain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo, overwrite=True)
     return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")
 
 
@@ -129,25 +135,90 @@ def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return MediaChain().media_category() or {}
 
 
+@router.get("/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason])
+def seasons(mediaid: str = None,
+            title: str = None,
+            year: int = None,
+            season: int = None,
+            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询媒体季信息
+    """
+    if mediaid:
+        if mediaid.startswith("tmdb:"):
+            tmdbid = int(mediaid[5:])
+            seasons_info = TmdbChain().tmdb_seasons(tmdbid=tmdbid)
+            if seasons_info:
+                if season:
+                    return [sea for sea in seasons_info if sea.season_number == season]
+                return seasons_info
+    if title:
+        meta = MetaInfo(title)
+        if year:
+            meta.year = year
+        mediainfo = MediaChain().recognize_media(meta, mtype=MediaType.TV)
+        if mediainfo:
+            if settings.RECOGNIZE_SOURCE == "themoviedb":
+                seasons_info = TmdbChain().tmdb_seasons(tmdbid=mediainfo.tmdb_id)
+                if seasons_info:
+                    if season:
+                        return [sea for sea in seasons_info if sea.season_number == season]
+                    return seasons_info
+            else:
+                sea = season or 1
+                return schemas.MediaSeason(
+                    season_number=sea,
+                    poster_path=mediainfo.poster_path,
+                    name=f"第 {sea} 季",
+                    air_date=mediainfo.release_date,
+                    overview=mediainfo.overview,
+                    vote_average=mediainfo.vote_average,
+                    episode_count=mediainfo.number_of_episodes
+                )
+    return []
+
+
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
-def media_info(mediaid: str, type_name: str,
-               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def detail(mediaid: str, type_name: str, title: str = None, year: int = None,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
     """
     mtype = MediaType(type_name)
-    tmdbid, doubanid, bangumiid = None, None, None
+    mediainfo = None
     if mediaid.startswith("tmdb:"):
-        tmdbid = int(mediaid[5:])
+        mediainfo = MediaChain().recognize_media(tmdbid=int(mediaid[5:]), mtype=mtype)
     elif mediaid.startswith("douban:"):
-        doubanid = mediaid[7:]
+        mediainfo = MediaChain().recognize_media(doubanid=mediaid[7:], mtype=mtype)
     elif mediaid.startswith("bangumi:"):
-        bangumiid = int(mediaid[8:])
-    if not tmdbid and not doubanid and not bangumiid:
-        return schemas.MediaInfo()
+        mediainfo = MediaChain().recognize_media(bangumiid=int(mediaid[8:]), mtype=mtype)
+    else:
+        # 广播事件解析媒体信息
+        event_data = MediaRecognizeConvertEventData(
+            mediaid=mediaid,
+            convert_type=settings.RECOGNIZE_SOURCE
+        )
+        event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
+        # 使用事件返回的上下文数据
+        if event and event.event_data:
+            event_data: MediaRecognizeConvertEventData = event.event_data
+            if event_data.media_dict:
+                new_id = event_data.media_dict.get("id")
+                if event_data.convert_type == "themoviedb":
+                    mediainfo = MediaChain().recognize_media(tmdbid=new_id, mtype=mtype)
+                elif event_data.convert_type == "douban":
+                    mediainfo = MediaChain().recognize_media(doubanid=new_id, mtype=mtype)
+        elif title:
+            # 使用名称识别兜底
+            meta = MetaInfo(title)
+            if year:
+                meta.year = year
+            if mtype:
+                meta.type = mtype
+            mediainfo = MediaChain().recognize_media(meta=meta)
     # 识别
-    mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid, mtype=mtype)
     if mediainfo:
         MediaChain().obtain_images(mediainfo)
         return mediainfo.to_dict()
+
     return schemas.MediaInfo()

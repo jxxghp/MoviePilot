@@ -29,6 +29,8 @@ class DownloadHistory(Base):
     episodes = Column(String)
     # 海报
     image = Column(String)
+    # 下载器
+    downloader = Column(String)
     # 下载任务Hash
     download_hash = Column(String, index=True)
     # 种子名称
@@ -168,10 +170,10 @@ class DownloadFiles(Base):
     下载文件记录
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
-    # 下载任务Hash
-    download_hash = Column(String, index=True)
     # 下载器
     downloader = Column(String)
+    # 下载任务Hash
+    download_hash = Column(String, index=True)
     # 完整路径
     fullpath = Column(String, index=True)
     # 保存路径

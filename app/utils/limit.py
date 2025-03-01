@@ -156,7 +156,8 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
         with self.lock:
             self.next_allowed_time = current_time + self.current_wait
             self.current_wait = min(self.current_wait * self.backoff_factor, self.max_wait)
-            self.log_warning(f"触发限流，将在 {self.current_wait} 秒后允许继续调用")
+            wait_time = self.next_allowed_time - current_time
+            self.log_warning(f"触发限流，将在 {wait_time:.2f} 秒后允许继续调用")
 
 
 # 时间窗口限流器

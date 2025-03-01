@@ -680,6 +680,14 @@ def arr_add_series(tv: schemas.SonarrSeries,
         )
 
 
+@arr_router.put("/series", summary="更新剧集订阅")
+def arr_update_series(tv: schemas.SonarrSeries) -> Any:
+    """
+    更新Sonarr剧集订阅
+    """
+    return arr_add_series(tv)
+
+
 @arr_router.delete("/series/{tid}", summary="删除剧集订阅")
 def arr_remove_series(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """

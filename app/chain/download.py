@@ -19,8 +19,7 @@ from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
-from app.schemas.event import ResourceSelectionEventData, ResourceDownloadEventData
+from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, ResourceDownloadEventData
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -313,16 +312,23 @@ class DownloadChain(ChainBase):
                                                 category=_media.category,
                                                 downloader=downloader or _site_downloader)
         if result:
-            _downloader, _hash, error_msg = result
+            _downloader, _hash, _layout, error_msg = result
         else:
-            _downloader, _hash, error_msg = None, None, "未找到下载器"
+            _downloader, _hash, _layout, error_msg = None, None, None, "未找到下载器"
 
         if _hash:
-            # 下载文件路径
-            if _folder_name:
-                download_path = download_dir / _folder_name
-            else:
+            # `不创建子文件夹` 或 `不存在子文件夹`
+            if _layout == "NoSubfolder" or not _folder_name:
+                # 下载路径记录至文件
                 download_path = download_dir / _file_list[0] if _file_list else download_dir
+            # 原始布局
+            elif _folder_name:
+                download_path = download_dir / _folder_name
+            # 创建子文件夹
+            else:
+                download_path = download_dir / Path(_file_list[0]).stem if _file_list else download_dir
+            # 文件保存路径
+            _save_path = download_dir if _layout == "NoSubfolder" or not _folder_name else download_path
 
             # 登记下载记录
             self.downloadhis.add(
@@ -337,6 +343,7 @@ class DownloadChain(ChainBase):
                 seasons=_meta.season,
                 episodes=download_episodes or _meta.episode,
                 image=_media.get_backdrop_image(),
+                downloader=_downloader,
                 download_hash=_hash,
                 torrent_name=_torrent.title,
                 torrent_description=_torrent.description,
@@ -365,8 +372,8 @@ class DownloadChain(ChainBase):
                 files_to_add.append({
                     "download_hash": _hash,
                     "downloader": _downloader,
-                    "fullpath": str(download_dir / _folder_name / file),
-                    "savepath": str(download_dir / _folder_name),
+                    "fullpath": str(_save_path / file),
+                    "savepath": str(_save_path),
                     "filepath": file,
                     "torrentname": _meta.org_string,
                 })
@@ -520,8 +527,8 @@ class DownloadChain(ChainBase):
                     downloaded_list.append(context)
 
         # 电视剧整季匹配
-        logger.info(f"开始匹配电视剧整季：{no_exists}")
         if no_exists:
+            logger.info(f"开始匹配电视剧整季：{no_exists}")
             # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {tmdbid: [seasons]}
             need_seasons: Dict[int, list] = {}
             for need_mid, need_tv in no_exists.items():
@@ -624,8 +631,8 @@ class DownloadChain(ChainBase):
                                     # 全部下载完成
                                     break
         # 电视剧季内的集匹配
-        logger.info(f"开始电视剧完整集匹配：{no_exists}")
         if no_exists:
+            logger.info(f"开始电视剧完整集匹配：{no_exists}")
             # TMDBID列表
             need_tv_list = list(no_exists)
             for need_mid in need_tv_list:
@@ -694,8 +701,8 @@ class DownloadChain(ChainBase):
                                     logger.info(f"季 {need_season} 剩余需要集：{need_episodes}")
 
         # 仍然缺失的剧集，从整季中选择需要的集数文件下载，仅支持QB和TR
-        logger.info(f"开始电视剧多集拆包匹配：{no_exists}")
         if no_exists:
+            logger.info(f"开始电视剧多集拆包匹配：{no_exists}")
             # TMDBID列表
             no_exists_list = list(no_exists)
             for need_mid in no_exists_list:

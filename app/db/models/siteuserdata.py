@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, func
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, func, or_
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -81,7 +81,7 @@ class SiteUserData(Base):
                 func.max(SiteUserData.updated_day).label('latest_update_day')
             )
             .group_by(SiteUserData.domain)
-            .filter(SiteUserData.err_msg.is_(None))
+            .filter(or_(SiteUserData.err_msg.is_(None), SiteUserData.err_msg == ""))
             .subquery()
         )
 

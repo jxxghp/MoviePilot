@@ -10,19 +10,6 @@ from app.core.security import verify_token
 router = APIRouter()
 
 
-@router.get("/calendar", summary="Bangumi每日放送", response_model=List[schemas.MediaInfo])
-def calendar(page: int = 1,
-             count: int = 30,
-             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    浏览Bangumi每日放送
-    """
-    medias = BangumiChain().calendar()
-    if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
-    return []
-
-
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
 def bangumi_credits(bangumiid: int,
                     page: int = 1,
@@ -63,13 +50,14 @@ def bangumi_person(person_id: int,
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
 def bangumi_person_credits(person_id: int,
                            page: int = 1,
+                           count: int = 20,
                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据人物ID查询人物参演作品
     """
     medias = BangumiChain().person_credits(person_id=person_id)
     if medias:
-        return [media.to_dict() for media in medias[(page - 1) * 20: page * 20]]
+        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []
 
 

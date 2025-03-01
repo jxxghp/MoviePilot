@@ -1,6 +1,6 @@
 from typing import Optional, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Plugin(BaseModel):
@@ -43,7 +43,7 @@ class Plugin(BaseModel):
     # 安装次数
     install_count: Optional[int] = 0
     # 更新记录
-    history: Optional[dict] = {}
+    history: Optional[dict] = Field(default_factory=dict)
     # 添加时间，值越小表示越靠后发布
     add_time: Optional[int] = 0
     # 插件公钥
@@ -60,8 +60,8 @@ class PluginDashboard(Plugin):
     # 仪表板key
     key: Optional[str] = None
     # 全局配置
-    attrs: Optional[dict] = {}
+    attrs: Optional[dict] = Field(default_factory=dict)
     # col列数
-    cols: Optional[dict] = {}
+    cols: Optional[dict] = Field(default_factory=dict)
     # 页面元素
-    elements: Optional[List[dict]] = []
+    elements: Optional[List[dict]] = Field(default_factory=list)

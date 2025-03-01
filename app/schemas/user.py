@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # Shared properties
@@ -18,9 +18,9 @@ class UserBase(BaseModel):
     # 是否开启二次验证
     is_otp: Optional[bool] = False
     # 权限
-    permissions: Optional[dict] = {}
+    permissions: Optional[dict] = Field(default_factory=dict)
     # 个性化设置
-    settings: Optional[dict] = {}
+    settings: Optional[dict] = Field(default_factory=dict)
 
     class Config:
         orm_mode = True
@@ -31,7 +31,7 @@ class UserCreate(UserBase):
     name: str
     email: Optional[str] = None
     password: Optional[str] = None
-    settings: Optional[dict] = {}
+    settings: Optional[dict] = Field(default_factory=dict)
 
 
 # Properties to receive via API on update
@@ -40,7 +40,7 @@ class UserUpdate(UserBase):
     name: str
     email: Optional[str] = None
     password: Optional[str] = None
-    settings: Optional[dict] = {}
+    settings: Optional[dict] = Field(default_factory=dict)
 
 
 class UserInDBBase(UserBase):

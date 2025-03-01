@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -51,6 +51,12 @@ class UserOper(DbOper):
     用户管理
     """
 
+    def list(self) -> List[User]:
+        """
+        获取用户列表
+        """
+        return User.list(self._db)
+
     def add(self, **kwargs):
         """
         新增用户
@@ -67,27 +73,6 @@ class UserOper(DbOper):
     def get_permissions(self, name: str) -> dict:
         """
         获取用户权限
-        {
-            "admin": "管理员",
-            "usermanage": "用户管理",
-            "dashboard": "仪表板",
-            "ranking": "推荐榜单",
-            "resource": {
-                "search": "搜索站点资源",
-                "download": "下载站点资源",
-            },
-            "subscribe": {
-                "request": "提交订阅请求",
-                "autopass": "订阅请求自动批准"
-                "approve": "审批订阅请求",
-                "calendar": "查看订阅日历",
-                "manage": "管理所有订阅"
-            },
-            "downloading": {
-                "view": "查看正在下载任务",
-                "manager": "管理正在下载任务"
-            }
-        }
         """
         user = User.get_by_name(self._db, name)
         if user:
@@ -110,4 +95,17 @@ class UserOper(DbOper):
         settings = self.get_settings(name)
         if settings:
             return settings.get(key)
+        return None
+
+    def get_name(self, **kwargs) -> Optional[str]:
+        """
+        根据绑定账号获取用户名称
+        """
+        users = self.list()
+        for user in users:
+            user_setting = user.settings
+            if user_setting:
+                for k, v in kwargs.items():
+                    if user_setting.get(k) == str(v):
+                        return user.name
         return None

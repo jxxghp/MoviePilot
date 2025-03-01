@@ -32,6 +32,7 @@ func_timeout==4.3.5
 bs4~=0.0.1
 beautifulsoup4~=4.12.2
 pillow~=10.4.0
+pillow-avif-plugin~=1.4.6
 pyTelegramBotAPI~=4.12.0
 playwright~=1.37.0
 cf-clearance~=0.31.0
@@ -58,6 +59,12 @@ pystray~=0.19.5
 pyotp~=2.9.0
 Pinyin2Hanzi~=0.1.1
 pywebpush~=2.0.0
-python-115~=0.0.9.8.8.3
+python-115==0.0.9.8.8.2
+p115client==0.0.3.8.3.3
+python-cookietools==0.0.2.1
 aligo~=6.2.4
 aiofiles~=24.1.0
+jieba~=0.42.1
+rsa~=4.9
+redis~=5.2.1
+async_timeout~=5.0.1; python_full_version < "3.11.3"

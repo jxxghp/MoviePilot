@@ -118,11 +118,12 @@ class TheMovieDbModule(_ModuleBase):
 
         # 识别匹配
         if not cache_info or not cache:
+            info = None
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
-            elif meta:
+            if not info and meta:
                 info = {}
                 # 简体名称
                 zh_name = zhconv.convert(meta.cn_name, "zh-hans") if meta.cn_name else None
@@ -172,8 +173,8 @@ class TheMovieDbModule(_ModuleBase):
                 if info and not info.get("genres"):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
                                               tmdbid=info.get("id"))
-            else:
-                logger.error("识别媒体信息时未提供元数据或tmdbid")
+            elif not info:
+                logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
                 return None
 
             # 保存到缓存
@@ -311,6 +312,27 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaPerson(source='themoviedb', **person) for person in results]
         return []
 
+    def search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+        """
+        搜索集合信息
+        """
+        if not name:
+            return []
+        results = self.tmdb.search_collections(name)
+        if results:
+            return [MediaInfo(tmdb_info=info) for info in results]
+        return []
+
+    def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
+        """
+        根据合集ID查询集合
+        :param collection_id:  合集ID
+        """
+        results = self.tmdb.get_collection(collection_id)
+        if results:
+            return [MediaInfo(tmdb_info=info) for info in results]
+        return []
+
     def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
                      season: int = None, episode: int = None) -> Optional[str]:
         """
@@ -335,26 +357,52 @@ class TheMovieDbModule(_ModuleBase):
             return None
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
-    def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
+    def tmdb_discover(self, mtype: MediaType, sort_by: str,
+                      with_genres: str,
+                      with_original_language: str,
+                      with_keywords: str,
+                      with_watch_providers: str,
+                      vote_average: float,
+                      vote_count: int,
+                      release_date: str,
                       page: int = 1) -> Optional[List[MediaInfo]]:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
         :param with_genres:  类型
         :param with_original_language:  语言
+        :param with_keywords:  关键字
+        :param with_watch_providers:  提供商
+        :param vote_average:  评分
+        :param vote_count:  评分人数
+        :param release_date:  发布日期
         :param page:  页码
         :return: 媒体信息列表
         """
         if mtype == MediaType.MOVIE:
-            infos = self.tmdb.discover_movies(sort_by=sort_by,
-                                              with_genres=with_genres,
-                                              with_original_language=with_original_language,
-                                              page=page)
+            infos = self.tmdb.discover_movies({
+                "sort_by": sort_by,
+                "with_genres": with_genres,
+                "with_original_language": with_original_language,
+                "with_keywords": with_keywords,
+                "with_watch_providers": with_watch_providers,
+                "vote_average.gte": vote_average,
+                "vote_count.gte": vote_count,
+                "release_date.gte": release_date,
+                "page": page
+            })
         elif mtype == MediaType.TV:
-            infos = self.tmdb.discover_tvs(sort_by=sort_by,
-                                           with_genres=with_genres,
-                                           with_original_language=with_original_language,
-                                           page=page)
+            infos = self.tmdb.discover_tvs({
+                "sort_by": sort_by,
+                "with_genres": with_genres,
+                "with_original_language": with_original_language,
+                "with_keywords": with_keywords,
+                "with_watch_providers": with_watch_providers,
+                "vote_average.gte": vote_average,
+                "vote_count.gte": vote_count,
+                "first_air_date.gte": release_date,
+                "page": page
+            })
         else:
             return []
         if infos:

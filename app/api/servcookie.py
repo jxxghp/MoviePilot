@@ -19,7 +19,7 @@ class GzipRequest(Request):
             body = await super().body()
             if "gzip" in self.headers.getlist("Content-Encoding"):
                 body = gzip.decompress(body)
-            self._body = body
+            self._body = body # noqa
         return self._body
 
 

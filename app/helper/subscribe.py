@@ -1,14 +1,14 @@
 from threading import Thread
 from typing import List, Tuple
 
-from cachetools import TTLCache, cached
-
+from app.core.cache import cached, cache_backend
 from app.core.config import settings
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
+from app.utils.system import SystemUtils
 
 
 class SubscribeHelper(metaclass=Singleton):
@@ -30,21 +30,24 @@ class SubscribeHelper(metaclass=Singleton):
 
     _sub_fork = f"{settings.MP_SERVER_HOST}/subscribe/fork/%s"
 
+    _shares_cache_region = "subscribe_share"
+
     def __init__(self):
         self.systemconfig = SystemConfigOper()
+        self.share_user_id = SystemUtils.generate_user_unique_id()
         if settings.SUBSCRIBE_STATISTIC_SHARE:
             if not self.systemconfig.get(SystemConfigKey.SubscribeReport):
                 if self.sub_report():
                     self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
 
-    @cached(cache=TTLCache(maxsize=20, ttl=1800))
+    @cached(maxsize=20, ttl=1800)
     def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅统计数据
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return []
-        res = RequestUtils(timeout=15).get_res(self._sub_statistic, params={
+        res = RequestUtils(proxies=settings.PROXY, timeout=15).get_res(self._sub_statistic, params={
             "stype": stype,
             "page": page,
             "count": count
@@ -59,7 +62,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = RequestUtils(timeout=5, headers={
+        res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_reg, json=sub)
         if res and res.status_code == 200:
@@ -72,7 +75,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = RequestUtils(timeout=5, headers={
+        res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_done, json=sub)
         if res and res.status_code == 200:
@@ -104,7 +107,7 @@ class SubscribeHelper(metaclass=Singleton):
         subscribes = SubscribeOper().list()
         if not subscribes:
             return True
-        res = RequestUtils(content_type="application/json",
+        res = RequestUtils(proxies=settings.PROXY, content_type="application/json",
                            timeout=10).post(self._sub_report,
                                             json={
                                                 "subscribes": [
@@ -125,17 +128,39 @@ class SubscribeHelper(metaclass=Singleton):
             return False, "订阅不存在"
         subscribe_dict = subscribe.to_dict()
         subscribe_dict.pop("id")
-        res = RequestUtils(content_type="application/json",
+        cache_backend.clear(region=self._shares_cache_region)
+        res = RequestUtils(proxies=settings.PROXY, content_type="application/json",
                            timeout=10).post(self._sub_share,
                                             json={
                                                 "share_title": share_title,
                                                 "share_comment": share_comment,
                                                 "share_user": share_user,
+                                                "share_uid": self.share_user_id,
                                                 **subscribe_dict
                                             })
         if res is None:
             return False, "连接MoviePilot服务器失败"
         if res.ok:
+            # 清除 get_shares 的缓存，以便实时看到结果
+            cache_backend.clear(region=self._shares_cache_region)
+            return True, ""
+        else:
+            return False, res.json().get("message")
+
+    def share_delete(self, share_id: int) -> Tuple[bool, str]:
+        """
+        删除分享
+        """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False, "当前没有开启订阅数据共享功能"
+        res = RequestUtils(proxies=settings.PROXY,
+                           timeout=5).delete_res(f"{self._sub_share}/{share_id}",
+                                                 params={"share_uid": self.share_user_id})
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.ok:
+            # 清除 get_shares 的缓存，以便实时看到结果
+            cache_backend.clear(region=self._shares_cache_region)
             return True, ""
         else:
             return False, res.json().get("message")
@@ -146,7 +171,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False, "当前没有开启订阅数据共享功能"
-        res = RequestUtils(timeout=5, headers={
+        res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).get_res(self._sub_fork % share_id)
         if res is None:
@@ -156,14 +181,14 @@ class SubscribeHelper(metaclass=Singleton):
         else:
             return False, res.json().get("message")
 
-    @cached(cache=TTLCache(maxsize=20, ttl=1800))
-    def get_shares(self, name: str, page: int = 1, count: int = 30) -> List[dict]:
+    @cached(region=_shares_cache_region)
+    def get_shares(self, name: str = None, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅分享数据
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return []
-        res = RequestUtils(timeout=15).get_res(self._sub_shares, params={
+        res = RequestUtils(proxies=settings.PROXY, timeout=15).get_res(self._sub_shares, params={
             "name": name,
             "page": page,
             "count": count

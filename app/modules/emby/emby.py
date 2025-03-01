@@ -155,7 +155,7 @@ class Emby:
                 case "tvshows":
                     library_type = MediaType.TV.value
                 case _:
-                    continue
+                    library_type = MediaType.UNKNOWN.value
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 schemas.MediaServerLibrary(
@@ -391,7 +391,7 @@ class Emby:
                         year: str = None,
                         tmdb_id: int = None,
                         season: int = None
-                        ) -> Tuple[Optional[str], Optional[Dict[int, List[Dict[int, list]]]]]:
+                        ) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
         """
         根据标题和年份和季，返回Emby中的剧集列表
         :param item_id: Emby中的ID

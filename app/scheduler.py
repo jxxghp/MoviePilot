@@ -7,22 +7,24 @@ import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from app import schemas
 from app.chain import ChainBase
 from app.chain.mediaserver import MediaServerChain
+from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
-from app.chain.torrents import TorrentsChain
 from app.chain.transfer import TransferChain
+from app.chain.workflow import WorkflowChain
 from app.core.config import settings
 from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas import Notification, NotificationType
+from app.schemas import Notification, NotificationType, Workflow
 from app.schemas.types import EventType, SystemConfigKey
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
@@ -92,6 +94,11 @@ class Scheduler(metaclass=Singleton):
                 "func": SubscribeChain().refresh,
                 "running": False,
             },
+            "subscribe_follow": {
+                "name": "关注的订阅分享",
+                "func": SubscribeChain().follow,
+                "running": False,
+            },
             "transfer": {
                 "name": "下载文件整理",
                 "func": TransferChain().process,
@@ -120,6 +127,11 @@ class Scheduler(metaclass=Singleton):
             "sitedata_refresh": {
                 "name": "站点数据刷新",
                 "func": SiteChain().refresh_userdatas,
+                "running": False,
+            },
+            "recommend_refresh": {
+                "name": "推荐缓存",
+                "func": RecommendChain().refresh_recommend,
                 "running": False,
             }
         }
@@ -236,6 +248,18 @@ class Scheduler(metaclass=Singleton):
                 }
             )
 
+        # 关注订阅分享（每1小时）
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="subscribe_follow",
+            name="关注的订阅分享",
+            hours=1,
+            kwargs={
+                'job_id': 'subscribe_follow'
+            }
+        )
+
         # 下载器文件转移（每5分钟）
         self._scheduler.add_job(
             self.start,
@@ -310,6 +334,23 @@ class Scheduler(metaclass=Singleton):
                 }
             )
 
+        # 推荐缓存
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="recommend_refresh",
+            name="推荐缓存",
+            hours=24,
+            next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+            kwargs={
+                'job_id': 'recommend_refresh'
+            }
+        )
+
+        # 初始化工作流服务
+        self.init_workflow_jobs()
+        
+        # 初始化插件服务
         self.init_plugin_jobs()
 
         # 打印服务
@@ -366,52 +407,42 @@ class Scheduler(metaclass=Singleton):
         for pid in PluginManager().get_running_plugin_ids():
             self.update_plugin_job(pid)
 
-    def update_plugin_job(self, pid: str):
+    def init_workflow_jobs(self):
         """
-        更新插件定时服务
+        初始化工作流定时服务
         """
-        if not self._scheduler or not pid:
+        for workflow in WorkflowChain().get_workflows() or []:
+            self.update_workflow_job(workflow)
+
+    def remove_workflow_job(self, workflow: Workflow):
+        """
+        移除工作流服务
+        """
+        if not self._scheduler:
             return
-        # 移除该插件的全部服务
-        self.remove_plugin_job(pid)
-        # 获取插件服务列表
         with self._lock:
-            try:
-                plugin_services = PluginManager().get_plugin_services(pid=pid)
-            except Exception as e:
-                logger.error(f"运行插件 {pid} 服务失败：{str(e)} - {traceback.format_exc()}")
+            job_id = f"workflow-{workflow.id}"
+            service = self._jobs.pop(job_id, None)
+            if not service:
                 return
-            # 获取插件名称
-            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
-            # 开始注册插件服务
-            for service in plugin_services:
-                try:
-                    sid = f"{service['id']}"
-                    job_id = sid.split("|")[0]
-                    self.remove_plugin_job(pid, job_id)
-                    self._jobs[job_id] = {
-                        "func": service["func"],
-                        "name": service["name"],
-                        "pid": pid,
-                        "plugin_name": plugin_name,
-                        "kwargs": service.get("func_kwargs") or {},
-                        "running": False,
-                    }
-                    self._scheduler.add_job(
-                        self.start,
-                        service["trigger"],
-                        id=sid,
-                        name=service["name"],
-                        **(service.get("kwargs") or {}),
-                        kwargs={"job_id": job_id},
-                        replace_existing=True
-                    )
-                    logger.info(f"注册插件{plugin_name}服务：{service['name']} - {service['trigger']}")
-                except Exception as e:
-                    logger.error(f"注册插件{plugin_name}服务失败：{str(e)} - {service}")
-                    SchedulerChain().messagehelper.put(title=f"插件 {plugin_name} 服务注册失败",
-                                                       message=str(e),
-                                                       role="system")
+            try:
+                # 在调度器中查找并移除对应的 job
+                job_removed = False
+                for job in list(self._scheduler.get_jobs()):
+                    if job_id == job.id:
+                        try:
+                            self._scheduler.remove_job(job.id)
+                            job_removed = True
+                        except JobLookupError:
+                            pass
+                        break
+                if job_removed:
+                    logger.info(f"移除工作流服务：{service.get('name')}")
+            except Exception as e:
+                logger.error(f"移除工作流服务失败：{str(e)} - {job_id}: {service}")
+                SchedulerChain().messagehelper.put(title=f"工作流 {workflow.name} 服务移除失败",
+                                                   message=str(e),
+                                                   role="system")
 
     def remove_plugin_job(self, pid: str, job_id: str = None):
         """
@@ -459,6 +490,87 @@ class Scheduler(metaclass=Singleton):
                                                        message=str(e),
                                                        role="system")
 
+    def update_workflow_job(self, workflow: Workflow):
+        """
+        更新工作流定时服务
+        """
+        if not self._scheduler:
+            return
+
+        # 移除该工作流的全部服务
+        self.remove_workflow_job(workflow)
+        # 添加工作流服务
+        with self._lock:
+            try:
+                job_id = f"workflow-{workflow.id}"
+                self._jobs[job_id] = {
+                    "func": WorkflowChain().process,
+                    "name": workflow.name,
+                    "provider_name": "工作流",
+                    "running": False,
+                }
+                self._scheduler.add_job(
+                    self.start,
+                    trigger=CronTrigger.from_crontab(workflow.timer),
+                    id=job_id,
+                    name=workflow.name,
+                    kwargs={"job_id": job_id, "workflow_id": workflow.id},
+                    replace_existing=True
+                )
+                logger.info(f"注册工作流服务：{workflow.name} - {workflow.timer}")
+            except Exception as e:
+                logger.error(f"注册工作流服务失败：{workflow.name} - {str(e)}")
+                SchedulerChain().messagehelper.put(title=f"工作流 {workflow.name} 服务注册失败",
+                                                   message=str(e),
+                                                   role="system")
+
+    def update_plugin_job(self, pid: str):
+        """
+        更新插件定时服务
+        """
+        if not self._scheduler or not pid:
+            return
+        # 移除该插件的全部服务
+        self.remove_plugin_job(pid)
+        # 获取插件服务列表
+        with self._lock:
+            try:
+                plugin_services = PluginManager().get_plugin_services(pid=pid)
+            except Exception as e:
+                logger.error(f"运行插件 {pid} 服务失败：{str(e)} - {traceback.format_exc()}")
+                return
+            # 获取插件名称
+            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
+            # 开始注册插件服务
+            for service in plugin_services:
+                try:
+                    sid = f"{service['id']}"
+                    job_id = sid.split("|")[0]
+                    self.remove_plugin_job(pid, job_id)
+                    self._jobs[job_id] = {
+                        "func": service["func"],
+                        "name": service["name"],
+                        "pid": pid,
+                        "provider_name": plugin_name,
+                        "kwargs": service.get("func_kwargs") or {},
+                        "running": False,
+                    }
+                    self._scheduler.add_job(
+                        self.start,
+                        service["trigger"],
+                        id=sid,
+                        name=service["name"],
+                        **(service.get("kwargs") or {}),
+                        kwargs={"job_id": job_id},
+                        replace_existing=True
+                    )
+                    logger.info(f"注册插件{plugin_name}服务：{service['name']} - {service['trigger']}")
+                except Exception as e:
+                    logger.error(f"注册插件{plugin_name}服务失败：{str(e)} - {service}")
+                    SchedulerChain().messagehelper.put(title=f"插件 {plugin_name} 服务注册失败",
+                                                       message=str(e),
+                                                       role="system")
+
     def list(self) -> List[schemas.ScheduleInfo]:
         """
         当前所有任务
@@ -476,14 +588,14 @@ class Scheduler(metaclass=Singleton):
             # 将正在运行的任务提取出来 (保障一次性任务正常显示)
             for job_id, service in self._jobs.items():
                 name = service.get("name")
-                plugin_name = service.get("plugin_name")
-                if service.get("running") and name and plugin_name:
+                provider_name = service.get("provider_name")
+                if service.get("running") and name and provider_name:
                     if name not in added:
                         added.append(name)
                     schedulers.append(schemas.ScheduleInfo(
                         id=job_id,
                         name=name,
-                        provider=plugin_name,
+                        provider=provider_name,
                         status="正在运行",
                     ))
             # 获取其他待执行任务
@@ -503,7 +615,7 @@ class Scheduler(metaclass=Singleton):
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
                     name=job.name,
-                    provider=service.get("plugin_name", "[系统]"),
+                    provider=service.get("provider_name", "[系统]"),
                     status=status,
                     next_run=next_run
                 ))
@@ -530,7 +642,6 @@ class Scheduler(metaclass=Singleton):
         """
         清理缓存
         """
-        TorrentsChain().clear_cache()
         SchedulerChain().clear_cache()
 
     def user_auth(self):
@@ -568,6 +679,6 @@ class Scheduler(metaclass=Singleton):
 
         else:
             self._auth_count += 1
-            logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
+            logger.error(f"用户认证失败，{msg}，共失败 {self._auth_count} 次")
             if self._auth_count >= __max_try__:
                 logger.error("用户认证失败次数过多，将不再尝试认证！")

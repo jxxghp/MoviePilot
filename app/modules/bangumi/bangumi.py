@@ -1,8 +1,9 @@
 from datetime import datetime
-from functools import lru_cache
 
 import requests
 
+from app.core.cache import cached
+from app.core.config import settings
 from app.utils.http import RequestUtils
 
 
@@ -12,6 +13,7 @@ class BangumiApi(object):
     """
 
     _urls = {
+        "discover": "v0/subjects",
         "search": "search/subjects/%s?type=2",
         "calendar": "calendar",
         "detail": "v0/subjects/%s",
@@ -28,15 +30,18 @@ class BangumiApi(object):
         pass
 
     @classmethod
-    @lru_cache(maxsize=128)
-    def __invoke(cls, url, **kwargs):
+    @cached(maxsize=settings.CACHE_CONF["bangumi"], ttl=settings.CACHE_CONF["meta"])
+    def __invoke(cls, url, key: str = None, **kwargs):
         req_url = cls._base_url + url
         params = {}
         if kwargs:
             params.update(kwargs)
         resp = cls._req.get_res(url=req_url, params=params)
         try:
-            return resp.json() if resp else None
+            if not resp:
+                return None
+            result = resp.json()
+            return result.get(key) if key else result
         except Exception as e:
             print(e)
             return None
@@ -187,8 +192,17 @@ class BangumiApi(object):
         获取人物参演作品
         """
         ret_list = []
-        result = self.__invoke(self._urls["person_credits"] % person_id, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+        result = self.__invoke(self._urls["person_credits"] % person_id,
+                               _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
         if result:
             for item in result:
                 ret_list.append(item)
         return ret_list
+
+    def discover(self, **kwargs):
+        """
+        发现
+        """
+        return self.__invoke(self._urls["discover"],
+                             key="data",
+                             _ts=datetime.strftime(datetime.now(), '%Y%m%d'), **kwargs)

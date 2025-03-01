@@ -1,4 +1,3 @@
-import copy
 import json
 import subprocess
 from pathlib import Path
@@ -56,21 +55,6 @@ class Rclone(StorageBase):
             return st
         else:
             return None
-
-    def __get_fileitem(self, path: Path):
-        """
-        获取文件项
-        """
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="file",
-            path=str(path).replace("\\", "/"),
-            name=path.name,
-            basename=path.stem,
-            extension=path.suffix[1:],
-            size=path.stat().st_size,
-            modify_time=path.stat().st_mtime,
-        )
 
     def __get_rcloneitem(self, item: dict, parent: str = "/") -> schemas.FileItem:
         """
@@ -146,12 +130,12 @@ class Rclone(StorageBase):
             retcode = subprocess.run(
                 [
                     'rclone', 'mkdir',
-                    f'MP:{fileitem.path}/{name}'
+                    f'MP:{Path(fileitem.path) / name}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                return self.get_item(Path(f"{fileitem.path}/{name}"))
+                return self.get_item(Path(fileitem.path) / name)
         except Exception as err:
             logger.error(f"rclone创建目录失败：{err}")
         return None
@@ -200,16 +184,19 @@ class Rclone(StorageBase):
             ret = subprocess.run(
                 [
                     'rclone', 'lsjson',
-                    f'MP:{path}'
+                    f'MP:{path.parent}'
                 ],
                 capture_output=True,
                 startupinfo=self.__get_hidden_shell()
             )
             if ret.returncode == 0:
                 items = json.loads(ret.stdout)
-                return self.__get_rcloneitem(items[0])
+                for item in items:
+                    if item.get("Name") == path.name:
+                        return self.__get_rcloneitem(item, parent=str(path.parent) + "/")
+            return None
         except Exception as err:
-            logger.error(f"rclone获取文件失败：{err}")
+            logger.debug(f"rclone获取文件项失败：{err}")
         return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
@@ -239,7 +226,7 @@ class Rclone(StorageBase):
                 [
                     'rclone', 'moveto',
                     f'MP:{fileitem.path}',
-                    f'MP:{Path(fileitem.path).parent}/{name}'
+                    f'MP:{Path(fileitem.path).parent / name}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
@@ -287,7 +274,7 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                return self.__get_fileitem(new_path)
+                return self.get_item(new_path)
         except Exception as err:
             logger.error(f"rclone上传文件失败：{err}")
         return None

@@ -1,17 +1,17 @@
 from typing import Optional, Any, Union, Dict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Site(BaseModel):
     # ID
-    id: Optional[int]
+    id: Optional[int] = None
     # 站点名称
-    name: Optional[str]
+    name: Optional[str] = None
     # 站点主域名Key
-    domain: Optional[str]
+    domain: Optional[str] = None
     # 站点地址
-    url: Optional[str]
+    url: Optional[str] = None
     # 站点优先级
     pri: Optional[int] = 0
     # RSS地址
@@ -53,7 +53,7 @@ class Site(BaseModel):
 
 class SiteStatistic(BaseModel):
     # 站点ID
-    domain: Optional[str]
+    domain: Optional[str] = None
     # 成功次数
     success: Optional[int] = 0
     # 失败次数
@@ -63,7 +63,7 @@ class SiteStatistic(BaseModel):
     # 最后状态
     lst_state: Optional[int] = 0
     # 最后修改时间
-    lst_mod_date: Optional[str]
+    lst_mod_date: Optional[str] = None
     # 备注
     note: Optional[Any] = None
 
@@ -73,15 +73,15 @@ class SiteStatistic(BaseModel):
 
 class SiteUserData(BaseModel):
     # 站点域名
-    domain: Optional[str]
+    domain: Optional[str] = None
     # 用户名
-    username: Optional[str]
+    username: Optional[str] = None
     # 用户ID
-    userid: Optional[Union[int, str]]
+    userid: Optional[Union[int, str]] = None
     # 用户等级
-    user_level: Optional[str]
+    user_level: Optional[str] = None
     # 加入时间
-    join_at: Optional[str]
+    join_at: Optional[str] = None
     # 积分
     bonus: Optional[float] = 0.0
     # 上传量
@@ -99,11 +99,11 @@ class SiteUserData(BaseModel):
     # 下载体积
     leeching_size: Optional[int] = 0
     # 做种人数, 种子大小
-    seeding_info: Optional[list] = []
+    seeding_info: Optional[list] = Field(default_factory=list)
     # 未读消息
     message_unread: Optional[int] = 0
     # 未读消息内容
-    message_unread_contents: Optional[list] = []
+    message_unread_contents: Optional[list] = Field(default_factory=list)
     # 错误信息
     err_msg: Optional[str] = None
     # 更新日期
@@ -114,4 +114,10 @@ class SiteUserData(BaseModel):
 
 class SiteAuth(BaseModel):
     site: Optional[str] = None
-    params: Optional[Dict[str, Union[int, str]]] = {}
+    params: Optional[Dict[str, Union[int, str]]] = Field(default_factory=dict)
+
+
+class SiteCategory(BaseModel):
+    id: Optional[int] = None
+    cat: Optional[str] = None
+    desc: Optional[str] = None

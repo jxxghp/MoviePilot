@@ -23,6 +23,7 @@ class ModuleHelper:
         """
 
         submodules: list = []
+        loaded_modules = set()
         packages = importlib.import_module(package_path)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
             try:
@@ -35,6 +36,9 @@ class ModuleHelper:
                     if name.startswith('_'):
                         continue
                     if isinstance(obj, type) and filter_func(name, obj):
+                        if name in loaded_modules:
+                            continue
+                        loaded_modules.add(name)
                         submodules.append(obj)
             except Exception as err:
                 logger.debug(f'加载模块 {package_name} 失败：{str(err)} - {traceback.format_exc()}')
@@ -64,13 +68,12 @@ class ModuleHelper:
 
         def reload_sub_modules(parent_module, parent_module_name):
             """重新加载一级子模块"""
-            for sub_importer, sub_module_name, sub_is_pkg in pkgutil.walk_packages(parent_module.__path__):
-                full_sub_module_name = f'{parent_module_name}.{sub_module_name}'
+            for sub_importer, sub_module_name, sub_is_pkg in pkgutil.walk_packages(parent_module.__path__, parent_module_name+'.'):
                 try:
-                    full_sub_module = importlib.import_module(full_sub_module_name)
+                    full_sub_module = importlib.import_module(sub_module_name)
                     importlib.reload(full_sub_module)
                 except Exception as sub_err:
-                    logger.debug(f'加载子模块 {full_sub_module_name} 失败：{str(sub_err)} - {traceback.format_exc()}')
+                    logger.debug(f'加载子模块 {sub_module_name} 失败：{str(sub_err)} - {traceback.format_exc()}')
 
         # 遍历包中的所有子模块
         for importer, package_name, is_pkg in pkgutil.iter_modules(packages.__path__):

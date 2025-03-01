@@ -1,3 +1,4 @@
+import copy
 import gc
 import pickle
 import traceback
@@ -6,7 +7,6 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from qbittorrentapi import TorrentFilesList
-from ruamel.yaml import CommentedMap
 from transmission_rpc import File
 
 from app.core.config import settings
@@ -61,7 +61,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         try:
             with open(settings.TEMP_PATH / filename, 'wb') as f:
-                pickle.dump(cache, f)
+                pickle.dump(cache, f) # noqa
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{str(err)}")
         finally:
@@ -76,7 +76,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         cache_path = settings.TEMP_PATH / filename
         if cache_path.exists():
-            Path(cache_path).unlink()
+            cache_path.unlink()
 
     def run_module(self, method: str, *args, **kwargs) -> Any:
         """
@@ -300,7 +300,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_persons", name=name)
 
-    def search_torrents(self, site: CommentedMap,
+    def search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+        """
+        搜索集合信息
+        :param name:  集合名称
+        """
+        return self.run_module("search_collections", name=name)
+
+    def search_torrents(self, site: dict,
                         keywords: List[str],
                         mtype: MediaType = None,
                         page: int = 0) -> List[TorrentInfo]:
@@ -315,34 +322,34 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_torrents", site=site, keywords=keywords,
                                mtype=mtype, page=page)
 
-    def refresh_torrents(self, site: CommentedMap) -> List[TorrentInfo]:
+    def refresh_torrents(self, site: dict, keyword: str = None, cat: str = None, page: int = 0) -> List[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
+        :param keyword:  标题
+        :param cat:  分类
+        :param page:  页码
         :reutrn: 种子资源列表
         """
-        return self.run_module("refresh_torrents", site=site)
+        return self.run_module("refresh_torrents", site=site, keyword=keyword, cat=cat, page=page)
 
     def filter_torrents(self, rule_groups: List[str],
                         torrent_list: List[TorrentInfo],
-                        season_episodes: Dict[int, list] = None,
                         mediainfo: MediaInfo = None) -> List[TorrentInfo]:
         """
         过滤种子资源
         :param rule_groups:  过滤规则组名称列表
         :param torrent_list:  资源列表
-        :param season_episodes:  季集数过滤 {season:[episodes]}
         :param mediainfo:  识别的媒体信息
         :return: 过滤后的资源列表，添加资源优先级
         """
         return self.run_module("filter_torrents", rule_groups=rule_groups,
-                               torrent_list=torrent_list, season_episodes=season_episodes,
-                               mediainfo=mediainfo)
+                               torrent_list=torrent_list, mediainfo=mediainfo)
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
                  downloader: str = None
-                 ) -> Optional[Tuple[Optional[str], Optional[str], str]]:
+                 ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -351,7 +358,7 @@ class ChainBase(metaclass=ABCMeta):
         :param episodes:  需要下载的集数
         :param category:  种子分类
         :param downloader:  下载器
-        :return: 下载器名称、种子Hash、错误信息
+        :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return self.run_module("download", content=content, download_dir=download_dir,
                                cookie=cookie, episodes=episodes, category=category,
@@ -488,32 +495,61 @@ class ChainBase(metaclass=ABCMeta):
                     f"title={message.title}, "
                     f"text={message.text}，"
                     f"userid={message.userid}")
-        if not message.userid and message.mtype:
-            # 没有指定用户ID时，按规则确定发送对象
-            # 默认发送全体
-            to_targets = None
-            notify_action = ServiceConfigHelper.get_notification_switch(message.mtype)
-            if notify_action == "admin":
-                # 仅发送管理员
-                logger.info(f"已设置 {message.mtype} 的消息只发送给管理员")
-                to_targets = self.useroper.get_settings(settings.SUPERUSER)
-            elif notify_action == "user":
-                # 发送对应用户
-                if message.username:
-                    logger.info(f"已设置 {message.mtype} 的消息只发送给用户 {message.username}")
-                    to_targets = self.useroper.get_settings(message.username)
-                if not message.username or to_targets is None:
-                    if message.username:
-                        logger.info(f"没有 {message.username} 这个用户，该消息将发送给管理员")
-                    # 回滚发送管理员
-                    to_targets = self.useroper.get_settings(settings.SUPERUSER)
-            message.targets = to_targets
-        # 发送事件
-        self.eventmanager.send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
-        # 保存消息
+        # 保存原消息
         self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.dict())
-        # 发送
+        # 发送消息按设置隔离
+        if not message.userid and message.mtype:
+            # 消息隔离设置
+            notify_action = ServiceConfigHelper.get_notification_switch(message.mtype)
+            if notify_action:
+                # 'admin' 'user,admin' 'user' 'all'
+                actions = notify_action.split(",")
+                # 是否已发送管理员标志
+                admin_sended = False
+                send_orignal = False
+                for action in actions:
+                    send_message = copy.deepcopy(message)
+                    if action == "admin" and not admin_sended:
+                        # 仅发送管理员
+                        logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
+                        # 读取管理员消息IDS
+                        send_message.targets = self.useroper.get_settings(settings.SUPERUSER)
+                        admin_sended = True
+                    elif action == "user" and send_message.username:
+                        # 发送对应用户
+                        logger.info(f"{send_message.mtype} 的消息已设置发送给用户 {send_message.username}")
+                        # 读取用户消息IDS
+                        send_message.targets = self.useroper.get_settings(send_message.username)
+                        if send_message.targets is None:
+                            # 没有找到用户
+                            if not admin_sended:
+                                # 回滚发送管理员
+                                logger.info(f"用户 {send_message.username} 不存在，消息将发送给管理员")
+                                # 读取管理员消息IDS
+                                send_message.targets = self.useroper.get_settings(settings.SUPERUSER)
+                                admin_sended = True
+                            else:
+                                # 管理员发过了，此消息不发了
+                                logger.info(f"用户 {send_message.username} 不存在，消息无法发送到对应用户")
+                                continue
+                        elif send_message.username == settings.SUPERUSER:
+                            # 管理员同名已发送
+                            admin_sended = True
+                    else:
+                        # 按原消息发送全体
+                        if not admin_sended:
+                            send_orignal = True
+                        break
+                    # 按设定发送
+                    self.eventmanager.send_event(etype=EventType.NoticeMessage,
+                                                 data={**send_message.dict(), "type": send_message.mtype})
+                    self.run_module("post_message", message=send_message)
+                if not send_orignal:
+                    return
+        # 发送消息事件
+        self.eventmanager.send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
+        # 按原消息发送
         self.run_module("post_message", message=message)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:

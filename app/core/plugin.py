@@ -220,11 +220,23 @@ class PluginManager(metaclass=Singleton):
             self._running_plugins = {}
         logger.info("插件停止完成")
 
+    def reload_monitor(self):
+        """
+        重新加载插件文件修改监测
+        """
+        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
+            if self._observer and self._observer.is_alive():
+                logger.info("插件文件修改监测已经在运行中...")
+            else:
+                self.__start_monitor()
+        else:
+            self.stop_monitor()
+
     def __start_monitor(self):
         """
-        开发者模式下监测插件文件修改
+        启用监测插件文件修改监测
         """
-        logger.info("开发者模式下开始监测插件文件修改...")
+        logger.info("开始监测插件文件修改...")
         monitor_handler = PluginMonitorHandler()
         self._observer = Observer()
         self._observer.schedule(monitor_handler, str(settings.ROOT_PATH / "app" / "plugins"), recursive=True)
@@ -232,14 +244,16 @@ class PluginManager(metaclass=Singleton):
 
     def stop_monitor(self):
         """
-        停止监测插件修改
+        停止监测插件文件修改监测
         """
         # 停止监测
-        if self._observer:
+        if self._observer and self._observer.is_alive():
             logger.info("正在停止插件文件修改监测...")
             self._observer.stop()
             self._observer.join()
             logger.info("插件文件修改监测停止完成")
+        else:
+            logger.info("未启用插件文件修改监测，无需停止")
 
     @staticmethod
     def __stop_plugin(plugin: Any):
@@ -668,7 +682,7 @@ class PluginManager(metaclass=Singleton):
         # 相同 ID 的插件保留版本号最大的版本
         max_versions = {}
         for p in all_plugins:
-            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, max_versions[p.id]) > 0:
+            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, ">", max_versions[p.id]):
                 max_versions[p.id] = p.plugin_version
         result = [p for p in all_plugins if p.plugin_version == max_versions[p.id]]
         logger.info(f"共获取到 {len(result)} 个线上插件")
@@ -779,10 +793,9 @@ class PluginManager(metaclass=Singleton):
         # 已安装插件
         installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 获取在线插件
-        online_plugins = self.pluginhelper.get_plugins(market, package_version) or {}
-        if not online_plugins:
-            if not package_version:
-                logger.warning(f"获取插件库失败：{market}，请检查 GitHub 网络连接")
+        online_plugins = self.pluginhelper.get_plugins(market, package_version)
+        if online_plugins is None:
+            logger.warning(f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
             return []
         ret_plugins = []
         add_time = len(online_plugins)
@@ -809,7 +822,7 @@ class PluginManager(metaclass=Singleton):
             plugin.has_update = False
             if plugin_static:
                 installed_version = getattr(plugin_static, "plugin_version")
-                if StringUtils.compare_version(installed_version, plugin_info.get("version")) < 0:
+                if StringUtils.compare_version(installed_version, "<", plugin_info.get("version")):
                     # 需要更新
                     plugin.has_update = True
             # 运行状态

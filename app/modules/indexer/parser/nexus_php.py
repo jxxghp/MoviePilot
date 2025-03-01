@@ -43,7 +43,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             message_text = message_labels[0].xpath("string(.)")
 
             logger.debug(f"{self._site_name} 消息原始信息 {message_text}")
-            message_unread_match = re.findall(r"[^Date](信息箱\s*|\(|你有\xa0)(\d+)", message_text)
+            message_unread_match = re.findall(r"[^Date](信息箱\s*|\((?![^)]*:)|你有\xa0)(\d+)", message_text)
 
             if message_unread_match and len(message_unread_match[-1]) == 2:
                 self.message_unread = StringUtils.str_int(message_unread_match[-1][1])
@@ -207,10 +207,18 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
         # 是否存在下页数据
         next_page = None
-        next_page_text = html.xpath('//a[contains(.//text(), "下一页") or contains(.//text(), "下一頁") or contains(.//text(), ">")]/@href')
-        if next_page_text:
-            next_page = next_page_text[-1].strip()
-            # fix up page url
+        next_page_text = html.xpath(
+            '//a[contains(.//text(), "下一页") or contains(.//text(), "下一頁") or contains(.//text(), ">")]/@href')
+
+        # 防止识别到详情页
+        while next_page_text:
+            next_page = next_page_text.pop().strip()
+            if not next_page.startswith('details.php'):
+                break
+            next_page = None
+
+        # fix up page url
+        if next_page:
             if self.userid not in next_page:
                 next_page = f'{next_page}&userid={self.userid}&type=seeding'
 

@@ -8,16 +8,18 @@ from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
+from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
 from app.helper.subscribe import SubscribeHelper
 from app.scheduler import Scheduler
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, EventType, SystemConfigKey
 
 router = APIRouter()
 
@@ -80,6 +82,7 @@ def create_subscribe(
                                         season=subscribe_in.season,
                                         doubanid=subscribe_in.doubanid,
                                         bangumiid=subscribe_in.bangumiid,
+                                        mediaid=subscribe_in.mediaid,
                                         username=current_user.name,
                                         best_version=subscribe_in.best_version,
                                         save_path=subscribe_in.save_path,
@@ -107,6 +110,7 @@ def update_subscribe(
     if not subscribe:
         return schemas.Response(success=False, message="订阅不存在")
     # 避免更新缺失集数
+    old_subscribe_dict = subscribe.to_dict()
     subscribe_dict = subscribe_in.dict()
     if not subscribe_in.lack_episode:
         # 没有缺失集数时，缺失集数清空，避免更新为0
@@ -121,6 +125,12 @@ def update_subscribe(
     if subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
     subscribe.update(db, subscribe_dict)
+    # 发送订阅调整事件
+    eventmanager.send_event(EventType.SubscribeModified, {
+        "subscribe_id": subscribe.id,
+        "old_subscribe_info": old_subscribe_dict,
+        "subscribe_info": subscribe.to_dict(),
+    })
     return schemas.Response(success=True)
 
 
@@ -139,8 +149,15 @@ def update_subscribe_status(
     valid_states = ["R", "P", "S"]
     if state not in valid_states:
         return schemas.Response(success=False, message="无效的订阅状态")
+    old_subscribe_dict = subscribe.to_dict()
     subscribe.update(db, {
         "state": state
+    })
+    # 发送订阅调整事件
+    eventmanager.send_event(EventType.SubscribeModified, {
+        "subscribe_id": subscribe.id,
+        "old_subscribe_info": old_subscribe_dict,
+        "subscribe_info": subscribe.to_dict(),
     })
     return schemas.Response(success=True)
 
@@ -155,7 +172,6 @@ def subscribe_mediaid(
     """
     根据 TMDBID/豆瓣ID/BangumiId 查询订阅 tmdb:/douban:
     """
-    result = None
     title_check = False
     if mediaid.startswith("tmdb:"):
         tmdbid = mediaid[5:]
@@ -174,6 +190,10 @@ def subscribe_mediaid(
         if not bangumiid or not str(bangumiid).isdigit():
             return Subscribe()
         result = Subscribe.get_by_bangumiid(db, int(bangumiid))
+        if not result and title:
+            title_check = True
+    else:
+        result = Subscribe.get_by_mediaid(db, mediaid)
         if not result and title:
             title_check = True
     # 使用名称检查订阅
@@ -206,10 +226,17 @@ def reset_subscribes(
     """
     subscribe = Subscribe.get(db, subid)
     if subscribe:
+        old_subscribe_dict = subscribe.to_dict()
         subscribe.update(db, {
             "note": [],
             "lack_episode": subscribe.total_episode,
             "state": "R"
+        })
+        # 发送订阅调整事件
+        eventmanager.send_event(EventType.SubscribeModified, {
+            "subscribe_id": subscribe.id,
+            "old_subscribe_info": old_subscribe_dict,
+            "subscribe_info": subscribe.to_dict(),
         })
         return schemas.Response(success=True)
     return schemas.Response(success=False, message="订阅不存在")
@@ -274,17 +301,31 @@ def delete_subscribe_by_mediaid(
     """
     根据TMDBID或豆瓣ID删除订阅 tmdb:/douban:
     """
+    delete_subscribes = []
     if mediaid.startswith("tmdb:"):
         tmdbid = mediaid[5:]
         if not tmdbid or not str(tmdbid).isdigit():
             return schemas.Response(success=False)
-        Subscribe().delete_by_tmdbid(db, int(tmdbid), season)
+        subscribes = Subscribe().get_by_tmdbid(db, int(tmdbid), season)
+        delete_subscribes.extend(subscribes)
     elif mediaid.startswith("douban:"):
         doubanid = mediaid[7:]
         if not doubanid:
             return schemas.Response(success=False)
-        Subscribe().delete_by_doubanid(db, doubanid)
-
+        subscribe = Subscribe().get_by_doubanid(db, doubanid)
+        if subscribe:
+            delete_subscribes.append(subscribe)
+    else:
+        subscribe = Subscribe().get_by_mediaid(db, mediaid)
+        if subscribe:
+            delete_subscribes.append(subscribe)
+    for subscribe in delete_subscribes:
+        Subscribe().delete(db, subscribe.id)
+        # 发送事件
+        eventmanager.send_event(EventType.SubscribeDeleted, {
+            "subscribe_id": subscribe.id,
+            "subscribe_info": subscribe.to_dict()
+        })
     return schemas.Response(success=True)
 
 
@@ -451,6 +492,17 @@ def subscribe_share(
     return schemas.Response(success=state, message=errmsg)
 
 
+@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response)
+def subscribe_share_delete(
+        share_id: int,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    删除分享
+    """
+    state, errmsg = SubscribeHelper().share_delete(share_id=share_id)
+    return schemas.Response(success=state, message=errmsg)
+
+
 @router.post("/fork", summary="复用订阅", response_model=schemas.Response)
 def subscribe_fork(
         sub: schemas.SubscribeShare,
@@ -468,6 +520,42 @@ def subscribe_fork(
     if result.success:
         SubscribeHelper().sub_fork(share_id=sub.id)
     return result
+
+
+@router.get("/follow", summary="查询已Follow的订阅分享人", response_model=List[str])
+def followed_subscribers(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询已Follow的订阅分享人
+    """
+    return SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
+
+
+@router.post("/follow", summary="Follow订阅分享人", response_model=schemas.Response)
+def follow_subscriber(
+        share_uid: str = None,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    Follow订阅分享人
+    """
+    subscribers = SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
+    if share_uid and share_uid not in subscribers:
+        subscribers.append(share_uid)
+        SystemConfigOper().set(SystemConfigKey.FollowSubscribers, subscribers)
+    return schemas.Response(success=True)
+
+
+@router.delete("/follow", summary="取消Follow订阅分享人", response_model=schemas.Response)
+def unfollow_subscriber(
+        share_uid: str = None,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    取消Follow订阅分享人
+    """
+    subscribers = SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
+    if share_uid and share_uid in subscribers:
+        subscribers.remove(share_uid)
+        SystemConfigOper().set(SystemConfigKey.FollowSubscribers, subscribers)
+    return schemas.Response(success=True)
 
 
 @router.get("/shares", summary="查询分享的订阅", response_model=List[schemas.SubscribeShare])
@@ -507,9 +595,14 @@ def delete_subscribe(
     subscribe = Subscribe.get(db, subscribe_id)
     if subscribe:
         subscribe.delete(db, subscribe_id)
-    # 统计订阅
-    SubscribeHelper().sub_done_async({
-        "tmdbid": subscribe.tmdbid,
-        "doubanid": subscribe.doubanid
-    })
+        # 发送事件
+        eventmanager.send_event(EventType.SubscribeDeleted, {
+            "subscribe_id": subscribe_id,
+            "subscribe_info": subscribe.to_dict()
+        })
+        # 统计订阅
+        SubscribeHelper().sub_done_async({
+            "tmdbid": subscribe.tmdbid,
+            "doubanid": subscribe.doubanid
+        })
     return schemas.Response(success=True)

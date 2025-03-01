@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
 
-from app.log import logger
+from app.log import logger, log_settings, LogConfigModel
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
 
@@ -71,6 +71,12 @@ class ConfigModel(BaseModel):
     DB_TIMEOUT: int = 60
     # SQLite 是否启用 WAL 模式，默认关闭
     DB_WAL_ENABLE: bool = False
+    # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools
+    CACHE_BACKEND_TYPE: str = "cachetools"
+    # 缓存连接字符串，仅外部缓存（如 Redis、Memcached）需要
+    CACHE_BACKEND_URL: Optional[str] = None
+    # Redis 缓存最大内存限制，未配置时，如开启大内存模式时为 "1024mb"，未开启时为 "256mb"
+    CACHE_REDIS_MAXMEMORY: Optional[str] = None
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
@@ -230,19 +236,30 @@ class ConfigModel(BaseModel):
                                  "doubanio.com",
                                  "lain.bgm.tv",
                                  "raw.githubusercontent.com",
-                                 "github.com"]
+                                 "github.com",
+                                 "thetvdb.com",
+                                 "cctvpic.com",
+                                 "iqiyipic.com",
+                                 "hdslb.com",
+                                 "cmvideo.cn",
+                                 "ykimg.com",
+                                 "qpic.cn"]
     )
     # 允许的图片文件后缀格式
     SECURITY_IMAGE_SUFFIXES: List[str] = Field(
-        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]
+        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"]
     )
     # 重命名时支持的S0别名
     RENAME_FORMAT_S0_NAMES: List[str] = Field(
         default_factory=lambda: ["Specials", "SPs"]
     )
+    # 启用分词搜索
+    TOKENIZED_SEARCH: bool = False
+    # 为指定默认字幕添加.default后缀
+    DEFAULT_SUB: Optional[str] = "zh-cn"
 
 
-class Settings(BaseSettings, ConfigModel):
+class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """
     系统配置类
     """
@@ -349,7 +366,7 @@ class Settings(BaseSettings, ConfigModel):
             return default, True
 
     @validator('*', pre=True, always=True)
-    def generic_type_validator(cls, value: Any, field):
+    def generic_type_validator(cls, value: Any, field):  # noqa
         """
         通用校验器，尝试将配置值转换为期望的类型
         """
@@ -404,6 +421,8 @@ class Settings(BaseSettings, ConfigModel):
                 # 仅成功更新配置时，才更新内存
                 if success:
                     setattr(self, key, converted_value)
+                    if hasattr(log_settings, key):
+                        setattr(log_settings, key, converted_value)
                 return success, message
             return True, ""
         except Exception as e:
@@ -414,8 +433,21 @@ class Settings(BaseSettings, ConfigModel):
         更新多个配置项
         """
         results = {}
+        log_updated, plugin_monitor_updated = False, False
         for k, v in env.items():
             results[k] = self.update_setting(k, v)
+            if hasattr(log_settings, k):
+                log_updated = True
+            if k in ["PLUGIN_AUTO_RELOAD", "DEV"]:
+                plugin_monitor_updated = True
+        # 本次更新存在日志配置项更新，需要重新加载日志配置
+        if log_updated:
+            logger.update_loggers()
+        # 本次更新存在插件监控配置项更新，需要重新加载插件监控
+        if plugin_monitor_updated:
+            # 解决顶层循环导入问题
+            from app.core.plugin import PluginManager
+            PluginManager().reload_monitor()
         return results
 
     @property
@@ -481,6 +513,7 @@ class Settings(BaseSettings, ConfigModel):
                 "refresh": 100,
                 "tmdb": 1024,
                 "douban": 512,
+                "bangumi": 512,
                 "fanart": 512,
                 "meta": (self.META_CACHE_EXPIRE or 24) * 3600
             }
@@ -489,6 +522,7 @@ class Settings(BaseSettings, ConfigModel):
             "refresh": 50,
             "tmdb": 256,
             "douban": 256,
+            "bangumi": 256,
             "fanart": 128,
             "meta": (self.META_CACHE_EXPIRE or 2) * 3600
         }
@@ -573,6 +607,8 @@ class GlobalVar(object):
     STOP_EVENT: threading.Event = threading.Event()
     # webpush订阅
     SUBSCRIPTIONS: List[dict] = []
+    # 需应急停止的工作流
+    EMERGENCY_STOP_WORKFLOWS: List[str] = []
 
     def stop_system(self):
         """
@@ -598,6 +634,26 @@ class GlobalVar(object):
         添加webpush订阅
         """
         self.SUBSCRIPTIONS.append(subscription)
+
+    def stop_workflow(self, workflow_id: str):
+        """
+        停止工作流
+        """
+        if workflow_id not in self.EMERGENCY_STOP_WORKFLOWS:
+            self.EMERGENCY_STOP_WORKFLOWS.append(workflow_id)
+
+    def workflow_resume(self, workflow_id: str):
+        """
+        恢复工作流
+        """
+        if workflow_id in self.EMERGENCY_STOP_WORKFLOWS:
+            self.EMERGENCY_STOP_WORKFLOWS.remove(workflow_id)
+
+    def is_workflow_stopped(self, workflow_id: str):
+        """
+        是否停止工作流
+        """
+        return self.is_system_stopped or workflow_id in self.EMERGENCY_STOP_WORKFLOWS
 
 
 # 实例化配置

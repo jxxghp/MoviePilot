@@ -30,6 +30,7 @@ class AliPan(StorageBase, metaclass=Singleton):
 
     # 支持的整理方式
     transtype = {
+        "copy": "复制",
         "move": "移动",
     }
 
@@ -71,7 +72,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         refresh_token = self.__auth_params.get("refreshToken")
         if refresh_token:
             try:
-                self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c,
+                self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c, # noqa
                                    name="MoviePilot V2", level=logging.ERROR, re_login=False)
             except Exception as err:
                 logger.error(f"初始化阿里云盘失败：{str(err)}")
@@ -327,7 +328,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         item = self.aligo.get_file_by_path(path=str(path))
         if item:
-            return self.__get_fileitem(item, parent=path.parent)
+            return self.__get_fileitem(item, parent=str(path.parent))
         return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
