@@ -905,7 +905,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                     downloader: str = None, download_hash: str = None,
                     force: bool = False, background: bool = True,
-                    manual: bool = False) -> Tuple[bool, str]:
+                    manual: bool = False, continue_callback: Callable = None) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -926,6 +926,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         :param force: 是否强制整理
         :param background: 是否后台运行
         :param manual: 是否手动整理
+        :param continue_callback: 继续处理回调
         返回：成功标识，错误信息
         """
 
@@ -990,6 +991,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         transfer_tasks: List[TransferTask] = []
         for file_item, bluray_dir in file_items:
             if global_vars.is_system_stopped:
+                break
+            if continue_callback and not continue_callback():
                 break
             file_path = Path(file_item.path)
             # 回收站及隐藏的文件不处理
@@ -1110,6 +1113,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             for transfer_task in transfer_tasks:
                 if global_vars.is_system_stopped:
+                    break
+                if continue_callback and not continue_callback():
                     break
                 # 更新进度
                 __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."

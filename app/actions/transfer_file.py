@@ -58,6 +58,15 @@ class TransferFileAction(BaseAction):
         """
         从 downloads / fileitems 中整理文件，记录到fileitems
         """
+
+        def check_continue():
+            """
+            检查是否继续整理文件
+            """
+            if global_vars.is_workflow_stopped(workflow_id):
+                return False
+            return True
+
         params = TransferFileParams(**params)
         if params.source == "downloads":
             # 从下载任务中整理文件
@@ -86,14 +95,15 @@ class TransferFileAction(BaseAction):
         else:
             # 从 fileitems 中整理文件
             for fileitem in copy.deepcopy(context.fileitems):
-                if global_vars.is_workflow_stopped(workflow_id):
+                if not check_continue():
                     break
                 transferd = self.transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
                 if transferd:
                     # 已经整理过的文件不再整理
                     continue
                 logger.info(f"开始整理文件 {fileitem.path} ...")
-                state, errmsg = self.transferchain.do_transfer(fileitem, background=False)
+                state, errmsg = self.transferchain.do_transfer(fileitem, background=False,
+                                                               continue_callback=check_continue)
                 if not state:
                     self._has_error = True
                     logger.error(f"整理文件 {fileitem.path} 失败: {errmsg}")
