@@ -21,19 +21,19 @@ class BaseAction(ABC):
     @classmethod
     @property
     @abstractmethod
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         pass
 
     @classmethod
     @property
     @abstractmethod
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         pass
 
     @classmethod
     @property
     @abstractmethod
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         pass
 
     @property

@@ -25,17 +25,17 @@ class SendMessageAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "发送消息"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "发送任务执行消息"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return SendMessageParams().dict()
 
     @property
@@ -47,10 +47,10 @@ class SendMessageAction(BaseAction):
         发送messages中的消息
         """
         params = SendMessageParams(**params)
-        msg_text = f"当前进度：{context.progress}%"
+        msg_text = f"当前进度：{context.__progress__}%"
         index = 1
-        if context.execute_history:
-            for history in context.execute_history:
+        if context.__execute_history__:
+            for history in context.__execute_history__:
                 if not history.message:
                     continue
                 msg_text += f"\n{index}. {history.action}：{history.message}"

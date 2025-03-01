@@ -38,17 +38,17 @@ class FetchRssAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "获取RSS资源"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "订阅RSS地址获取资源"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FetchRssParams().dict()
 
     @property

@@ -31,17 +31,17 @@ class ScrapeFileAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "刮削文件"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "刮削媒体信息和图片"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return ScrapeFileParams().dict()
 
     @property

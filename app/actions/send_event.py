@@ -18,17 +18,17 @@ class SendEventAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "发送事件"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "发送任务执行事件"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return SendEventParams().dict()
 
     @property

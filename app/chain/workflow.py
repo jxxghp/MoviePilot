@@ -135,10 +135,10 @@ class WorkflowExecutor:
         try:
             self.finished_actions += 1
             # 更新当前进度
-            self.context.progress = round(self.finished_actions / self.total_actions) * 100
+            self.context.__progress__ = round(self.finished_actions / self.total_actions) * 100
 
             # 补充执行历史
-            self.context.execute_history.append(
+            self.context.__execute_history__.append(
                 ActionExecution(
                     action=action.name,
                     result=state,
