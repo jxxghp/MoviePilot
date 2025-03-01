@@ -36,17 +36,17 @@ class FetchTorrentsAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "搜索站点资源"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "搜索站点种子资源列表"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FetchTorrentsParams().dict()
 
     @property
@@ -97,5 +97,5 @@ class FetchTorrentsAction(BaseAction):
             context.torrents.extend(self._torrents)
             logger.info(f"共搜索到 {len(self._torrents)} 条资源")
 
-        self.job_done()
+        self.job_done(f"搜索到 {len(self._torrents)} 个资源")
         return context

@@ -38,17 +38,17 @@ class FetchRssAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "获取RSS资源"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "订阅RSS地址获取资源"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FetchRssParams().dict()
 
     @property
@@ -105,8 +105,8 @@ class FetchRssAction(BaseAction):
             self._rss_torrents.append(Context(meta_info=meta, media_info=mediainfo, torrent_info=torrentinfo))
 
         if self._rss_torrents:
-            logger.info(f"已获取 {len(self._rss_torrents)} 个RSS资源")
+            logger.info(f"获取到 {len(self._rss_torrents)} 个RSS资源")
             context.torrents.extend(self._rss_torrents)
 
-        self.job_done()
+        self.job_done(f"获取到 {len(self._rss_torrents)} 个资源")
         return context

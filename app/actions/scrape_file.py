@@ -31,17 +31,17 @@ class ScrapeFileAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "刮削文件"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "刮削媒体信息和图片"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return ScrapeFileParams().dict()
 
     @property
@@ -68,5 +68,5 @@ class ScrapeFileAction(BaseAction):
             self.mediachain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
             self._scraped_files.append(fileitem)
 
-        self.job_done()
+        self.job_done(f"成功刮削了 {len(self._scraped_files)} 个文件")
         return context

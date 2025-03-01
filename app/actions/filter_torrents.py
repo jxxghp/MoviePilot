@@ -35,17 +35,17 @@ class FilterTorrentsAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "过滤资源"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "对资源列表数据进行过滤"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FilterTorrentsParams().dict()
 
     @property
@@ -80,5 +80,5 @@ class FilterTorrentsAction(BaseAction):
 
         context.torrents = self._torrents
 
-        self.job_done()
+        self.job_done(f"过滤后剩余 {len(self._torrents)} 个资源")
         return context

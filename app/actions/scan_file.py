@@ -1,14 +1,13 @@
-import copy
 from pathlib import Path
 from typing import Optional
 
 from pydantic import Field
 
 from app.actions import BaseAction
-from app.core.config import global_vars, settings
-from app.schemas import ActionParams, ActionContext
 from app.chain.storage import StorageChain
+from app.core.config import global_vars, settings
 from app.log import logger
+from app.schemas import ActionParams, ActionContext
 
 
 class ScanFileParams(ActionParams):
@@ -34,17 +33,17 @@ class ScanFileAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "扫描目录"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "扫描目录文件到队列"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return ScanFileParams().dict()
 
     @property
@@ -74,5 +73,5 @@ class ScanFileAction(BaseAction):
         if self._fileitems:
             context.fileitems.extend(self._fileitems)
 
-        self.job_done()
+        self.job_done(f"扫描到 {len(self._fileitems)} 个文件")
         return context

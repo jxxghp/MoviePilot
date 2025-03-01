@@ -36,17 +36,17 @@ class AddDownloadAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "添加下载"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "根据资源列表添加下载任务"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return AddDownloadParams().dict()
 
     @property
@@ -104,5 +104,5 @@ class AddDownloadAction(BaseAction):
                 [DownloadTask(download_id=did, downloader=params.downloader) for did in self._added_downloads]
             )
 
-        self.job_done()
+        self.job_done(f"已添加 {len(self._added_downloads)} 个下载任务")
         return context

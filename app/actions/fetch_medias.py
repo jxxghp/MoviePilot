@@ -100,17 +100,17 @@ class FetchMediasAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "获取媒体数据"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "获取榜单等媒体数据列表"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FetchMediasParams().dict()
 
     @property
@@ -166,5 +166,5 @@ class FetchMediasAction(BaseAction):
         if self._medias:
             context.medias.extend(self._medias)
 
-        self.job_done()
+        self.job_done(f"获取到 {len(self._medias)} 条媒数据")
         return context

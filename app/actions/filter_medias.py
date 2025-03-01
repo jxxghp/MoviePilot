@@ -26,17 +26,17 @@ class FilterMediasAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "过滤媒体数据"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "对媒体数据列表进行过滤"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FilterMediasParams().dict()
 
     @property
@@ -64,5 +64,5 @@ class FilterMediasAction(BaseAction):
         if self._medias:
             context.medias = self._medias
 
-        self.job_done()
+        self.job_done(f"过滤后剩余 {len(self._medias)} 条媒体数据")
         return context
