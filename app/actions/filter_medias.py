@@ -64,5 +64,5 @@ class FilterMediasAction(BaseAction):
         if self._medias:
             context.medias = self._medias
 
-        self.job_done()
+        self.job_done(f"过滤后剩余 {len(self._medias)} 条媒体数据")
         return context

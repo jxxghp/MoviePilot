@@ -14,7 +14,7 @@ from app.core.workflow import WorkFlowManager
 from app.db.models import Workflow
 from app.db.workflow_oper import WorkflowOper
 from app.log import logger
-from app.schemas import ActionContext, ActionFlow, Action
+from app.schemas import ActionContext, ActionFlow, Action, ActionExecution
 
 
 class WorkflowExecutor:
@@ -33,6 +33,8 @@ class WorkflowExecutor:
         self.step_callback = step_callback
         self.actions = {action['id']: Action(**action) for action in workflow.actions}
         self.flows = [ActionFlow(**flow) for flow in workflow.flows]
+        self.total_actions = len(self.actions)
+        self.finished_actions = 0
 
         self.success = True
         self.errmsg = ""
@@ -115,21 +117,35 @@ class WorkflowExecutor:
             )
             future.add_done_callback(self.on_node_complete)
 
-    def execute_node(self, workflow_id: int, node_id: int, context: ActionContext) -> Tuple[Action, bool, ActionContext]:
+    def execute_node(self, workflow_id: int, node_id: int,
+                     context: ActionContext) -> Tuple[Action, bool, str, ActionContext]:
         """
         执行单个节点操作，返回修改后的上下文和节点ID
         """
         action = self.actions[node_id]
-        state, result_ctx = self.workflowmanager.excute(workflow_id, action, context=context)
-        return action, state, result_ctx
+        state, message, result_ctx = self.workflowmanager.excute(workflow_id, action, context=context)
+        return action, state, message, result_ctx
 
     def on_node_complete(self, future):
         """
         节点完成回调：更新上下文、处理后继节点
         """
-        action, state, result_ctx = future.result()
+        action, state, message, result_ctx = future.result()
 
         try:
+            self.finished_actions += 1
+            # 更新当前进度
+            self.context.progress = round(self.finished_actions / self.total_actions) * 100
+
+            # 补充执行历史
+            self.context.execute_history.append(
+                ActionExecution(
+                    action=action.name,
+                    result=state,
+                    message=message
+                )
+            )
+
             # 节点执行失败
             if not state:
                 self.success = False

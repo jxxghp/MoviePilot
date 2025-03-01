@@ -3,12 +3,10 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from app.schemas.context import Context, MediaInfo
-from app.schemas.file import FileItem
 from app.schemas.download import DownloadTask
+from app.schemas.file import FileItem
 from app.schemas.site import Site
 from app.schemas.subscribe import Subscribe
-from app.schemas.message import Notification
-from app.schemas.event import Event
 
 
 class Workflow(BaseModel):
@@ -52,6 +50,15 @@ class Action(BaseModel):
     data: Optional[dict] = Field({}, description="参数")
 
 
+class ActionExecution(BaseModel):
+    """
+    动作执行情况
+    """
+    action: Optional[str] = Field(None, description="当前动作（名称）")
+    result: Optional[bool] = Field(None, description="执行结果")
+    message: Optional[str] = Field(None, description="执行消息")
+
+
 class ActionContext(BaseModel):
     """
     动作基础上下文，各动作通用数据
@@ -63,8 +70,8 @@ class ActionContext(BaseModel):
     downloads: Optional[List[DownloadTask]] = Field([], description="下载任务列表")
     sites: Optional[List[Site]] = Field([], description="站点列表")
     subscribes: Optional[List[Subscribe]] = Field([], description="订阅列表")
-    messages: Optional[List[Notification]] = Field([], description="消息列表")
-    events: Optional[List[Event]] = Field([], description="事件列表")
+    execute_history: Optional[List[ActionExecution]] = Field([], description="执行历史")
+    progress: Optional[int] = Field(0, description="执行进度（%）")
 
 
 class ActionFlow(BaseModel):

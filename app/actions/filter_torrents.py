@@ -80,5 +80,5 @@ class FilterTorrentsAction(BaseAction):
 
         context.torrents = self._torrents
 
-        self.job_done()
+        self.job_done(f"过滤后剩余 {len(self._torrents)} 个资源")
         return context

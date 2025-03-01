@@ -104,5 +104,5 @@ class AddDownloadAction(BaseAction):
                 [DownloadTask(download_id=did, downloader=params.downloader) for did in self._added_downloads]
             )
 
-        self.job_done()
+        self.job_done(f"已添加 {len(self._added_downloads)} 个下载任务")
         return context

@@ -15,6 +15,8 @@ class BaseAction(ABC):
 
     # 完成标志
     _done_flag = False
+    # 执行信息
+    _message = ""
 
     @classmethod
     @property
@@ -49,10 +51,18 @@ class BaseAction(ABC):
         """
         pass
 
-    def job_done(self):
+    @property
+    def message(self) -> str:
+        """
+        执行信息
+        """
+        return self._message
+
+    def job_done(self, message: str = None):
         """
         标记动作完成
         """
+        self._message = message
         self._done_flag = True
 
     @abstractmethod

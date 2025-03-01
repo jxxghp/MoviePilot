@@ -87,6 +87,8 @@ class ChainEventType(Enum):
     MediaRecognizeConvert = "media.recognize.convert"
     # 推荐数据源
     RecommendSource = "recommend.source"
+    # 工作流执行
+    WorkflowExecution = "workflow.execution"
 
 
 # 系统配置Key字典

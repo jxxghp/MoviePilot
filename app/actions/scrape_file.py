@@ -68,5 +68,5 @@ class ScrapeFileAction(BaseAction):
             self.mediachain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
             self._scraped_files.append(fileitem)
 
-        self.job_done()
+        self.job_done(f"成功刮削了 {len(self._scraped_files)} 个文件")
         return context

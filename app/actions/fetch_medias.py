@@ -166,5 +166,5 @@ class FetchMediasAction(BaseAction):
         if self._medias:
             context.medias.extend(self._medias)
 
-        self.job_done()
+        self.job_done(f"获取到 {len(self._medias)} 条媒数据")
         return context

@@ -97,5 +97,5 @@ class FetchTorrentsAction(BaseAction):
             context.torrents.extend(self._torrents)
             logger.info(f"共搜索到 {len(self._torrents)} 条资源")
 
-        self.job_done()
+        self.job_done(f"搜索到 {len(self._torrents)} 个资源")
         return context

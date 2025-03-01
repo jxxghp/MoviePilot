@@ -77,5 +77,5 @@ class AddSubscribeAction(BaseAction):
             for sid in self._added_subscribes:
                 context.subscribes.append(self.subscribeoper.get(sid))
 
-        self.job_done()
+        self.job_done(f"已添加 {len(self._added_subscribes)} 个订阅")
         return context
