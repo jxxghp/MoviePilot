@@ -10,6 +10,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.spider.haidan import HaiDanSpider
+from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
@@ -152,6 +153,12 @@ class IndexerModule(_ModuleBase):
                     error_flag, result = HaiDanSpider(site).search(
                         keyword=search_word,
                         mtype=mtype
+                    )
+                elif site.get('parser') == "HDDolby":
+                    error_flag, result = HddolbySpider(site).search(
+                        keyword=search_word,
+                        mtype=mtype,
+                        page=page
                     )
                 else:
                     error_flag, result = self.__spider_search(
