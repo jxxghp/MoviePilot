@@ -32,6 +32,7 @@ class SiteSchema(Enum):
     TNode = "TNode"
     MTorrent = "MTorrent"
     Yema = "Yema"
+    HDDolby = "HDDolby"
 
 
 class SiteParserBase(metaclass=ABCMeta):
