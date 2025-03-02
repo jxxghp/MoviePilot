@@ -29,8 +29,8 @@ class TransferFileAction(BaseAction):
     _fileitems = []
     _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.transferchain = TransferChain()
         self.storagechain = StorageChain()
         self.transferhis = TransferHistoryOper()
@@ -76,6 +76,11 @@ class TransferFileAction(BaseAction):
                 if not download.completed:
                     logger.info(f"下载任务 {download.download_id} 未完成")
                     continue
+                # 检查缓存
+                cache_key = f"{download.download_id}"
+                if self.check_cache(workflow_id, cache_key):
+                    logger.info(f"{download.path} 已整理过，跳过")
+                    continue
                 fileitem = self.storagechain.get_file_item(storage="local", path=Path(download.path))
                 if not fileitem:
                     logger.info(f"文件 {download.path} 不存在")
@@ -92,11 +97,17 @@ class TransferFileAction(BaseAction):
                     continue
                 logger.info(f"整理文件 {download.path} 完成")
                 self._fileitems.append(fileitem)
+                self.save_cache(workflow_id, cache_key)
         else:
             # 从 fileitems 中整理文件
             for fileitem in copy.deepcopy(context.fileitems):
                 if not check_continue():
                     break
+                # 检查缓存
+                cache_key = f"{fileitem.path}"
+                if self.check_cache(workflow_id, cache_key):
+                    logger.info(f"{fileitem.path} 已整理过，跳过")
+                    continue
                 transferd = self.transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
                 if transferd:
                     # 已经整理过的文件不再整理
@@ -112,6 +123,8 @@ class TransferFileAction(BaseAction):
                 # 从 fileitems 中移除已整理的文件
                 context.fileitems.remove(fileitem)
                 self._fileitems.append(fileitem)
+                # 记录已整理的文件
+                self.save_cache(workflow_id, cache_key)
 
         if self._fileitems:
             context.fileitems.extend(self._fileitems)

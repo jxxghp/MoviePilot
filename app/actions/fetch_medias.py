@@ -31,8 +31,8 @@ class FetchMediasAction(BaseAction):
 
     _medias = []
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
 
         self.__inner_sources = [
             {

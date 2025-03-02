@@ -30,8 +30,8 @@ class AddDownloadAction(BaseAction):
     _added_downloads = []
     _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.downloadchain = DownloadChain()
         self.mediachain = MediaChain()
 
@@ -62,6 +62,11 @@ class AddDownloadAction(BaseAction):
         for t in context.torrents:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
+            # 检查缓存
+            cache_key = f"{t.torrent_info.site}-{t.torrent_info.title}"
+            if self.check_cache(workflow_id, cache_key):
+                logger.info(f"{t.title} 已添加过下载，跳过")
+                continue
             if not t.meta_info:
                 t.meta_info = MetaInfo(title=t.title, subtitle=t.description)
             if not t.media_info:
@@ -97,6 +102,8 @@ class AddDownloadAction(BaseAction):
                                                      label=params.labels)
             if did:
                 self._added_downloads.append(did)
+                # 保存缓存
+                self.save_cache(workflow_id, cache_key)
             else:
                 self._has_error = True
 

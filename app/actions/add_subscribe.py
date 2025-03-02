@@ -22,8 +22,8 @@ class AddSubscribeAction(BaseAction):
     _added_subscribes = []
     _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.subscribechain = SubscribeChain()
         self.subscribeoper = SubscribeOper()
 
@@ -53,6 +53,11 @@ class AddSubscribeAction(BaseAction):
         for media in context.medias:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
+            # 检查缓存
+            cache_key = f"{media.type}-{media.title}-{media.year}-{media.season}"
+            if self.check_cache(workflow_id, cache_key):
+                logger.info(f"{media.title} {media.year} 已添加过订阅，跳过")
+                continue
             mediainfo = MediaInfo()
             mediainfo.from_dict(media.dict())
             if self.subscribechain.exists(mediainfo):
@@ -69,6 +74,8 @@ class AddSubscribeAction(BaseAction):
                                                    username=settings.SUPERUSER)
             if sid:
                 self._added_subscribes.append(sid)
+                # 保存缓存
+                self.save_cache(workflow_id, cache_key)
             else:
                 self._has_error = True
 

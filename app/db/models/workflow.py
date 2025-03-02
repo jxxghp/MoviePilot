@@ -95,7 +95,7 @@ class Workflow(Base):
     @db_update
     def update_current_action(db, wid: int, action_id: str, context: dict):
         db.query(Workflow).filter(Workflow.id == wid).update({
-            "current_action": f"{Workflow.current_action},{action_id}" if Workflow.current_action else action_id,
+            "current_action": Workflow.current_action + f",{action_id}" if Workflow.current_action else action_id,
             "context": context
         })
         return True

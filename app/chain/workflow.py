@@ -66,6 +66,7 @@ class WorkflowExecutor:
 
         # 初始上下文
         if workflow.current_action and workflow.context:
+            logger.info(f"工作流已执行动作：{workflow.current_action}")
             # Base64解码
             decoded_data = base64.b64decode(workflow.context["content"])
             # 反序列化数据
@@ -73,7 +74,9 @@ class WorkflowExecutor:
         else:
             self.context = ActionContext()
 
-        # 初始化队列：入度为0的节点
+        # 恢复工作流
+        global_vars.workflow_resume(self.workflow.id)
+        # 初始化队列，添加入度为0的节点
         for action_id in self.actions:
             if self.indegree[action_id] == 0:
                 self.queue.append(action_id)

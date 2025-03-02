@@ -32,8 +32,8 @@ class FetchRssAction(BaseAction):
     _rss_torrents = []
     _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.rsshelper = RssHelper()
         self.chain = ActionChain()
 
