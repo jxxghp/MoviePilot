@@ -5,6 +5,7 @@ from pydantic import Field
 from app.actions import BaseAction, ActionChain
 from app.core.config import global_vars
 from app.helper.torrent import TorrentHelper
+from app.log import logger
 from app.schemas import ActionParams, ActionContext
 
 
@@ -77,6 +78,8 @@ class FilterTorrentsAction(BaseAction):
                         mediainfo=torrent.media_info
                 ):
                     self._torrents.append(torrent)
+
+        logger.info(f"过滤后剩余 {len(self._torrents)} 个资源")
 
         context.torrents = self._torrents
 

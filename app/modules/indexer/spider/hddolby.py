@@ -1,5 +1,3 @@
-import base64
-import json
 from typing import Tuple, List
 
 from app.core.config import settings
@@ -7,6 +5,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
+from app.utils.string import StringUtils
 
 
 class HddolbySpider:
@@ -15,16 +14,16 @@ class HddolbySpider:
     """
     _indexerid = None
     _domain = None
+    _domain_host = None
     _name = ""
     _proxy = None
     _cookie = None
     _ua = None
     _apikey = None
     _size = 40
-    _searchurl = "https://api.hddolby.com/api/v1/torrent/search"
-    _downloadurl = "https://api.hddolby.com/api/v1/torrent/download?id=%s"
-    _pageurl = "%sdetails.php?id=%s&hit=1"
+    _pageurl = None
     _timeout = 15
+    _searchurl = None
 
     # 分类
     _movie_category = [401, 405]
@@ -63,6 +62,7 @@ class HddolbySpider:
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')
+            self._domain_host = StringUtils.get_url_domain(self._domain)
             self._name = indexer.get('name')
             if indexer.get('proxy'):
                 self._proxy = settings.PROXY
@@ -70,6 +70,8 @@ class HddolbySpider:
             self._ua = indexer.get('ua')
             self._apikey = indexer.get('apikey')
             self._timeout = indexer.get('timeout') or 15
+            self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
+            self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
     def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
         """
@@ -151,7 +153,7 @@ class HddolbySpider:
                 torrent = {
                     'title': result.get('name'),
                     'description': result.get('small_descr'),
-                    'enclosure': self.__get_download_url(result.get('id')),
+                    'enclosure': self.__get_download_url(result.get('id'), result.get('downhash')),
                     'pubdate': result.get('added'),
                     'size': result.get('size'),
                     'seeders': result.get('seeders'),
@@ -202,25 +204,8 @@ class HddolbySpider:
             return discount_dict.get(discount, 1)
         return 1
 
-    def __get_download_url(self, torrent_id: str) -> str:
+    def __get_download_url(self, torrent_id: int, downhash: str) -> str:
         """
         获取下载链接，返回base64编码的json字符串及URL
         """
-        url = self._downloadurl % torrent_id
-        params = {
-            'method': 'post',
-            'cookie': False,
-            'params': {
-                'id': torrent_id
-            },
-            'header': {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json, text/plain, */*',
-                'x-api-key': self._apikey
-            },
-            'result': 'data'
-        }
-        # base64编码
-        base64_str = base64.b64encode(json.dumps(params).encode('utf-8')).decode('utf-8')
-        return f"[{base64_str}]{url}"
-
+        return f"{self._domain}download.php?id={torrent_id}&downhash={downhash}"

@@ -17,6 +17,7 @@ class AddDownloadParams(ActionParams):
     """
     downloader: Optional[str] = Field(None, description="下载器")
     save_path: Optional[str] = Field(None, description="保存路径")
+    labels: Optional[str] = Field(None, description="标签（,分隔）")
     only_lack: Optional[bool] = Field(False, description="仅下载缺失的资源")
 
 
@@ -92,7 +93,8 @@ class AddDownloadAction(BaseAction):
 
             did = self.downloadchain.download_single(context=t,
                                                      downloader=params.downloader,
-                                                     save_path=params.save_path)
+                                                     save_path=params.save_path,
+                                                     label=params.labels)
             if did:
                 self._added_downloads.append(did)
             else:

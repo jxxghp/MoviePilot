@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
 from typing import Optional, Tuple
-from urllib.parse import urljoin
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
@@ -47,7 +46,8 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self._user_traffic_page = None
         self._user_detail_page = None
         self._user_basic_page = "api/v1/user/data"
-        self._user_basic_params = {
+        self._user_basic_params = {}
+        self._user_basic_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*"
         }
@@ -55,6 +55,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self._user_mail_unread_page = None
         self._mail_unread_params = {}
         self._torrent_seeding_page = "api/v1/user/peers"
+        self._torrent_seeding_params = {}
         self._torrent_seeding_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*"
@@ -79,9 +80,9 @@ class HDDolbySiteUserInfo(SiteParserBase):
         if not html_text:
             return None
         detail = json.loads(html_text)
-        if not detail or detail.get("code") != "0":
+        if not detail or detail.get("status") != 0:
             return
-        user_info = detail.get("data", {})
+        user_infos = detail.get("data")
         """
         {
             "id": "1",
@@ -91,9 +92,13 @@ class HDDolbySiteUserInfo(SiteParserBase):
             "uploaded": "852071699418375",
             "downloaded": "1885536536176",
             "seedbonus": "99774808.0",
-            "sebonus": "3739023.7"
+            "sebonus": "3739023.7",
+            "unread_messages": "0",
         }
         """
+        if not user_infos:
+            return
+        user_info = user_infos[0]
         self.userid = user_info.get("id")
         self.username = user_info.get("username")
         self.user_level = self.HDDolby_sysRoleList.get(user_info.get("class") or "1")
@@ -102,8 +107,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self.download = int(user_info.get("downloaded") or '0')
         self.ratio = round(self.upload / self.download, 2) if self.download else 0
         self.bonus = float(user_info.get("seedbonus") or "0")
-        self.message_read_force = True
-        self._torrent_seeding_params = {}
+        self.message_unread = int(user_info.get("unread_messages") or '0')
 
     def _parse_user_traffic_info(self, html_text: str):
         """
@@ -124,15 +128,16 @@ class HDDolbySiteUserInfo(SiteParserBase):
         if not html_text:
             return None
         seeding_info = json.loads(html_text)
-        if not seeding_info or seeding_info.get("status") != "0":
+        if not seeding_info or seeding_info.get("status") != 0:
             return None
-        torrents = seeding_info.get("data", {})
+        torrents = seeding_info.get("data", [])
         page_seeding_size = 0
         page_seeding_info = []
         for info in torrents:
             size = info.get("size")
+            seeder = info.get("seeders") or 1
             page_seeding_size += size
-            page_seeding_info.append([0, size])
+            page_seeding_info.append([seeder, size])
         self.seeding += len(torrents)
         self.seeding_size += page_seeding_size
         self.seeding_info.extend(page_seeding_info)
@@ -143,28 +148,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         """
         解析未读消息链接，这里直接读出详情
         """
-        if not html_text:
-            return None
-        messages_info = json.loads(html_text)
-        if not messages_info or messages_info.get("code") != "0":
-            return None
-        # TODO
-        messages = messages_info.get("data", {}).get("data", [])
-        for message in messages:
-            if not message.get("unread"):
-                continue
-            head = message.get("title")
-            date = message.get("createdDate")
-            content = message.get("context")
-            if head and date and content:
-                self.message_unread_contents.append((head, date, content))
-                # 设置已读
-                self._get_page_content(
-                    url=urljoin(self._base_url, f"api/msg/markRead"),
-                    params={"msgId": message.get("id")}
-                )
-        # 是否存在下页数据
-        return None
+        pass
 
     def _parse_message_content(self, html_text) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """

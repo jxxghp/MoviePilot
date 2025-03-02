@@ -91,7 +91,7 @@ class WorkflowExecutor:
                 if not self.success:
                     break
                 if not self.queue:
-                    sleep(1)
+                    sleep(0.1)
                     continue
                 # 取出队首节点
                 node_id = self.queue.popleft()
@@ -135,10 +135,10 @@ class WorkflowExecutor:
         try:
             self.finished_actions += 1
             # 更新当前进度
-            self.context.__progress__ = round(self.finished_actions / self.total_actions) * 100
+            self.context.progress = round(self.finished_actions / self.total_actions) * 100
 
             # 补充执行历史
-            self.context.__execute_history__.append(
+            self.context.execute_history.append(
                 ActionExecution(
                     action=action.name,
                     result=state,

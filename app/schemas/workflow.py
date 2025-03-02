@@ -70,8 +70,8 @@ class ActionContext(BaseModel):
     downloads: Optional[List[DownloadTask]] = Field([], description="下载任务列表")
     sites: Optional[List[Site]] = Field([], description="站点列表")
     subscribes: Optional[List[Subscribe]] = Field([], description="订阅列表")
-    __execute_history__: Optional[List[ActionExecution]] = Field([], description="执行历史")
-    __progress__: Optional[int] = Field(0, description="执行进度（%）")
+    execute_history: Optional[List[ActionExecution]] = Field([], description="执行历史")
+    progress: Optional[int] = Field(0, description="执行进度（%）")
 
 
 class ActionFlow(BaseModel):
