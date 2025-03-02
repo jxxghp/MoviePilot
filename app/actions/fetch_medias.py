@@ -115,7 +115,7 @@ class FetchMediasAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return self._has_error
+        return not self._has_error
 
     def __get_source(self, source: str):
         """
