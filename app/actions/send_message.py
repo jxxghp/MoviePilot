@@ -47,10 +47,10 @@ class SendMessageAction(BaseAction):
         发送messages中的消息
         """
         params = SendMessageParams(**params)
-        msg_text = f"当前进度：{context.__progress__}%"
+        msg_text = f"当前进度：{context.progress}%"
         index = 1
-        if context.__execute_history__:
-            for history in context.__execute_history__:
+        if context.execute_history:
+            for history in context.execute_history:
                 if not history.message:
                     continue
                 msg_text += f"\n{index}. {history.action}：{history.message}"

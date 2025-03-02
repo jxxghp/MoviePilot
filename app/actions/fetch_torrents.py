@@ -90,8 +90,8 @@ class FetchTorrentsAction(BaseAction):
                 for torrent in torrents:
                     self._torrents.append(torrent)
 
-                # 随机休眠 10-60秒
-                sleep_time = random.randint(10, 60)
+                # 随机休眠 5-30秒
+                sleep_time = random.randint(5, 30)
                 logger.info(f"随机休眠 {sleep_time} 秒 ...")
                 time.sleep(sleep_time)
 
