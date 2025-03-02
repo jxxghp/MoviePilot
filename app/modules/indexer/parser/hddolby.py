@@ -135,7 +135,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         page_seeding_info = []
         for info in torrents:
             size = info.get("size")
-            seeder = info.get("seeder") or 1
+            seeder = info.get("seeders") or 1
             page_seeding_size += size
             page_seeding_info.append([seeder, size])
         self.seeding += len(torrents)
