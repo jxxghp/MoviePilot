@@ -162,7 +162,7 @@ class HddolbySpider:
                     'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('promotion_time_type')),
                     'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('promotion_time_type')),
                     'freedate': result.get('promotion_until'),
-                    'page_url': self._pageurl % (self._domain, result.get('id')),
+                    'page_url': self._pageurl % result.get('id'),
                     'labels': torrentLabels,
                     'category': category
                 }
