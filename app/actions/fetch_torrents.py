@@ -21,6 +21,7 @@ class FetchTorrentsParams(ActionParams):
     type: Optional[str] = Field(None, description="资源类型 (电影/电视剧)")
     season: Optional[int] = Field(None, description="季度")
     sites: Optional[List[int]] = Field([], description="站点列表")
+    match_media: Optional[bool] = Field(False, description="匹配媒体信息")
 
 
 class FetchTorrentsAction(BaseAction):
@@ -71,10 +72,11 @@ class FetchTorrentsAction(BaseAction):
                 if params.season and torrent.meta_info.begin_season != params.season:
                     continue
                 # 识别媒体信息
-                torrent.media_info = self.searchchain.recognize_media(torrent.meta_info)
-                if not torrent.media_info:
-                    logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
-                    continue
+                if params.match_media:
+                    torrent.media_info = self.searchchain.recognize_media(torrent.meta_info)
+                    if not torrent.media_info:
+                        logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
+                        continue
                 self._torrents.append(torrent)
         else:
             # 搜索媒体列表

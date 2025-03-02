@@ -78,7 +78,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                 server.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
+                 episodes: Set[int] = None, category: str = None, label: str = None,
                  downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -87,6 +87,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  分类
+        :param label:  标签
         :param downloader:  下载器
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
@@ -118,7 +119,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
         # 生成随机Tag
         tag = StringUtils.generate_random_str(10)
-        if settings.TORRENT_TAG:
+        if label:
+            tags = label.split(',') + [tag]
+        elif settings.TORRENT_TAG:
             tags = [tag, settings.TORRENT_TAG]
         else:
             tags = [tag]

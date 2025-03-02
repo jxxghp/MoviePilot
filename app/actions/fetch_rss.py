@@ -21,6 +21,7 @@ class FetchRssParams(ActionParams):
     content_type: Optional[str] = Field(None, description="Content-Type")
     referer: Optional[str] = Field(None, description="Referer")
     ua: Optional[str] = Field(None, description="User-Agent")
+    match_media: Optional[str] = Field(None, description="匹配媒体信息")
 
 
 class FetchRssAction(BaseAction):
@@ -98,10 +99,12 @@ class FetchRssAction(BaseAction):
                 pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
             )
             meta = MetaInfo(title=torrentinfo.title, subtitle=torrentinfo.description)
-            mediainfo = self.chain.recognize_media(meta)
-            if not mediainfo:
-                logger.warning(f"{torrentinfo.title} 未识别到媒体信息")
-                continue
+            mediainfo = None
+            if params.match_media:
+                mediainfo = self.chain.recognize_media(meta)
+                if not mediainfo:
+                    logger.warning(f"{torrentinfo.title} 未识别到媒体信息")
+                    continue
             self._rss_torrents.append(Context(meta_info=meta, media_info=mediainfo, torrent_info=torrentinfo))
 
         if self._rss_torrents:

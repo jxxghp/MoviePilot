@@ -347,7 +347,7 @@ class ChainBase(metaclass=ABCMeta):
                                torrent_list=torrent_list, mediainfo=mediainfo)
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
+                 episodes: Set[int] = None, category: str = None, label: str = None,
                  downloader: str = None
                  ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
@@ -357,11 +357,12 @@ class ChainBase(metaclass=ABCMeta):
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  种子分类
+        :param label:  标签
         :param downloader:  下载器
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return self.run_module("download", content=content, download_dir=download_dir,
-                               cookie=cookie, episodes=episodes, category=category,
+                               cookie=cookie, episodes=episodes, category=category, label=label,
                                downloader=downloader)
 
     def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:

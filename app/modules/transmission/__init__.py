@@ -79,7 +79,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 server.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
+                 episodes: Set[int] = None, category: str = None, label: str = None,
                  downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -88,6 +88,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  分类，TR中未使用
+        :param label:  标签
         :param downloader:  下载器
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
@@ -118,8 +119,11 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
+
         # 标签
-        if settings.TORRENT_TAG:
+        if label:
+            labels = label.split(',')
+        elif settings.TORRENT_TAG:
             labels = [settings.TORRENT_TAG]
         else:
             labels = None

@@ -209,7 +209,8 @@ class DownloadChain(ChainBase):
                         save_path: str = None,
                         userid: Union[str, int] = None,
                         username: str = None,
-                        media_category: str = None) -> Optional[str]:
+                        media_category: str = None,
+                        label: str = None) -> Optional[str]:
         """
         下载及发送通知
         :param context: 资源上下文
@@ -222,6 +223,7 @@ class DownloadChain(ChainBase):
         :param userid: 用户ID
         :param username: 调用下载的用户名/插件名
         :param media_category: 自定义媒体类别
+        :param label: 自定义标签
         """
         # 发送资源下载事件，允许外部拦截下载
         event_data = ResourceDownloadEventData(
@@ -310,6 +312,7 @@ class DownloadChain(ChainBase):
                                                 episodes=episodes,
                                                 download_dir=download_dir,
                                                 category=_media.category,
+                                                label=label,
                                                 downloader=downloader or _site_downloader)
         if result:
             _downloader, _hash, _layout, error_msg = result

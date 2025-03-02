@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
 from typing import Optional, Tuple
-from urllib.parse import urljoin
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
@@ -145,28 +144,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         """
         解析未读消息链接，这里直接读出详情
         """
-        if not html_text:
-            return None
-        messages_info = json.loads(html_text)
-        if not messages_info or messages_info.get("code") != "0":
-            return None
-        # TODO
-        messages = messages_info.get("data", {}).get("data", [])
-        for message in messages:
-            if not message.get("unread"):
-                continue
-            head = message.get("title")
-            date = message.get("createdDate")
-            content = message.get("context")
-            if head and date and content:
-                self.message_unread_contents.append((head, date, content))
-                # 设置已读
-                self._get_page_content(
-                    url=urljoin(self._base_url, f"api/msg/markRead"),
-                    params={"msgId": message.get("id")}
-                )
-        # 是否存在下页数据
-        return None
+        pass
 
     def _parse_message_content(self, html_text) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
