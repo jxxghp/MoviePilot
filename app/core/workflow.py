@@ -64,7 +64,7 @@ class WorkFlowManager(metaclass=Singleton):
             context = ActionContext()
         if action.type in self._actions:
             # 实例化
-            action_obj = self._actions[action.type]()
+            action_obj = self._actions[action.type](action.id)
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
             try:

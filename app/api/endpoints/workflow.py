@@ -9,6 +9,7 @@ from app.core.config import global_vars
 from app.core.workflow import WorkFlowManager
 from app.db import get_db
 from app.db.models.workflow import Workflow
+from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
 from app.chain.workflow import WorkflowChain
 from app.scheduler import Scheduler
@@ -84,8 +85,12 @@ def delete_workflow(workflow_id: int,
     workflow = Workflow.get(db, workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
+    # 删除定时任务
     Scheduler().remove_workflow_job(workflow)
+    # 删除工作流
     Workflow.delete(db, workflow_id)
+    # 删除缓存
+    SystemConfigOper().delete(f"WorkflowCache-{workflow_id}")
     return schemas.Response(success=True, message="删除成功")
 
 
@@ -112,8 +117,9 @@ def start_workflow(workflow_id: int,
     workflow = Workflow.get(db, workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
+    # 添加定时任务
     Scheduler().update_workflow_job(workflow)
-    global_vars.workflow_resume(workflow_id)
+    # 更新状态
     workflow.update_state(db, workflow_id, "W")
     return schemas.Response(success=True)
 
@@ -128,7 +134,29 @@ def pause_workflow(workflow_id: int,
     workflow = Workflow.get(db, workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
+    # 删除定时任务
     Scheduler().remove_workflow_job(workflow)
+    # 停止工作流
     global_vars.stop_workflow(workflow_id)
+    # 更新状态
     workflow.update_state(db, workflow_id, "P")
+    return schemas.Response(success=True)
+
+
+@router.post("/{workflow_id}/reset", summary="重置工作流", response_model=schemas.Response)
+def reset_workflow(workflow_id: int,
+                   db: Session = Depends(get_db),
+                   _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    重置工作流
+    """
+    workflow = Workflow.get(db, workflow_id)
+    if not workflow:
+        return schemas.Response(success=False, message="工作流不存在")
+    # 停止工作流
+    global_vars.stop_workflow(workflow_id)
+    # 重置工作流
+    workflow.reset(db, workflow_id)
+    # 删除缓存
+    SystemConfigOper().delete(f"WorkflowCache-{workflow_id}")
     return schemas.Response(success=True)

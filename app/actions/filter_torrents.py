@@ -29,8 +29,8 @@ class FilterTorrentsAction(BaseAction):
 
     _torrents = []
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.torrenthelper = TorrentHelper()
         self.chain = ActionChain()
 

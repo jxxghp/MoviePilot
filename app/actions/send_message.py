@@ -19,8 +19,8 @@ class SendMessageAction(BaseAction):
     发送消息
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.chain = ActionChain()
 
     @classmethod

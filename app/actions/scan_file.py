@@ -27,8 +27,8 @@ class ScanFileAction(BaseAction):
     _fileitems = []
     _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.storagechain = StorageChain()
 
     @classmethod
@@ -68,7 +68,14 @@ class ScanFileAction(BaseAction):
                 break
             if not file.extension or f".{file.extension.lower()}" not in settings.RMT_MEDIAEXT:
                 continue
+            # 检查缓存
+            cache_key = f"{file.path}"
+            if self.check_cache(workflow_id, cache_key):
+                logger.info(f"{file.path} 已处理过，跳过")
+                continue
             self._fileitems.append(fileitem)
+            # 保存缓存
+            self.save_cache(workflow_id, cache_key)
 
         if self._fileitems:
             context.fileitems.extend(self._fileitems)
