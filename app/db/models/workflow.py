@@ -88,6 +88,7 @@ class Workflow(Base):
             "state": 'W',
             "result": None,
             "current_action": None,
+            "run_count": 0,
         })
         return True
 

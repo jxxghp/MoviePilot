@@ -65,22 +65,22 @@ class AddDownloadAction(BaseAction):
             # 检查缓存
             cache_key = f"{t.torrent_info.site}-{t.torrent_info.title}"
             if self.check_cache(workflow_id, cache_key):
-                logger.info(f"{t.title} 已添加过下载，跳过")
+                logger.info(f"{t.torrent_info.title} 已添加过下载，跳过")
                 continue
             if not t.meta_info:
-                t.meta_info = MetaInfo(title=t.title, subtitle=t.description)
+                t.meta_info = MetaInfo(title=t.torrent_info.title, subtitle=t.torrent_info.description)
             if not t.media_info:
                 t.media_info = self.mediachain.recognize_media(meta=t.meta_info)
             if not t.media_info:
                 self._has_error = True
-                logger.warning(f"{t.title} 未识别到媒体信息，无法下载")
+                logger.warning(f"{t.torrent_info.title} 未识别到媒体信息，无法下载")
                 continue
             if params.only_lack:
                 exists_info = self.downloadchain.media_exists(t.media_info)
                 if exists_info:
                     if t.media_info.type == MediaType.MOVIE:
                         # 电影
-                        logger.warning(f"{t.title} 媒体库中已存在，跳过")
+                        logger.warning(f"{t.torrent_info.title} 媒体库中已存在，跳过")
                         continue
                     else:
                         # 电视剧
