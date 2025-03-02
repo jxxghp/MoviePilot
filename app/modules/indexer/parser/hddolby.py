@@ -47,7 +47,8 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self._user_traffic_page = None
         self._user_detail_page = None
         self._user_basic_page = "api/v1/user/data"
-        self._user_basic_params = {
+        self._user_basic_params = {}
+        self._user_basic_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*"
         }
@@ -80,7 +81,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         if not html_text:
             return None
         detail = json.loads(html_text)
-        if not detail or detail.get("code") != "0":
+        if not detail or detail.get("status") != 0:
             return
         user_info = detail.get("data", {})
         """
@@ -125,7 +126,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         if not html_text:
             return None
         seeding_info = json.loads(html_text)
-        if not seeding_info or seeding_info.get("status") != "0":
+        if not seeding_info or seeding_info.get("status") != 0:
             return None
         torrents = seeding_info.get("data", {})
         page_seeding_size = 0

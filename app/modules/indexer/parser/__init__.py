@@ -156,11 +156,17 @@ class SiteParserBase(metaclass=ABCMeta):
         解析站点信息
         :return:
         """
-        # 获取站点首页html
-        self._index_html = self._get_page_content(url=self._site_url)
-        # 检查是否已经登录
-        if not self._parse_logged_in(self._index_html):
-            return
+        # Cookie模式时，获取站点首页html
+        if self.request_mode == "apikey":
+            if not self.apikey and not self.token:
+                logger.warn(f"{self._site_name} 未设置cookie 或 apikey/token，跳过后续操作")
+                return
+            self._index_html = {}
+        else:
+            # 检查是否已经登录
+            self._index_html = self._get_page_content(url=self._site_url)
+            if not self._parse_logged_in(self._index_html):
+                return
         # 解析站点页面
         self._parse_site_page(self._index_html)
         # 解析用户基础信息
@@ -294,9 +300,13 @@ class SiteParserBase(metaclass=ABCMeta):
         req_headers = None
         proxies = settings.PROXY if self._proxy else None
         if self._ua or headers or self._addition_headers:
-            req_headers = {
-                "User-Agent": f"{self._ua}"
-            }
+
+            if self.request_mode == "apikey":
+                req_headers = {}
+            else:
+                req_headers = {
+                    "User-Agent": f"{self._ua}"
+                }
 
             if headers:
                 req_headers.update(headers)
