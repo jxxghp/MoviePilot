@@ -1,5 +1,3 @@
-import base64
-import json
 from typing import Tuple, List
 
 from app.core.config import settings
@@ -23,10 +21,9 @@ class HddolbySpider:
     _ua = None
     _apikey = None
     _size = 40
-    _pageurl = "%sdetails.php?id=%s&hit=1"
+    _pageurl = None
     _timeout = 15
     _searchurl = None
-    _downloadurl = None
 
     # 分类
     _movie_category = [401, 405]
@@ -74,7 +71,7 @@ class HddolbySpider:
             self._apikey = indexer.get('apikey')
             self._timeout = indexer.get('timeout') or 15
             self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
-            self._downloadurl = f"https://api.{self._domain_host}/api/v1/torrent/download?id=%s"
+            self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
     def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
         """
@@ -212,4 +209,3 @@ class HddolbySpider:
         获取下载链接，返回base64编码的json字符串及URL
         """
         return f"{self._domain}download.php?id={torrent_id}&downhash={downhash}"
-
