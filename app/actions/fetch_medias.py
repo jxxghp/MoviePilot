@@ -28,8 +28,8 @@ class FetchMediasAction(BaseAction):
     """
 
     _inner_sources = []
-
     _medias = []
+    _has_error = False
 
     def __init__(self, action_id: str):
         super().__init__(action_id)
@@ -115,7 +115,7 @@ class FetchMediasAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        return True if self._medias else False
+        return self._has_error
 
     def __get_source(self, source: str):
         """
@@ -131,37 +131,41 @@ class FetchMediasAction(BaseAction):
         获取媒体数据，填充到medias
         """
         params = FetchMediasParams(**params)
-        if params.source_type == "ranking":
-            for name in params.sources:
-                if global_vars.is_workflow_stopped(workflow_id):
-                    break
-                source = self.__get_source(name)
-                if not source:
-                    continue
-                logger.info(f"获取媒体数据 {source} ...")
-                results = []
-                if source.get("func"):
-                    results = source['func']()
-                else:
-                    # 调用内部API获取数据
-                    api_url = f"http://127.0.0.1:{settings.PORT}/api/v1/{source['api_path']}?token={settings.API_TOKEN}"
-                    res = RequestUtils(timeout=15).post_res(api_url)
-                    if res:
-                        results = res.json()
-                if results:
-                    logger.info(f"{name} 获取到 {len(results)} 条数据")
-                    self._medias.extend([MediaInfo(**r) for r in results])
-                else:
-                    logger.error(f"{name} 获取数据失败")
-        else:
-            # 调用内部API获取数据
-            api_url = f"http://127.0.0.1:{settings.PORT}{params.api_path}?token={settings.API_TOKEN}"
-            res = RequestUtils(timeout=15).post_res(api_url)
-            if res:
-                results = res.json()
-                if results:
-                    logger.info(f"{params.api_path} 获取到 {len(results)} 条数据")
-                    self._medias.extend([MediaInfo(**r) for r in results])
+        try:
+            if params.source_type == "ranking":
+                for name in params.sources:
+                    if global_vars.is_workflow_stopped(workflow_id):
+                        break
+                    source = self.__get_source(name)
+                    if not source:
+                        continue
+                    logger.info(f"获取媒体数据 {source} ...")
+                    results = []
+                    if source.get("func"):
+                        results = source['func']()
+                    else:
+                        # 调用内部API获取数据
+                        api_url = f"http://127.0.0.1:{settings.PORT}/api/v1/{source['api_path']}?token={settings.API_TOKEN}"
+                        res = RequestUtils(timeout=15).post_res(api_url)
+                        if res:
+                            results = res.json()
+                    if results:
+                        logger.info(f"{name} 获取到 {len(results)} 条数据")
+                        self._medias.extend([MediaInfo(**r) for r in results])
+                    else:
+                        logger.error(f"{name} 获取数据失败")
+            else:
+                # 调用内部API获取数据
+                api_url = f"http://127.0.0.1:{settings.PORT}{params.api_path}?token={settings.API_TOKEN}"
+                res = RequestUtils(timeout=15).post_res(api_url)
+                if res:
+                    results = res.json()
+                    if results:
+                        logger.info(f"{params.api_path} 获取到 {len(results)} 条数据")
+                        self._medias.extend([MediaInfo(**r) for r in results])
+        except Exception as e:
+            logger.error(f"获取媒体数据失败: {e}")
+            self._has_error = True
 
         if self._medias:
             context.medias.extend(self._medias)

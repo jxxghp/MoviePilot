@@ -68,6 +68,8 @@ class TransferFileAction(BaseAction):
             return True
 
         params = TransferFileParams(**params)
+        # 失败次数
+        _failed_count = 0
         if params.source == "downloads":
             # 从下载任务中整理文件
             for download in context.downloads:
@@ -92,7 +94,7 @@ class TransferFileAction(BaseAction):
                 logger.info(f"开始整理文件 {download.path} ...")
                 state, errmsg = self.transferchain.do_transfer(fileitem, background=False)
                 if not state:
-                    self._has_error = True
+                    _failed_count += 1
                     logger.error(f"整理文件 {download.path} 失败: {errmsg}")
                     continue
                 logger.info(f"整理文件 {download.path} 完成")
@@ -116,7 +118,7 @@ class TransferFileAction(BaseAction):
                 state, errmsg = self.transferchain.do_transfer(fileitem, background=False,
                                                                continue_callback=check_continue)
                 if not state:
-                    self._has_error = True
+                    _failed_count += 1
                     logger.error(f"整理文件 {fileitem.path} 失败: {errmsg}")
                     continue
                 logger.info(f"整理文件 {fileitem.path} 完成")
@@ -128,6 +130,8 @@ class TransferFileAction(BaseAction):
 
         if self._fileitems:
             context.fileitems.extend(self._fileitems)
+        elif _failed_count:
+            self._has_error = True
 
-        self.job_done()
+        self.job_done(f"整理成功 {len(self._fileitems)} 个文件，失败 {_failed_count} 个")
         return context

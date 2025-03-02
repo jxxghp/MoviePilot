@@ -59,6 +59,7 @@ class AddDownloadAction(BaseAction):
         将上下文中的torrents添加到下载任务中
         """
         params = AddDownloadParams(**params)
+        _started = False
         for t in context.torrents:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
@@ -96,6 +97,7 @@ class AddDownloadAction(BaseAction):
                                     logger.warning(f"{t.meta_info.title} 第 {t.meta_info.begin_season} 季第 {t.meta_info.episode_list} 集已存在，跳过")
                                     continue
 
+            _started = True
             did = self.downloadchain.download_single(context=t,
                                                      downloader=params.downloader,
                                                      save_path=params.save_path,
@@ -104,14 +106,14 @@ class AddDownloadAction(BaseAction):
                 self._added_downloads.append(did)
                 # 保存缓存
                 self.save_cache(workflow_id, cache_key)
-            else:
-                self._has_error = True
 
         if self._added_downloads:
             logger.info(f"已添加 {len(self._added_downloads)} 个下载任务")
             context.downloads.extend(
                 [DownloadTask(download_id=did, downloader=params.downloader) for did in self._added_downloads]
             )
+        elif _started:
+            self._has_error = True
 
         self.job_done(f"已添加 {len(self._added_downloads)} 个下载任务")
         return context
