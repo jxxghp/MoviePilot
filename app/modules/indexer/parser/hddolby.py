@@ -55,6 +55,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self._user_mail_unread_page = None
         self._mail_unread_params = {}
         self._torrent_seeding_page = "api/v1/user/peers"
+        self._torrent_seeding_params = {}
         self._torrent_seeding_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*"
@@ -91,7 +92,8 @@ class HDDolbySiteUserInfo(SiteParserBase):
             "uploaded": "852071699418375",
             "downloaded": "1885536536176",
             "seedbonus": "99774808.0",
-            "sebonus": "3739023.7"
+            "sebonus": "3739023.7",
+            "unread_messages": "0",
         }
         """
         self.userid = user_info.get("id")
@@ -102,8 +104,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self.download = int(user_info.get("downloaded") or '0')
         self.ratio = round(self.upload / self.download, 2) if self.download else 0
         self.bonus = float(user_info.get("seedbonus") or "0")
-        self.message_read_force = True
-        self._torrent_seeding_params = {}
+        self.message_unread = int(user_info.get("unread_messages") or '0')
 
     def _parse_user_traffic_info(self, html_text: str):
         """
