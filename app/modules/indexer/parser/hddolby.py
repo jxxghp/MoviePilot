@@ -82,7 +82,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         detail = json.loads(html_text)
         if not detail or detail.get("status") != 0:
             return
-        user_info = detail.get("data", {})
+        user_infos = detail.get("data")
         """
         {
             "id": "1",
@@ -96,6 +96,9 @@ class HDDolbySiteUserInfo(SiteParserBase):
             "unread_messages": "0",
         }
         """
+        if not user_infos:
+            return
+        user_info = user_infos[0]
         self.userid = user_info.get("id")
         self.username = user_info.get("username")
         self.user_level = self.HDDolby_sysRoleList.get(user_info.get("class") or "1")
@@ -127,13 +130,14 @@ class HDDolbySiteUserInfo(SiteParserBase):
         seeding_info = json.loads(html_text)
         if not seeding_info or seeding_info.get("status") != 0:
             return None
-        torrents = seeding_info.get("data", {})
+        torrents = seeding_info.get("data", [])
         page_seeding_size = 0
         page_seeding_info = []
         for info in torrents:
             size = info.get("size")
+            seeder = info.get("seeder") or 1
             page_seeding_size += size
-            page_seeding_info.append([0, size])
+            page_seeding_info.append([seeder, size])
         self.seeding += len(torrents)
         self.seeding_size += page_seeding_size
         self.seeding_info.extend(page_seeding_info)
