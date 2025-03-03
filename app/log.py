@@ -246,12 +246,12 @@ class LoggerManager:
         else:
             # 使用默认日志文件
             logfile = self._default_log_file
-
-        # 获取调用者的模块的logger
-        _logger = self._loggers.get(logfile)
-        if not _logger:
-            _logger = self.__setup_logger(log_file=logfile)
-            self._loggers[logfile] = _logger
+        with LoggerManager._lock:  # 添加锁
+            # 获取调用者的模块的logger
+            _logger = self._loggers.get(logfile)
+            if not _logger:
+                _logger = self.__setup_logger(log_file=logfile)
+                self._loggers[logfile] = _logger
         # 调用logger的方法打印日志
         if hasattr(_logger, method):
             log_method = getattr(_logger, method)
