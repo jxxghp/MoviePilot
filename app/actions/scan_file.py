@@ -30,6 +30,8 @@ class ScanFileAction(BaseAction):
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self.storagechain = StorageChain()
+        self._fileitems = []
+        self._has_error = False
 
     @classmethod
     @property

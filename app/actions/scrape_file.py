@@ -28,6 +28,8 @@ class ScrapeFileAction(BaseAction):
         super().__init__(action_id)
         self.storagechain = StorageChain()
         self.mediachain = MediaChain()
+        self._scraped_files = []
+        self._has_error = False
 
     @classmethod
     @property

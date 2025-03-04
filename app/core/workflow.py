@@ -63,6 +63,8 @@ class WorkFlowManager(metaclass=Singleton):
         if not context:
             context = ActionContext()
         if action.type in self._actions:
+            # 实例化之前，清理掉类对象的数据
+
             # 实例化
             action_obj = self._actions[action.type](action.id)
             # 执行
