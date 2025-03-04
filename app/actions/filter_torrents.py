@@ -33,6 +33,7 @@ class FilterTorrentsAction(BaseAction):
         super().__init__(action_id)
         self.torrenthelper = TorrentHelper()
         self.chain = ActionChain()
+        self._torrents = []
 
     @classmethod
     @property

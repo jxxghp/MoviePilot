@@ -34,6 +34,8 @@ class TransferFileAction(BaseAction):
         self.transferchain = TransferChain()
         self.storagechain = StorageChain()
         self.transferhis = TransferHistoryOper()
+        self._fileitems = []
+        self._has_error = False
 
     @classmethod
     @property

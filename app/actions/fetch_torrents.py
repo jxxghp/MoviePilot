@@ -34,6 +34,7 @@ class FetchTorrentsAction(BaseAction):
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self.searchchain = SearchChain()
+        self._torrents = []
 
     @classmethod
     @property

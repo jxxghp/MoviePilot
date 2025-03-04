@@ -26,6 +26,8 @@ class AddSubscribeAction(BaseAction):
         super().__init__(action_id)
         self.subscribechain = SubscribeChain()
         self.subscribeoper = SubscribeOper()
+        self._added_subscribes = []
+        self._has_error = False
 
     @classmethod
     @property

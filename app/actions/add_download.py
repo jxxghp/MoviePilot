@@ -34,6 +34,8 @@ class AddDownloadAction(BaseAction):
         super().__init__(action_id)
         self.downloadchain = DownloadChain()
         self.mediachain = MediaChain()
+        self._added_downloads = []
+        self._has_error = False
 
     @classmethod
     @property
