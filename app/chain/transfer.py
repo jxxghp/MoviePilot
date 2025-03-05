@@ -671,9 +671,17 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             # 获取集数据
             if task.mediainfo.type == MediaType.TV and not task.episodes_info:
+                # 判断注意season为0的情况
+                season_num = task.mediainfo.season
+                if season_num is None and task.meta.season_seq:
+                    if task.meta.season_seq.isdigit():
+                        season_num = int(task.meta.season_seq)
+                # 默认值1
+                if season_num is None:
+                    season_num = 1
                 task.episodes_info = self.tmdbchain.tmdb_episodes(
                     tmdbid=task.mediainfo.tmdb_id,
-                    season=task.mediainfo.season or task.meta.begin_season or 1
+                    season=season_num
                 )
 
             # 查询整理目标目录
