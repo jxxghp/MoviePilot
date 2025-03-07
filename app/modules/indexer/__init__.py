@@ -122,6 +122,12 @@ class IndexerModule(_ModuleBase):
                 logger.warn(f"{site.get('name')} 不支持中文搜索")
                 continue
 
+            # 站点流控
+            state, msg = SitesHelper().check(StringUtils.get_url_domain(site.get("domain")))
+            if state:
+                logger.warn(msg)
+                continue
+
             # 去除搜索关键字中的特殊字符
             if search_word:
                 search_word = StringUtils.clear(search_word, replace_word=" ", allow_space=True)
