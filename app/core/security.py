@@ -4,7 +4,8 @@ import hmac
 import json
 import os
 import traceback
-from datetime import datetime, timedelta
+import datetime
+from datetime import timedelta
 from typing import Any, Union, Annotated, Optional
 
 import jwt
@@ -69,13 +70,13 @@ def create_access_token(
     if expires_delta is not None:
         if expires_delta.total_seconds() <= 0:
             raise ValueError("过期时间必须为正数")
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.datetime.now(datetime.UTC) + expires_delta
     else:
-        expire = datetime.utcnow() + default_expire
+        expire = datetime.datetime.now(datetime.UTC) + default_expire
 
     to_encode = {
         "exp": expire,
-        "iat": datetime.utcnow(),
+        "iat": datetime.datetime.now(datetime.UTC),
         "sub": str(userid),
         "username": username,
         "super_user": super_user,
@@ -102,7 +103,7 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
             decoded_token = jwt.decode(resource_token, settings.RESOURCE_SECRET_KEY, algorithms=[ALGORITHM])
             exp = decoded_token.get("exp")
             if exp:
-                remaining_time = datetime.utcfromtimestamp(exp) - datetime.utcnow()
+                remaining_time = datetime.datetime.fromtimestamp(exp) - datetime.datetime.now(datetime.UTC)
                 # 根据剩余时长提前刷新令牌
                 if remaining_time < timedelta(seconds=(settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS / 3)):
                     raise jwt.ExpiredSignatureError

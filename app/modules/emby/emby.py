@@ -3,7 +3,7 @@ import re
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Generator, Tuple
+from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 
 from requests import Response
 
@@ -13,6 +13,7 @@ from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
+from schemas import MediaServerItem
 
 
 class Emby:
@@ -545,7 +546,7 @@ class Emby:
             return False
         return False
 
-    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> bool:
+    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> Optional[bool]:
         """
         按类型、名称、年份来刷新媒体库
         :param items: 已识别的需要刷新媒体库的媒体信息列表
@@ -668,8 +669,8 @@ class Emby:
             logger.error(f"连接/Users/{self.user}/Items/{itemid}出错：" + str(e))
         return None
 
-    def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
-            -> Optional[Generator]:
+    def get_items(self, parent: Union[str, int], start_index: int = 0,
+                  limit: Optional[int] = -1) -> Generator[MediaServerItem | None | Any, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
 

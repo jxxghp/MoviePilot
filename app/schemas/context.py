@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List, Union, Any
 
 from pydantic import BaseModel, Field
 
@@ -235,9 +235,9 @@ class Context(BaseModel):
     上下文
     """
     # 元数据
-    meta_info: Optional[MetaInfo] = None
+    meta_info: Optional[Union[MetaInfo, Any]] = None
     # 媒体信息
-    media_info: Optional[MediaInfo] = None
+    media_info: Optional[Union[MediaInfo, Any]] = None
     # 种子信息
     torrent_info: Optional[TorrentInfo] = None
 

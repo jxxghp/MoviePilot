@@ -14,6 +14,7 @@ from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
+from schemas import MediaServerItem
 
 
 class Plex:
@@ -367,7 +368,7 @@ class Plex:
             return False
         return self._plex.library.update()
 
-    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> bool:
+    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> Optional[bool]:
         """
         按路径刷新媒体库 item: target_path
         """
@@ -512,7 +513,7 @@ class Plex:
         )
 
     def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
-            -> Optional[Generator]:
+            -> Generator[MediaServerItem | None, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
 
@@ -855,7 +856,7 @@ class Plex:
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         """
         if not self._session:
-            return
+            return None
         try:
             url = UrlUtils.adapt_request_url(host=self._host, endpoint=endpoint)
             kwargs.setdefault("headers", self.__get_request_headers())

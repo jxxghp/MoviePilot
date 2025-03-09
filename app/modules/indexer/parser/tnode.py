@@ -65,7 +65,7 @@ class TNodeSiteUserInfo(SiteParserBase):
         """
         seeding_info = json.loads(html_text)
         if seeding_info.get("status") != 200:
-            return
+            return None
 
         torrents = seeding_info.get("data", {}).get("torrents", [])
 

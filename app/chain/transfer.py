@@ -606,7 +606,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 logger.error(f"整理队列处理出现错误：{e} - {traceback.format_exc()}")
 
     def __handle_transfer(self, task: TransferTask,
-                          callback: Optional[Callable] = None) -> Tuple[bool, str]:
+                          callback: Optional[Callable] = None) -> Optional[Tuple[bool, str]]:
         """
         处理整理任务
         """

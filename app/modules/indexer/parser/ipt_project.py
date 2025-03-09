@@ -54,7 +54,7 @@ class IptSiteUserInfo(SiteParserBase):
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
         html = etree.HTML(html_text)
         if not StringUtils.is_valid_html_element(html):
-            return
+            return None
         # seeding start
         seeding_end_pos = 3
         if html.xpath('//tr/td[text() = "Leechers"]'):

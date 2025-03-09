@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import List, Union, Optional, Dict, Generator, Tuple
+from typing import List, Union, Optional, Dict, Generator, Tuple, Any
 
 from requests import Response
 
@@ -10,6 +10,7 @@ from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
+from schemas import MediaServerItem
 
 
 class Jellyfin:
@@ -548,7 +549,7 @@ class Jellyfin:
             logger.error(f"连接Items/Id/Ancestors出错：" + str(e))
             return None
 
-    def refresh_root_library(self) -> bool:
+    def refresh_root_library(self) -> Optional[bool]:
         """
         通知Jellyfin刷新整个媒体库
         """
@@ -762,7 +763,7 @@ class Jellyfin:
         return None
 
     def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
-            -> Optional[Generator]:
+            -> Generator[MediaServerItem | None | Any, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
 

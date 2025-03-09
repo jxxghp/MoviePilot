@@ -259,7 +259,7 @@ class FilterModule(_ModuleBase):
 
         return None if not matched else torrent
 
-    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str]) -> bool:
+    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str]) -> Optional[bool]:
         """
         判断种子是否匹配规则组
         """
