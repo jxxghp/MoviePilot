@@ -449,58 +449,6 @@ class PluginHelper(metaclass=Singleton):
             shutil.rmtree(plugin_dir, ignore_errors=True)
 
     @staticmethod
-    def __pip_uninstall_and_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
-        """
-        先卸载 requirements.txt 中的依赖，再按照自动降级策略重新安装，不使用 PIP 缓存
-
-        :param requirements_file: 依赖的 requirements.txt 文件路径
-        :return: (是否成功, 错误信息)
-        """
-        # 读取 requirements.txt 文件中的依赖列表
-        try:
-            with open(requirements_file, "r", encoding="utf-8") as f:
-                dependencies = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-        except Exception as e:
-            return False, f"无法读取 requirements.txt 文件：{str(e)}"
-
-        # 1. 先卸载所有依赖包
-        for dep in dependencies:
-            pip_uninstall_command = ["pip", "uninstall", "-y", dep]
-            logger.debug(f"尝试卸载依赖：{dep}，命令：{' '.join(pip_uninstall_command)}")
-            success, message = SystemUtils.execute_with_subprocess(pip_uninstall_command)
-            if success:
-                logger.debug(f"依赖 {dep} 卸载成功，输出：{message}")
-            else:
-                error_message = f"卸载依赖 {dep} 失败，错误信息：{message}"
-                logger.error(error_message)
-
-        # 2. 重新安装所有依赖，使用自动降级策略
-        strategies = []
-
-        # 添加策略到列表中
-        if settings.PIP_PROXY:
-            strategies.append(("镜像站",
-                               ["pip", "install", "-r", str(requirements_file),
-                                "-i", settings.PIP_PROXY, "--no-cache-dir"]))
-        if settings.PROXY_HOST:
-            strategies.append(("代理",
-                               ["pip", "install", "-r", str(requirements_file),
-                                "--proxy", settings.PROXY_HOST, "--no-cache-dir"]))
-        strategies.append(("直连", ["pip", "install", "-r", str(requirements_file), "--no-cache-dir"]))
-
-        # 遍历策略进行安装
-        for strategy_name, pip_command in strategies:
-            logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
-            success, message = SystemUtils.execute_with_subprocess(pip_command)
-            if success:
-                logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
-                return True, message
-            else:
-                logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
-
-        return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接或 PIP 配置"
-
-    @staticmethod
     def __pip_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
         """
         使用自动降级策略，PIP 安装依赖，优先级依次为镜像站、代理、直连
