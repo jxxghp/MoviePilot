@@ -52,7 +52,7 @@ class FilterModule(_ModuleBase):
         },
         # 官种
         "GZ": {
-            "include": [r'官方', r'官种'],
+            "include": [r'官方', r'官种', r'官组'],
             "match": ["labels"]
         },
         # 特效字幕
