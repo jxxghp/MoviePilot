@@ -147,6 +147,8 @@ class SystemConfigKey(Enum):
     UserSiteAuthParams = "UserSiteAuthParams"
     # Follow订阅分享者
     FollowSubscribers = "FollowSubscribers"
+    # 通知发送时间
+    NotificationSendTime = "NotificationSendTime"
 
 
 # 处理进度Key字典
