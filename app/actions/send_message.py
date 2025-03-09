@@ -4,6 +4,7 @@ from pydantic import Field
 
 from app.actions import BaseAction, ActionChain
 from app.schemas import ActionParams, ActionContext, Notification
+from core.config import settings
 
 
 class SendMessageParams(ActionParams):
@@ -65,7 +66,7 @@ class SendMessageAction(BaseAction):
                         userid=params.userid,
                         title="【工作流执行结果】",
                         text=msg_text,
-                        link="#/workflow"
+                        link=settings.MP_DOMAIN("#/workflow")
                     )
                 )
 
