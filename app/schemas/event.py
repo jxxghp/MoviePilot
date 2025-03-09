@@ -11,7 +11,7 @@ class Event(BaseModel):
     事件模型
     """
     event_type: str = Field(..., description="事件类型")
-    event_data: Optional[dict] = Field({}, description="事件数据")
+    event_data: Optional[dict] = Field(default={}, description="事件数据")
     priority: Optional[int] = Field(0, description="事件优先级")
 
 

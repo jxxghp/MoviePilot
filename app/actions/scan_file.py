@@ -15,8 +15,8 @@ class ScanFileParams(ActionParams):
     整理文件参数
     """
     # 存储
-    storage: Optional[str] = Field("local", description="存储")
-    directory: Optional[str] = Field(None, description="目录")
+    storage: Optional[str] = Field(default="local", description="存储")
+    directory: Optional[str] = Field(default=None, description="目录")
 
 
 class ScanFileAction(BaseAction):

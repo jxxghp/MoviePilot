@@ -13,18 +13,18 @@ class Workflow(BaseModel):
     """
     工作流信息
     """
-    id: Optional[int] = Field(None, description="工作流ID")
-    name: Optional[str] = Field(None, description="工作流名称")
-    description: Optional[str] = Field(None, description="工作流描述")
-    timer: Optional[str] = Field(None, description="定时器")
-    state: Optional[str] = Field(None, description="状态")
-    current_action: Optional[str] = Field(None, description="已执行动作")
-    result: Optional[str] = Field(None, description="任务执行结果")
-    run_count: Optional[int] = Field(0, description="已执行次数")
-    actions: Optional[list] = Field([], description="任务列表")
-    flows: Optional[list] = Field([], description="任务流")
-    add_time: Optional[str] = Field(None, description="创建时间")
-    last_time: Optional[str] = Field(None, description="最后执行时间")
+    id: Optional[int] = Field(default=None, description="工作流ID")
+    name: Optional[str] = Field(default=None, description="工作流名称")
+    description: Optional[str] = Field(default=None, description="工作流描述")
+    timer: Optional[str] = Field(default=None, description="定时器")
+    state: Optional[str] = Field(default=None, description="状态")
+    current_action: Optional[str] = Field(default=None, description="已执行动作")
+    result: Optional[str] = Field(default=None, description="任务执行结果")
+    run_count: Optional[int] = Field(default=0, description="已执行次数")
+    actions: Optional[list] = Field(default=[], description="任务列表")
+    flows: Optional[list] = Field(default=[], description="任务流")
+    add_time: Optional[str] = Field(default=None, description="创建时间")
+    last_time: Optional[str] = Field(default=None, description="最后执行时间")
 
     class Config:
         orm_mode = True
@@ -34,8 +34,8 @@ class ActionParams(BaseModel):
     """
     动作基础参数
     """
-    loop: Optional[bool] = Field(False, description="是否需要循环")
-    loop_interval: Optional[int] = Field(0, description="循环间隔 (秒)")
+    loop: Optional[bool] = Field(default=False, description="是否需要循环")
+    loop_interval: Optional[int] = Field(default=0, description="循环间隔 (秒)")
 
 
 class Action(BaseModel):

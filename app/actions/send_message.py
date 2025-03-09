@@ -10,8 +10,8 @@ class SendMessageParams(ActionParams):
     """
     发送消息参数
     """
-    client: Optional[List[str]] = Field([], description="消息渠道")
-    userid: Optional[Union[str, int]] = Field(None, description="用户ID")
+    client: Optional[List[str]] = Field(default=[], description="消息渠道")
+    userid: Optional[Union[str, int]] = Field(default=None, description="用户ID")
 
 
 class SendMessageAction(BaseAction):
@@ -57,7 +57,7 @@ class SendMessageAction(BaseAction):
                 index += 1
             # 发送消息
             if not params.client:
-                params.client = [None]
+                params.client = [""]
             for client in params.client:
                 self.chain.post_message(
                     Notification(

@@ -15,13 +15,13 @@ class FetchRssParams(ActionParams):
     """
     获取RSS资源列表参数
     """
-    url: str = Field(None, description="RSS地址")
-    proxy: Optional[bool] = Field(False, description="是否使用代理")
-    timeout: Optional[int] = Field(15, description="超时时间")
-    content_type: Optional[str] = Field(None, description="Content-Type")
-    referer: Optional[str] = Field(None, description="Referer")
-    ua: Optional[str] = Field(None, description="User-Agent")
-    match_media: Optional[str] = Field(None, description="匹配媒体信息")
+    url: str = Field(default=None, description="RSS地址")
+    proxy: Optional[bool] = Field(default=False, description="是否使用代理")
+    timeout: Optional[int] = Field(default=15, description="超时时间")
+    content_type: Optional[str] = Field(default=None, description="Content-Type")
+    referer: Optional[str] = Field(default=None, description="Referer")
+    ua: Optional[str] = Field(default=None, description="User-Agent")
+    match_media: Optional[str] = Field(default=None, description="匹配媒体信息")
 
 
 class FetchRssAction(BaseAction):

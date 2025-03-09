@@ -18,7 +18,7 @@ class TransferFileParams(ActionParams):
     整理文件参数
     """
     # 来源
-    source: Optional[str] = Field("downloads", description="来源")
+    source: Optional[str] = Field(default="downloads", description="来源")
 
 
 class TransferFileAction(BaseAction):

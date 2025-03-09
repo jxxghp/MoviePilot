@@ -17,9 +17,9 @@ class FetchMediasParams(ActionParams):
     """
     获取媒体数据参数
     """
-    source_type: Optional[str] = Field("ranking", description="来源")
-    sources: Optional[List[str]] = Field([], description="榜单")
-    api_path: Optional[str] = Field(None, description="API路径")
+    source_type: Optional[str] = Field(default="ranking", description="来源")
+    sources: Optional[List[str]] = Field(default=[], description="榜单")
+    api_path: Optional[str] = Field(default=None, description="API路径")
 
 
 class FetchMediasAction(BaseAction):

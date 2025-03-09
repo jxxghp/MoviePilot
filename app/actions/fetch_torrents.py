@@ -15,13 +15,13 @@ class FetchTorrentsParams(ActionParams):
     """
     获取站点资源参数
     """
-    search_type: Optional[str] = Field("keyword", description="搜索类型")
-    name: Optional[str] = Field(None, description="资源名称")
-    year: Optional[str] = Field(None, description="年份")
-    type: Optional[str] = Field(None, description="资源类型 (电影/电视剧)")
-    season: Optional[int] = Field(None, description="季度")
-    sites: Optional[List[int]] = Field([], description="站点列表")
-    match_media: Optional[bool] = Field(False, description="匹配媒体信息")
+    search_type: Optional[str] = Field(default="keyword", description="搜索类型")
+    name: Optional[str] = Field(default=None, description="资源名称")
+    year: Optional[str] = Field(default=None, description="年份")
+    type: Optional[str] = Field(default=None, description="资源类型 (电影/电视剧)")
+    season: Optional[int] = Field(default=None, description="季度")
+    sites: Optional[List[int]] = Field(default=[], description="站点列表")
+    match_media: Optional[bool] = Field(default=False, description="匹配媒体信息")
 
 
 class FetchTorrentsAction(BaseAction):

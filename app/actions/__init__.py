@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Any, Union
+from typing import Union
 
 from app.chain import ChainBase
 from app.db.systemconfig_oper import SystemConfigOper

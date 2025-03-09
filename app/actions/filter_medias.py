@@ -12,9 +12,9 @@ class FilterMediasParams(ActionParams):
     """
     过滤媒体数据参数
     """
-    type: Optional[str] = Field(None, description="媒体类型 (电影/电视剧)")
-    vote: Optional[int] = Field(0, description="评分")
-    year: Optional[str] = Field(None, description="年份")
+    type: Optional[str] = Field(default=None, description="媒体类型 (电影/电视剧)")
+    vote: Optional[int] = Field(default=0, description="评分")
+    year: Optional[str] = Field(default=None, description="年份")
 
 
 class FilterMediasAction(BaseAction):
