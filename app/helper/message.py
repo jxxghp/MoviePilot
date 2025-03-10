@@ -42,14 +42,18 @@ class MessageQueueManager(metaclass=Singleton):
         self.thread.start()
 
     @staticmethod
-    def _parse_schedule(periods: List[Dict[str, str]]) -> List[tuple[int, int, int, int]]:
+    def _parse_schedule(periods: Union[list, dict]) -> List[tuple[int, int, int, int]]:
         """
         将字符串时间格式转换为分钟数元组
         """
         parsed = []
         if not periods:
             return parsed
+        if not isinstance(periods, list):
+            periods = [periods]
         for period in periods:
+            if not period:
+                continue
             start_h, start_m = map(int, period['start'].split(':'))
             end_h, end_m = map(int, period['end'].split(':'))
             parsed.append((start_h, start_m, end_h, end_m))
@@ -107,7 +111,9 @@ class MessageQueueManager(metaclass=Singleton):
                 logger.error(str(e))
 
     def _monitor_loop(self) -> None:
-        """后台线程循环检查时间并处理队列"""
+        """
+        后台线程循环检查时间并处理队列
+        """
         while self._running:
             current_time = datetime.now()
             if self._is_in_scheduled_time(current_time):
@@ -125,7 +131,9 @@ class MessageQueueManager(metaclass=Singleton):
             time.sleep(self.check_interval)
 
     def stop(self) -> None:
-        """停止队列管理器"""
+        """
+        停止队列管理器
+        """
         self._running = False
         self.thread.join()
 
