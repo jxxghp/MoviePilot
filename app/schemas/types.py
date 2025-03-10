@@ -87,6 +87,8 @@ class ChainEventType(Enum):
     MediaRecognizeConvert = "media.recognize.convert"
     # 推荐数据源
     RecommendSource = "recommend.source"
+    # 工作流执行
+    WorkflowExecution = "workflow.execution"
 
 
 # 系统配置Key字典
@@ -145,6 +147,8 @@ class SystemConfigKey(Enum):
     UserSiteAuthParams = "UserSiteAuthParams"
     # Follow订阅分享者
     FollowSubscribers = "FollowSubscribers"
+    # 通知发送时间
+    NotificationSendTime = "NotificationSendTime"
 
 
 # 处理进度Key字典

@@ -1262,7 +1262,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         订阅相关的下载和文件信息
         """
         if not subscribe:
-            return
+            return None
 
         # 返回订阅数据
         subscribe_info = schemas.SubscrbieInfo()

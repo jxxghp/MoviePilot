@@ -52,7 +52,7 @@ class FilterModule(_ModuleBase):
         },
         # 官种
         "GZ": {
-            "include": [r'官方', r'官种'],
+            "include": [r'官方', r'官种', r'官组'],
             "match": ["labels"]
         },
         # 特效字幕
@@ -259,7 +259,7 @@ class FilterModule(_ModuleBase):
 
         return None if not matched else torrent
 
-    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str]) -> bool:
+    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str]) -> Optional[bool]:
         """
         判断种子是否匹配规则组
         """

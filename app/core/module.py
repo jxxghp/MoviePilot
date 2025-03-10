@@ -121,7 +121,7 @@ class ModuleManager(metaclass=Singleton):
         获取实现了同一方法的模块列表
         """
         if not self._running_modules:
-            return []
+            return
         for _, module in self._running_modules.items():
             if hasattr(module, method) \
                     and ObjectUtils.check_method(getattr(module, method)):
@@ -132,7 +132,7 @@ class ModuleManager(metaclass=Singleton):
         获取指定类型的模块列表
         """
         if not self._running_modules:
-            return []
+            return
         for _, module in self._running_modules.items():
             if hasattr(module, 'get_type') \
                     and module.get_type() == module_type:
@@ -143,7 +143,7 @@ class ModuleManager(metaclass=Singleton):
         获取指定子类型的模块
         """
         if not self._running_modules:
-            return []
+            return
         for _, module in self._running_modules.items():
             if hasattr(module, 'get_subtype') \
                     and module.get_subtype() == module_subtype:

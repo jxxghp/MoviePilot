@@ -55,22 +55,25 @@ class WorkFlowManager(metaclass=Singleton):
         """
         pass
 
-    def excute(self, workflow_id: int, action: Action, context: ActionContext = None) -> Tuple[bool, ActionContext]:
+    def excute(self, workflow_id: int, action: Action,
+               context: ActionContext = None) -> Tuple[bool, str, ActionContext]:
         """
         执行工作流动作
         """
         if not context:
             context = ActionContext()
         if action.type in self._actions:
+            # 实例化之前，清理掉类对象的数据
+
             # 实例化
-            action_obj = self._actions[action.type]()
+            action_obj = self._actions[action.type](action.id)
             # 执行
             logger.info(f"执行动作: {action.id} - {action.name}")
             try:
                 result_context = action_obj.execute(workflow_id, action.data, context)
             except Exception as err:
                 logger.error(f"{action.name} 执行失败: {err}")
-                return False, context
+                return False, f"{err}", context
             loop = action.data.get("loop")
             loop_interval = action.data.get("loop_interval")
             if loop and loop_interval:
@@ -87,10 +90,10 @@ class WorkFlowManager(metaclass=Singleton):
                 logger.info(f"{action.name} 执行成功")
             else:
                 logger.error(f"{action.name} 执行失败！")
-            return action_obj.success, result_context
+            return action_obj.success, action_obj.message, result_context
         else:
             logger.error(f"未找到动作: {action.type} - {action.name}")
-            return False, context
+            return False, " ", context
 
     def list_actions(self) -> List[dict]:
         """

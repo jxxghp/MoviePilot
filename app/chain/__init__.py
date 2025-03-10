@@ -16,7 +16,7 @@ from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.db.message_oper import MessageOper
 from app.db.user_oper import UserOper
-from app.helper.message import MessageHelper
+from app.helper.message import MessageHelper, MessageQueueManager
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
@@ -38,6 +38,9 @@ class ChainBase(metaclass=ABCMeta):
         self.eventmanager = EventManager()
         self.messageoper = MessageOper()
         self.messagehelper = MessageHelper()
+        self.messagequeue = MessageQueueManager(
+            send_callback=self.run_module
+        )
         self.useroper = UserOper()
 
     @staticmethod
@@ -347,7 +350,7 @@ class ChainBase(metaclass=ABCMeta):
                                torrent_list=torrent_list, mediainfo=mediainfo)
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
+                 episodes: Set[int] = None, category: str = None, label: str = None,
                  downloader: str = None
                  ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
@@ -357,11 +360,12 @@ class ChainBase(metaclass=ABCMeta):
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  种子分类
+        :param label:  标签
         :param downloader:  下载器
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return self.run_module("download", content=content, download_dir=download_dir,
-                               cookie=cookie, episodes=episodes, category=category,
+                               cookie=cookie, episodes=episodes, category=category, label=label,
                                downloader=downloader)
 
     def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:
@@ -544,13 +548,13 @@ class ChainBase(metaclass=ABCMeta):
                     # 按设定发送
                     self.eventmanager.send_event(etype=EventType.NoticeMessage,
                                                  data={**send_message.dict(), "type": send_message.mtype})
-                    self.run_module("post_message", message=send_message)
+                    self.messagequeue.send_message("post_message", message=send_message)
                 if not send_orignal:
                     return
         # 发送消息事件
         self.eventmanager.send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
         # 按原消息发送
-        self.run_module("post_message", message=message)
+        self.messagequeue.send_message("post_message", message=message)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -562,7 +566,7 @@ class ChainBase(metaclass=ABCMeta):
         note_list = [media.to_dict() for media in medias]
         self.messagehelper.put(message, role="user", note=note_list, title=message.title)
         self.messageoper.add(**message.dict(), note=note_list)
-        return self.run_module("post_medias_message", message=message, medias=medias)
+        return self.messagequeue.send_message("post_medias_message", message=message, medias=medias)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
@@ -574,7 +578,7 @@ class ChainBase(metaclass=ABCMeta):
         note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
         self.messagehelper.put(message, role="user", note=note_list, title=message.title)
         self.messageoper.add(**message.dict(), note=note_list)
-        return self.run_module("post_torrents_message", message=message, torrents=torrents)
+        return self.messagequeue.send_message("post_torrents_message", message=message, torrents=torrents)
 
     def metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
         """

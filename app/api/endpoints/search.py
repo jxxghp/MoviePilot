@@ -29,7 +29,7 @@ def search_by_id(mediaid: str,
                  mtype: str = None,
                  area: str = "title",
                  title: str = None,
-                 year: int = None,
+                 year: str = None,
                  season: str = None,
                  sites: str = None,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:

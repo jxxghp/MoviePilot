@@ -201,12 +201,12 @@ class Alist(StorageBase, metaclass=Singleton):
 
         if resp is None:
             logging.warning(f"请求获取目录 {fileitem.path} 的文件列表失败，无法连接alist服务")
-            return
+            return None
         if resp.status_code != 200:
             logging.warning(
                 f"请求获取目录 {fileitem.path} 的文件列表失败，状态码：{resp.status_code}"
             )
-            return
+            return None
 
         result = resp.json()
 
@@ -214,7 +214,7 @@ class Alist(StorageBase, metaclass=Singleton):
             logging.warning(
                 f'获取目录 {fileitem.path} 的文件列表失败，错误信息：{result["message"]}'
             )
-            return
+            return None
 
         return [
             schemas.FileItem(
@@ -259,15 +259,15 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         if resp is None:
             logging.warning(f"请求创建目录 {path} 失败，无法连接alist服务")
-            return
+            return None
         if resp.status_code != 200:
             logging.warning(f"请求创建目录 {path} 失败，状态码：{resp.status_code}")
-            return
+            return None
 
         result = resp.json()
         if result["code"] != 200:
             logging.warning(f'创建目录 {path} 失败，错误信息：{result["message"]}')
-            return
+            return None
 
         return self.get_item(path)
 
@@ -349,15 +349,15 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         if resp is None:
             logging.warning(f"请求获取文件 {path} 失败，无法连接alist服务")
-            return
+            return None
         if resp.status_code != 200:
             logging.warning(f"请求获取文件 {path} 失败，状态码：{resp.status_code}")
-            return
+            return None
 
         result = resp.json()
         if result["code"] != 200:
             logging.debug(f'获取文件 {path} 失败，错误信息：{result["message"]}')
-            return
+            return None
 
         return schemas.FileItem(
             storage=self.schema.value,
@@ -513,15 +513,15 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         if not resp:
             logging.warning(f"请求获取文件 {path} 失败，无法连接alist服务")
-            return
+            return None
         if resp.status_code != 200:
             logging.warning(f"请求获取文件 {path} 失败，状态码：{resp.status_code}")
-            return
+            return None
 
         result = resp.json()
         if result["code"] != 200:
             logging.warning(f'获取文件 {path} 失败，错误信息：{result["message"]}')
-            return
+            return None
 
         if result["data"]["raw_url"]:
             download_url = result["data"]["raw_url"]
@@ -569,7 +569,7 @@ class Alist(StorageBase, metaclass=Singleton):
 
         if resp.status_code != 200:
             logging.warning(f"请求上传文件 {path} 失败，状态码：{resp.status_code}")
-            return
+            return None
 
         new_item = self.get_item(Path(fileitem.path) / path.name)
         if new_item and new_name and new_name != path.name:

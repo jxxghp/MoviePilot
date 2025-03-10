@@ -5,6 +5,7 @@ from pydantic import Field
 from app.actions import BaseAction, ActionChain
 from app.core.config import global_vars
 from app.helper.torrent import TorrentHelper
+from app.log import logger
 from app.schemas import ActionParams, ActionContext
 
 
@@ -12,13 +13,13 @@ class FilterTorrentsParams(ActionParams):
     """
     过滤资源数据参数
     """
-    rule_groups: Optional[List[str]] = Field([], description="规则组")
-    quality: Optional[str] = Field(None, description="资源质量")
-    resolution: Optional[str] = Field(None, description="资源分辨率")
-    effect: Optional[str] = Field(None, description="特效")
-    include: Optional[str] = Field(None, description="包含规则")
-    exclude: Optional[str] = Field(None, description="排除规则")
-    size: Optional[str] = Field(None, description="资源大小范围（MB）")
+    rule_groups: Optional[List[str]] = Field(default=[], description="规则组")
+    quality: Optional[str] = Field(default=None, description="资源质量")
+    resolution: Optional[str] = Field(default=None, description="资源分辨率")
+    effect: Optional[str] = Field(default=None, description="特效")
+    include: Optional[str] = Field(default=None, description="包含规则")
+    exclude: Optional[str] = Field(default=None, description="排除规则")
+    size: Optional[str] = Field(default=None, description="资源大小范围（MB）")
 
 
 class FilterTorrentsAction(BaseAction):
@@ -28,24 +29,25 @@ class FilterTorrentsAction(BaseAction):
 
     _torrents = []
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.torrenthelper = TorrentHelper()
         self.chain = ActionChain()
+        self._torrents = []
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "过滤资源"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "对资源列表数据进行过滤"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FilterTorrentsParams().dict()
 
     @property
@@ -78,7 +80,9 @@ class FilterTorrentsAction(BaseAction):
                 ):
                     self._torrents.append(torrent)
 
+        logger.info(f"过滤后剩余 {len(self._torrents)} 个资源")
+
         context.torrents = self._torrents
 
-        self.job_done()
+        self.job_done(f"过滤后剩余 {len(self._torrents)} 个资源")
         return context

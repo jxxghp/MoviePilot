@@ -363,7 +363,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 raise ValueError(f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型") from e
             logger.error(
                 f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型，使用默认值 '{default}'，错误信息: {e}")
-            return default, True
+        return default, True
 
     @validator('*', pre=True, always=True)
     def generic_type_validator(cls, value: Any, field):  # noqa

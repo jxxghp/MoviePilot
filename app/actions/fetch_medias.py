@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import Field
 
@@ -17,7 +17,9 @@ class FetchMediasParams(ActionParams):
     """
     获取媒体数据参数
     """
-    sources: List[str] = Field([], description="媒体数据来源")
+    source_type: Optional[str] = Field(default="ranking", description="来源")
+    sources: Optional[List[str]] = Field(default=[], description="榜单")
+    api_path: Optional[str] = Field(default=None, description="API路径")
 
 
 class FetchMediasAction(BaseAction):
@@ -26,12 +28,14 @@ class FetchMediasAction(BaseAction):
     """
 
     _inner_sources = []
-
     _medias = []
+    _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
 
+        self._medias = []
+        self._has_error = False
         self.__inner_sources = [
             {
                 "func": RecommendChain().tmdb_trending,
@@ -98,22 +102,22 @@ class FetchMediasAction(BaseAction):
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "获取媒体数据"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "获取榜单等媒体数据列表"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return FetchMediasParams().dict()
 
     @property
     def success(self) -> bool:
-        return True if self._medias else False
+        return not self._has_error
 
     def __get_source(self, source: str):
         """
@@ -129,30 +133,44 @@ class FetchMediasAction(BaseAction):
         获取媒体数据，填充到medias
         """
         params = FetchMediasParams(**params)
-        for name in params.sources:
-            if global_vars.is_workflow_stopped(workflow_id):
-                break
-            source = self.__get_source(name)
-            if not source:
-                continue
-            logger.info(f"获取媒体数据 {source} ...")
-            results = []
-            if source.get("func"):
-                results = source['func']()
+        try:
+            if params.source_type == "ranking":
+                for name in params.sources:
+                    if global_vars.is_workflow_stopped(workflow_id):
+                        break
+                    source = self.__get_source(name)
+                    if not source:
+                        continue
+                    logger.info(f"获取媒体数据 {source} ...")
+                    results = []
+                    if source.get("func"):
+                        results = source['func']()
+                    else:
+                        # 调用内部API获取数据
+                        api_url = f"http://127.0.0.1:{settings.PORT}/api/v1/{source['api_path']}?token={settings.API_TOKEN}"
+                        res = RequestUtils(timeout=15).post_res(api_url)
+                        if res:
+                            results = res.json()
+                    if results:
+                        logger.info(f"{name} 获取到 {len(results)} 条数据")
+                        self._medias.extend([MediaInfo(**r) for r in results])
+                    else:
+                        logger.error(f"{name} 获取数据失败")
             else:
                 # 调用内部API获取数据
-                api_url = f"http://127.0.0.1:{settings.PORT}/api/v1/{source['api_path']}?token={settings.API_TOKEN}"
+                api_url = f"http://127.0.0.1:{settings.PORT}{params.api_path}?token={settings.API_TOKEN}"
                 res = RequestUtils(timeout=15).post_res(api_url)
                 if res:
                     results = res.json()
-            if results:
-                logger.info(f"{name} 获取到 {len(results)} 条数据")
-                self._medias.extend([MediaInfo(**r) for r in results])
-            else:
-                logger.error(f"{name} 获取数据失败")
+                    if results:
+                        logger.info(f"{params.api_path} 获取到 {len(results)} 条数据")
+                        self._medias.extend([MediaInfo(**r) for r in results])
+        except Exception as e:
+            logger.error(f"获取媒体数据失败: {e}")
+            self._has_error = True
 
         if self._medias:
             context.medias.extend(self._medias)
 
-        self.job_done()
+        self.job_done(f"获取到 {len(self._medias)} 条媒数据")
         return context

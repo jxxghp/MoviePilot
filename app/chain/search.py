@@ -312,11 +312,6 @@ class SearchChain(ChainBase):
         for indexer in self.siteshelper.get_indexers():
             # 检查站点索引开关
             if not sites or indexer.get("id") in sites:
-                # 站点流控
-                state, msg = self.siteshelper.check(indexer.get("domain"))
-                if state:
-                    logger.warn(msg)
-                    continue
                 indexer_sites.append(indexer)
         if not indexer_sites:
             logger.warn('未开启任何有效站点，无法搜索资源')

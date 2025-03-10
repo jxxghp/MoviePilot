@@ -15,9 +15,10 @@ class AddDownloadParams(ActionParams):
     """
     添加下载资源参数
     """
-    downloader: Optional[str] = Field(None, description="下载器")
-    save_path: Optional[str] = Field(None, description="保存路径")
-    only_lack: Optional[bool] = Field(False, description="仅下载缺失的资源")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    save_path: Optional[str] = Field(default=None, description="保存路径")
+    labels: Optional[str] = Field(default=None, description="标签（,分隔）")
+    only_lack: Optional[bool] = Field(default=False, description="仅下载缺失的资源")
 
 
 class AddDownloadAction(BaseAction):
@@ -29,24 +30,26 @@ class AddDownloadAction(BaseAction):
     _added_downloads = []
     _has_error = False
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, action_id: str):
+        super().__init__(action_id)
         self.downloadchain = DownloadChain()
         self.mediachain = MediaChain()
+        self._added_downloads = []
+        self._has_error = False
 
     @classmethod
     @property
-    def name(cls) -> str:
+    def name(cls) -> str: # noqa
         return "添加下载"
 
     @classmethod
     @property
-    def description(cls) -> str:
+    def description(cls) -> str: # noqa
         return "根据资源列表添加下载任务"
 
     @classmethod
     @property
-    def data(cls) -> dict:
+    def data(cls) -> dict: # noqa
         return AddDownloadParams().dict()
 
     @property
@@ -58,23 +61,29 @@ class AddDownloadAction(BaseAction):
         将上下文中的torrents添加到下载任务中
         """
         params = AddDownloadParams(**params)
+        _started = False
         for t in context.torrents:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
+            # 检查缓存
+            cache_key = f"{t.torrent_info.site}-{t.torrent_info.title}"
+            if self.check_cache(workflow_id, cache_key):
+                logger.info(f"{t.torrent_info.title} 已添加过下载，跳过")
+                continue
             if not t.meta_info:
-                t.meta_info = MetaInfo(title=t.title, subtitle=t.description)
+                t.meta_info = MetaInfo(title=t.torrent_info.title, subtitle=t.torrent_info.description)
             if not t.media_info:
                 t.media_info = self.mediachain.recognize_media(meta=t.meta_info)
             if not t.media_info:
                 self._has_error = True
-                logger.warning(f"{t.title} 未识别到媒体信息，无法下载")
+                logger.warning(f"{t.torrent_info.title} 未识别到媒体信息，无法下载")
                 continue
             if params.only_lack:
                 exists_info = self.downloadchain.media_exists(t.media_info)
                 if exists_info:
                     if t.media_info.type == MediaType.MOVIE:
                         # 电影
-                        logger.warning(f"{t.title} 媒体库中已存在，跳过")
+                        logger.warning(f"{t.torrent_info.title} 媒体库中已存在，跳过")
                         continue
                     else:
                         # 电视剧
@@ -90,19 +99,23 @@ class AddDownloadAction(BaseAction):
                                     logger.warning(f"{t.meta_info.title} 第 {t.meta_info.begin_season} 季第 {t.meta_info.episode_list} 集已存在，跳过")
                                     continue
 
+            _started = True
             did = self.downloadchain.download_single(context=t,
                                                      downloader=params.downloader,
-                                                     save_path=params.save_path)
+                                                     save_path=params.save_path,
+                                                     label=params.labels)
             if did:
                 self._added_downloads.append(did)
-            else:
-                self._has_error = True
+                # 保存缓存
+                self.save_cache(workflow_id, cache_key)
 
         if self._added_downloads:
             logger.info(f"已添加 {len(self._added_downloads)} 个下载任务")
             context.downloads.extend(
                 [DownloadTask(download_id=did, downloader=params.downloader) for did in self._added_downloads]
             )
+        elif _started:
+            self._has_error = True
 
-        self.job_done()
+        self.job_done(f"已添加 {len(self._added_downloads)} 个下载任务")
         return context

@@ -1,4 +1,4 @@
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 
 from playwright.sync_api import sync_playwright, Page
 from cf_clearance import sync_cf_retry, sync_stealth
@@ -61,7 +61,7 @@ class PlaywrightHelper:
                         ua: str = None,
                         proxies: dict = None,
                         headless: bool = False,
-                        timeout: int = 20) -> str:
+                        timeout: int = 20) -> Optional[str]:
         """
         获取网页源码
         :param url: 网页地址

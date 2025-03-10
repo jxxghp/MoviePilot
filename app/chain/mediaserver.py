@@ -1,5 +1,5 @@
 import threading
-from typing import List, Union, Optional, Generator
+from typing import List, Union, Optional, Generator, Any
 
 from app.chain import ChainBase
 from app.core.cache import cached
@@ -27,8 +27,8 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_librarys", server=server, username=username, hidden=hidden)
 
-    def items(self, server: str, library_id: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
-            -> Optional[Generator]:
+    def items(self, server: str, library_id: Union[str, int],
+              start_index: int = 0, limit: Optional[int] = -1) -> Generator[Any, None, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
 
