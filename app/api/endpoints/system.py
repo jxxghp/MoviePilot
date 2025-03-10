@@ -24,7 +24,7 @@ from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.mediaserver import MediaServerHelper
-from app.helper.message import MessageHelper
+from app.helper.message import MessageHelper, MessageQueueManager
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
@@ -479,6 +479,7 @@ def reload_module(_: User = Depends(get_current_active_superuser)):
     """
     重新加载模块（仅管理员）
     """
+    MessageQueueManager().init_config()
     ModuleManager().reload()
     Scheduler().init()
     Monitor().init()
