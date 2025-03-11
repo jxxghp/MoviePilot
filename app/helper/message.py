@@ -6,19 +6,22 @@ import threading
 import time
 from datetime import datetime
 from typing import Any, Union
-from typing import List, Dict, Optional, Callable
+from typing import List, Optional, Callable
 
-from app.utils.singleton import Singleton
-from core.config import global_vars
-from db.systemconfig_oper import SystemConfigOper
-from log import logger
-from schemas.types import SystemConfigKey
+from app.core.config import global_vars
+from app.db.systemconfig_oper import SystemConfigOper
+from app.schemas.types import SystemConfigKey
+from app.utils.singleton import Singleton, SingletonClass
+from app.log import logger
 
 
-class MessageQueueManager(metaclass=Singleton):
+class MessageQueueManager(metaclass=SingletonClass):
     """
     消息发送队列管理器
     """
+
+    schedule_periods: List[tuple[int, int, int, int]] = []
+
     def __init__(
             self,
             send_callback: Optional[Callable] = None,
@@ -30,9 +33,8 @@ class MessageQueueManager(metaclass=Singleton):
         :param send_callback: 实际发送消息的回调函数
         :param check_interval: 时间检查间隔（秒）
         """
-        self.schedule_periods = self._parse_schedule(
-            SystemConfigOper().get(SystemConfigKey.NotificationSendTime)
-        )
+        self.init_config()
+
         self.queue: queue.Queue[Any] = queue.Queue()
         self.send_callback = send_callback
         self.check_interval = check_interval
@@ -40,6 +42,14 @@ class MessageQueueManager(metaclass=Singleton):
         self._running = True
         self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.thread.start()
+
+    def init_config(self):
+        """
+        初始化配置
+        """
+        self.schedule_periods = self._parse_schedule(
+            SystemConfigOper().get(SystemConfigKey.NotificationSendTime)
+        )
 
     @staticmethod
     def _parse_schedule(periods: Union[list, dict]) -> List[tuple[int, int, int, int]]:
@@ -106,9 +116,10 @@ class MessageQueueManager(metaclass=Singleton):
         """
         if self.send_callback:
             try:
+                logger.info(f"发送消息：{kwargs}")
                 self.send_callback(*args, **kwargs)
             except Exception as e:
-                logger.error(str(e))
+                logger.error(f"发送消息错误：{str(e)}")
 
     def _monitor_loop(self) -> None:
         """

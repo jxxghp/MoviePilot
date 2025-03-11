@@ -103,7 +103,7 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
             decoded_token = jwt.decode(resource_token, settings.RESOURCE_SECRET_KEY, algorithms=[ALGORITHM])
             exp = decoded_token.get("exp")
             if exp:
-                remaining_time = datetime.datetime.fromtimestamp(exp) - datetime.datetime.now(datetime.UTC)
+                remaining_time = datetime.datetime.fromtimestamp(exp, tz=datetime.UTC) - datetime.datetime.now(datetime.UTC)
                 # 根据剩余时长提前刷新令牌
                 if remaining_time < timedelta(seconds=(settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS / 3)):
                     raise jwt.ExpiredSignatureError
