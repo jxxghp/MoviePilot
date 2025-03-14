@@ -301,6 +301,8 @@ class RssHelper:
                         if pubdate:
                             # 转换为时间
                             pubdate = StringUtils.get_time(pubdate)
+                        # 获取豆瓣昵称
+                        nickname = DomUtils.tag_value(item, "dc:createor", default="")
                         # 返回对象
                         tmp_dict = {'title': title,
                                     'enclosure': enclosure,
@@ -308,6 +310,9 @@ class RssHelper:
                                     'description': description,
                                     'link': link,
                                     'pubdate': pubdate}
+                        # 如果豆瓣昵称不为空，返回数据增加豆瓣昵称，供doubansync插件获取
+                        if nickname:
+                            tmp_dict['nickname'] = nickname
                         ret_array.append(tmp_dict)
                     except Exception as e1:
                         logger.debug(f"解析RSS失败：{str(e1)} - {traceback.format_exc()}")
