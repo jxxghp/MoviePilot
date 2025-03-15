@@ -156,7 +156,7 @@ def reset_workflow(workflow_id: int,
     # 停止工作流
     global_vars.stop_workflow(workflow_id)
     # 重置工作流
-    workflow.reset(db, workflow_id)
+    workflow.reset(db, workflow_id, reset_count=True)
     # 删除缓存
     SystemConfigOper().delete(f"WorkflowCache-{workflow_id}")
     return schemas.Response(success=True)

@@ -83,12 +83,12 @@ class Workflow(Base):
 
     @staticmethod
     @db_update
-    def reset(db, wid: int):
+    def reset(db, wid: int, reset_count: bool = False):
         db.query(Workflow).filter(Workflow.id == wid).update({
             "state": 'W',
             "result": None,
             "current_action": None,
-            "run_count": 0,
+            "run_count": 0 if reset_count else Workflow.run_count,
         })
         return True
 
