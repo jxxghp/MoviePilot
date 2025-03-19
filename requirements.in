@@ -59,8 +59,6 @@ pystray~=0.19.5
 pyotp~=2.9.0
 Pinyin2Hanzi~=0.1.1
 pywebpush~=2.0.0
-python-115==0.0.9.8.8.2
-p115client==0.0.3.8.3.3
 python-cookietools==0.0.2.1
 aligo~=6.2.4
 aiofiles~=24.1.0
