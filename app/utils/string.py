@@ -15,6 +15,7 @@ from app.schemas.types import MediaType
 _special_domains = [
     'u2.dmhy.org',
     'pt.ecust.pp.ua',
+    'pt.gtkpw.xyz'
 ]
 
 # 内置版本号转换字典
