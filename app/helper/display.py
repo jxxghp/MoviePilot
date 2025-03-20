@@ -24,4 +24,3 @@ class DisplayHelper(metaclass=Singleton):
             logger.info("正在停止虚拟显示...")
             self._display.stop()
             logger.info("虚拟显示已停止")
-
