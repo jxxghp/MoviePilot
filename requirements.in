@@ -68,4 +68,3 @@ redis~=5.2.1
 async_timeout~=5.0.1; python_full_version < "3.11.3"
 packaging~=24.2
 cf_clearance~=0.31.0
-qrcode~=8.0
