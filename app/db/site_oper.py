@@ -121,7 +121,8 @@ class SiteOper(DbOper):
         siteuserdatas = SiteUserData.get_by_domain(self._db, domain=domain, workdate=current_day)
         if siteuserdatas:
             # 存在则更新
-            siteuserdatas[0].update(self._db, payload)
+            if not payload.get("err_msg"):
+                siteuserdatas[0].update(self._db, payload)
         else:
             # 不存在则插入
             SiteUserData(**payload).create(self._db)
