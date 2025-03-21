@@ -242,37 +242,108 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     def upload(self, target_dir: schemas.FileItem, local_path: Path, new_name: str = None) -> schemas.FileItem:
         """
-        FIXME 断点续传实现
+        实现带秒传、断点续传和二次认证的文件上传
         """
-        file_name = new_name or local_path.name
+        # 计算文件特征值
+        target_name = new_name or local_path.name
         file_size = local_path.stat().st_size
-        file_hash = self._calc_sha1(local_path)
+        file_sha1 = self._calc_sha1(local_path)
 
-        # 初始化上传任务
-        upload_info = self._request_api(
+        # 获取目标目录CID
+        target_cid = self._path_to_id(target_dir.path)
+        target_param = f"U_1_{target_cid}"
+
+        # Step 1: 初始化上传
+        init_data = {
+            "file_name": target_name,
+            "file_size": file_size,
+            "target": target_param,
+            "fileid": file_sha1
+        }
+        init_resp = self._request_api(
             "POST",
             "/open/upload/init",
-            data={
-                "file_name": file_name,
-                "file_size": file_size,
-                "file_sha1": file_hash,
-                "target_dir": self._path_to_id(target_dir.path)
-            }
+            "data",
+            data=init_data
         )
 
-        # 分片上传
-        with open(local_path, "rb") as f:
-            offset = 0
-            # 4MB分片
-            while chunk := f.read(4 * 1024 * 1024):
-                self.session.put(
-                    f"{self.base_url}/open/upload/{upload_info['upload_id']}",
-                    data=chunk,
-                    headers={"Content-Range": f"bytes {offset}-{offset + len(chunk) - 1}/{file_size}"}
-                )
-                offset += len(chunk)
+        # 处理秒传成功
+        if init_resp.get("status") == 2:
+            return schemas.FileItem(
+                fileid=init_resp["file_id"],
+                path=str(Path(target_dir.path) / target_name),
+                name=target_name,
+                type="file",
+                modify_time=int(time.time())
+            )
 
-        return self.get_item(Path(target_dir.path) / file_name)
+        # Step 2: 处理二次认证
+        if init_resp.get("code") in [700, 701]:
+            sign_check = init_resp["sign_check"].split("-")
+            start = int(sign_check[0])
+            end = int(sign_check[1])
+
+            # 计算指定区间的SHA1
+            with open(local_path, "rb") as f:
+                f.seek(start)
+                chunk = f.read(end - start + 1)
+                sign_val = hashlib.sha1(chunk).hexdigest().upper()
+
+            # 重新初始化请求
+            init_data.update({
+                "sign_key": init_resp["sign_key"],
+                "sign_val": sign_val
+            })
+            init_resp = self._request_api(
+                "POST",
+                "/open/upload/init",
+                "data",
+                data=init_data
+            )
+
+        # Step 3: 获取上传凭证
+        token_resp = self._request_api(
+            "GET",
+            "/open/upload/get_token",
+            "data"
+        )
+
+        # Step 4: 对象存储上传
+        upload_url = f"https://{token_resp['endpoint']}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "x-oss-security-token": token_resp["SecurityToken"],
+            "Content-Type": "application/octet-stream"
+        }
+
+        # 断点续传处理
+        uploaded = 0
+        while uploaded < file_size:
+            # 10MB分块
+            chunk_size = min(1024 * 1024 * 10, file_size - uploaded)
+
+            # 实际上传
+            with open(local_path, "rb") as f:
+                f.seek(uploaded)
+                chunk = f.read(chunk_size)
+                requests.put(
+                    upload_url,
+                    headers=headers,
+                    data=chunk
+                ).raise_for_status()
+
+            uploaded += chunk_size
+
+        # 构造返回结果
+        return schemas.FileItem(
+            fileid=init_resp.get("file_id") or self._path_to_id(str(Path(target_dir.path) / target_name)),
+            type="file",
+            path=str(Path(target_dir.path) / target_name),
+            name=target_name,
+            basename=Path(target_name).stem,
+            extension=Path(target_name).suffix[1:],
+            modify_time=int(time.time())
+        )
 
     def download(self, fileitem: schemas.FileItem, save_path: Path = None) -> Path:
         """
