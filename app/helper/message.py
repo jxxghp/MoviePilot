@@ -64,6 +64,8 @@ class MessageQueueManager(metaclass=SingletonClass):
         for period in periods:
             if not period:
                 continue
+            if not period.get('start') or not period.get('end'):
+                continue
             start_h, start_m = map(int, period['start'].split(':'))
             end_h, end_m = map(int, period['end'].split(':'))
             parsed.append((start_h, start_m, end_h, end_m))
