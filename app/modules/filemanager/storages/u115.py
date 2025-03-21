@@ -188,6 +188,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         目录遍历实现
         """
+
+        if fileitem.type == "file":
+            return [self.detail(fileitem)]
+
         cid = self._path_to_id(fileitem.path)
         items = []
         offset = 0
@@ -202,9 +206,18 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if not resp:
                 break
             for item in resp:
-                path = self._id_to_path(item.get("fid"))
+                path = f"{fileitem.path}/{item['fn']}" + ("/" if item["fc"] == "0" else "")
                 items.append(schemas.FileItem(
                     fileid=item["fid"],
+                    name=item["fn"],
+                    basename=Path(item["fn"]).stem,
+                    extension=item["ico"],
+                    type="dir" if item["fc"] == "0" else "file",
+                    path=path,
+                    size=item["fs"] if item["fc"] == "1" else None,
+                    modify_time=item["upt"],
+                    pickcode=item["pc"],
+                    thumbnail=item["thumb"],
                 ))
                 # 更新缓存
                 self._id_cache[path] = item["cid"]
@@ -234,8 +247,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         self._id_cache[str(new_path)] = resp["file_id"]
         return schemas.FileItem(
             fileid=resp["file_id"],
-            path=str(new_path),
+            path=str(new_path) + "/",
             name=name,
+            basename=name,
             type="dir",
             modify_time=int(time.time())
         )
@@ -273,6 +287,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 fileid=init_resp["file_id"],
                 path=str(Path(target_dir.path) / target_name),
                 name=target_name,
+                basename=Path(target_dir.name).stem,
+                extension=Path(target_dir.name).suffix[1:],
+                size=file_size,
                 type="file",
                 modify_time=int(time.time())
             )
@@ -342,6 +359,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             name=target_name,
             basename=Path(target_name).stem,
             extension=Path(target_name).suffix[1:],
+            size=file_size,
             modify_time=int(time.time())
         )
 
@@ -528,8 +546,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 }
             )
             return schemas.FileItem(
-                path=str(path),
                 fileid=resp["file_id"],
+                path=str(path) + ("/" if resp["file_category"] == "1" else ""),
                 type="file" if resp["file_category"] == "1" else "dir",
                 name=resp["file_name"],
                 basename=Path(resp["file_name"]).stem,
@@ -546,10 +564,35 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         获取指定路径的文件夹，如不存在则创建
         """
-        try:
-            return self.get_item(path)
-        except FileNotFoundError:
-            return self.create_folder(self.get_item(path.parent), path.name)
+
+        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+            """
+            查找下级目录中匹配名称的目录
+            """
+            for sub_folder in self.list(_fileitem):
+                if sub_folder.type != "dir":
+                    continue
+                if sub_folder.name == _name:
+                    return sub_folder
+            return None
+
+        # 是否已存在
+        folder = self.get_item(path)
+        if folder:
+            return folder
+        # 逐级查找和创建目录
+        fileitem = schemas.FileItem(path="/")
+        for part in path.parts[1:]:
+            dir_file = __find_dir(fileitem, part)
+            if dir_file:
+                fileitem = dir_file
+            else:
+                dir_file = self.create_folder(fileitem, part)
+                if not dir_file:
+                    logger.warn(f"115 创建目录 {fileitem.path}{part} 失败！")
+                    return None
+                fileitem = dir_file
+        return fileitem
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

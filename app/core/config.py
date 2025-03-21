@@ -110,7 +110,7 @@ class ConfigModel(BaseModel):
     # Fanart API Key
     FANART_API_KEY: str = "d2d31f9ecabea050fc7d68aa3146015f"
     # 115 AppId
-    U115_APP_ID: str = ""
+    U115_APP_ID: str = "100196807"
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
     # 电视剧动漫的分类genre_ids

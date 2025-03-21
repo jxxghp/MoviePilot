@@ -162,9 +162,7 @@ class Rclone(StorageBase):
             return folder
         # 逐级查找和创建目录
         fileitem = schemas.FileItem(path="/")
-        for part in path.parts:
-            if part == "/":
-                continue
+        for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:
                 fileitem = dir_file

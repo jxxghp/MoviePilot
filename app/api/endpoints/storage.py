@@ -27,7 +27,7 @@ def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     qrcode_data, errmsg = StorageChain().generate_qrcode(name)
     if qrcode_data:
         return schemas.Response(success=True, data=qrcode_data, message=errmsg)
-    return schemas.Response(success=False)
+    return schemas.Response(success=False, message=errmsg)
 
 
 @router.get("/check/{name}", summary="二维码登录确认", response_model=schemas.Response)
