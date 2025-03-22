@@ -1,6 +1,7 @@
 import inspect
 import json
 import pickle
+import threading
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Any, Dict, Optional
@@ -15,6 +16,8 @@ from app.log import logger
 
 # 默认缓存区
 DEFAULT_CACHE_REGION = "DEFAULT"
+
+lock = threading.Lock()
 
 
 class CacheBackend(ABC):
@@ -163,7 +166,8 @@ class CacheToolsBackend(CacheBackend):
         # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
         region_cache = self._region_caches.setdefault(region, TTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
-        region_cache[key] = value
+        with lock:
+            region_cache[key] = value
 
     def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -201,7 +205,8 @@ class CacheToolsBackend(CacheBackend):
         region_cache = self.__get_region_cache(region)
         if region_cache is None:
             return None
-        del region_cache[key]
+        with lock:
+            del region_cache[key]
 
     def clear(self, region: Optional[str] = None) -> None:
         """
@@ -213,12 +218,14 @@ class CacheToolsBackend(CacheBackend):
             # 清理指定缓存区
             region_cache = self.__get_region_cache(region)
             if region_cache:
-                region_cache.clear()
+                with lock:
+                    region_cache.clear()
                 logger.info(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
             for region_cache in self._region_caches.values():
-                region_cache.clear()
+                with lock:
+                    region_cache.clear()
             logger.info("Cleared all cache")
 
     def close(self) -> None:
