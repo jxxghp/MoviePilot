@@ -77,7 +77,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
     && python3 /app/setup.py \
-    && find /app/app -type f -name "*.py" -delete \
+    && find /app/app -type f -name "*.py" ! -path "/app/app/main.py" -exec rm -f {} \; \
     && FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
