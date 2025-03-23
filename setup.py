@@ -29,9 +29,9 @@ setup(
             "auto_pickle": False,
             "embedsignature": True,
             "annotation_typing": True,
-            "infer_types": False
-        },
-        annotate=True
+            "infer_types": True,
+            "binding": True,
+        }
     ),
     script_args=["build_ext", "-j8", "--inplace"],
 )

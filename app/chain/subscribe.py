@@ -275,7 +275,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             return True
         return False
 
-    def search(self, sid: int = None, state: str = 'N', manual: bool = False):
+    def search(self, sid: int = None, state: Optional[str] = 'N', manual: bool = False):
         """
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅

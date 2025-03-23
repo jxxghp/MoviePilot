@@ -1,7 +1,7 @@
 import base64
 import hashlib
 from hashlib import md5
-from typing import Union
+from typing import Union, Optional, Tuple
 
 from Crypto import Random
 from Crypto.Cipher import AES
@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import padding as asym_padding, r
 class RSAUtils:
 
     @staticmethod
-    def generate_rsa_key_pair(key_size: int = 2048) -> (str, str):
+    def generate_rsa_key_pair(key_size: int = 2048) -> Tuple[str, str]:
         """
         生成RSA密钥对
         :return: 私钥和公钥（Base64 编码，无标识符）
@@ -46,7 +46,7 @@ class RSAUtils:
         return private_key_b64, public_key_b64
 
     @staticmethod
-    def verify_rsa_keys(private_key: str, public_key: str) -> bool:
+    def verify_rsa_keys(private_key: Optional[str], public_key: Optional[str]) -> bool:
         """
         使用 RSA 验证私钥和公钥是否匹配
 
