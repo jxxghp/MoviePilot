@@ -23,7 +23,7 @@ setup(
     author="jxxghp",
     ext_modules=cythonize(
         extensions,
-        build_dir="cython_cache",
+        build_dir="build",
         compiler_directives={
             "language_level": "3",
             "auto_pickle": False,
