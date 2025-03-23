@@ -150,13 +150,12 @@ class Emby:
             if hidden and self._sync_libraries and "all" not in self._sync_libraries \
                     and library.get("Id") not in self._sync_libraries:
                 continue
-            match library.get("CollectionType"):
-                case "movies":
-                    library_type = MediaType.MOVIE.value
-                case "tvshows":
-                    library_type = MediaType.TV.value
-                case _:
-                    library_type = MediaType.UNKNOWN.value
+            if library.get("CollectionType") == "movies":
+                library_type = MediaType.MOVIE.value
+            elif library.get("CollectionType") == "tvshows":
+                library_type = MediaType.TV.value
+            else:
+                library_type = MediaType.UNKNOWN.value
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 schemas.MediaServerLibrary(
@@ -419,7 +418,7 @@ class Emby:
                     return None, {}
         # 查集的信息
         if not season:
-            season = ""
+            season = None
         try:
             url = f"{self._host}emby/Shows/{item_id}/Episodes"
             params = {

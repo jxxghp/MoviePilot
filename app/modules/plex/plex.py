@@ -138,15 +138,14 @@ class Plex:
             if hidden and self._sync_libraries and "all" not in self._sync_libraries \
                     and str(library.key) not in self._sync_libraries:
                 continue
-            match library.type:
-                case "movie":
-                    library_type = MediaType.MOVIE.value
-                    image_list = self.__get_library_images(library.key, 1)
-                case "show":
-                    library_type = MediaType.TV.value
-                    image_list = self.__get_library_images(library.key, 2)
-                case _:
-                    continue
+            if library.type == "movie":
+                library_type = MediaType.MOVIE.value
+                image_list = self.__get_library_images(library.key, 1)
+            elif library.type == "show":
+                library_type = MediaType.TV.value
+                image_list = self.__get_library_images(library.key, 2)
+            else:
+                continue
             libraries.append(
                 schemas.MediaServerLibrary(
                     id=library.key,

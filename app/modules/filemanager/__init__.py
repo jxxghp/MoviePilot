@@ -1067,38 +1067,37 @@ class FileManagerModule(_ModuleBase):
                 if not overflag:
                     # 目标文件已存在
                     logger.info(f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}")
-                    match overwrite_mode:
-                        case 'always':
-                            # 总是覆盖同名文件
+                    if overwrite_mode == 'always':
+                        # 总是覆盖同名文件
+                        overflag = True
+                    elif overwrite_mode == 'size':
+                        # 存在时大覆盖小
+                        if target_item.size < fileitem.size:
+                            logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
                             overflag = True
-                        case 'size':
-                            # 存在时大覆盖小
-                            if target_item.size < fileitem.size:
-                                logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
-                                overflag = True
-                            else:
-                                return TransferInfo(success=False,
-                                                    message=f"媒体库存在同名文件，且质量更好",
-                                                    fileitem=fileitem,
-                                                    target_item=target_item,
-                                                    target_diritem=target_diritem,
-                                                    fail_list=[fileitem.path],
-                                                    transfer_type=transfer_type,
-                                                    need_notify=need_notify)
-                        case 'never':
-                            # 存在不覆盖
+                        else:
                             return TransferInfo(success=False,
-                                                message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
+                                                message=f"媒体库存在同名文件，且质量更好",
                                                 fileitem=fileitem,
                                                 target_item=target_item,
                                                 target_diritem=target_diritem,
                                                 fail_list=[fileitem.path],
                                                 transfer_type=transfer_type,
                                                 need_notify=need_notify)
-                        case 'latest':
-                            # 仅保留最新版本
-                            logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
-                            overflag = True
+                    elif overwrite_mode == 'never':
+                        # 存在不覆盖
+                        return TransferInfo(success=False,
+                                            message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
+                                            fileitem=fileitem,
+                                            target_item=target_item,
+                                            target_diritem=target_diritem,
+                                            fail_list=[fileitem.path],
+                                            transfer_type=transfer_type,
+                                            need_notify=need_notify)
+                    elif overwrite_mode == 'latest':
+                        # 仅保留最新版本
+                        logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
+                        overflag = True
             else:
                 if overwrite_mode == 'latest':
                     # 文件不存在，但仅保留最新版本

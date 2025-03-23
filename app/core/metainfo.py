@@ -133,13 +133,10 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
         # 查找媒体类型
         mtype = re.findall(r'(?<=type=)\w+', result)
         if mtype:
-            match mtype[0]:
-                case "movie":
-                    metainfo['type'] = MediaType.MOVIE
-                case "tv":
-                    metainfo['type'] = MediaType.TV
-                case _:
-                    pass
+            if mtype[0] == "movies":
+                metainfo['type'] = MediaType.MOVIE
+            elif mtype[0] == "tv":
+                metainfo['type'] = MediaType.TV
         # 查找季信息
         begin_season = re.findall(r'(?<=s=)\d+', result)
         if begin_season and begin_season[0].isdigit():

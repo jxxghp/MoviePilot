@@ -147,19 +147,18 @@ class Jellyfin:
             if hidden and self._sync_libraries and "all" not in self._sync_libraries \
                     and library.get("Id") not in self._sync_libraries:
                 continue
-            match library.get("CollectionType"):
-                case "movies":
-                    library_type = MediaType.MOVIE.value
-                    link = f"{self._playhost or self._host}web/index.html#!" \
-                           f"/movies.html?topParentId={library.get('Id')}"
-                case "tvshows":
-                    library_type = MediaType.TV.value
-                    link = f"{self._playhost or self._host}web/index.html#!" \
-                           f"/tv.html?topParentId={library.get('Id')}"
-                case _:
-                    library_type = MediaType.UNKNOWN.value
-                    link = f"{self._playhost or self._host}web/index.html#!" \
-                           f"/library.html?topParentId={library.get('Id')}"
+            if library.get("CollectionType") == "movies":
+                library_type = MediaType.MOVIE.value
+                link = f"{self._playhost or self._host}web/index.html#!" \
+                       f"/movies.html?topParentId={library.get('Id')}"
+            elif library.get("CollectionType") == "tvshows":
+                library_type = MediaType.TV.value
+                link = f"{self._playhost or self._host}web/index.html#!" \
+                       f"/tv.html?topParentId={library.get('Id')}"
+            else:
+                library_type = MediaType.UNKNOWN.value
+                link = f"{self._playhost or self._host}web/index.html#!" \
+                       f"/library.html?topParentId={library.get('Id')}"
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 schemas.MediaServerLibrary(
@@ -410,7 +409,7 @@ class Jellyfin:
                 if str(tmdb_id) != str(item_info.tmdbid):
                     return None, {}
         if not season:
-            season = ""
+            season = None
         url = f"{self._host}Shows/{item_id}/Episodes"
         params = {
             "season": season,
