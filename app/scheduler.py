@@ -359,7 +359,7 @@ class Scheduler(metaclass=Singleton):
             self.init_plugin_jobs()
 
             # 打印服务
-            logger.debug(self._scheduler.print_jobs())
+            self._scheduler.print_jobs()
 
             # 启动定时服务
             self._scheduler.start()
