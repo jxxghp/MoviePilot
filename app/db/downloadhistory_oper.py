@@ -51,7 +51,7 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadFiles.truncate(self._db)
 
-    def get_files_by_hash(self, download_hash: str, state: Optional[int] =  None) -> List[DownloadFiles]:
+    def get_files_by_hash(self, download_hash: str, state: Optional[int] = None) -> List[DownloadFiles]:
         """
         按Hash查询下载文件记录
         :param download_hash: 数据key
@@ -97,7 +97,7 @@ class DownloadHistoryOper(DbOper):
             return fileinfo.download_hash
         return ""
 
-    def list_by_page(self, page: Optional[int] =  1, count: Optional[int] =  30) -> List[DownloadHistory]:
+    def list_by_page(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[DownloadHistory]:
         """
         分页查询下载历史
         """
@@ -109,8 +109,8 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadHistory.truncate(self._db)
 
-    def get_last_by(self, mtype=None, title: Optional[str] =  None, year: Optional[str] =  None,
-                    season: Optional[str] =  None, episode: Optional[str] =  None, tmdbid=None) -> List[DownloadHistory]:
+    def get_last_by(self, mtype=None, title: Optional[str] = None, year: Optional[str] = None,
+                    season: Optional[str] = None, episode: Optional[str] = None, tmdbid=None) -> List[DownloadHistory]:
         """
         按类型、标题、年份、季集查询下载记录
         """
@@ -122,7 +122,7 @@ class DownloadHistoryOper(DbOper):
                                            episode=episode,
                                            tmdbid=tmdbid)
 
-    def list_by_user_date(self, date: str, username: Optional[str] =  None) -> List[DownloadHistory]:
+    def list_by_user_date(self, date: str, username: Optional[str] = None) -> List[DownloadHistory]:
         """
         查询某用户某时间之前的下载历史
         """
@@ -130,7 +130,7 @@ class DownloadHistoryOper(DbOper):
                                                  date=date,
                                                  username=username)
 
-    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: Optional[str] =  None) -> List[DownloadHistory]:
+    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: Optional[str] = None) -> List[DownloadHistory]:
         """
         查询某时间之后的下载历史
         """
@@ -140,7 +140,7 @@ class DownloadHistoryOper(DbOper):
                                             tmdbid=tmdbid,
                                             seasons=seasons)
 
-    def list_by_type(self, mtype: str, days: Optional[int] =  7) -> List[DownloadHistory]:
+    def list_by_type(self, mtype: str, days: Optional[int] = 7) -> List[DownloadHistory]:
         """
         获取指定类型的下载历史
         """

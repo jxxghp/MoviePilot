@@ -22,7 +22,7 @@ def douban_person(person_id: int,
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
 def douban_person_credits(person_id: int,
-                          page: Optional[int] =  1,
+                          page: Optional[int] = 1,
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据人物ID查询人物参演作品

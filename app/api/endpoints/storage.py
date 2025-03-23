@@ -31,7 +31,7 @@ def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/check/{name}", summary="二维码登录确认", response_model=schemas.Response)
-def check(name: str, ck: Optional[str] =  None, t: Optional[str] =  None, 
+def check(name: str, ck: Optional[str] = None, t: Optional[str] = None, 
           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     二维码登录确认
@@ -58,7 +58,7 @@ def save(name: str,
 
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
 def list_files(fileitem: schemas.FileItem,
-               sort: Optional[str] =  'updated_at',
+               sort: Optional[str] = 'updated_at',
                _: User = Depends(get_current_active_superuser)) -> Any:
     """
     查询当前目录下所有目录和文件
@@ -141,7 +141,7 @@ def image(fileitem: schemas.FileItem,
 @router.post("/rename", summary="重命名文件或目录", response_model=schemas.Response)
 def rename(fileitem: schemas.FileItem,
            new_name: str,
-           recursive: Optional[bool] =  False,
+           recursive: Optional[bool] = False,
            _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重命名文件或目录

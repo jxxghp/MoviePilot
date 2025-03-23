@@ -20,11 +20,11 @@ class PlaywrightHelper:
 
     def action(self, url: str,
                callback: Callable,
-               cookies: Optional[str] =  None,
-               ua: Optional[str] =  None,
-               proxies: Optional[dict] =  None,
-               headless: Optional[bool] =  False,
-               timeout: Optional[int] =  30) -> Any:
+               cookies: Optional[str] = None,
+               ua: Optional[str] = None,
+               proxies: Optional[dict] = None,
+               headless: Optional[bool] = False,
+               timeout: Optional[int] = 30) -> Any:
         """
         访问网页，接收Page对象并执行操作
         :param url: 网页地址
@@ -57,11 +57,11 @@ class PlaywrightHelper:
         return None
 
     def get_page_source(self, url: str,
-                        cookies: Optional[str] =  None,
-                        ua: Optional[str] =  None,
-                        proxies: Optional[dict] =  None,
-                        headless: Optional[bool] =  False,
-                        timeout: Optional[int] =  20) -> Optional[str]:
+                        cookies: Optional[str] = None,
+                        ua: Optional[str] = None,
+                        proxies: Optional[dict] = None,
+                        headless: Optional[bool] = False,
+                        timeout: Optional[int] = 20) -> Optional[str]:
         """
         获取网页源码
         :param url: 网页地址

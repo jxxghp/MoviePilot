@@ -49,9 +49,9 @@ class DirectoryHelper:
         """
         return [d for d in self.get_library_dirs() if d.library_storage == "local"]
 
-    def get_dir(self, media: MediaInfo, include_unsorted: Optional[bool] =  False,
-                storage: Optional[str] =  None, src_path: Path = None,
-                target_storage: Optional[str] =  None, dest_path: Path = None
+    def get_dir(self, media: MediaInfo, include_unsorted: Optional[bool] = False,
+                storage: Optional[str] = None, src_path: Path = None,
+                target_storage: Optional[str] = None, dest_path: Path = None
                 ) -> Optional[schemas.TransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置

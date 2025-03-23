@@ -69,7 +69,7 @@ def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(v
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
 def manual_transfer(transer_item: ManualTransferItem,
-                    background: Optional[bool] =  False,
+                    background: Optional[bool] = False,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """

@@ -56,17 +56,17 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
-            tmdbid: Optional[int] =  None,
-            doubanid: Optional[str] =  None,
-            bangumiid: Optional[int] =  None,
-            mediaid: Optional[str] =  None,
-            season: Optional[int] =  None,
+            tmdbid: Optional[int] = None,
+            doubanid: Optional[str] = None,
+            bangumiid: Optional[int] = None,
+            mediaid: Optional[str] = None,
+            season: Optional[int] = None,
             channel: MessageChannel = None,
-            source: Optional[str] =  None,
-            userid: Optional[str] =  None,
-            username: Optional[str] =  None,
-            message: Optional[bool] =  True,
-            exist_ok: Optional[bool] =  False,
+            source: Optional[str] = None,
+            userid: Optional[str] = None,
+            username: Optional[str] = None,
+            message: Optional[bool] = True,
+            exist_ok: Optional[bool] = False,
             **kwargs) -> Tuple[Optional[int], str]:
         """
         识别媒体信息并添加订阅
@@ -275,7 +275,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             return True
         return False
 
-    def search(self, sid: Optional[int] =  None, state: Optional[str] = 'N', manual: Optional[bool] =  False):
+    def search(self, sid: Optional[int] = None, state: Optional[str] = 'N', manual: Optional[bool] = False):
         """
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅
@@ -452,7 +452,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
     def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaBase, mediainfo: MediaInfo,
                                 downloads: List[Context] = None,
                                 lefts: Dict[Union[int | str], Dict[int, schemas.NotExistMediaInfo]] = None,
-                                force: Optional[bool] =  False):
+                                force: Optional[bool] = False):
         """
         判断是否应完成订阅
         """
@@ -944,7 +944,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
     def __update_lack_episodes(self, lefts: Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]],
                                subscribe: Subscribe,
                                mediainfo: MediaInfo,
-                               update_date: Optional[bool] =  False):
+                               update_date: Optional[bool] = False):
         """
         更新订阅剩余集数及时间
         """
@@ -1014,7 +1014,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         })
 
     def remote_list(self, channel: MessageChannel,
-                    userid: Union[str, int] = None, source: Optional[str] =  None):
+                    userid: Union[str, int] = None, source: Optional[str] = None):
         """
         查询订阅并发送消息
         """
@@ -1042,7 +1042,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                title=title, text='\n'.join(messages), userid=userid))
 
     def remote_delete(self, arg_str: str, channel: MessageChannel,
-                      userid: Union[str, int] = None, source: Optional[str] =  None):
+                      userid: Union[str, int] = None, source: Optional[str] = None):
         """
         删除订阅
         """

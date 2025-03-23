@@ -25,7 +25,7 @@ class MessageQueueManager(metaclass=SingletonClass):
     def __init__(
             self,
             send_callback: Optional[Callable] = None,
-            check_interval: Optional[int] =  10
+            check_interval: Optional[int] = 10
     ) -> None:
         """
         消息队列管理器初始化

@@ -111,7 +111,7 @@ class PluginManager(metaclass=Singleton):
         # 启动插件
         self.start()
 
-    def start(self, pid: Optional[str] =  None):
+    def start(self, pid: Optional[str] = None):
         """
         启动加载插件
         :param pid: 插件ID，为空加载所有插件
@@ -194,7 +194,7 @@ class PluginManager(metaclass=Singleton):
             # 禁用插件类的事件处理器
             eventmanager.disable_event_handler(type(plugin))
 
-    def stop(self, pid: Optional[str] =  None):
+    def stop(self, pid: Optional[str] = None):
         """
         停止插件服务
         :param pid: 插件ID，为空停止所有插件
@@ -431,7 +431,7 @@ class PluginManager(metaclass=Singleton):
             return plugin.get_page() or []
         return []
 
-    def get_plugin_dashboard(self, pid: str, key: Optional[str] =  None, **kwargs) -> Optional[schemas.PluginDashboard]:
+    def get_plugin_dashboard(self, pid: str, key: Optional[str] = None, **kwargs) -> Optional[schemas.PluginDashboard]:
         """
         获取插件仪表盘
         :param pid: 插件ID
@@ -781,7 +781,7 @@ class PluginManager(metaclass=Singleton):
             logger.debug(f"获取插件是否在本地包中存在失败，{e}")
             return False
 
-    def get_plugins_from_market(self, market: str, package_version: Optional[str] =  None) -> Optional[List[schemas.Plugin]]:
+    def get_plugins_from_market(self, market: str, package_version: Optional[str] = None) -> Optional[List[schemas.Plugin]]:
         """
         从指定的市场获取插件信息
         :param market: 市场的 URL 或标识

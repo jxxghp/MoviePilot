@@ -73,8 +73,8 @@ class CookieHelper:
                            url: str,
                            username: str,
                            password: str,
-                           two_step_code: Optional[str] =  None,
-                           proxies: Optional[dict] =  None) -> Tuple[Optional[str], Optional[str], str]:
+                           two_step_code: Optional[str] = None,
+                           proxies: Optional[dict] = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点cookie和ua
         :param url: 站点地址

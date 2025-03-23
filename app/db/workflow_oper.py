@@ -43,7 +43,7 @@ class WorkflowOper(DbOper):
         """
         return Workflow.start(self._db, wid)
 
-    def success(self, wid: int, result: Optional[str] =  None) -> bool:
+    def success(self, wid: int, result: Optional[str] = None) -> bool:
         """
         成功
         """

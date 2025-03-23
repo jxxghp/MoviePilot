@@ -610,7 +610,7 @@ class SiteChain(ChainBase):
         return True, "连接成功"
 
     def remote_list(self, channel: MessageChannel,
-                    userid: Union[str, int] = None, source: Optional[str] =  None):
+                    userid: Union[str, int] = None, source: Optional[str] = None):
         """
         查询所有站点，发送消息
         """
@@ -644,7 +644,7 @@ class SiteChain(ChainBase):
         )
 
     def remote_disable(self, arg_str: str, channel: MessageChannel,
-                       userid: Union[str, int] = None, source: Optional[str] =  None):
+                       userid: Union[str, int] = None, source: Optional[str] = None):
         """
         禁用站点
         """
@@ -669,7 +669,7 @@ class SiteChain(ChainBase):
         self.remote_list(channel=channel, userid=userid, source=source)
 
     def remote_enable(self, arg_str: str, channel: MessageChannel,
-                      userid: Union[str, int] = None, source: Optional[str] =  None):
+                      userid: Union[str, int] = None, source: Optional[str] = None):
         """
         启用站点
         """
@@ -695,7 +695,7 @@ class SiteChain(ChainBase):
         self.remote_list(channel=channel, userid=userid, source=source)
 
     def update_cookie(self, site_info: Site,
-                      username: str, password: str, two_step_code: Optional[str] =  None) -> Tuple[bool, str]:
+                      username: str, password: str, two_step_code: Optional[str] = None) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
         :param site_info: 站点信息
@@ -724,7 +724,7 @@ class SiteChain(ChainBase):
         return False, "未知错误"
 
     def remote_cookie(self, arg_str: str, channel: MessageChannel,
-                      userid: Union[str, int] = None, source: Optional[str] =  None):
+                      userid: Union[str, int] = None, source: Optional[str] = None):
         """
         使用用户名密码更新站点Cookie
         """
@@ -794,7 +794,7 @@ class SiteChain(ChainBase):
                 userid=userid))
 
     def remote_refresh_userdatas(self, channel: MessageChannel,
-                                 userid: Union[str, int] = None, source: Optional[str] =  None):
+                                 userid: Union[str, int] = None, source: Optional[str] = None):
         """
         刷新所有站点用户数据
         """

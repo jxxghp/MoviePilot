@@ -145,7 +145,7 @@ def update_cookie(
         site_id: int,
         username: str,
         password: str,
-        code: Optional[str] =  None,
+        code: Optional[str] = None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
@@ -203,7 +203,7 @@ def read_userdata_latest(
 @router.get("/userdata/{site_id}", summary="查询某站点用户数据", response_model=schemas.Response)
 def read_userdata(
         site_id: int,
-        workdate: Optional[str] =  None,
+        workdate: Optional[str] = None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
@@ -291,9 +291,9 @@ def site_category(site_id: int,
 
 @router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
 def site_resource(site_id: int,
-                  keyword: Optional[str] =  None,
-                  cat: Optional[str] =  None,
-                  page: Optional[int] =  0,
+                  keyword: Optional[str] = None,
+                  cat: Optional[str] = None,
+                  page: Optional[int] = 0,
                   db: Session = Depends(get_db),
                   _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """

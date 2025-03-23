@@ -20,8 +20,8 @@ router = APIRouter()
 
 
 @router.get("/download", summary="查询下载历史记录", response_model=List[schemas.DownloadHistory])
-def download_history(page: Optional[int] =  1,
-                     count: Optional[int] =  30,
+def download_history(page: Optional[int] = 1,
+                     count: Optional[int] = 30,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -42,10 +42,10 @@ def delete_download_history(history_in: schemas.DownloadHistory,
 
 
 @router.get("/transfer", summary="查询整理记录", response_model=schemas.Response)
-def transfer_history(title: Optional[str] =  None,
-                     page: Optional[int] =  1,
-                     count: Optional[int] =  30,
-                     status: Optional[bool] =  None,
+def transfer_history(title: Optional[str] = None,
+                     page: Optional[int] = 1,
+                     count: Optional[int] = 30,
+                     status: Optional[bool] = None,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -78,8 +78,8 @@ def transfer_history(title: Optional[str] =  None,
 
 @router.delete("/transfer", summary="删除整理记录", response_model=schemas.Response)
 def delete_transfer_history(history_in: schemas.TransferHistory,
-                            deletesrc: Optional[bool] =  False,
-                            deletedest: Optional[bool] =  False,
+                            deletesrc: Optional[bool] = False,
+                            deletedest: Optional[bool] = False,
                             db: Session = Depends(get_db),
                             _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """

@@ -118,7 +118,7 @@ def _clean_protected_routes(existing_paths: dict):
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
 def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
-                state: Optional[str] =  "all") -> List[schemas.Plugin]:
+                state: Optional[str] = "all") -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
@@ -181,8 +181,8 @@ def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
 def install(plugin_id: str,
-            repo_url: Optional[str] =  "",
-            force: Optional[bool] =  False,
+            repo_url: Optional[str] = "",
+            force: Optional[bool] = False,
             _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     安装插件

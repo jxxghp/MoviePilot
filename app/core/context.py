@@ -37,7 +37,7 @@ class TorrentInfo:
     # 详情页面
     page_url: str = None
     # 种子大小
-    size: float = 0
+    size: float = 0.0
     # 做种者
     seeders: int = 0
     # 下载者
@@ -193,7 +193,7 @@ class MediaInfo:
     # LOGO
     logo_path: str = None
     # 评分
-    vote_average: float = 0
+    vote_average: float = 0.0
     # 描述
     overview: str = None
     # 风格ID
@@ -714,7 +714,7 @@ class MediaInfo:
             return self.backdrop_path.replace("original", "w500")
         return default or ""
 
-    def get_message_image(self, default: Optional[bool] =  None):
+    def get_message_image(self, default: Optional[bool] = None):
         """
         返回消息图片地址
         """
@@ -722,7 +722,7 @@ class MediaInfo:
             return self.backdrop_path.replace("original", "w500")
         return self.get_poster_image(default=default)
 
-    def get_poster_image(self, default: Optional[bool] =  None):
+    def get_poster_image(self, default: Optional[bool] = None):
         """
         返回海报图片地址
         """

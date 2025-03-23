@@ -63,7 +63,7 @@ class StorageChain(ChainBase):
         return self.run_module("download_file", fileitem=fileitem, path=path)
 
     def upload_file(self, fileitem: schemas.FileItem, path: Path,
-                    new_name: Optional[str] =  None) -> Optional[schemas.FileItem]:
+                    new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 保存目录项

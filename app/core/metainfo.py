@@ -10,7 +10,7 @@ from app.log import logger
 from app.schemas.types import MediaType
 
 
-def MetaInfo(title: str, subtitle: Optional[str] =  None, custom_words: List[str] = None) -> MetaBase:
+def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None) -> MetaBase:
     """
     根据标题和副标题识别元数据
     :param title: 标题、种子名、文件名

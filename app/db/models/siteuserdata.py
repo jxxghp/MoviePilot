@@ -55,7 +55,7 @@ class SiteUserData(Base):
 
     @staticmethod
     @db_query
-    def get_by_domain(db: Session, domain: str, workdate: Optional[str] =  None, worktime: Optional[str] =  None):
+    def get_by_domain(db: Session, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
         if workdate and worktime:
             return db.query(SiteUserData).filter(SiteUserData.domain == domain,
                                                  SiteUserData.updated_day == workdate,

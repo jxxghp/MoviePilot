@@ -53,14 +53,14 @@ class JobManager:
         self._season_episodes = {}
 
     @staticmethod
-    def __get_meta_id(meta: MetaBase = None, season: Optional[int] =  None) -> Tuple:
+    def __get_meta_id(meta: MetaBase = None, season: Optional[int] = None) -> Tuple:
         """
         获取元数据ID
         """
         return meta.name, season
 
     @staticmethod
-    def __get_media_id(media: MediaInfo = None, season: Optional[int] =  None) -> Tuple:
+    def __get_media_id(media: MediaInfo = None, season: Optional[int] = None) -> Tuple:
         """
         获取媒体ID
         """
@@ -104,7 +104,7 @@ class JobManager:
         """
         return schemas.MetaInfo(**task.meta.to_dict())
 
-    def add_task(self, task: TransferTask, state: Optional[str] =  "waiting"):
+    def add_task(self, task: TransferTask, state: Optional[str] = "waiting"):
         """
         添加整理任务
         """
@@ -296,7 +296,7 @@ class JobManager:
             media_success = True
         return meta_success and media_success
 
-    def success_tasks(self, media: MediaInfo, season: Optional[int] =  None) -> List[TransferJobTask]:
+    def success_tasks(self, media: MediaInfo, season: Optional[int] = None) -> List[TransferJobTask]:
         """
         获取某项任务成功的任务
         """
@@ -306,7 +306,7 @@ class JobManager:
                 return []
             return [task for task in self._job_view[__mediaid__].tasks if task.state == "completed"]
 
-    def count(self, media: MediaInfo, season: Optional[int] =  None) -> int:
+    def count(self, media: MediaInfo, season: Optional[int] = None) -> int:
         """
         获取某项任务总数
         """
@@ -317,7 +317,7 @@ class JobManager:
                 return 0
             return len([task for task in self._job_view[__mediaid__].tasks if task.state == "completed"])
 
-    def size(self, media: MediaInfo, season: Optional[int] =  None) -> int:
+    def size(self, media: MediaInfo, season: Optional[int] = None) -> int:
         """
         获取某项任务总大小
         """
@@ -341,7 +341,7 @@ class JobManager:
         """
         return list(self._job_view.values())
 
-    def season_episodes(self, media: MediaInfo, season: Optional[int] =  None) -> List[int]:
+    def season_episodes(self, media: MediaInfo, season: Optional[int] = None) -> List[int]:
         """
         获取季集清单
         """
@@ -907,13 +907,13 @@ class TransferChain(ChainBase, metaclass=Singleton):
     def do_transfer(self, fileitem: FileItem,
                     meta: MetaBase = None, mediainfo: MediaInfo = None,
                     target_directory: TransferDirectoryConf = None,
-                    target_storage: Optional[str] =  None, target_path: Path = None,
-                    transfer_type: Optional[str] =  None, scrape: Optional[bool] =  None,
-                    library_type_folder: Optional[bool] =  None, library_category_folder: Optional[bool] =  None,
-                    season: Optional[int] =  None, epformat: EpisodeFormat = None, min_filesize: Optional[int] =  0,
-                    downloader: Optional[str] =  None, download_hash: Optional[str] =  None,
-                    force: Optional[bool] =  False, background: Optional[bool] =  True,
-                    manual: Optional[bool] =  False, continue_callback: Callable = None) -> Tuple[bool, str]:
+                    target_storage: Optional[str] = None, target_path: Path = None,
+                    transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
+                    library_type_folder: Optional[bool] = None, library_category_folder: Optional[bool] = None,
+                    season: Optional[int] = None, epformat: EpisodeFormat = None, min_filesize: Optional[int] = 0,
+                    downloader: Optional[str] = None, download_hash: Optional[str] = None,
+                    force: Optional[bool] = False, background: Optional[bool] = True,
+                    manual: Optional[bool] = False, continue_callback: Callable = None) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -1153,7 +1153,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         return all_success, "，".join(err_msgs)
 
     def remote_transfer(self, arg_str: str, channel: MessageChannel,
-                        userid: Union[str, int] = None, source: Optional[str] =  None):
+                        userid: Union[str, int] = None, source: Optional[str] = None):
         """
         远程重新整理，参数 历史记录ID TMDBID|类型
         """
@@ -1195,7 +1195,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             return
 
     def __re_transfer(self, logid: int, mtype: MediaType = None,
-                      mediaid: Optional[str] =  None) -> Tuple[bool, str]:
+                      mediaid: Optional[str] = None) -> Tuple[bool, str]:
         """
         根据历史记录，重新识别整理，只支持简单条件
         :param logid: 历史记录ID
@@ -1246,20 +1246,20 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
     def manual_transfer(self,
                         fileitem: FileItem,
-                        target_storage: Optional[str] =  None,
+                        target_storage: Optional[str] = None,
                         target_path: Path = None,
-                        tmdbid: Optional[int] =  None,
-                        doubanid: Optional[str] =  None,
+                        tmdbid: Optional[int] = None,
+                        doubanid: Optional[str] = None,
                         mtype: MediaType = None,
-                        season: Optional[int] =  None,
-                        transfer_type: Optional[str] =  None,
+                        season: Optional[int] = None,
+                        transfer_type: Optional[str] = None,
                         epformat: EpisodeFormat = None,
-                        min_filesize: Optional[int] =  0,
-                        scrape: Optional[bool] =  None,
-                        library_type_folder: Optional[bool] =  None,
-                        library_category_folder: Optional[bool] =  None,
-                        force: Optional[bool] =  False,
-                        background: Optional[bool] =  False) -> Tuple[bool, Union[str, list]]:
+                        min_filesize: Optional[int] = 0,
+                        scrape: Optional[bool] = None,
+                        library_type_folder: Optional[bool] = None,
+                        library_category_folder: Optional[bool] = None,
+                        force: Optional[bool] = False,
+                        background: Optional[bool] = False) -> Tuple[bool, Union[str, list]]:
         """
         手动整理，支持复杂条件，带进度显示
         :param fileitem: 文件项
@@ -1334,7 +1334,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
-                              transferinfo: TransferInfo, season_episode: Optional[str] =  None, username: Optional[str] =  None):
+                              transferinfo: TransferInfo, season_episode: Optional[str] = None, username: Optional[str] = None):
         """
         发送入库成功的消息
         """

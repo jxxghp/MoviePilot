@@ -73,7 +73,7 @@ class Workflow(Base):
 
     @staticmethod
     @db_update
-    def success(db, wid: int, result: Optional[str] =  None):
+    def success(db, wid: int, result: Optional[str] = None):
         db.query(Workflow).filter(and_(Workflow.id == wid, Workflow.state != "P")).update({
             "state": 'S',
             "result": result,
@@ -84,7 +84,7 @@ class Workflow(Base):
 
     @staticmethod
     @db_update
-    def reset(db, wid: int, reset_count: Optional[bool] =  False):
+    def reset(db, wid: int, reset_count: Optional[bool] = False):
         db.query(Workflow).filter(Workflow.id == wid).update({
             "state": 'W',
             "result": None,

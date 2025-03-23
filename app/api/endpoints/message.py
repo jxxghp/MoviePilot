@@ -60,8 +60,8 @@ def web_message(text: str, current_user: User = Depends(get_current_active_super
 @router.get("/web", summary="获取WEB消息", response_model=List[dict])
 def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
                     db: Session = Depends(get_db),
-                    page: Optional[int] =  1,
-                    count: Optional[int] =  20):
+                    page: Optional[int] = 1,
+                    count: Optional[int] = 20):
     """
     获取WEB消息列表
     """
@@ -77,7 +77,7 @@ def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
 
 
 def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], nonce: str,
-                  source: Optional[str] =  None) -> Any:
+                  source: Optional[str] = None) -> Any:
     """
     微信验证响应
     """
@@ -114,8 +114,8 @@ def vocechat_verify() -> Any:
 
 
 @router.get("/", summary="回调请求验证")
-def incoming_verify(token: Optional[str] =  None, echostr: Optional[str] =  None, msg_signature: Optional[str] =  None,
-                    timestamp: Union[str, int] = None, nonce: Optional[str] =  None, source: Optional[str] =  None,
+def incoming_verify(token: Optional[str] = None, echostr: Optional[str] = None, msg_signature: Optional[str] = None,
+                    timestamp: Union[str, int] = None, nonce: Optional[str] = None, source: Optional[str] = None,
                     _: schemas.TokenPayload = Depends(verify_apitoken)) -> Any:
     """
     微信/VoceChat等验证响应

@@ -192,7 +192,7 @@ class WorkflowChain(ChainBase):
         super().__init__()
         self.workflowoper = WorkflowOper()
 
-    def process(self, workflow_id: int, from_begin: Optional[bool] =  True) -> Tuple[bool, str]:
+    def process(self, workflow_id: int, from_begin: Optional[bool] = True) -> Tuple[bool, str]:
         """
         处理工作流
         :param workflow_id: 工作流ID

@@ -87,7 +87,7 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
-    def exists(db: Session, tmdbid: Optional[int] =  None, doubanid: Optional[str] =  None, season: Optional[int] =  None):
+    def exists(db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None, season: Optional[int] = None):
         if tmdbid:
             if season:
                 return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
@@ -111,7 +111,7 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
-    def get_by_title(db: Session, title: str, season: Optional[int] =  None):
+    def get_by_title(db: Session, title: str, season: Optional[int] = None):
         if season:
             return db.query(Subscribe).filter(Subscribe.name == title,
                                               Subscribe.season == season).first()
@@ -119,7 +119,7 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
-    def get_by_tmdbid(db: Session, tmdbid: int, season: Optional[int] =  None):
+    def get_by_tmdbid(db: Session, tmdbid: int, season: Optional[int] = None):
         if season:
             result = db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
                                                 Subscribe.season == season).all()
@@ -165,7 +165,7 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
-    def list_by_username(db: Session, username: str, state: Optional[str] =  None, mtype: Optional[str] =  None):
+    def list_by_username(db: Session, username: str, state: Optional[str] = None, mtype: Optional[str] = None):
         if mtype:
             if state:
                 result = db.query(Subscribe).filter(Subscribe.state == state,

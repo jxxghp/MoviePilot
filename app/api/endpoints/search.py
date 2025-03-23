@@ -26,12 +26,12 @@ def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 @router.get("/media/{mediaid}", summary="精确搜索资源", response_model=schemas.Response)
 def search_by_id(mediaid: str,
-                 mtype: Optional[str] =  None,
-                 area: Optional[str] =  "title",
-                 title: Optional[str] =  None,
-                 year: Optional[str] =  None,
-                 season: Optional[str] =  None,
-                 sites: Optional[str] =  None,
+                 mtype: Optional[str] = None,
+                 area: Optional[str] = "title",
+                 title: Optional[str] = None,
+                 year: Optional[str] = None,
+                 season: Optional[str] = None,
+                 sites: Optional[str] = None,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID/豆瓣ID精确搜索站点资源 tmdb:/douban:/bangumi:
@@ -146,9 +146,9 @@ def search_by_id(mediaid: str,
 
 
 @router.get("/title", summary="模糊搜索资源", response_model=schemas.Response)
-def search_by_title(keyword: Optional[str] =  None,
-                    page: Optional[int] =  0,
-                    sites: Optional[str] =  None,
+def search_by_title(keyword: Optional[str] = None,
+                    page: Optional[int] = 0,
+                    sites: Optional[str] = None,
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
