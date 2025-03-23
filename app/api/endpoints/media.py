@@ -139,7 +139,7 @@ def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 @router.get("/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason])
 def seasons(mediaid: Optional[str] = None,
             title: Optional[str] = None,
-            year: int = None,
+            year: str = None,
             season: int = None,
             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

@@ -16,9 +16,9 @@ class Statistic(BaseModel):
 
 class Storage(BaseModel):
     # 总存储空间
-    total_storage: Optional[float] = 0
+    total_storage: Optional[float] = 0.0
     # 已使用空间
-    used_storage: Optional[float] = 0
+    used_storage: Optional[float] = 0.0
 
 
 class ProcessInfo(BaseModel):

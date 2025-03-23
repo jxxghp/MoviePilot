@@ -106,7 +106,7 @@ class MediaInfo(BaseModel):
     # 海报图片
     poster_path: Optional[str] = None
     # 评分
-    vote_average: Optional[float] = 0
+    vote_average: Optional[float] = 0.0
     # 描述
     overview: Optional[str] = None
     # 二级分类
@@ -201,7 +201,7 @@ class TorrentInfo(BaseModel):
     # 详情页面
     page_url: Optional[str] = None
     # 种子大小
-    size: Optional[float] = 0
+    size: Optional[float] = 0.0
     # 做种者
     seeders: Optional[int] = 0
     # 下载者
