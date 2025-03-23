@@ -87,7 +87,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
         while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
-    && rm -rf /tmp/*
+    && rm -rf /tmp/* /app/build /app/cython_cache
 EXPOSE 3000
 VOLUME [ "/config" ]
 ENTRYPOINT [ "/entrypoint" ]
