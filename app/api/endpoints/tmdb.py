@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -61,8 +61,8 @@ def tmdb_recommend(tmdbid: int,
 
 @router.get("/collection/{collection_id}", summary="系列合集详情", response_model=List[schemas.MediaInfo])
 def tmdb_collection(collection_id: int,
-                    page: int = 1,
-                    count: int = 20,
+                    page: Optional[int] =  1,
+                    count: Optional[int] =  20,
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据合集ID查询合集详情
@@ -76,7 +76,7 @@ def tmdb_collection(collection_id: int,
 @router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.MediaPerson])
 def tmdb_credits(tmdbid: int,
                  type_name: str,
-                 page: int = 1,
+                 page: Optional[int] =  1,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询演员阵容，type_name: 电影/电视剧
@@ -102,7 +102,7 @@ def tmdb_person(person_id: int,
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
 def tmdb_person_credits(person_id: int,
-                        page: int = 1,
+                        page: Optional[int] =  1,
                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据人物ID查询人物参演作品

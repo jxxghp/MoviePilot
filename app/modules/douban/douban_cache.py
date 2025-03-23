@@ -165,7 +165,7 @@ class DoubanCache(metaclass=Singleton):
                 # None时不缓存，此时代表网络错误，允许重复请求
                 self._meta_data[self.__get_key(meta)] = {'id': "0"}
 
-    def save(self, force: bool = False) -> None:
+    def save(self, force: Optional[bool] = False) -> None:
         """
         保存缓存数据到文件
         """

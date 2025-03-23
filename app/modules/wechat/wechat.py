@@ -40,8 +40,8 @@ class WeChat:
     # 企业微信删除菜单URL
     _delete_menu_url = "cgi-bin/menu/delete?access_token={access_token}&agentid={agentid}"
 
-    def __init__(self, WECHAT_CORPID: str = None, WECHAT_APP_SECRET: str = None,
-                 WECHAT_APP_ID: str = None, WECHAT_PROXY: str = None, **kwargs):
+    def __init__(self, WECHAT_CORPID: Optional[str] = None, WECHAT_APP_SECRET: Optional[str] = None,
+                 WECHAT_APP_ID: Optional[str] = None, WECHAT_PROXY: Optional[str] = None, **kwargs):
         """
         初始化
         """
@@ -159,8 +159,8 @@ class WeChat:
 
         return content_chunks
 
-    def __send_message(self, title: str, text: str = None,
-                       userid: str = None, link: str = None) -> bool:
+    def __send_message(self, title: str, text: Optional[str] = None,
+                       userid: Optional[str] = None, link: Optional[str] = None) -> bool:
         """
         发送文本消息
         :param title: 消息标题
@@ -206,7 +206,7 @@ class WeChat:
         return True
 
     def __send_image_message(self, title: str, text: str, image_url: str,
-                             userid: str = None, link: str = None) -> Optional[bool]:
+                             userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送图文消息
         :param title: 消息标题
@@ -241,8 +241,8 @@ class WeChat:
             logger.error(f"发送图文消息失败：{e}")
             return False
 
-    def send_msg(self, title: str, text: str = "", image: str = "",
-                 userid: str = None, link: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
+                 userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
@@ -267,7 +267,7 @@ class WeChat:
             logger.error(f"发送消息失败：{e}")
             return False
 
-    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "") -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None) -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -307,7 +307,7 @@ class WeChat:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
+                          userid: Optional[str] = None, title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -416,7 +416,7 @@ class WeChat:
                        {
                            "type":"view",
                            "name":"搜索",
-                           "url":"http://www.soso.com/"
+                           "url":"https://www.soso.com/"
                        },
                        {
                            "type":"click",

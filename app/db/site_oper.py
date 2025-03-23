@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from app.db import DbOper
 from app.db.models import SiteIcon
@@ -134,7 +134,7 @@ class SiteOper(DbOper):
         """
         return SiteUserData.list(self._db)
 
-    def get_userdata_by_domain(self, domain: str, workdate: str = None) -> List[SiteUserData]:
+    def get_userdata_by_domain(self, domain: str, workdate: Optional[str] =  None) -> List[SiteUserData]:
         """
         获取站点用户数据
         """
@@ -173,7 +173,7 @@ class SiteOper(DbOper):
             })
         return True
 
-    def success(self, domain: str, seconds: int = None):
+    def success(self, domain: str, seconds: Optional[int] =  None):
         """
         站点访问成功
         """

@@ -10,8 +10,8 @@ class FormatParser(object):
     _key = ""
     _split_chars = r"\.|\s+|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|~"
 
-    def __init__(self, eformat: str, details: str = None, part: str = None,
-                 offset: str = None, key: str = "ep"):
+    def __init__(self, eformat: str, details: Optional[str] =  None, part: Optional[str] =  None,
+                 offset: Optional[str] =  None, key: Optional[str] =  "ep"):
         """
         :params eformat: 格式化字符串
         :params details: 格式化详情

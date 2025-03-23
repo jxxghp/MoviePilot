@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -25,7 +25,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
         # 重启完成检测
         self.restart_finish()
 
-    def remote_clear_cache(self, channel: MessageChannel, userid: Union[int, str], source: str = None):
+    def remote_clear_cache(self, channel: MessageChannel, userid: Union[int, str], source: Optional[str] =  None):
         """
         清理系统缓存
         """
@@ -33,7 +33,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
         self.post_message(Notification(channel=channel, source=source,
                                        title=f"缓存清理完成！", userid=userid))
 
-    def restart(self, channel: MessageChannel, userid: Union[int, str], source: str = None):
+    def restart(self, channel: MessageChannel, userid: Union[int, str], source: Optional[str] =  None):
         """
         重启系统
         """
@@ -65,7 +65,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
             title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
         return title
 
-    def version(self, channel: MessageChannel, userid: Union[int, str], source: str = None):
+    def version(self, channel: MessageChannel, userid: Union[int, str], source: Optional[str] =  None):
         """
         查看当前版本、远程版本
         """

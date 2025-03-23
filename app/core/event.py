@@ -31,7 +31,7 @@ class Event:
 
     def __init__(self, event_type: Union[EventType, ChainEventType],
                  event_data: Optional[Union[Dict, ChainEventData]] = None,
-                 priority: int = DEFAULT_EVENT_PRIORITY):
+                 priority: Optional[int] =  DEFAULT_EVENT_PRIORITY):
         """
         :param event_type: 事件的类型，支持 EventType 或 ChainEventType
         :param event_data: 可选，事件携带的数据，默认为空字典
@@ -130,7 +130,7 @@ class EventManager(metaclass=Singleton):
             )
 
     def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict, ChainEventData]] = None,
-                   priority: int = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
+                   priority: Optional[int] =  DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
         发送事件，根据事件类型决定是广播事件还是链式事件
         :param etype: 事件类型 (EventType 或 ChainEventType)
@@ -147,7 +147,7 @@ class EventManager(metaclass=Singleton):
             logger.error(f"Unknown event type: {etype}")
 
     def add_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable,
-                           priority: int = DEFAULT_EVENT_PRIORITY):
+                           priority: Optional[int] =  DEFAULT_EVENT_PRIORITY):
         """
         注册事件处理器，将处理器添加到对应的事件订阅列表中
         :param event_type: 事件类型 (EventType 或 ChainEventType)
@@ -506,7 +506,7 @@ class EventManager(metaclass=Singleton):
         )
 
     def register(self, etype: Union[EventType, ChainEventType, List[Union[EventType, ChainEventType]], type],
-                 priority: int = DEFAULT_EVENT_PRIORITY):
+                 priority: Optional[int] =  DEFAULT_EVENT_PRIORITY):
         """
         事件注册装饰器，用于将函数注册为事件的处理器
         :param etype:

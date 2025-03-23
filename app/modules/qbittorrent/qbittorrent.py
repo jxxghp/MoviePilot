@@ -12,20 +12,20 @@ from app.utils.string import StringUtils
 
 
 class Qbittorrent:
-    _host: str = None
+    _host: Optional[str] = None
     _port: int = None
-    _username: str = None
-    _password: str = None
-    _category: bool = False
-    _sequentail: bool = False
-    _force_resume: bool = False
+    _username: Optional[str] = None
+    _password: Optional[str] = None
+    _category: Optional[bool] = False
+    _sequentail: Optional[bool] = False
+    _force_resume: Optional[bool] = False
 
     qbc: Client = None
 
-    def __init__(self, host: str = None, port: int = None,
-                 username: str = None, password: str = None,
-                 category: bool = False, sequentail: bool = False,
-                 force_resume: bool = False, first_last_piece=False,
+    def __init__(self, host: Optional[str] = None, port: int = None,
+                 username: Optional[str] = None, password: Optional[str] = None,
+                 category: Optional[bool] = False, sequentail: Optional[bool] = False,
+                 force_resume: Optional[bool] = False, first_last_piece=False,
                  **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器
@@ -236,11 +236,11 @@ class Qbittorrent:
 
     def add_torrent(self,
                     content: Union[str, bytes],
-                    is_paused: bool = False,
-                    download_dir: str = None,
+                    is_paused: Optional[bool] = False,
+                    download_dir: Optional[str] = None,
                     tag: Union[str, list] = None,
-                    category: str = None,
-                    cookie=None,
+                    category: Optional[str] = None,
+                    cookie: Optional[str] = None,
                     **kwargs
                     ) -> bool:
         """

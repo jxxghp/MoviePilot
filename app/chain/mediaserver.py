@@ -21,14 +21,15 @@ class MediaServerChain(ChainBase):
         super().__init__()
         self.dboper = MediaServerOper()
 
-    def librarys(self, server: str, username: str = None, hidden: bool = False) -> List[MediaServerLibrary]:
+    def librarys(self, server: str, username: Optional[str] = None,
+                 hidden: bool = False) -> List[MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库
         """
         return self.run_module("mediaserver_librarys", server=server, username=username, hidden=hidden)
 
     def items(self, server: str, library_id: Union[str, int],
-              start_index: int = 0, limit: Optional[int] = -1) -> Generator[Any, None, None]:
+              start_index: Optional[int] = 0, limit: Optional[int] = -1) -> Generator[Any, None, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
 
@@ -81,28 +82,31 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
 
-    def playing(self, server: str, count: int = 20, username: str = None) -> List[MediaServerPlayItem]:
+    def playing(self, server: str, count: Optional[int] = 20,
+                username: Optional[str] = None) -> List[MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
         return self.run_module("mediaserver_playing", count=count, server=server, username=username)
 
-    def latest(self, server: str, count: int = 20, username: str = None) -> List[MediaServerPlayItem]:
+    def latest(self, server: str, count: Optional[int] = 20,
+               username: Optional[str] = None) -> List[MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
         return self.run_module("mediaserver_latest", count=count, server=server, username=username)
 
     @cached(maxsize=1, ttl=3600)
-    def get_latest_wallpapers(self, server: str = None, count: int = 10,
-                              remote: bool = True, username: str = None) -> List[str]:
+    def get_latest_wallpapers(self, server: Optional[str] = None, count: Optional[int] = 10,
+                              remote: bool = True, username: Optional[str] = None) -> List[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
         return self.run_module("mediaserver_latest_images", server=server, count=count,
                                remote=remote, username=username)
 
-    def get_latest_wallpaper(self, server: str = None, remote: bool = True, username: str = None) -> Optional[str]:
+    def get_latest_wallpaper(self, server: Optional[str] = None,
+                             remote: bool = True, username: Optional[str] = None) -> Optional[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """

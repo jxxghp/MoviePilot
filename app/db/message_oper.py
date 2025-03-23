@@ -18,14 +18,14 @@ class MessageOper(DbOper):
 
     def add(self,
             channel: MessageChannel = None,
-            source: str = None,
+            source: Optional[str] =  None,
             mtype: NotificationType = None,
-            title: str = None,
-            text: str = None,
-            image: str = None,
-            link: str = None,
-            userid: str = None,
-            action: int = 1,
+            title: Optional[str] =  None,
+            text: Optional[str] =  None,
+            image: Optional[str] =  None,
+            link: Optional[str] =  None,
+            userid: Optional[str] =  None,
+            action: Optional[int] =  1,
             note: Union[list, dict] = None,
             **kwargs):
         """
@@ -62,7 +62,7 @@ class MessageOper(DbOper):
 
         Message(**kwargs).create(self._db)
 
-    def list_by_page(self, page: int = 1, count: int = 30) -> Optional[str]:
+    def list_by_page(self, page: Optional[int] =  1, count: Optional[int] =  30) -> Optional[str]:
         """
         获取媒体服务器数据ID
         """

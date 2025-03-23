@@ -24,7 +24,8 @@ class Slack:
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _channel = ""
 
-    def __init__(self, SLACK_OAUTH_TOKEN: str = None, SLACK_APP_TOKEN: str = None, SLACK_CHANNEL: str = "", **kwargs):
+    def __init__(self, SLACK_OAUTH_TOKEN: Optional[str] = None, SLACK_APP_TOKEN: Optional[str] = None, 
+                 SLACK_CHANNEL: Optional[str] = None, **kwargs):
 
         if not SLACK_OAUTH_TOKEN or not SLACK_APP_TOKEN:
             logger.error("Slack 配置不完整！")
@@ -100,7 +101,7 @@ class Slack:
         """
         return True if self._client else False
 
-    def send_msg(self, title: str, text: str = "", image: str = "", link: str = "", userid: str = ""):
+    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None, userid: Optional[str] = None):
         """
         发送Telegram消息
         :param title: 消息标题
@@ -168,7 +169,7 @@ class Slack:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False, str(msg_e)
 
-    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -252,7 +253,7 @@ class Slack:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+                          userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """

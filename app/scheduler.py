@@ -1,7 +1,7 @@
 import threading
 import traceback
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -449,7 +449,7 @@ class Scheduler(metaclass=Singleton):
                                                    message=str(e),
                                                    role="system")
 
-    def remove_plugin_job(self, pid: str, job_id: str = None):
+    def remove_plugin_job(self, pid: str, job_id: Optional[str] = None):
         """
         移除定时服务，可以是单个服务（包括默认服务）或整个插件的所有服务
         :param pid: 插件 ID

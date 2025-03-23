@@ -1,5 +1,5 @@
 import re
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from app.core.config import settings
 from app.log import logger
@@ -49,7 +49,7 @@ class TNodeSpider:
             if csrf_token:
                 self._token = csrf_token.group(1)
 
-    def search(self, keyword: str, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         if not self._token:
             logger.warn(f"{self._name} 未获取到token，无法搜索")
             return True, []

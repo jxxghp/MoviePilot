@@ -29,11 +29,11 @@ class _PluginBase(metaclass=ABCMeta):
     - get_data_path() 获取插件数据保存目录
     """
     # 插件名称
-    plugin_name: str = ""
+    plugin_name: Optional[str] = ""
     # 插件描述
-    plugin_desc: str = ""
+    plugin_desc: Optional[str] = ""
     # 插件顺序
-    plugin_order: int = 9999
+    plugin_order: Optional[int] = 9999
 
     def __init__(self):
         # 插件数据
@@ -162,7 +162,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def update_config(self, config: dict, plugin_id: str = None) -> bool:
+    def update_config(self, config: dict, plugin_id: Optional[str] = None) -> bool:
         """
         更新配置信息
         :param config: 配置信息字典
@@ -172,7 +172,7 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         return self.systemconfig.set(f"plugin.{plugin_id}", config)
 
-    def get_config(self, plugin_id: str = None) -> Any:
+    def get_config(self, plugin_id: Optional[str] = None) -> Any:
         """
         获取配置信息
         :param plugin_id: 插件ID
@@ -181,7 +181,7 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         return self.systemconfig.get(f"plugin.{plugin_id}")
 
-    def get_data_path(self, plugin_id: str = None) -> Path:
+    def get_data_path(self, plugin_id: Optional[str] = None) -> Path:
         """
         获取插件数据保存目录
         """
@@ -192,7 +192,7 @@ class _PluginBase(metaclass=ABCMeta):
             data_path.mkdir(parents=True)
         return data_path
 
-    def save_data(self, key: str, value: Any, plugin_id: str = None):
+    def save_data(self, key: str, value: Any, plugin_id: Optional[str] = None):
         """
         保存插件数据
         :param key: 数据key
@@ -203,7 +203,7 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         self.plugindata.save(plugin_id, key, value)
 
-    def get_data(self, key: str = None, plugin_id: str = None) -> Any:
+    def get_data(self, key: Optional[str] = None, plugin_id: Optional[str] = None) -> Any:
         """
         获取插件数据
         :param key: 数据key
@@ -213,7 +213,7 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         return self.plugindata.get_data(plugin_id, key)
 
-    def del_data(self, key: str, plugin_id: str = None) -> Any:
+    def del_data(self, key: str, plugin_id: Optional[str] = None) -> Any:
         """
         删除插件数据
         :param key: 数据key
@@ -223,8 +223,9 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         return self.plugindata.del_data(plugin_id, key)
 
-    def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: str = None,
-                     text: str = None, image: str = None, link: str = None, userid: str = None, username: str = None,
+    def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: Optional[str] = None,
+                     text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None,
+                     userid: Optional[str] = None, username: Optional[str] = None,
                      **kwargs):
         """
         发送消息

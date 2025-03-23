@@ -19,7 +19,7 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("douban_person_detail", person_id=person_id)
 
-    def person_credits(self, person_id: int, page: int = 1) -> List[MediaInfo]:
+    def person_credits(self, person_id: int, page: Optional[int] = 1) -> List[MediaInfo]:
         """
         根据人物ID查询人物参演作品
         :param person_id:  人物ID
@@ -27,7 +27,7 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("douban_person_credits", person_id=person_id, page=page)
 
-    def movie_top250(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def movie_top250(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取豆瓣电影TOP250
         :param page:  页码
@@ -35,26 +35,26 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("movie_top250", page=page, count=count)
 
-    def movie_showing(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def movie_showing(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取正在上映的电影
         """
         return self.run_module("movie_showing", page=page, count=count)
 
-    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def tv_weekly_chinese(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取本周中国剧集榜
         """
         return self.run_module("tv_weekly_chinese", page=page, count=count)
 
-    def tv_weekly_global(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def tv_weekly_global(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取本周全球剧集榜
         """
         return self.run_module("tv_weekly_global", page=page, count=count)
 
     def douban_discover(self, mtype: MediaType, sort: str, tags: str,
-                        page: int = 0, count: int = 30) -> Optional[List[MediaInfo]]:
+                        page: Optional[int] = 0, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         发现豆瓣电影、剧集
         :param mtype:  媒体类型
@@ -67,19 +67,19 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         return self.run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
                                page=page, count=count)
 
-    def tv_animation(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def tv_animation(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取动画剧集
         """
         return self.run_module("tv_animation", page=page, count=count)
 
-    def movie_hot(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def movie_hot(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门电影
         """
         return self.run_module("movie_hot", page=page, count=count)
 
-    def tv_hot(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+    def tv_hot(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门剧集
         """

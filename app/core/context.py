@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -714,7 +714,7 @@ class MediaInfo:
             return self.backdrop_path.replace("original", "w500")
         return default or ""
 
-    def get_message_image(self, default: bool = None):
+    def get_message_image(self, default: Optional[bool] =  None):
         """
         返回消息图片地址
         """
@@ -722,7 +722,7 @@ class MediaInfo:
             return self.backdrop_path.replace("original", "w500")
         return self.get_poster_image(default=default)
 
-    def get_poster_image(self, default: bool = None):
+    def get_poster_image(self, default: Optional[bool] =  None):
         """
         返回海报图片地址
         """
@@ -730,7 +730,7 @@ class MediaInfo:
             return self.poster_path.replace("original", "w500")
         return default or ""
 
-    def get_overview_string(self, max_len: int = 140):
+    def get_overview_string(self, max_len: Optional[int] = 140):
         """
         返回带限定长度的简介信息
         :param max_len: 内容长度

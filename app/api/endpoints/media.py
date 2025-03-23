@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Any, Union, Annotated
+from typing import List, Any, Union, Annotated, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -19,7 +19,7 @@ router = APIRouter()
 
 @router.get("/recognize", summary="识别媒体信息（种子）", response_model=schemas.Context)
 def recognize(title: str,
-              subtitle: str = None,
+              subtitle: Optional[str] =  None,
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据标题、副标题识别媒体信息
@@ -35,7 +35,7 @@ def recognize(title: str,
 @router.get("/recognize2", summary="识别种子媒体信息（API_TOKEN）", response_model=schemas.Context)
 def recognize2(_: Annotated[str, Depends(verify_apitoken)],
                title: str,
-               subtitle: str = None
+               subtitle: Optional[str] =  None
                ) -> Any:
     """
     根据标题、副标题识别媒体信息 API_TOKEN认证（?token=xxx）
@@ -69,7 +69,7 @@ def recognize_file2(path: str,
 
 @router.get("/search", summary="搜索媒体/人物信息", response_model=List[dict])
 def search(title: str,
-           type: str = "media",
+           type: Optional[str] =  "media",
            page: int = 1,
            count: int = 8,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -106,7 +106,7 @@ def search(title: str,
 
 @router.post("/scrape/{storage}", summary="刮削媒体信息", response_model=schemas.Response)
 def scrape(fileitem: schemas.FileItem,
-           storage: str = "local",
+           storage: Optional[str] =  "local",
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     刮削媒体信息
@@ -137,8 +137,8 @@ def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason])
-def seasons(mediaid: str = None,
-            title: str = None,
+def seasons(mediaid: Optional[str] =  None,
+            title: Optional[str] =  None,
             year: int = None,
             season: int = None,
             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -180,7 +180,7 @@ def seasons(mediaid: str = None,
 
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
-def detail(mediaid: str, type_name: str, title: str = None, year: int = None,
+def detail(mediaid: str, type_name: str, title: Optional[str] =  None, year: int = None,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧

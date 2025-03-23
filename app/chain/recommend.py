@@ -1,7 +1,7 @@
 import io
 import tempfile
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
@@ -162,15 +162,15 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def tmdb_movies(self, sort_by: str = "popularity.desc",
-                    with_genres: str = "",
-                    with_original_language: str = "",
-                    with_keywords: str = "",
-                    with_watch_providers: str = "",
-                    vote_average: float = 0,
-                    vote_count: int = 0,
-                    release_date: str = "",
-                    page: int = 1) -> List[dict]:
+    def tmdb_movies(self, sort_by: Optional[str] = "popularity.desc",
+                    with_genres: Optional[str] = "",
+                    with_original_language: Optional[str] = "",
+                    with_keywords: Optional[str] = "",
+                    with_watch_providers: Optional[str] = "",
+                    vote_average: Optional[float] = 0,
+                    vote_count: Optional[int] = 0,
+                    release_date: Optional[str] = "",
+                    page: Optional[int] = 1) -> List[dict]:
         """
         TMDB热门电影
         """
@@ -188,15 +188,15 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def tmdb_tvs(self, sort_by: str = "popularity.desc",
-                 with_genres: str = "",
-                 with_original_language: str = "zh|en|ja|ko",
-                 with_keywords: str = "",
-                 with_watch_providers: str = "",
-                 vote_average: float = 0,
-                 vote_count: int = 0,
-                 release_date: str = "",
-                 page: int = 1) -> List[dict]:
+    def tmdb_tvs(self, sort_by: Optional[str] = "popularity.desc",
+                 with_genres: Optional[str] = "",
+                 with_original_language: Optional[str] = "zh|en|ja|ko",
+                 with_keywords: Optional[str] = "",
+                 with_watch_providers: Optional[str] = "",
+                 vote_average: Optional[float] = 0,
+                 vote_count: Optional[int] = 0,
+                 release_date: Optional[str] = "",
+                 page: Optional[int] = 1) -> List[dict]:
         """
         TMDB热门电视剧
         """
@@ -214,7 +214,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def tmdb_trending(self, page: int = 1) -> List[dict]:
+    def tmdb_trending(self, page: Optional[int] = 1) -> List[dict]:
         """
         TMDB流行趋势
         """
@@ -223,7 +223,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def bangumi_calendar(self, page: int = 1, count: int = 30) -> List[dict]:
+    def bangumi_calendar(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         Bangumi每日放送
         """
@@ -232,7 +232,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_movie_showing(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_movie_showing(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣正在热映
         """
@@ -241,7 +241,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_movies(self, sort: str = "R", tags: str = "", page: int = 1, count: int = 30) -> List[dict]:
+    def douban_movies(self, sort: Optional[str] = "R", tags: Optional[str] = "",
+                      page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣最新电影
         """
@@ -251,7 +252,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_tvs(self, sort: str = "R", tags: str = "", page: int = 1, count: int = 30) -> List[dict]:
+    def douban_tvs(self, sort: Optional[str] = "R", tags: Optional[str] = "",
+                   page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣最新电视剧
         """
@@ -261,7 +263,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_movie_top250(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_movie_top250(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣电影TOP250
         """
@@ -270,7 +272,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_tv_weekly_chinese(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_tv_weekly_chinese(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣国产剧集榜
         """
@@ -279,7 +281,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_tv_weekly_global(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_tv_weekly_global(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣全球剧集榜
         """
@@ -288,7 +290,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_tv_animation(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_tv_animation(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣热门动漫
         """
@@ -297,7 +299,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_movie_hot(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_movie_hot(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣热门电影
         """
@@ -306,7 +308,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def douban_tv_hot(self, page: int = 1, count: int = 30) -> List[dict]:
+    def douban_tv_hot(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         豆瓣热门电视剧
         """

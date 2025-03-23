@@ -121,7 +121,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         """
         pass
 
-    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         解析用户做种信息
         """

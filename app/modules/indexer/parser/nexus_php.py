@@ -147,7 +147,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 return True, gold * 100 * 100 + silver * 100 + copper
         return False, 0.0
 
-    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         做种相关信息
         :param html_text:

@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -43,11 +43,11 @@ def play_item(itemid: str, _: schemas.TokenPayload = Depends(verify_token)) -> s
 
 
 @router.get("/exists", summary="查询本地是否存在（数据库）", response_model=schemas.Response)
-def exists_local(title: str = None,
-                 year: str = None,
-                 mtype: str = None,
-                 tmdbid: int = None,
-                 season: int = None,
+def exists_local(title: Optional[str] =  None,
+                 year: Optional[str] =  None,
+                 mtype: Optional[str] =  None,
+                 tmdbid: Optional[int] =  None,
+                 season: Optional[int] =  None,
                  db: Session = Depends(get_db),
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -121,7 +121,7 @@ def not_exists(media_in: schemas.MediaInfo,
 
 
 @router.get("/latest", summary="最新入库条目", response_model=List[schemas.MediaServerPlayItem])
-def latest(server: str, count: int = 18,
+def latest(server: str, count: Optional[int] =  18,
            userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器最新入库条目
@@ -130,7 +130,7 @@ def latest(server: str, count: int = 18,
 
 
 @router.get("/playing", summary="正在播放条目", response_model=List[schemas.MediaServerPlayItem])
-def playing(server: str, count: int = 12,
+def playing(server: str, count: Optional[int] =  12,
             userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器正在播放条目
@@ -139,7 +139,7 @@ def playing(server: str, count: int = 12,
 
 
 @router.get("/library", summary="媒体库列表", response_model=List[schemas.MediaServerLibrary])
-def library(server: str, hidden: bool = False,
+def library(server: str, hidden: Optional[bool] =  False,
             userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器媒体库列表

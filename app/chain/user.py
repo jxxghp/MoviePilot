@@ -30,7 +30,7 @@ class UserChain(ChainBase, metaclass=Singleton):
             password: Optional[str] = None,
             mfa_code: Optional[str] = None,
             code: Optional[str] = None,
-            grant_type: str = "password"
+            grant_type: Optional[str] =  "password"
     ) -> Union[Tuple[bool, Optional[str]], Tuple[bool, Optional[User]]]:
         """
         认证用户，根据不同的 grant_type 处理不同的认证流程

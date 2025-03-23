@@ -84,8 +84,8 @@ class TheMovieDbModule(_ModuleBase):
 
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
-                        tmdbid: int = None,
-                        cache: bool = True,
+                        tmdbid: Optional[int] = None,
+                        cache: Optional[bool] = True,
                         **kwargs) -> Optional[MediaInfo]:
         """
         识别媒体信息
@@ -219,7 +219,7 @@ class TheMovieDbModule(_ModuleBase):
         return None
 
     def match_tmdbinfo(self, name: str, mtype: MediaType = None,
-                       year: str = None, season: int = None) -> dict:
+                       year: Optional[str] = None, season: Optional[int] = None) -> dict:
         """
         搜索和匹配TMDB信息
         :param name:  名称
@@ -239,7 +239,7 @@ class TheMovieDbModule(_ModuleBase):
                                       tmdbid=info.get("id"))
         return info
 
-    def tmdb_info(self, tmdbid: int, mtype: MediaType, season: int = None) -> Optional[dict]:
+    def tmdb_info(self, tmdbid: int, mtype: MediaType, season: Optional[int] = None) -> Optional[dict]:
         """
         获取TMDB信息
         :param tmdbid: int
@@ -334,7 +334,7 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                     season: int = None, episode: int = None) -> Optional[str]:
+                     season: Optional[int] = None, episode: Optional[int] = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param meta: 元数据
@@ -346,7 +346,7 @@ class TheMovieDbModule(_ModuleBase):
             return None
         return self.scraper.get_metadata_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
+    def metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息
@@ -365,7 +365,7 @@ class TheMovieDbModule(_ModuleBase):
                       vote_average: float,
                       vote_count: int,
                       release_date: str,
-                      page: int = 1) -> Optional[List[MediaInfo]]:
+                      page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
@@ -409,7 +409,7 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in infos]
         return []
 
-    def tmdb_trending(self, page: int = 1) -> List[MediaInfo]:
+    def tmdb_trending(self, page: Optional[int] = 1) -> List[MediaInfo]:
         """
         TMDB流行趋势
         :param page: 第几页
@@ -493,8 +493,8 @@ class TheMovieDbModule(_ModuleBase):
         return mediainfo
 
     def obtain_specific_image(self, mediaid: Union[str, int], mtype: MediaType,
-                              image_type: MediaImageType, image_prefix: str = "w500",
-                              season: int = None, episode: int = None) -> Optional[str]:
+                              image_type: MediaImageType, image_prefix: Optional[str] = "w500",
+                              season: Optional[int] = None, episode: Optional[int] = None) -> Optional[str]:
         """
         获取指定媒体信息图片，返回图片地址
         :param mediaid:     媒体ID
@@ -566,7 +566,7 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in recommend]
         return []
 
-    def tmdb_movie_credits(self, tmdbid: int, page: int = 1) -> List[schemas.MediaPerson]:
+    def tmdb_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param tmdbid:  TMDBID
@@ -577,7 +577,7 @@ class TheMovieDbModule(_ModuleBase):
             return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
         return []
 
-    def tmdb_tv_credits(self, tmdbid: int, page: int = 1) -> List[schemas.MediaPerson]:
+    def tmdb_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
         """
         根据TMDBID查询电视剧演职员表
         :param tmdbid:  TMDBID
@@ -598,7 +598,7 @@ class TheMovieDbModule(_ModuleBase):
             return schemas.MediaPerson(source="themoviedb", **detail)
         return schemas.MediaPerson()
 
-    def tmdb_person_credits(self, person_id: int, page: int = 1) -> List[MediaInfo]:
+    def tmdb_person_credits(self, person_id: int, page: Optional[int] = 1) -> List[MediaInfo]:
         """
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID

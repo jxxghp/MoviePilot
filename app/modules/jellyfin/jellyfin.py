@@ -14,13 +14,13 @@ from schemas import MediaServerItem
 
 
 class Jellyfin:
-    _host: str = None
-    _apikey: str = None
-    _playhost: str = None
+    _host: Optional[str] = None
+    _apikey: Optional[str] = None
+    _playhost: Optional[str] = None
     _sync_libraries: List[str] = []
     user: Optional[Union[str, int]] = None
 
-    def __init__(self, host: str = None, apikey: str = None, play_host: str = None,
+    def __init__(self, host: Optional[str] = None, apikey: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: list = None, **kwargs):
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
@@ -113,7 +113,7 @@ class Jellyfin:
             logger.error(f"连接Library/VirtualFolders 出错：" + str(e))
             return []
 
-    def __get_jellyfin_librarys(self, username: str = None) -> List[dict]:
+    def __get_jellyfin_librarys(self, username: Optional[str] = None) -> List[dict]:
         """
         获取Jellyfin媒体库的信息
         """
@@ -136,7 +136,7 @@ class Jellyfin:
             logger.error(f"连接Users/Views 出错：" + str(e))
             return []
 
-    def get_librarys(self, username: str = None, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, username: Optional[str] = None, hidden: Optional[bool] = False) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -193,7 +193,7 @@ class Jellyfin:
             logger.error(f"连接Users出错：" + str(e))
             return 0
 
-    def get_user(self, user_name: str = None) -> Optional[Union[str, int]]:
+    def get_user(self, user_name: Optional[str] = None) -> Optional[Union[str, int]]:
         """
         获得管理员用户
         """
@@ -336,8 +336,8 @@ class Jellyfin:
 
     def get_movies(self,
                    title: str,
-                   year: str = None,
-                   tmdb_id: int = None) -> Optional[List[schemas.MediaServerItem]]:
+                   year: Optional[str] = None,
+                   tmdb_id: Optional[int] = None) -> Optional[List[schemas.MediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Jellyfin中存在，存在则返回列表
         :param title: 标题
@@ -379,11 +379,11 @@ class Jellyfin:
         return []
 
     def get_tv_episodes(self,
-                        item_id: str = None,
-                        title: str = None,
-                        year: str = None,
-                        tmdb_id: int = None,
-                        season: int = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
+                        item_id: Optional[str] = None,
+                        title: Optional[str] = None,
+                        year: Optional[str] = None,
+                        tmdb_id: Optional[int] = None,
+                        season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
         根据标题和年份和季，返回Jellyfin中的剧集列表
         :param item_id: Jellyfin中的Id
@@ -761,7 +761,7 @@ class Jellyfin:
             logger.error(f"连接Users/{self.user}/Items/{itemid}：" + str(e))
         return None
 
-    def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
+    def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
             -> Generator[MediaServerItem | None | Any, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
@@ -817,7 +817,7 @@ class Jellyfin:
             logger.error(f"连接Jellyfin出错：" + str(e))
             return None
 
-    def post_data(self, url: str, data: str = None, headers: dict = None) -> Optional[Response]:
+    def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
         """
         自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
         :param url: 请求地址
@@ -856,7 +856,7 @@ class Jellyfin:
             return ""
         return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
-    def get_backdrop_url(self, item_id: str, image_tag: str, remote: bool = False) -> str:
+    def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """
         获取Backdrop图片地址
         :param: item_id: 在Jellyfin中的ID
@@ -874,7 +874,7 @@ class Jellyfin:
         return f"{host_url}Items/{item_id}/" \
                f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def get_resume(self, num: int = 12, username: str = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获得继续观看
         """
@@ -941,7 +941,7 @@ class Jellyfin:
             logger.error(f"连接Users/Items/Resume出错：" + str(e))
         return []
 
-    def get_latest(self, num=20, username: str = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num=20, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获得最近更新
         """

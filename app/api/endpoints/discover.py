@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -31,12 +31,12 @@ def source(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/bangumi", summary="探索Bangumi", response_model=List[schemas.MediaInfo])
-def bangumi(type: int = 2,
-            cat: int = None,
-            sort: str = 'rank',
-            year: int = None,
-            page: int = 1,
-            count: int = 30,
+def bangumi(type: Optional[int] =  2,
+            cat: Optional[int] =  None,
+            sort: Optional[str] =  'rank',
+            year: Optional[int] =  None,
+            page: Optional[int] =  1,
+            count: Optional[int] =  30,
             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     探索Bangumi
@@ -49,10 +49,10 @@ def bangumi(type: int = 2,
 
 
 @router.get("/douban_movies", summary="探索豆瓣电影", response_model=List[schemas.MediaInfo])
-def douban_movies(sort: str = "R",
-                  tags: str = "",
-                  page: int = 1,
-                  count: int = 30,
+def douban_movies(sort: Optional[str] =  "R",
+                  tags: Optional[str] =  "",
+                  page: Optional[int] =  1,
+                  count: Optional[int] =  30,
                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣电影信息
@@ -63,10 +63,10 @@ def douban_movies(sort: str = "R",
 
 
 @router.get("/douban_tvs", summary="探索豆瓣剧集", response_model=List[schemas.MediaInfo])
-def douban_tvs(sort: str = "R",
-               tags: str = "",
-               page: int = 1,
-               count: int = 30,
+def douban_tvs(sort: Optional[str] =  "R",
+               tags: Optional[str] =  "",
+               page: Optional[int] =  1,
+               count: Optional[int] =  30,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣剧集信息
@@ -77,15 +77,15 @@ def douban_tvs(sort: str = "R",
 
 
 @router.get("/tmdb_movies", summary="探索TMDB电影", response_model=List[schemas.MediaInfo])
-def tmdb_movies(sort_by: str = "popularity.desc",
-                with_genres: str = "",
-                with_original_language: str = "",
-                with_keywords: str = "",
-                with_watch_providers: str = "",
-                vote_average: float = 0,
-                vote_count: int = 0,
-                release_date: str = "",
-                page: int = 1,
+def tmdb_movies(sort_by: Optional[str] =  "popularity.desc",
+                with_genres: Optional[str] =  "",
+                with_original_language: Optional[str] =  "",
+                with_keywords: Optional[str] =  "",
+                with_watch_providers: Optional[str] =  "",
+                vote_average: Optional[float] =  0,
+                vote_count: Optional[int] =  0,
+                release_date: Optional[str] =  "",
+                page: Optional[int] =  1,
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB电影信息
@@ -104,15 +104,15 @@ def tmdb_movies(sort_by: str = "popularity.desc",
 
 
 @router.get("/tmdb_tvs", summary="探索TMDB剧集", response_model=List[schemas.MediaInfo])
-def tmdb_tvs(sort_by: str = "popularity.desc",
-             with_genres: str = "",
-             with_original_language: str = "",
-             with_keywords: str = "",
-             with_watch_providers: str = "",
-             vote_average: float = 0,
-             vote_count: int = 0,
-             release_date: str = "",
-             page: int = 1,
+def tmdb_tvs(sort_by: Optional[str] =  "popularity.desc",
+             with_genres: Optional[str] =  "",
+             with_original_language: Optional[str] =  "",
+             with_keywords: Optional[str] =  "",
+             with_watch_providers: Optional[str] =  "",
+             vote_average: Optional[float] =  0,
+             vote_count: Optional[int] =  0,
+             release_date: Optional[str] =  "",
+             page: Optional[int] =  1,
              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB剧集信息

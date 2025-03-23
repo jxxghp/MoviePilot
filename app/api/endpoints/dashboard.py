@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/statistic", summary="媒体数量统计", response_model=schemas.Statistic)
-def statistic(name: str = None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def statistic(name: Optional[str] =  None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询媒体数量统计信息
     """
@@ -82,7 +82,7 @@ def processes(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/downloader", summary="下载器信息", response_model=schemas.DownloaderInfo)
-def downloader(name: str = None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def downloader(name: Optional[str] =  None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询下载器信息
     """
@@ -127,7 +127,7 @@ def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 
 
 @router.get("/transfer", summary="文件整理统计", response_model=List[int])
-def transfer(days: int = 7, db: Session = Depends(get_db),
+def transfer(days: Optional[int] =  7, db: Session = Depends(get_db),
              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询文件整理统计信息

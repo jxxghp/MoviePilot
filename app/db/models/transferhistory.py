@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 
 from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_, JSON
 from sqlalchemy.orm import Session
@@ -58,7 +59,7 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def list_by_title(db: Session, title: str, page: int = 1, count: int = 30, status: bool = None):
+    def list_by_title(db: Session, title: str, page: Optional[int] =  1, count: Optional[int] =  30, status: bool = None):
         if status is not None:
             result = db.query(TransferHistory).filter(
                 TransferHistory.status == status
@@ -77,7 +78,7 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def list_by_page(db: Session, page: int = 1, count: int = 30, status: bool = None):
+    def list_by_page(db: Session, page: Optional[int] =  1, count: Optional[int] =  30, status: bool = None):
         if status is not None:
             result = db.query(TransferHistory).filter(
                 TransferHistory.status == status
@@ -97,7 +98,7 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def get_by_src(db: Session, src: str, storage: str = None):
+    def get_by_src(db: Session, src: str, storage: Optional[str] =  None):
         if storage:
             return db.query(TransferHistory).filter(TransferHistory.src == src,
                                                     TransferHistory.src_storage == storage).first()
@@ -117,7 +118,7 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def statistic(db: Session, days: int = 7):
+    def statistic(db: Session, days: Optional[int] =  7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
         """
@@ -150,8 +151,8 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def list_by(db: Session, mtype: str = None, title: str = None, year: str = None, season: str = None,
-                episode: str = None, tmdbid: int = None, dest: str = None):
+    def list_by(db: Session, mtype: Optional[str] =  None, title: Optional[str] =  None, year: Optional[str] =  None, season: Optional[str] =  None,
+                episode: Optional[str] =  None, tmdbid: Optional[int] =  None, dest: Optional[str] =  None):
         """
         据tmdbid、season、season_episode查询转移记录
         tmdbid + mtype 或 title + year 必输
@@ -218,7 +219,7 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def get_by_type_tmdbid(db: Session, mtype: str = None, tmdbid: int = None):
+    def get_by_type_tmdbid(db: Session, mtype: Optional[str] =  None, tmdbid: Optional[int] =  None):
         """
         据tmdbid、type查询转移记录
         """
@@ -227,7 +228,7 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_update
-    def update_download_hash(db: Session, historyid: int = None, download_hash: str = None):
+    def update_download_hash(db: Session, historyid: Optional[int] =  None, download_hash: Optional[str] =  None):
         db.query(TransferHistory).filter(TransferHistory.id == historyid).update(
             {
                 "download_hash": download_hash

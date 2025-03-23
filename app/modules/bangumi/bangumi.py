@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 import requests
 
@@ -31,7 +32,7 @@ class BangumiApi(object):
 
     @classmethod
     @cached(maxsize=settings.CACHE_CONF["bangumi"], ttl=settings.CACHE_CONF["meta"])
-    def __invoke(cls, url, key: str = None, **kwargs):
+    def __invoke(cls, url, key: Optional[str] = None, **kwargs):
         req_url = cls._base_url + url
         params = {}
         if kwargs:

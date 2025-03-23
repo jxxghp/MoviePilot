@@ -1,4 +1,4 @@
-from typing import List, Any, Annotated
+from typing import List, Any, Annotated, Optional
 
 import cn2an
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
@@ -165,8 +165,8 @@ def update_subscribe_status(
 @router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
 def subscribe_mediaid(
         mediaid: str,
-        season: int = None,
-        title: str = None,
+        season: Optional[int] =  None,
+        title: Optional[str] =  None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -294,7 +294,7 @@ def search_subscribe(
 @router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
 def delete_subscribe_by_mediaid(
         mediaid: str,
-        season: int = None,
+        season: Optional[int] =  None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
@@ -385,8 +385,8 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 @router.get("/history/{mtype}", summary="查询订阅历史", response_model=List[schemas.Subscribe])
 def subscribe_history(
         mtype: str,
-        page: int = 1,
-        count: int = 30,
+        page: Optional[int] =  1,
+        count: Optional[int] =  30,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -411,9 +411,9 @@ def delete_subscribe(
 @router.get("/popular", summary="热门订阅（基于用户共享数据）", response_model=List[schemas.MediaInfo])
 def popular_subscribes(
         stype: str,
-        page: int = 1,
-        count: int = 30,
-        min_sub: int = None,
+        page: Optional[int] =  1,
+        count: Optional[int] =  30,
+        min_sub: Optional[int] =  None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询热门订阅
@@ -532,7 +532,7 @@ def followed_subscribers(_: schemas.TokenPayload = Depends(verify_token)) -> Any
 
 @router.post("/follow", summary="Follow订阅分享人", response_model=schemas.Response)
 def follow_subscriber(
-        share_uid: str = None,
+        share_uid: Optional[str] =  None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     Follow订阅分享人
@@ -546,7 +546,7 @@ def follow_subscriber(
 
 @router.delete("/follow", summary="取消Follow订阅分享人", response_model=schemas.Response)
 def unfollow_subscriber(
-        share_uid: str = None,
+        share_uid: Optional[str] =  None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     取消Follow订阅分享人
@@ -560,9 +560,9 @@ def unfollow_subscriber(
 
 @router.get("/shares", summary="查询分享的订阅", response_model=List[schemas.SubscribeShare])
 def popular_subscribes(
-        name: str = None,
-        page: int = 1,
-        count: int = 30,
+        name: Optional[str] =  None,
+        page: Optional[int] =  1,
+        count: Optional[int] =  30,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询分享的订阅

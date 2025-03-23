@@ -1,5 +1,5 @@
 import time
-from typing import Any, List
+from typing import Any, List, Optional
 
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -27,7 +27,7 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.list_by_title(self._db, title)
 
-    def get_by_src(self, src: str, storage: str = None) -> TransferHistory:
+    def get_by_src(self, src: str, storage: Optional[str] =  None) -> TransferHistory:
         """
         按源查询转移记录
         :param src: 数据key
@@ -58,14 +58,15 @@ class TransferHistoryOper(DbOper):
         })
         TransferHistory(**kwargs).create(self._db)
 
-    def statistic(self, days: int = 7) -> List[Any]:
+    def statistic(self, days: Optional[int] =  7) -> List[Any]:
         """
         统计最近days天的下载历史数量
         """
         return TransferHistory.statistic(self._db, days)
 
-    def get_by(self, title: str = None, year: str = None, mtype: str = None,
-               season: str = None, episode: str = None, tmdbid: int = None, dest: str = None) -> List[TransferHistory]:
+    def get_by(self, title: Optional[str] =  None, year: Optional[str] =  None, mtype: Optional[str] =  None,
+               season: Optional[str] =  None, episode: Optional[str] =  None, tmdbid: Optional[int] =  None,
+               dest: Optional[str] =  None) -> List[TransferHistory]:
         """
         按类型、标题、年份、季集查询转移记录
         """
@@ -78,7 +79,7 @@ class TransferHistoryOper(DbOper):
                                        episode=episode,
                                        tmdbid=tmdbid)
 
-    def get_by_type_tmdbid(self, mtype: str = None, tmdbid: int = None) -> TransferHistory:
+    def get_by_type_tmdbid(self, mtype: Optional[str] =  None, tmdbid: Optional[int] =  None) -> TransferHistory:
         """
         按类型、tmdb查询转移记录
         """
@@ -120,7 +121,7 @@ class TransferHistoryOper(DbOper):
 
     def add_success(self, fileitem: FileItem, mode: str, meta: MetaBase,
                     mediainfo: MediaInfo, transferinfo: TransferInfo,
-                    downloader: str = None, download_hash: str = None):
+                    downloader: Optional[str] =  None, download_hash: Optional[str] =  None):
         """
         新增转移成功历史记录
         """
@@ -150,7 +151,7 @@ class TransferHistoryOper(DbOper):
         )
 
     def add_fail(self, fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: MediaInfo = None,
-                 transferinfo: TransferInfo = None, downloader: str = None, download_hash: str = None):
+                 transferinfo: TransferInfo = None, downloader: Optional[str] =  None, download_hash: Optional[str] =  None):
         """
         新增转移失败历史记录
         """

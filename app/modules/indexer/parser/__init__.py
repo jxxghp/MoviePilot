@@ -47,7 +47,7 @@ class SiteParserBase(metaclass=ABCMeta):
                  apikey: str,
                  token: str,
                  session: Session = None,
-                 ua: str = None,
+                 ua: Optional[str] = None,
                  emulate: bool = False,
                  proxy: bool = None):
         super().__init__()

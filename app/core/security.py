@@ -1,10 +1,10 @@
 import base64
+import datetime
 import hashlib
 import hmac
 import json
 import os
 import traceback
-import datetime
 from datetime import timedelta
 from typing import Any, Union, Annotated, Optional
 
@@ -12,7 +12,7 @@ import jwt
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from cryptography.fernet import Fernet
-from fastapi import HTTPException, status, Security, Request, Response, Depends
+from fastapi import HTTPException, status, Security, Request, Response
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader, APIKeyQuery, APIKeyCookie
 from passlib.context import CryptContext
 
@@ -44,9 +44,9 @@ api_key_query = APIKeyQuery(name="apikey", auto_error=False, scheme_name="api_ke
 def create_access_token(
         userid: Union[str, Any],
         username: str,
-        super_user: bool = False,
+        super_user: Optional[bool] =  False,
         expires_delta: Optional[timedelta] = None,
-        level: int = 1,
+        level: Optional[int] =  1,
         purpose: Optional[str] = "authentication"
 ) -> str:
     """
@@ -136,7 +136,7 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
     )
 
 
-def __verify_token(token: str, purpose: str = "authentication") -> schemas.TokenPayload:
+def __verify_token(token: str, purpose: Optional[str] =  "authentication") -> schemas.TokenPayload:
     """
     使用 JWT Token 进行身份认证并解析 Token 的内容
     :param token: JWT 令牌

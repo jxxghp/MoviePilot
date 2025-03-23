@@ -4,7 +4,7 @@ import threading
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from time import sleep
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from pydantic.fields import Callable
 
@@ -192,7 +192,7 @@ class WorkflowChain(ChainBase):
         super().__init__()
         self.workflowoper = WorkflowOper()
 
-    def process(self, workflow_id: int, from_begin: bool = True) -> Tuple[bool, str]:
+    def process(self, workflow_id: int, from_begin: Optional[bool] =  True) -> Tuple[bool, str]:
         """
         处理工作流
         :param workflow_id: 工作流ID

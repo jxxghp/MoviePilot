@@ -34,8 +34,8 @@ class SearchChain(ChainBase):
         self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
 
-    def search_by_id(self, tmdbid: int = None, doubanid: str = None,
-                     mtype: MediaType = None, area: str = "title", season: int = None,
+    def search_by_id(self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+                     mtype: MediaType = None, area: Optional[str] = "title", season: Optional[int] = None,
                      sites: List[int] = None) -> List[Context]:
         """
         根据TMDBID/豆瓣ID搜索资源，精确匹配，不过滤本地存在的资源
@@ -63,8 +63,8 @@ class SearchChain(ChainBase):
         self.save_cache(bytes_results, self.__result_temp_file)
         return results
 
-    def search_by_title(self, title: str, page: int = 0,
-                        sites: List[int] = None, cache_local: bool = True) -> List[Context]:
+    def search_by_title(self, title: str, page: Optional[int] = 0,
+                        sites: List[int] = None, cache_local: Optional[bool] = True) -> List[Context]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
@@ -105,11 +105,11 @@ class SearchChain(ChainBase):
             return []
 
     def process(self, mediainfo: MediaInfo,
-                keyword: str = None,
+                keyword: Optional[str] = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                 sites: List[int] = None,
                 rule_groups: List[str] = None,
-                area: str = "title",
+                area: Optional[str] = "title",
                 custom_words: List[str] = None,
                 filter_params: Dict[str, str] = None) -> List[Context]:
         """
@@ -291,8 +291,8 @@ class SearchChain(ChainBase):
     def __search_all_sites(self, keywords: List[str],
                            mediainfo: Optional[MediaInfo] = None,
                            sites: List[int] = None,
-                           page: int = 0,
-                           area: str = "title") -> Optional[List[TorrentInfo]]:
+                           page: Optional[int] = 0,
+                           area: Optional[str] = "title") -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息

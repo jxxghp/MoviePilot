@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -12,8 +12,8 @@ router = APIRouter()
 
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
 def bangumi_credits(bangumiid: int,
-                    page: int = 1,
-                    count: int = 20,
+                    page: Optional[int] =  1,
+                    count: Optional[int] =  20,
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询Bangumi演职员表
@@ -26,8 +26,8 @@ def bangumi_credits(bangumiid: int,
 
 @router.get("/recommend/{bangumiid}", summary="查询Bangumi推荐", response_model=List[schemas.MediaInfo])
 def bangumi_recommend(bangumiid: int,
-                      page: int = 1,
-                      count: int = 20,
+                      page: Optional[int] =  1,
+                      count: Optional[int] =  20,
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询Bangumi推荐
@@ -49,8 +49,8 @@ def bangumi_person(person_id: int,
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
 def bangumi_person_credits(person_id: int,
-                           page: int = 1,
-                           count: int = 20,
+                           page: Optional[int] =  1,
+                           count: Optional[int] =  20,
                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据人物ID查询人物参演作品

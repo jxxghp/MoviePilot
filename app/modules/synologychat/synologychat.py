@@ -14,7 +14,7 @@ lock = Lock()
 
 
 class SynologyChat:
-    def __init__(self, SYNOLOGYCHAT_WEBHOOK: str = None, SYNOLOGYCHAT_TOKEN: str = None, **kwargs):
+    def __init__(self, SYNOLOGYCHAT_WEBHOOK: Optional[str] = None, SYNOLOGYCHAT_TOKEN: Optional[str] = None, **kwargs):
         if not SYNOLOGYCHAT_WEBHOOK or not SYNOLOGYCHAT_TOKEN:
             logger.error("SynologyChat配置不完整！")
             return
@@ -38,8 +38,8 @@ class SynologyChat:
             return True
         return False
 
-    def send_msg(self, title: str, text: str = "", image: str = "",
-                 userid: str = "", link: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
+                 userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -90,7 +90,7 @@ class SynologyChat:
             logger.error(f"SynologyChat发送消息错误：{str(msg_e)}")
             return False
 
-    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -135,7 +135,7 @@ class SynologyChat:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
+                          userid: Optional[str] = None, title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """

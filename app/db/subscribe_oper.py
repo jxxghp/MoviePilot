@@ -1,5 +1,5 @@
 import time
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from app.core.context import MediaInfo
 from app.db import DbOper
@@ -45,7 +45,7 @@ class SubscribeOper(DbOper):
         else:
             return subscribe.id, "订阅已存在"
 
-    def exists(self, tmdbid: int = None, doubanid: str = None, season: int = None) -> bool:
+    def exists(self, tmdbid: Optional[int] =  None, doubanid: Optional[str] =  None, season: Optional[int] =  None) -> bool:
         """
         判断是否存在
         """
@@ -64,7 +64,7 @@ class SubscribeOper(DbOper):
         """
         return Subscribe.get(self._db, rid=sid)
 
-    def list(self, state: str = None) -> List[Subscribe]:
+    def list(self, state: Optional[str] =  None) -> List[Subscribe]:
         """
         获取订阅列表
         """
@@ -87,19 +87,19 @@ class SubscribeOper(DbOper):
             subscribe.update(self._db, payload)
         return subscribe
 
-    def list_by_tmdbid(self, tmdbid: int, season: int = None) -> List[Subscribe]:
+    def list_by_tmdbid(self, tmdbid: int, season: Optional[int] =  None) -> List[Subscribe]:
         """
         获取指定tmdb_id的订阅
         """
         return Subscribe.get_by_tmdbid(self._db, tmdbid=tmdbid, season=season)
 
-    def list_by_username(self, username: str, state: str = None, mtype: str = None) -> List[Subscribe]:
+    def list_by_username(self, username: str, state: Optional[str] =  None, mtype: Optional[str] =  None) -> List[Subscribe]:
         """
         获取指定用户的订阅
         """
         return Subscribe.list_by_username(self._db, username=username, state=state, mtype=mtype)
 
-    def list_by_type(self, mtype: str, days: int = 7) -> Subscribe:
+    def list_by_type(self, mtype: str, days: Optional[int] =  7) -> Subscribe:
         """
         获取指定类型的订阅
         """
@@ -119,7 +119,7 @@ class SubscribeOper(DbOper):
         subscribe = SubscribeHistory(**kwargs)
         subscribe.create(self._db)
 
-    def exist_history(self, tmdbid: int = None, doubanid: str = None, season: int = None):
+    def exist_history(self, tmdbid: Optional[int] =  None, doubanid: Optional[str] =  None, season: Optional[int] =  None):
         """
         判断是否存在订阅历史
         """

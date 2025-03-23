@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import FileResponse, Response
@@ -31,7 +31,8 @@ def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/check/{name}", summary="二维码登录确认", response_model=schemas.Response)
-def check(name: str, ck: str = None, t: str = None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def check(name: str, ck: Optional[str] =  None, t: Optional[str] =  None, 
+          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     二维码登录确认
     """
@@ -57,7 +58,7 @@ def save(name: str,
 
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
 def list_files(fileitem: schemas.FileItem,
-               sort: str = 'updated_at',
+               sort: Optional[str] =  'updated_at',
                _: User = Depends(get_current_active_superuser)) -> Any:
     """
     查询当前目录下所有目录和文件
@@ -140,7 +141,7 @@ def image(fileitem: schemas.FileItem,
 @router.post("/rename", summary="重命名文件或目录", response_model=schemas.Response)
 def rename(fileitem: schemas.FileItem,
            new_name: str,
-           recursive: bool = False,
+           recursive: Optional[bool] =  False,
            _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重命名文件或目录

@@ -25,7 +25,7 @@ class Telegram:
     _event = Event()
     _bot: telebot.TeleBot = None
 
-    def __init__(self, TELEGRAM_TOKEN: str = None, TELEGRAM_CHAT_ID: str = None, **kwargs):
+    def __init__(self, TELEGRAM_TOKEN: Optional[str] = None, TELEGRAM_CHAT_ID: Optional[str] = None, **kwargs):
         """
         初始化参数
         """
@@ -74,8 +74,8 @@ class Telegram:
         """
         return self._bot is not None
 
-    def send_msg(self, title: str, text: str = "", image: str = "",
-                 userid: str = "", link: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
+                 userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -114,8 +114,8 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "",
-                        title: str = "", link: str = None) -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None,
+                        title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送媒体列表消息
         """
@@ -157,7 +157,7 @@ class Telegram:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
+                          userid: Optional[str] = None, title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -202,7 +202,7 @@ class Telegram:
             return False
 
     @retry(Exception, logger=logger)
-    def __send_request(self, userid: str = None, image="", caption="") -> bool:
+    def __send_request(self, userid: Optional[str] = None, image="", caption="") -> bool:
         """
         向Telegram发送报文
         """

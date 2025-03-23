@@ -66,7 +66,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
             torrents = json.loads(html_text).get("data", [])
         except Exception as e:
             logger.error(f"解析做种信息失败: {str(e)}")
-            return
+            return None
 
         seeding_size = 0
         seeding_info = []
@@ -89,7 +89,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
             messages = json.loads(html_text).get("data", [])
         except Exception as e:
             logger.error(f"解析未读消息失败: {e}")
-            return
+            return None
         for msg in messages:
             msg_id, msg_unread = msg.get("id"), msg.get("unread")
             if not (msg_id and msg_unread) or msg_unread == "no":

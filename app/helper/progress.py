@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Union, Dict
+from typing import Union, Dict, Optional
 
 from app.schemas.types import ProgressKey
 from app.utils.singleton import Singleton
@@ -40,7 +40,7 @@ class ProgressHelper(metaclass=Singleton):
             "text": "正在处理..."
         }
 
-    def update(self, key: Union[ProgressKey, str], value: Union[float, int] = None, text: str = None):
+    def update(self, key: Union[ProgressKey, str], value: Union[float, int] = None, text: Optional[str] = None):
         if isinstance(key, Enum):
             key = key.value
         if not self._process_detail.get(key, {}).get('enable'):

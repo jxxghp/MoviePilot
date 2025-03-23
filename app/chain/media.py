@@ -32,7 +32,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         self.storagechain = StorageChain()
 
     def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                     season: int = None, episode: int = None) -> Optional[str]:
+                     season: Optional[int] = None, episode: Optional[int] = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param meta: 元数据
@@ -238,7 +238,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         return None
 
     def get_doubaninfo_by_tmdbid(self, tmdbid: int,
-                                 mtype: MediaType = None, season: int = None) -> Optional[dict]:
+                                 mtype: MediaType = None, season: Optional[int] = None) -> Optional[dict]:
         """
         根据TMDBID获取豆瓣信息
         """

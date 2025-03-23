@@ -1,7 +1,7 @@
 import base64
 import json
 import re
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
@@ -65,7 +65,7 @@ class MTorrentSpider:
             self._token = indexer.get('token')
             self._timeout = indexer.get('timeout') or 15
 
-    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         搜索
         """

@@ -169,7 +169,7 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.check_login(**kwargs)
 
-    def list_files(self, fileitem: FileItem, recursion: bool = False) -> Optional[List[FileItem]]:
+    def list_files(self, fileitem: FileItem, recursion: Optional[bool] = False) -> Optional[List[FileItem]]:
         """
         浏览文件
         :param fileitem: 源文件
@@ -181,7 +181,7 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
             return None
 
-        def __get_files(_item: FileItem, _r: bool = False):
+        def __get_files(_item: FileItem, _r: Optional[bool] = False):
             """
             递归处理
             """
@@ -275,7 +275,7 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.download(fileitem, path=path)
 
-    def upload_file(self, fileitem: FileItem, path: Path, new_name: str = None) -> Optional[FileItem]:
+    def upload_file(self, fileitem: FileItem, path: Path, new_name: Optional[str] = None) -> Optional[FileItem]:
         """
         上传文件
         """
@@ -327,9 +327,9 @@ class FileManagerModule(_ModuleBase):
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
                  target_directory: TransferDirectoryConf = None,
-                 target_storage: str = None, target_path: Path = None,
-                 transfer_type: str = None, scrape: bool = None,
-                 library_type_folder: bool = None, library_category_folder: bool = None,
+                 target_storage: Optional[str] = None, target_path: Path = None,
+                 transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
+                 library_type_folder: Optional[bool] = None, library_category_folder: Optional[bool] = None,
                  episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
         """
         文件整理
@@ -413,7 +413,7 @@ class FileManagerModule(_ModuleBase):
                                    overwrite_mode=overwrite_mode,
                                    episodes_info=episodes_info)
 
-    def __get_storage_oper(self, _storage: str, _func: str = None) -> Optional[StorageBase]:
+    def __get_storage_oper(self, _storage: str, _func: Optional[str] = None) -> Optional[StorageBase]:
         """
         获取存储操作对象
         """
@@ -834,7 +834,7 @@ class FileManagerModule(_ModuleBase):
         return True, ""
 
     def __transfer_file(self, fileitem: FileItem, mediainfo: MediaInfo, target_storage: str, target_file: Path,
-                        transfer_type: str, over_flag: bool = False) -> Tuple[Optional[FileItem], str]:
+                        transfer_type: str, over_flag: Optional[bool] = False) -> Tuple[Optional[FileItem], str]:
         """
         整理一个文件，同时处理其他相关文件
         :param fileitem: 原文件
@@ -888,7 +888,7 @@ class FileManagerModule(_ModuleBase):
 
     @staticmethod
     def __get_dest_path(mediainfo: MediaInfo, target_path: Path,
-                        need_type_folder: bool = False, need_category_folder: bool = False):
+                        need_type_folder: Optional[bool] = False, need_category_folder: Optional[bool] = False):
         """
         获取目标路径
         """
@@ -900,7 +900,7 @@ class FileManagerModule(_ModuleBase):
 
     @staticmethod
     def __get_dest_dir(mediainfo: MediaInfo, target_dir: TransferDirectoryConf,
-                       need_type_folder: bool = None, need_category_folder: bool = None) -> Path:
+                       need_type_folder: Optional[bool] = None, need_category_folder: Optional[bool] = None) -> Path:
         """
         根据设置并装媒体库目录
         :param mediainfo: 媒体信息
@@ -936,10 +936,10 @@ class FileManagerModule(_ModuleBase):
                        target_storage: str,
                        target_path: Path,
                        transfer_type: str,
-                       need_scrape: bool = False,
-                       need_rename: bool = True,
-                       need_notify: bool = True,
-                       overwrite_mode: str = None,
+                       need_scrape: Optional[bool] = False,
+                       need_rename: Optional[bool] = True,
+                       need_notify: Optional[bool] = True,
+                       overwrite_mode: Optional[str] = None,
                        episodes_info: List[TmdbEpisode] = None,
                        ) -> TransferInfo:
         """
@@ -1133,7 +1133,7 @@ class FileManagerModule(_ModuleBase):
                                 need_notify=need_notify)
 
     @staticmethod
-    def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None,
+    def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: Optional[str] = None,
                           episodes_info: List[TmdbEpisode] = None) -> dict:
         """
         根据媒体信息，返回Format字典

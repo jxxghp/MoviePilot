@@ -23,7 +23,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
                       vote_average: float,
                       vote_count: int,
                       release_date: str,
-                      page: int = 1) -> Optional[List[MediaInfo]]:
+                      page: Optional[int] =  1) -> Optional[List[MediaInfo]]:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
@@ -48,7 +48,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
                                release_date=release_date,
                                page=page)
 
-    def tmdb_trending(self, page: int = 1) -> Optional[List[MediaInfo]]:
+    def tmdb_trending(self, page: Optional[int] =  1) -> Optional[List[MediaInfo]]:
         """
         TMDB流行趋势
         :param page: 第几页
@@ -106,7 +106,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_tv_recommend", tmdbid=tmdbid)
 
-    def movie_credits(self, tmdbid: int, page: int = 1) -> Optional[List[schemas.MediaPerson]]:
+    def movie_credits(self, tmdbid: int, page: Optional[int] =  1) -> Optional[List[schemas.MediaPerson]]:
         """
         根据TMDBID查询电影演职人员
         :param tmdbid:  TMDBID
@@ -114,7 +114,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_movie_credits", tmdbid=tmdbid, page=page)
 
-    def tv_credits(self, tmdbid: int, page: int = 1) -> Optional[List[schemas.MediaPerson]]:
+    def tv_credits(self, tmdbid: int, page: Optional[int] =  1) -> Optional[List[schemas.MediaPerson]]:
         """
         根据TMDBID查询电视剧演职人员
         :param tmdbid:  TMDBID
@@ -129,7 +129,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_person_detail", person_id=person_id)
 
-    def person_credits(self, person_id: int, page: int = 1) -> Optional[List[MediaInfo]]:
+    def person_credits(self, person_id: int, page: Optional[int] =  1) -> Optional[List[MediaInfo]]:
         """
         根据人物ID查询人物参演作品
         :param person_id:  人物ID
@@ -152,7 +152,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         return None
 
     @cached(maxsize=1, ttl=3600)
-    def get_trending_wallpapers(self, num: int = 10) -> List[str]:
+    def get_trending_wallpapers(self, num: Optional[int] =  10) -> List[str]:
         """
         获取所有流行壁纸
         """

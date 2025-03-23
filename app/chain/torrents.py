@@ -1,6 +1,6 @@
 import re
 import traceback
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 from cachetools import cached, TTLCache
 
@@ -48,7 +48,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.post_message(Notification(channel=channel,
                                        title=f"种子刷新完成！", userid=userid))
 
-    def get_torrents(self, stype: str = None) -> Dict[str, List[Context]]:
+    def get_torrents(self, stype: Optional[str] =  None) -> Dict[str, List[Context]]:
         """
         获取当前缓存的种子
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
@@ -73,7 +73,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         logger.info(f'种子缓存数据清理完成')
 
     @cached(cache=TTLCache(maxsize=128, ttl=595))
-    def browse(self, domain: str, keyword: str = None, cat: str = None, page: int = 0) -> List[TorrentInfo]:
+    def browse(self, domain: str, keyword: Optional[str] =  None, cat: Optional[str] =  None,
+               page: Optional[int] =  0) -> List[TorrentInfo]:
         """
         浏览站点首页内容，返回种子清单，TTL缓存10分钟
         :param domain: 站点域名
@@ -134,7 +135,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         return ret_torrents
 
-    def refresh(self, stype: str = None, sites: List[int] = None) -> Dict[str, List[Context]]:
+    def refresh(self, stype: Optional[str] =  None, sites: List[int] = None) -> Dict[str, List[Context]]:
         """
         刷新站点最新资源，识别并缓存起来
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存

@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
@@ -73,7 +73,7 @@ class HddolbySpider:
             self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
             self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
-    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         搜索
         """

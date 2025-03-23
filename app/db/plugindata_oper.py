@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from app.db import DbOper
 from app.db.models.plugindata import PluginData
@@ -24,7 +24,7 @@ class PluginDataOper(DbOper):
         else:
             PluginData(plugin_id=plugin_id, key=key, value=value).create(self._db)
 
-    def get_data(self, plugin_id: str, key: str = None) -> Any:
+    def get_data(self, plugin_id: str, key: Optional[str] =  None) -> Any:
         """
         获取插件数据
         :param plugin_id: 插件id
@@ -38,7 +38,7 @@ class PluginDataOper(DbOper):
         else:
             return PluginData.get_plugin_data(self._db, plugin_id)
 
-    def del_data(self, plugin_id: str, key: str = None) -> Any:
+    def del_data(self, plugin_id: str, key: Optional[str] =  None) -> Any:
         """
         删除插件数据
         :param plugin_id: 插件id

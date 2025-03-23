@@ -39,7 +39,7 @@ class PluginHelper(metaclass=Singleton):
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
     @cached(maxsize=1000, ttl=1800)
-    def get_plugins(self, repo_url: str, package_version: str = None) -> Optional[Dict[str, dict]]:
+    def get_plugins(self, repo_url: str, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
@@ -66,7 +66,7 @@ class PluginHelper(metaclass=Singleton):
                 return None
         return {}
 
-    def get_plugin_package_version(self, pid: str, repo_url: str, package_version: str = None) -> Optional[str]:
+    def get_plugin_package_version(self, pid: str, repo_url: str, package_version: Optional[str] = None) -> Optional[str]:
         """
         检查并获取指定插件的可用版本，支持多版本优先级加载和版本兼容性检测
         1. 如果未指定版本，则使用系统配置的默认版本（通过 settings.VERSION_FLAG 设置）
@@ -157,7 +157,7 @@ class PluginHelper(metaclass=Singleton):
                                            json={"plugins": [{"plugin_id": plugin} for plugin in plugins]})
         return True if res else False
 
-    def install(self, pid: str, repo_url: str, package_version: str = None, force_install: bool = False) \
+    def install(self, pid: str, repo_url: str, package_version: Optional[str] = None, force_install: bool = False) \
             -> Tuple[bool, str]:
         """
         安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
@@ -260,7 +260,7 @@ class PluginHelper(metaclass=Singleton):
         self.install_reg(pid)
         return True, ""
 
-    def __get_file_list(self, pid: str, user_repo: str, package_version: str = None) -> \
+    def __get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
             Tuple[Optional[list], Optional[str]]:
         """
         获取插件的文件列表
@@ -295,7 +295,7 @@ class PluginHelper(metaclass=Singleton):
             return None, "插件数据解析失败"
 
     def __download_files(self, pid: str, file_list: List[dict], user_repo: str,
-                         package_version: str = None, skip_requirements: bool = False) -> Tuple[bool, str]:
+                         package_version: Optional[str] = None, skip_requirements: bool = False) -> Tuple[bool, str]:
         """
         下载插件文件
         :param pid: 插件 ID
@@ -480,7 +480,7 @@ class PluginHelper(metaclass=Singleton):
     @staticmethod
     def __request_with_fallback(url: str,
                                 headers: Optional[dict] = None,
-                                timeout: int = 60,
+                                timeout: Optional[int] = 60,
                                 is_api: bool = False) -> Optional[Any]:
         """
         使用自动降级策略，请求资源，优先级依次为镜像站、代理、直连

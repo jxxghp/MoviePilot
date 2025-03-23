@@ -139,8 +139,8 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                     return result
         return None
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None,
-                     server: str = None) -> Optional[schemas.ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None,
+                     server: Optional[str] = None) -> Optional[schemas.ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -201,7 +201,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                     )
         return None
 
-    def media_statistic(self, server: str = None) -> Optional[List[schemas.Statistic]]:
+    def media_statistic(self, server: Optional[str] = None) -> Optional[List[schemas.Statistic]]:
         """
         媒体数量统计
         """
@@ -221,7 +221,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             media_statistics.append(media_statistic)
         return media_statistics
 
-    def mediaserver_librarys(self, server: str = None, hidden: bool = False,
+    def mediaserver_librarys(self, server: Optional[str] = None, hidden: Optional[bool] = False,
                              **kwargs) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
@@ -231,7 +231,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             return server_obj.get_librarys(hidden)
         return None
 
-    def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: int = 0,
+    def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
                           limit: Optional[int] = -1) -> Optional[Generator]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
@@ -273,7 +273,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, server: str, count: int = 20, **kwargs) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, server: str, count: Optional[int] = 20, **kwargs) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
@@ -282,7 +282,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             return []
         return server_obj.get_resume(num=count)
 
-    def mediaserver_latest(self, server: str = None, count: int = 20,
+    def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
                            **kwargs) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
@@ -293,9 +293,9 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         return server_obj.get_latest(num=count)
 
     def mediaserver_latest_images(self,
-                                  server: str = None,
-                                  count: int = 20,
-                                  username: str = None,
+                                  server: Optional[str] = None,
+                                  count: Optional[int] = 20,
+                                  username: Optional[str] = None,
                                   **kwargs
                                   ) -> List[str]:
         """

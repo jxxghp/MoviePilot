@@ -22,7 +22,7 @@ class Plex:
     _session = None
     _sync_libraries: List[str] = []
 
-    def __init__(self, host: str = None, token: str = None, play_host: str = None,
+    def __init__(self, host: Optional[str] = None, token: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: list = None, **kwargs):
         if not host or not token:
             logger.error("Plex服务器配置不完整！")
@@ -122,7 +122,7 @@ class Plex:
         return [f"{self._host.rstrip('/') + url}?X-Plex-Token={self._token}" for url in
                 list(poster_urls.keys())[:total_size]]
 
-    def get_librarys(self, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, hidden: Optional[bool] = False) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -186,9 +186,9 @@ class Plex:
 
     def get_movies(self,
                    title: str,
-                   original_title: str = None,
-                   year: str = None,
-                   tmdb_id: int = None) -> Optional[List[schemas.MediaServerItem]]:
+                   original_title: Optional[str] = None,
+                   year: Optional[str] = None,
+                   tmdb_id: Optional[int] = None) -> Optional[List[schemas.MediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
         :param title: 标题
@@ -241,12 +241,12 @@ class Plex:
         return ret_movies
 
     def get_tv_episodes(self,
-                        item_id: str = None,
-                        title: str = None,
-                        original_title: str = None,
-                        year: str = None,
-                        tmdb_id: int = None,
-                        season: int = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
+                        item_id: Optional[str] = None,
+                        title: Optional[str] = None,
+                        original_title: Optional[str] = None,
+                        year: Optional[str] = None,
+                        tmdb_id: Optional[int] = None,
+                        season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
         根据标题、年份、季查询电视剧所有集信息
         :param item_id: 媒体ID
@@ -296,8 +296,8 @@ class Plex:
     def get_remote_image_by_id(self,
                                item_id: str,
                                image_type: str,
-                               depth: int = 0,
-                               plex_url: bool = True) -> Optional[str]:
+                               depth: Optional[int] = 0,
+                               plex_url: Optional[bool] = True) -> Optional[str]:
         """
         根据ItemId从Plex查询图片地址
         :param item_id: 在Plex中的ID
@@ -511,7 +511,7 @@ class Plex:
             user_state=user_state,
         )
 
-    def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
+    def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
             -> Generator[MediaServerItem | None, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
@@ -718,7 +718,7 @@ class Plex:
         """
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}'
 
-    def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: Optional[int] = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取继续观看的媒体
         """
@@ -754,7 +754,7 @@ class Plex:
             ))
         return ret_resume[:num]
 
-    def get_latest(self, num: int = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: Optional[int] = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取最近添加媒体
         """
