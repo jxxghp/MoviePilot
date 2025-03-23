@@ -76,6 +76,8 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
+    && python3 /app/setup.py \
+    && find /app/app -type f -name "*.py" -delete \
     && FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
@@ -85,9 +87,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
         while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
-    && rm -rf /tmp/* \
-    && python3 /app/setup.py \
-    && find /app/app -type f -name "*.py" -delete
+    && rm -rf /tmp/*
 EXPOSE 3000
 VOLUME [ "/config" ]
 ENTRYPOINT [ "/entrypoint" ]

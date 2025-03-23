@@ -3,6 +3,7 @@
 *.so
 *.pyd
 build/
+cython_cache/
 dist/
 nginx/
 test.py
