@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Annotated
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ arr_router = APIRouter(tags=['servarr'])
 
 
 @arr_router.get("/system/status", summary="系统状态")
-def arr_system_status(_: str = Depends(verify_apikey)) -> Any:
+def arr_system_status(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr系统状态
     """
@@ -72,7 +72,7 @@ def arr_system_status(_: str = Depends(verify_apikey)) -> Any:
 
 
 @arr_router.get("/qualityProfile", summary="质量配置")
-def arr_qualityProfile(_: str = Depends(verify_apikey)) -> Any:
+def arr_qualityProfile(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr质量配置
     """
@@ -113,7 +113,7 @@ def arr_qualityProfile(_: str = Depends(verify_apikey)) -> Any:
 
 
 @arr_router.get("/rootfolder", summary="根目录")
-def arr_rootfolder(_: str = Depends(verify_apikey)) -> Any:
+def arr_rootfolder(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr根目录
     """
@@ -129,7 +129,7 @@ def arr_rootfolder(_: str = Depends(verify_apikey)) -> Any:
 
 
 @arr_router.get("/tag", summary="标签")
-def arr_tag(_: str = Depends(verify_apikey)) -> Any:
+def arr_tag(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr标签
     """
@@ -142,7 +142,7 @@ def arr_tag(_: str = Depends(verify_apikey)) -> Any:
 
 
 @arr_router.get("/languageprofile", summary="语言")
-def arr_languageprofile(_: str = Depends(verify_apikey)) -> Any:
+def arr_languageprofile(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr语言
     """
@@ -168,7 +168,7 @@ def arr_languageprofile(_: str = Depends(verify_apikey)) -> Any:
 
 
 @arr_router.get("/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie])
-def arr_movies(_: str = Depends(verify_apikey), db: Session = Depends(get_db)) -> Any:
+def arr_movies(_: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影
     """
@@ -259,7 +259,7 @@ def arr_movies(_: str = Depends(verify_apikey), db: Session = Depends(get_db)) -
 
 
 @arr_router.get("/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie])
-def arr_movie_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
+def arr_movie_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
     存在和不存在均不能返回错误
@@ -305,7 +305,7 @@ def arr_movie_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(
 
 
 @arr_router.get("/movie/{mid}", summary="电影订阅详情", response_model=schemas.RadarrMovie)
-def arr_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
+def arr_movie(mid: int, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影订阅
     """
@@ -331,9 +331,9 @@ def arr_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_a
 
 
 @arr_router.post("/movie", summary="新增电影订阅")
-def arr_add_movie(movie: RadarrMovie,
-                  db: Session = Depends(get_db),
-                  _: str = Depends(verify_apikey)
+def arr_add_movie(_: Annotated[str, Depends(verify_apikey)],
+                  movie: RadarrMovie,
+                  db: Session = Depends(get_db)
                   ) -> Any:
     """
     新增Rardar电影订阅
@@ -362,7 +362,7 @@ def arr_add_movie(movie: RadarrMovie,
 
 
 @arr_router.delete("/movie/{mid}", summary="删除电影订阅", response_model=schemas.Response)
-def arr_remove_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
+def arr_remove_movie(mid: int, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     删除Rardar电影订阅
     """
@@ -378,7 +378,7 @@ def arr_remove_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(v
 
 
 @arr_router.get("/series", summary="所有剧集", response_model=List[schemas.SonarrSeries])
-def arr_series(_: str = Depends(verify_apikey), db: Session = Depends(get_db)) -> Any:
+def arr_series(_: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
     """
@@ -514,7 +514,7 @@ def arr_series(_: str = Depends(verify_apikey), db: Session = Depends(get_db)) -
 
 
 @arr_router.get("/series/lookup", summary="查询剧集")
-def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
+def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
@@ -603,7 +603,7 @@ def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends
 
 
 @arr_router.get("/series/{tid}", summary="剧集详情")
-def arr_serie(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
+def arr_serie(tid: int, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
     """
@@ -638,8 +638,8 @@ def arr_serie(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_a
 
 @arr_router.post("/series", summary="新增剧集订阅")
 def arr_add_series(tv: schemas.SonarrSeries,
-                   db: Session = Depends(get_db),
-                   _: str = Depends(verify_apikey)) -> Any:
+                   _: Annotated[str, Depends(verify_apikey)],
+                   db: Session = Depends(get_db)) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -689,7 +689,7 @@ def arr_update_series(tv: schemas.SonarrSeries) -> Any:
 
 
 @arr_router.delete("/series/{tid}", summary="删除剧集订阅")
-def arr_remove_series(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
+def arr_remove_series(tid: int, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
     """
     删除Sonarr剧集订阅
     """

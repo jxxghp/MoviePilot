@@ -37,9 +37,13 @@ def search_by_id(mediaid: str,
     根据TMDBID/豆瓣ID精确搜索站点资源 tmdb:/douban:/bangumi:
     """
     if mtype:
-        mtype = MediaType(mtype)
+        media_type = MediaType(mtype)
+    else:
+        media_type = None
     if season:
-        season = int(season)
+        media_season = int(season)
+    else:
+        media_season = None
     if sites:
         site_list = [int(site) for site in sites.split(",") if site]
     else:
@@ -50,31 +54,31 @@ def search_by_id(mediaid: str,
         tmdbid = int(mediaid.replace("tmdb:", ""))
         if settings.RECOGNIZE_SOURCE == "douban":
             # 通过TMDBID识别豆瓣ID
-            doubaninfo = MediaChain().get_doubaninfo_by_tmdbid(tmdbid=tmdbid, mtype=mtype)
+            doubaninfo = MediaChain().get_doubaninfo_by_tmdbid(tmdbid=tmdbid, mtype=media_type)
             if doubaninfo:
                 torrents = SearchChain().search_by_id(doubanid=doubaninfo.get("id"),
-                                                      mtype=mtype, area=area, season=season,
+                                                      mtype=media_type, area=area, season=media_season,
                                                       sites=site_list)
             else:
                 return schemas.Response(success=False, message="未识别到豆瓣媒体信息")
         else:
-            torrents = SearchChain().search_by_id(tmdbid=tmdbid, mtype=mtype, area=area, season=season,
+            torrents = SearchChain().search_by_id(tmdbid=tmdbid, mtype=media_type, area=area, season=media_season,
                                                   sites=site_list)
     elif mediaid.startswith("douban:"):
         doubanid = mediaid.replace("douban:", "")
         if settings.RECOGNIZE_SOURCE == "themoviedb":
             # 通过豆瓣ID识别TMDBID
-            tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+            tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=media_type)
             if tmdbinfo:
-                if tmdbinfo.get('season') and not season:
-                    season = tmdbinfo.get('season')
+                if tmdbinfo.get('season') and not media_season:
+                    media_season = tmdbinfo.get('season')
                 torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
-                                                      mtype=mtype, area=area, season=season,
+                                                      mtype=media_type, area=area, season=media_season,
                                                       sites=site_list)
             else:
                 return schemas.Response(success=False, message="未识别到TMDB媒体信息")
         else:
-            torrents = SearchChain().search_by_id(doubanid=doubanid, mtype=mtype, area=area, season=season,
+            torrents = SearchChain().search_by_id(doubanid=doubanid, mtype=media_type, area=area, season=media_season,
                                                   sites=site_list)
     elif mediaid.startswith("bangumi:"):
         bangumiid = int(mediaid.replace("bangumi:", ""))
@@ -83,7 +87,7 @@ def search_by_id(mediaid: str,
             tmdbinfo = MediaChain().get_tmdbinfo_by_bangumiid(bangumiid=bangumiid)
             if tmdbinfo:
                 torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
-                                                      mtype=mtype, area=area, season=season,
+                                                      mtype=media_type, area=area, season=media_season,
                                                       sites=site_list)
             else:
                 return schemas.Response(success=False, message="未识别到TMDB媒体信息")
@@ -92,7 +96,7 @@ def search_by_id(mediaid: str,
             doubaninfo = MediaChain().get_doubaninfo_by_bangumiid(bangumiid=bangumiid)
             if doubaninfo:
                 torrents = SearchChain().search_by_id(doubanid=doubaninfo.get("id"),
-                                                      mtype=mtype, area=area, season=season,
+                                                      mtype=media_type, area=area, season=media_season,
                                                       sites=site_list)
             else:
                 return schemas.Response(success=False, message="未识别到豆瓣媒体信息")
@@ -110,10 +114,10 @@ def search_by_id(mediaid: str,
                 search_id = event_data.media_dict.get("id")
                 if event_data.convert_type == "themoviedb":
                     torrents = SearchChain().search_by_id(tmdbid=search_id,
-                                                          mtype=mtype, area=area, season=season)
+                                                          mtype=media_type, area=area, season=media_season)
                 elif event_data.convert_type == "douban":
                     torrents = SearchChain().search_by_id(doubanid=search_id,
-                                                          mtype=mtype, area=area, season=season)
+                                                          mtype=media_type, area=area, season=media_season)
         else:
             if not title:
                 return schemas.Response(success=False, message="未知的媒体ID")
@@ -121,19 +125,19 @@ def search_by_id(mediaid: str,
             meta = MetaInfo(title)
             if year:
                 meta.year = year
-            if mtype:
-                meta.type = mtype
-            if season:
+            if media_type:
+                meta.type = media_type
+            if media_season:
                 meta.type = MediaType.TV
-                meta.begin_season = season
+                meta.begin_season = media_season
             mediainfo = MediaChain().recognize_media(meta=meta)
             if mediainfo:
                 if settings.RECOGNIZE_SOURCE == "themoviedb":
                     torrents = SearchChain().search_by_id(tmdbid=mediainfo.tmdb_id,
-                                                          mtype=mtype, area=area, season=season)
+                                                          mtype=media_type, area=area, season=media_season)
                 else:
                     torrents = SearchChain().search_by_id(doubanid=mediainfo.douban_id,
-                                                          mtype=mtype, area=area, season=season)
+                                                          mtype=media_type, area=area, season=media_season)
     # 返回搜索结果
     if not torrents:
         return schemas.Response(success=False, message="未搜索到任何资源")

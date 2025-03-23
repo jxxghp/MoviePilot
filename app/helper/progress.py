@@ -40,7 +40,7 @@ class ProgressHelper(metaclass=Singleton):
             "text": "正在处理..."
         }
 
-    def update(self, key: Union[ProgressKey, str], value: float = None, text: str = None):
+    def update(self, key: Union[ProgressKey, str], value: Union[float, int] = None, text: str = None):
         if isinstance(key, Enum):
             key = key.value
         if not self._process_detail.get(key, {}).get('enable'):

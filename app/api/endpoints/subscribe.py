@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Annotated
 
 import cn2an
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
@@ -44,7 +44,7 @@ def read_subscribes(
 
 
 @router.get("/list", summary="查询所有订阅（API_TOKEN）", response_model=List[schemas.Subscribe])
-def list_subscribes(_: str = Depends(verify_apitoken)) -> Any:
+def list_subscribes(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询所有订阅 API_TOKEN认证（?token=xxx）
     """
@@ -331,7 +331,7 @@ def delete_subscribe_by_mediaid(
 
 @router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
 async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
-                          authorization: str = Header(None)) -> Any:
+                          authorization: Annotated[str | None, Header()] = None) -> Any:
     """
     Jellyseerr/Overseerr网络勾子通知订阅
     """

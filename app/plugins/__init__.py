@@ -63,7 +63,6 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    @abstractmethod
     def get_command() -> List[Dict[str, Any]]:
         """
         注册插件远程命令

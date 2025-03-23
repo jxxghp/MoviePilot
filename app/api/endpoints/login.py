@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Any, List
+from typing import Any, List, Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
@@ -18,8 +18,8 @@ router = APIRouter()
 
 @router.post("/access-token", summary="获取token", response_model=schemas.Token)
 def login_access_token(
-        form_data: OAuth2PasswordRequestForm = Depends(),
-        otp_password: str = Form(None)
+        form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+        otp_password: Annotated[str | None, Form()] = None
 ) -> Any:
     """
     获取认证Token

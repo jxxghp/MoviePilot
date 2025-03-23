@@ -1,5 +1,7 @@
 .idea/
 *.c
+*.so
+*.pyd
 build/
 dist/
 nginx/

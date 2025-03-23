@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Request, Depends
 
@@ -19,7 +19,7 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
 @router.post("/", summary="Webhook消息响应", response_model=schemas.Response)
 async def webhook_message(background_tasks: BackgroundTasks,
                           request: Request,
-                          _: str = Depends(verify_apitoken)
+                          _: Annotated[str, Depends(verify_apitoken)]
                           ) -> Any:
     """
     Webhook响应，配置请求中需要添加参数：token=API_TOKEN&source=媒体服务器名
@@ -33,7 +33,7 @@ async def webhook_message(background_tasks: BackgroundTasks,
 
 @router.get("/", summary="Webhook消息响应", response_model=schemas.Response)
 def webhook_message(background_tasks: BackgroundTasks,
-                    request: Request, _: str = Depends(verify_apitoken)) -> Any:
+                    request: Request, _: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     Webhook响应，配置请求中需要添加参数：token=API_TOKEN&source=媒体服务器名
     """

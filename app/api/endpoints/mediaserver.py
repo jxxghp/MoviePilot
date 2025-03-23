@@ -44,7 +44,7 @@ def play_item(itemid: str, _: schemas.TokenPayload = Depends(verify_token)) -> s
 
 @router.get("/exists", summary="查询本地是否存在（数据库）", response_model=schemas.Response)
 def exists_local(title: str = None,
-                 year: int = None,
+                 year: str = None,
                  mtype: str = None,
                  tmdbid: int = None,
                  season: int = None,

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Annotated
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ def statistic(name: str = None, _: schemas.TokenPayload = Depends(verify_token))
 
 
 @router.get("/statistic2", summary="媒体数量统计（API_TOKEN）", response_model=schemas.Statistic)
-def statistic2(_: str = Depends(verify_apitoken)) -> Any:
+def statistic2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询媒体数量统计信息 API_TOKEN认证（?token=xxx）
     """
@@ -66,7 +66,7 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/storage2", summary="本地存储空间（API_TOKEN）", response_model=schemas.Storage)
-def storage2(_: str = Depends(verify_apitoken)) -> Any:
+def storage2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询本地存储空间信息 API_TOKEN认证（?token=xxx）
     """
@@ -103,7 +103,7 @@ def downloader(name: str = None, _: schemas.TokenPayload = Depends(verify_token)
 
 
 @router.get("/downloader2", summary="下载器信息（API_TOKEN）", response_model=schemas.DownloaderInfo)
-def downloader2(_: str = Depends(verify_apitoken)) -> Any:
+def downloader2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
@@ -119,7 +119,7 @@ def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/schedule2", summary="后台服务（API_TOKEN）", response_model=List[schemas.ScheduleInfo])
-def schedule2(_: str = Depends(verify_apitoken)) -> Any:
+def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
@@ -145,7 +145,7 @@ def cpu(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/cpu2", summary="获取当前CPU使用率（API_TOKEN）", response_model=int)
-def cpu2(_: str = Depends(verify_apitoken)) -> Any:
+def cpu2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     获取当前CPU使用率 API_TOKEN认证（?token=xxx）
     """
@@ -161,7 +161,7 @@ def memory(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/memory2", summary="获取当前内存使用量和使用率（API_TOKEN）", response_model=List[int])
-def memory2(_: str = Depends(verify_apitoken)) -> Any:
+def memory2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     获取当前内存使用率 API_TOKEN认证（?token=xxx）
     """

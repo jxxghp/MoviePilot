@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Annotated
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -165,7 +165,7 @@ def manual_transfer(transer_item: ManualTransferItem,
 
 
 @router.get("/now", summary="立即执行下载器文件整理", response_model=schemas.Response)
-def now(_: str = Depends(verify_apitoken)) -> Any:
+def now(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     立即执行下载器文件整理 API_TOKEN认证（?token=xxx）
     """

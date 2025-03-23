@@ -5,7 +5,7 @@ import tempfile
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Annotated
 
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
@@ -141,7 +141,7 @@ def fetch_image(
 def proxy_img(
         imgurl: str,
         proxy: bool = False,
-        if_none_match: Optional[str] = Header(None),
+        if_none_match: Annotated[str | None, Header()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
 ) -> Response:
     """
@@ -158,7 +158,7 @@ def proxy_img(
 @router.get("/cache/image", summary="图片缓存")
 def cache_img(
         url: str,
-        if_none_match: Optional[str] = Header(None),
+        if_none_match: Annotated[str | None, Header()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
 ) -> Response:
     """
@@ -500,7 +500,7 @@ def run_scheduler(jobid: str,
 
 @router.get("/runscheduler2", summary="运行服务（API_TOKEN）", response_model=schemas.Response)
 def run_scheduler2(jobid: str,
-                   _: str = Depends(verify_apitoken)):
+                   _: Annotated[str, Depends(verify_apitoken)]):
     """
     执行命令（API_TOKEN认证）
     """

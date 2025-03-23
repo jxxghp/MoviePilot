@@ -94,10 +94,10 @@ class ChainBase(metaclass=ABCMeta):
             if isinstance(ret, tuple):
                 return all(value is None for value in ret)
             else:
-                return result is None
+                return ret is None
 
-        logger.debug(f"请求模块执行：{method} ...")
         result = None
+        logger.debug(f"请求模块执行：{method} ...")
         modules = self.modulemanager.get_running_modules(method)
         # 按优先级排序
         modules = sorted(modules, key=lambda x: x.get_priority())
@@ -110,6 +110,8 @@ class ChainBase(metaclass=ABCMeta):
                 module_name = module_id
             try:
                 func = getattr(module, method)
+                # 添加日志记录类型
+                logger.debug(f"调用方法类型: {type(func)}")
                 if is_result_empty(result):
                     # 返回None，第一次执行或者需继续执行下一模块
                     result = func(*args, **kwargs)

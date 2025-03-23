@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Any, Union
+from typing import List, Any, Union, Annotated
 
 from fastapi import APIRouter, Depends
 
@@ -33,9 +33,10 @@ def recognize(title: str,
 
 
 @router.get("/recognize2", summary="识别种子媒体信息（API_TOKEN）", response_model=schemas.Context)
-def recognize2(title: str,
-               subtitle: str = None,
-               _: str = Depends(verify_apitoken)) -> Any:
+def recognize2(_: Annotated[str, Depends(verify_apitoken)],
+               title: str,
+               subtitle: str = None
+               ) -> Any:
     """
     根据标题、副标题识别媒体信息 API_TOKEN认证（?token=xxx）
     """
@@ -58,7 +59,7 @@ def recognize_file(path: str,
 
 @router.get("/recognize_file2", summary="识别文件媒体信息（API_TOKEN）", response_model=schemas.Context)
 def recognize_file2(path: str,
-                    _: str = Depends(verify_apitoken)) -> Any:
+                    _: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     根据文件路径识别媒体信息 API_TOKEN认证（?token=xxx）
     """

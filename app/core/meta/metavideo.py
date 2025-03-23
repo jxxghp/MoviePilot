@@ -172,7 +172,7 @@ class MetaVideo(MetaBase):
         return None
 
     @staticmethod
-    def __is_pinyin(name_str: str) -> bool:
+    def __is_pinyin(name_str: Optional[str]) -> bool:
         """
         判断是否拼音
         """
@@ -183,7 +183,7 @@ class MetaVideo(MetaBase):
                 return False
         return True
 
-    def __fix_name(self, name: str):
+    def __fix_name(self, name: Optional[str]):
         """
         去掉名字中不需要的干扰字符
         """
@@ -207,7 +207,7 @@ class MetaVideo(MetaBase):
                 name = None
         return name
 
-    def __init_name(self, token: str):
+    def __init_name(self, token: Optional[str]):
         """
         识别名称
         """

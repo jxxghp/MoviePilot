@@ -148,12 +148,12 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             servers = [(server, self.get_instance(server))]
         else:
             servers = self.get_instances().items()
-        for name, server in servers:
+        for name, s in servers:
             if not server:
                 continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
-                    movie = server.get_iteminfo(itemid)
+                    movie = s.get_iteminfo(itemid)
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return schemas.ExistMediaInfo(
@@ -162,9 +162,9 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                             server=name,
                             itemid=movie.item_id
                         )
-                movies = server.get_movies(title=mediainfo.title,
-                                           year=mediainfo.year,
-                                           tmdb_id=mediainfo.tmdb_id)
+                movies = s.get_movies(title=mediainfo.title,
+                                      year=mediainfo.year,
+                                      tmdb_id=mediainfo.tmdb_id)
                 if not movies:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
@@ -177,10 +177,10 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                         itemid=movies[0].item_id
                     )
             else:
-                itemid, tvs = server.get_tv_episodes(title=mediainfo.title,
-                                                     year=mediainfo.year,
-                                                     tmdb_id=mediainfo.tmdb_id,
-                                                     item_id=itemid)
+                itemid, tvs = s.get_tv_episodes(title=mediainfo.title,
+                                                year=mediainfo.year,
+                                                tmdb_id=mediainfo.tmdb_id,
+                                                item_id=itemid)
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
@@ -207,11 +207,11 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         else:
             servers = self.get_instances().values()
         media_statistics = []
-        for server in servers:
-            media_statistic = server.get_medias_count()
+        for s in servers:
+            media_statistic = s.get_medias_count()
             if not media_statistic:
                 continue
-            media_statistic.user_count = server.get_user_count()
+            media_statistic.user_count = s.get_user_count()
             media_statistics.append(media_statistic)
         return media_statistics
 
