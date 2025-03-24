@@ -418,7 +418,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
         init_resp = self._request_api(
             "POST",
             "/open/upload/init",
-            "data",
             data=init_data
         )
 
@@ -426,7 +425,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if init_resp.get("status") == 2:
             return schemas.FileItem(
                 storage=self.schema.value,
-                fileid=init_resp["file_id"],
+                fileid=init_resp["data"]["file_id"],
                 path=str(Path(target_dir.path) / target_name),
                 name=target_name,
                 basename=Path(target_dir.name).stem,
@@ -438,7 +437,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
         # Step 2: 处理二次认证
         if init_resp.get("code") in [700, 701]:
-            sign_check = init_resp["sign_check"].split("-")
+            sign_check = init_resp["data"]["sign_check"].split("-")
             start = int(sign_check[0])
             end = int(sign_check[1])
 
@@ -450,13 +449,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
             # 重新初始化请求
             init_data.update({
-                "sign_key": init_resp["sign_key"],
+                "sign_key": init_resp["data"]["sign_key"],
                 "sign_val": sign_val
             })
             init_resp = self._request_api(
                 "POST",
                 "/open/upload/init",
-                "data",
                 data=init_data
             )
 
@@ -496,7 +494,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 构造返回结果
         return schemas.FileItem(
             storage=self.schema.value,
-            fileid=init_resp.get("file_id") or self._path_to_id(str(Path(target_dir.path) / target_name)),
+            fileid=init_resp["data"].get("file_id") or self._path_to_id(str(Path(target_dir.path) / target_name)),
             type="file",
             path=str(Path(target_dir.path) / target_name),
             name=target_name,
