@@ -375,7 +375,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if item:
                     logger.info(f"已保存文件：{item.path}")
                 else:
-                    logger.warn(f"文件保存失败：{item.path}")
+                    logger.warn(f"文件保存失败：{_path}")
             finally:
                 if tmp_file.exists():
                     tmp_file.unlink()
