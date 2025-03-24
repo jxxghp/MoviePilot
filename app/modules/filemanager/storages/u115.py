@@ -159,8 +159,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             **kwargs
         )
         if resp is None:
-            logger.error(f"请求 115 API 失败: {method} {endpoint}")
-            return {}
+            logger.warn(f"请求 115 API 失败: {method} {endpoint}")
+            return None
 
         # 处理速率限制
         if resp.status_code == 429:
@@ -168,9 +168,29 @@ class U115Pan(StorageBase, metaclass=Singleton):
             time.sleep(reset_time + 5)
             return self._request_api(method, endpoint, result_key, **kwargs)
 
+        # 处理请求错误
         resp.raise_for_status()
 
+        # 返回数据
         ret_data = resp.json()
+
+        # 处理refresh_token失效
+        if ret_data.get("code") == 40140119:
+            self.set_config({})
+            raise Exception("refresh_token 失效，请重新扫描登录！")
+
+        # 处理access_token失效
+        if ret_data.get("code") == 40140125:
+            refresh_token = self.get_conf().get("refresh_token")
+            if refresh_token:
+                tokens = self.__refresh_access_token(refresh_token)
+                self.set_config({
+                    "refresh_time": int(time.time()),
+                    **tokens
+                })
+                return self._request_api(method, endpoint, result_key, **kwargs)
+            return None
+
         if result_key:
             result = ret_data.get(result_key)
             if result is None:
@@ -182,6 +202,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         路径转FID（带缓存机制）
         """
+        if len(path) > 1 and path.endswith("/"):
+            path = path[:-1]
         # 命中缓存
         if path in self._id_cache:
             return self._id_cache[path]
@@ -205,7 +227,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 }
             )
             for item in resp:
-                if item["name"] == part:
+                if item["fn"] == part:
                     current_id = item["fid"]
                     break
             else:
@@ -317,7 +339,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if not resp:
                 break
             for item in resp:
-                path = f"{fileitem.path}{item['fn']}" + ("/" if item["fc"] == "0" else "")
+                # 更新缓存
+                path = f"{fileitem.path}{item['fn']}"
+                self._id_cache[path] = item["fid"]
+
+                file_path = path + ("/" if item["fc"] == "0" else "")
                 items.append(schemas.FileItem(
                     storage=self.schema.value,
                     fileid=item["fid"],
@@ -325,13 +351,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     basename=Path(item["fn"]).stem,
                     extension=item["ico"] if item["fc"] == "1" else None,
                     type="dir" if item["fc"] == "0" else "file",
-                    path=path,
+                    path=file_path,
                     size=item["fs"] if item["fc"] == "1" else None,
                     modify_time=item["upt"],
                     pickcode=item["pc"]
                 ))
-                # 更新缓存
-                self._id_cache[path] = item["fid"]
 
             if len(resp) < 1000:
                 break
@@ -689,6 +713,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "/open/user/info",
                 "data"
             )
+            if not resp:
+                return None
             space = resp["rt_space_info"]
             return schemas.StorageUsage(
                 total=space["all_total"]["size"],
