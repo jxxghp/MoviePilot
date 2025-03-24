@@ -82,9 +82,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         # 生成PKCE参数
         code_verifier = secrets.token_urlsafe(96)[:128]
-        code_challenge = base64.urlsafe_b64encode(
-            hashlib.sha256(code_verifier.encode()).digest()
-        ).decode()
+        code_challenge = base64.b64encode(
+            hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        ).decode("utf-8")
         # 请求设备码
         resp = self.session.post(
             "https://passportapi.115.com/open/authDeviceCode",
@@ -159,7 +159,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             **kwargs
         )
         if resp is None:
-            logger.warn(f"请求 115 API 失败: {method} {endpoint}")
+            logger.warn(f"{method} 请求 {endpoint} 失败！")
             return None
 
         # 处理速率限制
@@ -194,7 +194,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if result_key:
             result = ret_data.get(result_key)
             if result is None:
-                raise FileNotFoundError(f"请求 115 API {method} {endpoint} 失败：{ret_data.get('message')}！")
+                logger.warn(f"{method} 请求 {endpoint} 出错：{ret_data.get('message')}！")
             return result
         return ret_data
 
@@ -382,6 +382,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "file_name": name
             }
         )
+        if not resp:
+            return None
         if not resp.get("state"):
             if resp.get("code") == 20004:
                 # 目录已存在
@@ -430,7 +432,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
 
         if not init_resp:
-            logger.warn("初始化上传失败")
             return None
         if not init_resp.get("state"):
             logger.warn(f"初始化上传失败: {init_resp.get('error')}")
@@ -504,8 +505,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             ).decode('utf-8')
         }
         upload_id = bucket.init_multipart_upload(target_name, headers=headers).upload_id
-        parts = []
         # 每10M分一片
+        parts = []
         chunk_size = 10 * 1024 * 1024
         chunk_num = (file_size + chunk_size - 1) // chunk_size
         with open(local_path, 'rb') as f:
@@ -588,6 +589,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "file_name": name
             }
         )
+        if not resp:
+            return False
         if resp["state"]:
             if fileitem.path in self._id_cache:
                 del self._id_cache[fileitem.path]
@@ -688,7 +691,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "pid": dest_cid
             }
         )
-
+        if not resp:
+            return False
         if resp["state"]:
             new_path = Path(path) / fileitem.name
             new_file = self.get_item(new_path)
@@ -715,7 +719,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "to_cid": dest_cid
             }
         )
-
+        if not resp:
+            return False
         if resp["state"]:
             new_path = Path(path) / fileitem.name
             new_file = self.get_item(new_path)
