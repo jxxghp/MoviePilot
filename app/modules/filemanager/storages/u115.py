@@ -386,7 +386,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if resp.get("code") == 20004:
                 # 目录已存在
                 return self.get_item(new_path)
-            logger.warn(f"创建目录失败: {resp.get('message')}")
+            logger.warn(f"创建目录失败: {resp.get('error')}")
             return None
         # 缓存新目录
         self._id_cache[str(new_path)] = resp["data"]["file_id"]
@@ -615,6 +615,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     "file_id": file_id
                 }
             )
+            if not resp:
+                return None
             return schemas.FileItem(
                 storage=self.schema.value,
                 fileid=resp["file_id"],
