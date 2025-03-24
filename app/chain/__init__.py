@@ -110,8 +110,6 @@ class ChainBase(metaclass=ABCMeta):
                 module_name = module_id
             try:
                 func = getattr(module, method)
-                # 添加日志记录类型
-                logger.debug(f"调用方法类型: {type(func)}")
                 if is_result_empty(result):
                     # 返回None，第一次执行或者需继续执行下一模块
                     result = func(*args, **kwargs)

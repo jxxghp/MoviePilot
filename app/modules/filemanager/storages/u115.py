@@ -8,11 +8,13 @@ from typing import List, Dict, Optional, Tuple, Union
 import requests
 
 from app import schemas
+from app.api.endpoints.dashboard import storage
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.singleton import Singleton
+from app.utils.string import StringUtils
 
 
 class U115Pan(StorageBase, metaclass=Singleton):
@@ -52,6 +54,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "Accept-Encoding": "gzip, deflate",
             "Content-Type": "application/x-www-form-urlencoded"
         })
+        self.init_storage()
 
     @property
     def access_token(self) -> Optional[str]:
@@ -64,7 +67,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return None
         expires_in = tokens.get("expires_in", 0)
         refresh_time = tokens.get("refresh_time", 0)
-        if expires_in and refresh_time + expires_in >= int(time.time()):
+        if expires_in and refresh_time + expires_in < int(time.time()):
             tokens = self.__refresh_access_token(refresh_token)
             if tokens:
                 self.set_config({
@@ -81,7 +84,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         code_verifier = secrets.token_urlsafe(96)[:128]
         code_challenge = base64.urlsafe_b64encode(
             hashlib.sha256(code_verifier.encode()).digest()
-        ).decode().replace("=", "")
+        ).decode()
         # 请求设备码
         resp = self.session.post(
             "https://passportapi.115.com/open/authDeviceCode",
@@ -250,35 +253,35 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 sha1.update(chunk)
         return sha1.hexdigest()
 
-    def check_login(self) -> Optional[Dict]:
+    def check_login(self) -> Optional[Tuple[dict, str]]:
         """
         改进的带PKCE校验的登录状态检查
         """
         if not self._auth_state:
-            return {"status": -1, "tip": "生成二维码失败"}
+            return {}, "生成二维码失败"
         try:
-            resp = self.session.post(
-                "https://passportapi.115.com/open/checkDeviceCode",
-                data={
+            resp = self.session.get(
+                "https://qrcodeapi.115.com/get/status/",
+                params={
                     "uid": self._auth_state["uid"],
                     "time": self._auth_state["time"],
                     "sign": self._auth_state["sign"]
                 }
             )
             if resp is None:
-                return {"status": -1, "tip": "网络错误"}
+                return {}, "网络错误"
             result = resp.json()
             if result.get("code") != 0 or not result.get("data"):
-                return {"status": -1, "tip": result.get("message")}
+                return {}, result.get("message")
             if result["data"]["status"] == 2:
                 tokens = self.__get_access_token()
                 self.set_config({
                     "refresh_time": int(time.time()),
                     **tokens
                 })
-            return {"status": result["data"]["status"], "tip": result["data"]["msg"]}
-        except requests.exceptions.RequestException as e:
-            return {"status": -1, "tip": str(e)}
+            return {"status": result["data"]["status"], "tip": result["data"]["msg"]}, ""
+        except Exception as e:
+            return {}, str(e)
 
     def init_storage(self):
         """
@@ -294,7 +297,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
 
         if fileitem.type == "file":
-            return [self.detail(fileitem)]
+            item = self.detail(fileitem)
+            if item:
+                return [item]
+            return []
 
         cid = self._path_to_id(fileitem.path)
         items = []
@@ -310,8 +316,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if not resp:
                 break
             for item in resp:
-                path = f"{fileitem.path}/{item['fn']}" + ("/" if item["fc"] == "0" else "")
+                path = f"{fileitem.path}{item['fn']}" + ("/" if item["fc"] == "0" else "")
                 items.append(schemas.FileItem(
+                    storage=self.schema.value,
                     fileid=item["fid"],
                     name=item["fn"],
                     basename=Path(item["fn"]).stem,
@@ -320,11 +327,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     path=path,
                     size=item["fs"] if item["fc"] == "1" else None,
                     modify_time=item["upt"],
-                    pickcode=item["pc"],
-                    thumbnail=item["thumb"],
+                    pickcode=item["pc"]
                 ))
                 # 更新缓存
-                self._id_cache[path] = item["cid"]
+                self._id_cache[path] = item["fid"]
 
             if len(resp) < 1000:
                 break
@@ -350,6 +356,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 缓存新目录
         self._id_cache[str(new_path)] = resp["file_id"]
         return schemas.FileItem(
+            storage=self.schema.value,
             fileid=resp["file_id"],
             path=str(new_path) + "/",
             name=name,
@@ -388,6 +395,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 处理秒传成功
         if init_resp.get("status") == 2:
             return schemas.FileItem(
+                storage=self.schema.value,
                 fileid=init_resp["file_id"],
                 path=str(Path(target_dir.path) / target_name),
                 name=target_name,
@@ -457,6 +465,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
         # 构造返回结果
         return schemas.FileItem(
+            storage=self.schema.value,
             fileid=init_resp.get("file_id") or self._path_to_id(str(Path(target_dir.path) / target_name)),
             type="file",
             path=str(Path(target_dir.path) / target_name),
@@ -549,6 +558,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 }
             )
             return schemas.FileItem(
+                storage=self.schema.value,
                 fileid=resp["file_id"],
                 path=str(path) + ("/" if resp["file_category"] == "1" else ""),
                 type="file" if resp["file_category"] == "1" else "dir",
@@ -556,7 +566,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 basename=Path(resp["file_name"]).stem,
                 extension=Path(resp["file_name"]).suffix[1:],
                 pickcode=resp["pick_code"],
-                size=resp["size"] if resp["file_category"] == "1" else None,
+                size=StringUtils.num_filesize(resp['size']) if resp["file_category"] == "1" else None,
                 modify_time=resp["utime"]
             )
         except Exception as e:
@@ -584,7 +594,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(path="/")
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:

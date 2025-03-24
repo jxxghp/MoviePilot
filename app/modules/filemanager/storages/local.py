@@ -65,7 +65,7 @@ class LocalStorage(StorageBase):
             modify_time=path.stat().st_mtime,
         )
 
-    def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
+    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
         """
         浏览文件
         """

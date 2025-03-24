@@ -137,7 +137,7 @@ class Alist(StorageBase, metaclass=Singleton):
             page: int = 1,
             per_page: int = 0,
             refresh: bool = False,
-    ) -> Optional[List[schemas.FileItem]]:
+    ) -> List[schemas.FileItem]:
         """
         浏览文件
         :param fileitem: 文件项
@@ -150,7 +150,7 @@ class Alist(StorageBase, metaclass=Singleton):
             item = self.get_item(Path(fileitem.path))
             if item:
                 return [item]
-            return None
+            return []
         resp: Response = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
@@ -201,12 +201,12 @@ class Alist(StorageBase, metaclass=Singleton):
 
         if resp is None:
             logging.warning(f"请求获取目录 {fileitem.path} 的文件列表失败，无法连接alist服务")
-            return None
+            return []
         if resp.status_code != 200:
             logging.warning(
                 f"请求获取目录 {fileitem.path} 的文件列表失败，状态码：{resp.status_code}"
             )
-            return None
+            return []
 
         result = resp.json()
 
@@ -214,7 +214,7 @@ class Alist(StorageBase, metaclass=Singleton):
             logging.warning(
                 f'获取目录 {fileitem.path} 的文件列表失败，错误信息：{result["message"]}'
             )
-            return None
+            return []
 
         return [
             schemas.FileItem(

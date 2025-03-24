@@ -98,7 +98,7 @@ class Rclone(StorageBase):
             logger.error(f"rclone存储检查失败：{err}")
         return False
 
-    def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
+    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
         """
         浏览文件
         """
@@ -161,7 +161,7 @@ class Rclone(StorageBase):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(path="/")
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:

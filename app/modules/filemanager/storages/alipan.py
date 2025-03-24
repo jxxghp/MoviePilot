@@ -306,7 +306,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(path="/")
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
         for part in path.parts:
             if part == "/":
                 continue
