@@ -427,7 +427,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             logger.debug(f"search Lock released at {datetime.now()}")
 
     def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaBase,
-                                  mediainfo: MediaInfo, downloads: List[Context]):
+                                  mediainfo: MediaInfo, downloads: Optional[List[Context]]):
         """
         更新订阅已下载资源的优先级
         """
@@ -885,7 +885,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     logger.error(f'follow用户分享订阅 {title} 添加失败：{message}')
         logger.info(f'follow用户分享订阅刷新完成，共添加 {success_count} 个订阅')
 
-    def __update_subscribe_note(self, subscribe: Subscribe, downloads: List[Context]):
+    def __update_subscribe_note(self, subscribe: Subscribe, downloads: Optional[List[Context]]):
         """
         更新已下载信息到note字段
         """
