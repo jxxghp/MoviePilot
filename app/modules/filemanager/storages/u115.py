@@ -170,12 +170,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
         resp.raise_for_status()
 
+        ret_data = resp.json()
         if result_key:
-            result = resp.json().get(result_key)
-            if not result:
-                raise FileNotFoundError(f"请求 115 API 失败: {method} {endpoint}")
+            result = ret_data.get(result_key)
+            if result is None:
+                raise FileNotFoundError(f"请求 115 API {method} {endpoint} 失败：{ret_data.get('message')}！")
             return result
-        return resp.json()
+        return ret_data
 
     def _path_to_id(self, path: str) -> int:
         """
@@ -311,7 +312,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "GET",
                 "/open/ufile/files",
                 "data",
-                params={"cid": cid, "limit": 1000, "offset": offset}
+                params={"cid": cid, "limit": 1000, "offset": offset, "cur": True, "show_dir": 1}
             )
             if not resp:
                 break
@@ -322,7 +323,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     fileid=item["fid"],
                     name=item["fn"],
                     basename=Path(item["fn"]).stem,
-                    extension=item["ico"],
+                    extension=item["ico"] if item["fc"] == "1" else None,
                     type="dir" if item["fc"] == "0" else "file",
                     path=path,
                     size=item["fs"] if item["fc"] == "1" else None,
@@ -338,26 +339,31 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
         return items
 
-    def create_folder(self, parent_item: schemas.FileItem, name: str) -> schemas.FileItem:
+    def create_folder(self, parent_item: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
         """
         parent_id = self._path_to_id(parent_item.path)
+        new_path = Path(parent_item.path) / name
         resp = self._request_api(
             "POST",
             "/open/folder/add",
-            "data",
             data={
                 "pid": parent_id,
-                "name": name
+                "file_name": name
             }
         )
-        new_path = Path(parent_item.path) / name
+        if not resp.get("state"):
+            if resp.get("code") == 20004:
+                # 目录已存在
+                return self.get_item(new_path)
+            logger.warn(f"创建目录失败: {resp.get('message')}")
+            return None
         # 缓存新目录
-        self._id_cache[str(new_path)] = resp["file_id"]
+        self._id_cache[str(new_path)] = resp["data"]["file_id"]
         return schemas.FileItem(
             storage=self.schema.value,
-            fileid=resp["file_id"],
+            fileid=resp["data"]["file_id"],
             path=str(new_path) + "/",
             name=name,
             basename=name,
@@ -476,12 +482,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
             modify_time=int(time.time())
         )
 
-    def download(self, fileitem: schemas.FileItem, save_path: Path = None) -> Path:
+    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Path:
         """
         带限速处理的下载
         """
         detail = self.get_item(Path(fileitem.path))
-        local_path = save_path or settings.TEMP_PATH / fileitem.name
+        local_path = path or settings.TEMP_PATH / fileitem.name
         download_info = self._request_api(
             "POST",
             "/open/ufile/downurl",
@@ -490,7 +496,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "pick_code": detail.pickcode
             }
         )
-        download_url = download_info["url"]
+        download_url = list(download_info.values())[0].get("url", {}).get("url")
         with self.session.get(download_url, stream=True) as r:
             r.raise_for_status()
             with open(local_path, "wb") as f:
