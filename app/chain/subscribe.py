@@ -1077,8 +1077,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                  no_exists: Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]],
                                  mediakey: Union[str, int],
                                  begin_season: int,
-                                 total_episode: int,
-                                 start_episode: int,
+                                 total_episode: Optional[int],
+                                 start_episode: Optional[int],
                                  downloaded_episodes: List[int] = None
                                  ) -> Tuple[bool, Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]]:
         """
