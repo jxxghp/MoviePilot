@@ -56,7 +56,7 @@ class Rclone(StorageBase):
         else:
             return None
 
-    def __get_rcloneitem(self, item: dict, parent: str = "/") -> schemas.FileItem:
+    def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> schemas.FileItem:
         """
         获取rclone文件项
         """
@@ -254,7 +254,8 @@ class Rclone(StorageBase):
             logger.error(f"rclone复制文件失败：{err}")
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项

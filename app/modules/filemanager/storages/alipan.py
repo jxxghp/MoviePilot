@@ -209,7 +209,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             elif driver.category == "backup":
                 self.__update_params({"backDriveId": driver.drive_id})
 
-    def __get_fileitem(self, fileinfo: BaseFile, parent: str = "/") -> schemas.FileItem:
+    def __get_fileitem(self, fileinfo: BaseFile, parent: Optional[str] = "/") -> schemas.FileItem:
         """
         获取文件信息
         """
@@ -374,7 +374,8 @@ class AliPan(StorageBase, metaclass=Singleton):
             return Path(local_path)
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
         :param fileitem: 上传目录项

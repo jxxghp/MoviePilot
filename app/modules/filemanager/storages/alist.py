@@ -133,7 +133,7 @@ class Alist(StorageBase, metaclass=Singleton):
     def list(
             self,
             fileitem: schemas.FileItem,
-            password: str = "",
+            password: Optional[str] = "",
             page: int = 1,
             per_page: int = 0,
             refresh: bool = False,
@@ -291,7 +291,7 @@ class Alist(StorageBase, metaclass=Singleton):
     def get_item(
             self,
             path: Path,
-            password: str = "",
+            password: Optional[str] = "",
             page: int = 1,
             per_page: int = 0,
             refresh: bool = False,
@@ -468,7 +468,7 @@ class Alist(StorageBase, metaclass=Singleton):
             self,
             fileitem: schemas.FileItem,
             path: Path = None,
-            password: str = "",
+            password: Optional[str] = "",
     ) -> Optional[Path]:
         """
         下载文件，保存到本地，返回本地临时文件地址
@@ -547,7 +547,7 @@ class Alist(StorageBase, metaclass=Singleton):
         return None
 
     def upload(
-            self, fileitem: schemas.FileItem, path: Path, new_name: str = None, task: bool = False
+            self, fileitem: schemas.FileItem, path: Path, new_name: Optional[str] = None, task: bool = False
     ) -> Optional[schemas.FileItem]:
         """
         上传文件

@@ -128,7 +128,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项

@@ -150,7 +150,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         return result.get("data")
 
     def _request_api(self, method: str, endpoint: str,
-                     result_key: str = None, **kwargs) -> Optional[Union[dict, list]]:
+                     result_key: Optional[str] = None, **kwargs) -> Optional[Union[dict, list]]:
         """
         带错误处理和速率限制的API请求
         """
@@ -395,7 +395,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             modify_time=int(time.time())
         )
 
-    def upload(self, target_dir: schemas.FileItem, local_path: Path, new_name: str = None) -> schemas.FileItem:
+    def upload(self, target_dir: schemas.FileItem, local_path: Path, new_name: Optional[str] = None) -> schemas.FileItem:
         """
         实现带秒传、断点续传和二次认证的文件上传
         """
