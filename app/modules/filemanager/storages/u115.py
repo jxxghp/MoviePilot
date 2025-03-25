@@ -502,7 +502,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
         bucket = oss2.Bucket(auth, endpoint, init_result['bucket'])  # noqa
         headers = {
-            'x-oss-callback': init_result['callback']['callback'],
+            'x-oss-callback':  base64.b64encode(
+                init_result['callback']['callback'].encode('utf-8')
+            ).decode('utf-8'),
             'x-oss-callback-var': base64.b64encode(
                 init_result['callback']['callback_var'].encode('utf-8')
             ).decode('utf-8')
