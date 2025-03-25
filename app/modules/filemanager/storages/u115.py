@@ -407,7 +407,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             上传进度回调
             """
             progress = consumed_bytes / total_bytes * 100
-            logger.info(f"【115】已上传: {consumed_bytes}/{total_bytes} 字节, 进度: {progress:.2f}%")
+            logger.info(f"【115】已上传: {StringUtils.str_filesize(consumed_bytes)}"
+                        f"/{StringUtils.str_filesize(total_bytes)} 字节, 进度: {progress:.2f}%")
 
         # 计算文件特征值
         target_name = new_name or local_path.name
