@@ -424,43 +424,28 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "/open/upload/init",
             data=init_data
         )
-
         if not init_resp:
             return None
         if not init_resp.get("state"):
             logger.warn(f"【115】初始化上传失败: {init_resp.get('error')}")
             return None
-
-        # 处理秒传成功
         init_result = init_resp.get("data")
         logger.debug(f"【115】上传 Step 1 结果: {init_result}")
-        if init_result:
-            if init_result.get("status") == 2:
-                return schemas.FileItem(
-                    storage=self.schema.value,
-                    fileid=init_result["file_id"],
-                    path=str(Path(target_dir.path) / target_name),
-                    name=target_name,
-                    basename=Path(target_dir.name).stem,
-                    extension=Path(target_dir.name).suffix[1:],
-                    size=file_size,
-                    type="file",
-                    modify_time=int(time.time())
-                )
 
         # Step 2: 处理二次认证
         if init_result.get("code") in [700, 701]:
             sign_check = init_result["sign_check"].split("-")
             start = int(sign_check[0])
             end = int(sign_check[1])
-
             # 计算指定区间的SHA1
+            # sign_check （用下划线隔开,截取上传文内容的sha1）(单位是byte): "2392148-2392298"
             with open(local_path, "rb") as f:
+                # 取2392148-2392298之间的内容(包含2392148、2392298)的sha1
                 f.seek(start)
                 chunk = f.read(end - start + 1)
                 sign_val = hashlib.sha1(chunk).hexdigest().upper()
-
             # 重新初始化请求
+            # sign_key，sign_val(根据sign_check计算的值大写的sha1值)
             init_data.update({
                 "pick_code": init_result["pick_code"],
                 "sign_key": init_result["sign_key"],
@@ -474,7 +459,22 @@ class U115Pan(StorageBase, metaclass=Singleton):
             init_result = init_resp.get("data")
             logger.debug(f"【115】上传 Step 2 结果: {init_result}")
 
-        # Step 3: 获取上传凭证
+        # Step 3: 秒传
+        if init_result.get("status") == 2:
+            logger.info(f"【115】{target_name} 秒传成功")
+            return schemas.FileItem(
+                storage=self.schema.value,
+                fileid=init_result["file_id"],
+                path=str(Path(target_dir.path) / target_name),
+                name=target_name,
+                basename=Path(target_dir.name).stem,
+                extension=Path(target_dir.name).suffix[1:],
+                size=file_size,
+                type="file",
+                modify_time=int(time.time())
+            )
+
+        # Step 4: 获取上传凭证
         token_resp = self._request_api(
             "GET",
             "/open/upload/get_token",
@@ -483,9 +483,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not token_resp:
             logger.warn("【115】获取上传凭证失败")
             return None
-        logger.debug(f"【115】上传 Step 3 结果: {token_resp}")
+        logger.debug(f"【115】上传 Step 4 结果: {token_resp}")
 
-        # Step 4: 对象存储上传
+        # Step 5: 对象存储上传
         endpoint = token_resp["endpoint"]
         auth = oss2.StsAuth(
             access_key_id=token_resp['AccessKeyId'],
@@ -493,7 +493,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
             security_token=token_resp['SecurityToken']
         )
         bucket = oss2.Bucket(auth, endpoint, init_result['bucket'])  # noqa
-
         # 分片上传
         headers = {
             'x-oss-callback': init_result['callback']['callback'],
@@ -512,7 +511,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 parts.append(oss2.models.PartInfo(i + 1, part.etag))
         try:
             bucket_result = bucket.complete_multipart_upload(target_name, upload_id, parts)
-            logger.debug(f"【115】上传 Step 4 结果: {bucket_result}")
+            logger.debug(f"【115】上传 Step 5 结果: {bucket_result}")
         except Exception as err:
             if "FileAlreadyExists" not in str(err):
                 logger.error(f"【115】上传文件失败: {str(err)}")
@@ -528,6 +527,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             basename=Path(target_name).stem,
             extension=Path(target_name).suffix[1:],
             size=file_size,
+            pickcode=init_result["pick_code"],
             modify_time=int(time.time())
         )
 
