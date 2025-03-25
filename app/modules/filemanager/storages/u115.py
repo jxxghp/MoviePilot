@@ -449,14 +449,24 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not init_resp.get("state"):
             logger.warn(f"【115】初始化上传失败: {init_resp.get('error')}")
             return None
+        # 结果
         init_result = init_resp.get("data")
         logger.debug(f"【115】上传 Step 1 结果: {init_result}")
+        file_id = init_result.get("file_id")
+        # 回调信息
+        bucket_name = init_result.get("bucket")
+        callback_str = init_result.get("callback", {}).get("callback")
+        callback_var_str = init_result.get("callback", {}).get("callback_var")
+        # 二次认证信息
+        sign_check = init_result.get("sign_check")
+        pick_code = init_result.get("pick_code")
+        sign_key = init_result.get("sign_key")
 
         # Step 2: 处理二次认证
-        if init_result.get("code") in [700, 701]:
-            sign_check = init_result["sign_check"].split("-")
-            start = int(sign_check[0])
-            end = int(sign_check[1])
+        if init_result.get("code") in [700, 701] and sign_check:
+            sign_checks = sign_check.split("-")
+            start = int(sign_checks[0])
+            end = int(sign_checks[1])
             # 计算指定区间的SHA1
             # sign_check （用下划线隔开,截取上传文内容的sha1）(单位是byte): "2392148-2392298"
             with open(local_path, "rb") as f:
@@ -467,8 +477,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             # 重新初始化请求
             # sign_key，sign_val(根据sign_check计算的值大写的sha1值)
             init_data.update({
-                "pick_code": init_result["pick_code"],
-                "sign_key": init_result["sign_key"],
+                "pick_code": pick_code,
+                "sign_key": sign_key,
                 "sign_val": sign_val
             })
             init_resp = self._request_api(
@@ -476,21 +486,31 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "/open/upload/init",
                 data=init_data
             )
+            if not init_resp:
+                return None
+            # 二次认证结果
             init_result = init_resp.get("data")
             logger.debug(f"【115】上传 Step 2 结果: {init_result}")
+            if not pick_code:
+                pick_code = init_result.get("pick_code")
+            if not bucket_name:
+                bucket_name = init_result.get("bucket")
+            if not file_id:
+                file_id = init_result.get("file_id")
 
         # Step 3: 秒传
         if init_result.get("status") == 2:
             logger.info(f"【115】{target_name} 秒传成功")
             return schemas.FileItem(
                 storage=self.schema.value,
-                fileid=init_result["file_id"],
+                fileid=file_id,
                 path=str(Path(target_dir.path) / target_name),
                 name=target_name,
                 basename=Path(target_dir.name).stem,
                 extension=Path(target_dir.name).suffix[1:],
                 size=file_size,
                 type="file",
+                pickcode=pick_code,
                 modify_time=int(time.time())
             )
 
@@ -512,10 +532,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
             access_key_secret=token_resp['AccessKeySecret'],
             security_token=token_resp['SecurityToken']
         )
-        bucket = oss2.Bucket(auth, endpoint, init_result['bucket'])  # noqa
+        bucket = oss2.Bucket(auth, endpoint, bucket_name)  # noqa
         headers = {
-            'x-oss-callback':  encode_callback(init_result['callback']['callback']),
-            'x-oss-callback-var': encode_callback(init_result['callback']['callback_var'])
+            'x-oss-callback':  encode_callback(callback_str),
+            'x-oss-callback-var': encode_callback(callback_var_str)
         }
         logger.info(f"【115】开始上传: {local_path} -> {target_name}")
         with open(local_path, "rb") as f:
@@ -531,14 +551,14 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     logger.info(f"【115】{target_name} 上传成功")
                     return schemas.FileItem(
                         storage=self.schema.value,
-                        fileid=init_result.get("file_id"),
+                        fileid=file_id,
                         type="file",
                         path=str(Path(target_dir.path) / target_name),
                         name=target_name,
                         basename=Path(target_name).stem,
                         extension=Path(target_name).suffix[1:],
                         size=file_size,
-                        pickcode=init_result["pick_code"],
+                        pickcode=pick_code,
                         modify_time=int(time.time())
                     )
                 else:
