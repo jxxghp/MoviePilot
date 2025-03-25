@@ -433,6 +433,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
         # 处理秒传成功
         init_result = init_resp.get("data")
+        logger.debug(f"【115】上传 Step 1 结果: {init_result}")
         if init_result:
             if init_result.get("status") == 2:
                 return schemas.FileItem(
@@ -471,6 +472,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 data=init_data
             )
             init_result = init_resp.get("data")
+            logger.debug(f"【115】上传 Step 2 结果: {init_result}")
 
         # Step 3: 获取上传凭证
         token_resp = self._request_api(
@@ -481,6 +483,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not token_resp:
             logger.warn("【115】获取上传凭证失败")
             return None
+        logger.debug(f"【115】上传 Step 3 结果: {token_resp}")
 
         # Step 4: 对象存储上传
         endpoint = token_resp["endpoint"]
@@ -508,7 +511,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 part = bucket.upload_part(target_name, upload_id, i + 1, f.read(chunk_size))
                 parts.append(oss2.models.PartInfo(i + 1, part.etag))
         try:
-            bucket.complete_multipart_upload(target_name, upload_id, parts)
+            bucket_result = bucket.complete_multipart_upload(target_name, upload_id, parts)
+            logger.debug(f"【115】上传 Step 4 结果: {bucket_result}")
         except Exception as err:
             if "FileAlreadyExists" not in str(err):
                 logger.error(f"【115】上传文件失败: {str(err)}")
