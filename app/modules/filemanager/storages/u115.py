@@ -449,7 +449,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 )
 
         # Step 2: 处理二次认证
-        if init_resp.get("code") in [700, 701]:
+        if init_result.get("code") in [700, 701]:
             sign_check = init_result["sign_check"].split("-")
             start = int(sign_check[0])
             end = int(sign_check[1])
