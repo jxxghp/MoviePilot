@@ -37,6 +37,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
     # 验证参数
     _auth_state = {}
 
+    # 上传进度值
+    _last_progress = 0
+
     # 基础url
     base_url = "https://proapi.115.com"
 
@@ -406,9 +409,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
             """
             上传进度回调
             """
-            progress = consumed_bytes / total_bytes * 100
-            logger.info(f"【115】已上传: {StringUtils.str_filesize(consumed_bytes)}"
-                        f"/{StringUtils.str_filesize(total_bytes)} 字节, 进度: {progress:.2f}%")
+            progress = round(consumed_bytes / total_bytes * 100)
+            if progress != self._last_progress:
+                logger.info(f"【115】已上传: {StringUtils.str_filesize(consumed_bytes)}"
+                            f"/{StringUtils.str_filesize(total_bytes)} 字节, 进度: {progress}%")
+                self._last_progress = progress
 
         # 计算文件特征值
         target_name = new_name or local_path.name
