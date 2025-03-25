@@ -401,6 +401,14 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         实现带秒传、断点续传和二次认证的文件上传
         """
+
+        def progress_callback(consumed_bytes: int, total_bytes: int):
+            """
+            上传进度回调
+            """
+            progress = consumed_bytes / total_bytes * 100
+            logger.info(f"【115】已上传: {consumed_bytes}/{total_bytes} 字节, 进度: {progress:.2f}%")
+
         # 计算文件特征值
         target_name = new_name or local_path.name
         file_size = local_path.stat().st_size
@@ -493,43 +501,42 @@ class U115Pan(StorageBase, metaclass=Singleton):
             security_token=token_resp['SecurityToken']
         )
         bucket = oss2.Bucket(auth, endpoint, init_result['bucket'])  # noqa
-        # 分片上传
         headers = {
             'x-oss-callback': init_result['callback']['callback'],
             'x-oss-callback-var': base64.b64encode(
                 init_result['callback']['callback_var'].encode('utf-8')
             ).decode('utf-8')
         }
-        upload_id = bucket.init_multipart_upload(target_name, headers=headers).upload_id
-        # 每10M分一片
-        parts = []
-        chunk_size = 10 * 1024 * 1024
-        chunk_num = (file_size + chunk_size - 1) // chunk_size
-        with open(local_path, 'rb') as f:
-            for i in range(chunk_num):
-                part = bucket.upload_part(target_name, upload_id, i + 1, f.read(chunk_size))
-                parts.append(oss2.models.PartInfo(i + 1, part.etag))
-        try:
-            bucket_result = bucket.complete_multipart_upload(target_name, upload_id, parts)
-            logger.debug(f"【115】上传 Step 5 结果: {bucket_result}")
-        except Exception as err:
-            if "FileAlreadyExists" not in str(err):
-                logger.error(f"【115】上传文件失败: {str(err)}")
+        logger.info(f"【115】开始上传: {local_path} -> {target_name}")
+        with open(local_path, "rb") as f:
+            try:
+                result = bucket.put_object(
+                    target_name,
+                    data=f,
+                    headers=headers,
+                    progress_callback=progress_callback
+                )
+                if result.status == 200:
+                    # 构造返回结果
+                    logger.info(f"【115】{target_name} 上传成功")
+                    return schemas.FileItem(
+                        storage=self.schema.value,
+                        fileid=init_result.get("file_id"),
+                        type="file",
+                        path=str(Path(target_dir.path) / target_name),
+                        name=target_name,
+                        basename=Path(target_name).stem,
+                        extension=Path(target_name).suffix[1:],
+                        size=file_size,
+                        pickcode=init_result["pick_code"],
+                        modify_time=int(time.time())
+                    )
+                else:
+                    logger.warn(f"【115】{target_name} 上传失败，错误码: {result.status}")
+                    return None
+            except oss2.exceptions.OssError as e:
+                logger.error(f"【115】{target_name} 上传失败: {e.status}, 错误码: {e.code}, 详情: {e.message}")
                 return None
-
-        # 构造返回结果
-        return schemas.FileItem(
-            storage=self.schema.value,
-            fileid=init_result.get("file_id"),
-            type="file",
-            path=str(Path(target_dir.path) / target_name),
-            name=target_name,
-            basename=Path(target_name).stem,
-            extension=Path(target_name).suffix[1:],
-            size=file_size,
-            pickcode=init_result["pick_code"],
-            modify_time=int(time.time())
-        )
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
