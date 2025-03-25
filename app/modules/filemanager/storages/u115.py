@@ -412,8 +412,14 @@ class U115Pan(StorageBase, metaclass=Singleton):
             progress = round(consumed_bytes / total_bytes * 100)
             if progress != self._last_progress:
                 logger.info(f"【115】已上传: {StringUtils.str_filesize(consumed_bytes)}"
-                            f"/{StringUtils.str_filesize(total_bytes)} 字节, 进度: {progress}%")
+                            f" / {StringUtils.str_filesize(total_bytes)} 字节, 进度: {progress}%")
                 self._last_progress = progress
+
+        def encode_callback(cb_str: str):
+            """
+            回调参数Base64编码函数
+            """
+            return oss2.compat.to_string(base64.b64encode(oss2.compat.to_bytes(cb_str)))
 
         # 计算文件特征值
         target_name = new_name or local_path.name
@@ -508,12 +514,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
         bucket = oss2.Bucket(auth, endpoint, init_result['bucket'])  # noqa
         headers = {
-            'x-oss-callback':  base64.b64encode(
-                init_result['callback']['callback'].encode('utf-8')
-            ).decode('utf-8'),
-            'x-oss-callback-var': base64.b64encode(
-                init_result['callback']['callback_var'].encode('utf-8')
-            ).decode('utf-8')
+            'x-oss-callback':  encode_callback(init_result['callback']['callback']),
+            'x-oss-callback-var': encode_callback(init_result['callback']['callback_var'])
         }
         logger.info(f"【115】开始上传: {local_path} -> {target_name}")
         with open(local_path, "rb") as f:
