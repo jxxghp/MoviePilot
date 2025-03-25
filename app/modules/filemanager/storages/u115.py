@@ -117,7 +117,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         确认登录后，获取相关token
         """
         if not self._auth_state:
-            raise Exception("请先调用生成二维码方法")
+            raise Exception("【115】请先调用生成二维码方法")
         resp = self.session.post(
             "https://passportapi.115.com/open/deviceCodeToToken",
             data={
@@ -126,13 +126,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
             }
         )
         if resp is None:
-            raise Exception("获取 access_token 失败")
+            raise Exception("【115】获取 access_token 失败")
         result = resp.json()
         if result.get("code") != 0:
             raise Exception(result.get("message"))
         return result["data"]
 
-    def __refresh_access_token(self, refresh_token: str) -> dict:
+    def __refresh_access_token(self, refresh_token: str) -> Optional[dict]:
         """
         刷新access_token
         """
@@ -143,10 +143,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
             }
         )
         if resp is None:
-            raise Exception(f"刷新 access_token 失败：refresh_token={refresh_token}")
+            logger.error(f"【115】刷新 access_token 失败：refresh_token={refresh_token}")
+            return None
         result = resp.json()
         if result.get("code") != 0:
-            raise Exception(result.get("message"))
+            logger.warn(f"【115】刷新 access_token 失败：{result.get('code')} - {result.get('message')}！")
         return result.get("data")
 
     def _request_api(self, method: str, endpoint: str,
@@ -159,7 +160,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             **kwargs
         )
         if resp is None:
-            logger.warn(f"{method} 请求 {endpoint} 失败！")
+            logger.warn(f"【115】{method} 请求 {endpoint} 失败！")
             return None
 
         # 处理速率限制
@@ -175,27 +176,29 @@ class U115Pan(StorageBase, metaclass=Singleton):
         ret_data = resp.json()
 
         # 处理refresh_token失效
-        if ret_data.get("code") == 40140119:
+        if ret_data.get("code") in [40140116, 40140119]:
             self.set_config({})
-            raise Exception("refresh_token 失效，请重新扫描登录！")
+            logger.warn("【115】refresh_token 失效，请重新扫描登录！")
+            return None
 
         # 处理access_token失效
         if ret_data.get("code") == 40140125:
             refresh_token = self.get_conf().get("refresh_token")
             if refresh_token:
                 tokens = self.__refresh_access_token(refresh_token)
-                self.set_config({
-                    "refresh_time": int(time.time()),
-                    **tokens
-                })
-                return self._request_api(method, endpoint, result_key, **kwargs)
+                if tokens:
+                    self.set_config({
+                        "refresh_time": int(time.time()),
+                        **tokens
+                    })
+                    return self._request_api(method, endpoint, result_key, **kwargs)
             return None
 
+        if ret_data.get("code") != 0:
+            logger.warn(f"【115】{method} 请求 {endpoint} 出错：{ret_data.get('message')}！")
+
         if result_key:
-            result = ret_data.get(result_key)
-            if result is None:
-                logger.warn(f"{method} 请求 {endpoint} 出错：{ret_data.get('message')}！")
-            return result
+            return ret_data.get(result_key)
         return ret_data
 
     def _path_to_id(self, path: str) -> int:
@@ -231,7 +234,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     current_id = item["fid"]
                     break
             else:
-                raise FileNotFoundError(f"路径不存在: {path}")
+                raise FileNotFoundError(f"【115】路径不存在: {path}")
         self._id_cache[path] = current_id
         return current_id
 
@@ -256,7 +259,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
         # 处理可能的空数据（如已删除文件）
         if not detail:
-            raise FileNotFoundError(f"{fid} 不存在")
+            raise FileNotFoundError(f"【115】{fid} 不存在")
         paths = detail["paths"]
         path_parts = [item["file_name"] for item in paths]
         # 构建完整路径
@@ -388,7 +391,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if resp.get("code") == 20004:
                 # 目录已存在
                 return self.get_item(new_path)
-            logger.warn(f"创建目录失败: {resp.get('error')}")
+            logger.warn(f"【115】创建目录失败: {resp.get('error')}")
             return None
         # 缓存新目录
         self._id_cache[str(new_path)] = resp["data"]["file_id"]
@@ -434,7 +437,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not init_resp:
             return None
         if not init_resp.get("state"):
-            logger.warn(f"初始化上传失败: {init_resp.get('error')}")
+            logger.warn(f"【115】初始化上传失败: {init_resp.get('error')}")
             return None
 
         # 处理秒传成功
@@ -485,7 +488,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "data"
         )
         if not token_resp:
-            logger.warn("获取上传凭证失败")
+            logger.warn("【115】获取上传凭证失败")
             return None
 
         # Step 4: 对象存储上传
@@ -495,7 +498,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             access_key_secret=token_resp['AccessKeySecret'],
             security_token=token_resp['SecurityToken']
         )
-        bucket = oss2.Bucket(auth, endpoint, init_result['bucket'])
+        bucket = oss2.Bucket(auth, endpoint, init_result['bucket']) # noqa
 
         # 分片上传
         headers = {
@@ -517,7 +520,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             bucket.complete_multipart_upload(target_name, upload_id, parts)
         except Exception as err:
             if "FileAlreadyExists" not in str(err):
-                logger.error(f"上传文件失败: {str(err)}")
+                logger.error(f"【115】上传文件失败: {str(err)}")
                 return None
 
         # 构造返回结果
@@ -633,7 +636,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 modify_time=resp["utime"]
             )
         except Exception as e:
-            logger.debug(f"获取文件信息失败: {str(e)}")
+            logger.debug(f"【115】获取文件信息失败: {str(e)}")
             return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
@@ -665,7 +668,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             else:
                 dir_file = self.create_folder(fileitem, part)
                 if not dir_file:
-                    logger.warn(f"115 创建目录 {fileitem.path}{part} 失败！")
+                    logger.warn(f"【115】创建目录 {fileitem.path}{part} 失败！")
                     return None
                 fileitem = dir_file
         return fileitem

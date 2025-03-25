@@ -95,7 +95,7 @@ class LocalStorage(StorageBase):
         # 遍历目录
         path_obj = Path(path)
         if not path_obj.exists():
-            logger.warn(f"目录不存在：{path}")
+            logger.warn(f"【local】目录不存在：{path}")
             return []
 
         # 如果是文件
@@ -167,7 +167,7 @@ class LocalStorage(StorageBase):
             else:
                 shutil.rmtree(path_obj, ignore_errors=True)
         except Exception as e:
-            logger.error(f"删除文件失败：{e}")
+            logger.error(f"【local】删除文件失败：{e}")
             return False
         return True
 
@@ -181,7 +181,7 @@ class LocalStorage(StorageBase):
         try:
             path_obj.rename(path_obj.parent / name)
         except Exception as e:
-            logger.error(f"重命名文件失败：{e}")
+            logger.error(f"【local】重命名文件失败：{e}")
             return False
         return True
 
@@ -202,7 +202,7 @@ class LocalStorage(StorageBase):
         target_path = dir_path / (new_name or path.name)
         code, message = SystemUtils.move(path, target_path)
         if code != 0:
-            logger.error(f"移动文件失败：{message}")
+            logger.error(f"【local】移动文件失败：{message}")
             return None
         return self.get_item(target_path)
 
@@ -213,7 +213,7 @@ class LocalStorage(StorageBase):
         file_path = Path(fileitem.path)
         code, message = SystemUtils.link(file_path, target_file)
         if code != 0:
-            logger.error(f"硬链接文件失败：{message}")
+            logger.error(f"【local】硬链接文件失败：{message}")
             return False
         return True
 
@@ -224,7 +224,7 @@ class LocalStorage(StorageBase):
         file_path = Path(fileitem.path)
         code, message = SystemUtils.softlink(file_path, target_file)
         if code != 0:
-            logger.error(f"软链接文件失败：{message}")
+            logger.error(f"【local】软链接文件失败：{message}")
             return False
         return True
 
@@ -238,7 +238,7 @@ class LocalStorage(StorageBase):
         file_path = Path(fileitem.path)
         code, message = SystemUtils.copy(file_path, path / new_name)
         if code != 0:
-            logger.error(f"复制文件失败：{message}")
+            logger.error(f"【local】复制文件失败：{message}")
             return False
         return True
 
@@ -252,7 +252,7 @@ class LocalStorage(StorageBase):
         file_path = Path(fileitem.path)
         code, message = SystemUtils.move(file_path, path / new_name)
         if code != 0:
-            logger.error(f"移动文件失败：{message}")
+            logger.error(f"【local】移动文件失败：{message}")
             return False
         return True
 
