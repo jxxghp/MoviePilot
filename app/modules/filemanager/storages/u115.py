@@ -568,7 +568,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
         bucket = oss2.Bucket(auth, endpoint, bucket_name)  # noqa
         headers = {
-            'x-oss-callback':  encode_callback(callback.get("callback")),
+            # hack fix：115返回的json多了;号，导致无法解析
+            'x-oss-callback':  encode_callback(callback.get("callback").replace('";,"', '","')),
             'x-oss-callback-var': encode_callback(callback.get("callback_var"))
         }
         logger.info(f"【115】开始上传: {local_path} -> {target_name}")
