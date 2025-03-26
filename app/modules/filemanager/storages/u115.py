@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import secrets
 import threading
 import time
@@ -426,11 +427,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
                             f" / {StringUtils.str_filesize(total_bytes)}, 进度: {progress}%")
                 self._last_progress = round(progress, -1)
 
-        def encode_callback(cb_str: str):
+        def encode_callback(cb: dict):
             """
             回调参数Base64编码函数
             """
-            return oss2.compat.to_string(base64.b64encode(oss2.compat.to_bytes(cb_str)))
+            return oss2.utils.b64encode_as_string(json.dumps(cb).strip())
 
         target_name = new_name or local_path.name
         target_path = str(Path(target_dir.path) / target_name)
@@ -467,6 +468,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         file_id = init_result.get("file_id")
         # 回调信息
         bucket_name = init_result.get("bucket")
+        object_name = init_result.get("object")
         callback = init_result.get("callback")
         # 二次认证信息
         sign_check = init_result.get("sign_check")
@@ -506,6 +508,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 pick_code = init_result.get("pick_code")
             if not bucket_name:
                 bucket_name = init_result.get("bucket")
+            if not object_name:
+                object_name = init_result.get("object")
             if not file_id:
                 file_id = init_result.get("file_id")
             if not callback:
@@ -567,15 +571,25 @@ class U115Pan(StorageBase, metaclass=Singleton):
             security_token=SecurityToken
         )
         bucket = oss2.Bucket(auth, endpoint, bucket_name)  # noqa
-        headers = {
-            'x-oss-callback':  encode_callback(callback.get("callback")),
-            'x-oss-callback-var': encode_callback(callback.get("callback_var"))
-        }
-        logger.info(f"【115】开始上传: {local_path} -> {target_path}")
+        # 处理oss请求回调
+        callback_dict = json.loads(callback.get("callback"))
+        callback_var_dict = json.loads(callback.get("callback_var"))
+        # 补充参数
+        callback_dict['callbackBody'] = callback_dict['callbackBody'].replace(
+            "${sha1}", file_sha1
+        ).replace(
+            "${bucket}", bucket_name
+        ).replace(
+            "${object}", object_name
+        ).replace(
+            "${size}", str(file_size)
+        )
+        logger.debug(f"【115】上传 Step 6 回调参数：{callback_dict} {callback_var_dict}")
         # 填写不能包含Bucket名称在内的Object完整路径，例如exampledir/exampleobject.txt。
         key = target_path[1:]
         # determine_part_size方法用于确定分片大小，设置分片大小为 1GB
         part_size = determine_part_size(file_size, preferred_size=1 * 1024 * 1024 * 1024)
+        logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
         # 初始化分片
         upload_id = bucket.init_multipart_upload(key).upload_id
         parts = []
@@ -594,9 +608,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 logger.info(f"【115】{target_name} 分片 {part_number} 上传完成")
                 offset += num_to_upload
                 part_number += 1
-        # 完成分片上传。
-        # 设置文件访问权限ACL。此处设置为OBJECT_ACL_PRIVATE，表示私有权限。
-        # headers["x-oss-object-acl"] = oss2.OBJECT_ACL_PRIVATE
+        # 请求头
+        headers = {
+            'X-oss-callback': encode_callback(callback_dict),
+            'x-oss-callback-var': encode_callback(callback_var_dict),
+            'x-oss-forbid-overwrite': 'false'
+        }
         try:
             result = bucket.complete_multipart_upload(key, upload_id, parts,
                                                       headers=headers)
