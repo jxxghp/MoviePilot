@@ -211,7 +211,7 @@ class SystemUtils:
             min_filesize = 0
 
         files = []
-        pattern = r".*(" + "|".join(extensions) + ")$"
+        pattern = r".*\b(" + "|".join(extensions) + ")$"
 
         # 遍历目录及子目录
         for path in directory.rglob('**/*'):
