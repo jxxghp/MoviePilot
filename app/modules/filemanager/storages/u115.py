@@ -586,7 +586,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
         logger.debug(f"【115】上传 Step 6 回调参数：{callback_dict} {callback_var_dict}")
         # 填写不能包含Bucket名称在内的Object完整路径，例如exampledir/exampleobject.txt。
-        key = target_path[1:]
+        key = target_path
         # determine_part_size方法用于确定分片大小，设置分片大小为 1GB
         part_size = determine_part_size(file_size, preferred_size=1 * 1024 * 1024 * 1024)
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
