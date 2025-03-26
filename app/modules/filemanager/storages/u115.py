@@ -256,9 +256,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "GET",
                 "/open/ufile/files",
                 "data",
-                params={
-                    "cid": current_id
-                }
+                params={"cid": current_id, "limit": 1000, "cur": True, "show_dir": 1}
             )
             for item in resp:
                 if item["fn"] == part:
