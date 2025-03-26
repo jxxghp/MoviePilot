@@ -236,9 +236,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         路径转FID（带缓存机制）
         """
+        # 根目录
+        if path == "/":
+            return 0
         if len(path) > 1 and path.endswith("/"):
             path = path[:-1]
-        # 命中缓存
+        # 检查缓存
         if path in self._id_cache:
             return self._id_cache[path]
         # 逐级查找缓存
@@ -252,18 +255,26 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 计算相对路径
         rel_path = Path(path).relative_to(parent_path)
         for part in Path(rel_path).parts:
-            resp = self._request_api(
-                "GET",
-                "/open/ufile/files",
-                "data",
-                params={"cid": current_id, "limit": 1000, "cur": True, "show_dir": 1}
-            )
-            for item in resp:
-                if item["fn"] == part:
-                    current_id = item["fid"]
+            offset = 0
+            while True:
+                resp = self._request_api(
+                    "GET",
+                    "/open/ufile/files",
+                    "data",
+                    params={"cid": current_id, "limit": 1000, "offset": offset, "cur": True, "show_dir": 1}
+                )
+                if not resp:
                     break
-            else:
-                raise FileNotFoundError(f"【115】路径不存在: {path}")
+                for item in resp:
+                    if item["fn"] == part:
+                        current_id = item["fid"]
+                        break
+                if len(resp) < 1000:
+                    break
+                offset += len(resp)
+        if not current_id:
+            raise FileNotFoundError(f"【115】{path} 不存在")
+        # 缓存路径
         self._id_cache[path] = current_id
         return current_id
 
