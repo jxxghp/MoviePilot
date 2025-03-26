@@ -568,17 +568,16 @@ class U115Pan(StorageBase, metaclass=Singleton):
         )
         bucket = oss2.Bucket(auth, endpoint, bucket_name)  # noqa
         headers = {
-            # hack fix：115返回的json多了;号，导致无法解析
-            'x-oss-callback':  encode_callback(callback.get("callback").replace('";,"', '","')),
+            'x-oss-callback':  encode_callback(callback.get("callback")),
             'x-oss-callback-var': encode_callback(callback.get("callback_var"))
         }
-        logger.info(f"【115】开始上传: {local_path} -> {target_name}")
+        logger.info(f"【115】开始上传: {local_path} -> {target_path}")
         # 填写不能包含Bucket名称在内的Object完整路径，例如exampledir/exampleobject.txt。
         key = target_path[1:]
         # determine_part_size方法用于确定分片大小，设置分片大小为 1GB
         part_size = determine_part_size(file_size, preferred_size=1 * 1024 * 1024 * 1024)
         # 初始化分片
-        upload_id = bucket.init_multipart_upload(key, headers=headers).upload_id
+        upload_id = bucket.init_multipart_upload(key).upload_id
         parts = []
         # 逐个上传分片
         with open(local_path, 'rb') as fileobj:
@@ -590,8 +589,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 logger.info(f"【115】开始上传 {target_name} 分片 {part_number}: {offset} -> {offset + num_to_upload}")
                 result = bucket.upload_part(key, upload_id, part_number,
                                             data=SizedFileAdapter(fileobj, num_to_upload),
-                                            progress_callback=progress_callback,
-                                            headers=headers)
+                                            progress_callback=progress_callback)
                 parts.append(PartInfo(part_number, result.etag))
                 logger.info(f"【115】{target_name} 分片 {part_number} 上传完成")
                 offset += num_to_upload
@@ -603,7 +601,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             result = bucket.complete_multipart_upload(key, upload_id, parts,
                                                       headers=headers)
             if result.status == 200:
-                # 构造返回结果
+                logger.debug(f"【115】上传 Step 6 回调结果：{result.resp.response.json()}")
                 logger.info(f"【115】{target_name} 上传成功")
             else:
                 logger.warn(f"【115】{target_name} 上传失败，错误码: {result.status}")
