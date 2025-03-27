@@ -257,6 +257,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         rel_path = Path(path).relative_to(parent_path)
         for part in Path(rel_path).parts:
             offset = 0
+            find_part = False
             while True:
                 resp = self._request_api(
                     "GET",
@@ -269,10 +270,15 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 for item in resp:
                     if item["fn"] == part:
                         current_id = item["fid"]
+                        find_part = True
                         break
+                if find_part:
+                    break
                 if len(resp) < 1000:
                     break
                 offset += len(resp)
+            if not find_part:
+                raise FileNotFoundError(f"【115】{path} 不存在")
         if not current_id:
             raise FileNotFoundError(f"【115】{path} 不存在")
         # 缓存路径
