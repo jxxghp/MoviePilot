@@ -575,23 +575,17 @@ class U115Pan(StorageBase, metaclass=Singleton):
         callback_dict = json.loads(callback.get("callback"))
         callback_var_dict = json.loads(callback.get("callback_var"))
         # 补充参数
-        callback_dict['callbackBody'] = callback_dict['callbackBody'].replace(
-            "${sha1}", file_sha1
-        ).replace(
-            "${bucket}", bucket_name
-        ).replace(
-            "${object}", object_name
-        ).replace(
-            "${size}", str(file_size)
-        )
         logger.debug(f"【115】上传 Step 6 回调参数：{callback_dict} {callback_var_dict}")
         # 填写不能包含Bucket名称在内的Object完整路径，例如exampledir/exampleobject.txt。
-        key = target_path
         # determine_part_size方法用于确定分片大小，设置分片大小为 1GB
         part_size = determine_part_size(file_size, preferred_size=1 * 1024 * 1024 * 1024)
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
         # 初始化分片
-        upload_id = bucket.init_multipart_upload(key).upload_id
+        upload_id = bucket.init_multipart_upload(object_name,
+                                                 params={
+                                                     "encoding-type": "url",
+                                                     "sequential": ""
+                                                 }).upload_id
         parts = []
         # 逐个上传分片
         with open(local_path, 'rb') as fileobj:
@@ -601,7 +595,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 num_to_upload = min(part_size, file_size - offset)
                 # 调用SizedFileAdapter(fileobj, size)方法会生成一个新的文件对象，重新计算起始追加位置。
                 logger.info(f"【115】开始上传 {target_name} 分片 {part_number}: {offset} -> {offset + num_to_upload}")
-                result = bucket.upload_part(key, upload_id, part_number,
+                result = bucket.upload_part(object_name, upload_id, part_number,
                                             data=SizedFileAdapter(fileobj, num_to_upload),
                                             progress_callback=progress_callback)
                 parts.append(PartInfo(part_number, result.etag))
@@ -615,7 +609,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             'x-oss-forbid-overwrite': 'false'
         }
         try:
-            result = bucket.complete_multipart_upload(key, upload_id, parts,
+            result = bucket.complete_multipart_upload(object_name, upload_id, parts,
                                                       headers=headers)
             if result.status == 200:
                 logger.debug(f"【115】上传 Step 6 回调结果：{result.resp.response.json()}")
