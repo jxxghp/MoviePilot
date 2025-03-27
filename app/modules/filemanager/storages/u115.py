@@ -350,8 +350,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "data",
                 params={"cid": cid, "limit": 1000, "offset": offset, "cur": True, "show_dir": 1}
             )
-            if not resp:
+            if resp is None:
                 raise FileNotFoundError(f"【115】{fileitem.path} 检索出错！")
+            if not resp:
+                break
             for item in resp:
                 # 更新缓存
                 path = f"{fileitem.path}{item['fn']}"
