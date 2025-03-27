@@ -4,6 +4,7 @@ import hashlib
 import hmac
 from datetime import datetime
 from random import choice
+from typing import Optional
 from urllib import parse
 
 import requests
@@ -18,7 +19,6 @@ class DoubanApi(metaclass=Singleton):
     _urls = {
         # 搜索类
         # sort=U:近期热门 T:标记最多 S:评分最高 R:最新上映
-        # q=search_word&start: int = 0&count: int = 20&sort=U
         # 聚合搜索
         "search": "/search/weixin",
         "search_agg": "/search",
@@ -27,21 +27,18 @@ class DoubanApi(metaclass=Singleton):
 
         # 电影探索
         # sort=U:综合排序 T:近期热度 S:高分优先 R:首播时间
-        # tags='日本,动画,2022'&start: int = 0&count: int = 20&sort=U
         "movie_recommend": "/movie/recommend",
         # 电视剧探索
         "tv_recommend": "/tv/recommend",
         # 搜索
         "movie_tag": "/movie/tag",
         "tv_tag": "/tv/tag",
-        # q=search_word&start: int = 0&count: int = 20
         "movie_search": "/search/movie",
         "tv_search": "/search/movie",
         "book_search": "/search/book",
         "group_search": "/search/group",
 
         # 各类主题合集
-        # start: int = 0&count: int = 20
         # 正在上映
         "movie_showing": "/subject_collection/movie_showing/items",
         # 热门电影
@@ -252,7 +249,7 @@ class DoubanApi(metaclass=Singleton):
         """
         return self.__post(self._urls["imdbid"] % imdbid, _ts=ts)
 
-    def search(self, keyword: str, start: int = 0, count: int = 20,
+    def search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
         """
         关键字搜索
@@ -260,7 +257,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["search"], q=keyword,
                                     start=start, count=count, _ts=ts)
 
-    def movie_search(self, keyword: str, start: int = 0, count: int = 20,
+    def movie_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影搜索
@@ -268,7 +265,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["movie_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
 
-    def tv_search(self, keyword: str, start: int = 0, count: int = 20,
+    def tv_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视搜索
@@ -276,7 +273,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["tv_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
 
-    def book_search(self, keyword: str, start: int = 0, count: int = 20,
+    def book_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         书籍搜索
@@ -284,7 +281,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["book_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
 
-    def group_search(self, keyword: str, start: int = 0, count: int = 20,
+    def group_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         小组搜索
@@ -292,7 +289,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["group_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
 
-    def person_search(self, keyword: str, start: int = 0, count: int = 20,
+    def person_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         人物搜索
@@ -300,7 +297,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["search_subject"], type="person", q=keyword,
                                     start=start, count=count, _ts=ts)
 
-    def movie_showing(self, start: int = 0, count: int = 20,
+    def movie_showing(self, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         正在热映
@@ -308,7 +305,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["movie_showing"],
                                        start=start, count=count, _ts=ts)
 
-    def movie_soon(self, start: int = 0, count: int = 20,
+    def movie_soon(self, start: Optional[int] = 0, count: Optional[int] = 20,
                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         即将上映
@@ -316,7 +313,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["movie_soon"],
                                        start=start, count=count, _ts=ts)
 
-    def movie_hot_gaia(self, start: int = 0, count: int = 20,
+    def movie_hot_gaia(self, start: Optional[int] = 0, count: Optional[int] = 20,
                        ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         热门电影
@@ -324,7 +321,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["movie_hot_gaia"],
                                        start=start, count=count, _ts=ts)
 
-    def tv_hot(self, start: int = 0, count: int = 20,
+    def tv_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
                ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         热门剧集
@@ -332,7 +329,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_hot"],
                                        start=start, count=count, _ts=ts)
 
-    def tv_animation(self, start: int = 0, count: int = 20,
+    def tv_animation(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         动画
@@ -340,7 +337,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_animation"],
                                        start=start, count=count, _ts=ts)
 
-    def tv_variety_show(self, start: int = 0, count: int = 20,
+    def tv_variety_show(self, start: Optional[int] = 0, count: Optional[int] = 20,
                         ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         综艺
@@ -348,7 +345,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_variety_show"],
                                        start=start, count=count, _ts=ts)
 
-    def tv_rank_list(self, start: int = 0, count: int = 20,
+    def tv_rank_list(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视剧排行榜
@@ -356,7 +353,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_rank_list"],
                                        start=start, count=count, _ts=ts)
 
-    def show_hot(self, start: int = 0, count: int = 20,
+    def show_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         综艺热门
@@ -394,7 +391,7 @@ class DoubanApi(metaclass=Singleton):
         """
         return self.__invoke_search(self._urls["book_detail"] + subject_id)
 
-    def movie_top250(self, start: int = 0, count: int = 20,
+    def movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影TOP250
@@ -402,7 +399,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["movie_top250"],
                                        start=start, count=count, _ts=ts)
 
-    def movie_recommend(self, tags='', sort='R', start: int = 0, count: int = 20,
+    def movie_recommend(self, tags='', sort='R', start: Optional[int] = 0, count: Optional[int] = 20,
                         ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影探索
@@ -410,7 +407,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["movie_recommend"], tags=tags, sort=sort,
                                        start=start, count=count, _ts=ts)
 
-    def tv_recommend(self, tags='', sort='R', start: int = 0, count: int = 20,
+    def tv_recommend(self, tags='', sort='R', start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视剧探索
@@ -418,7 +415,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_recommend"], tags=tags, sort=sort,
                                        start=start, count=count, _ts=ts)
 
-    def tv_chinese_best_weekly(self, start: int = 0, count: int = 20,
+    def tv_chinese_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         华语口碑周榜
@@ -426,7 +423,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_chinese_best_weekly"],
                                        start=start, count=count, _ts=ts)
 
-    def tv_global_best_weekly(self, start: int = 0, count: int = 20,
+    def tv_global_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         全球口碑周榜
@@ -441,7 +438,7 @@ class DoubanApi(metaclass=Singleton):
         """
         return self.__invoke_search(self._urls["doulist"] + subject_id)
 
-    def doulist_items(self, subject_id: str, start: int = 0, count: int = 20,
+    def doulist_items(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         豆列列表
@@ -453,7 +450,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["doulist_items"] % subject_id,
                                     start=start, count=count, _ts=ts)
 
-    def movie_recommendations(self, subject_id: str, start: int = 0, count: int = 20,
+    def movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影推荐
@@ -465,7 +462,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["movie_recommendations"] % subject_id,
                                        start=start, count=count, _ts=ts)
 
-    def tv_recommendations(self, subject_id: str, start: int = 0, count: int = 20,
+    def tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                            ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视剧推荐
@@ -477,7 +474,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_recommend(self._urls["tv_recommendations"] % subject_id,
                                        start=start, count=count, _ts=ts)
 
-    def movie_photos(self, subject_id: str, start: int = 0, count: int = 20,
+    def movie_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影剧照
@@ -489,7 +486,7 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke_search(self._urls["movie_photos"] % subject_id,
                                     start=start, count=count, _ts=ts)
 
-    def tv_photos(self, subject_id: str, start: int = 0, count: int = 20,
+    def tv_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视剧剧照
@@ -509,8 +506,9 @@ class DoubanApi(metaclass=Singleton):
         """
         return self.__invoke_search(self._urls["person_detail"] + str(subject_id))
 
-    def person_work(self, subject_id: int, start: int = 0, count: int = 20, sort_by: str = "time",
-                    collection_title: str = "影视",
+    def person_work(self, subject_id: int, start: Optional[int] = 0, count: Optional[int] = 20,
+                    sort_by: Optional[str] = "time",
+                    collection_title: Optional[str] = "影视",
                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         用户作品集

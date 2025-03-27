@@ -89,7 +89,7 @@ class SiteUserData(BaseModel):
     # 下载量
     download: Optional[int] = 0
     # 分享率
-    ratio: Optional[float] = 0
+    ratio: Optional[float] = 0.0
     # 做种数
     seeding: Optional[int] = 0
     # 下载数

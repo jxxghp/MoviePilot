@@ -1,5 +1,5 @@
 from threading import Thread
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from app.core.cache import cached, cache_backend
 from app.core.config import settings
@@ -41,7 +41,7 @@ class SubscribeHelper(metaclass=Singleton):
                     self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
 
     @cached(maxsize=20, ttl=1800)
-    def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> List[dict]:
+    def get_statistic(self, stype: str, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         获取订阅统计数据
         """
@@ -182,7 +182,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, res.json().get("message")
 
     @cached(region=_shares_cache_region)
-    def get_shares(self, name: str = None, page: int = 1, count: int = 30) -> List[dict]:
+    def get_shares(self, name: Optional[str] = None, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         获取订阅分享数据
         """

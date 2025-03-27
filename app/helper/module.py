@@ -3,10 +3,18 @@ import importlib
 import pkgutil
 import traceback
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Callable
 
 from app.log import logger
 
+
+FilterFuncType = Callable[[str, Any], bool]
+
+def _default_filter(name: str, obj: Any) -> bool:
+    """
+    默认过滤器
+    """
+    return True
 
 class ModuleHelper:
     """
@@ -14,7 +22,7 @@ class ModuleHelper:
     """
 
     @classmethod
-    def load(cls, package_path: str, filter_func=lambda name, obj: True) -> List[Any]:
+    def load(cls, package_path: str, filter_func: FilterFuncType = _default_filter) -> List[Any]:
         """
         导入模块
         :param package_path: 父包名
@@ -46,7 +54,7 @@ class ModuleHelper:
         return submodules
 
     @classmethod
-    def load_with_pre_filter(cls, package_path: str, filter_func=lambda name, obj: True) -> List[Any]:
+    def load_with_pre_filter(cls, package_path: str, filter_func: FilterFuncType = _default_filter) -> List[Any]:
         """
         导入子模块
         :param package_path: 父包名

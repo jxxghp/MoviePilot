@@ -29,7 +29,6 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    @abstractmethod
     def get_name() -> str:
         """
         获取模块名称
@@ -37,7 +36,6 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    @abstractmethod
     def get_type() -> ModuleType:
         """
         获取模块类型
@@ -45,7 +43,6 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    @abstractmethod
     def get_subtype() -> Union[DownloaderType, MediaServerType, MessageChannel, StorageSchema, OtherModulesType]:
         """
         获取模块子类型（下载器、媒体服务器、消息通道、存储类型、其他杂项模块类型）
@@ -53,7 +50,6 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    @abstractmethod
     def get_priority() -> int:
         """
         获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效

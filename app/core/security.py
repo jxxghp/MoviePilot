@@ -1,10 +1,10 @@
 import base64
+import datetime
 import hashlib
 import hmac
 import json
 import os
 import traceback
-import datetime
 from datetime import timedelta
 from typing import Any, Union, Annotated, Optional
 
@@ -44,9 +44,9 @@ api_key_query = APIKeyQuery(name="apikey", auto_error=False, scheme_name="api_ke
 def create_access_token(
         userid: Union[str, Any],
         username: str,
-        super_user: bool = False,
+        super_user: Optional[bool] = False,
         expires_delta: Optional[timedelta] = None,
-        level: int = 1,
+        level: Optional[int] = 1,
         purpose: Optional[str] = "authentication"
 ) -> str:
     """
@@ -136,7 +136,7 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
     )
 
 
-def __verify_token(token: str, purpose: str = "authentication") -> schemas.TokenPayload:
+def __verify_token(token: str, purpose: Optional[str] = "authentication") -> schemas.TokenPayload:
     """
     使用 JWT Token 进行身份认证并解析 Token 的内容
     :param token: JWT 令牌
@@ -176,7 +176,7 @@ def __verify_token(token: str, purpose: str = "authentication") -> schemas.Token
 def verify_token(
         request: Request,
         response: Response,
-        token: str = Security(oauth2_scheme)
+        token: Annotated[str, Security(oauth2_scheme)]
 ) -> schemas.TokenPayload:
     """
     验证 JWT 令牌并自动处理 resource_token 写入
@@ -196,7 +196,7 @@ def verify_token(
 
 
 def verify_resource_token(
-        resource_token: str = Security(resource_token_cookie)
+        resource_token: Annotated[str, Security(resource_token_cookie)]
 ) -> schemas.TokenPayload:
     """
     验证资源访问令牌（从 Cookie 中获取）
@@ -249,7 +249,7 @@ def __verify_key(key: str, expected_key: str, key_type: str) -> str:
     return key
 
 
-def verify_apitoken(token: str = Security(__get_api_token)) -> str:
+def verify_apitoken(token: Annotated[str, Security(__get_api_token)]) -> str:
     """
     使用 API Token 进行身份认证
     :param token: API Token，从 URL 查询参数中获取
@@ -258,7 +258,7 @@ def verify_apitoken(token: str = Security(__get_api_token)) -> str:
     return __verify_key(token, settings.API_TOKEN, "API_TOKEN")
 
 
-def verify_apikey(apikey: str = Security(__get_api_key)) -> str:
+def verify_apikey(apikey: Annotated[str, Security(__get_api_key)]) -> str:
     """
     使用 API Key 进行身份认证
     :param apikey: API Key，从 URL 查询参数或请求头中获取

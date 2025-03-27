@@ -39,8 +39,8 @@ class DownloadChain(ChainBase):
         self.messagehelper = MessageHelper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
-                              channel: MessageChannel = None, username: str = None,
-                              download_episodes: str = None):
+                              channel: MessageChannel = None, username: Optional[str] = None,
+                              download_episodes: Optional[str] = None):
         """
         发送添加下载的消息，根据消息场景开关决定发给谁
         :param meta: 元数据
@@ -97,7 +97,7 @@ class DownloadChain(ChainBase):
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
-                         source: str = None,
+                         source: Optional[str] = None,
                          userid: Union[str, int] = None
                          ) -> Tuple[Optional[Union[Path, str]], str, list]:
         """
@@ -105,7 +105,7 @@ class DownloadChain(ChainBase):
         :return: 种子路径，种子目录名，种子文件清单
         """
 
-        def __get_redict_url(url: str, ua: str = None, cookie: str = None) -> Optional[str]:
+        def __get_redict_url(url: str, ua: Optional[str] = None, cookie: Optional[str] = None) -> Optional[str]:
             """
             获取下载链接， url格式：[base64]url
             """
@@ -204,13 +204,13 @@ class DownloadChain(ChainBase):
     def download_single(self, context: Context, torrent_file: Path = None,
                         episodes: Set[int] = None,
                         channel: MessageChannel = None,
-                        source: str = None,
-                        downloader: str = None,
-                        save_path: str = None,
+                        source: Optional[str] = None,
+                        downloader: Optional[str] = None,
+                        save_path: Optional[str] = None,
                         userid: Union[str, int] = None,
-                        username: str = None,
-                        media_category: str = None,
-                        label: str = None) -> Optional[str]:
+                        username: Optional[str] = None,
+                        media_category: Optional[str] = None,
+                        label: Optional[str] = None) -> Optional[str]:
         """
         下载及发送通知
         :param context: 资源上下文
@@ -418,13 +418,13 @@ class DownloadChain(ChainBase):
     def batch_download(self,
                        contexts: List[Context],
                        no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]] = None,
-                       save_path: str = None,
+                       save_path: Optional[str] = None,
                        channel: MessageChannel = None,
-                       source: str = None,
-                       userid: str = None,
-                       username: str = None,
-                       media_category: str = None,
-                       downloader: str = None
+                       source: Optional[str] = None,
+                       userid: Optional[str] = None,
+                       username: Optional[str] = None,
+                       media_category: Optional[str] = None,
+                       downloader: Optional[str] = None
                        ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
@@ -933,7 +933,7 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None, source: str = None):
+    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None, source: Optional[str] = None):
         """
         查询正在下载的任务，并发送消息
         """
@@ -967,7 +967,7 @@ class DownloadChain(ChainBase):
             link=settings.MP_DOMAIN('#/downloading')
         ))
 
-    def downloading(self, name: str = None) -> List[DownloadingTorrent]:
+    def downloading(self, name: Optional[str] = None) -> List[DownloadingTorrent]:
         """
         查询正在下载的任务
         """

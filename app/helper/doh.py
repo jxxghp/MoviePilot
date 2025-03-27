@@ -129,7 +129,7 @@ def doh_query_json(resolver: str, host: str) -> Optional[str]:
             if response.status != 200:
                 return None
             response_body = response.read().decode("utf-8")
-            logger.debug("<==  body: %s", response_body)
+            logger.debug("<== body: %s", response_body)
             answer = json.loads(response_body)["Answer"]
             return answer[0]["data"]
     except Exception as e:

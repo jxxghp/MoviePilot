@@ -273,8 +273,8 @@ class Command(metaclass=Singleton):
                 }
         return plugin_commands
 
-    def __run_command(self, command: Dict[str, any], data_str: str = "",
-                      channel: MessageChannel = None, source: str = None, userid: Union[str, int] = None):
+    def __run_command(self, command: Dict[str, any], data_str: Optional[str] = "",
+                      channel: MessageChannel = None, source: Optional[str] = None, userid: Union[str, int] = None):
         """
         运行定时服务
         """
@@ -339,8 +339,8 @@ class Command(metaclass=Singleton):
         """
         return self._commands.get(cmd, {})
 
-    def register(self, cmd: str, func: Any, data: dict = None,
-                 desc: str = None, category: str = None) -> None:
+    def register(self, cmd: str, func: Any, data: Optional[dict] = None,
+                 desc: Optional[str] = None, category: Optional[str] = None) -> None:
         """
         注册单个命令
         """
@@ -352,8 +352,8 @@ class Command(metaclass=Singleton):
             "data": data or {}
         }
 
-    def execute(self, cmd: str, data_str: str = "",
-                channel: MessageChannel = None, source: str = None,
+    def execute(self, cmd: str, data_str: Optional[str] = "",
+                channel: MessageChannel = None, source: Optional[str] = None,
                 userid: Union[str, int] = None) -> None:
         """
         执行命令

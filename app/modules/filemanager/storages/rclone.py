@@ -39,8 +39,8 @@ class Rclone(StorageBase):
         super().set_config(conf)
         filepath = conf.get("filepath")
         if not filepath:
-            logger.warn("Rclone保存配置失败：未设置配置文件路径")
-        logger.info(f"Rclone配置写入文件：{filepath}")
+            logger.warn("【rclone】保存配置失败：未设置配置文件路径")
+        logger.info(f"【rclone】配置写入文件：{filepath}")
         path = Path(filepath)
         if not path.parent.exists():
             path.parent.mkdir(parents=True)
@@ -56,7 +56,7 @@ class Rclone(StorageBase):
         else:
             return None
 
-    def __get_rcloneitem(self, item: dict, parent: str = "/") -> schemas.FileItem:
+    def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> schemas.FileItem:
         """
         获取rclone文件项
         """
@@ -95,10 +95,10 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"rclone存储检查失败：{err}")
+            logger.error(f"【rclone】存储检查失败：{err}")
         return False
 
-    def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
+    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
         """
         浏览文件
         """
@@ -117,7 +117,7 @@ class Rclone(StorageBase):
                 items = json.loads(ret.stdout)
                 return [self.__get_rcloneitem(item, parent=fileitem.path) for item in items]
         except Exception as err:
-            logger.error(f"rclone浏览文件失败：{err}")
+            logger.error(f"【rclone】浏览文件失败：{err}")
         return []
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
@@ -137,7 +137,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return self.get_item(Path(fileitem.path) / name)
         except Exception as err:
-            logger.error(f"rclone创建目录失败：{err}")
+            logger.error(f"【rclone】创建目录失败：{err}")
         return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
@@ -161,17 +161,15 @@ class Rclone(StorageBase):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(path="/")
-        for part in path.parts:
-            if part == "/":
-                continue
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
+        for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:
                 fileitem = dir_file
             else:
                 dir_file = self.create_folder(fileitem, part)
                 if not dir_file:
-                    logger.warn(f"rclone创建目录 {fileitem.path}{part} 失败！")
+                    logger.warn(f"【rclone】创建目录 {fileitem.path}{part} 失败！")
                     return None
                 fileitem = dir_file
         return fileitem
@@ -196,7 +194,7 @@ class Rclone(StorageBase):
                         return self.__get_rcloneitem(item, parent=str(path.parent) + "/")
             return None
         except Exception as err:
-            logger.debug(f"rclone获取文件项失败：{err}")
+            logger.debug(f"【rclone】获取文件项失败：{err}")
         return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
@@ -214,7 +212,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"rclone删除文件失败：{err}")
+            logger.error(f"【rclone】删除文件失败：{err}")
         return False
 
     def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
@@ -233,7 +231,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"rclone重命名文件失败：{err}")
+            logger.error(f"【rclone】重命名文件失败：{err}")
         return False
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
@@ -253,10 +251,11 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return path
         except Exception as err:
-            logger.error(f"rclone复制文件失败：{err}")
+            logger.error(f"【rclone】复制文件失败：{err}")
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项
@@ -276,7 +275,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return self.get_item(new_path)
         except Exception as err:
-            logger.error(f"rclone上传文件失败：{err}")
+            logger.error(f"【rclone】上传文件失败：{err}")
         return None
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
@@ -296,7 +295,7 @@ class Rclone(StorageBase):
                 items = json.loads(ret.stdout)
                 return self.__get_rcloneitem(items[0])
         except Exception as err:
-            logger.error(f"rclone获取文件详情失败：{err}")
+            logger.error(f"【rclone】获取文件详情失败：{err}")
         return None
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -318,7 +317,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"rclone移动文件失败：{err}")
+            logger.error(f"【rclone】移动文件失败：{err}")
         return False
 
     def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -340,7 +339,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"rclone复制文件失败：{err}")
+            logger.error(f"【rclone】复制文件失败：{err}")
         return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
@@ -382,5 +381,5 @@ class Rclone(StorageBase):
                     available=items.get("free")
                 )
         except Exception as err:
-            logger.error(f"rclone获取存储使用情况失败：{err}")
+            logger.error(f"【rclone】获取存储使用情况失败：{err}")
         return None

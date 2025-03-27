@@ -41,8 +41,8 @@ class TmdbApi:
         self.search = Search()
         self.movie = Movie()
         self.tv = TV()
-        self.season = Season()
-        self.episode = Episode()
+        self.season_obj = Season()
+        self.episode_obj = Episode()
         self.discover = Discover()
         self.trending = Trending()
         self.person = Person()
@@ -185,9 +185,9 @@ class TmdbApi:
 
     def match(self, name: str,
               mtype: MediaType,
-              year: str = None,
-              season_year: str = None,
-              season_number: int = None) -> Optional[dict]:
+              year: Optional[str] = None,
+              season_year: Optional[str] = None,
+              season_number: Optional[int] = None) -> Optional[dict]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
         :param name: 检索的名称
@@ -732,7 +732,7 @@ class TmdbApi:
         更新TMDB信息中的其它语种名称
         """
 
-        def __get_tmdb_lang_title(tmdbinfo: dict, lang: str = "US") -> Optional[str]:
+        def __get_tmdb_lang_title(tmdbinfo: dict, lang: Optional[str] = "US") -> Optional[str]:
             """
             从译名中获取其它语种标题
             """
@@ -767,7 +767,7 @@ class TmdbApi:
 
     def __get_movie_detail(self,
                            tmdbid: int,
-                           append_to_response: str = "images,"
+                           append_to_response: Optional[str] = "images,"
                                                      "credits,"
                                                      "alternative_titles,"
                                                      "translations,"
@@ -880,7 +880,7 @@ class TmdbApi:
 
     def __get_tv_detail(self,
                         tmdbid: int,
-                        append_to_response: str = "images,"
+                        append_to_response: Optional[str] = "images,"
                                                   "credits,"
                                                   "alternative_titles,"
                                                   "translations,"
@@ -1126,11 +1126,11 @@ class TmdbApi:
           "season_number": 1
         }
         """
-        if not self.season:
+        if not self.season_obj:
             return {}
         try:
             logger.debug("正在查询TMDB电视剧：%s，季：%s ..." % (tmdbid, season))
-            tmdbinfo = self.season.details(tv_id=tmdbid, season_num=season)
+            tmdbinfo = self.season_obj.details(tv_id=tmdbid, season_num=season)
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -1143,11 +1143,11 @@ class TmdbApi:
         :param season: 季，数字
         :param episode: 集，数字
         """
-        if not self.episode:
+        if not self.episode_obj:
             return {}
         try:
             logger.debug("正在查询TMDB集详情：%s，季：%s，集：%s ..." % (tmdbid, season, episode))
-            tmdbinfo = self.episode.details(tv_id=tmdbid, season_num=season, episode_num=episode)
+            tmdbinfo = self.episode_obj.details(tv_id=tmdbid, season_num=season, episode_num=episode)
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -1191,7 +1191,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def discover_trending(self, page: int = 1) -> List[dict]:
+    def discover_trending(self, page: Optional[int] = 1) -> List[dict]:
         """
         流行趋势
         """
@@ -1282,7 +1282,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_movie_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
+    def get_movie_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
         获取电影的演职员列表
         """
@@ -1299,7 +1299,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_tv_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
+    def get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
         获取电视剧的演职员列表
         """
@@ -1349,7 +1349,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def get_person_credits(self, person_id: int, page: int = 1, count: int = 24) -> List[dict]:
+    def get_person_credits(self, person_id: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
         获取人物参演作品
         """

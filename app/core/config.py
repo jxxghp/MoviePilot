@@ -109,6 +109,8 @@ class ConfigModel(BaseModel):
     FANART_ENABLE: bool = True
     # Fanart API Key
     FANART_API_KEY: str = "d2d31f9ecabea050fc7d68aa3146015f"
+    # 115 AppId
+    U115_APP_ID: str = "100196807"
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
     # 电视剧动漫的分类genre_ids
@@ -608,7 +610,7 @@ class GlobalVar(object):
     # webpush订阅
     SUBSCRIPTIONS: List[dict] = []
     # 需应急停止的工作流
-    EMERGENCY_STOP_WORKFLOWS: List[str] = []
+    EMERGENCY_STOP_WORKFLOWS: List[int] = []
 
     def stop_system(self):
         """
@@ -635,21 +637,21 @@ class GlobalVar(object):
         """
         self.SUBSCRIPTIONS.append(subscription)
 
-    def stop_workflow(self, workflow_id: str):
+    def stop_workflow(self, workflow_id: int):
         """
         停止工作流
         """
         if workflow_id not in self.EMERGENCY_STOP_WORKFLOWS:
             self.EMERGENCY_STOP_WORKFLOWS.append(workflow_id)
 
-    def workflow_resume(self, workflow_id: str):
+    def workflow_resume(self, workflow_id: int):
         """
         恢复工作流
         """
         if workflow_id in self.EMERGENCY_STOP_WORKFLOWS:
             self.EMERGENCY_STOP_WORKFLOWS.remove(workflow_id)
 
-    def is_workflow_stopped(self, workflow_id: str):
+    def is_workflow_stopped(self, workflow_id: int):
         """
         是否停止工作流
         """

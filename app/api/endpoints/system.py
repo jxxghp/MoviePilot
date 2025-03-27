@@ -5,7 +5,7 @@ import tempfile
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Annotated
 
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
@@ -141,7 +141,7 @@ def fetch_image(
 def proxy_img(
         imgurl: str,
         proxy: bool = False,
-        if_none_match: Optional[str] = Header(None),
+        if_none_match: Annotated[str | None, Header()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
 ) -> Response:
     """
@@ -158,7 +158,7 @@ def proxy_img(
 @router.get("/cache/image", summary="图片缓存")
 def cache_img(
         url: str,
-        if_none_match: Optional[str] = Header(None),
+        if_none_match: Annotated[str | None, Header()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
 ) -> Response:
     """
@@ -288,7 +288,8 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.get("/message", summary="实时消息")
-async def get_message(request: Request, role: str = "system", _: schemas.TokenPayload = Depends(verify_resource_token)):
+async def get_message(request: Request, role: Optional[str] = "system",
+                      _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取系统消息，返回格式为SSE
     """
@@ -309,7 +310,7 @@ async def get_message(request: Request, role: str = "system", _: schemas.TokenPa
 
 
 @router.get("/logging", summary="实时日志")
-async def get_logging(request: Request, length: int = 50, logfile: str = "moviepilot.log",
+async def get_logging(request: Request, length: Optional[int] = 50, logfile: Optional[str] = "moviepilot.log",
                       _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取系统日志
@@ -381,7 +382,7 @@ def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
 @router.get("/ruletest", summary="过滤规则测试", response_model=schemas.Response)
 def ruletest(title: str,
              rulegroup_name: str,
-             subtitle: str = None,
+             subtitle: Optional[str] = None,
              _: schemas.TokenPayload = Depends(verify_token)):
     """
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
@@ -498,7 +499,7 @@ def run_scheduler(jobid: str,
 
 @router.get("/runscheduler2", summary="运行服务（API_TOKEN）", response_model=schemas.Response)
 def run_scheduler2(jobid: str,
-                   _: str = Depends(verify_apitoken)):
+                   _: Annotated[str, Depends(verify_apitoken)]):
     """
     执行命令（API_TOKEN认证）
     """

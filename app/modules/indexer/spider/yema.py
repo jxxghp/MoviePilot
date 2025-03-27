@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
@@ -57,7 +57,7 @@ class YemaSpider:
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
-    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         搜索
         """

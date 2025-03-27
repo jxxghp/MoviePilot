@@ -22,7 +22,7 @@ class VoceChat:
     # 请求对象
     _client = None
 
-    def __init__(self, VOCECHAT_HOST: str = None, VOCECHAT_API_KEY: str = None, VOCECHAT_CHANNEL_ID: str = None, **kwargs):
+    def __init__(self, VOCECHAT_HOST: Optional[str] = None, VOCECHAT_API_KEY: Optional[str] = None, VOCECHAT_CHANNEL_ID: Optional[str] = None, **kwargs):
         """
         初始化
         """
@@ -60,8 +60,8 @@ class VoceChat:
         if result and result.status_code == 200:
             return result.json()
 
-    def send_msg(self, title: str, text: str = "",
-                 userid: str = None, link: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: Optional[str] = None,
+                 userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
@@ -98,7 +98,7 @@ class VoceChat:
             return False
 
     def send_medias_msg(self, title: str, medias: List[MediaInfo],
-                        userid: str = "", link: str = None) -> Optional[bool]:
+                        userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -138,7 +138,9 @@ class VoceChat:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
+                          userid: Optional[str] = None,
+                          title: Optional[str] = None,
+                          link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """

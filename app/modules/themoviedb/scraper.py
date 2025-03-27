@@ -18,7 +18,7 @@ class TmdbScraper:
         self.tmdb = tmdb
 
     def get_metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                         season: int = None, episode: int = None) -> Optional[str]:
+                         season: Optional[int] = None, episode: Optional[int] = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param meta: 元数据
@@ -49,7 +49,7 @@ class TmdbScraper:
 
         return None
 
-    def get_metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> dict:
+    def get_metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> dict:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息

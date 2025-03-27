@@ -77,8 +77,8 @@ class IndexerModule(_ModuleBase):
     def search_torrents(self, site: dict,
                         keywords: List[str] = None,
                         mtype: MediaType = None,
-                        cat: str = None,
-                        page: int = 0) -> List[TorrentInfo]:
+                        cat: Optional[str] = None,
+                        page: Optional[int] = 0) -> List[TorrentInfo]:
         """
         搜索一个站点
         :param site:  站点
@@ -218,10 +218,10 @@ class IndexerModule(_ModuleBase):
 
     @staticmethod
     def __spider_search(indexer: dict,
-                        search_word: str = None,
+                        search_word: Optional[str] = None,
                         mtype: MediaType = None,
-                        cat: str = None,
-                        page: int = 0) -> Tuple[bool, List[dict]]:
+                        cat: Optional[str] = None,
+                        page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         根据关键字搜索单个站点
         :param: indexer: 站点配置
@@ -241,7 +241,7 @@ class IndexerModule(_ModuleBase):
         return _spider.is_error, _spider.get_torrents()
 
     def refresh_torrents(self, site: dict,
-                         keyword: str = None, cat: str = None, page: int = 0) -> Optional[List[TorrentInfo]]:
+                         keyword: Optional[str] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Optional[List[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点

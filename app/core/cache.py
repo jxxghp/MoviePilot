@@ -1,6 +1,7 @@
 import inspect
 import json
 import pickle
+import threading
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Any, Dict, Optional
@@ -16,6 +17,8 @@ from app.log import logger
 # 默认缓存区
 DEFAULT_CACHE_REGION = "DEFAULT"
 
+lock = threading.Lock()
+
 
 class CacheBackend(ABC):
     """
@@ -23,7 +26,7 @@ class CacheBackend(ABC):
     """
 
     @abstractmethod
-    def set(self, key: str, value: Any, ttl: int, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
+    def set(self, key: str, value: Any, ttl: int, region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存
 
@@ -36,7 +39,7 @@ class CacheBackend(ABC):
         pass
 
     @abstractmethod
-    def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
+    def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
         判断缓存键是否存在
 
@@ -47,7 +50,7 @@ class CacheBackend(ABC):
         pass
 
     @abstractmethod
-    def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
+    def get(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> Any:
         """
         获取缓存
 
@@ -58,7 +61,7 @@ class CacheBackend(ABC):
         pass
 
     @abstractmethod
-    def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
+    def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
         删除缓存
 
@@ -84,7 +87,7 @@ class CacheBackend(ABC):
         pass
 
     @staticmethod
-    def get_region(region: str = DEFAULT_CACHE_REGION):
+    def get_region(region: Optional[str] = DEFAULT_CACHE_REGION):
         """
         获取缓存的区
         """
@@ -128,7 +131,7 @@ class CacheToolsBackend(CacheBackend):
     - 不支持按 `key` 独立隔离 TTL 和 Maxsize，仅支持作用于 region 级别
     """
 
-    def __init__(self, maxsize: int = 1000, ttl: int = 1800):
+    def __init__(self, maxsize: Optional[int] = 1000, ttl: Optional[int] = 1800):
         """
         初始化缓存实例
 
@@ -147,7 +150,8 @@ class CacheToolsBackend(CacheBackend):
         region = self.get_region(region)
         return self._region_caches.get(region)
 
-    def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
+    def set(self, key: str, value: Any, ttl: Optional[int] = None, 
+            region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存值支持每个 key 独立配置 TTL 和 Maxsize
 
@@ -163,9 +167,10 @@ class CacheToolsBackend(CacheBackend):
         # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
         region_cache = self._region_caches.setdefault(region, TTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
-        region_cache[key] = value
+        with lock:
+            region_cache[key] = value
 
-    def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
+    def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
         判断缓存键是否存在
 
@@ -178,7 +183,7 @@ class CacheToolsBackend(CacheBackend):
             return False
         return key in region_cache
 
-    def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
+    def get(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> Any:
         """
         获取缓存的值
 
@@ -191,7 +196,7 @@ class CacheToolsBackend(CacheBackend):
             return None
         return region_cache.get(key)
 
-    def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
+    def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
         删除缓存
 
@@ -201,7 +206,8 @@ class CacheToolsBackend(CacheBackend):
         region_cache = self.__get_region_cache(region)
         if region_cache is None:
             return None
-        del region_cache[key]
+        with lock:
+            del region_cache[key]
 
     def clear(self, region: Optional[str] = None) -> None:
         """
@@ -213,12 +219,14 @@ class CacheToolsBackend(CacheBackend):
             # 清理指定缓存区
             region_cache = self.__get_region_cache(region)
             if region_cache:
-                region_cache.clear()
+                with lock:
+                    region_cache.clear()
                 logger.info(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
             for region_cache in self._region_caches.values():
-                region_cache.clear()
+                with lock:
+                    region_cache.clear()
             logger.info("Cleared all cache")
 
     def close(self) -> None:
@@ -246,7 +254,7 @@ class RedisBackend(CacheBackend):
     _complex_serializable_types = set()
     _simple_serializable_types = set()
 
-    def __init__(self, redis_url: str = "redis://localhost", ttl: int = 1800):
+    def __init__(self, redis_url: Optional[str] = "redis://localhost", ttl: Optional[int] = 1800):
         """
         初始化 Redis 缓存实例
 
@@ -271,7 +279,7 @@ class RedisBackend(CacheBackend):
             logger.error(f"Failed to connect to Redis: {e}")
             raise RuntimeError("Redis connection failed") from e
 
-    def set_memory_limit(self, policy: str = "allkeys-lru"):
+    def set_memory_limit(self, policy: Optional[str] = "allkeys-lru"):
         """
         动态设置 Redis 最大内存和内存淘汰策略
         :param policy: 淘汰策略（如 'allkeys-lru'）
@@ -349,7 +357,8 @@ class RedisBackend(CacheBackend):
         region = self.get_region(quote(region))
         return f"{region}:key:{quote(key)}"
 
-    def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
+    def set(self, key: str, value: Any, ttl: Optional[int] = None, 
+            region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存
 
@@ -369,7 +378,7 @@ class RedisBackend(CacheBackend):
         except Exception as e:
             logger.error(f"Failed to set key: {key} in region: {region}, error: {e}")
 
-    def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
+    def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
         判断缓存键是否存在
 
@@ -384,7 +393,7 @@ class RedisBackend(CacheBackend):
             logger.error(f"Failed to exists key: {key} region: {region}, error: {e}")
             return False
 
-    def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Optional[Any]:
+    def get(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> Optional[Any]:
         """
         获取缓存的值
 
@@ -402,7 +411,7 @@ class RedisBackend(CacheBackend):
             logger.error(f"Failed to get key: {key} in region: {region}, error: {e}")
             return None
 
-    def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
+    def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
         删除缓存
 
@@ -445,7 +454,7 @@ class RedisBackend(CacheBackend):
             self.client.close()
 
 
-def get_cache_backend(maxsize: int = 1000, ttl: int = 1800) -> CacheBackend:
+def get_cache_backend(maxsize: Optional[int] = 1000, ttl: Optional[int] = 1800) -> CacheBackend:
     """
     根据配置获取缓存后端实例
 
@@ -473,8 +482,8 @@ def get_cache_backend(maxsize: int = 1000, ttl: int = 1800) -> CacheBackend:
     return CacheToolsBackend(maxsize=maxsize, ttl=ttl)
 
 
-def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
-           skip_none: bool = True, skip_empty: bool = False):
+def cached(region: Optional[str] = None, maxsize: Optional[int] = 1000, ttl: Optional[int] = 1800,
+           skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False):
     """
     自定义缓存装饰器，支持为每个 key 动态传递 maxsize 和 ttl
 

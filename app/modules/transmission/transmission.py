@@ -10,10 +10,10 @@ from app.utils.url import UrlUtils
 
 class Transmission:
     _protocol: Literal["http", "https"] = "http"
-    _host: str = None
-    _port: int = None
-    _username: str = None
-    _password: str = None
+    _host: Optional[str] = None
+    _port: Optional[int] = None
+    _username: Optional[str] = None
+    _password: Optional[str] = None
 
     trc: Optional[Client] = None
 
@@ -24,7 +24,8 @@ class Transmission:
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
-    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None, **kwargs):
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None, 
+                 username: Optional[str] = None, password: Optional[str] = None, **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器
         """
@@ -173,8 +174,8 @@ class Transmission:
         return []
 
     def add_torrent(self, content: Union[str, bytes],
-                    is_paused: bool = False,
-                    download_dir: str = None,
+                    is_paused: Optional[bool] = False,
+                    download_dir: Optional[str] = None,
                     labels=None,
                     cookie=None) -> Optional[Torrent]:
         """

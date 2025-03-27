@@ -1,7 +1,9 @@
 import shutil
 from pathlib import Path
+from typing import Union
 
 import ruamel.yaml
+from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.log import logger
@@ -95,7 +97,7 @@ class CategoryHelper(metaclass=Singleton):
         return self.get_category(self._tv_categorys, tmdb_info)
 
     @staticmethod
-    def get_category(categorys: dict, tmdb_info: dict) -> str:
+    def get_category(categorys: Union[dict, CommentedMap], tmdb_info: dict) -> str:
         """
         根据 TMDB信息与分类配置文件进行比较，确定所属分类
         :param categorys: 分类配置

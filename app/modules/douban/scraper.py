@@ -11,7 +11,7 @@ class DoubanScraper:
     _force_nfo = False
     _force_img = False
 
-    def get_metadata_nfo(self, mediainfo: MediaInfo, season: int = None) -> Optional[str]:
+    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param mediainfo: 媒体信息
@@ -33,7 +33,7 @@ class DoubanScraper:
         return None
 
     @staticmethod
-    def get_metadata_img(mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
+    def get_metadata_img(mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
         """
         获取图片内容
         :param mediainfo: 媒体信息

@@ -79,8 +79,8 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 server.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None, label: str = None,
-                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
+                 episodes: Set[int] = None, category: Optional[str] = None, label: Optional[str] = None,
+                 downloader: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -200,7 +200,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
-                      downloader: str = None
+                      downloader: Optional[str] = None
                       ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
@@ -280,7 +280,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
             return None
         return ret_torrents
 
-    def transfer_completed(self, hashs: str, downloader: str = None) -> None:
+    def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
@@ -299,8 +299,8 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
             tags = ['已整理']
         server.set_torrent_tag(ids=hashs, tags=tags)
 
-    def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
-                        downloader: str = None) -> Optional[bool]:
+    def remove_torrents(self, hashs: Union[str, list], delete_file: Optional[bool] = True,
+                        downloader: Optional[str] = None) -> Optional[bool]:
         """
         删除下载器种子
         :param hashs:  种子Hash
@@ -315,7 +315,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def start_torrents(self, hashs: Union[list, str],
-                       downloader: str = None) -> Optional[bool]:
+                       downloader: Optional[str] = None) -> Optional[bool]:
         """
         开始下载
         :param hashs:  种子Hash
@@ -329,7 +329,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         return server.start_torrents(ids=hashs)
 
     def stop_torrents(self, hashs: Union[list, str],
-                      downloader: str = None) -> Optional[bool]:
+                      downloader: Optional[str] = None) -> Optional[bool]:
         """
         停止下载
         :param hashs:  种子Hash
@@ -342,7 +342,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
             return None
         return server.start_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str, downloader: str = None) -> Optional[List[File]]:
+    def torrent_files(self, tid: str, downloader: Optional[str] = None) -> Optional[List[File]]:
         """
         获取种子文件列表
         """
@@ -352,7 +352,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
             return None
         return server.get_files(tid=tid)
 
-    def downloader_info(self, downloader: str = None) -> Optional[List[schemas.DownloaderInfo]]:
+    def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[schemas.DownloaderInfo]]:
         """
         下载器信息
         """

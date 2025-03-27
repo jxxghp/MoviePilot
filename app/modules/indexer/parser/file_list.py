@@ -74,7 +74,7 @@ class FileListSiteUserInfo(SiteParserBase):
             self.bonus = StringUtils.str_float(bonus_html[0].xpath("string(.)").strip())
         pass
 
-    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         做种相关信息
         :param html_text:

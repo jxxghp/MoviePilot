@@ -207,7 +207,7 @@ class StringUtils:
             return [StringUtils.clear(x) for x in text]
 
     @staticmethod
-    def clear_upper(text: str) -> str:
+    def clear_upper(text: Optional[str]) -> str:
         """
         去除特殊字符，同时大写
         """
@@ -596,7 +596,7 @@ class StringUtils:
         return mtype, key_word, season_num, episode_num, year, content
 
     @staticmethod
-    def str_title(s: str) -> str:
+    def str_title(s: Optional[str]) -> str:
         """
         大写首字母兼容None
         """

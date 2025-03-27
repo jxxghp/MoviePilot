@@ -52,9 +52,9 @@ class AliPan(StorageBase, metaclass=Singleton):
         try:
             subprocess.run(['aria2c', '-h'], capture_output=True)
             self._has_aria2c = True
-            logger.debug('发现 aria2c, 将使用 aria2c 下载文件')
+            logger.debug('【alipan】发现 aria2c, 将使用 aria2c 下载文件')
         except FileNotFoundError:
-            logger.debug('未发现 aria2c')
+            logger.debug('【alipan】未发现 aria2c')
             self._has_aria2c = False
         self.init_storage()
 
@@ -67,7 +67,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             """
             显示二维码
             """
-            logger.info(f"请用阿里云盘 App 扫码登录：{qr_link}")
+            logger.info(f"【alipan】请用阿里云盘 App 扫码登录：{qr_link}")
 
         refresh_token = self.__auth_params.get("refreshToken")
         if refresh_token:
@@ -75,7 +75,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                 self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c, # noqa
                                    name="MoviePilot V2", level=logging.ERROR, re_login=False)
             except Exception as err:
-                logger.error(f"初始化阿里云盘失败：{str(err)}")
+                logger.error(f"【alipan】初始化阿里云盘失败：{str(err)}")
                 self.__clear_params()
 
     @property
@@ -209,7 +209,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             elif driver.category == "backup":
                 self.__update_params({"backDriveId": driver.drive_id})
 
-    def __get_fileitem(self, fileinfo: BaseFile, parent: str = "/") -> schemas.FileItem:
+    def __get_fileitem(self, fileinfo: BaseFile, parent: Optional[str] = "/") -> schemas.FileItem:
         """
         获取文件信息
         """
@@ -306,7 +306,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(path="/")
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
         for part in path.parts:
             if part == "/":
                 continue
@@ -374,7 +374,8 @@ class AliPan(StorageBase, metaclass=Singleton):
             return Path(local_path)
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
         :param fileitem: 上传目录项

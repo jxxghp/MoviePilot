@@ -21,7 +21,7 @@ class TransferTorrent(BaseModel):
     tags: Optional[str] = None
     size: Optional[int] = 0
     userid: Optional[str] = None
-    progress: Optional[float] = 0
+    progress: Optional[float] = 0.0
     state: Optional[str] = None
 
 
@@ -35,8 +35,8 @@ class DownloadingTorrent(BaseModel):
     name: Optional[str] = None
     year: Optional[str] = None
     season_episode: Optional[str] = None
-    size: Optional[float] = 0
-    progress: Optional[float] = 0
+    size: Optional[float] = 0.0
+    progress: Optional[float] = 0.0
     state: Optional[str] = 'downloading'
     upspeed: Optional[str] = None
     dlspeed: Optional[str] = None
@@ -121,7 +121,7 @@ class TransferInfo(BaseModel):
     # 目标文件清单
     file_list_new: Optional[list] = Field(default_factory=list)
     # 总文件大小
-    total_size: Optional[float] = 0
+    total_size: Optional[float] = 0.0
     # 失败清单
     fail_list: Optional[list] = Field(default_factory=list)
     # 错误信息

@@ -33,10 +33,10 @@ class TorrentHelper(metaclass=Singleton):
         self.site_oper = SiteOper()
 
     def download_torrent(self, url: str,
-                         cookie: str = None,
-                         ua: str = None,
-                         referer: str = None,
-                         proxy: bool = False) \
+                         cookie: Optional[str] = None,
+                         ua: Optional[str] = None,
+                         referer: Optional[str] = None,
+                         proxy: Optional[bool] = False) \
             -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
         """
         把种子下载到本地

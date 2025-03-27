@@ -87,7 +87,7 @@ class GazelleSiteUserInfo(SiteParserBase):
             if join_at_text:
                 self.join_at = StringUtils.unify_datetime_str(join_at_text[0].strip())
 
-    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         做种相关信息
         :param html_text:
