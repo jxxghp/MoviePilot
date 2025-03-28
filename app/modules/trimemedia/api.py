@@ -52,7 +52,7 @@ class MediaDb:
 
 
 @dataclass
-class MediaDbSumary:
+class MediaDbSummary:
     favorite: int = 0
     movie: int = 0
     tv: int = 0
@@ -178,12 +178,12 @@ class Api:
             return _user
         return None
 
-    def mediadb_sum(self) -> Optional[MediaDbSumary]:
+    def mediadb_sum(self) -> Optional[MediaDbSummary]:
         """
         媒体数量统计
         """
         if (res := self.__request_api("/mediadb/sum")) and res.success:
-            sums = MediaDbSumary()
+            sums = MediaDbSummary()
             sums.__dict__.update(res.data)
             return sums
         return None
@@ -242,7 +242,6 @@ class Api:
         """
         if (res := self.__request_api("/mdb/scanall", method="post")) and res.success:
             if res.data:
-                self._token = None
                 return True
         return False
 
@@ -254,7 +253,6 @@ class Api:
                 res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
         ) and res.success:
             if res.data:
-                self._token = None
                 return True
         return False
 
@@ -339,8 +337,6 @@ class Api:
         if (res := self.__request_api("/play/list")) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
-
-    ################################################################
 
     def __get_authx(self, api_path, body: Optional[str]):
         """
@@ -430,20 +426,3 @@ class Api:
         except Exception as e:
             logger.error(f"请求接口 {api_path} 异常：" + str(e))
         return None
-
-
-if __name__ == "__main__":
-    fnApi = Api("http://192.168.1.49:5666/", "16CCEB3D-AB42-077D-36A1-F355324E4237")
-    fnApi.login("adad", "123456")
-    logger.debug(f"token={fnApi.token}")
-
-    user = fnApi.user_info()
-    logger.debug(user)
-
-    mediadbs = fnApi.mdb_list()
-    logger.debug(mediadbs)
-
-    items = fnApi.item_list(mediadbs[0].guid, page=1, page_size=0)
-    logger.debug(items)
-
-    fnApi.logout()
