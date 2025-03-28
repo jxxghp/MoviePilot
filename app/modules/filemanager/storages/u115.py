@@ -166,7 +166,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         确认登录后，获取相关token
         """
         if not self._auth_state:
-            raise Exception("【115】请先调用生成二维码方法")
+            raise Exception("请先生成二维码")
         resp = self.session.post(
             "https://passportapi.115.com/open/deviceCodeToToken",
             data={
@@ -175,7 +175,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             }
         )
         if resp is None:
-            raise Exception("【115】获取 access_token 失败")
+            raise Exception("获取 access_token 失败")
         result = resp.json()
         if result.get("code") != 0:
             raise Exception(result.get("message"))
