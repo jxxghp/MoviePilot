@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,7 @@ class FileItem(BaseModel):
     # 子节点
     children: Optional[list] = Field(default_factory=list)
     # ID
-    fileid: Optional[str] = None
+    fileid: Optional[Union[str, int]] = None
     # 父ID
     parent_fileid: Optional[str] = None
     # 缩略图
