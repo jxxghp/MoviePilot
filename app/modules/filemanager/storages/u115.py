@@ -285,36 +285,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
         self._id_cache[path] = current_id
         return current_id
 
-    def _id_to_path(self, fid: int) -> str:
-        """
-        CID转路径（带双向缓存）
-        """
-        # 根目录特殊处理
-        if fid == 0:
-            return "/"
-        # 优先从缓存读取
-        if fid in self._id_cache.values():
-            return next(k for k, v in self._id_cache.items() if v == fid)
-        # 从API获取当前节点信息
-        detail = self._request_api(
-            "GET",
-            "/open/folder/get_info",
-            "data",
-            params={
-                "file_id": fid
-            }
-        )
-        # 处理可能的空数据（如已删除文件）
-        if not detail:
-            raise FileNotFoundError(f"【115】{fid} 不存在")
-        paths = detail["paths"]
-        path_parts = [item["file_name"] for item in paths]
-        # 构建完整路径
-        full_path = "/" + "/".join(reversed(path_parts))
-        # 缓存新路径
-        self._id_cache[full_path] = fid
-        return full_path
-
     @staticmethod
     def _calc_sha1(filepath: Path, size: Optional[int] = None) -> str:
         """
@@ -344,8 +314,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if item:
                 return [item]
             return []
+        if fileitem.path == "/":
+            cid = 0
+        else:
+            cid = fileitem.fileid
 
-        cid = self._path_to_id(fileitem.path)
         items = []
         offset = 0
 
@@ -389,13 +362,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         创建目录
         """
-        parent_id = self._path_to_id(parent_item.path)
         new_path = Path(parent_item.path) / name
         resp = self._request_api(
             "POST",
             "/open/folder/add",
             data={
-                "pid": parent_id,
+                "pid": parent_item.fileid,
                 "file_name": name
             }
         )
@@ -449,7 +421,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         file_preid = self._calc_sha1(local_path, 128 * 1024 * 1024)
 
         # 获取目标目录CID
-        target_cid = self._path_to_id(target_dir.path)
+        target_cid = target_dir.fileid
         target_param = f"U_1_{target_cid}"
 
         # Step 1: 初始化上传
@@ -650,7 +622,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         带限速处理的下载
         """
         detail = self.get_item(Path(fileitem.path))
-        local_path = path or settings.TEMP_PATH / fileitem.name
+        if not detail:
+            return None
         download_info = self._request_api(
             "POST",
             "/open/ufile/downurl",
@@ -662,6 +635,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not download_info:
             return None
         download_url = list(download_info.values())[0].get("url", {}).get("url")
+        local_path = path or settings.TEMP_PATH / fileitem.name
         with self.session.get(download_url, stream=True) as r:
             r.raise_for_status()
             with open(local_path, "wb") as f:
@@ -681,7 +655,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "POST",
                 "/open/ufile/delete",
                 data={
-                    "file_ids": self._path_to_id(fileitem.path)
+                    "file_ids": fileitem.fileid
                 }
             )
             return True
@@ -692,12 +666,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         重命名文件/目录
         """
-        file_id = self._path_to_id(fileitem.path)
         resp = self._request_api(
             "POST",
             "/open/ufile/update",
             data={
-                "file_id": file_id,
+                "file_id": fileitem.fileid,
                 "file_name": name
             }
         )
@@ -710,7 +683,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     if key.startswith(fileitem.path):
                         del self._id_cache[key]
             new_path = Path(fileitem.path).parent / name
-            self._id_cache[str(new_path)] = file_id
+            self._id_cache[str(new_path)] = fileitem.fileid
             return True
         return False
 
@@ -792,7 +765,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         企业级复制实现（支持目录递归复制）
         """
-        src_fid = self._path_to_id(fileitem.path)
+        src_fid = fileitem.fileid
         dest_cid = self._path_to_id(str(path))
 
         resp = self._request_api(
@@ -820,7 +793,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         原子性移动操作实现
         """
-        src_fid = self._path_to_id(fileitem.path)
+        src_fid = fileitem.fileid
         dest_cid = self._path_to_id(str(path))
 
         resp = self._request_api(
