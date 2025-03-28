@@ -4,7 +4,7 @@ import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from app.core.config import settings
 from app.log import logger
@@ -25,8 +25,8 @@ class Category(Enum):
     Others = "Others"
 
     @classmethod
-    def _missing_(self, value):
-        return self.Others
+    def _missing_(cls, value):
+        return cls.Others
 
 
 class Type(Enum):
@@ -38,8 +38,8 @@ class Type(Enum):
     Directory = "Directory"
 
     @classmethod
-    def _missing_(self, value):
-        return self.Video
+    def _missing_(cls, value):
+        return cls.Video
 
 
 @dataclass
@@ -131,14 +131,14 @@ class Api:
         :return: 成功返回token 否则返回None
         """
         if (
-            res := self.__request_api(
-                "/login",
-                data={
-                    "username": username,
-                    "password": password,
-                    "app_name": "trimemedia-web",
-                },
-            )
+                res := self.__request_api(
+                    "/login",
+                    data={
+                        "username": username,
+                        "password": password,
+                        "app_name": "trimemedia-web",
+                    },
+                )
         ) and res.success:
             self._token = res.data.get("token")
         return self._token
@@ -148,7 +148,7 @@ class Api:
         退出账号
         """
         if (res := self.__request_api("/user/logout", method="post")) and res.success:
-            if res.data == True:
+            if res.data:
                 self._token = None
                 return True
         return False
@@ -173,9 +173,9 @@ class Api:
         当前用户信息
         """
         if (res := self.__request_api("/user/info")) and res.success:
-            user = User("", "")
-            user.__dict__.update(res.data)
-            return user
+            _user = User("", "")
+            _user.__dict__.update(res.data)
+            return _user
         return None
 
     def mediadb_sum(self) -> Optional[MediaDbSumary]:
@@ -183,17 +183,17 @@ class Api:
         媒体数量统计
         """
         if (res := self.__request_api("/mediadb/sum")) and res.success:
-            sum = MediaDbSumary()
-            sum.__dict__.update(res.data)
-            return sum
+            sums = MediaDbSumary()
+            sums.__dict__.update(res.data)
+            return sums
         return None
 
-    def mediadb_list(self) -> Optional[MediaDbSumary]:
+    def mediadb_list(self) -> Optional[List[MediaDb]]:
         """
         媒体库列表(普通用户)
         """
         if (res := self.__request_api("/mediadb/list")) and res.success:
-            items = []
+            _items = []
             for info in res.data:
                 mdb = MediaDb(
                     guid=info.get("guid"),
@@ -204,8 +204,8 @@ class Api:
                         for poster in info.get("posters", [])
                     ],
                 )
-                items.append(mdb)
-            return items
+                _items.append(mdb)
+            return _items
         return None
 
     def __build_img_api_url(self, img_path: Optional[str]) -> Optional[str]:
@@ -220,7 +220,7 @@ class Api:
         媒体库列表(管理员)
         """
         if (res := self.__request_api("/mdb/list")) and res.success:
-            items = []
+            _items = []
             for info in res.data:
                 mdb = MediaDb(
                     guid=info.get("guid"),
@@ -232,8 +232,8 @@ class Api:
                     ],
                     dir_list=info.get("dir_list"),
                 )
-                items.append(mdb)
-            return items
+                _items.append(mdb)
+            return _items
         return None
 
     def mdb_scanall(self) -> bool:
@@ -241,7 +241,7 @@ class Api:
         扫描所有媒体库
         """
         if (res := self.__request_api("/mdb/scanall", method="post")) and res.success:
-            if res.data == True:
+            if res.data:
                 self._token = None
                 return True
         return False
@@ -251,9 +251,9 @@ class Api:
         扫描指定媒体库
         """
         if (
-            res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
+                res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
         ) and res.success:
-            if res.data == True:
+            if res.data:
                 self._token = None
                 return True
         return False
@@ -274,18 +274,20 @@ class Api:
         return item
 
     def item_list(
-        self,
-        guid: Optional[str] = None,
-        type: Optional[list[Type]] = [Type.Movie, Type.TV, Type.Directory, Type.Video],
-        exclude_grouped_video=True,
-        page=1,
-        page_size=22,
-        sort_by="create_time",
-        sort="DESC",
+            self,
+            guid: Optional[str] = None,
+            type=None,
+            exclude_grouped_video=True,
+            page=1,
+            page_size=22,
+            sort_by="create_time",
+            sort="DESC",
     ) -> Optional[list[Item]]:
         """
         媒体列表
         """
+        if type is None:
+            type = [Type.Movie, Type.TV, Type.Directory, Type.Video]
         post = {
             "tags": {"type": type} if type else {},
             "sort_type": sort,
@@ -307,7 +309,7 @@ class Api:
         搜索影片、演员
         """
         if (
-            res := self.__request_api("/search/list", params={"q": keywords})
+                res := self.__request_api("/search/list", params={"q": keywords})
         ) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
@@ -368,7 +370,7 @@ class Api:
         return f"nonce={nonce}&timestamp={ts}&sign={sign}"
 
     def __request_api(
-        self, api: str, method: str = None, params: dict = None, data: dict = None
+            self, api: str, method: str = None, params: dict = None, data: dict = None
     ):
         """
         请求飞牛影视API
@@ -388,13 +390,14 @@ class Api:
             def default(self, obj):
                 if isinstance(obj, Type):
                     return obj.value
-                return super().default(self, obj)
+                return super().default(obj)
 
         if not self._host or not api:
             return None
-        if api[0] != "/":
-            api = "/" + api
-        api_path = self._api_path + api
+        if not api.startswith("/"):
+            api_path = f"{self._api_path}/{api}"
+        else:
+            api_path = self._api_path + api
         url = self._host + api_path
         if method is None:
             method = "get" if data is None else "post"
@@ -430,17 +433,17 @@ class Api:
 
 
 if __name__ == "__main__":
-    api = Api("http://192.168.1.49:5666/", "16CCEB3D-AB42-077D-36A1-F355324E4237")
-    api.login("adad", "123456")
-    logger.debug(f"token={api.token}")
+    fnApi = Api("http://192.168.1.49:5666/", "16CCEB3D-AB42-077D-36A1-F355324E4237")
+    fnApi.login("adad", "123456")
+    logger.debug(f"token={fnApi.token}")
 
-    user = api.user_info()
+    user = fnApi.user_info()
     logger.debug(user)
 
-    mediadbs = api.mdb_list()
+    mediadbs = fnApi.mdb_list()
     logger.debug(mediadbs)
 
-    items = api.item_list(mediadbs[0].guid, page=1, page_size=0)
+    items = fnApi.item_list(mediadbs[0].guid, page=1, page_size=0)
     logger.debug(items)
 
-    api.logout()
+    fnApi.logout()

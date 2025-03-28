@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
@@ -306,14 +305,13 @@ class TrimeMedia:
         if path is None:
             return None
         for lib in self._libraries.values():
-            for dir in lib.dir_list or []:
-                if is_subpath(path, Path(dir)):
+            for d in lib.dir_list or []:
+                if is_subpath(path, Path(d)):
                     return lib
         return None
 
-    # TODO 飞牛似乎还没有这个功能
     def get_webhook_message(self, body: any) -> Optional[schemas.WebhookEventInfo]:
-        return None
+        pass
 
     def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
         """
@@ -442,7 +440,7 @@ class TrimeMedia:
                 yield self.__build_media_server_item(item)
         return None
 
-    def get_play_url(self, item_id: str) -> str:
+    def get_play_url(self, item_id: str) -> Optional[str]:
         """
         获取媒体的外网播放链接
 

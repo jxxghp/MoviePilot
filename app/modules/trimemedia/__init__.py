@@ -1,4 +1,3 @@
-import re
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
