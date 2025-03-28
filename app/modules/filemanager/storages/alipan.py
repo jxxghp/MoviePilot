@@ -11,6 +11,7 @@ import oss2
 import requests
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
+from requests.packages import target
 
 from app import schemas
 from app.core.config import settings
@@ -801,52 +802,56 @@ class AliPan(StorageBase, metaclass=Singleton):
 
         resp = self._request_api(
             "POST",
-            "/open/ufile/copy",
+            "/adrive/v1.0/openFile/copy",
             json={
+                "drive_id": fileitem.drive_id,
                 "file_id": src_fid,
-                "pid": dest_cid
+                "to_drive_id": fileitem.drive_id,
+                "to_parent_file_id": dest_cid
             }
         )
         if not resp:
             return False
-        if resp["state"]:
-            new_path = Path(path) / fileitem.name
-            new_file = self.get_item(new_path)
-            self.rename(new_file, new_name)
-            # 更新缓存
-            del self._id_cache[fileitem.path]
-            rename_new_path = Path(path) / new_name
-            self._id_cache[str(rename_new_path)] = int(new_file.fileid)
-            return True
-        return False
+        if resp.get("code"):
+            logger.warn(f"【阿里云盘】复制文件失败: {resp.get('message')}")
+            return False
+        # 重命名
+        new_path = Path(path) / fileitem.name
+        new_file = self.get_item(new_path)
+        self.rename(new_file, new_name)
+        # 更新缓存
+        del self._id_cache[fileitem.path]
+        rename_new_path = Path(path) / new_name
+        self._id_cache[str(rename_new_path)] = int(new_file.fileid)
+        return True
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         原子性移动操作实现
         """
         src_fid = self._path_to_id(fileitem.path)
-        dest_cid = self._path_to_id(str(path))
+        target_id = self._path_to_id(str(path))
 
         resp = self._request_api(
             "POST",
-            "/open/ufile/move",
+            "/adrive/v1.0/openFile/move",
             json={
-                "file_ids": src_fid,
-                "to_cid": dest_cid
+                "drive_id": fileitem.drive_id,
+                "file_id": src_fid,
+                "to_parent_file_id": target_id,
+                "new_name": new_name
             }
         )
         if not resp:
             return False
-        if resp["state"]:
-            new_path = Path(path) / fileitem.name
-            new_file = self.get_item(new_path)
-            self.rename(new_file, new_name)
-            # 更新缓存
-            del self._id_cache[fileitem.path]
-            rename_new_path = Path(path) / new_name
-            self._id_cache[str(rename_new_path)] = src_fid
-            return True
-        return False
+        if resp.get("code"):
+            logger.warn(f"【阿里云盘】移动文件失败: {resp.get('message')}")
+            return False
+        # 更新缓存
+        del self._id_cache[fileitem.path]
+        rename_new_path = Path(path) / new_name
+        self._id_cache[str(rename_new_path)] = src_fid
+        return True
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         pass
@@ -860,16 +865,17 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         try:
             resp = self._request_api(
-                "GET",
-                "/open/user/info",
-                "data"
+                "POST",
+                "/adrive/v1.0/user/getSpaceInfo"
             )
             if not resp:
                 return None
-            space = resp["rt_space_info"]
+            space = resp.get("personal_space_info") or {}
+            total_size = space.get("total_size") or 0
+            used_size = space.get("used_size") or 0
             return schemas.StorageUsage(
-                total=space["all_total"]["size"],
-                available=space["all_remain"]["size"]
+                total=total_size,
+                available=total_size - used_size
             )
         except KeyError:
             return None
