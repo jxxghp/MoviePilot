@@ -403,10 +403,14 @@ class Api:
             )
         else:
             json_body = None
+        if params:
+            queries_unquoted = "&".join([f"{k}={v}" for k, v in params.items()])
+        else:
+            queries_unquoted = None
         headers = {
             "User-Agent": settings.USER_AGENT,
             "Authorization": self._token,
-            "authx": self.__get_authx(api_path, json_body),
+            "authx": self.__get_authx(api_path, json_body or queries_unquoted),
         }
         if json_body is not None:
             headers["Content-Type"] = "application/json"
