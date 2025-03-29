@@ -4,7 +4,7 @@ import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 from app.core.config import settings
 from app.log import logger
@@ -19,27 +19,27 @@ class User:
 
 
 class Category(Enum):
-    Movie = "Movie"
+    MOVIE = "Movie"
     TV = "TV"
-    Mix = "Mix"
-    Others = "Others"
+    MIX = "Mix"
+    OTHERS = "Others"
 
     @classmethod
     def _missing_(cls, value):
-        return cls.Others
+        return cls.OTHERS
 
 
 class Type(Enum):
-    Movie = "Movie"
+    MOVIE = "Movie"
     TV = "TV"
-    Season = "Season"
-    Episode = "Episode"
-    Video = "Video"
-    Directory = "Directory"
+    SEASON = "Season"
+    EPISODE = "Episode"
+    VIDEO = "Video"
+    DIRECTORY = "Directory"
 
     @classmethod
     def _missing_(cls, value):
-        return cls.Video
+        return cls.VIDEO
 
 
 @dataclass
@@ -131,14 +131,14 @@ class Api:
         :return: 成功返回token 否则返回None
         """
         if (
-                res := self.__request_api(
-                    "/login",
-                    data={
-                        "username": username,
-                        "password": password,
-                        "app_name": "trimemedia-web",
-                    },
-                )
+            res := self.__request_api(
+                "/login",
+                data={
+                    "username": username,
+                    "password": password,
+                    "app_name": "trimemedia-web",
+                },
+            )
         ) and res.success:
             self._token = res.data.get("token")
         return self._token
@@ -250,7 +250,7 @@ class Api:
         扫描指定媒体库
         """
         if (
-                res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
+            res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
         ) and res.success:
             if res.data:
                 return True
@@ -272,22 +272,22 @@ class Api:
         return item
 
     def item_list(
-            self,
-            guid: Optional[str] = None,
-            type=None,
-            exclude_grouped_video=True,
-            page=1,
-            page_size=22,
-            sort_by="create_time",
-            sort="DESC",
+        self,
+        guid: Optional[str] = None,
+        types=None,
+        exclude_grouped_video=True,
+        page=1,
+        page_size=22,
+        sort_by="create_time",
+        sort="DESC",
     ) -> Optional[list[Item]]:
         """
         媒体列表
         """
-        if type is None:
-            type = [Type.Movie, Type.TV, Type.Directory, Type.Video]
+        if types is None:
+            types = [Type.MOVIE, Type.TV, Type.DIRECTORY, Type.VIDEO]
         post = {
-            "tags": {"type": type} if type else {},
+            "tags": {"type": types} if types else {},
             "sort_type": sort,
             "sort_column": sort_by,
             "page": page,
@@ -307,25 +307,31 @@ class Api:
         搜索影片、演员
         """
         if (
-                res := self.__request_api("/search/list", params={"q": keywords})
+            res := self.__request_api("/search/list", params={"q": keywords})
         ) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
 
     def item(self, guid: str) -> Optional[Item]:
-        """ """
+        """
+        查询媒体详情
+        """
         if (res := self.__request_api(f"/item/{guid}")) and res.success:
             return self.__build_item(res.data)
         return None
 
     def season_list(self, tv_guid: str) -> Optional[list[Item]]:
-        """ """
+        """
+        查询季列表
+        """
         if (res := self.__request_api(f"/season/list/{tv_guid}")) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
 
     def episode_list(self, season_guid: str) -> Optional[list[Item]]:
-        """ """
+        """
+        查询剧集列表
+        """
         if (res := self.__request_api(f"/episode/list/{season_guid}")) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
@@ -366,7 +372,11 @@ class Api:
         return f"nonce={nonce}&timestamp={ts}&sign={sign}"
 
     def __request_api(
-            self, api: str, method: str = None, params: dict = None, data: dict = None
+        self,
+        api: str,
+        method: Optional[str] = None,
+        params: Optional[dict] = None,
+        data: Optional[dict] = None,
     ):
         """
         请求飞牛影视API
