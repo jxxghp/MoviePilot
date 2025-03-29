@@ -61,6 +61,13 @@ class MediaDbSummary:
 
 
 @dataclass
+class Version:
+    # 飞牛影视版本
+    frontend: Optional[str] = None
+    backend: Optional[str] = None
+
+
+@dataclass
 class Item:
     guid: str
     ancestor_guid: str = ""
@@ -103,6 +110,7 @@ class Api:
         "_apikey",
         "_api_path",
         "_request_utils",
+        "_version",
     )
 
     @property
@@ -117,12 +125,33 @@ class Api:
     def apikey(self) -> str:
         return self._apikey
 
+    @property
+    def version(self) -> Optional[Version]:
+        return self._version
+
     def __init__(self, host: str, apikey: str):
-        self._api_path = "/v/api/v1"
+        """
+        :param host: 飞牛服务端地址，如http://127.0.0.1:5666/v
+        """
+        self._api_path = "/api/v1"
         self._host = host.rstrip("/")
         self._apikey = apikey
-        self._token = None
+        self._token: Optional[str] = None
+        self._version: Optional[Version] = None
         self._request_utils = RequestUtils(session=requests.Session())
+
+    def sys_version(self) -> Optional[Version]:
+        """
+        飞牛影视版本号
+        """
+        if (res := self.__request_api("/sys/version")) and res.success:
+            if res.data:
+                self._version = Version(
+                    frontend=res.data.get("version"),
+                    backend=res.data.get("mediasrvVersion"),
+                )
+                return self._version
+        return None
 
     def login(self, username, password) -> Optional[str]:
         """
@@ -344,12 +373,12 @@ class Api:
             return [self.__build_item(info) for info in res.data]
         return None
 
-    def __get_authx(self, api_path, body: Optional[str]):
+    def __get_authx(self, api_path: str, body: Optional[str]):
         """
         计算消息签名
         """
-        if api_path[0] != "/":
-            api_path = "/" + api_path
+        if not api_path.startswith("/v"):
+            api_path = "/v" + api_path
         nonce = str(random.randint(100000, 999999))
         ts = str(int(time.time() * 1000))
         md5 = hashlib.md5()
@@ -377,9 +406,12 @@ class Api:
         method: Optional[str] = None,
         params: Optional[dict] = None,
         data: Optional[dict] = None,
+        suppress_log=False,
     ):
         """
         请求飞牛影视API
+
+        :param suppress_log: 是否禁止日志
         """
 
         @dataclass
@@ -432,11 +464,13 @@ class Api:
                 resp = res.json()
                 msg = resp.get("msg")
                 if code := int(resp.get("code", -1)):
-                    logger.error(f"请求接口 {api_path} 失败，错误码：{code} {msg}")
+                    if not suppress_log:
+                        logger.error(f"请求接口 {url} 失败，错误码：{code} {msg}")
                     return Result(code, msg)
                 return Result(0, msg, resp.get("data"))
-            else:
-                logger.error(f"请求接口 {api_path} 失败")
+            elif not suppress_log:
+                logger.error(f"请求接口 {url} 失败")
         except Exception as e:
-            logger.error(f"请求接口 {api_path} 异常：" + str(e))
+            if not suppress_log:
+                logger.error(f"请求接口 {url} 异常：" + str(e))
         return None

@@ -62,7 +62,9 @@ class TrimeMediaModule(_ModuleBase, _MediaServerBase[TrimeMedia]):
                 server.reconnect()
 
     def stop(self):
-        pass
+        for server in self.get_instances().values():
+            if server.is_authenticated():
+                server.disconnect()
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
