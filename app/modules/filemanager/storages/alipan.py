@@ -556,8 +556,6 @@ class AliPan(StorageBase, metaclass=Singleton):
                 raise Exception("【阿里云盘】创建文件失败！")
             if resp.get("code"):
                 raise Exception(resp.get("message"))
-        else:
-            raise Exception(resp.get("message"))
         return resp
 
     def _refresh_upload_urls(self, drive_id: str, file_id: str, upload_id: str, part_numbers: List[int]):
