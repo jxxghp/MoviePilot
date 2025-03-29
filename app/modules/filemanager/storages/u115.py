@@ -11,6 +11,7 @@ import oss2
 import requests
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
+from tqdm import tqdm
 
 from app import schemas
 from app.core.config import settings
@@ -166,7 +167,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         确认登录后，获取相关token
         """
         if not self._auth_state:
-            raise Exception("请先生成二维码")
+            raise Exception("【115】请先生成二维码")
         resp = self.session.post(
             "https://passportapi.115.com/open/deviceCodeToToken",
             data={
@@ -398,16 +399,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
         实现带秒传、断点续传和二次认证的文件上传
         """
 
-        def progress_callback(consumed_bytes: int, total_bytes: int):
-            """
-            上传进度回调
-            """
-            progress = round(consumed_bytes / total_bytes * 100)
-            if round(progress, -1) != self._last_progress:
-                logger.info(f"【115】已上传: {StringUtils.str_filesize(consumed_bytes)}"
-                            f" / {StringUtils.str_filesize(total_bytes)}, 进度: {progress}%")
-                self._last_progress = round(progress, -1)
-
         def encode_callback(cb: dict):
             """
             回调参数Base64编码函数
@@ -559,9 +550,19 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 补充参数
         logger.debug(f"【115】上传 Step 6 回调参数：{callback_dict} {callback_var_dict}")
         # 填写不能包含Bucket名称在内的Object完整路径，例如exampledir/exampleobject.txt。
-        # determine_part_size方法用于确定分片大小，设置分片大小为 1GB
-        part_size = determine_part_size(file_size, preferred_size=1 * 1024 * 1024 * 1024)
+        # determine_part_size方法用于确定分片大小，设置分片大小为 100M
+        part_size = determine_part_size(file_size, preferred_size=100 * 1024 * 1024)
+
+        # 初始化进度条
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
+        progress_bar = tqdm(
+            total=file_size,
+            unit='B',
+            unit_scale=True,
+            desc="上传进度",
+            ascii=True
+        )
+
         # 初始化分片
         upload_id = bucket.init_multipart_upload(object_name,
                                                  params={
@@ -578,12 +579,18 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 # 调用SizedFileAdapter(fileobj, size)方法会生成一个新的文件对象，重新计算起始追加位置。
                 logger.info(f"【115】开始上传 {target_name} 分片 {part_number}: {offset} -> {offset + num_to_upload}")
                 result = bucket.upload_part(object_name, upload_id, part_number,
-                                            data=SizedFileAdapter(fileobj, num_to_upload),
-                                            progress_callback=progress_callback)
+                                            data=SizedFileAdapter(fileobj, num_to_upload))
                 parts.append(PartInfo(part_number, result.etag))
                 logger.info(f"【115】{target_name} 分片 {part_number} 上传完成")
                 offset += num_to_upload
                 part_number += 1
+                # 更新进度
+                progress_bar.update(num_to_upload)
+
+        # 关闭进度条
+        if progress_bar:
+            progress_bar.close()
+
         # 请求头
         headers = {
             'X-oss-callback': encode_callback(callback_dict),
