@@ -20,6 +20,10 @@ from app.utils.string import StringUtils
 lock = threading.Lock()
 
 
+class NoCheckInException(Exception):
+    pass
+
+
 class AliPan(StorageBase, metaclass=Singleton):
     """
     阿里云盘相关操作
@@ -64,7 +68,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         检查会话是否过期
         """
         if not self.access_token:
-            raise Exception("【阿里云盘】请先扫码登录！")
+            raise NoCheckInException("【阿里云盘】请先扫码登录！")
 
     @property
     def _default_drive_id(self) -> str:
@@ -74,7 +78,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         conf = self.get_conf()
         drive_id = conf.get("resource_drive_id") or conf.get("backup_drive_id") or conf.get("default_drive_id")
         if not drive_id:
-            raise Exception("【阿里云盘】请先扫码登录！")
+            raise NoCheckInException("【阿里云盘】请先扫码登录！")
         return drive_id
 
     @property
@@ -951,5 +955,5 @@ class AliPan(StorageBase, metaclass=Singleton):
                 total=total_size,
                 available=total_size - used_size
             )
-        except KeyError:
+        except NoCheckInException:
             return None
