@@ -32,9 +32,6 @@ RUN apt-get update -y \
         ffmpeg \
         nano \
         gnupg \
-    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && apt-get update -y \
-    && apt-get install google-chrome-stable -y \
     && \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
@@ -50,6 +47,12 @@ RUN apt-get update -y \
         /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-archive-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-archive-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+RUN apt-get update -y \
+    && apt-get install -y google-chrome-stable \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
 COPY requirements.in requirements.in
 RUN apt-get update -y \
     && apt-get install -y build-essential \
