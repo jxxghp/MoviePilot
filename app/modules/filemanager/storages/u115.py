@@ -24,6 +24,10 @@ from app.utils.string import StringUtils
 lock = threading.Lock()
 
 
+class NoCheckInException(Exception):
+    pass
+
+
 class U115Pan(StorageBase, metaclass=Singleton):
     """
     115相关操作
@@ -70,7 +74,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         检查会话是否过期
         """
         if not self.access_token:
-            raise Exception("【115】请先扫码登录！")
+            raise NoCheckInException("【115】请先扫码登录！")
 
     @property
     def access_token(self) -> Optional[str]:
@@ -850,5 +854,5 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 total=space["all_total"]["size"],
                 available=space["all_remain"]["size"]
             )
-        except KeyError:
+        except NoCheckInException:
             return None
