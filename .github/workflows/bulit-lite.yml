@@ -1,4 +1,4 @@
-  name: MoviePilot Builder v2 Lite
+name: MoviePilot Builder v2 Lite
 on:
   workflow_dispatch:
 
