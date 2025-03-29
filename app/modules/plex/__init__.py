@@ -153,7 +153,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         else:
             servers = self.get_instances().items()
         for name, s in servers:
-            if not server:
+            if not s:
                 continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
