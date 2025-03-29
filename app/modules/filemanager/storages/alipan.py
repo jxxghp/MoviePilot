@@ -419,7 +419,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                 # 更新缓存
                 path = f"{fileitem.path}{item.get('name')}"
                 self._id_cache[path] = (drive_id, item.get("file_id"))
-                items.append(self.__get_fileitem(item))
+                items.append(self.__get_fileitem(item, parent=fileitem.path))
             if len(resp.get("items")) < 100:
                 break
         return items
@@ -506,7 +506,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         return sha1.hexdigest()
 
     def _create_file(self, drive_id: str, parent_file_id: str,
-                     file_name: str, file_path: Path, check_name_mode="refuse",
+                     file_name: str, file_path: Path, check_name_mode="ignore",
                      chunk_size: int = 1 * 1024 * 1024 * 1024):
         """
         创建文件请求，尝试秒传
@@ -643,7 +643,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         chunk_size = 100 * 1024 * 1024  # 分片大小 100M
         create_res = self._create_file(drive_id=target_dir.drive_id,
                                        parent_file_id=target_dir.fileid,
-                                       file_name=new_name,
+                                       file_name=target_name,
                                        file_path=local_path,
                                        chunk_size=chunk_size)
         if create_res.get('rapid_upload', False):
@@ -652,6 +652,9 @@ class AliPan(StorageBase, metaclass=Singleton):
 
         # 2. 准备分片上传参数
         file_id = create_res.get('file_id')
+        if not file_id:
+            logger.warn(f"【阿里云盘】创建 {target_name} 文件失败！")
+            return None
         upload_id = create_res.get('upload_id')
         part_info_list = create_res.get('part_info_list')
         uploaded_parts = set()
@@ -734,7 +737,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             raise Exception("【阿里云盘】完成上传失败！")
         if result.get("code"):
             logger.warn(f"【阿里云盘】{target_name} 上传失败：{result.get('message')}！")
-        return self.__get_fileitem(result)
+        return self.__get_fileitem(result, parent=target_dir.path)
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
@@ -823,7 +826,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             if resp.get("code"):
                 logger.debug(f"【阿里云盘】获取文件信息失败: {resp.get('message')}")
                 return None
-            return self.__get_fileitem(resp)
+            return self.__get_fileitem(resp, parent=f"{str(path.parent)}/")
         except Exception as e:
             logger.debug(f"【阿里云盘】获取文件信息失败: {str(e)}")
             return None
