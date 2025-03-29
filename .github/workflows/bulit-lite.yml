@@ -1,11 +1,6 @@
   name: MoviePilot Builder v2 Lite
 on:
   workflow_dispatch:
-#  push:
-#    branches:
-#      - v2
-#    paths:
-#      - 'version.py'
 
 jobs:
   Docker-build:

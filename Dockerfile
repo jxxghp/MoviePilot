@@ -31,6 +31,10 @@ RUN apt-get update -y \
         rsync \
         ffmpeg \
         nano \
+        gnupg \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && apt-get update -y \
+    && apt-get install google-chrome-stable -y \
     && \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
