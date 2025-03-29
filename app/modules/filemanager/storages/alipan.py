@@ -506,7 +506,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         return sha1.hexdigest()
 
     def _create_file(self, drive_id: str, parent_file_id: str,
-                     file_name: str, file_path: Path, check_name_mode="ignore",
+                     file_name: str, file_path: Path, check_name_mode="refuse",
                      chunk_size: int = 1 * 1024 * 1024 * 1024):
         """
         创建文件请求，尝试秒传
@@ -586,11 +586,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         上传单个分片
         """
-        headers = {
-            'Content-Length': str(len(data)),
-            'Content-Type': 'application/octet-stream'
-        }
-        return requests.put(upload_url, data=data, headers=headers)
+        return requests.put(upload_url, data=data)
 
     def _list_uploaded_parts(self, drive_id: str, file_id: str, upload_id: str) -> dict:
         """
@@ -648,6 +644,10 @@ class AliPan(StorageBase, metaclass=Singleton):
                                        chunk_size=chunk_size)
         if create_res.get('rapid_upload', False):
             logger.info(f"【阿里云盘】{target_name} 秒传完成！")
+            return self.get_item(target_path)
+
+        if create_res.get("exist", False):
+            logger.info(f"【阿里云盘】{target_name} 已存在")
             return self.get_item(target_path)
 
         # 2. 准备分片上传参数
@@ -755,7 +755,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         download_url = download_info.get("url")
         local_path = path or settings.TEMP_PATH / fileitem.name
-        with self.session.get(download_url, stream=True) as r:
+        with requests.get(download_url, stream=True) as r:
             r.raise_for_status()
             with open(local_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
