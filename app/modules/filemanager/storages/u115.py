@@ -47,7 +47,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
     base_url = "https://proapi.115.com"
 
     # CID和路径缓存
-    _id_cache: Dict[str, int] = {}
+    _id_cache: Dict[str, str] = {}
 
     def __init__(self):
         super().__init__()
@@ -233,13 +233,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return ret_data.get(result_key)
         return ret_data
 
-    def _path_to_id(self, path: str) -> int:
+    def _path_to_id(self, path: str) -> str:
         """
         路径转FID（带缓存机制）
         """
         # 根目录
         if path == "/":
-            return 0
+            return '0'
         if len(path) > 1 and path.endswith("/"):
             path = path[:-1]
         # 检查缓存
@@ -282,8 +282,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not current_id:
             raise FileNotFoundError(f"【115】{path} 不存在")
         # 缓存路径
-        self._id_cache[path] = current_id
-        return current_id
+        self._id_cache[path] = str(current_id)
+        return str(current_id)
 
     @staticmethod
     def _calc_sha1(filepath: Path, size: Optional[int] = None) -> str:
@@ -315,7 +315,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 return [item]
             return []
         if fileitem.path == "/":
-            cid = 0
+            cid = '0'
         else:
             cid = fileitem.fileid
 
@@ -327,7 +327,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "GET",
                 "/open/ufile/files",
                 "data",
-                params={"cid": cid, "limit": 1000, "offset": offset, "cur": True, "show_dir": 1}
+                params={"cid": int(cid), "limit": 1000, "offset": offset, "cur": True, "show_dir": 1}
             )
             if resp is None:
                 raise FileNotFoundError(f"【115】{fileitem.path} 检索出错！")
@@ -336,12 +336,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
             for item in resp:
                 # 更新缓存
                 path = f"{fileitem.path}{item['fn']}"
-                self._id_cache[path] = item["fid"]
+                self._id_cache[path] = str(item["fid"])
 
                 file_path = path + ("/" if item["fc"] == "0" else "")
                 items.append(schemas.FileItem(
                     storage=self.schema.value,
-                    fileid=item["fid"],
+                    fileid=str(item["fid"]),
+                    parent_fileid=cid,
                     name=item["fn"],
                     basename=Path(item["fn"]).stem,
                     extension=item["ico"] if item["fc"] == "1" else None,
@@ -367,7 +368,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "POST",
             "/open/folder/add",
             data={
-                "pid": parent_item.fileid,
+                "pid": int(parent_item.fileid),
                 "file_name": name
             }
         )
@@ -380,10 +381,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.warn(f"【115】创建目录失败: {resp.get('error')}")
             return None
         # 缓存新目录
-        self._id_cache[str(new_path)] = resp["data"]["file_id"]
+        self._id_cache[str(new_path)] = str(resp["data"]["file_id"])
         return schemas.FileItem(
             storage=self.schema.value,
-            fileid=resp["data"]["file_id"],
+            fileid=str(resp["data"]["file_id"]),
             path=str(new_path) + "/",
             name=name,
             basename=name,
@@ -500,7 +501,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.info(f"【115】{target_name} 秒传成功")
             return schemas.FileItem(
                 storage=self.schema.value,
-                fileid=file_id,
+                fileid=str(file_id),
+                parent_fileid=target_cid,
                 path=target_path,
                 name=target_name,
                 basename=Path(target_name).stem,
@@ -606,7 +608,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 返回结果
         return schemas.FileItem(
             storage=self.schema.value,
-            fileid=file_id,
+            fileid=str(file_id),
+            parent_fileid = target_cid,
             type="file",
             path=target_path,
             name=target_name,
@@ -655,7 +658,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "POST",
                 "/open/ufile/delete",
                 data={
-                    "file_ids": fileitem.fileid
+                    "file_ids": int(fileitem.fileid)
                 }
             )
             return True
@@ -670,7 +673,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "POST",
             "/open/ufile/update",
             data={
-                "file_id": fileitem.fileid,
+                "file_id": int(fileitem.fileid),
                 "file_name": name
             }
         )
@@ -700,14 +703,14 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 "/open/folder/get_info",
                 "data",
                 params={
-                    "file_id": file_id
+                    "file_id": int(file_id)
                 }
             )
             if not resp:
                 return None
             return schemas.FileItem(
                 storage=self.schema.value,
-                fileid=resp["file_id"],
+                fileid=str(resp["file_id"]),
                 path=str(path) + ("/" if resp["file_category"] == "1" else ""),
                 type="file" if resp["file_category"] == "1" else "dir",
                 name=resp["file_name"],
@@ -772,20 +775,20 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "POST",
             "/open/ufile/copy",
             data={
-                "file_id": src_fid,
-                "pid": dest_cid
+                "file_id": int(src_fid),
+                "pid": int(dest_cid)
             }
         )
         if not resp:
             return False
         if resp["state"]:
             new_path = Path(path) / fileitem.name
-            new_file = self.get_item(new_path)
-            self.rename(new_file, new_name)
+            new_item = self.get_item(new_path)
+            self.rename(new_item, new_name)
             # 更新缓存
             del self._id_cache[fileitem.path]
             rename_new_path = Path(path) / new_name
-            self._id_cache[str(rename_new_path)] = int(new_file.fileid)
+            self._id_cache[str(rename_new_path)] = new_item.fileid
             return True
         return False
 
@@ -800,8 +803,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             "POST",
             "/open/ufile/move",
             data={
-                "file_ids": src_fid,
-                "to_cid": dest_cid
+                "file_ids": int(src_fid),
+                "to_cid": int(dest_cid)
             }
         )
         if not resp:

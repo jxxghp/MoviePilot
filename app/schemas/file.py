@@ -23,7 +23,7 @@ class FileItem(BaseModel):
     # 子节点
     children: Optional[list] = Field(default_factory=list)
     # ID
-    fileid: Optional[Union[str, int]] = None
+    fileid: Optional[str] = None
     # 父ID
     parent_fileid: Optional[str] = None
     # 缩略图

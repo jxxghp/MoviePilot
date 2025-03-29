@@ -65,6 +65,17 @@ class AliPan(StorageBase, metaclass=Singleton):
             raise Exception("【阿里云盘】请先扫码登录！")
 
     @property
+    def _default_drive_id(self) -> str:
+        """
+        获取默认存储桶ID
+        """
+        conf = self.get_conf()
+        drive_id = conf.get("resource_drive_id") or conf.get("backup_drive_id") or conf.get("default_drive_id")
+        if not drive_id:
+            raise Exception("请先登录阿里云盘！")
+        return drive_id
+
+    @property
     def access_token(self) -> Optional[str]:
         """
         访问token
@@ -72,8 +83,6 @@ class AliPan(StorageBase, metaclass=Singleton):
         with lock:
             tokens = self.get_conf()
             refresh_token = tokens.get("refresh_token")
-            if not refresh_token:
-                return None
             expires_in = tokens.get("expires_in", 0)
             refresh_time = tokens.get("refresh_time", 0)
             if expires_in and refresh_time + expires_in < int(time.time()):
@@ -183,6 +192,8 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         刷新access_token
         """
+        if not refresh_token:
+            raise Exception("会话失效，请重新扫码登录！")
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
@@ -287,9 +298,9 @@ class AliPan(StorageBase, metaclass=Singleton):
             next_marker = None
             while True:
                 resp = self._request_api(
-                    "GET",
+                    "POST",
                     "/adrive/v1.0/openFile/list",
-                    params={
+                    json={
                         "drive_id": drive_id,
                         "limit": 100,
                         "marker": next_marker,
@@ -381,18 +392,20 @@ class AliPan(StorageBase, metaclass=Singleton):
 
         if fileitem.path == "/":
             parent_file_id = "root"
+            drive_id = self._default_drive_id
         else:
             parent_file_id = fileitem.fileid
+            drive_id = fileitem.drive_id
 
         items = []
         next_marker = None
 
         while True:
             resp = self._request_api(
-                "GET",
+                "POST",
                 "/adrive/v1.0/openFile/list",
-                params={
-                    "drive_id": fileitem.drive_id,
+                json={
+                    "drive_id": drive_id,
                     "limit": 100,
                     "marker": next_marker,
                     "parent_file_id": parent_file_id,
@@ -406,7 +419,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             for item in resp.get("items", []):
                 # 更新缓存
                 path = f"{fileitem.path}{item.get('name')}"
-                self._id_cache[path] = item["fid"]
+                self._id_cache[path] = (drive_id, item.get("file_id"))
                 items.append(self.__get_fileitem(item))
             if len(resp.get("items")) < 100:
                 break
@@ -518,9 +531,10 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         try:
             resp = self._request_api(
-                "GET",
+                "POST",
                 "/adrive/v1.0/openFile/get_by_path",
-                params={
+                json={
+                    "drive_id": self._default_drive_id,
                     "file_path": str(path)
                 }
             )
