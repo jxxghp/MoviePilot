@@ -38,7 +38,7 @@ git clone https://github.com/jxxghp/MoviePilot
 ```shell
 git clone https://github.com/jxxghp/MoviePilot-Resources
 ```
-- 安装后端依赖，运行 `main.py` 启动后端服务，默认监听端口：`3001`，API文档地址：`http://localhost:3001/docs`
+- 安装后端依赖，设置`app`为源代码根目录，运行 `main.py` 启动后端服务，默认监听端口：`3001`，API文档地址：`http://localhost:3001/docs`
 ```shell
 pip install -r requirements.txt
 python3 main.py
