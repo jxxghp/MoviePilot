@@ -26,6 +26,34 @@
 
 访问官方Wiki：https://wiki.movie-pilot.org
 
+## 参与开发
+
+需要 `Python 3.11`、`Node JS v20.12.1`
+
+- 克隆主项目 [MoviePilot](https://github.com/jxxghp/MoviePilot) 
+```shell
+git clone https://github.com/jxxghp/MoviePilot
+```
+- 克隆资源项目 [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources) ，将 `resources` 目录下对应平台及版本的库 `.so`/`.pyd`/`.bin` 文件复制到 `app/helper` 目录
+```shell
+git clone https://github.com/jxxghp/MoviePilot-Resources
+```
+- 安装后端依赖，运行 `main.py` 启动后端服务，默认监听端口：`3001`，API文档地址：`http://localhost:3001/docs`
+```shell
+pip install -r requirements.txt
+python3 main.py
+```
+- 克隆前端项目 [MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)
+```shell
+git clone https://github.com/jxxghp/MoviePilot-Frontend
+```
+- 安装前端依赖，运行前端项目，访问：`http://localhost:5173`
+```shell
+yarn
+yarn dev
+```
+- 参考 [插件开发指引](https://wiki.movie-pilot.org/zh/plugindev) 在 `app/plugins` 目录下开发插件代码
+
 ## 贡献者
 
 <a href="https://github.com/jxxghp/MoviePilot/graphs/contributors">
