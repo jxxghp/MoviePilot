@@ -264,8 +264,10 @@ class MediaInfo:
     next_episode_to_air: dict = field(default_factory=dict)
     # 内容分级
     content_rating: str = None
-    # 剧集组
+    # 全部剧集组
     episode_groups: List[dict] = field(default_factory=list)
+    # 剧集组
+    episode_group: str = None
 
     def __post_init__(self):
         # 设置媒体信息

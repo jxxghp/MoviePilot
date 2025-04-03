@@ -42,13 +42,13 @@ class MediaChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("metadata_nfo", meta=meta, mediainfo=mediainfo, season=season, episode=episode)
 
-    def recognize_by_meta(self, metainfo: MetaBase) -> Optional[MediaInfo]:
+    def recognize_by_meta(self, metainfo: MetaBase, episode_group: Optional[str] = None) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
         """
         title = metainfo.title
         # 识别媒体信息
-        mediainfo: MediaInfo = self.recognize_media(meta=metainfo)
+        mediainfo: MediaInfo = self.recognize_media(meta=metainfo, episode_group=episode_group)
         if not mediainfo:
             # 尝试使用辅助识别，如果有注册响应事件的话
             if eventmanager.check(ChainEventType.NameRecognize):
@@ -112,7 +112,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 重新识别
         return self.recognize_media(meta=org_meta)
 
-    def recognize_by_path(self, path: str) -> Optional[Context]:
+    def recognize_by_path(self, path: str, episode_group: Optional[str] = None) -> Optional[Context]:
         """
         根据文件路径识别媒体信息
         """
@@ -121,7 +121,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 元数据
         file_meta = MetaInfoPath(file_path)
         # 识别媒体信息
-        mediainfo = self.recognize_media(meta=file_meta)
+        mediainfo = self.recognize_media(meta=file_meta, episode_group=episode_group)
         if not mediainfo:
             # 尝试使用辅助识别，如果有注册响应事件的话
             if eventmanager.check(ChainEventType.NameRecognize):
@@ -474,7 +474,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if not file_meta.begin_episode:
                     logger.warn(f"{filepath.name} 无法识别文件集数！")
                     return
-                file_mediainfo = self.recognize_media(meta=file_meta, tmdbid=mediainfo.tmdb_id)
+                file_mediainfo = self.recognize_media(meta=file_meta, tmdbid=mediainfo.tmdb_id,
+                                                      episode_group=mediainfo.episode_group)
                 if not file_mediainfo:
                     logger.warn(f"{filepath.name} 无法识别文件媒体信息！")
                     return
@@ -483,7 +484,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if overwrite or not self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
                     # 获取集的nfo文件
                     episode_nfo = self.metadata_nfo(meta=file_meta, mediainfo=file_mediainfo,
-                                                    season=file_meta.begin_season, episode=file_meta.begin_episode)
+                                                    season=file_meta.begin_season,
+                                                    episode=file_meta.begin_episode)
                     if episode_nfo:
                         # 保存或上传nfo文件到上级目录
                         if not parent:

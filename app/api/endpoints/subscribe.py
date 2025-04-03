@@ -83,6 +83,7 @@ def create_subscribe(
                                         doubanid=subscribe_in.doubanid,
                                         bangumiid=subscribe_in.bangumiid,
                                         mediaid=subscribe_in.mediaid,
+                                        episode_group=subscribe_in.episode_group,
                                         username=current_user.name,
                                         best_version=subscribe_in.best_version,
                                         save_path=subscribe_in.save_path,

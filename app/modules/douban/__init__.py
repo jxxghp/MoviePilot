@@ -75,8 +75,8 @@ class DoubanModule(_ModuleBase):
 
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
-                        doubanid: str = None,
-                        cache: bool = True,
+                        doubanid: Optional[str] = None,
+                        cache: Optional[bool] = True,
                         **kwargs) -> Optional[MediaInfo]:
         """
         识别媒体信息

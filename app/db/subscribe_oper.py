@@ -29,10 +29,12 @@ class SubscribeOper(DbOper):
                                   tvdbid=mediainfo.tvdb_id,
                                   doubanid=mediainfo.douban_id,
                                   bangumiid=mediainfo.bangumi_id,
+                                  episode_group=mediainfo.episode_group,
                                   poster=mediainfo.get_poster_image(),
                                   backdrop=mediainfo.get_backdrop_image(),
                                   vote=mediainfo.vote_average,
                                   description=mediainfo.overview,
+                                  episode_groups=mediainfo.episode_groups,
                                   date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                                   **kwargs)
             subscribe.create(self._db)

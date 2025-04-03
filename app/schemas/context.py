@@ -170,8 +170,10 @@ class MediaInfo(BaseModel):
     runtime: Optional[int] = None
     # 下一集
     next_episode_to_air: Optional[dict] = Field(default_factory=dict)
-    # 剧集组
+    # 全部剧集组
     episode_groups: Optional[list] = Field(default_factory=list)
+    # 剧集组
+    episode_group: Optional[str] = None
 
 
 class TorrentInfo(BaseModel):

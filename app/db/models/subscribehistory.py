@@ -69,6 +69,8 @@ class SubscribeHistory(Base):
     media_category = Column(String)
     # 过滤规则组
     filter_groups = Column(JSON, default=list)
+    # 剧集组
+    episode_group = Column(String)
 
     @staticmethod
     @db_query

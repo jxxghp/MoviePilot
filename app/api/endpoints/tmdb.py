@@ -114,9 +114,9 @@ def tmdb_person_credits(person_id: int,
 
 
 @router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
-def tmdb_season_episodes(tmdbid: int, season: int,
+def tmdb_season_episodes(tmdbid: int, season: int, episode_group: Optional[str] = None,
                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询某季的所有信信息
     """
-    return TmdbChain().tmdb_episodes(tmdbid=tmdbid, season=season)
+    return TmdbChain().tmdb_episodes(tmdbid=tmdbid, season=season, episode_group=episode_group)

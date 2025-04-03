@@ -623,7 +623,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         # 下载记录中已存在识别信息
                         mediainfo: Optional[MediaInfo] = self.recognize_media(mtype=MediaType(download_history.type),
                                                                               tmdbid=download_history.tmdbid,
-                                                                              doubanid=download_history.doubanid)
+                                                                              doubanid=download_history.doubanid,
+                                                                              episode_group=download_history.episode_group)
                         if mediainfo:
                             # 更新自定义媒体类别
                             if download_history.media_category:
@@ -681,7 +682,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     season_num = 1
                 task.episodes_info = self.tmdbchain.tmdb_episodes(
                     tmdbid=task.mediainfo.tmdb_id,
-                    season=season_num
+                    season=season_num,
+                    episode_group=task.mediainfo.episode_group
                 )
 
             # 查询整理目标目录
@@ -798,7 +800,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     # 按TMDBID识别
                     mediainfo = self.recognize_media(mtype=mtype,
                                                      tmdbid=downloadhis.tmdbid,
-                                                     doubanid=downloadhis.doubanid)
+                                                     doubanid=downloadhis.doubanid,
+                                                     episode_group=downloadhis.episode_group)
                     if mediainfo:
                         # 补充图片
                         self.obtain_images(mediainfo)
@@ -1214,12 +1217,12 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 查询媒体信息
         if mtype and mediaid:
             mediainfo = self.recognize_media(mtype=mtype, tmdbid=int(mediaid) if str(mediaid).isdigit() else None,
-                                             doubanid=mediaid)
+                                             doubanid=mediaid, episode_group=history.episode_group)
             if mediainfo:
                 # 更新媒体图片
                 self.obtain_images(mediainfo=mediainfo)
         else:
-            mediainfo = self.mediachain.recognize_by_path(str(src_path))
+            mediainfo = self.mediachain.recognize_by_path(str(src_path), episode_group=history.episode_group)
         if not mediainfo:
             return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
         # 重新执行整理
@@ -1252,6 +1255,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         doubanid: Optional[str] = None,
                         mtype: MediaType = None,
                         season: Optional[int] = None,
+                        episode_group: Optional[str] = None,
                         transfer_type: Optional[str] = None,
                         epformat: EpisodeFormat = None,
                         min_filesize: Optional[int] = 0,
@@ -1269,6 +1273,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         :param doubanid: 豆瓣ID
         :param mtype: 媒体类型
         :param season: 季度
+        :param episode_group: 剧集组
         :param transfer_type: 整理类型
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
@@ -1282,7 +1287,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         if tmdbid or doubanid:
             # 有输入TMDBID时单个识别
             # 识别媒体信息
-            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
+            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, doubanid=doubanid,
+                                                                   mtype=mtype, episode_group=episode_group)
             if not mediainfo:
                 return False, f"媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {mtype.value}"
             else:

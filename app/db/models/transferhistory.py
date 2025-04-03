@@ -56,6 +56,8 @@ class TransferHistory(Base):
     date = Column(String, index=True)
     # 文件清单，以JSON存储
     files = Column(JSON, default=list)
+    # 剧集组
+    episode_group = Column(String)
 
     @staticmethod
     @db_query
