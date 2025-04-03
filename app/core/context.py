@@ -264,6 +264,8 @@ class MediaInfo:
     next_episode_to_air: dict = field(default_factory=dict)
     # 内容分级
     content_rating: str = None
+    # 剧集组
+    episode_groups: List[dict] = field(default_factory=list)
 
     def __post_init__(self):
         # 设置媒体信息
@@ -454,6 +456,10 @@ class MediaInfo:
                     air_date = seainfo.get("air_date")
                     if air_date:
                         self.season_years[season] = air_date[:4]
+            # 剧集组
+            if info.get("episode_groups"):
+                self.episode_groups = info["episode_groups"].get("results") or []
+
         # 海报
         if info.get('poster_path'):
             self.poster_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('poster_path')}"
@@ -773,6 +779,7 @@ class MediaInfo:
         self.spoken_languages = []
         self.networks = []
         self.next_episode_to_air = {}
+        self.episode_groups = []
 
 
 @dataclass

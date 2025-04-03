@@ -207,9 +207,9 @@ class TheMovieDbModule(_ModuleBase):
                 logger.info(f"{tmdbid} TMDB识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year}")
 
-            # 补充剧集年份
-            if mediainfo.type == MediaType.TV:
-                episode_years = self.tmdb.get_tv_episode_years(info.get("id"))
+            # 补充剧集年份为季年份
+            if mediainfo.type == MediaType.TV and mediainfo.episode_groups:
+                episode_years = self.tmdb.get_tv_episode_years(mediainfo.episode_groups)
                 if episode_years:
                     mediainfo.season_years = episode_years
             return mediainfo

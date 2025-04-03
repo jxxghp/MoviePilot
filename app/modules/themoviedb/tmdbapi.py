@@ -768,11 +768,11 @@ class TmdbApi:
     def __get_movie_detail(self,
                            tmdbid: int,
                            append_to_response: Optional[str] = "images,"
-                                                     "credits,"
-                                                     "alternative_titles,"
-                                                     "translations,"
-                                                     "release_dates,"
-                                                     "external_ids") -> Optional[dict]:
+                                                               "credits,"
+                                                               "alternative_titles,"
+                                                               "translations,"
+                                                               "release_dates,"
+                                                               "external_ids") -> Optional[dict]:
         """
         获取电影的详情
         :param tmdbid: TMDB ID
@@ -881,11 +881,12 @@ class TmdbApi:
     def __get_tv_detail(self,
                         tmdbid: int,
                         append_to_response: Optional[str] = "images,"
-                                                  "credits,"
-                                                  "alternative_titles,"
-                                                  "translations,"
-                                                  "content_ratings,"
-                                                  "external_ids") -> Optional[dict]:
+                                                            "credits,"
+                                                            "alternative_titles,"
+                                                            "translations,"
+                                                            "content_ratings,"
+                                                            "external_ids,"
+                                                            "episode_groups") -> Optional[dict]:
         """
         获取电视剧的详情
         :param tmdbid: TMDB ID
@@ -1376,20 +1377,19 @@ class TmdbApi:
         """
         self.tmdb.cache_clear()
 
-    def get_tv_episode_years(self, tv_id: int) -> dict:
+    def get_tv_episode_years(self, episode_groups: List[dict]) -> dict:
         """
         查询剧集组年份
         """
         try:
-            episode_groups = self.tv.episode_groups(tv_id)
             if not episode_groups:
                 return {}
             episode_years = {}
             for episode_group in episode_groups:
-                logger.debug(f"正在获取剧集组年份：{episode_group.get('id')}...")
                 if episode_group.get('type') != 6:
                     # 只处理剧集部分
                     continue
+                logger.debug(f"正在获取剧集组年份：{episode_group.get('id')}...")
                 group_episodes = self.tv.group_episodes(episode_group.get('id'))
                 if not group_episodes:
                     continue
