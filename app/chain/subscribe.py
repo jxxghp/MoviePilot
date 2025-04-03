@@ -326,6 +326,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                                 tmdbid=subscribe.tmdbid,
                                                                 doubanid=subscribe.doubanid,
+                                                                episode_group=subscribe.episode_group,
                                                                 cache=False)
                     if not mediainfo:
                         logger.warn(
@@ -581,6 +582,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                             tmdbid=subscribe.tmdbid,
                                                             doubanid=subscribe.doubanid,
+                                                            episode_group=subscribe.episode_group,
                                                             cache=False)
                 if not mediainfo:
                     logger.warn(
@@ -641,7 +643,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         if not torrent_mediainfo \
                                 or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
                             # 重新识别媒体信息
-                            torrent_mediainfo = self.recognize_media(meta=torrent_meta)
+                            torrent_mediainfo = self.recognize_media(meta=torrent_meta,
+                                                                     episode_group=subscribe.episode_group)
                             if torrent_mediainfo:
                                 # 更新种子缓存
                                 context.media_info = torrent_mediainfo
@@ -805,6 +808,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                         tmdbid=subscribe.tmdbid,
                                                         doubanid=subscribe.doubanid,
+                                                        episode_group=subscribe.episode_group,
                                                         cache=False)
             if not mediainfo:
                 logger.warn(
@@ -1349,6 +1353,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                     tmdbid=subscribe.tmdbid,
                                                     doubanid=subscribe.doubanid,
+                                                    episode_group=subscribe.episode_group,
                                                     cache=False)
         if not mediainfo:
             logger.warn(
