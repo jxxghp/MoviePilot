@@ -150,6 +150,7 @@ class ChainBase(metaclass=ABCMeta):
                         tmdbid: Optional[int] = None,
                         doubanid: Optional[str] = None,
                         bangumiid: Optional[int] = None,
+                        episode_group: Optional[str] = None,
                         cache: bool = True) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片
@@ -158,6 +159,7 @@ class ChainBase(metaclass=ABCMeta):
         :param tmdbid:   tmdbid
         :param doubanid: 豆瓣ID
         :param bangumiid: BangumiID
+        :param episode_group: 剧集组
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
@@ -173,7 +175,8 @@ class ChainBase(metaclass=ABCMeta):
             doubanid = None
             bangumiid = None
         return self.run_module("recognize_media", meta=meta, mtype=mtype,
-                               tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid, cache=cache)
+                               tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid,
+                               episode_group=episode_group, cache=cache)
 
     def match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
                          mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None,

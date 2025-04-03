@@ -48,6 +48,8 @@ class DownloadHistory(BaseModel):
     note: Optional[Any] = None
     # 自定义媒体类别
     media_category: Optional[str] = None
+    # 自定义剧集组
+    episode_group: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -86,6 +88,8 @@ class TransferHistory(BaseModel):
     image: Optional[str] = None
     # 下载器Hash
     download_hash: Optional[str] = None
+    # 自定义剧集组
+    episode_group: Optional[str] = None
     # 状态 1-成功，0-失败
     status: bool = True
     # 失败原因

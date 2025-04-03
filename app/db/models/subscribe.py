@@ -84,6 +84,10 @@ class Subscribe(Base):
     media_category = Column(String)
     # 过滤规则组
     filter_groups = Column(JSON, default=list)
+    # 可选剧集组
+    episode_groups = Column(JSON, default=list)
+    # 选择的剧集组
+    episode_group = Column(String)
 
     @staticmethod
     @db_query

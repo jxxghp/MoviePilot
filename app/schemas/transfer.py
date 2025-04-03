@@ -200,3 +200,5 @@ class ManualTransferItem(BaseModel):
     library_category_folder: Optional[bool] = None
     # 复用历史识别信息
     from_history: Optional[bool] = False
+    # 剧集组
+    episode_group: Optional[str] = None

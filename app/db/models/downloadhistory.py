@@ -52,6 +52,8 @@ class DownloadHistory(Base):
     note = Column(JSON)
     # 自定义媒体类别
     media_category = Column(String)
+    # 剧集组
+    episode_group = Column(String)
 
     @staticmethod
     @db_query

@@ -60,6 +60,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None,
             mediaid: Optional[str] = None,
+            episode_group: Optional[str] = None,
             season: Optional[int] = None,
             channel: MessageChannel = None,
             source: Optional[str] = None,
@@ -117,7 +118,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     mediainfo = __get_event_meida(mediaid, metainfo)
             else:
                 # 使用TMDBID识别
-                mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid, cache=False)
+                mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid,
+                                                 episode_group=episode_group, cache=False)
         else:
             if doubanid:
                 # 豆瓣识别模式，不使用缓存
@@ -134,7 +136,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
         # 使用名称识别兜底
         if not mediainfo:
-            mediainfo = self.recognize_media(meta=metainfo)
+            mediainfo = self.recognize_media(meta=metainfo, episode_group=episode_group)
 
         # 识别失败
         if not mediainfo:
@@ -153,6 +155,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                      tmdbid=mediainfo.tmdb_id,
                                                      doubanid=mediainfo.douban_id,
                                                      bangumiid=mediainfo.bangumi_id,
+                                                     episode_group=episode_group,
                                                      cache=False)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
@@ -207,7 +210,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
                 "save_path") else kwargs.get("save_path"),
             'filter_groups': self.__get_default_subscribe_config(mediainfo.type, "filter_groups") if not kwargs.get(
-                "filter_groups") else kwargs.get("filter_groups"),
+                "filter_groups") else kwargs.get("filter_groups")
         })
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
@@ -383,6 +386,11 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 logger.info(
                                     f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
                                 continue
+                        # 更新订阅自定义属性
+                        if subscribe.media_category:
+                            torrent_mediainfo.category = subscribe.media_category
+                        if subscribe.episode_group:
+                            torrent_mediainfo.episode_group = subscribe.episode_group
                         matched_contexts.append(context)
 
                     if not matched_contexts:
@@ -398,7 +406,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         userid=subscribe.username,
                         username=subscribe.username,
                         save_path=subscribe.save_path,
-                        media_category=subscribe.media_category,
                         downloader=subscribe.downloader,
                         source=self.get_subscribe_source_keyword(subscribe)
                     )
@@ -603,9 +610,10 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
                     for context in contexts:
                         # 提取信息
-                        torrent_meta = copy.deepcopy(context.meta_info)
-                        torrent_mediainfo = copy.deepcopy(context.media_info)
-                        torrent_info = context.torrent_info
+                        _context = copy.deepcopy(context)
+                        torrent_meta = _context.meta_info
+                        torrent_mediainfo = _context.media_info
+                        torrent_info = _context.torrent_info
 
                         # 不在订阅站点范围的不处理
                         sub_sites = self.get_sub_sites(subscribe)
@@ -736,7 +744,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
                         # 匹配成功
                         logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
-                        _match_context.append(context)
+                        # 自定义属性
+                        if subscribe.media_category:
+                            torrent_mediainfo.category = subscribe.media_category
+                        if subscribe.episode_group:
+                            torrent_mediainfo.episode_group = subscribe.episode_group
+                        _match_context.append(_context)
 
                 if not _match_context:
                     # 未匹配到资源
@@ -752,7 +765,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                                      userid=subscribe.username,
                                                                      username=subscribe.username,
                                                                      save_path=subscribe.save_path,
-                                                                     media_category=subscribe.media_category,
                                                                      downloader=subscribe.downloader,
                                                                      source=self.get_subscribe_source_keyword(subscribe)
                                                                      )
@@ -1274,7 +1286,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             # 查询TMDB中的集信息
             tmdb_episodes = self.tmdbchain.tmdb_episodes(
                 tmdbid=subscribe.tmdbid,
-                season=subscribe.season
+                season=subscribe.season,
+                episode_group=subscribe.episode_group
             )
             if tmdb_episodes:
                 for episode in tmdb_episodes:

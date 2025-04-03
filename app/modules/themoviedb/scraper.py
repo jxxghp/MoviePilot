@@ -32,7 +32,10 @@ class TmdbScraper:
         else:
             if season is not None:
                 # 查询季信息
-                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
+                if mediainfo.episode_group:
+                    seasoninfo = self.tmdb.get_tv_group_episodes(mediainfo.episode_group)
+                else:
+                    seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
                 if episode:
                     # 集元数据文件
                     episodeinfo = self.__get_episode_detail(seasoninfo, meta.begin_episode)
@@ -61,7 +64,10 @@ class TmdbScraper:
             # 只需要集的图片
             if episode:
                 # 集的图片
-                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
+                if mediainfo.episode_group:
+                    seasoninfo = self.tmdb.get_tv_group_episodes(mediainfo.episode_group)
+                else:
+                    seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
                 if seasoninfo:
                     episodeinfo = self.__get_episode_detail(seasoninfo, episode)
                     if episodeinfo and episodeinfo.get("still_path"):

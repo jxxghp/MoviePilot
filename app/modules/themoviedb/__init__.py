@@ -1,3 +1,4 @@
+import re
 from typing import Optional, List, Tuple, Union, Dict
 
 import cn2an
@@ -85,6 +86,7 @@ class TheMovieDbModule(_ModuleBase):
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         tmdbid: Optional[int] = None,
+                        episode_group: Optional[str] = None,
                         cache: Optional[bool] = True,
                         **kwargs) -> Optional[MediaInfo]:
         """
@@ -92,6 +94,7 @@ class TheMovieDbModule(_ModuleBase):
         :param meta:     识别的元数据
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
+        :param episode_group:  剧集组
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
@@ -115,6 +118,11 @@ class TheMovieDbModule(_ModuleBase):
             if tmdbid:
                 meta.tmdbid = tmdbid
             cache_info = self.cache.get(meta)
+
+        # 查询剧集组
+        group_episodes = []
+        if episode_group:
+            group_episodes = self.tmdb.get_tv_group_episodes(episode_group)
 
         # 识别匹配
         if not cache_info or not cache:
@@ -143,7 +151,8 @@ class TheMovieDbModule(_ModuleBase):
                                                    year=meta.year,
                                                    mtype=meta.type,
                                                    season_year=meta.year,
-                                                   season_number=meta.begin_season)
+                                                   season_number=meta.begin_season,
+                                                   group_episodes=group_episodes)
                             if not info:
                                 # 去掉年份再查一次
                                 info = self.tmdb.match(name=name,
@@ -157,7 +166,8 @@ class TheMovieDbModule(_ModuleBase):
                             if not info:
                                 info = self.tmdb.match(name=name,
                                                        year=meta.year,
-                                                       mtype=MediaType.TV)
+                                                       mtype=MediaType.TV,
+                                                       group_episodes=group_episodes)
                             if not info:
                                 # 去掉年份和类型再查一次
                                 info = self.tmdb.match_multi(name=name)
@@ -207,11 +217,61 @@ class TheMovieDbModule(_ModuleBase):
                 logger.info(f"{tmdbid} TMDB识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year}")
 
-            # 补充剧集年份为季年份
+            # 使用剧集组的集信息和年份
             if mediainfo.type == MediaType.TV and mediainfo.episode_groups:
-                episode_years = self.tmdb.get_tv_episode_years(mediainfo.episode_groups)
-                if episode_years:
-                    mediainfo.season_years = episode_years
+                if group_episodes:
+                    # 指定剧集组时
+                    seasons = {}
+                    season_info = []
+                    season_years = {}
+                    for group_episode in group_episodes:
+                        # 季
+                        season = group_episode.get("order")
+                        # 集列表
+                        episodes = group_episode.get("episodes")
+                        if not episodes:
+                            continue
+                        seasons[season] = [ep.get("episode_number") for ep in episodes]
+                        season_info[season] = episodes
+                        # 当前季第一季时间
+                        first_date = episodes[0].get("air_date")
+                        if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
+                            season_years[season] = str(first_date).split("-")[0]
+                    # 每季集清单
+                    if seasons:
+                        mediainfo.seasons = seasons
+                        mediainfo.number_of_seasons = len(seasons)
+                    # 每季集详情
+                    if season_info:
+                        mediainfo.season_info = season_info
+                    # 每季年份
+                    if season_years:
+                        mediainfo.season_years = season_years
+                    # 所有剧集组
+                    mediainfo.episode_group = episode_group
+                    mediainfo.episode_groups = group_episodes
+                else:
+                    # 每季年份
+                    season_years = {}
+                    for group in mediainfo.episode_groups:
+                        if group.get('type') != 6:
+                            # 只处理剧集部分
+                            continue
+                        group_episodes = self.tmdb.get_tv_group_episodes(group.get('id'))
+                        if not group_episodes:
+                            continue
+                        for group_episode in group_episodes:
+                            season = group_episode.get('order')
+                            episodes = group_episode.get('episodes')
+                            if not episodes:
+                                continue
+                            # 当前季第一季时间
+                            first_date = episodes[0].get("air_date")
+                            # 判断是不是日期格式
+                            if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
+                                season_years[season] = str(first_date).split("-")[0]
+                    if season_years:
+                        mediainfo.season_years = season_years
             return mediainfo
         else:
             logger.info(f"{meta.name if meta else tmdbid} 未匹配到TMDB媒体信息")
@@ -431,13 +491,17 @@ class TheMovieDbModule(_ModuleBase):
         return [schemas.TmdbSeason(**season)
                 for season in tmdb_info.get("seasons", []) if season.get("season_number")]
 
-    def tmdb_episodes(self, tmdbid: int, season: int) -> List[schemas.TmdbEpisode]:
+    def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
         """
         根据TMDBID查询某季的所有信信息
         :param tmdbid:  TMDBID
         :param season:  季
+        :param episode_group:  剧集组
         """
-        season_info = self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
+        if episode_group:
+            season_info = self.tmdb.get_tv_group_episodes(episode_group)
+        else:
+            season_info = self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
         if not season_info or not season_info.get("episodes"):
             return []
         return [schemas.TmdbEpisode(**episode) for episode in season_info.get("episodes")]
