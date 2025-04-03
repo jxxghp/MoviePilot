@@ -232,7 +232,7 @@ class TheMovieDbModule(_ModuleBase):
                         if not episodes:
                             continue
                         seasons[season] = [ep.get("episode_number") for ep in episodes]
-                        season_info[season] = episodes
+                        season_info.append(group_episode)
                         # 当前季第一季时间
                         first_date = episodes[0].get("air_date")
                         if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):

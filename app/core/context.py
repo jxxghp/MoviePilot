@@ -460,7 +460,7 @@ class MediaInfo:
                         self.season_years[season] = air_date[:4]
             # 剧集组
             if info.get("episode_groups"):
-                self.episode_groups = info["episode_groups"].get("results") or []
+                self.episode_groups = info.pop("episode_groups").get("results") or []
 
         # 海报
         if info.get('poster_path'):
