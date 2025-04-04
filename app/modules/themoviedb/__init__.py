@@ -488,12 +488,28 @@ class TheMovieDbModule(_ModuleBase):
         tmdb_info = self.tmdb.get_info(tmdbid=tmdbid, mtype=MediaType.TV)
         if not tmdb_info:
             return []
-        return [schemas.TmdbSeason(**season)
-                for season in tmdb_info.get("seasons", []) if season.get("season_number")]
+        return [schemas.TmdbSeason(**sea)
+                for sea in tmdb_info.get("seasons", []) if sea.get("season_number")]
+
+    def tmdb_group_seasons(self, group_id: str) -> List[schemas.TmdbSeason]:
+        """
+        根据剧集组ID查询themoviedb所有季集信息
+        :param group_id: 剧集组ID
+        """
+        group_seasons = self.tmdb.get_tv_group_seasons(group_id)
+        if not group_seasons:
+            return []
+        return [schemas.TmdbSeason(
+            season_number=sea.get("order"),
+            name=sea.get("name"),
+            episode_count=len(sea.get("episodes") or []),
+            air_date=sea.get("episodes")[0].get("air_date") if sea.get("episodes") else None,
+        ) for sea in group_seasons]
+
 
     def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
         """
-        根据TMDBID查询某季的所有信信息
+        根据TMDBID查询某季的所有集信息
         :param tmdbid:  TMDBID
         :param season:  季
         :param episode_group:  剧集组

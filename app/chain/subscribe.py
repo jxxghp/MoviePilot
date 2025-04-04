@@ -149,7 +149,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 season = 1
             # 总集数
             if not kwargs.get('total_episode'):
-                if not mediainfo.seasons:
+                if not mediainfo.seasons or episode_group:
                     # 补充媒体信息
                     mediainfo = self.recognize_media(mtype=mediainfo.type,
                                                      tmdbid=mediainfo.tmdb_id,
