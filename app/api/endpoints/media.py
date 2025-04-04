@@ -136,6 +136,24 @@ def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return MediaChain().media_category() or {}
 
 
+@router.get("/group/seasons/{episode_group}", summary="查询剧集组季信息", response_model=List[schemas.MediaSeason])
+def group_seasons(episode_group: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询剧集组季信息（themoviedb）
+    """
+    return TmdbChain().tmdb_group_seasons(group_id=episode_group)
+
+
+@router.get("/groups/{tmdbid}", summary="查询媒体剧集组", response_model=List[dict])
+def seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询媒体剧集组列表（themoviedb）
+    """
+    mediainfo  = MediaChain().recognize_media(tmdbid=tmdbid, mtype=MediaType.TV)
+    if not mediainfo:
+        return []
+    return mediainfo.episode_groups
+
 @router.get("/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason])
 def seasons(mediaid: Optional[str] = None,
             title: Optional[str] = None,

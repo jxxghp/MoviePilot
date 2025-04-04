@@ -34,7 +34,6 @@ class SubscribeOper(DbOper):
                                   backdrop=mediainfo.get_backdrop_image(),
                                   vote=mediainfo.vote_average,
                                   description=mediainfo.overview,
-                                  episode_groups=mediainfo.episode_groups,
                                   date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                                   **kwargs)
             subscribe.create(self._db)

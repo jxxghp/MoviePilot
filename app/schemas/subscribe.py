@@ -73,8 +73,6 @@ class Subscribe(BaseModel):
     media_category: Optional[str] = None
     # 过滤规则组
     filter_groups: Optional[List[str]] = Field(default_factory=list)
-    # 可选剧集组
-    episode_groups: Optional[list] = Field(default_factory=list)
     # 剧集组
     episode_group: str = None
 

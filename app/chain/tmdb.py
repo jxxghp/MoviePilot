@@ -70,6 +70,13 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_seasons", tmdbid=tmdbid)
 
+    def tmdb_group_seasons(self, group_id: str) -> List[schemas.TmdbSeason]:
+        """
+        根据剧集组ID查询themoviedb所有季集信息
+        :param group_id: 剧集组ID
+        """
+        return self.run_module("tmdb_group_seasons", group_id=group_id)
+
     def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
         """
         根据TMDBID查询某季的所有信信息
