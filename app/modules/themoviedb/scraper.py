@@ -65,7 +65,7 @@ class TmdbScraper:
             if episode:
                 # 集的图片
                 if mediainfo.episode_group:
-                    seasoninfo = self.tmdb.get_tv_group_seasons(mediainfo.episode_group)
+                    seasoninfo = self.tmdb.get_tv_group_detail(mediainfo.episode_group, season)
                 else:
                     seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
                 if seasoninfo:
