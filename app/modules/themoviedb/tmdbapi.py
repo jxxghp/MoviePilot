@@ -189,7 +189,7 @@ class TmdbApi:
               year: Optional[str] = None,
               season_year: Optional[str] = None,
               season_number: Optional[int] = None,
-              group_episodes: Optional[List[dict]] = None) -> Optional[dict]:
+              group_seasons: Optional[List[dict]] = None) -> Optional[dict]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
         :param name: 检索的名称
@@ -197,7 +197,7 @@ class TmdbApi:
         :param year: 年份，如要是季集需要是首播年份(first_air_date)
         :param season_year: 当前季集年份
         :param season_number: 季集，整数
-        :param group_episodes: 集数组信息
+        :param group_seasons: 集数组信息
         :return: TMDB的INFO，同时会将mtype赋值到media_type中
         """
         if not self.search:
@@ -226,7 +226,7 @@ class TmdbApi:
                 info = self.__search_tv_by_season(name,
                                                   season_year,
                                                   season_number,
-                                                  group_episodes)
+                                                  group_seasons)
             if not info:
                 year_range = [year]
                 if year:
@@ -337,13 +337,13 @@ class TmdbApi:
         return {}
 
     def __search_tv_by_season(self, name: str, season_year: str, season_number: int,
-                              group_episodes: Optional[List[dict]] = None) -> Optional[dict]:
+                              group_seasons: Optional[List[dict]] = None) -> Optional[dict]:
         """
         根据电视剧的名称和季的年份及序号匹配TMDB
         :param name: 识别的文件名或者种子名
         :param season_year: 季的年份
         :param season_number: 季序号
-        :param group_episodes: 集数组信息
+        :param group_seasons: 集数组信息
         :return: 匹配的媒体信息
         """
 
@@ -351,12 +351,12 @@ class TmdbApi:
             if not tv_info:
                 return False
             try:
-                if group_episodes:
-                    for group_episode in group_episodes:
-                        season = group_episode.get('order')
+                if group_seasons:
+                    for group_season in group_seasons:
+                        season = group_season.get('order')
                         if season != season_number:
                             continue
-                        episodes = group_episode.get('episodes')
+                        episodes = group_season.get('episodes')
                         if not episodes:
                             continue
                         first_date = episodes[0].get("air_date")
@@ -1336,9 +1336,9 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_tv_group_episodes(self, group_id: str) -> List[dict]:
+    def get_tv_group_seasons(self, group_id: str) -> List[dict]:
         """
-        获取电视剧剧集组集列表
+        获取电视剧剧集组季集列表
         """
         if not self.tv:
             return []
@@ -1348,6 +1348,20 @@ class TmdbApi:
         except Exception as e:
             logger.error(str(e))
             return []
+
+    def get_tv_group_detail(self, group_id: str, season: int) -> dict:
+        """
+        获取剧集组某个季的信息
+        """
+        group_seasons = self.get_tv_group_seasons(group_id)
+        if not group_seasons:
+            return {}
+        for group_season in group_seasons:
+            if group_season.get('order') == season:
+                return group_season
+        return {}
+
+
 
     def get_person_detail(self, person_id: int) -> dict:
         """

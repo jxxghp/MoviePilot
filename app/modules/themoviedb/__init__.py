@@ -120,9 +120,9 @@ class TheMovieDbModule(_ModuleBase):
             cache_info = self.cache.get(meta)
 
         # 查询剧集组
-        group_episodes = []
+        group_seasons = []
         if episode_group:
-            group_episodes = self.tmdb.get_tv_group_episodes(episode_group)
+            group_seasons = self.tmdb.get_tv_group_seasons(episode_group)
 
         # 识别匹配
         if not cache_info or not cache:
@@ -152,7 +152,7 @@ class TheMovieDbModule(_ModuleBase):
                                                    mtype=meta.type,
                                                    season_year=meta.year,
                                                    season_number=meta.begin_season,
-                                                   group_episodes=group_episodes)
+                                                   group_seasons=group_seasons)
                             if not info:
                                 # 去掉年份再查一次
                                 info = self.tmdb.match(name=name,
@@ -167,7 +167,7 @@ class TheMovieDbModule(_ModuleBase):
                                 info = self.tmdb.match(name=name,
                                                        year=meta.year,
                                                        mtype=MediaType.TV,
-                                                       group_episodes=group_episodes)
+                                                       group_seasons=group_seasons)
                             if not info:
                                 # 去掉年份和类型再查一次
                                 info = self.tmdb.match_multi(name=name)
@@ -219,20 +219,20 @@ class TheMovieDbModule(_ModuleBase):
 
             # 使用剧集组的集信息和年份
             if mediainfo.type == MediaType.TV and mediainfo.episode_groups:
-                if group_episodes:
+                if group_seasons:
                     # 指定剧集组时
                     seasons = {}
                     season_info = []
                     season_years = {}
-                    for group_episode in group_episodes:
+                    for group_season in group_seasons:
                         # 季
-                        season = group_episode.get("order")
+                        season = group_season.get("order")
                         # 集列表
-                        episodes = group_episode.get("episodes")
+                        episodes = group_season.get("episodes")
                         if not episodes:
                             continue
                         seasons[season] = [ep.get("episode_number") for ep in episodes]
-                        season_info.append(group_episode)
+                        season_info.append(group_season)
                         # 当前季第一季时间
                         first_date = episodes[0].get("air_date")
                         if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
@@ -249,7 +249,7 @@ class TheMovieDbModule(_ModuleBase):
                         mediainfo.season_years = season_years
                     # 所有剧集组
                     mediainfo.episode_group = episode_group
-                    mediainfo.episode_groups = group_episodes
+                    mediainfo.episode_groups = group_seasons
                 else:
                     # 每季年份
                     season_years = {}
@@ -257,7 +257,7 @@ class TheMovieDbModule(_ModuleBase):
                         if group.get('type') != 6:
                             # 只处理剧集部分
                             continue
-                        group_episodes = self.tmdb.get_tv_group_episodes(group.get('id'))
+                        group_episodes = self.tmdb.get_tv_group_seasons(group.get('id'))
                         if not group_episodes:
                             continue
                         for group_episode in group_episodes:
@@ -499,7 +499,7 @@ class TheMovieDbModule(_ModuleBase):
         :param episode_group:  剧集组
         """
         if episode_group:
-            season_info = self.tmdb.get_tv_group_episodes(episode_group)
+            season_info = self.tmdb.get_tv_group_detail(episode_group, season=season)
         else:
             season_info = self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
         if not season_info or not season_info.get("episodes"):
