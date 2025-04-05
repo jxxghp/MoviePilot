@@ -410,7 +410,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return oss2.utils.b64encode_as_string(json.dumps(cb).strip())
 
         target_name = new_name or local_path.name
-        target_path = str(Path(target_dir.path) / target_name)
+        target_path = Path(target_dir.path) / target_name
         # 计算文件特征值
         file_size = local_path.stat().st_size
         file_sha1 = self._calc_sha1(local_path)
@@ -441,7 +441,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 结果
         init_result = init_resp.get("data")
         logger.debug(f"【115】上传 Step 1 初始化结果: {init_result}")
-        file_id = init_result.get("file_id")
         # 回调信息
         bucket_name = init_result.get("bucket")
         object_name = init_result.get("object")
@@ -486,27 +485,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 bucket_name = init_result.get("bucket")
             if not object_name:
                 object_name = init_result.get("object")
-            if not file_id:
-                file_id = init_result.get("file_id")
             if not callback:
                 callback = init_result.get("callback")
 
         # Step 3: 秒传
         if init_result.get("status") == 2:
             logger.info(f"【115】{target_name} 秒传成功")
-            return schemas.FileItem(
-                storage=self.schema.value,
-                fileid=str(file_id),
-                parent_fileid=target_cid,
-                path=target_path,
-                name=target_name,
-                basename=Path(target_name).stem,
-                extension=Path(target_name).suffix[1:],
-                size=file_size,
-                type="file",
-                pickcode=pick_code,
-                modify_time=int(time.time())
-            )
+            return self.get_item(target_path)
 
         # Step 4: 获取上传凭证
         token_resp = self._request_api(
@@ -617,19 +602,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 logger.error(f"【115】{target_name} 上传失败: {e.status}, 错误码: {e.code}, 详情: {e.message}")
                 return None
         # 返回结果
-        return schemas.FileItem(
-            storage=self.schema.value,
-            fileid=str(file_id),
-            parent_fileid = target_cid,
-            type="file",
-            path=target_path,
-            name=target_name,
-            basename=Path(target_name).stem,
-            extension=Path(target_name).suffix[1:],
-            size=file_size,
-            pickcode=pick_code,
-            modify_time=int(time.time())
-        )
+        return self.get_item(target_path)
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
@@ -726,7 +699,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 type="file" if resp["file_category"] == "1" else "dir",
                 name=resp["file_name"],
                 basename=Path(resp["file_name"]).stem,
-                extension=Path(resp["file_name"]).suffix[1:],
+                extension=Path(resp["file_name"]).suffix[1:] if resp["file_category"] == "1" else None,
                 pickcode=resp["pick_code"],
                 size=StringUtils.num_filesize(resp['size']) if resp["file_category"] == "1" else None,
                 modify_time=resp["utime"]
