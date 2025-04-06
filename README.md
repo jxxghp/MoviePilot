@@ -28,7 +28,7 @@
 
 ## 参与开发
 
-需要 `Python 3.11`、`Node JS v20.12.1`
+需要 `Python 3.12`、`Node JS v20.12.1`
 
 - 克隆主项目 [MoviePilot](https://github.com/jxxghp/MoviePilot) 
 ```shell
