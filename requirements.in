@@ -69,4 +69,4 @@ packaging~=24.2
 cf_clearance~=0.31.0
 oss2~=2.19.1
 tqdm~=4.67.1
-setuptools~=65.5.0
+setuptools~=78.1.0
