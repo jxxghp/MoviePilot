@@ -23,8 +23,8 @@ APScheduler~=3.10.1
 cryptography~=43.0.0
 pytz~=2023.3
 pycryptodome~=3.20.0
-qbittorrent-api==2024.11.69
-plexapi~=4.15.16
+qbittorrent-api==2024.11.70
+plexapi~=4.16.0
 transmission-rpc~=4.3.0
 Jinja2~=3.1.4
 pyparsing~=3.0.9
@@ -34,7 +34,7 @@ beautifulsoup4~=4.12.2
 pillow~=10.4.0
 pillow-avif-plugin~=1.4.6
 pyTelegramBotAPI~=4.12.0
-playwright~=1.37.0
+playwright~=1.49.1
 cf-clearance~=0.31.0
 torrentool~=1.2.0
 slack-bolt~=1.18.0
