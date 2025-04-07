@@ -142,17 +142,12 @@ class DoubanModule(_ModuleBase):
                 return None
 
             # 保存到缓存
-            if meta and cache:
+            if meta and cache and info is not None and info.get("title"):  # 仅缓存有效的结果
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
-            if cache_info.get("title"):
-                logger.info(f"{meta.name} 使用豆瓣识别缓存：{cache_info.get('title')}")
-                info = self.douban_info(mtype=cache_info.get("type"),
-                                        doubanid=cache_info.get("id"))
-            else:
-                logger.info(f"{meta.name} 使用豆瓣识别缓存：无法识别")
-                info = None
+            logger.info(f"{meta.name} 使用豆瓣识别缓存：{cache_info.get('title')}")
+            info = self.douban_info(mtype=cache_info.get("type"), doubanid=cache_info.get("id"))
 
         if info:
             # 赋值TMDB信息并返回
