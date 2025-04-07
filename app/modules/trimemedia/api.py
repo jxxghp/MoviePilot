@@ -349,6 +349,23 @@ class Api:
             return self.__build_item(res.data)
         return None
 
+    def del_item(self, guid: str, delete_file: bool) -> bool:
+        """
+        删除媒体
+
+        :param delete_file: True删除媒体文件，False仅从媒体库移除
+        """
+        if (
+            res := self.__request_api(
+                f"/item/{guid}",
+                method="delete",
+                data={"delete_file": 1 if delete_file else 0, "media_guids": []},
+            )
+        ) and res.success:
+            if res.data:
+                return True
+        return False
+
     def season_list(self, tv_guid: str) -> Optional[list[Item]]:
         """
         查询季列表
@@ -439,7 +456,7 @@ class Api:
         url = self._host + api_path
         if method is None:
             method = "get" if data is None else "post"
-        if method == "post":
+        if method != "get":
             json_body = (
                 json.dumps(data, allow_nan=False, cls=JsonEncoder) if data else ""
             )
