@@ -26,20 +26,57 @@ class TrimeMedia:
         username: Optional[str] = None,
         password: Optional[str] = None,
         play_host: Optional[str] = None,
-        sync_libraries: list = None,
+        sync_libraries: Optional[list] = None,
         **kwargs,
     ):
         if not host or not username or not password:
             logger.error("飞牛影视配置不完整！！")
             return
-        host = UrlUtils.standardize_base_url(host).rstrip("/")
-        if play_host:
-            self._playhost = UrlUtils.standardize_base_url(play_host).rstrip("/")
         self._username = username
         self._password = password
         self._sync_libraries = sync_libraries or []
-        self._api = fnapi.Api(host, apikey="16CCEB3D-AB42-077D-36A1-F355324E4237")
+
+        if (api := self.__create_api(host)) is None:
+            logger.error(f"请检查服务端地址 {host}")
+            return
+        self._api = api
+        if play_api := self.__create_api(play_host):
+            self._playhost = play_api.host
+        elif play_host:
+            logger.warning(f"请检查外网播放地址 {play_host}")
+
         self.reconnect()
+
+    @property
+    def api(self) -> Optional[fnapi.Api]:
+        """
+        获得飞牛API
+        """
+        return self._api
+
+    def __create_api(self, host: Optional[str]) -> Optional[fnapi.Api]:
+        """
+        创建一个飞牛API
+
+        :param host:  服务端地址
+        :return: 如果地址无效、不可访问则返回None
+        """
+        if not host:
+            return None
+        api_key = "16CCEB3D-AB42-077D-36A1-F355324E4237"
+        host = UrlUtils.standardize_base_url(host).rstrip("/")
+
+        if not host.endswith("/v"):
+            # 尝试补上结尾的/v 测试能否正常访问
+            api = fnapi.Api(host + "/v", api_key)
+            if api.sys_version():
+                return api
+        # 测试用户配置的地址
+        api = fnapi.Api(host, api_key)
+        return api if api.sys_version() else None
+
+    def __del__(self):
+        self.disconnect()
 
     def is_configured(self) -> bool:
         return self._api is not None
@@ -62,13 +99,26 @@ class TrimeMedia:
         """
         if not self.is_configured():
             return False
+        if (fnver := self._api.sys_version()) is None:
+            return False
+        # 版本号:0.8.36, 服务版本:0.8.19
+        logger.debug(f"版本号:{fnver.frontend}, 服务版本:{fnver.backend}")
         if self._api.login(self._username, self._password) is None:
             return False
         self._userinfo = self._api.user_info()
         if self._userinfo is None:
             return False
-        logger.debug(f"{self._userinfo.username} 成功登录飞牛影视")
+        logger.debug(f"{self._username} 成功登录飞牛影视")
         return True
+
+    def disconnect(self):
+        """
+        断开与飞牛的连接
+        """
+        if self.is_authenticated():
+            self._api.logout()
+            self._userinfo = None
+            logger.debug(f"{self._username} 已断开飞牛影视")
 
     def get_librarys(
         self, hidden: Optional[bool] = False
@@ -87,11 +137,11 @@ class TrimeMedia:
         for library in self._libraries.values():
             if hidden and self.__is_library_blocked(library.guid):
                 continue
-            if library.category == fnapi.Category.Movie:
+            if library.category == fnapi.Category.MOVIE:
                 library_type = MediaType.MOVIE.value
             elif library.category == fnapi.Category.TV:
                 library_type = MediaType.TV.value
-            elif library.category == fnapi.Category.Others:
+            elif library.category == fnapi.Category.OTHERS:
                 # 忽略这个库
                 continue
             else:
@@ -107,7 +157,7 @@ class TrimeMedia:
                         f"{self._api.host}{img_path}?w=256"
                         for img_path in library.posters or []
                     ],
-                    link=f"{self._playhost or self._api.host}/v/library/{library.guid}",
+                    link=f"{self._playhost or self._api.host}/library/{library.guid}",
                 )
             )
         return libraries
@@ -170,7 +220,7 @@ class TrimeMedia:
         movies = []
         items = self._api.search_list(keywords=title) or []
         for item in items:
-            if item.type != fnapi.Type.Movie:
+            if item.type != fnapi.Type.MOVIE:
                 continue
             if (
                 (not tmdb_id or tmdb_id == item.tmdb_id)
@@ -280,7 +330,7 @@ class TrimeMedia:
             lib = self.__match_library_by_path(item.target_path)
             if lib is None:
                 # 如果有匹配失败的,刷新整个库
-                return self._api.mdb_scanall()
+                return self.refresh_root_library()
             # 媒体库去重
             libraries.add(lib.guid)
 
@@ -290,7 +340,7 @@ class TrimeMedia:
             logger.info(f"刷新媒体库：{lib.name}")
             if not self._api.mdb_scan(lib):
                 # 如果失败，刷新整个库
-                return self._api.mdb_scanall()
+                return self.refresh_root_library()
         return True
 
     def __match_library_by_path(self, path: Path) -> Optional[fnapi.MediaDb]:
@@ -336,7 +386,7 @@ class TrimeMedia:
         if item.watched:
             user_state.played = True
         if item.duration and item.ts is not None:
-            user_state.percentage = item.ts / item.duration
+            user_state.percentage = item.ts / item.duration * 100
             user_state.resume = True
         if item.type is None:
             item_type = None
@@ -361,40 +411,37 @@ class TrimeMedia:
         """
         拼装播放链接
         """
-        if item.type == fnapi.Type.Episode:
-            return f"{host}/v/tv/episode/{item.guid}"
-        elif item.type == fnapi.Type.Season:
-            return f"{host}/v/tv/season/{item.guid}"
-        elif item.type == fnapi.Type.Movie:
-            return f"{host}/v/movie/{item.guid}"
+        if item.type == fnapi.Type.EPISODE:
+            return f"{host}/tv/episode/{item.guid}"
+        elif item.type == fnapi.Type.SEASON:
+            return f"{host}/tv/season/{item.guid}"
+        elif item.type == fnapi.Type.MOVIE:
+            return f"{host}/movie/{item.guid}"
         elif item.type == fnapi.Type.TV:
-            return f"{host}/v/tv/{item.guid}"
+            return f"{host}/tv/{item.guid}"
         else:
             # 其它类型走通用页面，由飞牛来判断
-            return f"{host}/v/other/{item.guid}"
+            return f"{host}/other/{item.guid}"
 
     def __build_media_server_play_item(
         self, item: fnapi.Item
     ) -> schemas.MediaServerPlayItem:
-        """
-        :params use_backdrop: 是否优先使用Backdrop类型的图片
-        """
-        if item.type == fnapi.Type.Episode:
+        if item.type == fnapi.Type.EPISODE:
             title = item.tv_title
             subtitle = f"S{item.season_number}:{item.episode_number} - {item.title}"
         else:
             title = item.title
-            subtitle = "电影" if item.type == fnapi.Type.Movie else "视频"
-        type = (
+            subtitle = "电影" if item.type == fnapi.Type.MOVIE else "视频"
+        types = (
             MediaType.MOVIE.value
-            if item.type in [fnapi.Type.Movie, fnapi.Type.Video]
+            if item.type in [fnapi.Type.MOVIE, fnapi.Type.VIDEO]
             else MediaType.TV.value
         )
         return schemas.MediaServerPlayItem(
             id=item.guid,
             title=title,
             subtitle=subtitle,
-            type=type,
+            type=types,
             image=f"{self._api.host}{item.poster}",
             link=self.__build_play_url(self._playhost or self._api.host, item),
             percent=(
@@ -421,22 +468,22 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
-        if (SIZE := limit) is None:
-            SIZE = -1
+        if (page_size := limit) is None:
+            page_size = -1
         items = (
             self._api.item_list(
                 guid=parent,
                 page=start_index + 1,
-                page_size=SIZE,
-                type=[fnapi.Type.Movie, fnapi.Type.TV, fnapi.Type.Directory],
+                page_size=page_size,
+                types=[fnapi.Type.MOVIE, fnapi.Type.TV, fnapi.Type.DIRECTORY],
             )
             or []
         )
         for item in items:
-            if item.type == fnapi.Type.Directory:
+            if item.type == fnapi.Type.DIRECTORY:
                 for items in self.get_items(parent=item.guid):
                     yield items
-            elif item.type in [fnapi.Type.Movie, fnapi.Type.TV]:
+            elif item.type in [fnapi.Type.MOVIE, fnapi.Type.TV]:
                 yield self.__build_media_server_item(item)
         return None
 
@@ -482,7 +529,7 @@ class TrimeMedia:
             self._api.item_list(
                 page=1,
                 page_size=max(100, num * 5),
-                type=[fnapi.Type.Movie, fnapi.Type.TV],
+                types=[fnapi.Type.MOVIE, fnapi.Type.TV],
             )
             or []
         )
@@ -505,7 +552,7 @@ class TrimeMedia:
             self._api.item_list(
                 page=1,
                 page_size=max(100, num * 5),
-                type=[fnapi.Type.Movie, fnapi.Type.TV],
+                types=[fnapi.Type.MOVIE, fnapi.Type.TV],
             )
             or []
         )
@@ -534,7 +581,7 @@ class TrimeMedia:
 
     def __is_library_blocked(self, library_guid: str):
         if library := self._libraries.get(library_guid):
-            if library.category == fnapi.Category.Others:
+            if library.category == fnapi.Category.OTHERS:
                 # 忽略这个库
                 return True
         return (
