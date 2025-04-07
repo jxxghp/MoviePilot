@@ -188,7 +188,7 @@ class TheMovieDbModule(_ModuleBase):
                 return None
 
             # 保存到缓存
-            if meta:
+            if meta and cache:
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
