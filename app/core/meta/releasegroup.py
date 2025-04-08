@@ -103,7 +103,7 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
             else:
                 groups = self.__release_groups
         title = f"{title} "
-        groups_re = re.compile(r"(?<=[-@\[￡【&])(?:%s)(?=[@.\s\]\[】&])" % groups, re.I)
+        groups_re = re.compile(r"(?<=[-@\[￡【&])(?:%s)(?=[@.\s\S\]\[】&])" % groups, re.I)
         # 处理一个制作组识别多次的情况，保留顺序
         unique_groups = []
         for item in re.findall(groups_re, title):
