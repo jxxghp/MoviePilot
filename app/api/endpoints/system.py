@@ -28,6 +28,7 @@ from app.helper.message import MessageHelper, MessageQueueManager
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
+from app.helper.subscribe import SubscribeHelper
 from app.log import logger
 from app.monitor import Monitor
 from app.scheduler import Scheduler
@@ -179,9 +180,10 @@ def get_global_setting():
         exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
                  "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
     )
-    # 追加用户唯一ID
+    # 追加用户唯一ID和订阅分享管理权限
     info.update({
-        "USER_UNIQUE_ID": SystemUtils.generate_user_unique_id()
+        "USER_UNIQUE_ID": SubscribeHelper().get_user_uuid(),
+        "SUBSCRIBE_SHARE_MANAGE": SubscribeHelper().is_admin_user(),
     })
     return schemas.Response(success=True,
                             data=info)

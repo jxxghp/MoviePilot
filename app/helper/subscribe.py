@@ -5,6 +5,7 @@ from app.core.cache import cached, cache_backend
 from app.core.config import settings
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
+from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -32,13 +33,29 @@ class SubscribeHelper(metaclass=Singleton):
 
     _shares_cache_region = "subscribe_share"
 
+    _github_user = None
+
+    _share_user_id = None
+
+    _admin_users = [
+        "jxxghp",
+        "thsrite",
+        "InfinityPacer",
+        "DDSRem",
+        "Aqr-K",
+        "Putarku",
+        "4Nest",
+        "xyswordzoro"
+    ]
+
     def __init__(self):
         self.systemconfig = SystemConfigOper()
-        self.share_user_id = SystemUtils.generate_user_unique_id()
         if settings.SUBSCRIBE_STATISTIC_SHARE:
             if not self.systemconfig.get(SystemConfigKey.SubscribeReport):
                 if self.sub_report():
                     self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
+        self.get_user_uuid()
+        self.get_github_user()
 
     @cached(maxsize=20, ttl=1800)
     def get_statistic(self, stype: str, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
@@ -196,3 +213,35 @@ class SubscribeHelper(metaclass=Singleton):
         if res and res.status_code == 200:
             return res.json()
         return []
+
+    def get_user_uuid(self) -> str:
+        """
+        获取用户uuid
+        """
+        if not self._share_user_id:
+            self._share_user_id = SystemUtils.generate_user_unique_id()
+            logger.info(f"当前用户UUID: {self._share_user_id}")
+        return self._share_user_id
+
+    def get_github_user(self) -> str:
+        """
+        获取github用户
+        """
+        if self._github_user is None and settings.GITHUB_HEADERS:
+            res = RequestUtils(headers=settings.GITHUB_HEADERS,
+                               proxies=settings.PROXY,
+                               timeout=15).get_res(f"https://api.github.com/user")
+            if res:
+                self._github_user = res.json().get("login")
+                logger.info(f"当前Github用户: {self._github_user}")
+        return self._github_user
+
+    def is_admin_user(self) -> bool:
+        """
+        判断是否是管理员
+        """
+        if not self._github_user:
+            return False
+        if self._github_user in self._admin_users:
+            return True
+        return False
