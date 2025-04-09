@@ -45,7 +45,8 @@ class SubscribeHelper(metaclass=Singleton):
         "Aqr-K",
         "Putarku",
         "4Nest",
-        "xyswordzoro"
+        "xyswordzoro",
+        "wikrin"
     ]
 
     def __init__(self):
