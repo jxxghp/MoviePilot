@@ -152,7 +152,7 @@ class SubscribeHelper(metaclass=Singleton):
                                                 "share_title": share_title,
                                                 "share_comment": share_comment,
                                                 "share_user": share_user,
-                                                "share_uid": self.share_user_id,
+                                                "share_uid": self._share_user_id,
                                                 **subscribe_dict
                                             })
         if res is None:
@@ -172,7 +172,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, "当前没有开启订阅数据共享功能"
         res = RequestUtils(proxies=settings.PROXY,
                            timeout=5).delete_res(f"{self._sub_share}/{share_id}",
-                                                 params={"share_uid": self.share_user_id})
+                                                 params={"share_uid": self._share_user_id})
         if res is None:
             return False, "连接MoviePilot服务器失败"
         if res.ok:
