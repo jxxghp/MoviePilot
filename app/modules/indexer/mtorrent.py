@@ -193,7 +193,6 @@ class MTorrentSpider:
                 'id': torrent_id
             },
             'header': {
-                'Content-Type': 'application/json',
                 'User-Agent': f'{self._ua}',
                 'Accept': 'application/json, text/plain, */*',
                 'x-api-key': self._apikey
