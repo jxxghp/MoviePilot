@@ -74,7 +74,7 @@ class Subscribe(BaseModel):
     # 过滤规则组
     filter_groups: Optional[List[str]] = Field(default_factory=list)
     # 剧集组
-    episode_group: str = None
+    episode_group: Optional[str] = None
 
     class Config:
         orm_mode = True
