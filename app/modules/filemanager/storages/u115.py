@@ -323,6 +323,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             cid = '0'
         else:
             cid = fileitem.fileid
+            if not cid:
+                cid = self._path_to_id(fileitem.path)
 
         items = []
         offset = 0
