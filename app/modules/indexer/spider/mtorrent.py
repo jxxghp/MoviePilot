@@ -187,13 +187,12 @@ class MTorrentSpider:
         params = {
             'method': 'post',
             'cookie': False,
-            'params': {
-                'id': torrent_id
-            },
+            'params': f'id={torrent_id}',
             'header': {
                 'User-Agent': f'{self._ua}',
                 'Accept': 'application/json, text/plain, */*',
-                'x-api-key': self._apikey
+                'x-api-key': self._apikey,
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
             'result': 'data'
         }
