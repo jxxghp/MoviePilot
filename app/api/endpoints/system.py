@@ -283,6 +283,9 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
         success, message = settings.update_setting(key=key, value=value)
         return schemas.Response(success=success, message=message)
     elif key in {item.value for item in SystemConfigKey}:
+        if isinstance(value, list):
+            value = list(filter(None, value))
+            value = value if value else None
         SystemConfigOper().set(key, value)
         return schemas.Response(success=True)
     else:
