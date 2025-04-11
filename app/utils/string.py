@@ -642,13 +642,14 @@ class StringUtils:
         if len(parts) > 3:
             # 处理不希望包含多个冒号的情况（除了协议后的冒号）
             return None, None
-        # 不含端口地址
-        domain = ":".join(parts[:-1]).rstrip('/')
-        # 端口号
-        try:
+        elif len(parts) == 3:
             port = int(parts[-1])
-        except ValueError:
-            # 端口号不是整数，返回 None 表示无效
+            # 不含端口地址
+            domain = ":".join(parts[:-1]).rstrip('/')
+        elif len(parts) == 2:
+            port = 443 if address.startswith("https") else 80
+            domain = address
+        else:
             return None, None
         return domain, port
 
