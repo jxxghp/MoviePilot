@@ -38,7 +38,6 @@ RUN apt-get update -y \
         then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && curl https://rclone.org/install.sh | bash \
-    && curl --insecure -fsSL https://raw.githubusercontent.com/DDS-Derek/Aria2-Pro-Core/master/aria2-install.sh | bash \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
