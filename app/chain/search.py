@@ -36,7 +36,7 @@ class SearchChain(ChainBase):
 
     def search_by_id(self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
                      mtype: MediaType = None, area: Optional[str] = "title", season: Optional[int] = None,
-                     sites: List[int] = None) -> List[Context]:
+                     sites: List[int] = None, cache_local: bool = False) -> List[Context]:
         """
         根据TMDBID/豆瓣ID搜索资源，精确匹配，不过滤本地存在的资源
         :param tmdbid: TMDB ID
@@ -45,6 +45,7 @@ class SearchChain(ChainBase):
         :param area: 搜索范围，title or imdbid
         :param season: 季数
         :param sites: 站点ID列表
+        :param cache_local: 是否缓存到本地
         """
         mediainfo = self.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
         if not mediainfo:
@@ -59,12 +60,12 @@ class SearchChain(ChainBase):
             }
         results = self.process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
         # 保存到本地文件
-        bytes_results = pickle.dumps(results)
-        self.save_cache(bytes_results, self.__result_temp_file)
+        if cache_local:
+            self.save_cache(pickle.dumps(results), self.__result_temp_file)
         return results
 
     def search_by_title(self, title: str, page: Optional[int] = 0,
-                        sites: List[int] = None, cache_local: Optional[bool] = True) -> List[Context]:
+                        sites: List[int] = None, cache_local: Optional[bool] = False) -> List[Context]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
@@ -86,8 +87,7 @@ class SearchChain(ChainBase):
                             torrent_info=torrent) for torrent in torrents]
         # 保存到本地文件
         if cache_local:
-            bytes_results = pickle.dumps(contexts)
-            self.save_cache(bytes_results, self.__result_temp_file)
+            self.save_cache(pickle.dumps(contexts), self.__result_temp_file)
         return contexts
 
     def last_search_results(self) -> List[Context]:
