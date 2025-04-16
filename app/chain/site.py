@@ -297,7 +297,7 @@ class SiteChain(ChainBase):
             """
             if StringUtils.get_url_domain(inx.get("domain")) == sub_domain:
                 return inx.get("domain")
-            for ext_d in inx.get("ext_domains"):
+            for ext_d in inx.get("ext_domains", []):
                 if StringUtils.get_url_domain(ext_d) == sub_domain:
                     return ext_d
             return sub_domain
