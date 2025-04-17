@@ -45,7 +45,7 @@ RUN apt-get update -y \
         /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
-COPY requirements.in requirements.in
+COPY ../requirements.in requirements.in
 RUN apt-get update -y \
     && apt-get install -y build-essential \
     && pip install --upgrade pip \
@@ -61,12 +61,13 @@ RUN apt-get update -y \
         /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
-COPY . .
-RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
-    && cp -f /app/update /usr/local/bin/mp_update \
-    && cp -f /app/entrypoint /entrypoint \
-    && cp -f /app/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf \
-    && chmod +x /entrypoint /usr/local/bin/mp_update \
+COPY .. .
+RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
+    && cp -f /app/docker/nginx.template.conf /etc/nginx/nginx.template.conf \
+    && cp -f /app/docker/update.sh /usr/local/bin/mp_update.sh \
+    && cp -f /app/docker/entrypoint.sh /entrypoint.sh \
+    && cp -f /app/docker/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf \
+    && chmod +x /entrypoint.sh /usr/local/bin/mp_update.sh \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 918 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 918 \
@@ -75,8 +76,6 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
-    && python3 /app/setup.py \
-    && find /app/app -type f -name "*.py" ! -path "/app/app/main.py" -exec rm -f {} \; \
     && FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
@@ -86,7 +85,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
         while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
-    && rm -rf /tmp/* /app/build
+    && rm -rf /tmp/*
 EXPOSE 3000
 VOLUME [ "/config" ]
-ENTRYPOINT [ "/entrypoint" ]
+ENTRYPOINT [ "/entrypoint.sh" ]

@@ -26,7 +26,7 @@ function download_and_unzip() {
     local max_retries=3
     local url="$1"
     local target_dir="$2"
-    INFO "正在下载 ${url}..."
+    INFO "→ 正在下载 ${url}..."
     while [ $retries -lt $max_retries ]; do
         if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d ${TMP_PATH} - > /dev/null; then
             if [ -e ${TMP_PATH}/MoviePilot-* ]; then
@@ -54,19 +54,19 @@ function install_backend_and_download_resources() {
         return 1
     fi
     INFO "后端程序下载成功"
-    INFO "依赖安装中..."
+    INFO "→ 正在安装依赖..."
     if ! pip install ${PIP_OPTIONS} --upgrade --root-user-action=ignore pip > /dev/null; then
         ERROR "pip 更新失败，请重新拉取镜像"
         return 1
     fi
     if ! pip install ${PIP_OPTIONS} --root-user-action=ignore -r ${TMP_PATH}/App/requirements.txt > /dev/null; then
-        ERROR "安装依赖失败，请重新拉取镜像"
+        ERROR "依赖安装失败，请重新拉取镜像"
         return 1
     fi
-    INFO "安装依赖成功"
+    INFO "依赖安装成功"
     # 如果是"heads/v2.zip"，则查找v2开头的最新版本号
     if [[ "${1}" == "heads/v2.zip" ]]; then
-        INFO "正在获取前端最新版本号..."
+        INFO "→ 正在获取前端最新版本号..."
         # 获取所有发布的版本列表，并筛选出以v2开头的版本号
         releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v2\.")
         if [ -z "$releases" ]; then
@@ -78,7 +78,7 @@ function install_backend_and_download_resources() {
         fi
         INFO "前端最新版本号：${frontend_version}"
     else
-        INFO "正在获取前端版本号..."
+        INFO "→ 正在获取前端版本号..."
         # 从后端文件中读取前端版本号
         frontend_version=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" ${TMP_PATH}/App/version.py)
         if [[ "${frontend_version}" != *v* ]]; then
@@ -94,13 +94,13 @@ function install_backend_and_download_resources() {
     fi
     INFO "前端程序下载成功"
     # 备份插件目录
-    INFO "备份插件目录中..."
+    INFO "→ 正在备份插件目录..."
     rm -rf /plugins
     mkdir -p /plugins
     cp -a /app/app/plugins/* /plugins/
     rm -f /plugins/__init__.py
     # 备份站点资源
-    INFO "备份站点资源目录中..."
+    INFO "→ 正在备份站点资源目录..."
     rm -rf /resources_bakcup
     mkdir /resources_bakcup
     cp -a /app/app/helper/user.sites.bin /resources_bakcup
@@ -118,14 +118,13 @@ function install_backend_and_download_resources() {
     # 恢复插件目录
     cp -a /plugins/* /app/app/plugins/
     # 更新站点资源
-    INFO "开始更新站点资源..."
+    INFO "→ 开始更新站点资源..."
     if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" "Resources"; then
         cp -a /resources_bakcup/* /app/app/helper/
         rm -rf /resources_bakcup
         WARN "站点资源下载失败，继续使用旧的资源来启动..."
         return 1
     fi
-    INFO "站点资源下载成功"
     # 复制新站点资源
     cp -a ${TMP_PATH}/Resources/resources/* /app/app/helper/
     INFO "站点资源更新成功"
@@ -265,6 +264,7 @@ function get_priority() {
 }
 
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
+    INFO "▄■▀▄■▀▄■▀▄■▀▄■▀ 自动更新开始 ▀■▄▀■▄▀■▄▀■▄▀■▄"
     TMP_PATH=$(mktemp -d)
     if [ ! -d "${TMP_PATH}" ]; then
         # 如果自动生成 tmp 文件夹失败则手动指定，避免出现数据丢失等情况
@@ -326,6 +326,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     if [ -d "${TMP_PATH}" ]; then
         rm -rf "${TMP_PATH}"
     fi
+    INFO "▄■▀▄■▀▄■▀▄■▀▄■▀ 自动更新完成 ▀■▄▀■▄▀■▄▀■▄▀■▄"
 elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "false" ]]; then
     INFO "程序自动升级已关闭，如需自动升级请在创建容器时设置环境变量：MOVIEPILOT_AUTO_UPDATE=release"
 else
