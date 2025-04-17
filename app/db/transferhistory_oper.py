@@ -194,7 +194,6 @@ class TransferHistoryOper(DbOper):
                 episodes=meta.episode,
                 downloader=downloader,
                 download_hash=download_hash,
-                episode_group=mediainfo.episode_group,
                 status=0,
                 errmsg="未识别到媒体信息"
             )

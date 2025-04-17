@@ -6,8 +6,8 @@ from app import schemas
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.schemas.types import ChainEventType
-from chain.recommend import RecommendChain
-from schemas import RecommendSourceEventData
+from app.chain.recommend import RecommendChain
+from app.schemas import RecommendSourceEventData
 
 router = APIRouter()
 

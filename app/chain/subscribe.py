@@ -212,6 +212,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             'filter_groups': self.__get_default_subscribe_config(mediainfo.type, "filter_groups") if not kwargs.get(
                 "filter_groups") else kwargs.get("filter_groups")
         })
+        # 操作数据库
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')

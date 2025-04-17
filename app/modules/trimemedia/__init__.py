@@ -62,7 +62,9 @@ class TrimeMediaModule(_ModuleBase, _MediaServerBase[TrimeMedia]):
                 server.reconnect()
 
     def stop(self):
-        pass
+        for server in self.get_instances().values():
+            if server.is_authenticated():
+                server.disconnect()
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
@@ -73,7 +75,7 @@ class TrimeMediaModule(_ModuleBase, _MediaServerBase[TrimeMedia]):
         for name, server in self.get_instances().items():
             if not server.is_configured():
                 return False, f"飞牛影视配置不完整：{name}"
-            if server.is_inactive() and server.reconnect() != True:
+            if server.is_inactive() and not server.reconnect():
                 return False, f"无法连接飞牛影视：{name}"
         return True, ""
 

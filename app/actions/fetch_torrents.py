@@ -62,7 +62,7 @@ class FetchTorrentsAction(BaseAction):
         params = FetchTorrentsParams(**params)
         if params.search_type == "keyword":
             # 按关键字搜索
-            torrents = self.searchchain.search_by_title(title=params.name, sites=params.sites, cache_local=False)
+            torrents = self.searchchain.search_by_title(title=params.name, sites=params.sites)
             for torrent in torrents:
                 if global_vars.is_workflow_stopped(workflow_id):
                     break

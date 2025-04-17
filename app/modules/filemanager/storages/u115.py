@@ -323,6 +323,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
             cid = '0'
         else:
             cid = fileitem.fileid
+            if not cid:
+                cid = self._path_to_id(fileitem.path)
 
         items = []
         offset = 0
@@ -695,7 +697,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return schemas.FileItem(
                 storage=self.schema.value,
                 fileid=str(resp["file_id"]),
-                path=str(path) + ("/" if resp["file_category"] == "1" else ""),
+                path=str(path) + ("/" if resp["file_category"] == "0" else ""),
                 type="file" if resp["file_category"] == "1" else "dir",
                 name=resp["file_name"],
                 basename=Path(resp["file_name"]).stem,

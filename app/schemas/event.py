@@ -274,6 +274,7 @@ class RecommendMediaSource(BaseModel):
     """
     name: str = Field(..., description="数据源名称")
     api_path: str = Field(..., description="媒体数据源API地址")
+    type: str = Field(..., description="类型")
 
 
 class RecommendSourceEventData(ChainEventData):

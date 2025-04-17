@@ -4,7 +4,7 @@ import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 from app.core.config import settings
 from app.log import logger
@@ -19,27 +19,27 @@ class User:
 
 
 class Category(Enum):
-    Movie = "Movie"
+    MOVIE = "Movie"
     TV = "TV"
-    Mix = "Mix"
-    Others = "Others"
+    MIX = "Mix"
+    OTHERS = "Others"
 
     @classmethod
     def _missing_(cls, value):
-        return cls.Others
+        return cls.OTHERS
 
 
 class Type(Enum):
-    Movie = "Movie"
+    MOVIE = "Movie"
     TV = "TV"
-    Season = "Season"
-    Episode = "Episode"
-    Video = "Video"
-    Directory = "Directory"
+    SEASON = "Season"
+    EPISODE = "Episode"
+    VIDEO = "Video"
+    DIRECTORY = "Directory"
 
     @classmethod
     def _missing_(cls, value):
-        return cls.Video
+        return cls.VIDEO
 
 
 @dataclass
@@ -58,6 +58,13 @@ class MediaDbSummary:
     tv: int = 0
     video: int = 0
     total: int = 0
+
+
+@dataclass
+class Version:
+    # 飞牛影视版本
+    frontend: Optional[str] = None
+    backend: Optional[str] = None
 
 
 @dataclass
@@ -103,6 +110,7 @@ class Api:
         "_apikey",
         "_api_path",
         "_request_utils",
+        "_version",
     )
 
     @property
@@ -117,12 +125,33 @@ class Api:
     def apikey(self) -> str:
         return self._apikey
 
+    @property
+    def version(self) -> Optional[Version]:
+        return self._version
+
     def __init__(self, host: str, apikey: str):
-        self._api_path = "/v/api/v1"
+        """
+        :param host: 飞牛服务端地址，如http://127.0.0.1:5666/v
+        """
+        self._api_path = "/api/v1"
         self._host = host.rstrip("/")
         self._apikey = apikey
-        self._token = None
+        self._token: Optional[str] = None
+        self._version: Optional[Version] = None
         self._request_utils = RequestUtils(session=requests.Session())
+
+    def sys_version(self) -> Optional[Version]:
+        """
+        飞牛影视版本号
+        """
+        if (res := self.__request_api("/sys/version")) and res.success:
+            if res.data:
+                self._version = Version(
+                    frontend=res.data.get("version"),
+                    backend=res.data.get("mediasrvVersion"),
+                )
+                return self._version
+        return None
 
     def login(self, username, password) -> Optional[str]:
         """
@@ -131,14 +160,14 @@ class Api:
         :return: 成功返回token 否则返回None
         """
         if (
-                res := self.__request_api(
-                    "/login",
-                    data={
-                        "username": username,
-                        "password": password,
-                        "app_name": "trimemedia-web",
-                    },
-                )
+            res := self.__request_api(
+                "/login",
+                data={
+                    "username": username,
+                    "password": password,
+                    "app_name": "trimemedia-web",
+                },
+            )
         ) and res.success:
             self._token = res.data.get("token")
         return self._token
@@ -250,7 +279,7 @@ class Api:
         扫描指定媒体库
         """
         if (
-                res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
+            res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
         ) and res.success:
             if res.data:
                 return True
@@ -272,22 +301,22 @@ class Api:
         return item
 
     def item_list(
-            self,
-            guid: Optional[str] = None,
-            type=None,
-            exclude_grouped_video=True,
-            page=1,
-            page_size=22,
-            sort_by="create_time",
-            sort="DESC",
+        self,
+        guid: Optional[str] = None,
+        types=None,
+        exclude_grouped_video=True,
+        page=1,
+        page_size=22,
+        sort_by="create_time",
+        sort="DESC",
     ) -> Optional[list[Item]]:
         """
         媒体列表
         """
-        if type is None:
-            type = [Type.Movie, Type.TV, Type.Directory, Type.Video]
+        if types is None:
+            types = [Type.MOVIE, Type.TV, Type.DIRECTORY, Type.VIDEO]
         post = {
-            "tags": {"type": type} if type else {},
+            "tags": {"type": types} if types else {},
             "sort_type": sort,
             "sort_column": sort_by,
             "page": page,
@@ -307,25 +336,48 @@ class Api:
         搜索影片、演员
         """
         if (
-                res := self.__request_api("/search/list", params={"q": keywords})
+            res := self.__request_api("/search/list", params={"q": keywords})
         ) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
 
     def item(self, guid: str) -> Optional[Item]:
-        """ """
+        """
+        查询媒体详情
+        """
         if (res := self.__request_api(f"/item/{guid}")) and res.success:
             return self.__build_item(res.data)
         return None
 
+    def del_item(self, guid: str, delete_file: bool) -> bool:
+        """
+        删除媒体
+
+        :param delete_file: True删除媒体文件，False仅从媒体库移除
+        """
+        if (
+            res := self.__request_api(
+                f"/item/{guid}",
+                method="delete",
+                data={"delete_file": 1 if delete_file else 0, "media_guids": []},
+            )
+        ) and res.success:
+            if res.data:
+                return True
+        return False
+
     def season_list(self, tv_guid: str) -> Optional[list[Item]]:
-        """ """
+        """
+        查询季列表
+        """
         if (res := self.__request_api(f"/season/list/{tv_guid}")) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
 
     def episode_list(self, season_guid: str) -> Optional[list[Item]]:
-        """ """
+        """
+        查询剧集列表
+        """
         if (res := self.__request_api(f"/episode/list/{season_guid}")) and res.success:
             return [self.__build_item(info) for info in res.data]
         return None
@@ -338,12 +390,12 @@ class Api:
             return [self.__build_item(info) for info in res.data]
         return None
 
-    def __get_authx(self, api_path, body: Optional[str]):
+    def __get_authx(self, api_path: str, body: Optional[str]):
         """
         计算消息签名
         """
-        if api_path[0] != "/":
-            api_path = "/" + api_path
+        if not api_path.startswith("/v"):
+            api_path = "/v" + api_path
         nonce = str(random.randint(100000, 999999))
         ts = str(int(time.time() * 1000))
         md5 = hashlib.md5()
@@ -366,10 +418,17 @@ class Api:
         return f"nonce={nonce}&timestamp={ts}&sign={sign}"
 
     def __request_api(
-            self, api: str, method: str = None, params: dict = None, data: dict = None
+        self,
+        api: str,
+        method: Optional[str] = None,
+        params: Optional[dict] = None,
+        data: Optional[dict] = None,
+        suppress_log=False,
     ):
         """
         请求飞牛影视API
+
+        :param suppress_log: 是否禁止日志
         """
 
         @dataclass
@@ -397,7 +456,7 @@ class Api:
         url = self._host + api_path
         if method is None:
             method = "get" if data is None else "post"
-        if method == "post":
+        if method != "get":
             json_body = (
                 json.dumps(data, allow_nan=False, cls=JsonEncoder) if data else ""
             )
@@ -422,11 +481,13 @@ class Api:
                 resp = res.json()
                 msg = resp.get("msg")
                 if code := int(resp.get("code", -1)):
-                    logger.error(f"请求接口 {api_path} 失败，错误码：{code} {msg}")
+                    if not suppress_log:
+                        logger.error(f"请求接口 {url} 失败，错误码：{code} {msg}")
                     return Result(code, msg)
                 return Result(0, msg, resp.get("data"))
-            else:
-                logger.error(f"请求接口 {api_path} 失败")
+            elif not suppress_log:
+                logger.error(f"请求接口 {url} 失败")
         except Exception as e:
-            logger.error(f"请求接口 {api_path} 异常：" + str(e))
+            if not suppress_log:
+                logger.error(f"请求接口 {url} 异常：" + str(e))
         return None

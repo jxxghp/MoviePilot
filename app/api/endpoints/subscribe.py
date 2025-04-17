@@ -75,23 +75,12 @@ def create_subscribe(
         title = subscribe_in.name
     else:
         title = None
+    # 订阅用户
+    subscribe_in.username = current_user.name
     sid, message = SubscribeChain().add(mtype=mtype,
                                         title=title,
-                                        year=subscribe_in.year,
-                                        tmdbid=subscribe_in.tmdbid,
-                                        season=subscribe_in.season,
-                                        doubanid=subscribe_in.doubanid,
-                                        bangumiid=subscribe_in.bangumiid,
-                                        mediaid=subscribe_in.mediaid,
-                                        episode_group=subscribe_in.episode_group,
-                                        username=current_user.name,
-                                        best_version=subscribe_in.best_version,
-                                        save_path=subscribe_in.save_path,
-                                        search_imdbid=subscribe_in.search_imdbid,
-                                        custom_words=subscribe_in.custom_words,
-                                        media_category=subscribe_in.media_category,
-                                        filter_groups=subscribe_in.filter_groups,
-                                        exist_ok=True)
+                                        exist_ok=True,
+                                        **subscribe_in.dict())
     return schemas.Response(
         success=bool(sid), message=message, data={"id": sid}
     )

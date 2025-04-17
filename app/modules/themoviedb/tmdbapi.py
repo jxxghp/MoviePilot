@@ -1358,6 +1358,9 @@ class TmdbApi:
             return {}
         for group_season in group_seasons:
             if group_season.get('order') == season:
+                # 剧集组中每个季的episode_number从1开始
+                for i, e in enumerate(group_season.get('episodes', []), start=1):
+                    e['episode_number'] = i
                 return group_season
         return {}
 
