@@ -264,7 +264,6 @@ function get_priority() {
 }
 
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
-    INFO "▄■▀▄■▀▄■▀▄■▀▄■▀ 自动更新开始 ▀■▄▀■▄▀■▄▀■▄▀■▄"
     TMP_PATH=$(mktemp -d)
     if [ ! -d "${TMP_PATH}" ]; then
         # 如果自动生成 tmp 文件夹失败则手动指定，避免出现数据丢失等情况
@@ -326,7 +325,6 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     if [ -d "${TMP_PATH}" ]; then
         rm -rf "${TMP_PATH}"
     fi
-    INFO "▄■▀▄■▀▄■▀▄■▀▄■▀ 自动更新完成 ▀■▄▀■▄▀■▄▀■▄▀■▄"
 elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "false" ]]; then
     INFO "程序自动升级已关闭，如需自动升级请在创建容器时设置环境变量：MOVIEPILOT_AUTO_UPDATE=release"
 else

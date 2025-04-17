@@ -21,7 +21,7 @@ function WARN() {
 }
 
 # 生成HTTPS配置块
-if [ "$ENABLE_SSL" = "true" ]; then
+if [ "${ENABLE_SSL}" = "true" ]; then
     export HTTPS_SERVER_CONF=$(cat <<EOF
     server {
         include /etc/nginx/mime.types;
@@ -53,7 +53,7 @@ fi
 
 # 使用 `envsubst` 将模板文件中的 ${NGINX_PORT} 替换为实际的环境变量值
 export NGINX_CLIENT_MAX_BODY_SIZE=${NGINX_CLIENT_MAX_BODY_SIZE:-10m}
-envsubst '${NGINX_PORT}${PORT}${NGINX_CLIENT_MAX_BODY_SIZE}${HTTPS_SERVER_CONF}' < /etc/nginx/nginx.template.conf > /etc/nginx/nginx.conf
+envsubst '${NGINX_PORT}${PORT}${NGINX_CLIENT_MAX_BODY_SIZE}${ENABLE_SSL}${HTTPS_SERVER_CONF}' < /etc/nginx/nginx.template.conf > /etc/nginx/nginx.conf
 # 自动更新
 cd /
 source /usr/local/bin/mp_update.sh
