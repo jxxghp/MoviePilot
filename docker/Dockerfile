@@ -53,7 +53,6 @@ RUN apt-get update -y \
     && apt-get install -y google-chrome-stable \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.in requirements.in
 RUN apt-get update -y \
     && apt-get install -y build-essential \
     && pip install --upgrade pip \

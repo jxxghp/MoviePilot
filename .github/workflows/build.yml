@@ -52,13 +52,6 @@ jobs:
           cache-from: type=gha, scope=${{ github.workflow }}-docker
           cache-to: type=gha, scope=${{ github.workflow }}-docker
 
-      - name: Delete Release
-        uses: dev-drprasad/delete-tag-and-release@v1.1
-        with:
-          tag_name: ${{ env.app_version }}
-          delete_release: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Generate Release
         uses: softprops/action-gh-release@v2
         with:
