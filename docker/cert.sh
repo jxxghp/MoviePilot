@@ -19,11 +19,9 @@ function WARN() {
 }
 
 # 核心条件验证
-if [ "$ENABLE_SSL" = "true" ] && \
-   [ "$AUTO_ISSUE_CERT" = "true" ] && \
-   [ -n "$SSL_DOMAIN" ]; then
-
-    INFO "▄■▀▄■▀▄■▀▄■▀▄■▀ 证书管理开始 ▀■▄▀■▄▀■▄▀■▄▀■▄"
+if [ "${ENABLE_SSL}" = "true" ] && \
+   [ "${AUTO_ISSUE_CERT}" = "true" ] && \
+   [ -n "${SSL_DOMAIN}" ]; then
 
     # 创建证书目录
     mkdir -p /config/certs/"${SSL_DOMAIN}"
@@ -42,8 +40,8 @@ if [ "$ENABLE_SSL" = "true" ] && \
         )
 
         # 添加邮箱参数（如果设置）
-        if [ -n "$SSL_EMAIL" ]; then
-            INSTALL_ARGS+=("--accountemail" "$SSL_EMAIL")
+        if [ -n "${SSL_EMAIL}" ]; then
+            INSTALL_ARGS+=("--accountemail" "${SSL_EMAIL}")
         else
             WARN "未设置SSL_EMAIL，建议配置邮箱用于证书过期提醒"
         fi
@@ -98,8 +96,6 @@ if [ "$ENABLE_SSL" = "true" ] && \
     chmod 644 /etc/cron.d/acme
     service cron start
 
-    INFO "▄■▀▄■▀▄■▀▄■▀▄■▀ 证书管理完成 ▀■▄▀■▄▀■▄▀■▄▀■▄"
-
-elif [ "$ENABLE_SSL" = "true" ] && [ "$AUTO_ISSUE_CERT" = "true" ] && [ -z "$SSL_DOMAIN" ]; then
+elif [ "${ENABLE_SSL}" = "true" ] && [ "${AUTO_ISSUE_CERT}" = "true" ] && [ -z "${SSL_DOMAIN}" ]; then
     WARN "已启用自动签发证书但未设置SSL_DOMAIN，跳过证书管理"
 fi
