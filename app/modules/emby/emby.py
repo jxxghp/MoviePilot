@@ -1031,6 +1031,8 @@ class Emby:
             eventItem.image_url = self.get_remote_image_by_id(item_id=eventItem.item_id,
                                                               image_type="Backdrop")
 
+        eventItem.json = message
+
         return eventItem
 
     def get_data(self, url: str) -> Optional[Response]:

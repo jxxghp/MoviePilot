@@ -696,6 +696,8 @@ class Jellyfin:
             # jellyfin 的 webhook 不含 item_path，需要单独获取
             eventItem.item_path = self.get_item_path_by_id(eventItem.item_id)
 
+        eventItem.json = message
+
         return eventItem
 
     @staticmethod
