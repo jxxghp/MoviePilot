@@ -113,6 +113,7 @@ class DownloadHistoryOper(DbOper):
                     season: Optional[str] = None, episode: Optional[str] = None, tmdbid=None) -> List[DownloadHistory]:
         """
         按类型、标题、年份、季集查询下载记录
+        tmdbid + mtype 或 title + year
         """
         return DownloadHistory.get_last_by(db=self._db,
                                            mtype=mtype,
