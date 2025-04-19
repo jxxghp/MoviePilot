@@ -85,45 +85,54 @@ class DownloadHistory(Base):
                     year: Optional[str] = None, season: Optional[str] = None,
                     episode: Optional[str] = None, tmdbid: Optional[int] = None):
         """
-        据tmdbid、season、season_episode查询转移记录
+        据tmdbid、season、season_episode查询下载记录
+        tmdbid + mtype 或 title + year
         """
         result = None
-        if tmdbid and not season and not episode:
-            result = db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid).order_by(
+        # TMDBID + 类型
+        if tmdbid and mtype:
+            # 电视剧某季某集
+            if season and episode:
+                result = db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
+                                                          DownloadHistory.type == mtype,
+                                                          DownloadHistory.seasons == season,
+                                                          DownloadHistory.episodes == episode).order_by(
                 DownloadHistory.id.desc()).all()
-        if tmdbid and season and not episode:
-            result = db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
-                                                      DownloadHistory.seasons == season).order_by(
+            # 电视剧某季
+            elif season:
+                result = db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
+                                                          DownloadHistory.type == mtype,
+                                                          DownloadHistory.seasons == season).order_by(
                 DownloadHistory.id.desc()).all()
-        if tmdbid and season and episode:
-            result = db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
-                                                      DownloadHistory.seasons == season,
-                                                      DownloadHistory.episodes == episode).order_by(
+            else:
+                # 电视剧所有季集/电影
+                result = db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
+                                                          DownloadHistory.type == mtype).order_by(
                 DownloadHistory.id.desc()).all()
-        # 电视剧所有季集｜电影
-        if not season and not episode:
-            result = db.query(DownloadHistory).filter(DownloadHistory.type == mtype,
-                                                      DownloadHistory.title == title,
-                                                      DownloadHistory.year == year).order_by(
+        # 标题 + 年份
+        elif title and year:
+            # 电视剧某季某集
+            if season and episode:
+                result = db.query(DownloadHistory).filter(DownloadHistory.title == title,
+                                                          DownloadHistory.year == year,
+                                                          DownloadHistory.seasons == season,
+                                                          DownloadHistory.episodes == episode).order_by(
                 DownloadHistory.id.desc()).all()
-        # 电视剧某季
-        if season and not episode:
-            result = db.query(DownloadHistory).filter(DownloadHistory.type == mtype,
-                                                      DownloadHistory.title == title,
-                                                      DownloadHistory.year == year,
-                                                      DownloadHistory.seasons == season).order_by(
+            # 电视剧某季
+            elif season:
+                result = db.query(DownloadHistory).filter(DownloadHistory.title == title,
+                                                          DownloadHistory.year == year,
+                                                          DownloadHistory.seasons == season).order_by(
                 DownloadHistory.id.desc()).all()
-        # 电视剧某季某集
-        if season and episode:
-            result = db.query(DownloadHistory).filter(DownloadHistory.type == mtype,
-                                                      DownloadHistory.title == title,
-                                                      DownloadHistory.year == year,
-                                                      DownloadHistory.seasons == season,
-                                                      DownloadHistory.episodes == episode).order_by(
+            else:
+                # 电视剧所有季集/电影
+                result = db.query(DownloadHistory).filter(DownloadHistory.title == title,
+                                                          DownloadHistory.year == year).order_by(
                 DownloadHistory.id.desc()).all()
 
         if result:
             return list(result)
+        return []
 
     @staticmethod
     @db_query
