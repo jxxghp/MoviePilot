@@ -518,32 +518,33 @@ def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: 
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
+    # 季信息
+    seas: List[int] = []
+
     # 获取TVDBID
     if not term.startswith("tvdb:"):
         mediainfo = MediaChain().recognize_media(meta=MetaInfo(term),
                                                  mtype=MediaType.TV)
         if not mediainfo:
             return [SonarrSeries()]
-        tvdbid = mediainfo.tvdb_id
-        if not tvdbid:
-            return [SonarrSeries()]
+
+        # 季信息
+        if mediainfo.seasons:
+            seas = list(mediainfo.seasons)
     else:
-        mediainfo = None
         tvdbid = int(term.replace("tvdb:", ""))
 
-    # 查询TVDB信息
-    tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
-    if not tvdbinfo:
-        return [SonarrSeries()]
+        # 查询TVDB信息
+        tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
+        if not tvdbinfo:
+            return [SonarrSeries()]
 
-    # 季信息
-    seas: List[int] = []
-    sea_num = tvdbinfo.get('season')
-    if sea_num:
-        seas = list(range(1, int(sea_num) + 1))
+        # 季信息
+        sea_num = tvdbinfo.get('season')
+        if sea_num:
+            seas = list(range(1, int(sea_num) + 1))
 
-    # 根据TVDB查询媒体信息
-    if not mediainfo:
+        # 根据TVDB查询媒体信息
         mediainfo = MediaChain().recognize_media(meta=MetaInfo(tvdbinfo.get('seriesName')),
                                                  mtype=MediaType.TV)
 
