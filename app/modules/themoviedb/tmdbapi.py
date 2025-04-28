@@ -33,7 +33,7 @@ class TmdbApi:
         # APIKEY
         self.tmdb.api_key = settings.TMDB_API_KEY
         # 语种
-        self.tmdb.language = 'zh'
+        self.tmdb.language = settings.TMDB_LANGUAGE
         # 代理
         self.tmdb.proxies = settings.PROXY
         # 调试模式
@@ -632,7 +632,8 @@ class TmdbApi:
             # 转换多语种标题
             self.__update_tmdbinfo_extra_title(tmdb_info)
             # 转换中文标题
-            self.__update_tmdbinfo_cn_title(tmdb_info)
+            if settings.TMDB_LANGUAGE == "zh":
+                self.__update_tmdbinfo_cn_title(tmdb_info)
 
         return tmdb_info
 

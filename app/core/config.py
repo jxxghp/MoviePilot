@@ -101,6 +101,8 @@ class ConfigModel(BaseModel):
     TMDB_IMAGE_DOMAIN: str = "image.tmdb.org"
     # TMDB API地址
     TMDB_API_DOMAIN: str = "api.themoviedb.org"
+    # TMDB元数据语言
+    TMDB_LANGUAGE: str = "zh"
     # TMDB API Key
     TMDB_API_KEY: str = "db55323b8d3e4154498498a75642b381"
     # TVDB API Key
