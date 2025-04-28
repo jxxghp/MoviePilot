@@ -268,7 +268,7 @@ class TheMovieDbModule(_ModuleBase):
                             # 当前季第一季时间
                             first_date = episodes[0].get("air_date")
                             # 判断是不是日期格式
-                            if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
+                            if first_date and re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
                                 season_years[season] = str(first_date).split("-")[0]
                     if season_years:
                         mediainfo.season_years = season_years
