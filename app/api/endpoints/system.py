@@ -171,14 +171,20 @@ def cache_img(
 
 
 @router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
-def get_global_setting():
+def get_global_setting(request: Request):
     """
-    查询非敏感系统设置（无需鉴权）
+    查询非敏感系统设置（仅允许本地调用，无需鉴权）
     """
+    # 检查请求来源是否为本地地址
+    client_host = request.client.host
+    if client_host not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="Access forbidden: Only local requests are allowed")
+
     # FIXME: 新增敏感配置项时要在此处添加排除项
     info = settings.dict(
         exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
-                 "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
+                 "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN", "U115_APP_ID",
+                 "ALIPAN_APP_ID", }
     )
     # 追加用户唯一ID和订阅分享管理权限
     info.update({
