@@ -12,6 +12,7 @@ from app.core.config import global_vars
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton, SingletonClass
+from app.utils.template import TemplateRenderer
 from app.log import logger
 
 
@@ -78,6 +79,32 @@ class MessageQueueManager(metaclass=SingletonClass):
         """
         hours, minutes = map(int, time_str.split(':'))
         return hours * 60 + minutes
+
+    @staticmethod
+    def get_template_dict(**kwargs) -> dict:
+        """
+        获取渲染上下文
+        :return: 渲染上下文字典
+        """
+        return TemplateRenderer.for_context(**kwargs)
+    
+    @staticmethod
+    def render_template_dict(template_content: dict, context_data: dict) -> Optional[dict]:
+        """
+        使用dict渲染模板
+        :param template_content: 模板内容(以dict格式传入)
+        :param context_data: 上下文数据
+        :return: 解析后的字典
+        """
+        try:
+            template_str = json.dumps(template_content, ensure_ascii=False)
+            rendered_output = TemplateRenderer.render_template(template_str, context_data)
+            parsed_dict = json.loads(rendered_output)
+        except Exception as e:
+            logger.error(f"模板解析错误：{str(e)}")
+            return
+
+        return parsed_dict
 
     def _is_in_scheduled_time(self, current_time: datetime) -> bool:
         """

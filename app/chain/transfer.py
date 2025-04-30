@@ -28,7 +28,7 @@ from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
     TransferTask, TransferQueue, TransferJob, TransferJobTask
-from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
+from app.schemas.types import ContentType, TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -409,14 +409,18 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 transferinfo=transferinfo
             )
             # 发送失败消息
+            render_data = self.messagequeue.get_template_dict(
+                meta=task.meta, mediainfo=task.mediainfo, 
+                transferinfo=transferinfo, episodes_info=task.episodes_info)
             self.post_message(Notification(
                 mtype=NotificationType.Manual,
+                ctype=ContentType.OrganizeFailure,
                 title=f"{task.mediainfo.title_year} {task.meta.season_episode} 入库失败！",
                 text=f"原因：{transferinfo.message or '未知'}",
                 image=task.mediainfo.get_message_image(),
                 username=task.username,
                 link=settings.MP_DOMAIN('#/history')
-            ))
+            ), render_data=render_data)
             # 整理失败
             self.jobview.fail_task(task)
             return False, transferinfo.message
@@ -1344,6 +1348,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         发送入库成功的消息
         """
+        render_data = self.messagequeue.get_template_dict(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo, season_episode=season_episode)
         msg_title = f"{mediainfo.title_year} {meta.season_episode if not season_episode else season_episode} 已入库"
         if mediainfo.vote_average:
             msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
@@ -1360,6 +1365,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 发送
         self.post_message(Notification(
             mtype=NotificationType.Organize,
+            ctype=ContentType.OrganizeSuccess,
             title=msg_title, text=msg_str, image=mediainfo.get_message_image(),
             username=username,
-            link=settings.MP_DOMAIN('#/history')))
+            link=settings.MP_DOMAIN('#/history')), render_data=render_data)

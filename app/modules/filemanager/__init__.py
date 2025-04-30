@@ -3,8 +3,6 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional, List, Tuple, Union, Dict
 
-from jinja2 import Template
-
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
@@ -19,6 +17,7 @@ from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage, \
     TransferRenameEventData, TransferInterceptEventData
 from app.schemas.types import MediaType, ModuleType, ChainEventType, OtherModulesType
+from app.utils.template import TemplateRenderer
 from app.utils.system import SystemUtils
 
 lock = Lock()
@@ -1142,98 +1141,7 @@ class FileManagerModule(_ModuleBase):
         :param file_ext: 文件扩展名
         :param episodes_info: 当前季的全部集信息
         """
-
-        def __convert_invalid_characters(filename: str):
-            if not filename:
-                return filename
-            invalid_characters = r'\/:*?"<>|'
-            # 创建半角到全角字符的转换表
-            halfwidth_chars = "".join([chr(i) for i in range(33, 127)])
-            fullwidth_chars = "".join([chr(i + 0xFEE0) for i in range(33, 127)])
-            translation_table = str.maketrans(halfwidth_chars, fullwidth_chars)
-            # 将不支持的字符替换为对应的全角字符
-            for char in invalid_characters:
-                filename = filename.replace(char, char.translate(translation_table))
-            return filename
-
-        # 获取集标题
-        episode_title = None
-        if meta.begin_episode and episodes_info:
-            for episode in episodes_info:
-                if episode.episode_number == meta.begin_episode:
-                    episode_title = episode.name
-                    break
-        # 获取集播出日期
-        episode_date = None
-        if meta.begin_episode and episodes_info:
-            for episode in episodes_info:
-                if episode.episode_number == meta.begin_episode:
-                    episode_date = episode.air_date
-                    break
-
-        return {
-            # 标题
-            "title": __convert_invalid_characters(mediainfo.title),
-            # 英文标题
-            "en_title": __convert_invalid_characters(mediainfo.en_title),
-            # 原语种标题
-            "original_title": __convert_invalid_characters(mediainfo.original_title),
-            # 原文件名
-            "original_name": meta.title,
-            # 识别名称（优先使用中文）
-            "name": meta.name,
-            # 识别的英文名称（可能为空）
-            "en_name": meta.en_name,
-            # 年份
-            "year": mediainfo.year or meta.year,
-            # 季年份根据season值获取
-            "season_year": mediainfo.season_years.get(
-                int(meta.season_seq),
-                None) if (mediainfo.season_years and meta.season_seq) else None,
-            # 资源类型
-            "resourceType": meta.resource_type,
-            # 特效
-            "effect": meta.resource_effect,
-            # 版本
-            "edition": meta.edition,
-            # 分辨率
-            "videoFormat": meta.resource_pix,
-            # 制作组/字幕组
-            "releaseGroup": meta.resource_team,
-            # 视频编码
-            "videoCodec": meta.video_encode,
-            # 音频编码
-            "audioCodec": meta.audio_encode,
-            # TMDBID
-            "tmdbid": mediainfo.tmdb_id,
-            # IMDBID
-            "imdbid": mediainfo.imdb_id,
-            # 豆瓣ID
-            "doubanid": mediainfo.douban_id,
-            # 季号
-            "season": meta.season_seq,
-            # 集号
-            "episode": meta.episode_seqs,
-            # 季集 SxxExx
-            "season_episode": "%s%s" % (meta.season, meta.episode),
-            # 段/节
-            "part": meta.part,
-            # 剧集标题
-            "episode_title": __convert_invalid_characters(episode_title),
-            # 剧集日期根据episodes_info值获取
-            "episode_date": episode_date,
-            # 文件后缀
-            "fileExt": file_ext,
-            # 自定义占位符
-            "customization": meta.customization,
-            # 文件元数据
-            "__meta__": meta,
-            # 识别的媒体信息
-            "__mediainfo__": mediainfo,
-            # 当前季的全部集信息
-            "__episodes_info__": episodes_info,
-        }
-
+        return TemplateRenderer.for_context(meta=meta, mediainfo=mediainfo, file_extension=file_ext, episodes_info=episodes_info)
     @staticmethod
     def get_rename_path(template_string: str, rename_dict: dict, path: Path = None) -> Path:
         """
@@ -1243,10 +1151,8 @@ class FileManagerModule(_ModuleBase):
         :param path: 可选的基础路径，如果提供，将在其基础上拼接生成的路径
         :return: 生成的完整路径
         """
-        # 创建jinja2模板对象
-        template = Template(template_string)
         # 渲染生成的字符串
-        render_str = template.render(rename_dict)
+        render_str = TemplateRenderer.render_template(template_content=template_string, context_data=rename_dict)
 
         logger.debug(f"Initial render string: {render_str}")
         # 发送智能重命名事件

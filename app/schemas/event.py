@@ -307,3 +307,29 @@ class MediaRecognizeConvertEventData(ChainEventData):
 
     # 输出参数
     media_dict: dict = Field(default=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）")
+
+
+class NoticeHandlingEventData(ChainEventData):
+    """
+    NoticeHandling 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        notification (Notification): 消息体
+        render_data (Dict): 渲染上下文字典
+
+        # 输出参数
+        cancel (bool): 是否取消发送消息，默认值为 False
+        notification (Notification): 消息体
+        source (str): 取消来源，如`插件名称`
+        reason (str): 取消原因，描述取消通知发送的具体原因
+    """
+    # 输入参数
+    notification: Any = Field(None, description="消息体")
+    render_data: Dict = Field(default_factory=dict, description="渲染上下文字典")
+
+    # 输出参数
+    cancel: bool = Field(default=False, description="是否取消发送消息")
+    notification: Any = Field(None, description="消息体")
+    source: str = Field(default="未知来源", description="取消来源")
+    reason: str = Field(default="", description="取消原因")

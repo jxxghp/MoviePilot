@@ -81,6 +81,8 @@ class ChainEventType(Enum):
     ResourceSelection = "resource.selection"
     # 资源下载
     ResourceDownload = "resource.download"
+    # 通知干预
+    NoticeHandling = "notice.handling"
     # 探索数据源
     DiscoverSource = "discover.source"
     # 媒体识别转换
@@ -185,6 +187,37 @@ class NotificationType(Enum):
     Plugin = "插件"
     # 其它消息
     Other = "其它"
+
+
+# 消息内容类型
+class ContentType(str, Enum):
+    """
+    消息内容类别枚举
+    操作状态的通知消息类型标识
+    """
+
+    # region 订阅相关
+    # 添加成功
+    SubscribeSuccess: str = "subscribe.success"
+    # 添加失败
+    SubscribeFailure: str = "subscribe.failure"
+    # 订阅完成
+    SubscribeComplete: str = "subscribe.complete"
+    # endregion
+
+    # region 整理入库相关
+    # 入库成功
+    OrganizeSuccess: str = "organize.success"
+    # 入库失败
+    OrganizeFailure: str = "organize.failure"
+    # endregion
+
+    # region 资源下载相关
+    # 下载成功
+    DownloadSuccess: str = "download.success"
+    # 下载失败
+    DownloadFailure: str = "download.failure"
+    # endregion
 
 
 # 消息渠道

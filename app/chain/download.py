@@ -20,7 +20,7 @@ from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, ResourceDownloadEventData
-from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ChainEventType
+from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -85,15 +85,17 @@ class DownloadChain(ChainBase):
             msg_text = f"{msg_text}\n描述：{torrent.description}"
 
         # 下载成功按规则发送消息
+        render_data = self.messagequeue.get_template_dict(meta=meta, mediainfo=mediainfo)
         self.post_message(Notification(
             channel=channel,
             mtype=NotificationType.Download,
+            ctype=ContentType.DownloadSuccess,
             title=f"{mediainfo.title_year} "
                   f"{'%s %s' % (meta.season, download_episodes) if download_episodes else meta.season_episode} 开始下载",
             text=msg_text,
             image=mediainfo.get_message_image(),
             link=settings.MP_DOMAIN('/#/downloading'),
-            username=username))
+            username=username), render_data=render_data)
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,

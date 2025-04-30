@@ -29,7 +29,7 @@ from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import MediaRecognizeConvertEventData
-from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType
+from app.schemas.types import ContentType, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType
 from app.utils.singleton import Singleton
 
 
@@ -218,14 +218,16 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
                 # 失败发回原用户
+                render_data = self.messagequeue.get_template_dict(meta=metainfo, mediainfo=mediainfo)
                 self.post_message(schemas.Notification(channel=channel,
                                                        source=source,
                                                        mtype=NotificationType.Subscribe,
+                                                       ctype=ContentType.SubscribeFailure,
                                                        title=f"{mediainfo.title_year} {metainfo.season} "
                                                              f"添加订阅失败！",
                                                        text=f"{err_msg}",
                                                        image=mediainfo.get_message_image(),
-                                                       userid=userid))
+                                                       userid=userid), render_data=render_data)
             return None, err_msg
         elif message:
             logger.info(f'{mediainfo.title_year} {metainfo.season} 添加订阅成功')
@@ -242,12 +244,14 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             else:
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
+            render_data = self.messagequeue.get_template_dict(meta=metainfo, mediainfo=mediainfo)
             self.post_message(schemas.Notification(mtype=NotificationType.Subscribe,
+                                                   ctype=ContentType.SubscribeSuccess,
                                                    title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                                    text=text,
                                                    image=mediainfo.get_message_image(),
                                                    link=link,
-                                                   username=username))
+                                                   username=username), render_data=render_data)
         # 发送事件
         EventManager().send_event(EventType.SubscribeAdded, {
             "subscribe_id": sid,
@@ -1017,11 +1021,13 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         else:
             link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
         # 完成订阅按规则发送消息
+        render_data = self.messagequeue.get_template_dict(meta=meta, mediainfo=mediainfo)
         self.post_message(schemas.Notification(mtype=NotificationType.Subscribe,
+                                               ctype=ContentType.SubscribeComplete,
                                                title=f'{mediainfo.title_year} {meta.season} 已完成{msgstr}',
                                                image=mediainfo.get_message_image(),
                                                link=link,
-                                               username=subscribe.username))
+                                               username=subscribe.username), render_data=render_data)
         # 发送事件
         EventManager().send_event(EventType.SubscribeComplete, {
             "subscribe_id": subscribe.id,

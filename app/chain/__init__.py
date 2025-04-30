@@ -21,7 +21,8 @@ from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem, TransferDirectoryConf
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
+from app.schemas.event import NoticeHandlingEventData
+from app.schemas.types import ChainEventType, TorrentStatus, MediaType, MediaImageType, EventType
 from app.utils.object import ObjectUtils
 
 
@@ -492,12 +493,28 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("media_files", mediainfo=mediainfo)
 
-    def post_message(self, message: Notification) -> None:
+    def post_message(self, message: Notification, render_data: Optional[Dict]) -> None:
         """
         发送消息
         :param message:  消息体
+        :param render_data:  渲染数据
         :return: 成功或失败
         """
+        event_data = NoticeHandlingEventData(
+            notification=message,
+            render_data=render_data
+        )
+        event = self.eventmanager.send_event(ChainEventType.NoticeHandling, event_data)
+        if event and event.event_data:
+            event_data: NoticeHandlingEventData = event.event_data
+            # 如果事件被取消，跳过消息通知
+            if event_data.cancel:
+                logger.warn(
+                    f"通知消息被取消, 来自: {event_data.source},"
+                    f"原因: {event_data.reason}")
+                return None
+            elif event_data.notification:
+                message = event_data.notification
         # 保存原消息
         self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.dict())
