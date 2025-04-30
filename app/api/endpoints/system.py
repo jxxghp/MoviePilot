@@ -171,10 +171,13 @@ def cache_img(
 
 
 @router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
-def get_global_setting():
+def get_global_setting(token: str):
     """
-    查询非敏感系统设置（无需鉴权）
+    查询非敏感系统设置（默认鉴权）
     """
+    if token != "moviepilot":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     # FIXME: 新增敏感配置项时要在此处添加排除项
     info = settings.dict(
         exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",

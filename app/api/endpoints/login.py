@@ -77,5 +77,7 @@ def wallpapers() -> Any:
         return WebUtils.get_bing_wallpapers()
     elif settings.WALLPAPER == "mediaserver":
         return MediaServerChain().get_latest_wallpapers()
-    else:
+    elif settings.WALLPAPER == "tmdb":
         return TmdbChain().get_trending_wallpapers()
+    else:
+        return []
