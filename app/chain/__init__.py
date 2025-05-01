@@ -137,8 +137,8 @@ class ChainBase(metaclass=ABCMeta):
                                 "traceback": traceback.format_exc()
                             }
                         )
-        if not is_result_empty(result):
-            # 如果插件模块返回结果，则不再执行系统模块
+        if not is_result_empty(result) and not isinstance(result, list):
+            # 插件模块返回结果不为空且不是列表，直接返回
             return result
 
         # 系统模块
