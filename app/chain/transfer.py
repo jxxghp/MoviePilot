@@ -29,9 +29,11 @@ from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
     TransferTask, TransferQueue, TransferJob, TransferJobTask
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
-    SystemConfigKey
+    SystemConfigKey, ChainEventType
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
+from core.event import eventmanager
+from schemas import StorageOperSelectionEventData
 
 downloader_lock = threading.Lock()
 job_lock = threading.Lock()
@@ -703,6 +705,32 @@ class TransferChain(ChainBase, metaclass=Singleton):
             # 正在处理
             self.jobview.running_task(task)
 
+            # 广播事件，请示额外的源存储支持
+            source_oper = None
+            source_storage = self.storagechain.get_storage(task.fileitem.storage)
+            source_event_data = StorageOperSelectionEventData(
+                storage_name=source_storage.name,
+            )
+            source_event = eventmanager.send_event(ChainEventType.StorageOperSelection, source_event_data)
+            # 使用事件返回的上下文数据
+            if source_event and source_event.event_data:
+                source_event_data: StorageOperSelectionEventData = source_event.event_data
+                if source_event_data.storage_oper:
+                    source_oper = source_event_data.storage_oper
+
+            # 广播事件，请示额外的目标存储支持
+            target_oper = None
+            target_storage = self.storagechain.get_storage(task.target_storage)
+            target_event_data = StorageOperSelectionEventData(
+                storage_name=target_storage.name,
+            )
+            target_event = eventmanager.send_event(ChainEventType.StorageOperSelection, target_event_data)
+            # 使用事件返回的上下文数据
+            if target_event and target_event.event_data:
+                target_event_data: StorageOperSelectionEventData = target_event.event_data
+                if target_event_data.storage_oper:
+                    target_oper = target_event_data.storage_oper
+
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=task.fileitem,
                                                        meta=task.meta,
@@ -714,7 +742,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                                        episodes_info=task.episodes_info,
                                                        scrape=task.scrape,
                                                        library_type_folder=task.library_type_folder,
-                                                       library_category_folder=task.library_category_folder)
+                                                       library_category_folder=task.library_category_folder,
+                                                       source_oper=source_oper,
+                                                       target_oper=target_oper)
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
                 return False, "文件整理模块运行失败"
