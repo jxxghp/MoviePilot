@@ -558,6 +558,29 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件 {plugin_id} 服务出错：{str(e)}")
         return ret_services
 
+    def get_plugin_modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
+        """
+        获取插件模块
+        {
+            plugin_id: {
+                method: function
+            }
+        }
+        """
+        ret_modules = {}
+        for plugin_id, plugin in self._running_plugins.items():
+            if pid and pid != plugin_id:
+                continue
+            if hasattr(plugin, "get_module") and ObjectUtils.check_method(plugin.get_module):
+                try:
+                    if not plugin.get_state():
+                        continue
+                    plugin_module = plugin.get_module() or []
+                    ret_modules[(plugin_id, plugin.get_name())] = plugin_module
+                except Exception as e:
+                    logger.error(f"获取插件 {plugin_id} 模块出错：{str(e)}")
+        return ret_modules
+
     def get_plugin_dashboard_meta(self):
         """
         获取所有插件仪表盘元信息

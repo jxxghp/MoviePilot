@@ -55,6 +55,13 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_name(self) -> str:
+        """
+        获取插件名称
+        :return: 插件名称
+        """
+        return self.plugin_name
+
     @abstractmethod
     def get_state(self) -> bool:
         """
@@ -152,6 +159,16 @@ class _PluginBase(metaclass=ABCMeta):
                 "key": "dashboard2",
                 "name": "仪表盘2"
             }]
+        """
+        pass
+
+    def get_module(self) -> Dict[str, Any]:
+        """
+        获取插件模块声明，用于协持系统模块实现（方法名：方法实现）
+        {
+            "id1": self.xxx1,
+            "id2": self.xxx2,
+        }
         """
         pass
 

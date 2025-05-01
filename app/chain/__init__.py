@@ -14,6 +14,7 @@ from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
+from app.core.plugin import PluginManager
 from app.db.message_oper import MessageOper
 from app.db.user_oper import UserOper
 from app.helper.message import MessageHelper, MessageQueueManager
@@ -42,6 +43,7 @@ class ChainBase(metaclass=ABCMeta):
             send_callback=self.run_module
         )
         self.useroper = UserOper()
+        self.pluginmanager = PluginManager()
 
     @staticmethod
     def load_cache(filename: str) -> Any:
@@ -97,7 +99,50 @@ class ChainBase(metaclass=ABCMeta):
                 return ret is None
 
         result = None
-        logger.debug(f"请求模块执行：{method} ...")
+        plugin_modules = self.pluginmanager.get_plugin_modules()
+        # 插件模块
+        for plugin, module_dict in plugin_modules.items():
+            plugin_id, plugin_name = plugin
+            if method in module_dict:
+                func = module_dict[method]
+                if func:
+                    try:
+                        logger.info(f"请求插件 {plugin_name} 执行：{method} ...")
+                        if is_result_empty(result):
+                            # 返回None，第一次执行或者需继续执行下一模块
+                            result = func(*args, **kwargs)
+                        elif isinstance(result, list):
+                            # 返回为列表，有多个模块运行结果时进行合并
+                            temp = func(*args, **kwargs)
+                            if isinstance(temp, list):
+                                result.extend(temp)
+                        else:
+                            break
+                    except Exception as err:
+                        if kwargs.get("raise_exception"):
+                            raise
+                        logger.error(
+                            f"运行插件 {plugin_id} 模块 {method} 出错：{str(err)}\n{traceback.format_exc()}")
+                        self.messagehelper.put(title=f"{plugin_name} 发生了错误",
+                                               message=str(err),
+                                               role="plugin")
+                        self.eventmanager.send_event(
+                            EventType.SystemError,
+                            {
+                                "type": "plugin",
+                                "plugin_id": plugin_id,
+                                "plugin_name": plugin_name,
+                                "plugin_method": method,
+                                "error": str(err),
+                                "traceback": traceback.format_exc()
+                            }
+                        )
+        if not is_result_empty(result):
+            # 如果插件模块返回结果，则不再执行系统模块
+            return result
+
+        # 系统模块
+        logger.debug(f"请求系统模块执行：{method} ...")
         modules = self.modulemanager.get_running_modules(method)
         # 按优先级排序
         modules = sorted(modules, key=lambda x: x.get_priority())
@@ -114,10 +159,10 @@ class ChainBase(metaclass=ABCMeta):
                     # 返回None，第一次执行或者需继续执行下一模块
                     result = func(*args, **kwargs)
                 elif ObjectUtils.check_signature(func, result):
-                    # 返回结果与方法签名一致，将结果传入（不能多个模块同时运行的需要通过开关控制）
+                    # 返回结果与方法签名一致，将结果传入
                     result = func(result)
                 elif isinstance(result, list):
-                    # 返回为列表，有多个模块运行结果时进行合并（不能多个模块同时运行的需要通过开关控制）
+                    # 返回为列表，有多个模块运行结果时进行合并
                     temp = func(*args, **kwargs)
                     if isinstance(temp, list):
                         result.extend(temp)
