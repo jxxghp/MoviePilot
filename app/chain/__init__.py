@@ -3,6 +3,7 @@ import gc
 import pickle
 import traceback
 from abc import ABCMeta
+from collections.abc import Callable
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
@@ -446,7 +447,8 @@ class ChainBase(metaclass=ABCMeta):
                  target_storage: Optional[str] = None, target_path: Path = None,
                  transfer_type: Optional[str] = None, scrape: bool = None,
                  library_type_folder: bool = None, library_category_folder: bool = None,
-                 episodes_info: List[TmdbEpisode] = None) -> Optional[TransferInfo]:
+                 episodes_info: List[TmdbEpisode] = None,
+                 source_oper: Callable = None, target_oper: Callable = None) -> Optional[TransferInfo]:
         """
         文件转移
         :param fileitem:  文件信息
@@ -460,6 +462,8 @@ class ChainBase(metaclass=ABCMeta):
         :param library_type_folder: 是否按类型创建目录
         :param library_category_folder: 是否按类别创建目录
         :param episodes_info: 当前季的全部集信息
+        :param source_oper:  源存储操作类
+        :param target_oper:  目标存储操作类
         :return: {path, target_path, message}
         """
         return self.run_module("transfer",
@@ -469,7 +473,8 @@ class ChainBase(metaclass=ABCMeta):
                                transfer_type=transfer_type, scrape=scrape,
                                library_type_folder=library_type_folder,
                                library_category_folder=library_category_folder,
-                               episodes_info=episodes_info)
+                               episodes_info=episodes_info,
+                               source_oper=source_oper, target_oper=target_oper)
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
