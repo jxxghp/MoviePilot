@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.schemas import MediaType
+from helper.storage import StorageHelper
 
 
 class StorageChain(ChainBase):
@@ -17,6 +18,7 @@ class StorageChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.directoryhelper = DirectoryHelper()
+        self.storagehelper = StorageHelper()
 
     def save_config(self, storage: str, conf: dict) -> None:
         """
@@ -181,3 +183,10 @@ class StorageChain(ChainBase):
                 return self.delete_file(dir_item)
 
         return True
+
+    def get_storage(self, storage: str) -> Optional[schemas.StorageConf]:
+        """
+        获取存储对象
+        """
+        return self.storagehelper.get_storage(storage=storage)
+

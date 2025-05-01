@@ -89,6 +89,8 @@ class ChainEventType(Enum):
     RecommendSource = "recommend.source"
     # 工作流执行
     WorkflowExecution = "workflow.execution"
+    # 存储操作选择
+    StorageOperSelection = "storage.operation"
 
 
 # 系统配置Key字典

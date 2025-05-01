@@ -198,7 +198,7 @@ def seasons(mediaid: Optional[str] = None,
 
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
-def detail(mediaid: str, type_name: str, title: Optional[str] = None, year: int = None,
+def detail(mediaid: str, type_name: str, title: Optional[str] = None, year: str = None,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧

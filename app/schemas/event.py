@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Set
+from typing import Optional, Dict, Any, List, Set, Callable
 
 from pydantic import BaseModel, Field, root_validator
 
@@ -307,3 +307,21 @@ class MediaRecognizeConvertEventData(ChainEventData):
 
     # 输出参数
     media_dict: dict = Field(default=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）")
+
+
+class StorageOperSelectionEventData(ChainEventData):
+    """
+    StorageOperSelect 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        storage_name (str): 存储名称
+
+        # 输出参数
+        storage_oper (Callable): 存储操作对象
+    """
+    # 输入参数
+    storage_name: str = Field(..., description="存储名称")
+
+    # 输出参数
+    storage_oper: Optional[Callable] = Field(default=None, description="存储操作对象")
