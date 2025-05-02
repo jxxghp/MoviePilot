@@ -429,6 +429,29 @@ class FileManagerModule(_ModuleBase):
             return TransferInfo(success=False,
                                 fileitem=fileitem,
                                 message=f"{target_directory.name} 未设置整理方式")
+
+        # 源操作对象
+        if not source_oper:
+            source_oper = self.__get_storage_oper(fileitem.storage)
+        if not source_oper:
+            return TransferInfo(success=False,
+                                message=f"不支持的存储类型：{fileitem.storage}",
+                                fileitem=fileitem,
+                                fail_list=[fileitem.path],
+                                transfer_type=transfer_type,
+                                need_notify=need_notify
+                                )
+        # 目的操作对象
+        if not target_oper:
+            target_oper = self.__get_storage_oper(target_storage)
+        if not target_oper:
+            return TransferInfo(success=False,
+                                message=f"不支持的存储类型：{target_storage}",
+                                fileitem=fileitem,
+                                fail_list=[fileitem.path],
+                                transfer_type=transfer_type,
+                                need_notify=need_notify)
+
         # 整理
         logger.info(f"获取整理目标路径：【{target_storage}】{target_path}")
         return self.transfer_media(fileitem=fileitem,
@@ -986,13 +1009,13 @@ class FileManagerModule(_ModuleBase):
                        target_storage: str,
                        target_path: Path,
                        transfer_type: str,
+                       source_oper: StorageBase,
+                       target_oper: StorageBase,
                        need_scrape: Optional[bool] = False,
                        need_rename: Optional[bool] = True,
                        need_notify: Optional[bool] = True,
                        overwrite_mode: Optional[str] = None,
-                       episodes_info: List[TmdbEpisode] = None,
-                       source_oper: StorageBase = None,
-                       target_oper: StorageBase = None
+                       episodes_info: List[TmdbEpisode] = None
                        ) -> TransferInfo:
         """
         识别并整理一个文件或者一个目录下的所有文件
@@ -1002,13 +1025,13 @@ class FileManagerModule(_ModuleBase):
         :param target_storage: 目标存储
         :param target_path: 目标路径
         :param transfer_type: 文件整理方式
+        :param source_oper: 源存储操作对象
+        :param target_oper: 目标存储操作对象
         :param need_scrape: 是否需要刮削
         :param need_rename: 是否需要重命名
         :param need_notify: 是否需要通知
         :param overwrite_mode: 覆盖模式
         :param episodes_info: 当前季的全部集信息
-        :param source_oper: 源存储操作对象
-        :param target_oper: 目标存储操作对象
         :return: TransferInfo、错误信息
         """
 
@@ -1096,28 +1119,6 @@ class FileManagerModule(_ModuleBase):
 
             # 判断是否要覆盖
             overflag = False
-            # 源操作对象
-            if not source_oper:
-                source_oper = self.__get_storage_oper(fileitem.storage)
-            if not source_oper:
-                return TransferInfo(success=False,
-                                    message=f"不支持的存储类型：{fileitem.storage}",
-                                    fileitem=fileitem,
-                                    fail_list=[fileitem.path],
-                                    transfer_type=transfer_type,
-                                    need_notify=need_notify
-                                    )
-            # 目的操作对象
-            if not target_oper:
-                target_oper = self.__get_storage_oper(target_storage)
-            if not target_oper:
-                return TransferInfo(success=False,
-                                    message=f"不支持的存储类型：{target_storage}",
-                                    fileitem=fileitem,
-                                    fail_list=[fileitem.path],
-                                    transfer_type=transfer_type,
-                                    need_notify=need_notify)
-
             # 计算重命名中的文件夹层级
             rename_format_level = len(rename_format.split("/")) - 1
             folder_path = new_file.parents[rename_format_level - 1]
