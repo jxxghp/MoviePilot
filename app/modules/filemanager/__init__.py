@@ -400,9 +400,6 @@ class FileManagerModule(_ModuleBase):
             overwrite_mode = target_directory.overwrite_mode
             # 是否需要刮削
             need_scrape = target_directory.scraping if scrape is None else scrape
-            # 目标存储类型
-            if not target_storage:
-                target_storage = target_directory.library_storage
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory,
                                               need_type_folder=library_type_folder,
