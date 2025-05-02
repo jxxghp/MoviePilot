@@ -321,7 +321,7 @@ class StorageOperSelectionEventData(ChainEventData):
         storage_oper (Callable): 存储操作对象
     """
     # 输入参数
-    storage: str = Field(..., description="存储类型")
+    storage: Optional[str] = Field(default=None, description="存储类型")
 
     # 输出参数
     storage_oper: Optional[Callable] = Field(default=None, description="存储操作对象")
