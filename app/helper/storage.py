@@ -51,7 +51,7 @@ class StorageHelper:
                     break
         self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])
 
-    def add_storage(self, storage: str, conf: dict):
+    def add_storage(self, storage: str, name: str, conf: dict):
         """
         添加存储配置
         """
@@ -60,12 +60,14 @@ class StorageHelper:
             storagies = [
                 schemas.StorageConf(
                     type=storage,
+                    name=name,
                     config=conf
                 )
             ]
         else:
             storagies.append(schemas.StorageConf(
                 type=storage,
+                name=name,
                 config=conf
             ))
         self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])
