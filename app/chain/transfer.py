@@ -17,6 +17,7 @@ from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
+from app.core.event import eventmanager
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
@@ -30,10 +31,9 @@ from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeForm
     TransferTask, TransferQueue, TransferJob, TransferJobTask
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey, ChainEventType
+from app.schemas import StorageOperSelectionEventData
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from core.event import eventmanager
-from schemas import StorageOperSelectionEventData
 
 downloader_lock = threading.Lock()
 job_lock = threading.Lock()
@@ -707,9 +707,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             # 广播事件，请示额外的源存储支持
             source_oper = None
-            source_storage = self.storagechain.get_storage(task.fileitem.storage)
             source_event_data = StorageOperSelectionEventData(
-                storage_name=source_storage.name,
+                storage=task.fileitem.storage,
             )
             source_event = eventmanager.send_event(ChainEventType.StorageOperSelection, source_event_data)
             # 使用事件返回的上下文数据
@@ -720,9 +719,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             # 广播事件，请示额外的目标存储支持
             target_oper = None
-            target_storage = self.storagechain.get_storage(task.target_storage)
             target_event_data = StorageOperSelectionEventData(
-                storage_name=target_storage.name,
+                storage=task.target_storage,
             )
             target_event = eventmanager.send_event(ChainEventType.StorageOperSelection, target_event_data)
             # 使用事件返回的上下文数据
