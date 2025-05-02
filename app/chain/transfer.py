@@ -701,6 +701,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                                                          storage=task.fileitem.storage,
                                                                          src_path=Path(task.fileitem.path),
                                                                          target_storage=task.target_storage)
+            if not task.target_storage and task.target_directory:
+                task.target_storage = task.target_directory.library_storage
 
             # 正在处理
             self.jobview.running_task(task)

@@ -30,6 +30,7 @@ class FileManagerModule(_ModuleBase):
     """
 
     _storage_schemas = []
+    _support_storages = []
 
     def __init__(self):
         super().__init__()
@@ -40,6 +41,8 @@ class FileManagerModule(_ModuleBase):
         # 加载模块
         self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storages',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
+        # 获取存储类型
+        self._support_storages = [storage.schema.value for storage in self._storage_schemas]
 
     @staticmethod
     def get_name() -> str:
@@ -114,6 +117,8 @@ class FileManagerModule(_ModuleBase):
         """
         支持的整理方式
         """
+        if storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的整理方式获取")
@@ -176,6 +181,8 @@ class FileManagerModule(_ModuleBase):
         :param recursion: 是否递归，此时只浏览文件
         :return: 文件项列表
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
@@ -206,6 +213,8 @@ class FileManagerModule(_ModuleBase):
         """
         查询当前目录下是否存在指定扩展名任意文件
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
@@ -239,26 +248,32 @@ class FileManagerModule(_ModuleBase):
         :param name: 目录名
         :return: 创建的目录
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的目录创建")
             return None
         return storage_oper.create_folder(fileitem, name)
 
-    def delete_file(self, fileitem: FileItem) -> bool:
+    def delete_file(self, fileitem: FileItem) -> Optional[bool]:
         """
         删除文件或目录
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的删除处理")
             return False
         return storage_oper.delete(fileitem)
 
-    def rename_file(self, fileitem: FileItem, name: str) -> bool:
+    def rename_file(self, fileitem: FileItem, name: str) -> Optional[bool]:
         """
         重命名文件或目录
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的重命名处理")
@@ -269,6 +284,8 @@ class FileManagerModule(_ModuleBase):
         """
         下载文件
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的下载处理")
@@ -279,6 +296,8 @@ class FileManagerModule(_ModuleBase):
         """
         上传文件
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的上传处理")
@@ -289,6 +308,8 @@ class FileManagerModule(_ModuleBase):
         """
         根据路径获取文件项
         """
+        if storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的文件获取")
@@ -299,6 +320,8 @@ class FileManagerModule(_ModuleBase):
         """
         获取上级目录项
         """
+        if fileitem.storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件获取")
@@ -309,6 +332,8 @@ class FileManagerModule(_ModuleBase):
         """
         快照存储
         """
+        if storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的快照处理")
@@ -319,6 +344,8 @@ class FileManagerModule(_ModuleBase):
         """
         存储使用情况
         """
+        if storage not in self._support_storages:
+            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的存储使用情况")
@@ -373,9 +400,6 @@ class FileManagerModule(_ModuleBase):
             overwrite_mode = target_directory.overwrite_mode
             # 是否需要刮削
             need_scrape = target_directory.scraping if scrape is None else scrape
-            # 目标存储类型
-            if not target_storage:
-                target_storage = target_directory.library_storage
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory,
                                               need_type_folder=library_type_folder,
@@ -402,6 +426,29 @@ class FileManagerModule(_ModuleBase):
             return TransferInfo(success=False,
                                 fileitem=fileitem,
                                 message=f"{target_directory.name} 未设置整理方式")
+
+        # 源操作对象
+        if not source_oper:
+            source_oper = self.__get_storage_oper(fileitem.storage)
+        if not source_oper:
+            return TransferInfo(success=False,
+                                message=f"不支持的存储类型：{fileitem.storage}",
+                                fileitem=fileitem,
+                                fail_list=[fileitem.path],
+                                transfer_type=transfer_type,
+                                need_notify=need_notify
+                                )
+        # 目的操作对象
+        if not target_oper:
+            target_oper = self.__get_storage_oper(target_storage)
+        if not target_oper:
+            return TransferInfo(success=False,
+                                message=f"不支持的存储类型：{target_storage}",
+                                fileitem=fileitem,
+                                fail_list=[fileitem.path],
+                                transfer_type=transfer_type,
+                                need_notify=need_notify)
+
         # 整理
         logger.info(f"获取整理目标路径：【{target_storage}】{target_path}")
         return self.transfer_media(fileitem=fileitem,
@@ -959,13 +1006,13 @@ class FileManagerModule(_ModuleBase):
                        target_storage: str,
                        target_path: Path,
                        transfer_type: str,
+                       source_oper: StorageBase,
+                       target_oper: StorageBase,
                        need_scrape: Optional[bool] = False,
                        need_rename: Optional[bool] = True,
                        need_notify: Optional[bool] = True,
                        overwrite_mode: Optional[str] = None,
-                       episodes_info: List[TmdbEpisode] = None,
-                       source_oper: StorageBase = None,
-                       target_oper: StorageBase = None
+                       episodes_info: List[TmdbEpisode] = None
                        ) -> TransferInfo:
         """
         识别并整理一个文件或者一个目录下的所有文件
@@ -975,13 +1022,13 @@ class FileManagerModule(_ModuleBase):
         :param target_storage: 目标存储
         :param target_path: 目标路径
         :param transfer_type: 文件整理方式
+        :param source_oper: 源存储操作对象
+        :param target_oper: 目标存储操作对象
         :param need_scrape: 是否需要刮削
         :param need_rename: 是否需要重命名
         :param need_notify: 是否需要通知
         :param overwrite_mode: 覆盖模式
         :param episodes_info: 当前季的全部集信息
-        :param source_oper: 源存储操作对象
-        :param target_oper: 目标存储操作对象
         :return: TransferInfo、错误信息
         """
 
@@ -1069,28 +1116,6 @@ class FileManagerModule(_ModuleBase):
 
             # 判断是否要覆盖
             overflag = False
-            # 源操作对象
-            if not source_oper:
-                source_oper = self.__get_storage_oper(fileitem.storage)
-            if not source_oper:
-                return TransferInfo(success=False,
-                                    message=f"不支持的存储类型：{fileitem.storage}",
-                                    fileitem=fileitem,
-                                    fail_list=[fileitem.path],
-                                    transfer_type=transfer_type,
-                                    need_notify=need_notify
-                                    )
-            # 目的操作对象
-            if not target_oper:
-                target_oper = self.__get_storage_oper(target_storage)
-            if not target_oper:
-                return TransferInfo(success=False,
-                                    message=f"不支持的存储类型：{target_storage}",
-                                    fileitem=fileitem,
-                                    fail_list=[fileitem.path],
-                                    transfer_type=transfer_type,
-                                    need_notify=need_notify)
-
             # 计算重命名中的文件夹层级
             rename_format_level = len(rename_format.split("/")) - 1
             folder_path = new_file.parents[rename_format_level - 1]
