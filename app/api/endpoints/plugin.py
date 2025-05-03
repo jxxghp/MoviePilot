@@ -390,8 +390,8 @@ def reset_plugin(plugin_id: str,
     return schemas.Response(success=True)
 
 
-@app.get("/file/{filepath:path}",  summary="获取插件静态文件")
-async def plugin_static_file(plugin_id: str, filepath: str, _: schemas.TokenPayload = Depends(verify_token)):
+@router.get("/file/{plugin_id}/{filepath:path}",  summary="获取插件静态文件")
+def plugin_static_file(plugin_id: str, filepath: str, _: schemas.TokenPayload = Depends(verify_token)):
     """
     获取插件静态文件
     """
