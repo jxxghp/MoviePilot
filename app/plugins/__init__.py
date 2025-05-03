@@ -83,6 +83,14 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    @staticmethod
+    def get_render_mode() -> str:
+        """
+        获取插件渲染模式
+        :return: 渲染模式，支持：vue/vuetify，默认vuetify
+        """
+        return "vuetify"
+
     @abstractmethod
     def get_api(self) -> List[Dict[str, Any]]:
         """
@@ -100,8 +108,16 @@ class _PluginBase(metaclass=ABCMeta):
     @abstractmethod
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
-        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
-        插件配置页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+        拼装插件配置页面，插件配置页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+        :return: 1、页面配置；2、默认数据结构
+        """
+        pass
+
+    @staticmethod
+    def get_form_file() -> Tuple[str, Dict[str, Any]]:
+        """
+        获取插件配置页面JS代码源文件（与get_from二选一使用）
+        :return: 1、编译后的JS代码插件目录下相对路径；2、默认数据结构
         """
         pass
 
@@ -110,6 +126,14 @@ class _PluginBase(metaclass=ABCMeta):
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         插件详情页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+        """
+        pass
+
+    @staticmethod
+    def get_page_file() -> Optional[str]:
+        """
+        获取插件数据页面JS代码源文件（与get_page二选一使用）
+        :return: 编译后的JS代码插件目录下相对路径
         """
         pass
 
@@ -128,7 +152,7 @@ class _PluginBase(metaclass=ABCMeta):
 
     def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
         """
-        获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（自动刷新等）；3、仪表板页面元素配置json（含数据）
+        获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（布局、自动刷新等）；3、仪表板页面元素配置json（含数据）
         1、col配置参考：
         {
             "cols": 12, "md": 6
@@ -145,6 +169,13 @@ class _PluginBase(metaclass=ABCMeta):
         kwargs参数可获取的值：1、user_agent：浏览器UA
 
         :param key: 仪表盘key，根据指定的key返回相应的仪表盘数据，缺省时返回一个固定的仪表盘数据（兼容旧版）
+        """
+        pass
+
+    def get_dashboard_file(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], str]]:
+        """
+        获取插件仪表盘页面JS代码源文件（与get_dashboard二选一使用）
+        :return: 1、全局配置（布局、自动刷新等）；2、仪表板页面元素配置json（含数据）；3、编译后的JS代码插件目录下相对路径
         """
         pass
 
