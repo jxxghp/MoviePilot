@@ -20,7 +20,7 @@ from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, ResourceDownloadEventData
-from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ChainEventType
+from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -37,63 +37,6 @@ class DownloadChain(ChainBase):
         self.mediaserver = MediaServerOper()
         self.directoryhelper = DirectoryHelper()
         self.messagehelper = MessageHelper()
-
-    def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
-                              channel: MessageChannel = None, username: Optional[str] = None,
-                              download_episodes: Optional[str] = None):
-        """
-        发送添加下载的消息，根据消息场景开关决定发给谁
-        :param meta: 元数据
-        :param mediainfo: 媒体信息
-        :param torrent: 种子信息
-        :param channel: 通知渠道
-        :param username: 通知显示的下载用户信息
-        :param download_episodes: 下载的集数
-        """
-        # 拼装消息内容
-        msg_text = ""
-        if username:
-            msg_text = f"用户：{username}"
-        if torrent.site_name:
-            msg_text = f"{msg_text}\n站点：{torrent.site_name}"
-        if meta.resource_term:
-            msg_text = f"{msg_text}\n质量：{meta.resource_term}"
-        if torrent.size:
-            if str(torrent.size).replace(".", "").isdigit():
-                size = StringUtils.str_filesize(torrent.size)
-            else:
-                size = torrent.size
-            msg_text = f"{msg_text}\n大小：{size}"
-        if torrent.title:
-            msg_text = f"{msg_text}\n种子：{torrent.title}"
-        if torrent.pubdate:
-            msg_text = f"{msg_text}\n发布时间：{torrent.pubdate}"
-        if torrent.freedate:
-            msg_text = f"{msg_text}\n免费时间：{StringUtils.diff_time_str(torrent.freedate)}"
-        if torrent.seeders:
-            msg_text = f"{msg_text}\n做种数：{torrent.seeders}"
-        if torrent.uploadvolumefactor and torrent.downloadvolumefactor:
-            msg_text = f"{msg_text}\n促销：{torrent.volume_factor}"
-        if torrent.hit_and_run:
-            msg_text = f"{msg_text}\nHit&Run：是"
-        if torrent.labels:
-            msg_text = f"{msg_text}\n标签：{' '.join(torrent.labels)}"
-        if torrent.description:
-            html_re = re.compile(r'<[^>]+>', re.S)
-            description = html_re.sub('', torrent.description)
-            torrent.description = re.sub(r'<[^>]+>', '', description)
-            msg_text = f"{msg_text}\n描述：{torrent.description}"
-
-        # 下载成功按规则发送消息
-        self.post_message(Notification(
-            channel=channel,
-            mtype=NotificationType.Download,
-            title=f"{mediainfo.title_year} "
-                  f"{'%s %s' % (meta.season, download_episodes) if download_episodes else meta.season_episode} 开始下载",
-            text=msg_text,
-            image=mediainfo.get_message_image(),
-            link=settings.MP_DOMAIN('/#/downloading'),
-            username=username))
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
@@ -384,8 +327,20 @@ class DownloadChain(ChainBase):
                 self.downloadhis.add_files(files_to_add)
 
             # 下载成功发送消息
-            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
-                                       username=username, download_episodes=download_episodes)
+            self.post_message(
+                Notification(
+                    channel=channel,
+                    mtype=NotificationType.Download,
+                    ctype=ContentType.DownloadAdded,
+                    image=_media.get_message_image(),
+                    link=settings.MP_DOMAIN('/#/downloading'),
+                    username=username
+                ),
+                meta=_meta,
+                mediainfo=_media,
+                torrentinfo=_torrent,
+                download_episodes=download_episodes
+            )
             # 下载成功后处理
             self.download_added(context=context, download_dir=download_dir, torrent_path=torrent_file)
             # 广播事件

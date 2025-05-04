@@ -30,7 +30,7 @@ from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
     TransferTask, TransferQueue, TransferJob, TransferJobTask
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
-    SystemConfigKey, ChainEventType
+    SystemConfigKey, ChainEventType, ContentType
 from app.schemas import StorageOperSelectionEventData
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -1374,22 +1374,16 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         发送入库成功的消息
         """
-        msg_title = f"{mediainfo.title_year} {meta.season_episode if not season_episode else season_episode} 已入库"
-        if mediainfo.vote_average:
-            msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
-        else:
-            msg_str = f"类型：{mediainfo.type.value}"
-        if mediainfo.category:
-            msg_str = f"{msg_str}，类别：{mediainfo.category}"
-        if meta.resource_term:
-            msg_str = f"{msg_str}，质量：{meta.resource_term}"
-        msg_str = f"{msg_str}，共{transferinfo.file_count}个文件，" \
-                  f"大小：{StringUtils.str_filesize(transferinfo.total_size)}"
-        if transferinfo.message:
-            msg_str = f"{msg_str}，以下文件处理失败：\n{transferinfo.message}"
-        # 发送
-        self.post_message(Notification(
-            mtype=NotificationType.Organize,
-            title=msg_title, text=msg_str, image=mediainfo.get_message_image(),
-            username=username,
-            link=settings.MP_DOMAIN('#/history')))
+        self.post_message(
+            Notification(
+                mtype=NotificationType.Organize,
+                ctype=ContentType.OrganizeSuccess,
+                image=mediainfo.get_message_image(),
+                username=username,
+                link=settings.MP_DOMAIN('#/history')
+            ),
+            meta=meta,
+            mediainfo=mediainfo,
+            transferinfo=transferinfo,
+            season_episode=season_episode
+        )

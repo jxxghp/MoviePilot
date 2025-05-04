@@ -10,6 +10,8 @@ from typing import List, Optional, Callable
 
 from app.core.config import global_vars
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.template import TemplateHelper
+from app.schemas.message import Notification
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton, SingletonClass
 from app.log import logger
@@ -209,3 +211,66 @@ class MessageHelper(metaclass=Singleton):
             if not self.user_queue.empty():
                 return self.user_queue.get(block=False)
         return None
+
+
+class MessageTemplateHelper:
+    """
+    消息模板渲染器
+    """
+    @staticmethod
+    def render(message: Notification, *args, **kwargs) -> Optional[Notification]:
+        """
+        渲染消息模板
+        """
+        if not MessageTemplateHelper.is_instance_valid(message):
+            if MessageTemplateHelper.meets_update_conditions(message, *args, **kwargs):
+                logger.info("将使用模板渲染消息内容")
+                return MessageTemplateHelper._apply_template_data(message, *args, **kwargs)
+        return message
+
+    @staticmethod
+    def is_instance_valid(message: Notification) -> bool:
+        """
+        检查消息是否有效
+        """
+        if isinstance(message, Notification):
+            return bool(message.title or message.text)
+        return False
+
+    @staticmethod
+    def meets_update_conditions(message: Notification, *args, **kwargs) -> bool:
+        """
+        判断是否满足消息实例更新条件
+
+        满足条件需同时具备：
+        1. 消息为有效Notification实例
+        2. 消息指定了模板类型(ctype)
+        3. 存在待渲染的模板变量数据
+        """
+        if isinstance(message, Notification):
+            return message.ctype and (args or kwargs)
+        return False
+
+    @staticmethod
+    def _apply_template_data(message: Notification, *args, **kwargs) -> Optional[Notification]:
+        """
+        更新消息实例
+        """
+        try:
+            if template := MessageTemplateHelper._get_template(message):
+                rendered = TemplateHelper().render(template_content=template, *args, **kwargs)
+                for key, value in rendered.items():
+                    if hasattr(message, key):
+                        setattr(message, key, value)
+            return message
+        except Exception as e:
+            logger.error(f"更新Notification时出现错误：{str(e)}")
+            return message
+
+    @staticmethod
+    def _get_template(message: Notification) -> Optional[str]:
+        """
+        获取消息模板
+        """
+        template_dict: dict[str, str] = SystemConfigOper().get(SystemConfigKey.NotificationTemplates)
+        return template_dict.get(message.ctype.value)
