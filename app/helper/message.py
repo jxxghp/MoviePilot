@@ -22,8 +22,7 @@ from app.schemas.message import Notification
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import SystemConfigKey
-from app.utils.singleton import Singleton
-from app.utils.singleton import SingletonClass
+from app.utils.singleton import Singleton, SingletonClass
 from app.utils.string import StringUtils
 
 
