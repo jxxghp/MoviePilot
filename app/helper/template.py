@@ -329,7 +329,7 @@ class TemplateContextBuilder:
                 int(_meta_season),
                 None) if (mediainfo.season_years and _meta_season) else None,
             # 演员
-            "actors": '、 '.join([actor['name'] for actor in mediainfo.actors]),
+            "actors": '、 '.join([actor['name'] for actor in mediainfo.actors[:5]]),
             # 简介
             "overview": mediainfo.overview,
             # TMDBID
