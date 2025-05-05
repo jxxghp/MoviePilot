@@ -11,9 +11,8 @@ from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.helper.directory import DirectoryHelper
-from app.helper.message import MessageHelper
+from app.helper.message import MessageHelper, TemplateHelper
 from app.helper.module import ModuleHelper
-from app.helper.template import TemplateHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
@@ -1219,7 +1218,8 @@ class FileManagerModule(_ModuleBase):
         :param file_ext: 文件扩展名
         :param episodes_info: 当前季的全部集信息
         """
-        return TemplateHelper().builder.build(meta=meta, mediainfo=mediainfo, file_extension=file_ext, episodes_info=episodes_info)
+        return TemplateHelper().builder.build(meta=meta, mediainfo=mediainfo,
+                                              file_extension=file_ext, episodes_info=episodes_info)
 
     @staticmethod
     def get_rename_path(template_string: str, rename_dict: dict, path: Path = None) -> Path:
