@@ -234,7 +234,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             else:
                 text = f"评分：{mediainfo.vote_average}"
             if mediainfo.actors:
-                text += f"\n演员：{'、 '.join([actor['name'] for actor in mediainfo.actors])}"
+                text += f"\n演员：{'、 '.join([actor['name'] for actor in mediainfo.actors[:5])}"
             if mediainfo.overview:
                 text += f"\n简介：{mediainfo.overview}"
             if mediainfo.type == MediaType.TV:
