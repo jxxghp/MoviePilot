@@ -1,6 +1,8 @@
 import ast, json, re
+from functools import wraps
 from typing import Any, Literal, Optional, List, Dict, Union
 
+from cachetools import TTLCache
 from jinja2 import Template
 
 from app.core.context import MediaInfo, TorrentInfo
@@ -12,12 +14,111 @@ from app.utils.string import StringUtils
 from app.log import logger
 
 
+# 缓存键字段白名单
+CACHE_KEY_FIELDS = ["title", "tmdb_id", "bangumi_id", "douban_id", "type", "name",\
+                    "subtitle", "description", "overview", "site_name", "file_list"]
+
+
+def extract_cache_key_values(obj: Any, field_names: List[str]) -> Dict[str, Any]:
+    """
+    提取对象中指定字段的值（只保留存在的非空字段）
+    :param obj: 目标对象
+    :param field_names: 字段名列表（按优先级顺序）
+    :return: 包含有效字段值的字典
+    """
+    result = {}
+    for field in field_names:
+        if hasattr(obj, field):
+            value = getattr(obj, field)
+            if value is not None and value != "":
+                if isinstance(value, (str, int, float)):
+                    result[field] = str(value)
+                elif isinstance(value, list):
+                    result[field] = ",".join(map(str, value))
+    return result
+
+
+def build_cache_key(*args, **kwargs) -> str:
+    """
+    缓存键构建
+    """
+    key_dict = {}
+
+    for i, arg in enumerate(args):
+        if hasattr(arg, "__dict__"):
+            key_dict[f"arg_{i}"] = extract_cache_key_values(arg, CACHE_KEY_FIELDS)
+        elif isinstance(arg, list):
+            key_dict[f"arg_{i}"] = {"list": [extract_cache_key_values(item, CACHE_KEY_FIELDS) for item in arg]}
+
+    for k, v in kwargs.items():
+        if hasattr(v, "__dict__"):
+            key_dict[k] = extract_cache_key_values(v, CACHE_KEY_FIELDS)
+
+    key_str = json.dumps(key_dict, sort_keys=True, ensure_ascii=False)
+    return StringUtils.md5_hash(key_str)
+
+def build_context_cache(cache_name: str = 'cache'):
+    """
+    上下文缓存装饰器
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+
+            # 获取缓存键
+            cache_key = build_cache_key(*args, **kwargs)
+
+            # 获取缓存实例
+            cache = getattr(self, cache_name)
+
+            if cache_key in cache:
+                # 命中缓存，更新上下文
+                self._context.update(cache[cache_key])
+                return
+
+            # 执行原方法
+            result = func(self, *args, **kwargs)
+
+            if isinstance(result, dict):
+                cache[cache_key] = result
+                self._context.update(result)
+            return result
+        return wrapper
+    return decorator
+
+
 class TemplateHelper(metaclass=SingletonClass):
     """
     模板格式渲染帮助类
     """
     def __init__(self):
         self.builder = TemplateContextBuilder()
+        self.cache = TTLCache(maxsize=100, ttl=600)
+
+    @staticmethod
+    def _generate_cache_key(cuntent: Union[str, dict]) -> str:
+        """
+        生成缓存键
+        """
+        if isinstance(cuntent, dict):
+            base_str = cuntent.get("title", '') + cuntent.get("text", '')
+            return StringUtils.md5_hash(json.dumps(base_str, sort_keys=True, ensure_ascii=False))
+
+        return StringUtils.md5_hash(cuntent)
+
+    def get_cache_context(self, cuntent: Union[str, dict]) -> Optional[dict]:
+        """
+        获取缓存上下文
+        """
+        cache_key = self._generate_cache_key(cuntent)
+        return self.cache.get(cache_key)
+
+    def set_cache_context(self, cuntent: Union[str, dict], context: dict) -> None:
+        """
+        设置缓存上下文
+        """
+        cache_key = self._generate_cache_key(cuntent)
+        self.cache[cache_key] = context
 
     def render(self,
           template_content: str,
@@ -45,8 +146,11 @@ class TemplateHelper(metaclass=SingletonClass):
             if not rendered:
                 raise ValueError("模板渲染失败")
 
-            return (rendered if template_type == 'string'
-                    else self.__process_formatted_string(rendered))
+            if rendered := rendered if template_type == 'string' else self.__process_formatted_string(rendered):
+                # 缓存上下文
+                self.set_cache_context(rendered, context)
+                # 返回渲染结果
+                return rendered
 
         except Exception as e:
             logger.error(f"模板处理失败: {str(e)}")
@@ -153,6 +257,7 @@ class TemplateContextBuilder:
     模板上下文构建器
     """
     def __init__(self):
+        self.cache = TTLCache(maxsize=100, ttl=600)
         self._context = {}
 
     def build(
@@ -189,6 +294,7 @@ class TemplateContextBuilder:
 
         return self._context
 
+    @build_context_cache(cache_name='cache')
     def _add_media_info(self, mediainfo: MediaInfo):
         """
         增加媒体信息
@@ -233,8 +339,9 @@ class TemplateContextBuilder:
             # 豆瓣ID
             "doubanid": mediainfo.douban_id,
         }
-        self._context.update({**base_info, **media_info})
+        return {**base_info, **media_info}
 
+    @build_context_cache(cache_name='cache')
     def _add_episode_details(self, meta: Optional[MetaBase], episodes: Optional[List[TmdbEpisode]]):
         """添加剧集详细信息"""
         if not meta:
@@ -291,8 +398,9 @@ class TemplateContextBuilder:
             # 音频编码
             "audioCodec": meta.audio_encode,
         }
-        self._context.update({**meta_info, **tech_metadata, **episode_data})
+        return {**meta_info, **tech_metadata, **episode_data}
 
+    @build_context_cache(cache_name='cache')
     def _add_torrent_info(self, torrentinfo: Optional[TorrentInfo]):
         if not torrentinfo: return
         if torrentinfo.size:
@@ -328,8 +436,9 @@ class TemplateContextBuilder:
             # 种子大小
             "size": size,
         }
-        self._context.update(torrent_info)
+        return torrent_info
 
+    @build_context_cache(cache_name='cache')
     def _add_transfer_info(self, transferinfo: Optional[TransferInfo]) -> Optional[Dict]:
         """添加文件转移上下文"""
         if not transferinfo: return
@@ -348,8 +457,9 @@ class TemplateContextBuilder:
             # 文件后缀
             "fileExt": file_extension,
         }
-        self._context.update(file_info)
+        return file_info
 
+    @build_context_cache(cache_name='cache')
     def _add_raw_objects(
         self,
         meta: Optional[MetaBase],
@@ -371,7 +481,7 @@ class TemplateContextBuilder:
             # 当前季的全部集信息
             "__episodes_info__": episodes_info,
         }
-        self._context.update({k: v for k, v in raw_objects.items() if v is not None})
+        return {k: v for k, v in raw_objects.items() if v is not None}
 
     @staticmethod
     def __convert_invalid_characters(filename: str):
