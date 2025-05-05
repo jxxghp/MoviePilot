@@ -151,6 +151,8 @@ class SystemConfigKey(Enum):
     FollowSubscribers = "FollowSubscribers"
     # 通知发送时间
     NotificationSendTime = "NotificationSendTime"
+    # 通知消息格式模板
+    NotificationTemplates = "NotificationTemplates"
 
 
 # 处理进度Key字典
@@ -187,6 +189,21 @@ class NotificationType(Enum):
     Plugin = "插件"
     # 其它消息
     Other = "其它"
+
+
+class ContentType(str, Enum):
+    """
+    消息内容类型
+    操作状态的通知消息类型标识
+    """
+    # 订阅添加成功
+    SubscribeAdded: str = "subscribeAdded"
+    # 订阅完成
+    SubscribeComplete: str = "subscribeComplete"
+    # 入库成功
+    OrganizeSuccess: str = "organizeSuccess"
+    # 下载开始(添加下载任务成功)
+    DownloadAdded: str = "downloadAdded"
 
 
 # 消息渠道
