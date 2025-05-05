@@ -2,7 +2,7 @@ from typing import Optional, Union
 
 from pydantic import BaseModel, Field
 
-from app.schemas.types import NotificationType, MessageChannel
+from app.schemas.types import ContentType, NotificationType, MessageChannel
 
 
 class CommingMessage(BaseModel):
@@ -45,6 +45,8 @@ class Notification(BaseModel):
     source: Optional[str] = None
     # 消息类型
     mtype: Optional[NotificationType] = None
+    # 内容类型
+    ctype: Optional[ContentType] = None
     # 标题
     title: Optional[str] = None
     # 文本内容

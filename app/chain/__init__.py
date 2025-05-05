@@ -18,7 +18,7 @@ from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.message_oper import MessageOper
 from app.db.user_oper import UserOper
-from app.helper.message import MessageHelper, MessageQueueManager
+from app.helper.message import MessageHelper, MessageQueueManager, MessageTemplateHelper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
@@ -542,13 +542,27 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("media_files", mediainfo=mediainfo)
 
-    def post_message(self, message: Notification) -> None:
+    def post_message(self,
+                    message: Optional[Notification] = None,
+                    meta: Optional[MetaBase] = None,
+                    mediainfo: Optional[MediaInfo] = None,
+                    torrentinfo: Optional[TorrentInfo] = None,
+                    transferinfo: Optional[TransferInfo] = None,
+                    **kwargs) -> None:
         """
         发送消息
-        :param message:  消息体
+        :param message:  Notification实例
+        :param meta:  元数据
+        :param mediainfo:  媒体信息
+        :param torrentinfo:  种子信息
+        :param transferinfo:  文件整理信息
+        :param kwargs:  其他参数(覆盖业务对象属性值)
         :return: 成功或失败
         """
-        # 保存原消息
+        # 渲染消息
+        message = MessageTemplateHelper.render(message=message, meta=meta, mediainfo=mediainfo,
+                                       torrentinfo=torrentinfo, transferinfo=transferinfo, **kwargs)
+        # 保存消息
         self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.dict())
         # 发送消息按设置隔离
