@@ -32,7 +32,6 @@ class TemplateContextBuilder:
     """
 
     def __init__(self):
-        self.cache = TTLCache(maxsize=100, ttl=600)
         self._context = {}
 
     def build(

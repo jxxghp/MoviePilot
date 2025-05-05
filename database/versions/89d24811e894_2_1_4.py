@@ -33,7 +33,7 @@ def upgrade() -> None:
         "downloadAdded": """
 {
     'title': '{{ title_year }}'
-            '{% if download_episodes %} {{ season }} {{ download_episodes }}{% else %}{{ season_episode }} 开始下载',
+            '{% if download_episodes %} {{ season }} {{ download_episodes }}{% else %}{{ season_episode }}{% endif %} 开始下载',
     'text': '{% if site_name %}站点：{{ site_name }}{% endif %}'
             '{% if resource_term %}\\n质量：{{ resource_term }}{% endif %}'
             '{% if size %}\\n大小：{{ size }}{% endif %}'
