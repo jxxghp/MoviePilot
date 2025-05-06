@@ -541,7 +541,7 @@ class PluginManager(metaclass=Singleton):
             dist_path = dist_path[1:]
         if dist_path.endswith("/"):
             dist_path = dist_path[:-1]
-        return f"/plugin/file/{plugin_id.lower()}/{dist_path}/remoteEntry.js?token={settings.API_TOKEN}"
+        return f"/plugin/file/{plugin_id.lower()}/{dist_path}/remoteEntry.js"
 
     def get_plugin_remotes(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
