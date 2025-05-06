@@ -67,5 +67,3 @@ class PluginDashboard(Plugin):
     cols: Optional[dict] = Field(default_factory=dict)
     # 页面元素
     elements: Optional[List[dict]] = Field(default_factory=list)
-    # 页面地址
-    component_url: Optional[str] = None

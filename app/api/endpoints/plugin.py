@@ -1,6 +1,5 @@
-import inspect
 import mimetypes
-from typing import Annotated, Any, List, Optional, Callable, Tuple
+from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from starlette import status
@@ -10,7 +9,7 @@ from app import schemas
 from app.command import Command
 from app.core.config import settings
 from app.core.plugin import PluginManager
-from app.core.security import verify_apikey, verify_token
+from app.core.security import verify_apikey, verify_token, verify_apitoken
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.factory import app
@@ -221,6 +220,16 @@ def install(plugin_id: str,
     return schemas.Response(success=True)
 
 
+@router.get("/remotes", summary="获取插件联邦组件列表", response_model=List[dict])
+def remotes(token: str) -> Any:
+    """
+    获取插件联邦组件列表
+    """
+    if token != "moviepilot":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return PluginManager().get_plugin_remotes()
+
+
 @router.get("/form/{plugin_id}", summary="获取插件表单页面")
 def plugin_form(plugin_id: str,
                 _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
@@ -232,29 +241,16 @@ def plugin_form(plugin_id: str,
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {plugin_id} 不存在或未加载")
 
     # 渲染模式
-    render_mode = plugin_instance.get_render_mode()
-    if render_mode == "vue":
-        # Vue模式
-        try:
-            vue_component_file, model = plugin_instance.get_form_file()
-            return {
-                "render_mode": "vue",
-                "component_url": f"/plugin/file/{plugin_id.lower()}/{vue_component_file}",
-                "model": PluginManager().get_plugin_config(plugin_id) or model
-            }
-        except Exception as e:
-            logger.error(f"插件 {plugin_id} 调用方法 get_form_file 出错: {str(e)}")
-    else:
-        # Vuetify模式
-        try:
-            conf, model = plugin_instance.get_form()
-            return {
-                "render_mode": "vuetify",
-                "conf": conf,
-                "model": PluginManager().get_plugin_config(plugin_id) or model
-            }
-        except Exception as e:
-            logger.error(f"插件 {plugin_id} 调用方法 get_form 出错: {str(e)}")
+    render_mode, _ = plugin_instance.get_render_mode()
+    try:
+        conf, model = plugin_instance.get_form()
+        return {
+            "render_mode": render_mode,
+            "conf": conf,
+            "model": PluginManager().get_plugin_config(plugin_id) or model
+        }
+    except Exception as e:
+        logger.error(f"插件 {plugin_id} 调用方法 get_form 出错: {str(e)}")
     return {}
 
 
@@ -268,27 +264,15 @@ def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_ac
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {plugin_id} 不存在或未加载")
 
     # 渲染模式
-    render_mode = plugin_instance.get_render_mode()
-    if render_mode == "vue":
-        # Vue模式
-        try:
-            vue_component_file = plugin_instance.get_page_file()
-            return {
-                "render_mode": "vue",
-                "component_url": f"/plugin/file/{plugin_id.lower()}/{vue_component_file}",
-            }
-        except Exception as e:
-            logger.error(f"插件 {plugin_id} 调用方法 get_page_file 出错: {str(e)}")
-
-    else:
-        try:
-            page = plugin_instance.get_page()
-            return {
-                "render_mode": "vuetify",
-                "page": page or []
-            }
-        except Exception as e:
-            logger.error(f"插件 {plugin_id} 调用方法 get_page 出错: {str(e)}")
+    render_mode, _ = plugin_instance.get_render_mode()
+    try:
+        page = plugin_instance.get_page()
+        return {
+            "render_mode": render_mode,
+            "page": page or []
+        }
+    except Exception as e:
+        logger.error(f"插件 {plugin_id} 调用方法 get_page 出错: {str(e)}")
     return {}
 
 
@@ -302,62 +286,11 @@ def plugin_dashboard_meta(_: schemas.TokenPayload = Depends(verify_token)) -> Li
 
 @router.get("/dashboard/{plugin_id}/{key}", summary="获取插件仪表板配置")
 def plugin_dashboard_by_key(plugin_id: str, key: str, user_agent: Annotated[str | None, Header()] = None,
-                     _: schemas.TokenPayload = Depends(verify_token)) -> Optional[schemas.PluginDashboard]:
+                            _: schemas.TokenPayload = Depends(verify_token)) -> Optional[schemas.PluginDashboard]:
     """
     根据插件ID获取插件仪表板
     """
-
-    def __get_params_count(func: Callable):
-        """
-        获取函数的参数信息
-        """
-        signature = inspect.signature(func)
-        return len(signature.parameters)
-
-    # 获取插件实例
-    plugin_instance = PluginManager().running_plugins.get(plugin_id)
-    if not plugin_instance:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {plugin_id} 不存在或未加载")
-        # 渲染模式
-    render_mode = plugin_instance.get_render_mode()
-    if render_mode == "vue":
-        # Vue模式
-        try:
-            cols, attrs, vue_component_file = plugin_instance.get_dashboard_file(key=key, user_agent=user_agent)
-            return schemas.PluginDashboard(
-                id=plugin_id,
-                name=plugin_instance.plugin_name,
-                key=key,
-                render_mode=render_mode,
-                cols=cols or {},
-                attrs=attrs or {},
-                component_url=f"/plugin/file/{plugin_id.lower()}/{vue_component_file}",
-            )
-        except Exception as e:
-            logger.error(f"插件 {plugin_id} 调用方法 get_dashboard_file 出错: {str(e)}")
-    else:
-        try:
-            # 检查方法的参数个数
-            params_count = __get_params_count(plugin_instance.get_dashboard)
-            if params_count > 1:
-                dashboard: Tuple = plugin_instance.get_dashboard(key=key, user_agent=user_agent)
-            elif params_count > 0:
-                dashboard: Tuple = plugin_instance.get_dashboard(user_agent=user_agent)
-            else:
-                dashboard: Tuple = plugin_instance.get_dashboard()
-            if dashboard:
-                cols, attrs, elements = dashboard
-                return schemas.PluginDashboard(
-                    id=plugin_id,
-                    name=plugin_instance.plugin_name,
-                    key=key,
-                    render_mode="vuetify",
-                    cols=cols or {},
-                    elements=elements,
-                    attrs=attrs or {}
-                )
-        except Exception as e:
-            logger.error(f"插件 {plugin_id} 调用方法 get_dashboard 出错: {str(e)}")
+    return PluginManager().get_plugin_dashboard(plugin_id, key, user_agent)
 
 
 @router.get("/dashboard/{plugin_id}", summary="获取插件仪表板配置")
@@ -390,8 +323,8 @@ def reset_plugin(plugin_id: str,
     return schemas.Response(success=True)
 
 
-@router.get("/file/{plugin_id}/{filepath:path}",  summary="获取插件静态文件")
-def plugin_static_file(plugin_id: str, filepath: str, _: schemas.TokenPayload = Depends(verify_token)):
+@router.get("/file/{plugin_id}/{filepath:path}", summary="获取插件静态文件")
+def plugin_static_file(plugin_id: str, filepath: str, _: Annotated[str, Depends(verify_apitoken)]):
     """
     获取插件静态文件
     """
@@ -413,9 +346,9 @@ def plugin_static_file(plugin_id: str, filepath: str, _: schemas.TokenPayload = 
     # 强制修正 .mjs 和 .js 的 MIME 类型
     if suffix in ['.js', '.mjs']:
         response_type = 'application/javascript'
-    elif suffix == '.css' and not response_type: # 如果 guess_type 没猜对 css，也修正
+    elif suffix == '.css' and not response_type:  # 如果 guess_type 没猜对 css，也修正
         response_type = 'text/css'
-    elif not response_type: # 对于其他猜不出的类型
+    elif not response_type:  # 对于其他猜不出的类型
         response_type = 'application/octet-stream'
 
     try:

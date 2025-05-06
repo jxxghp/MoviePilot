@@ -84,12 +84,12 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def get_render_mode() -> str:
+    def get_render_mode() -> Tuple[str, Optional[str]]:
         """
         获取插件渲染模式
-        :return: 渲染模式，支持：vue/vuetify，默认vuetify
+        :return: 1、渲染模式，支持：vue/vuetify，默认vuetify；2、vue模式下编译后文件的相对路径，默认为`dist`，vuetify模式下为None
         """
-        return "vuetify"
+        return "vuetify", None
 
     @abstractmethod
     def get_api(self) -> List[Dict[str, Any]]:
@@ -106,34 +106,19 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+    def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
         """
         拼装插件配置页面，插件配置页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
-        :return: 1、页面配置；2、默认数据结构
-        """
-        pass
-
-    @staticmethod
-    def get_form_file() -> Tuple[str, Dict[str, Any]]:
-        """
-        获取插件配置页面JS代码源文件（与get_from二选一使用）
-        :return: 1、编译后的JS代码插件目录下相对路径；2、默认数据结构
+        :return: 1、页面配置（vuetify模式）或 None（vue模式）；2、默认数据结构
         """
         pass
 
     @abstractmethod
-    def get_page(self) -> List[dict]:
+    def get_page(self) -> Optional[List[dict]]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         插件详情页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
-        """
-        pass
-
-    @staticmethod
-    def get_page_file() -> Optional[str]:
-        """
-        获取插件数据页面JS代码源文件（与get_page二选一使用）
-        :return: 编译后的JS代码插件目录下相对路径
+        :return: 页面配置（vuetify模式）或 None（vue模式）
         """
         pass
 
@@ -150,9 +135,9 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
+    def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], Optional[List[dict]]]]:
         """
-        获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（布局、自动刷新等）；3、仪表板页面元素配置json（含数据）
+        获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（布局、自动刷新等）；3、仪表板页面元素配置含数据json（vuetify）或 None（vue模式）
         1、col配置参考：
         {
             "cols": 12, "md": 6
@@ -164,18 +149,11 @@ class _PluginBase(metaclass=ABCMeta):
             "title": "组件标题", // 组件标题，如有将显示该标题，否则显示插件名称
             "subtitle": "组件子标题", // 组件子标题，缺省时不展示子标题
         }
-        3、页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+        3、vuetify模式页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/；vue模式为None
 
         kwargs参数可获取的值：1、user_agent：浏览器UA
 
         :param key: 仪表盘key，根据指定的key返回相应的仪表盘数据，缺省时返回一个固定的仪表盘数据（兼容旧版）
-        """
-        pass
-
-    def get_dashboard_file(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], str]]:
-        """
-        获取插件仪表盘页面JS代码源文件（与get_dashboard二选一使用）
-        :return: 1、全局配置（布局、自动刷新等）；2、仪表板页面元素配置json（含数据）；3、编译后的JS代码插件目录下相对路径
         """
         pass
 
