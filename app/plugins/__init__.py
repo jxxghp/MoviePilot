@@ -87,7 +87,7 @@ class _PluginBase(metaclass=ABCMeta):
     def get_render_mode() -> Tuple[str, Optional[str]]:
         """
         获取插件渲染模式
-        :return: 1、渲染模式，支持：vue/vuetify，默认vuetify；2、vue模式下编译后文件的相对路径，默认为`dist`，vuetify模式下为None
+        :return: 1、渲染模式，支持：vue/vuetify，默认vuetify；2、vue模式下编译后文件的相对路径，默认为`dist/asserts`，vuetify模式下为None
         """
         return "vuetify", None
 
