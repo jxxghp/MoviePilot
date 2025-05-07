@@ -42,7 +42,7 @@ class TemplateContextBuilder:
             transferinfo: Optional[TransferInfo] = None,
             file_extension: Optional[str] = None,
             episodes_info: Optional[List[TmdbEpisode]] = None,
-            include_raw_objects: bool = False,
+            include_raw_objects: bool = True,
             **kwargs
     ) -> Dict[str, Any]:
         """
@@ -80,8 +80,11 @@ class TemplateContextBuilder:
             "en_title": self.__convert_invalid_characters(mediainfo.en_title),
             # 原语种标题
             "original_title": self.__convert_invalid_characters(mediainfo.original_title),
+            # 季号
+            "season": self._context.get("season") or mediainfo.season,
             # 年份
             "year": mediainfo.year or self._context.get("year"),
+            # 媒体标题 + 年份
             "title_year": mediainfo.title_year or self._context.get("title_year"),
         }
 

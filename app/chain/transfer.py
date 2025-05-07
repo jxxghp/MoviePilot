@@ -1385,5 +1385,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
             meta=meta,
             mediainfo=mediainfo,
             transferinfo=transferinfo,
-            season_episode=season_episode
+            season_episode=season_episode,
+            username=username
         )

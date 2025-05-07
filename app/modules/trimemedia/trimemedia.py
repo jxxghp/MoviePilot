@@ -44,6 +44,7 @@ class TrimeMedia:
             self._playhost = play_api.host
         elif play_host:
             logger.warning(f"请检查外网播放地址 {play_host}")
+            self._playhost = UrlUtils.standardize_base_url(play_host).rstrip("/")
 
         self.reconnect()
 
