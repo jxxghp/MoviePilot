@@ -241,6 +241,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     link=link,
                     username=username
                 ),
+                meta=metainfo,
                 mediainfo=mediainfo,
                 username=username
             )
@@ -1023,7 +1024,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             ),
             meta=meta,
             mediainfo=mediainfo,
-            msgstr=msgstr
+            msgstr=msgstr,
+            username=subscribe.username
         )
         # 发送事件
         EventManager().send_event(EventType.SubscribeComplete, {
