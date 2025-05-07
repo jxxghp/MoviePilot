@@ -339,7 +339,8 @@ class DownloadChain(ChainBase):
                 meta=_meta,
                 mediainfo=_media,
                 torrentinfo=_torrent,
-                download_episodes=download_episodes
+                download_episodes=download_episodes,
+                username=username,
             )
             # 下载成功后处理
             self.download_added(context=context, download_dir=download_dir, torrent_path=torrent_file)
