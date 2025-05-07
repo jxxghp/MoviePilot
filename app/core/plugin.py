@@ -475,6 +475,8 @@ class PluginManager(metaclass=Singleton):
                     apis = plugin.get_api() or []
                     for api in apis:
                         api["path"] = f"/{plugin_id}{api['path']}"
+                        if not api.get("auth"):
+                            api["auth"] = "apikey"
                     ret_apis.extend(apis)
                 except Exception as e:
                     logger.error(f"获取插件 {plugin_id} API出错：{str(e)}")

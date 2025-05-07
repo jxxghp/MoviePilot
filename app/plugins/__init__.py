@@ -99,6 +99,7 @@ class _PluginBase(metaclass=ABCMeta):
             "path": "/xx",
             "endpoint": self.xxx,
             "methods": ["GET", "POST"],
+            "auth: "apikey",  # 鉴权类型：apikey/bear
             "summary": "API名称",
             "description": "API说明"
         }]
