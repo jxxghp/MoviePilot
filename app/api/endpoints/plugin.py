@@ -9,7 +9,7 @@ from app import schemas
 from app.command import Command
 from app.core.config import settings
 from app.core.plugin import PluginManager
-from app.core.security import verify_apikey, verify_token, verify_apitoken
+from app.core.security import verify_apikey, verify_token
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.factory import app
@@ -68,9 +68,13 @@ def _update_plugin_api_routes(plugin_id: Optional[str], action: str):
             try:
                 api["path"] = api_path
                 allow_anonymous = api.pop("allow_anonymous", False)
+                auth_mode = api.pop("auth", "apikey")
                 dependencies = api.setdefault("dependencies", [])
-                if not allow_anonymous and Depends(verify_apikey) not in dependencies:
-                    dependencies.append(Depends(verify_apikey))
+                if not allow_anonymous:
+                    if auth_mode == "bear" and Depends(verify_token) not in dependencies:
+                        dependencies.append(Depends(verify_token))
+                    elif Depends(verify_apikey) not in dependencies:
+                        dependencies.append(Depends(verify_apikey))
                 app.add_api_route(**api, tags=["plugin"])
                 is_modified = True
                 logger.debug(f"Added plugin route: {api_path}")
