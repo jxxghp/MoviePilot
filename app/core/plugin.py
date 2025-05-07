@@ -633,6 +633,7 @@ class PluginManager(metaclass=Singleton):
             render_mode=render_mode,
             cols=cols or {},
             attrs=attrs or {},
+            elements=elements
         )
 
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
