@@ -598,8 +598,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # 初始化分片上传
         upload_id = bucket.init_multipart_upload(object_name,
                                                  params={
-                                                     "encoding-type": "url",
-                                                     "sequential": ""
+                                                     "encoding-type": "url"
                                                  }).upload_id
 
         # 创建线程池
