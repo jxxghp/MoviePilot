@@ -450,7 +450,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             "/adrive/v1.0/openFile/create",
             json={
                 "drive_id": parent_item.drive_id,
-                "parent_file_id": parent_item.fileid,
+                "parent_file_id": parent_item.fileid or "root",
                 "name": name,
                 "type": "folder"
             }
@@ -900,7 +900,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/", drive_id=self._default_drive_id)
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:
