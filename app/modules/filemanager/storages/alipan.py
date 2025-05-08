@@ -348,6 +348,8 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         if not fileinfo:
             return schemas.FileItem()
+        if not parent.endswith("/"):
+            parent += "/"
         if fileinfo.get("type") == "folder":
             return schemas.FileItem(
                 storage=self.schema.value,
@@ -874,7 +876,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             if resp.get("code"):
                 logger.debug(f"【阿里云盘】获取文件信息失败: {resp.get('message')}")
                 return None
-            return self.__get_fileitem(resp, parent=f"{str(path.parent)}/")
+            return self.__get_fileitem(resp, parent=str(path.parent))
         except Exception as e:
             logger.debug(f"【阿里云盘】获取文件信息失败: {str(e)}")
             return None
