@@ -61,6 +61,13 @@ class StorageBase(metaclass=ABCMeta):
         """
         return transtype in self.transtype
 
+    def reset_config(self):
+        """
+        重置置配置
+        """
+        self.storagehelper.reset_storage(self.schema.value)
+        self.init_storage()
+
     @abstractmethod
     def check(self) -> bool:
         """
