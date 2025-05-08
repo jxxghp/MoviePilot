@@ -31,7 +31,7 @@ def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/check/{name}", summary="二维码登录确认", response_model=schemas.Response)
-def check(name: str, ck: Optional[str] = None, t: Optional[str] = None, 
+def check(name: str, ck: Optional[str] = None, t: Optional[str] = None,
           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     二维码登录确认
@@ -54,6 +54,7 @@ def save(name: str,
     """
     StorageChain().save_config(name, conf)
     return schemas.Response(success=True)
+
 
 @router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response)
 def reset(name: str,
