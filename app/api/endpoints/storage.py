@@ -55,6 +55,15 @@ def save(name: str,
     StorageChain().save_config(name, conf)
     return schemas.Response(success=True)
 
+@router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response)
+def save(name: str,
+         _: User = Depends(get_current_active_superuser)) -> Any:
+    """
+    重置存储配置
+    """
+    StorageChain().reset_config(name)
+    return schemas.Response(success=True)
+
 
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
 def list_files(fileitem: schemas.FileItem,
