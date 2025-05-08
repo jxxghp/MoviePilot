@@ -71,3 +71,14 @@ class StorageHelper:
                 config=conf
             ))
         self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])
+
+    def reset_storage(self, storage: str):
+        """
+        重置存储配置
+        """
+        storagies = self.get_storagies()
+        for s in storagies:
+            if s.type == storage:
+                s.config = {}
+                break
+        self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])

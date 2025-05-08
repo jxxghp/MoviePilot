@@ -154,6 +154,16 @@ class FileManagerModule(_ModuleBase):
             return
         storage_oper.set_config(conf)
 
+    def reset_config(self, storage: str) -> None:
+        """
+        重置存储配置
+        """
+        storage_oper = self.__get_storage_oper(storage)
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的重置存储配置")
+            return
+        storage_oper.reset_config()
+
     def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """
         生成二维码

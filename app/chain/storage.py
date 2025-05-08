@@ -24,6 +24,12 @@ class StorageChain(ChainBase):
         """
         self.run_module("save_config", storage=storage, conf=conf)
 
+    def reset_config(self, storage: str) -> None:
+        """
+        重置存储配置
+        """
+        self.run_module("reset_config", storage=storage)
+
     def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """
         生成二维码
