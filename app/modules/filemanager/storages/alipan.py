@@ -1,8 +1,10 @@
 import base64
 import hashlib
+import io
 import secrets
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Union
 
@@ -21,6 +23,10 @@ lock = threading.Lock()
 
 
 class NoCheckInException(Exception):
+    pass
+
+
+class SessionInvalidException(Exception):
     pass
 
 
@@ -49,6 +55,13 @@ class AliPan(StorageBase, metaclass=Singleton):
 
     # CID和路径缓存
     _id_cache: Dict[str, Tuple[str, str]] = {}
+
+    # 最大线程数
+    MAX_WORKERS = 10
+    # 最大分片大小(1GB)
+    MAX_PART_SIZE = 1024 * 1024 * 1024
+    # 最小分片大小(100MB)
+    MIN_PART_SIZE = 100 * 1024 * 1024
 
     def __init__(self):
         super().__init__()
@@ -177,7 +190,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         确认登录后，获取相关token
         """
         if not self._auth_state:
-            raise Exception("【阿里云盘】请先生成二维码")
+            raise SessionInvalidException("【阿里云盘】请先生成二维码")
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
@@ -188,7 +201,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             }
         )
         if resp is None:
-            raise Exception("【阿里云盘】获取 access_token 失败")
+            raise SessionInvalidException("【阿里云盘】获取 access_token 失败")
         result = resp.json()
         if result.get("code"):
             raise Exception(f"【阿里云盘】{result.get('code')} - {result.get('message')}！")
@@ -199,7 +212,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         刷新access_token
         """
         if not refresh_token:
-            raise Exception("【阿里云盘】会话失效，请重新扫码登录！")
+            raise SessionInvalidException("【阿里云盘】会话失效，请重新扫码登录！")
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
@@ -335,6 +348,8 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         if not fileinfo:
             return schemas.FileItem()
+        if not parent.endswith("/"):
+            parent += "/"
         if fileinfo.get("type") == "folder":
             return schemas.FileItem(
                 storage=self.schema.value,
@@ -437,7 +452,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             "/adrive/v1.0/openFile/create",
             json={
                 "drive_id": parent_item.drive_id,
-                "parent_file_id": parent_item.fileid,
+                "parent_file_id": parent_item.fileid or "root",
                 "name": name,
                 "type": "folder"
             }
@@ -583,13 +598,6 @@ class AliPan(StorageBase, metaclass=Singleton):
             raise Exception(resp.get("message"))
         return resp.get('part_info_list', [])
 
-    @staticmethod
-    def _upload_part(upload_url: str, data: bytes):
-        """
-        上传单个分片
-        """
-        return requests.put(upload_url, data=data)
-
     def _list_uploaded_parts(self, drive_id: str, file_id: str, upload_id: str) -> dict:
         """
         获取已上传分片列表
@@ -628,22 +636,77 @@ class AliPan(StorageBase, metaclass=Singleton):
             raise Exception(resp.get("message"))
         return resp
 
+    def _calc_parts(self, file_size: int) -> Tuple[int, int]:
+        """
+        计算最优分片大小和线程数，在最大分片大小和最小分片大小之间取最优值
+        :param file_size: 文件大小
+        :return: 分片大小，线程数
+        """
+        if file_size <= self.MIN_PART_SIZE:
+            return file_size, 1
+        if file_size >= self.MAX_PART_SIZE:
+            part_size = self.MAX_PART_SIZE
+        else:
+            part_size = max(self.MIN_PART_SIZE, file_size // self.MAX_WORKERS)
+        return part_size, (file_size + part_size - 1) // part_size
+
+    @staticmethod
+    def _log_progress(desc: str, total: int) -> tqdm:
+        """
+        创建一个可以输出到日志的进度条
+        """
+
+        class TqdmToLogger(io.StringIO):
+            def write(s, buf):  # noqa
+                buf = buf.strip('\r\n\t ')
+                if buf:
+                    logger.info(buf)
+
+        return tqdm(
+            total=total,
+            unit='B',
+            unit_scale=True,
+            desc=desc,
+            file=TqdmToLogger(),
+            mininterval=1.0,
+            maxinterval=5.0,
+            miniters=1
+        )
+
+    @staticmethod
+    def _upload_part(upload_url: str, data: bytes, part_num: int) -> Tuple[int, str, int]:
+        """
+        上传单个分片
+        """
+        try:
+            response = requests.put(upload_url, data=data)
+            if response and response.status_code == 200:
+                logger.info(f"【阿里云盘】分片 {part_num} 上传完成")
+                return part_num, response.headers.get('ETag', ''), len(data)
+            else:
+                raise Exception(f"上传失败: {response.status_code if response else 'No Response'}")
+        except Exception as e:
+            logger.error(f"【阿里云盘】分片 {part_num} 上传失败: {str(e)}")
+            raise
+
     def upload(self, target_dir: schemas.FileItem, local_path: Path,
                new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
-        文件上传：分片、支持秒传
+        文件上传：多线程分片、支持秒传
         """
         target_name = new_name or local_path.name
         target_path = Path(target_dir.path) / target_name
         file_size = local_path.stat().st_size
 
-        # 1. 创建文件并检查秒传
-        chunk_size = 100 * 1024 * 1024  # 分片大小 100M
+        # 1. 计算分片大小和线程数
+        part_size, workers = self._calc_parts(file_size)
+
+        # 2. 创建文件并检查秒传
         create_res = self._create_file(drive_id=target_dir.drive_id,
                                        parent_file_id=target_dir.fileid,
                                        file_name=target_name,
                                        file_path=local_path,
-                                       chunk_size=chunk_size)
+                                       chunk_size=part_size)
         if create_res.get('rapid_upload', False):
             logger.info(f"【阿里云盘】{target_name} 秒传完成！")
             return self.get_item(target_path)
@@ -652,93 +715,78 @@ class AliPan(StorageBase, metaclass=Singleton):
             logger.info(f"【阿里云盘】{target_name} 已存在")
             return self.get_item(target_path)
 
-        # 2. 准备分片上传参数
+        # 3. 准备分片上传参数
         file_id = create_res.get('file_id')
         if not file_id:
             logger.warn(f"【阿里云盘】创建 {target_name} 文件失败！")
             return None
         upload_id = create_res.get('upload_id')
         part_info_list = create_res.get('part_info_list')
-        uploaded_parts = set()
+        uploaded_parts = {}
 
-        # 3. 获取已上传分片
+        # 4. 获取已上传分片
         uploaded_info = self._list_uploaded_parts(drive_id=target_dir.drive_id, file_id=file_id, upload_id=upload_id)
         for part in uploaded_info.get('uploaded_parts', []):
-            uploaded_parts.add(part['part_number'])
+            uploaded_parts[part['part_number']] = part.get('etag', '')
 
-        # 4. 初始化进度条
-        logger.info(f"【阿里云盘】开始上传: {local_path} -> {target_path}，分片数：{len(part_info_list)}")
-        progress_bar = tqdm(
-            total=file_size,
-            unit='B',
-            unit_scale=True,
-            desc="上传进度",
-            ascii=True
-        )
+        # 5. 初始化进度条
+        logger.info(f"【阿里云盘】开始上传: {local_path} -> {target_path}，"
+                    f"分片大小：{StringUtils.str_filesize(part_size)}，线程数：{workers}")
+        progress_bar = self._log_progress(f"【阿里云盘】{target_name} 上传进度", file_size)
 
-        # 5. 分片上传循环
-        with open(local_path, 'rb') as f:
-            for part_info in part_info_list:
-                part_num = part_info['part_number']
+        # 7. 创建线程池
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = []
 
-                # 计算分片参数
-                start = (part_num - 1) * chunk_size
-                end = min(start + chunk_size, file_size)
-                current_chunk_size = end - start
+            # 提交上传任务
+            with open(local_path, 'rb') as f:
+                for part_info in part_info_list:
+                    part_num = part_info['part_number']
 
-                # 更新进度条（已存在的分片）
-                if part_num in uploaded_parts:
-                    progress_bar.update(current_chunk_size)
-                    continue
+                    # 跳过已上传的分片
+                    if part_num in uploaded_parts:
+                        start = (part_num - 1) * part_size
+                        end = min(start + part_size, file_size)
+                        progress_bar.update(end - start)
+                        continue
 
-                # 准备分片数据
-                f.seek(start)
-                data = f.read(current_chunk_size)
+                    # 准备分片数据
+                    start = (part_num - 1) * part_size
+                    end = min(start + part_size, file_size)
+                    f.seek(start)
+                    data = f.read(end - start)
 
-                # 上传分片（带重试逻辑）
-                success = False
-                for attempt in range(3):  # 最大重试次数
-                    try:
-                        # 获取当前上传地址（可能刷新）
-                        if attempt > 0:
-                            new_urls = self._refresh_upload_urls(drive_id=target_dir.drive_id, file_id=file_id,
-                                                                 upload_id=upload_id, part_numbers=[part_num])
-                            upload_url = new_urls[0]['upload_url']
-                        else:
-                            upload_url = part_info['upload_url']
+                    # 提交上传任务
+                    future = pool.submit(
+                        self._upload_part,
+                        part_info['upload_url'],
+                        data,
+                        part_num
+                    )
+                    futures.append((part_num, future))
 
-                        # 执行上传
-                        logger.info(
-                            f"【阿里云盘】开始 第{attempt + 1}次 上传 {target_name} 分片 {part_num} ...")
-                        response = self._upload_part(upload_url=upload_url, data=data)
-                        if response is None:
-                            continue
-                        if response.status_code == 200:
-                            success = True
-                            break
-                        else:
-                            logger.warn(
-                                f"【阿里云盘】{target_name} 分片 {part_num} 第 {attempt + 1} 次上传失败：{response.text}！")
-                    except Exception as e:
-                        logger.warn(f"【阿里云盘】{target_name} 分片 {part_num} 上传异常: {str(e)}！")
+            # 等待所有任务完成
+            for part_num, future in futures:
+                try:
+                    num, etag, uploaded = future.result()
+                    uploaded_parts[num] = etag
+                    progress_bar.update(uploaded)
+                except Exception as e:
+                    logger.error(f"【阿里云盘】分片上传失败: {str(e)}")
+                    progress_bar.close()
+                    return None
 
-                # 处理上传结果
-                if success:
-                    uploaded_parts.add(part_num)
-                    progress_bar.update(current_chunk_size)
-                else:
-                    raise Exception(f"【阿里云盘】{target_name} 分片 {part_num} 上传失败！")
+        # 8. 关闭进度条
+        progress_bar.close()
 
-        # 6. 关闭进度条
-        if progress_bar:
-            progress_bar.close()
-
-        # 7. 完成上传
+        # 9. 完成上传
         result = self._complete_upload(drive_id=target_dir.drive_id, file_id=file_id, upload_id=upload_id)
         if not result:
             raise Exception("【阿里云盘】完成上传失败！")
         if result.get("code"):
             logger.warn(f"【阿里云盘】{target_name} 上传失败：{result.get('message')}！")
+            return None
+
         return self.__get_fileitem(result, parent=target_dir.path)
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
@@ -828,7 +876,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             if resp.get("code"):
                 logger.debug(f"【阿里云盘】获取文件信息失败: {resp.get('message')}")
                 return None
-            return self.__get_fileitem(resp, parent=f"{str(path.parent)}/")
+            return self.__get_fileitem(resp, parent=str(path.parent))
         except Exception as e:
             logger.debug(f"【阿里云盘】获取文件信息失败: {str(e)}")
             return None
@@ -854,7 +902,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
+        fileitem = schemas.FileItem(storage=self.schema.value, path="/", drive_id=self._default_drive_id)
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:
@@ -956,4 +1004,6 @@ class AliPan(StorageBase, metaclass=Singleton):
                 available=total_size - used_size
             )
         except NoCheckInException:
+            return None
+        except SessionInvalidException:
             return None

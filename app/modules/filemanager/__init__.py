@@ -905,8 +905,7 @@ class FileManagerModule(_ModuleBase):
     def __transfer_file(self, fileitem: FileItem, mediainfo: MediaInfo,
                         source_oper: StorageBase, target_oper: StorageBase,
                         target_storage: str, target_file: Path,
-                        transfer_type: str, over_flag: Optional[bool] = False) -> Tuple[
-        Optional[FileItem], str]:
+                        transfer_type: str, over_flag: Optional[bool] = False) -> Tuple[Optional[FileItem], str]:
         """
         整理一个文件，同时处理其他相关文件
         :param fileitem: 原文件
