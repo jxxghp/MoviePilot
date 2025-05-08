@@ -56,8 +56,8 @@ def save(name: str,
     return schemas.Response(success=True)
 
 @router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response)
-def save(name: str,
-         _: User = Depends(get_current_active_superuser)) -> Any:
+def reset(name: str,
+          _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重置存储配置
     """
