@@ -53,7 +53,9 @@ class ObjectUtils:
                 if not line:
                     continue
                 # 处理"""单行注释
-                if line.startswith(('"""', "'''")) and line.endswith(('"""', "'''")):
+                if (line.startswith(('"""', "'''"))
+                        and line.endswith(('"""', "'''"))
+                        and len(line) > 3):
                     continue
                 # 处理"""多行注释
                 if line.startswith(('"""', "'''")):
