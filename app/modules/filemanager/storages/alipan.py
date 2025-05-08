@@ -27,6 +27,10 @@ class NoCheckInException(Exception):
     pass
 
 
+class SessionInvalidException(Exception):
+    pass
+
+
 class AliPan(StorageBase, metaclass=Singleton):
     """
     阿里云盘相关操作
@@ -185,7 +189,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         确认登录后，获取相关token
         """
         if not self._auth_state:
-            raise Exception("【阿里云盘】请先生成二维码")
+            raise SessionInvalidException("【阿里云盘】请先生成二维码")
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
@@ -196,7 +200,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             }
         )
         if resp is None:
-            raise Exception("【阿里云盘】获取 access_token 失败")
+            raise SessionInvalidException("【阿里云盘】获取 access_token 失败")
         result = resp.json()
         if result.get("code"):
             raise Exception(f"【阿里云盘】{result.get('code')} - {result.get('message')}！")
@@ -207,7 +211,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         刷新access_token
         """
         if not refresh_token:
-            raise Exception("【阿里云盘】会话失效，请重新扫码登录！")
+            raise SessionInvalidException("【阿里云盘】会话失效，请重新扫码登录！")
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
@@ -650,7 +654,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
 
         class TqdmToLogger(io.StringIO):
-            def write(s, buf): # noqa
+            def write(s, buf):  # noqa
                 buf = buf.strip('\r\n\t ')
                 if buf:
                     logger.info(buf)
@@ -1011,4 +1015,6 @@ class AliPan(StorageBase, metaclass=Singleton):
                 available=total_size - used_size
             )
         except NoCheckInException:
+            return None
+        except SessionInvalidException:
             return None
