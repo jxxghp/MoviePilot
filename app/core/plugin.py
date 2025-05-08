@@ -465,13 +465,15 @@ class PluginManager(metaclass=Singleton):
         }]
         """
         ret_apis = []
-        for plugin_id, plugin in self._running_plugins.items():
+        if pid:
+            plugins = {pid: self._running_plugins.get(pid)}
+        else:
+            plugins = self._running_plugins
+        for plugin_id, plugin in plugins.items():
             if pid and pid != plugin_id:
                 continue
             if hasattr(plugin, "get_api") and ObjectUtils.check_method(plugin.get_api):
                 try:
-                    if not plugin.get_state():
-                        continue
                     apis = plugin.get_api() or []
                     for api in apis:
                         api["path"] = f"/{plugin_id}{api['path']}"
@@ -831,7 +833,8 @@ class PluginManager(metaclass=Singleton):
             logger.debug(f"获取插件是否在本地包中存在失败，{e}")
             return False
 
-    def get_plugins_from_market(self, market: str, package_version: Optional[str] = None) -> Optional[List[schemas.Plugin]]:
+    def get_plugins_from_market(self, market: str, package_version: Optional[str] = None) -> Optional[
+        List[schemas.Plugin]]:
         """
         从指定的市场获取插件信息
         :param market: 市场的 URL 或标识
@@ -845,7 +848,8 @@ class PluginManager(metaclass=Singleton):
         # 获取在线插件
         online_plugins = self.pluginhelper.get_plugins(market, package_version)
         if online_plugins is None:
-            logger.warning(f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
+            logger.warning(
+                f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
             return []
         ret_plugins = []
         add_time = len(online_plugins)
