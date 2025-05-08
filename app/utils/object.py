@@ -52,21 +52,28 @@ class ObjectUtils:
                 # 跳过空行
                 if not line:
                     continue
-                # 处理多行注释
+                # 处理"""单行注释
+                if line.startswith(('"""', "'''")) and line.endswith(('"""', "'''")):
+                    continue
+                # 处理"""多行注释
                 if line.startswith(('"""', "'''")):
                     in_comment = not in_comment
                     continue
                 # 在注释中则跳过
                 if in_comment:
                     continue
-                # 跳过注释、pass语句、装饰器、函数定义行
-                if line.startswith('#') or line == "pass" or line.startswith('@') or line.startswith('def '):
+                # 跳过#注释、pass语句、装饰器、函数定义行
+                if (line.startswith('#')
+                        or line == "pass"
+                        or line.startswith('@')
+                        or line.startswith('def ')):
                     continue
                 # 发现有效代码行
                 return True
             # 没有有效代码行
             return False
-        except Exception:
+        except Exception as err:
+            print(err)
             # 源代码分析失败时，进行字节码分析
             code_obj = func.__code__
             instructions = list(dis.get_instructions(code_obj))
