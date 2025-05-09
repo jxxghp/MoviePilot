@@ -450,6 +450,8 @@ class FileManagerModule(_ModuleBase):
                                 )
         # 目的操作对象
         if not target_oper:
+            if not target_storage:
+                target_storage = fileitem.storage
             target_oper = self.__get_storage_oper(target_storage)
         if not target_oper:
             return TransferInfo(success=False,
