@@ -39,11 +39,9 @@ class DoubanModule(_ModuleBase):
         测试模块连接性
         """
         ret = RequestUtils().get_res("https://movie.douban.com/")
-        if ret and ret.status_code == 200:
-            return True, ""
-        elif ret:
-            return False, f"无法连接豆瓣，错误码：{ret.status_code}"
-        return False, "豆瓣网络连接失败"
+        if ret is None:
+            return False, "豆瓣网络连接失败"
+        return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
