@@ -162,12 +162,24 @@ class TMDb(object):
         if self.api_key is None or self.api_key == "":
             raise TMDbException("TheMovieDb API Key 未设置！")
 
+        _language = self.language
+        param_list = params.split("&")
+        for param in param_list:
+            # 获取请求参数中的 language 参数
+            if param.startswith("language="):
+                language_query_parts = param.split("=")
+                if len(language_query_parts) != 2:
+                    continue
+                _language = language_query_parts[1]
+                params = params.replace(param, "")
+                break
+
         url = "https://%s/3%s?api_key=%s&%s&language=%s" % (
             self.domain,
             action,
             self.api_key,
             params,
-            self.language,
+            _language,
         )
 
         if self.cache and self.obj_cached and call_cached and method != "POST":

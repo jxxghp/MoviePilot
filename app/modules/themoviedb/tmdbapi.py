@@ -893,6 +893,13 @@ class TmdbApi:
             tmdbinfo = self.movie.details(tmdbid, append_to_response)
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('title')}")
+                # 第一次获取tmdb信息的语言不为原始语言时 刮削原始语言海报
+                original_language = tmdbinfo.get('original_language')
+                if settings.SCRAP_ORIGINAL_LANGUAGE_POSTER and original_language != settings.TMDB_LOCALE:
+                    original_language_tmdbinfo = self.movie.details(tmdbid, append_to_response, original_language)
+                    if original_language_tmdbinfo and original_language_tmdbinfo.get('poster_path'):
+                        tmdbinfo['poster_path'] = original_language_tmdbinfo.get('poster_path')
+                        logger.debug(f"{tmdbid} 原始语言海报查询结果：{original_language_tmdbinfo.get('poster_path')}")
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -1078,6 +1085,13 @@ class TmdbApi:
             tmdbinfo = self.tv.details(tv_id=tmdbid, append_to_response=append_to_response)
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('name')}")
+                # 第一次获取tmdb信息的语言不为原始语言时 刮削原始语言海报
+                original_language = tmdbinfo.get('original_language')
+                if settings.SCRAP_ORIGINAL_LANGUAGE_POSTER and original_language != settings.TMDB_LOCALE:
+                    original_language_tmdbinfo = self.tv.details(tmdbid, append_to_response, original_language)
+                    if original_language_tmdbinfo and original_language_tmdbinfo.get('poster_path'):
+                        tmdbinfo['poster_path'] = original_language_tmdbinfo.get('poster_path')
+                        logger.debug(f"{tmdbid} 原始语言海报查询结果：{original_language_tmdbinfo.get('poster_path')}")
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))

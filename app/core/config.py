@@ -97,6 +97,8 @@ class ConfigModel(BaseModel):
     SCRAP_SOURCE: str = "themoviedb"
     # 新增已入库媒体是否跟随TMDB信息变化
     SCRAP_FOLLOW_TMDB: bool = True
+    # 刮削原始语言海报
+    SCRAP_ORIGINAL_LANGUAGE_POSTER: bool = False
     # TMDB图片地址
     TMDB_IMAGE_DOMAIN: str = "image.tmdb.org"
     # TMDB API地址

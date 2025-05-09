@@ -28,16 +28,20 @@ class Movie(TMDb):
         "upcoming": "/movie/upcoming",
     }
 
-    def details(self, movie_id, append_to_response="videos,trailers,images,casts,translations,keywords,release_dates"):
+    def details(self, movie_id, append_to_response="videos,trailers,images,casts,translations,keywords,release_dates", language=""):
         """
         Get the primary information about a movie.
         :param movie_id: int
         :param append_to_response: str
+        :param language: str
         :return:
         """
+        params = "append_to_response=%s" % append_to_response
+        if language and language != "":
+            params += "&language=%s" % language
         return self._request_obj(
             self._urls["details"] % movie_id,
-            params="append_to_response=%s" % append_to_response
+            params=params
         )
 
     def account_states(self, movie_id):

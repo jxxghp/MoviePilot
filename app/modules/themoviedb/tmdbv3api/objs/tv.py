@@ -36,16 +36,20 @@ class TV(TMDb):
         "group_episodes": "/tv/episode_group/%s",
     }
 
-    def details(self, tv_id, append_to_response="videos,trailers,images,credits,translations"):
+    def details(self, tv_id, append_to_response="videos,trailers,images,credits,translations", language=""):
         """
         Get the primary TV show details by id.
         :param tv_id: int
         :param append_to_response: str
+        :param language: str
         :return:
         """
+        params = "append_to_response=%s" % append_to_response
+        if language and language != "":
+            params += "&language=%s" % language
         return self._request_obj(
             self._urls["details"] % tv_id,
-            params="append_to_response=%s" % append_to_response,
+            params=params,
         )
 
     def account_states(self, tv_id):
