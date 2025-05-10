@@ -37,7 +37,7 @@ class TheMovieDbModule(_ModuleBase):
         self.cache = TmdbCache()
         self.tmdb = TmdbApi()
         self.category = CategoryHelper()
-        self.scraper = TmdbScraper(self.tmdb)
+        self.scraper = TmdbScraper()
 
     @staticmethod
     def get_name() -> str:

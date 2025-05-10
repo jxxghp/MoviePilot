@@ -137,28 +137,43 @@ class StorageChain(ChainBase):
         """
         删除媒体文件，以及不含媒体文件的目录
         """
+
+        def __is_bluray_dir(_fileitem: schemas.FileItem) -> bool:
+            """
+            检查是否蓝光目录
+            """
+            _dir_files = self.list_files(fileitem=_fileitem, recursion=False)
+            if _dir_files:
+                for _f in _dir_files:
+                    if _f.type == "dir" and _f.name in ["BDMV", "CERTIFICATE"]:
+                        return True
+            return False
+
         media_exts = settings.RMT_MEDIAEXT + settings.DOWNLOAD_TMPEXT
         if fileitem.path == "/" or len(Path(fileitem.path).parts) <= 2:
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 根目录或一级目录不允许删除")
             return False
         if fileitem.type == "dir":
             # 本身是目录
-            if _blue_dir := self.list_files(fileitem=fileitem, recursion=False):
-                # 删除蓝光目录
-                for _f in _blue_dir:
-                    if _f.type == "dir" and _f.name in ["BDMV", "CERTIFICATE"]:
-                        logger.warn(f"【{fileitem.storage}】{_f.path} 删除蓝光目录")
-                        self.delete_file(_f)
-            if self.any_files(fileitem, extensions=media_exts) is False:
-                logger.warn(f"【{fileitem.storage}】{fileitem.path} 不存在其它媒体文件，删除空目录")
-                return self.delete_file(fileitem)
-            return False
+            if __is_bluray_dir(fileitem):
+                logger.warn(f"正在删除蓝光原盘目录：【{fileitem.storage}】{fileitem.path}")
+                if not self.delete_file(fileitem):
+                    logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
+                    return False
+            elif self.any_files(fileitem, extensions=media_exts) is False:
+                logger.warn(f"【{fileitem.storage}】{fileitem.path} 不存在其它媒体文件，正在删除空目录")
+                if not self.delete_file(fileitem):
+                    logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
+                    return False
+            # 不处理父目录
+            return True
         elif delete_self:
-            # 本身是文件
-            logger.warn(f"正在删除【{fileitem.storage}】{fileitem.path}")
+            # 本身是文件，需要删除文件
+            logger.warn(f"正在删除文件【{fileitem.storage}】{fileitem.path}")
             if not self.delete_file(fileitem):
                 logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
                 return False
+
         if mtype:
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
@@ -167,11 +182,14 @@ class StorageChain(ChainBase):
             rename_format_level = len(rename_format.split("/")) - 1
             if rename_format_level < 1:
                 return True
-            # 处理上级目录
+            # 处理媒体文件根目录
             dir_item = self.get_file_item(storage=fileitem.storage,
                                           path=Path(fileitem.path).parents[rename_format_level - 1])
         else:
+            # 处理上级目录
             dir_item = self.get_parent_item(fileitem)
+
+        # 检查和删除上级目录
         if dir_item and len(Path(dir_item.path).parts) > 2:
             # 如何目录是所有下载目录、媒体库目录的上级，则不处理
             for d in self.directoryhelper.get_dirs():
@@ -183,7 +201,9 @@ class StorageChain(ChainBase):
                     return True
             # 不存在其他媒体文件，删除空目录
             if self.any_files(dir_item, extensions=media_exts) is False:
-                logger.warn(f"【{dir_item.storage}】{dir_item.path} 不存在其它媒体文件，删除空目录")
-                return self.delete_file(dir_item)
+                logger.warn(f"【{dir_item.storage}】{dir_item.path} 不存在其它媒体文件，正在删除空目录")
+                if not self.delete_file(dir_item):
+                    logger.warn(f"【{dir_item.storage}】{dir_item.path} 删除失败")
+                    return False
 
         return True

@@ -103,6 +103,8 @@ class ConfigModel(BaseModel):
     TMDB_API_DOMAIN: str = "api.tmdb.org"
     # TMDB元数据语言
     TMDB_LOCALE: str = "zh"
+    # 刮削使用TMDB原始语种图片
+    TMDB_SCRAP_ORIGINAL_IMAGE: bool = False
     # TMDB API Key
     TMDB_API_KEY: str = "db55323b8d3e4154498498a75642b381"
     # TVDB API Key
@@ -550,6 +552,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             return {
                 "server": self.PROXY_HOST
             }
+        return None
 
     @property
     def GITHUB_HEADERS(self):
