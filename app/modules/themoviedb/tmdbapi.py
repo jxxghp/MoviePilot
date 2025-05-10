@@ -23,7 +23,7 @@ class TmdbApi:
     TMDB识别匹配
     """
 
-    def __init__(self):
+    def __init__(self, language: Optional[str] = None):
         # TMDB主体
         self.tmdb = TMDb()
         # 域名
@@ -33,7 +33,7 @@ class TmdbApi:
         # APIKEY
         self.tmdb.api_key = settings.TMDB_API_KEY
         # 语种
-        self.tmdb.language = settings.TMDB_LOCALE
+        self.tmdb.language = language or settings.TMDB_LOCALE
         # 代理
         self.tmdb.proxies = settings.PROXY
         # 调试模式
@@ -648,6 +648,7 @@ class TmdbApi:
             return None
         # dict[地区:分级]
         ratings = {}
+        results = []
         if results := (tmdb_info.get("release_dates") or {}).get("results"):
             """
             [
