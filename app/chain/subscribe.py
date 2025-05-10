@@ -924,8 +924,15 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 continue
             items = []
             if mediainfo.type == MediaType.TV:
-                # 电视剧有集数，使用 episode_list
-                items = meta.episode_list
+                # 电视剧有集数
+                if subscribe.episode_group:
+                    # 如果是剧集组，使用mediainfo中的实际集数
+                    season = subscribe.season or 1
+                    if mediainfo.seasons and season in mediainfo.seasons:
+                        items = [ep.episode_number for ep in mediainfo.seasons.get(season) or []]
+                else:
+                    # 否则使用解析的集数列表
+                    items = meta.episode_list
             elif mediainfo.type == MediaType.MOVIE:
                 # 电影只有一个条目，设置为 [1]
                 items = [1]
