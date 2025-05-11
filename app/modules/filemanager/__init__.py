@@ -402,6 +402,9 @@ class FileManagerModule(_ModuleBase):
             # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type
+            # 目标存储
+            if not target_storage:
+                target_storage = target_directory.library_storage
             # 是否需要重命名
             need_rename = target_directory.renaming
             # 是否需要通知
