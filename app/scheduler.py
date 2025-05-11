@@ -586,6 +586,9 @@ class Scheduler(metaclass=Singleton):
             schedulers = []
             # 去重
             added = []
+            # 避免_scheduler.shutdown()处于阻塞状态导致的死锁
+            if not self._scheduler or not self._scheduler.running:
+                return []
             jobs = self._scheduler.get_jobs()
             # 按照下次运行时间排序
             jobs.sort(key=lambda x: x.next_run_time)
