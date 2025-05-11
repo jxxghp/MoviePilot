@@ -65,8 +65,11 @@ class DownloadHistory(Base):
     @staticmethod
     @db_query
     def get_by_mediaid(db: Session, tmdbid: int, doubanid: str):
-        return db.query(DownloadHistory).filter(or_(DownloadHistory.tmdbid == tmdbid,
-                                                    DownloadHistory.doubanid == doubanid)).all()
+        if tmdbid:
+            return db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid).all()
+        elif doubanid:
+            return db.query(DownloadHistory).filter(DownloadHistory.doubanid == doubanid).all()
+        return []
 
     @staticmethod
     @db_query
