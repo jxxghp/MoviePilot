@@ -56,11 +56,23 @@ jobs:
           cache-from: type=gha, scope=${{ github.workflow }}-docker
           cache-to: type=gha, scope=${{ github.workflow }}-docker
 
+      - name: Get existing release body
+        id: get_release_body
+        continue-on-error: true
+        run: |
+          release_body=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.app_version }}" | \
+            jq -r '.body // ""')
+          echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+          echo "$release_body" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Delete Release
         uses: dev-drprasad/delete-tag-and-release@v1.1
         with:
           tag_name: ${{ env.app_version }}
           delete_release: true
+          delete_tag: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Release
@@ -68,6 +80,7 @@ jobs:
         with:
           tag_name: v${{ env.app_version }}
           name: v${{ env.app_version }}
+          body: ${{ env.RELEASE_BODY }}
           draft: false
           prerelease: false
           make_latest: false
