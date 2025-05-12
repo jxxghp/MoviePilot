@@ -31,7 +31,6 @@ class TmdbScraper:
             return TmdbApi(language=mediainfo.original_language)
         return self.default_tmdb
 
-
     def get_metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
                          season: Optional[int] = None, episode: Optional[int] = None) -> Optional[str]:
         """
@@ -63,11 +62,12 @@ class TmdbScraper:
                 # 电视剧元数据文件
                 doc = self.__gen_tv_nfo_file(mediainfo=mediainfo)
         if doc:
-            return doc.toprettyxml(indent="  ", encoding="utf-8") # noqa
+            return doc.toprettyxml(indent="  ", encoding="utf-8")  # noqa
 
         return None
 
-    def get_metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> dict:
+    def get_metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None,
+                         episode: Optional[int] = None) -> dict:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息
