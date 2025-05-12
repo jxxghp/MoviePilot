@@ -69,10 +69,10 @@ jobs:
 
       - name: Delete Release
         uses: dev-drprasad/delete-tag-and-release@v1.1
+        continue-on-error: true
         with:
           tag_name: ${{ env.app_version }}
           delete_release: true
-          delete_tag: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Release
