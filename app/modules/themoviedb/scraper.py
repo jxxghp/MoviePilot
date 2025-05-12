@@ -101,15 +101,24 @@ class TmdbScraper:
             return images
         else:
             # 主媒体图片
-            for attr_name, attr_value in vars(mediainfo).items():
-                if attr_value \
-                        and attr_name.endswith("_path") \
-                        and attr_value \
-                        and isinstance(attr_value, str) \
-                        and attr_value.startswith("http"):
-                    image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                    images[image_name] = attr_value
-            return images
+            _mediainfo = self.original_tmdb(mediainfo).get_info(mediainfo.type, mediainfo.tmdb_id)
+            if _mediainfo:
+                for attr_name, attr_value in _mediainfo.items():
+                    if attr_name.endswith("_path") and attr_value is not None:
+                        image_url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{attr_value}"
+                        image_name = attr_name.replace("_path", "") + Path(image_url).suffix
+                        images[image_name] = image_url
+                return images
+            else:
+                for attr_name, attr_value in vars(mediainfo).items():
+                    if attr_value \
+                            and attr_name.endswith("_path") \
+                            and attr_value \
+                            and isinstance(attr_value, str) \
+                            and attr_value.startswith("http"):
+                        image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                        images[image_name] = attr_value
+                return images
 
     @staticmethod
     def get_season_poster(seasoninfo: dict, season: int) -> Tuple[str, str]:
