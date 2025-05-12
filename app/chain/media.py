@@ -449,23 +449,19 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 生成目录内图片文件
                 if init_folder:
                     # 图片
-                    for attr_name, attr_value in vars(mediainfo).items():
-                        if attr_value \
-                                and attr_name.endswith("_path") \
-                                and attr_value \
-                                and isinstance(attr_value, str) \
-                                and attr_value.startswith("http"):
-                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                            image_path = filepath / image_name
+                    image_dict = self.metadata_img(mediainfo=mediainfo)
+                    if image_dict:
+                        for image_name, image_url in image_dict.items():
+                            image_path = filepath.with_name(image_name)
                             if overwrite or not self.storagechain.get_file_item(storage=fileitem.storage,
                                                                                 path=image_path):
                                 # 下载图片
-                                content = __download_image(_url=attr_value)
+                                content = __download_image(image_url)
                                 # 写入图片到当前目录
                                 if content:
                                     __save_file(_fileitem=fileitem, _path=image_path, _content=content)
-                            else:
-                                logger.info(f"已存在图片文件：{image_path}")
+                                else:
+                                    logger.info(f"已存在图片文件：{image_path}")
         else:
             # 电视剧
             if fileitem.type == "file":
