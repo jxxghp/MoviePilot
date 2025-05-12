@@ -11,7 +11,7 @@ ENV LANG="C.UTF-8" \
     PORT=3001 \
     NGINX_PORT=3000 \
     PROXY_HOST="" \
-    MOVIEPILOT_AUTO_UPDATE=release \
+    MOVIEPILOT_AUTO_UPDATE=false \
     AUTH_SITE="iyuu" \
     IYUU_SIGN=""
 WORKDIR "/app"

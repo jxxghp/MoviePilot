@@ -229,7 +229,7 @@ class Settings(BaseSettings):
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
     # 自动检查和更新站点资源包（站点索引、认证等）
-    AUTO_UPDATE_RESOURCE: bool = True
+    AUTO_UPDATE_RESOURCE: bool = False
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
     # 是否启用DOH解析域名
