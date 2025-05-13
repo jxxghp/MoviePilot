@@ -7,6 +7,7 @@ from starlette.background import BackgroundTasks
 from app import schemas
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
+from app.command import Command
 from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.core.security import verify_token
@@ -22,6 +23,7 @@ from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
+from startup.plugins_initializer import register_plugin_api
 
 router = APIRouter()
 
@@ -385,8 +387,11 @@ def auth_site(
         return schemas.Response(success=False, message="请输入认证站点和认证参数")
     status, msg = SitesHelper().check_user(auth_info.site, auth_info.params)
     SystemConfigOper().set(SystemConfigKey.UserSiteAuthParams, auth_info.dict())
+    # 认证成功后，重新初始化插件
     PluginManager().init_config()
     Scheduler().init_plugin_jobs()
+    Command().init_commands()
+    register_plugin_api()
     return schemas.Response(success=status, message=msg)
 
 

@@ -197,13 +197,13 @@ class ContentType(str, Enum):
     操作状态的通知消息类型标识
     """
     # 订阅添加成功
-    SubscribeAdded: str = "subscribeAdded"
+    SubscribeAdded = "subscribeAdded"
     # 订阅完成
-    SubscribeComplete: str = "subscribeComplete"
+    SubscribeComplete = "subscribeComplete"
     # 入库成功
-    OrganizeSuccess: str = "organizeSuccess"
+    OrganizeSuccess = "organizeSuccess"
     # 下载开始(添加下载任务成功)
-    DownloadAdded: str = "downloadAdded"
+    DownloadAdded = "downloadAdded"
 
 
 # 消息渠道

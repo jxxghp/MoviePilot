@@ -33,7 +33,7 @@ def upgrade() -> None:
         "downloadAdded": """
 {
     'title': '{{ title_year }}'
-            '{% if download_episodes %} {{ season }} {{ download_episodes }}{% else %}{{ season_episode }}{% endif %} 开始下载',
+            '{% if download_episodes %} {{ season_fmt }} {{ download_episodes }}{% else %}{{ season_episode }}{% endif %} 开始下载',
     'text': '{% if site_name %}站点：{{ site_name }}{% endif %}'
             '{% if resource_term %}\\n质量：{{ resource_term }}{% endif %}'
             '{% if size %}\\n大小：{{ size }}{% endif %}'
@@ -46,10 +46,11 @@ def upgrade() -> None:
             '{% if labels %}\\n标签：{{ labels }}{% endif %}'
             '{% if description %}\\n描述：{{ description }}{% endif %}'
 }""",
-        "subscribeAdded": "{'title': '{{ title_year }} {{season}} 已添加订阅'}",
+        "subscribeAdded": "{'title': '{{ title_year }}{% if season_fmt %} {{ season_fmt }}{% endif %} 已添加订阅'}",
         "subscribeComplete": """
 {
-    'title': '{{ title_year }} {{season}} 已完成{{msgstr}}',
+    'title': '{{ title_year }}'
+            '{% if season_fmt %} {{ season_fmt }}{% endif %} 已完成{{ msgstr }}',
     'text': '{% if vote_average %}评分：{{ vote_average }}{% endif %}'
             '{% if username %}，来自用户：{{ username }}{% endif %}'
             '{% if actors %}\\n演员：{{ actors }}{% endif %}'
