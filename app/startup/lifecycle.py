@@ -3,27 +3,25 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from core.config import global_vars
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.startup.modules_initializer import init_modules, stop_modules
-from app.startup.plugins_initializer import init_plugins, stop_plugins
+from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
 from app.startup.routers_initializer import init_routers
-from core.config import global_vars
-from startup.command_initializer import init_command, stop_command
-from startup.monitor_initializer import stop_monitor, init_monitor
-from startup.scheduler_initializer import stop_scheduler, init_scheduler
+from app.startup.command_initializer import init_command, stop_command, restart_command
+from app.startup.monitor_initializer import stop_monitor, init_monitor
+from app.startup.scheduler_initializer import stop_scheduler, init_scheduler, restart_scheduler, init_plugin_scheduler
 
 
-async def init_extra_system():
+async def init_plugin_system():
     """
-    初始化额外的系统（依赖于插件初始化完成）
+    同步插件及重启相关依赖服务
     """
-    await init_plugins()
-    # 启动监控器
-    init_monitor()
-    # 启动定时器
-    init_scheduler()
-    # 启动命令
-    init_command()
+    if await sync_plugins():
+        # 重新注册插件定时服务
+        init_plugin_scheduler()
+        # 重新注册命令
+        restart_command()
 
 
 @asynccontextmanager
@@ -36,10 +34,18 @@ async def lifespan(app: FastAPI):
     init_modules()
     # 初始化路由
     init_routers(app)
+    # 初始化定时器
+    init_scheduler()
+    # 初始化监控器
+    init_monitor()
+    # 初始化命令
+    init_command()
     # 初始化工作流
     init_workflow()
-    # 初始化插件依赖系统
-    extra_init_task = asyncio.create_task(init_extra_system())
+    # 初始化插件
+    init_plugins()
+    # 插件同步到本地
+    sync_plugins_task = asyncio.create_task(sync_plugins())
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
         yield
@@ -48,8 +54,8 @@ async def lifespan(app: FastAPI):
         # 停止信号
         global_vars.stop_system()
         try:
-            extra_init_task.cancel()
-            await extra_init_task
+            sync_plugins_task.cancel()
+            await sync_plugins_task
         except asyncio.CancelledError:
             pass
         except Exception as e:
