@@ -21,8 +21,7 @@ async def init_plugins_async():
                                                    "缺失依赖项安装")
         # 判断是否需要进行插件初始化
         if not sync_result and not resolved_dependencies:
-            logger.debug("没有新的插件同步到本地或缺失依赖项需要安装，跳过插件初始化")
-            return
+            logger.debug("没有新的插件同步到本地或缺失依赖项需要安装")
 
         # 继续执行后续的插件初始化步骤
         logger.info("正在初始化所有插件")

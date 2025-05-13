@@ -682,6 +682,7 @@ class Scheduler(metaclass=Singleton):
                     link=settings.MP_DOMAIN('#/site')
                 )
             )
+            # 认证通过后重新初始化插件
             PluginManager().init_config()
             self.init_plugin_jobs()
 
