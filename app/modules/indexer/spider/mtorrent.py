@@ -108,11 +108,17 @@ class MTorrentSpider:
                     category = MediaType.MOVIE.value
                 else:
                     category = MediaType.UNKNOWN.value
-                labels_value = self._labels.get(result.get('labels') or "0") or ""
-                if labels_value:
-                    labels = labels_value.split()
+                # 处理馒头新版标签
+                labels = []
+                labels_new = result.get( 'labelsNew' )
+                if labels_new:
+                    # 新版标签本身就是list
+                    labels = labels_new
                 else:
-                    labels = []
+                    # 旧版标签
+                    labels_value = self._labels.get(result.get('labels') or "0") or ""
+                    if labels_value:
+                        labels = labels_value.split()
                 torrent = {
                     'title': result.get('name'),
                     'description': result.get('smallDescr'),
