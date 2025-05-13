@@ -74,6 +74,7 @@ class TemplateContextBuilder:
         增加媒体信息
         """
         if not mediainfo: return
+        season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None else None
         base_info = {
             # 标题
             "title": self.__convert_invalid_characters(mediainfo.title),
@@ -83,6 +84,8 @@ class TemplateContextBuilder:
             "original_title": self.__convert_invalid_characters(mediainfo.original_title),
             # 季号
             "season": self._context.get("season") or mediainfo.season,
+            # Sxx
+            "season_fmt": self._context.get("season_fmt") or season_fmt,
             # 年份
             "year": mediainfo.year or self._context.get("year"),
             # 媒体标题 + 年份
@@ -149,6 +152,8 @@ class TemplateContextBuilder:
                 meta.name, meta.year) if meta.year else meta.name,
             # 季号
             "season": meta.season_seq,
+            # Sxx
+            "season_fmt": meta.season,
             # 集号
             "episode": meta.episode_seqs,
             # 季集 SxxExx
