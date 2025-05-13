@@ -1,20 +1,16 @@
 import asyncio
 
-from app.command import Command
 from app.core.plugin import PluginManager
 from app.log import logger
-from app.scheduler import Scheduler
 
 
-async def init_plugins_async():
+async def init_plugins():
     """
     初始化安装插件，并动态注册后台任务及API
     """
     try:
         loop = asyncio.get_event_loop()
         plugin_manager = PluginManager()
-        scheduler = Scheduler()
-        command = Command()
 
         sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
         resolved_dependencies = await execute_task(loop, plugin_manager.install_plugin_missing_dependencies,
@@ -27,10 +23,6 @@ async def init_plugins_async():
         logger.info("正在初始化所有插件")
         # 安装完成后初始化插件
         plugin_manager.start()
-        # 插件启动后注册后台任务
-        scheduler.init_plugin_jobs()
-        # 插件启动后注册菜单命令
-        command.init_commands()
         # 插件启动后注册插件API
         register_plugin_api()
         logger.info("所有插件初始化完成")

@@ -1,12 +1,11 @@
 import sys
 
-from fastapi import FastAPI
-
 from app.core.cache import close_cache
-from app.core.config import global_vars, settings
+from app.core.config import settings
 from app.core.module import ModuleManager
 from app.log import logger
 from app.utils.system import SystemUtils
+from command import CommandChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -22,13 +21,10 @@ from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
 from app.helper.resource import ResourceHelper
 from app.helper.message import MessageHelper
-from app.scheduler import Scheduler
-from app.monitor import Monitor
 from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey
 from app.db import close_database
 from app.db.systemconfig_oper import SystemConfigOper
-from app.command import Command, CommandChain
 
 
 def start_frontend():
@@ -108,22 +104,16 @@ def check_auth():
         )
 
 
-def shutdown_modules(_: FastAPI):
+def stop_modules():
     """
     服务关闭
     """
-    # 停止信号
-    global_vars.stop_system()
     # 停止模块
     ModuleManager().stop()
     # 停止事件消费
     EventManager().stop()
     # 停止虚拟显示
     DisplayHelper().stop()
-    # 停止定时服务
-    Scheduler().stop()
-    # 停止监控
-    Monitor().stop()
     # 停止线程池
     ThreadHelper().shutdown()
     # 停止缓存连接
@@ -136,7 +126,7 @@ def shutdown_modules(_: FastAPI):
     clear_temp()
 
 
-def start_modules(_: FastAPI):
+def init_modules():
     """
     启动模块
     """
@@ -152,12 +142,6 @@ def start_modules(_: FastAPI):
     ModuleManager()
     # 启动事件消费
     EventManager().start()
-    # 启动监控任务
-    Monitor()
-    # 启动定时服务
-    Scheduler()
-    # 加载命令
-    Command()
     # 启动前端服务
     start_frontend()
     # 检查认证状态

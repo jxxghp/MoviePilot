@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
 from app import schemas
-from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.command import Command
@@ -24,6 +23,7 @@ from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
+from startup.plugins_initializer import register_plugin_api
 
 router = APIRouter()
 
