@@ -25,9 +25,8 @@ async def init_plugins_async():
 
         # 继续执行后续的插件初始化步骤
         logger.info("正在初始化所有插件")
-        # 为避免初始化插件异常，这里所有插件都进行初始化
-        # 安装完成后重新初始化插件
-        plugin_manager.init_config()
+        # 安装完成后初始化插件
+        plugin_manager.start()
         # 插件启动后注册后台任务
         scheduler.init_plugin_jobs()
         # 插件启动后注册菜单命令
@@ -61,3 +60,15 @@ def register_plugin_api():
     """
     from app.api.endpoints import plugin
     plugin.register_plugin_api()
+
+
+def stop_plugins():
+    """
+    停止插件
+    """
+    try:
+        plugin_manager = PluginManager()
+        plugin_manager.stop()
+        plugin_manager.stop_monitor()
+    except Exception as e:
+        logger.error(f"停止插件时发生错误：{e}", exc_info=True)

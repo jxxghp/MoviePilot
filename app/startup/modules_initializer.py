@@ -18,7 +18,6 @@ except ImportError as e:
     sys.exit(1)
 
 from app.core.event import EventManager
-from app.core.plugin import PluginManager
 from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
 from app.helper.resource import ResourceHelper
@@ -117,9 +116,6 @@ def shutdown_modules(_: FastAPI):
     global_vars.stop_system()
     # 停止模块
     ModuleManager().stop()
-    # 停止插件
-    PluginManager().stop()
-    PluginManager().stop_monitor()
     # 停止事件消费
     EventManager().stop()
     # 停止虚拟显示
@@ -156,8 +152,6 @@ def start_modules(_: FastAPI):
     ModuleManager()
     # 启动事件消费
     EventManager().start()
-    # 加载插件
-    PluginManager().start()
     # 启动监控任务
     Monitor()
     # 启动定时服务
