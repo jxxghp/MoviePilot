@@ -7,14 +7,15 @@ from typing import List, Any, Callable
 
 from app.log import logger
 
-
 FilterFuncType = Callable[[str, Any], bool]
+
 
 def _default_filter(name: str, obj: Any) -> bool:
     """
     默认过滤器
     """
-    return True
+    return True if name and obj else False
+
 
 class ModuleHelper:
     """
@@ -76,7 +77,8 @@ class ModuleHelper:
 
         def reload_sub_modules(parent_module, parent_module_name):
             """重新加载一级子模块"""
-            for sub_importer, sub_module_name, sub_is_pkg in pkgutil.walk_packages(parent_module.__path__, parent_module_name+'.'):
+            for sub_importer, sub_module_name, sub_is_pkg in pkgutil.walk_packages(parent_module.__path__,
+                                                                                   parent_module_name + '.'):
                 try:
                     full_sub_module = importlib.import_module(sub_module_name)
                     importlib.reload(full_sub_module)

@@ -204,18 +204,21 @@ class PluginManager(metaclass=Singleton):
         # 停止插件
         if pid:
             logger.info(f"正在停止插件 {pid}...")
+            plugin_obj = self._running_plugins.get(pid)
+            if not plugin_obj:
+                logger.warning(f"插件 {pid} 不存在或未加载")
+                return
+            plugins = {pid: plugin_obj}
         else:
             logger.info("正在停止所有插件...")
-        for plugin_id, plugin in self._running_plugins.items():
-            if pid and plugin_id != pid:
-                continue
+            plugins = self._running_plugins
+        for plugin_id, plugin in plugins.items():
             eventmanager.disable_event_handler(type(plugin))
             self.__stop_plugin(plugin)
         # 清空对像
         if pid:
             # 清空指定插件
-            if pid in self._running_plugins:
-                self._running_plugins.pop(pid)
+            self._running_plugins.pop(pid, None)
         else:
             # 清空
             self._plugins = {}
@@ -833,8 +836,8 @@ class PluginManager(metaclass=Singleton):
             logger.debug(f"获取插件是否在本地包中存在失败，{e}")
             return False
 
-    def get_plugins_from_market(self, market: str, package_version: Optional[str] = None) -> Optional[
-        List[schemas.Plugin]]:
+    def get_plugins_from_market(self, market: str,
+                                package_version: Optional[str] = None) -> Optional[List[schemas.Plugin]]:
         """
         从指定的市场获取插件信息
         :param market: 市场的 URL 或标识
