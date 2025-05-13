@@ -51,6 +51,8 @@ class Scheduler(metaclass=Singleton):
     _jobs = {}
     # 用户认证失败次数
     _auth_count = 0
+    # 用户认证失败消息发送
+    _auth_message = False
 
     def __init__(self):
         self.init()
@@ -661,9 +663,11 @@ class Scheduler(metaclass=Singleton):
         # 最大重试次数
         __max_try__ = 30
         if self._auth_count > __max_try__:
-            SchedulerChain().messagehelper.put(title=f"用户认证失败",
-                                               message="用户认证失败次数过多，将不再尝试认证！",
-                                               role="system")
+            if not self._auth_message:
+                SchedulerChain().messagehelper.put(title=f"用户认证失败",
+                                                   message="用户认证失败次数过多，将不再尝试认证！",
+                                                   role="system")
+                self._auth_message = True
             return
         logger.info("用户未认证，正在尝试认证...")
         auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
@@ -678,7 +682,7 @@ class Scheduler(metaclass=Singleton):
                 Notification(
                     mtype=NotificationType.Manual,
                     title="MoviePilot用户认证成功",
-                    text=f"使用站点：{msg}",
+                    text=f"使用站点：{msg}，如有插件使用异常，请重启MoviePilot。",
                     link=settings.MP_DOMAIN('#/site')
                 )
             )

@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
 from app import schemas
+from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
+from app.command import Command
 from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.core.security import verify_token
@@ -388,6 +390,8 @@ def auth_site(
     # 认证成功后，重新初始化插件
     PluginManager().init_config()
     Scheduler().init_plugin_jobs()
+    Command().init_commands()
+    register_plugin_api()
     return schemas.Response(success=status, message=msg)
 
 
