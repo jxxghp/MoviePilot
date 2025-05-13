@@ -163,8 +163,9 @@ class Transmission:
         if not self.trc:
             return []
         try:
-            torrent = self.trc.get_torrents(ids=ids, arguments=self._trarg)
-            if torrent:
+            torrents = self.trc.get_torrents(ids=ids, arguments=self._trarg)
+            if len(torrents):
+                torrent = torrents[0]
                 labels = [str(tag).strip()
                           for tag in torrent.labels] if hasattr(torrent, "labels") else []
                 return labels

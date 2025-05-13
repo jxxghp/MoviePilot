@@ -860,7 +860,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
                 # 设置下载任务状态
                 if state:
-                    self.transfer_completed(hashs=torrent.hash)
+                    self.transfer_completed(hashs=torrent.hash, downloader=torrent.downloader)
 
             # 结束
             logger.info("所有下载器中下载完成的文件已整理完成")
