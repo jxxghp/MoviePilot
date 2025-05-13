@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     # 初始化插件
     init_plugins()
     # 插件同步到本地
-    sync_plugins_task = asyncio.create_task(sync_plugins())
+    sync_plugins_task = asyncio.create_task(init_plugin_system())
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
         yield
