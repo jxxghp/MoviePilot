@@ -122,6 +122,18 @@ def _clean_protected_routes(existing_paths: dict):
             logger.error(f"Error removing protected route {protected_route}: {str(e)}")
 
 
+def register_plugin(plugin_id: str):
+    """
+    注册一个插件相关的服务
+    """
+    # 注册插件服务
+    Scheduler().update_plugin_job(plugin_id)
+    # 注册菜单命令
+    Command().init_commands(plugin_id)
+    # 注册插件API
+    register_plugin_api(plugin_id)
+
+
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
 def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
                 state: Optional[str] = "all") -> List[schemas.Plugin]:
@@ -185,6 +197,18 @@ def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return PluginHelper().get_statistic()
 
 
+@router.get("/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response)
+def reload_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    重新加载插件
+    """
+    # 重新加载插件
+    PluginManager().reload_plugin(plugin_id)
+    # 注册插件服务
+    register_plugin(plugin_id)
+    return schemas.Response(success=True)
+
+
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
 def install(plugin_id: str,
             repo_url: Optional[str] = "",
@@ -213,14 +237,8 @@ def install(plugin_id: str,
         install_plugins.append(plugin_id)
         # 保存设置
         SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-    # 加载插件到内存
-    PluginManager().reload_plugin(plugin_id)
-    # 注册插件服务
-    Scheduler().update_plugin_job(plugin_id)
-    # 注册菜单命令
-    Command().init_commands(plugin_id)
-    # 注册插件API
-    register_plugin_api(plugin_id)
+    # 重新加载插件
+    reload_plugin(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -316,14 +334,8 @@ def reset_plugin(plugin_id: str,
     PluginManager().delete_plugin_config(plugin_id)
     # 删除插件所有数据
     PluginManager().delete_plugin_data(plugin_id)
-    # 重新生效插件
-    PluginManager().reload_plugin(plugin_id)
-    # 注册插件服务
-    Scheduler().update_plugin_job(plugin_id)
-    # 注册菜单命令
-    Command().init_commands(plugin_id)
-    # 注册插件API
-    register_plugin_api(plugin_id)
+    # 重新加载插件
+    reload_plugin(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -382,11 +394,7 @@ def set_plugin_config(plugin_id: str, conf: dict,
     # 重新生效插件
     PluginManager().init_plugin(plugin_id, conf)
     # 注册插件服务
-    Scheduler().update_plugin_job(plugin_id)
-    # 注册菜单命令
-    Command().init_commands(plugin_id)
-    # 注册插件API
-    register_plugin_api(plugin_id)
+    register_plugin(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -411,7 +419,3 @@ def uninstall_plugin(plugin_id: str,
     # 移除插件
     PluginManager().remove_plugin(plugin_id)
     return schemas.Response(success=True)
-
-
-# 注册全部插件API
-register_plugin_api()
