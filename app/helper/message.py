@@ -66,7 +66,8 @@ class TemplateContextBuilder:
         if include_raw_objects:
             self._add_raw_objects(meta, mediainfo, torrentinfo, transferinfo, episodes_info)
 
-        return self._context
+        # 移除空值
+        return {k: v for k, v in self._context.items() if v is not None}
 
     def _add_media_info(self, mediainfo: MediaInfo):
         """
@@ -269,7 +270,7 @@ class TemplateContextBuilder:
             # 当前季的全部集信息
             "__episodes_info__": episodes_info,
         }
-        self._context.update({k: v for k, v in raw_objects.items() if v is not None})
+        self._context.update(raw_objects)
 
     @staticmethod
     def __convert_invalid_characters(filename: str):
