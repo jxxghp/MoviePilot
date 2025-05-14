@@ -19,15 +19,15 @@ class TMDb(object):
     _req = None
     _session = None
 
-    def __init__(self, obj_cached=True, session=None):
-        self._api_key = None
-        self._language = "en-US"
+    def __init__(self, obj_cached=True, session=None, language=None):
+        self._api_key = settings.TMDB_API_KEY
+        self._language = language or settings.TMDB_LOCALE or "en-US"
         self._session_id = None
         self._wait_on_rate_limit = True
         self._debug_enabled = False
-        self._cache_enabled = True
-        self._proxies = None
-        self._domain = None
+        self._cache_enabled = obj_cached
+        self._proxies = settings.PROXY
+        self._domain = settings.TMDB_API_DOMAIN
         self._page = None
         self._total_results = None
         self._total_pages = None
