@@ -1,3 +1,4 @@
+import sys
 import json
 import shutil
 import traceback
@@ -455,15 +456,15 @@ class PluginHelper(metaclass=Singleton):
         :param requirements_file: 依赖的 requirements.txt 文件路径
         :return: (是否成功, 错误信息)
         """
+        base_cmd = [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)]
         strategies = []
 
         # 添加策略到列表中
         if settings.PIP_PROXY:
-            strategies.append(("镜像站", ["pip", "install", "-r", str(requirements_file), "-i", settings.PIP_PROXY]))
+            strategies.append(("镜像站", base_cmd + ["-i", settings.PIP_PROXY]))
         if settings.PROXY_HOST:
-            strategies.append(
-                ("代理", ["pip", "install", "-r", str(requirements_file), "--proxy", settings.PROXY_HOST]))
-        strategies.append(("直连", ["pip", "install", "-r", str(requirements_file)]))
+            strategies.append(("代理", base_cmd + ["--proxy", settings.PROXY_HOST]))
+        strategies.append(("直连", base_cmd))
 
         # 遍历策略进行安装
         for strategy_name, pip_command in strategies:
