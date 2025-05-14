@@ -143,8 +143,8 @@ class WebUtils:
         获取自定义壁纸api壁纸
         """
         # 判断是否存在自定义壁纸api
-        if settings.CUSTOMIZE_WALLPAPER_API_KEY is not None and len(settings.CUSTOMIZE_WALLPAPER_API_KEY) > 0:
-            url = settings.CUSTOMIZE_WALLPAPER_API_KEY
+        if settings.CUSTOMIZE_WALLPAPER_API_URL is not None and len(settings.CUSTOMIZE_WALLPAPER_API_URL) > 0:
+            url = settings.CUSTOMIZE_WALLPAPER_API_URL
             wallpaper_list = []
             resp = RequestUtils(timeout=5).get_res(url)
             if resp and resp.status_code == 200:
