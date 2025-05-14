@@ -1,4 +1,4 @@
-from command import Command
+from app.command import Command
 
 
 def init_command():
@@ -7,11 +7,13 @@ def init_command():
     """
     Command()
 
+
 def stop_command():
     """
     停止命令
     """
     pass
+
 
 def restart_command():
     """

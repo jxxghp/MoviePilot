@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.core.module import ModuleManager
 from app.log import logger
 from app.utils.system import SystemUtils
-from command import CommandChain
+from app.command import CommandChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
