@@ -571,6 +571,7 @@ class MessageQueueManager(metaclass=SingletonClass):
     def _parse_schedule(periods: Union[list, dict]) -> List[tuple[int, int, int, int]]:
         """
         将字符串时间格式转换为分钟数元组
+        支持格式为 'HH:MM' 或 'HH:MM:SS' 的时间字符串
         """
         parsed = []
         if not periods:
@@ -582,9 +583,31 @@ class MessageQueueManager(metaclass=SingletonClass):
                 continue
             if not period.get('start') or not period.get('end'):
                 continue
-            start_h, start_m = map(int, period['start'].split(':'))
-            end_h, end_m = map(int, period['end'].split(':'))
-            parsed.append((start_h, start_m, end_h, end_m))
+            try:
+                # 处理 start 时间
+                start_parts = period['start'].split(':')
+                if len(start_parts) == 2:
+                    start_h, start_m = map(int, start_parts)
+                elif len(start_parts) >= 3:
+                    start_h, start_m = map(int, start_parts[:2])  # 只取前两个部分 (HH:MM)
+                else:
+                    continue
+                # 处理 end 时间
+                end_parts = period['end'].split(':')
+                if len(end_parts) == 2:
+                    end_h, end_m = map(int, end_parts)
+                elif len(end_parts) >= 3:
+                    end_h, end_m = map(int, end_parts[:2])  # 只取前两个部分 (HH:MM)
+                else:
+                    continue
+
+                parsed.append((start_h, start_m, end_h, end_m))
+            except ValueError as e:
+                logger.error(f"解析时间周期时出现错误：{period}. 错误：{str(e)}. 跳过此周期。")
+                continue
+            except Exception as e:
+                logger.error(f"解析时间周期时出现意外错误：{period}. 错误：{str(e)}. 跳过此周期。")
+                continue
         return parsed
 
     @staticmethod
