@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import os
 import time
 from datetime import datetime
 
@@ -17,19 +16,22 @@ logger = logging.getLogger(__name__)
 
 
 class TMDb(object):
-    TMDB_API_KEY = "TMDB_API_KEY"
-    TMDB_LANGUAGE = "TMDB_LANGUAGE"
-    TMDB_SESSION_ID = "TMDB_SESSION_ID"
-    TMDB_WAIT_ON_RATE_LIMIT = "TMDB_WAIT_ON_RATE_LIMIT"
-    TMDB_DEBUG_ENABLED = "TMDB_DEBUG_ENABLED"
-    TMDB_CACHE_ENABLED = "TMDB_CACHE_ENABLED"
-    TMDB_PROXIES = "TMDB_PROXIES"
-    TMDB_DOMAIN = "TMDB_DOMAIN"
-
     _req = None
     _session = None
 
     def __init__(self, obj_cached=True, session=None):
+        self._api_key = None
+        self._language = "en-US"
+        self._session_id = None
+        self._wait_on_rate_limit = True
+        self._debug_enabled = False
+        self._cache_enabled = True
+        self._proxies = None
+        self._domain = None
+        self._page = None
+        self._total_results = None
+        self._total_pages = None
+
         if session is not None:
             self._req = RequestUtils(session=session, proxies=self.proxies)
         else:
@@ -39,103 +41,88 @@ class TMDb(object):
         self._reset = None
         self._timeout = 15
         self.obj_cached = obj_cached
-        if os.environ.get(self.TMDB_LANGUAGE) is None:
-            os.environ[self.TMDB_LANGUAGE] = "en-US"
 
     @property
     def page(self):
-        return os.environ["page"]
+        return self._page
 
     @property
     def total_results(self):
-        return os.environ["total_results"]
+        return self._total_results
 
     @property
     def total_pages(self):
-        return os.environ["total_pages"]
+        return self._total_pages
 
     @property
     def api_key(self):
-        return os.environ.get(self.TMDB_API_KEY)
+        return self._api_key
 
     @property
     def domain(self):
-        return os.environ.get(self.TMDB_DOMAIN)
+        return self._domain
 
     @property
     def proxies(self):
-        proxy = os.environ.get(self.TMDB_PROXIES)
-        if proxy is not None:
-            proxy = eval(proxy)
-        return proxy
+        return self._proxies
 
     @proxies.setter
     def proxies(self, proxies):
-        if proxies is not None:
-            os.environ[self.TMDB_PROXIES] = str(proxies)
+        self._proxies = proxies
 
     @api_key.setter
     def api_key(self, api_key):
-        os.environ[self.TMDB_API_KEY] = str(api_key)
+        self._api_key = str(api_key)
 
     @domain.setter
     def domain(self, domain):
-        os.environ[self.TMDB_DOMAIN] = str(domain)
+        self._domain = str(domain)
 
     @property
     def language(self):
-        return os.environ.get(self.TMDB_LANGUAGE)
+        return self._language
 
     @language.setter
     def language(self, language):
-        os.environ[self.TMDB_LANGUAGE] = language
+        self._language = language
 
     @property
     def has_session(self):
-        return True if os.environ.get(self.TMDB_SESSION_ID) else False
+        return True if self._session_id else False
 
     @property
     def session_id(self):
-        if not os.environ.get(self.TMDB_SESSION_ID):
+        if not self._session_id:
             raise TMDbException("Must Authenticate to create a session run Authentication(username, password)")
-        return os.environ.get(self.TMDB_SESSION_ID)
+        return self._session_id
 
     @session_id.setter
     def session_id(self, session_id):
-        os.environ[self.TMDB_SESSION_ID] = session_id
+        self._session_id = session_id
 
     @property
     def wait_on_rate_limit(self):
-        if os.environ.get(self.TMDB_WAIT_ON_RATE_LIMIT) == "False":
-            return False
-        else:
-            return True
+        return self._wait_on_rate_limit
 
     @wait_on_rate_limit.setter
     def wait_on_rate_limit(self, wait_on_rate_limit):
-        os.environ[self.TMDB_WAIT_ON_RATE_LIMIT] = str(wait_on_rate_limit)
+        self._wait_on_rate_limit = bool(wait_on_rate_limit)
 
     @property
     def debug(self):
-        if os.environ.get(self.TMDB_DEBUG_ENABLED) == "True":
-            return True
-        else:
-            return False
+        return self._debug_enabled
 
     @debug.setter
     def debug(self, debug):
-        os.environ[self.TMDB_DEBUG_ENABLED] = str(debug)
+        self._debug_enabled = bool(debug)
 
     @property
     def cache(self):
-        if os.environ.get(self.TMDB_CACHE_ENABLED) == "False":
-            return False
-        else:
-            return True
+        return self._cache_enabled
 
     @cache.setter
     def cache(self, cache):
-        os.environ[self.TMDB_CACHE_ENABLED] = str(cache)
+        self._cache_enabled = bool(cache)
 
     @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
     def cached_request(self, method, url, data, json,
@@ -197,30 +184,30 @@ class TMDb(object):
             else:
                 raise TMDbException("达到请求频率限制，将在 %d 秒后重试..." % sleep_time)
 
-        json = req.json()
+        json_data = req.json()
 
-        if "page" in json:
-            os.environ["page"] = str(json["page"])
+        if "page" in json_data:
+            self._page = json_data["page"]
 
-        if "total_results" in json:
-            os.environ["total_results"] = str(json["total_results"])
+        if "total_results" in json_data:
+            self._total_results = json_data["total_results"]
 
-        if "total_pages" in json:
-            os.environ["total_pages"] = str(json["total_pages"])
+        if "total_pages" in json_data:
+            self._total_pages = json_data["total_pages"]
 
         if self.debug:
-            logger.info(json)
+            logger.info(json_data)
             logger.info(self.cached_request.cache_info())
 
-        if "errors" in json:
-            raise TMDbException(json["errors"])
+        if "errors" in json_data:
+            raise TMDbException(json_data["errors"])
 
-        if "success" in json and json["success"] is False:
-            raise TMDbException(json["status_message"])
+        if "success" in json_data and json_data["success"] is False:
+            raise TMDbException(json_data["status_message"])
 
         if key:
-            return json.get(key)
-        return json
+            return json_data.get(key)
+        return json_data
 
     def close(self):
         if self._session:
