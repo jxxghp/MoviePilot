@@ -1,7 +1,7 @@
 from typing import Optional, List
 
 from app.core.cache import cached
-
+from app.core.config import settings
 from app.utils.http import RequestUtils
 
 
@@ -108,3 +108,52 @@ class WebUtils:
             except Exception as err:
                 print(str(err))
         return []
+
+    @staticmethod
+    @cached(maxsize=1, ttl=3600)
+    def get_customize_wallpapers() -> List[str]:
+        """
+            递归查找对象中所有包含特定后缀的文件或URL，返回匹配的字符串列表
+            支持输入：字典、列表、字符串（普通文件路径或URL）
+            """
+        def find_files_with_suffixes(obj, suffixes: list[str]) -> list[str]:
+            """
+            递归查找对象中所有包含特定后缀的文件，返回匹配的字符串列表
+            支持输入：字典、列表、字符串
+            """
+            result = []
+
+            # 处理字符串
+            if isinstance(obj, str):
+                if obj.endswith(tuple(suffixes)):
+                    result.append(obj)
+
+            # 处理字典
+            elif isinstance(obj, dict):
+                for value in obj.values():
+                    result.extend(find_files_with_suffixes(value, suffixes))
+
+            # 处理列表
+            elif isinstance(obj, list):
+                for item in obj:
+                    result.extend(find_files_with_suffixes(item, suffixes))
+
+            return result
+        """
+        获取自定义壁纸api壁纸
+        """
+        # 判断是否存在自定义壁纸api
+        if settings.CUSTOMIZE_WALLPAPER_API_KEY is not None and len(settings.CUSTOMIZE_WALLPAPER_API_KEY) > 0:
+            url = settings.CUSTOMIZE_WALLPAPER_API_KEY
+            wallpaper_list = []
+            resp = RequestUtils(timeout=5).get_res(url)
+            if resp and resp.status_code == 200:
+                try:
+                    result = resp.json()
+                    if isinstance(result, list) or isinstance(result, dict) or isinstance(result, str):
+                        wallpaper_list = find_files_with_suffixes(result, settings.SECURITY_IMAGE_SUFFIXES)
+                except Exception as err:
+                    print(str(err))
+            return wallpaper_list
+        else:
+            return []
