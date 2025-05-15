@@ -115,7 +115,12 @@ class CategoryHelper(metaclass=Singleton):
             for attr, value in item.items():
                 if not value:
                     continue
-                info_value = tmdb_info.get(attr)
+                if attr == "release_year":
+                    info_value = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
+                    if info_value:
+                        info_value = str(info_value)[:4]
+                else:
+                    info_value = tmdb_info.get(attr)
                 if not info_value:
                     match_flag = False
                     continue

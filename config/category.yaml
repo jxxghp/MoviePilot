@@ -5,6 +5,7 @@
 #   `original_language` 语种，具体含义参考下方字典
 #   `production_countries` 国家或地区（电影）、`origin_country` 国家或地区（电视剧），具体含义参考下方字典
 #   `genre_ids` 内容类型，具体含义参考下方字典
+#   `release_year` 发行年份，格式：YYYY，电影实际对应`release_date`字段，电视剧实际对应`first_air_date`字段
 #   themoviedb 详情API返回的其它一级字段
 # 4. 配置多项条件时需要同时满足，一个条件需要匹配多个值是使用`,`分隔
 
