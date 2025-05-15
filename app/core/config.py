@@ -89,6 +89,8 @@ class ConfigModel(BaseModel):
     PROXY_HOST: Optional[str] = None
     # 登录页面电影海报,tmdb/bing/mediaserver
     WALLPAPER: str = "tmdb"
+    # 自定义壁纸api地址
+    CUSTOMIZE_WALLPAPER_API_URL: Optional[str] = None
     # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb,douban,bangumi"
     # 媒体识别来源 themoviedb/douban
@@ -268,8 +270,7 @@ class ConfigModel(BaseModel):
     TOKENIZED_SEARCH: bool = False
     # 为指定默认字幕添加.default后缀
     DEFAULT_SUB: Optional[str] = "zh-cn"
-    # 自定义壁纸api地址
-    CUSTOMIZE_WALLPAPER_API_URL: Optional[str] = None
+
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """
