@@ -34,6 +34,8 @@ async def lifespan(app: FastAPI):
     init_modules()
     # 初始化路由
     init_routers(app)
+    # 初始化插件
+    init_plugins()
     # 初始化定时器
     init_scheduler()
     # 初始化监控器
@@ -42,8 +44,6 @@ async def lifespan(app: FastAPI):
     init_command()
     # 初始化工作流
     init_workflow()
-    # 初始化插件
-    init_plugins()
     # 插件同步到本地
     sync_plugins_task = asyncio.create_task(init_plugin_system())
     try:
@@ -60,8 +60,6 @@ async def lifespan(app: FastAPI):
             pass
         except Exception as e:
             print(str(e))
-        # 停止插件
-        stop_plugins()
         # 停止工作流
         stop_workflow()
         # 停止命令
@@ -70,5 +68,7 @@ async def lifespan(app: FastAPI):
         stop_monitor()
         # 停止定时器
         stop_scheduler()
+        # 停止插件
+        stop_plugins()
         # 停止模块
         stop_modules()

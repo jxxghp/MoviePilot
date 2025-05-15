@@ -536,6 +536,30 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件 {plugin_id} 模块出错：{str(e)}")
         return ret_modules
 
+    def get_plugin_actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取插件动作
+        [{
+            "id": "动作ID",
+            "name": "动作名称",
+            "func": self.xxx,
+            "kwargs": {} # 需要附加传递的参数
+        }]
+        """
+        ret_actions = []
+        for plugin_id, plugin in self._running_plugins.items():
+            if pid and pid != plugin_id:
+                continue
+            if hasattr(plugin, "get_actions") and ObjectUtils.check_method(plugin.get_actions):
+                try:
+                    if not plugin.get_state():
+                        continue
+                    actions = plugin.get_actions() or []
+                    ret_actions.extend(actions)
+                except Exception as e:
+                    logger.error(f"获取插件 {plugin_id} 动作出错：{str(e)}")
+        return ret_actions
+
     @staticmethod
     def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:
         """

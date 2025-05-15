@@ -1,7 +1,3 @@
-from typing import Optional, List
-
-from app.core.cache import cached
-
 from app.utils.http import RequestUtils
 
 
@@ -73,38 +69,3 @@ class WebUtils:
         except Exception as err:
             print(str(err))
             return ""
-
-    @staticmethod
-    @cached(maxsize=1, ttl=3600)
-    def get_bing_wallpaper() -> Optional[str]:
-        """
-        获取Bing每日壁纸
-        """
-        url = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
-        resp = RequestUtils(timeout=5).get_res(url)
-        if resp and resp.status_code == 200:
-            try:
-                result = resp.json()
-                if isinstance(result, dict):
-                    for image in result.get('images') or []:
-                        return f"https://cn.bing.com{image.get('url')}" if 'url' in image else ''
-            except Exception as err:
-                print(str(err))
-        return None
-
-    @staticmethod
-    @cached(maxsize=1, ttl=3600)
-    def get_bing_wallpapers(num: int = 7) -> List[str]:
-        """
-        获取7天的Bing每日壁纸
-        """
-        url = f"https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n={num}"
-        resp = RequestUtils(timeout=5).get_res(url)
-        if resp and resp.status_code == 200:
-            try:
-                result = resp.json()
-                if isinstance(result, dict):
-                    return [f"https://cn.bing.com{image.get('url')}" for image in result.get('images') or []]
-            except Exception as err:
-                print(str(err))
-        return []

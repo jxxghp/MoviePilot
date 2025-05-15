@@ -182,6 +182,22 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_actions(self) -> List[Dict[str, Any]]:
+        """
+        获取插件工作流动作
+        [{
+            "id": "动作ID",
+            "name": "动作名称",
+            "func": self.xxx,
+            "kwargs": {} # 需要附加传递的参数
+        }]
+
+        对实现函数的要求：
+        1、函数的第一个参数固定为 ActionContent 实例，如需要传递额外参数，在kwargs中定义
+        2、函数的返回：执行状态 True / False，更新后的 ActionContent 实例
+        """
+        pass
+
     @abstractmethod
     def stop_service(self):
         """
