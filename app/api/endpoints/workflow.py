@@ -44,8 +44,8 @@ def create_workflow(workflow: schemas.Workflow,
     return schemas.Response(success=True, message="创建工作流成功")
 
 
-@router.get("/actions/{plugin_id}", summary="查询插件动作", response_model=List[dict])
-def list_plugin_actions(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+@router.get("/plugin/actions", summary="查询插件动作", response_model=List[dict])
+def list_plugin_actions(plugin_id: str = None, _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
     """
     获取所有动作
     """
