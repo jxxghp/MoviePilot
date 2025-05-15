@@ -116,6 +116,7 @@ class CategoryHelper(metaclass=Singleton):
                 if not value:
                     continue
                 if attr == "release_year":
+                    # 发行年份
                     info_value = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
                     if info_value:
                         info_value = str(info_value)[:4]
@@ -125,6 +126,7 @@ class CategoryHelper(metaclass=Singleton):
                     match_flag = False
                     continue
                 elif attr == "production_countries":
+                    # 制片国家
                     info_values = [str(val.get("iso_3166_1")).upper() for val in info_value]
                 else:
                     if isinstance(info_value, list):
@@ -133,7 +135,18 @@ class CategoryHelper(metaclass=Singleton):
                         info_values = [str(info_value).upper()]
 
                 if value.find(",") != -1:
+                    # , 分隔多个值
                     values = [str(val).upper() for val in value.split(",") if val]
+                elif value.find("-") != -1:
+                    # - 表示范围，仅限于数字
+                    value_begin = value.split("-")[0]
+                    value_end = value.split("-")[1]
+                    if value_begin.isdigit() and value_end.isdigit():
+                        # 数字范围
+                        values = [str(val) for val in range(int(value_begin), int(value_end) + 1)]
+                    else:
+                        # 字符串范围
+                        values = [str(value_begin), str(value_end)]
                 else:
                     values = [str(value).upper()]
 
