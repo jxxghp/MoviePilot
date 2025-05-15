@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.core.config import global_vars
+from app.core.plugin import PluginManager
 from app.core.workflow import WorkFlowManager
 from app.db import get_db
 from app.db.models.workflow import Workflow
@@ -41,6 +42,14 @@ def create_workflow(workflow: schemas.Workflow,
         workflow.state = "P"
     Workflow(**workflow.dict()).create(db)
     return schemas.Response(success=True, message="创建工作流成功")
+
+
+@router.get("/actions/{plugin_id}", summary="查询插件动作", response_model=List[dict])
+def list_plugin_actions(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    获取所有动作
+    """
+    return PluginManager().get_plugin_actions(plugin_id)
 
 
 @router.get("/actions", summary="所有动作", response_model=List[dict])
