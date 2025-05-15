@@ -554,8 +554,13 @@ class PluginManager(metaclass=Singleton):
                 try:
                     if not plugin.get_state():
                         continue
-                    actions = plugin.get_actions() or []
-                    ret_actions.extend(actions)
+                    actions = plugin.get_actions()
+                    if actions:
+                        ret_actions.append({
+                            "plugin_id": plugin_id,
+                            "plugin_name": plugin.plugin_name,
+                            "actions": actions
+                        })
                 except Exception as e:
                     logger.error(f"获取插件 {plugin_id} 动作出错：{str(e)}")
         return ret_actions
