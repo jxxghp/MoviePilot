@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 import re
 import secrets
@@ -361,13 +362,16 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 if field_name in fields_not_keep_spaces:
                     value = re.sub(r"\s+", "", value)
                 return value, str(value) != str(original_value)
-            # # 后续考虑支持 list 类型的处理
-            # elif expected_type is list:
-            #     if isinstance(value, list):
-            #         return value, False
-            #     if isinstance(value, str):
-            #         items = [item.strip() for item in value.split(",") if item.strip()]
-            #         return items, items != original_value.split(",")
+            # 支持 list 类型的处理
+            elif expected_type is list:
+                if isinstance(value, list):
+                    return value, str(value) != str(original_value)
+                if isinstance(value, str):
+                    items = json.loads(value)
+                    if isinstance(original_value, list):
+                        return items, items != original_value
+                    else:
+                        return items, str(items) != str(original_value)
             # 可根据需要添加更多类型处理
             else:
                 return value, str(value) != str(original_value)
@@ -408,7 +412,13 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             logger.warning(message)
             return False, message
         else:
-            set_key(SystemUtils.get_env_path(), field.name, str(converted_value) if converted_value is not None else "")
+            # 如果是列表、字典或集合类型，将其转换为JSON字符串
+            if isinstance(converted_value, (list, dict, set)):
+                value_to_write = json.dumps(converted_value)
+            else:
+                value_to_write = str(converted_value) if converted_value is not None else ""
+
+            set_key(SystemUtils.get_env_path(), field.name, value_to_write)
             if is_converted:
                 logger.info(f"配置项 '{field.name}' 已自动修正并写入到 'app.env' 文件")
         return True, message

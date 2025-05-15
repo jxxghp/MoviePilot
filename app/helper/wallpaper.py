@@ -89,12 +89,17 @@ class WallpaperHelper(metaclass=Singleton):
             wallpaper_list = []
             resp = self.req.get_res(settings.CUSTOMIZE_WALLPAPER_API_URL)
             if resp and resp.status_code == 200:
-                try:
-                    result = resp.json()
-                    if isinstance(result, list) or isinstance(result, dict) or isinstance(result, str):
-                        wallpaper_list = find_files_with_suffixes(result, settings.SECURITY_IMAGE_SUFFIXES)
-                except Exception as err:
-                    print(str(err))
+                # 如果返回的是图片格式
+                content_type = resp.headers.get('Content-Type')
+                if content_type and content_type.lower() == 'image/jpeg':
+                    wallpaper_list.append(resp.url)
+                else:
+                    try:
+                        result = resp.json()
+                        if isinstance(result, list) or isinstance(result, dict) or isinstance(result, str):
+                            wallpaper_list = find_files_with_suffixes(result, settings.SECURITY_IMAGE_SUFFIXES)
+                    except Exception as err:
+                        print(str(err))
             return wallpaper_list
         else:
             return []
