@@ -268,7 +268,8 @@ class ConfigModel(BaseModel):
     TOKENIZED_SEARCH: bool = False
     # 为指定默认字幕添加.default后缀
     DEFAULT_SUB: Optional[str] = "zh-cn"
-
+    # 自定义壁纸api地址
+    CUSTOMIZE_WALLPAPER_API_URL: Optional[str] = None
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """

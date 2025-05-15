@@ -58,6 +58,8 @@ def wallpaper() -> Any:
         url = WebUtils.get_bing_wallpaper()
     elif settings.WALLPAPER == "mediaserver":
         url = MediaServerChain().get_latest_wallpaper()
+    elif settings.WALLPAPER == "customize":
+        url = WebUtils.get_customize_wallpapers()[0]
     else:
         url = TmdbChain().get_random_wallpager()
     if url:
@@ -79,5 +81,7 @@ def wallpapers() -> Any:
         return MediaServerChain().get_latest_wallpapers()
     elif settings.WALLPAPER == "tmdb":
         return TmdbChain().get_trending_wallpapers()
+    elif settings.WALLPAPER == "customize":
+        return WebUtils.get_customize_wallpapers()
     else:
         return []
