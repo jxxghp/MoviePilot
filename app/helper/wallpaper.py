@@ -92,7 +92,7 @@ class WallpaperHelper(metaclass=Singleton):
                 # 如果返回的是图片格式
                 content_type = resp.headers.get('Content-Type')
                 if content_type and content_type.lower() == 'image/jpeg':
-                    wallpaper_list.append(resp.url)
+                    wallpaper_list.append(settings.CUSTOMIZE_WALLPAPER_API_URL)
                 else:
                     try:
                         result = resp.json()
