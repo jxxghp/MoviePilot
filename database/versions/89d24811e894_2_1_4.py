@@ -37,7 +37,7 @@ def upgrade() -> None:
     'text': '{% if site_name %}站点：{{ site_name }}{% endif %}'
             '{% if resource_term %}\\n质量：{{ resource_term }}{% endif %}'
             '{% if size %}\\n大小：{{ size }}{% endif %}'
-            '{% if title %}\\n种子：{{ title }}{% endif %}'
+            '{% if torrent_title %}\\n种子：{{ torrent_title }}{% endif %}'
             '{% if pubdate %}\\n发布时间：{{ pubdate }}{% endif %}'
             '{% if freedate %}\\n免费时间：{{ freedate }}{% endif %}'
             '{% if seeders %}\\n做种数：{{ seeders }}{% endif %}'
