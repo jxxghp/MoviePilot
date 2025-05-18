@@ -668,7 +668,7 @@ meta_cases = [{
         "restype": "UHD BluRay DoVi",
         "pix": "1080p",
         "video_codec": "X265",
-        "audio_codec": "DD 7.1"
+        "audio_codec": "DD+ 7.1"
     }
 }, {
     "title": "Childhood.In.A.Capsule.S01E16.2022.1080p.KKTV.WEB-DL.X264.AAC-ADWeb.mkv",
@@ -968,7 +968,7 @@ meta_cases = [{
         "year": "2023",
         "part": "",
         "season": "S02",
-        "episode": "E01-E08",
+        "episode": "",
         "restype": "WEB-DL",
         "pix": "2160p",
         "video_codec": "H265",
@@ -1016,7 +1016,7 @@ meta_cases = [{
         "year": "2019",
         "part": "",
         "season": "S01",
-        "episode": "E01-E36",
+        "episode": "",
         "restype": "WEB-DL",
         "pix": "2160p",
         "video_codec": "H265",

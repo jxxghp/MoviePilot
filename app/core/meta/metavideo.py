@@ -595,7 +595,7 @@ class MetaVideo(MetaBase):
                 if re_res.group(2):
                     self.video_encode = re_res.group(2).upper()
                 elif re_res.group(3):
-                    self.video_encode = re_res.group(3).lower()
+                    self.video_encode = re_res.group(3).upper()
                 else:
                     self.video_encode = re_res.group(1).upper()
                 self._last_token = self.video_encode

@@ -32,11 +32,11 @@ class MetaInfoTest(TestCase):
                 "video_codec": meta_info.video_encode or "",
                 "audio_codec": meta_info.audio_encode or ""
             }
-            
+
             # 检查tmdbid
             if info.get("target").get("tmdbid"):
                 target["tmdbid"] = meta_info.tmdbid
-            
+
             self.assertEqual(target, info.get("target"))
 
     def test_emby_format_ids(self):
@@ -56,8 +56,8 @@ class MetaInfoTest(TestCase):
             # 测试{tmdb-xxx}格式
             ("/movies/Avatar (2009) {tmdb-19995}/Avatar.2009.1080p.mkv", 19995),
         ]
-        
+
         for path_str, expected_tmdbid in test_paths:
             meta = MetaInfoPath(Path(path_str))
-            self.assertEqual(meta.tmdbid, expected_tmdbid, 
-                            f"路径 {path_str} 期望的tmdbid为 {expected_tmdbid}，实际识别为 {meta.tmdbid}")
+            self.assertEqual(meta.tmdbid, expected_tmdbid,
+                             f"路径 {path_str} 期望的tmdbid为 {expected_tmdbid}，实际识别为 {meta.tmdbid}")
