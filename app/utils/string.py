@@ -908,3 +908,20 @@ class StringUtils:
         :return: 如果elem有效（非None且长度大于0），返回True；否则返回False
         """
         return elem is not None and len(elem) > 0
+
+    @staticmethod
+    def is_link(text: str) -> bool:
+        """
+        检查文件是否为链接地址，支持各类协议
+        :param text: 要检查的文本
+        :return: 如果URL有效，返回True；否则返回False
+        """
+        if not text:
+            return False
+        # 检查是否以http、https、ftp等协议开头
+        if re.match(r'^(http|https|ftp|ftps|sftp|ws|wss)://', text):
+            return True
+        # 检查是否为IP地址或域名
+        if re.match(r'^[a-zA-Z0-9.-]+(\.[a-zA-Z]{2,})?$', text):
+            return True
+        return False

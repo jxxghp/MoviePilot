@@ -423,7 +423,7 @@ class MessageChain(ChainBase):
                 # 聊天
                 content = text
                 action = "Chat"
-            elif text.startswith("http"):
+            elif StringUtils.is_link(text):
                 # 链接
                 content = text
                 action = "Link"
