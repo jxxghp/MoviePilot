@@ -1037,4 +1037,84 @@ meta_cases = [{
         "video_codec": "",
         "audio_codec": ""
     }
+}, {
+    "path": "/movies/The Vampire Diaries (2009) [tmdbid=18165]/The.Vampire.Diaries.S01E01.1080p.mkv",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "The Vampire Diaries",
+        "year": "2009",
+        "part": "",
+        "season": "S01",
+        "episode": "E01",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": "",
+        "tmdbid": 18165
+    }
+}, {
+    "path": "/movies/Inception (2010) [tmdbid-27205]/Inception.2010.1080p.mkv",
+    "target": {
+        "type": "未知",
+        "cn_name": "",
+        "en_name": "Inception",
+        "year": "2010",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": "",
+        "tmdbid": 27205
+    }
+}, {
+    "path": "/movies/Breaking Bad (2008) [tmdb=1396]/Season 1/Breaking.Bad.S01E01.1080p.mkv",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Breaking Bad",
+        "year": "2008",
+        "part": "",
+        "season": "S01",
+        "episode": "E01",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": "",
+        "tmdbid": 1396
+    }
+}, {
+    "path": "/tv/Game of Thrones (2011) {tmdb=1399}/Season 1/Game.of.Thrones.S01E01.1080p.mkv",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Game Of Thrones",
+        "year": "2011",
+        "part": "",
+        "season": "S01",
+        "episode": "E01",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": "",
+        "tmdbid": 1399
+    }
+}, {
+    "path": "/movies/Avatar (2009) {tmdb-19995}/Avatar.2009.1080p.mkv",
+    "target": {
+        "type": "未知",
+        "cn_name": "",
+        "en_name": "Avatar",
+        "year": "2009",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": "",
+        "tmdbid": 19995
+    }
 }]

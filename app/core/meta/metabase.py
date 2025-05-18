@@ -582,6 +582,12 @@ class MetaBase(object):
         # Part
         if not self.part:
             self.part = meta.part
+        # tmdbid
+        if not self.tmdbid and meta.tmdbid:
+            self.tmdbid = meta.tmdbid
+        # doubanid
+        if not self.doubanid and meta.doubanid:
+            self.doubanid = meta.doubanid
 
     def to_dict(self):
         """
