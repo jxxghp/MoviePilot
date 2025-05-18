@@ -298,3 +298,11 @@ class ModuleType(Enum):
     Indexer = "indexer"
     # 其它
     Other = "other"
+
+
+# 插件模块执行类型
+class ModuleExecutionType(Enum):
+    # 挟持系统模块：执行先于系统模块
+    Hijack = "hijack"
+    # 补充系统模块：执行晚于系统模块
+    Supplement = "supplement"

@@ -23,7 +23,7 @@ from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem, TransferDirectoryConf
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType, ModuleExecutionType
 from app.utils.object import ObjectUtils
 
 
@@ -99,45 +99,58 @@ class ChainBase(metaclass=ABCMeta):
             else:
                 return ret is None
 
-        result = None
+        def run_plugin_modules(_plugin_modules, _module_type):
+            _result = None
+            for plugin, module_dict in plugin_modules.items():
+                plugin_id, plugin_name = plugin
+                if method in module_dict:
+                    method_info = module_dict[method]
+                    # 兼容旧的返回值
+                    if isinstance(method_info, tuple) and len(method_info) == 2:
+                        # 类型为 (self.xxx1, ModuleExecutionType)
+                        _func = method_info[0]
+                        module_execution_type = method_info[1]
+                    else:
+                        # 类型为 self.xxx1
+                        _func = method_info
+                        module_execution_type = ModuleExecutionType.Hijack
+                    if _func and module_execution_type == _module_type:
+                        try:
+                            logger.info(f"请求插件 {plugin_name} 执行：{method} ({_module_type.value})...")
+                            if is_result_empty(_result):
+                                # 返回None，第一次执行或者需继续执行下一模块
+                                _result = _func(*args, **kwargs)
+                            elif isinstance(_result, list):
+                                # 返回为列表，有多个模块运行结果时进行合并
+                                _temp = _func(*args, **kwargs)
+                                if isinstance(_temp, list):
+                                    result.extend(_temp)
+                            else:
+                                break
+                        except Exception as _err:
+                            if kwargs.get("raise_exception"):
+                                raise
+                            logger.error(
+                                f"运行插件 {plugin_id} 模块 {method} 出错：{str(_err)}\n{traceback.format_exc()}")
+                            self.messagehelper.put(title=f"{plugin_name} 发生了错误",
+                                                   message=str(err),
+                                                   role="plugin")
+                            self.eventmanager.send_event(
+                                EventType.SystemError,
+                                {
+                                    "type": "plugin",
+                                    "plugin_id": plugin_id,
+                                    "plugin_name": plugin_name,
+                                    "plugin_method": method,
+                                    "error": str(err),
+                                    "traceback": traceback.format_exc()
+                                }
+                            )
+            return _result
+
         plugin_modules = self.pluginmanager.get_plugin_modules()
-        # 插件模块
-        for plugin, module_dict in plugin_modules.items():
-            plugin_id, plugin_name = plugin
-            if method in module_dict:
-                func = module_dict[method]
-                if func:
-                    try:
-                        logger.info(f"请求插件 {plugin_name} 执行：{method} ...")
-                        if is_result_empty(result):
-                            # 返回None，第一次执行或者需继续执行下一模块
-                            result = func(*args, **kwargs)
-                        elif isinstance(result, list):
-                            # 返回为列表，有多个模块运行结果时进行合并
-                            temp = func(*args, **kwargs)
-                            if isinstance(temp, list):
-                                result.extend(temp)
-                        else:
-                            break
-                    except Exception as err:
-                        if kwargs.get("raise_exception"):
-                            raise
-                        logger.error(
-                            f"运行插件 {plugin_id} 模块 {method} 出错：{str(err)}\n{traceback.format_exc()}")
-                        self.messagehelper.put(title=f"{plugin_name} 发生了错误",
-                                               message=str(err),
-                                               role="plugin")
-                        self.eventmanager.send_event(
-                            EventType.SystemError,
-                            {
-                                "type": "plugin",
-                                "plugin_id": plugin_id,
-                                "plugin_name": plugin_name,
-                                "plugin_method": method,
-                                "error": str(err),
-                                "traceback": traceback.format_exc()
-                            }
-                        )
+        # 劫持类型插件模块
+        result = run_plugin_modules(plugin_modules, ModuleExecutionType.Hijack)
         if not is_result_empty(result) and not isinstance(result, list):
             # 插件模块返回结果不为空且不是列表，直接返回
             return result
@@ -189,6 +202,17 @@ class ChainBase(metaclass=ABCMeta):
                         "traceback": traceback.format_exc()
                     }
                 )
+        if not is_result_empty(result) and not isinstance(result, list):
+            # 插件模块返回结果不为空且不是列表，直接返回
+            return result
+        # 补充类型插件模块
+        temp = run_plugin_modules(plugin_modules, ModuleExecutionType.Supplement)
+        if isinstance(result, list):
+            # 返回为列表，有多个模块运行结果时进行合并
+            if isinstance(temp, list):
+                result.extend(temp)
+        else:
+            return temp
         return result
 
     def recognize_media(self, meta: MetaBase = None,

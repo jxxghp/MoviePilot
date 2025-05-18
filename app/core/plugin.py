@@ -518,7 +518,7 @@ class PluginManager(metaclass=Singleton):
         获取插件模块
         {
             plugin_id: {
-                method: function
+                method: function or (function, ModuleExecutionType)
             }
         }
         """
