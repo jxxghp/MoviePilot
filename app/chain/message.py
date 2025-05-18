@@ -422,13 +422,17 @@ class MessageChain(ChainBase):
                     or text.find("继续") != -1:
                 # 聊天
                 content = text
-                action = "chat"
+                action = "Chat"
+            elif text.startswith("http"):
+                # 链接
+                content = text
+                action = "Link"
             else:
                 # 搜索
                 content = text
                 action = "Search"
 
-            if action != "chat":
+            if action in ["Search", "ReSearch", "Subscribe", "ReSubscribe"]:
                 # 搜索
                 meta, medias = self.mediachain.search(content)
                 # 识别
