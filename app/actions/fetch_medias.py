@@ -40,54 +40,67 @@ class FetchMediasAction(BaseAction):
             {
                 "func": RecommendChain().tmdb_trending,
                 "name": '流行趋势',
+                "api_path": "recommend/tmdb_trending"
             },
             {
                 "func": RecommendChain().douban_movie_showing,
                 "name": '正在热映',
+                "api_path": "recommend/douban_showing"
             },
             {
                 "func": RecommendChain().bangumi_calendar,
                 "name": 'Bangumi每日放送',
+                "api_path": "recommend/bangumi_calendar"
             },
             {
                 "func": RecommendChain().tmdb_movies,
                 "name": 'TMDB热门电影',
+                "api_path": "recommend/tmdb_movies"
             },
             {
                 "func": RecommendChain().tmdb_tvs,
                 "name": 'TMDB热门电视剧',
+                "api_path": "recommend/tmdb_tvs?with_original_language=zh|en|ja|ko"
             },
             {
                 "func": RecommendChain().douban_movie_hot,
                 "name": '豆瓣热门电影',
+                "api_path": "recommend/douban_movie_hot"
             },
             {
                 "func": RecommendChain().douban_tv_hot,
                 "name": '豆瓣热门电视剧',
+                "api_path": "recommend/douban_tv_hot"
             },
             {
                 "func": RecommendChain().douban_tv_animation,
                 "name": '豆瓣热门动漫',
+                "api_path": "recommend/douban_tv_animation"
             },
             {
                 "func": RecommendChain().douban_movies,
                 "name": '豆瓣最新电影',
+                "api_path": "recommend/douban_movies"
             },
             {
                 "func": RecommendChain().douban_tvs,
                 "name": '豆瓣最新电视剧',
+                "api_path": "recommend/douban_tvs"
             },
             {
                 "func": RecommendChain().douban_movie_top250,
                 "name": '豆瓣电影TOP250',
+                "api_path": "recommend/douban_movie_top250"
             },
             {
                 "func": RecommendChain().douban_tv_weekly_chinese,
                 "name": '豆瓣国产剧集榜',
+                "api_path": "recommend/douban_tv_weekly_chinese"
             },
             {
                 "func": RecommendChain().douban_tv_weekly_global,
                 "name": '豆瓣全球剧集榜',
+                "api_path": "recommend/douban_tv_weekly_global"
             }
         ]
 
@@ -124,7 +137,7 @@ class FetchMediasAction(BaseAction):
         获取数据源
         """
         for s in self.__inner_sources:
-            if s['name'] == source:
+            if s['api_path'] == source:
                 return s
         return None
 
@@ -135,13 +148,14 @@ class FetchMediasAction(BaseAction):
         params = FetchMediasParams(**params)
         try:
             if params.source_type == "ranking":
-                for name in params.sources:
+                for api_path in params.sources:
                     if global_vars.is_workflow_stopped(workflow_id):
                         break
-                    source = self.__get_source(name)
+                    source = self.__get_source(api_path)
                     if not source:
                         continue
                     logger.info(f"获取媒体数据 {source} ...")
+                    name = source.get("name")
                     results = []
                     if source.get("func"):
                         results = source['func']()
