@@ -306,7 +306,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     sha1.update(chunk)
         return sha1.hexdigest()
 
-    def _delay_get_item(self, path: Path) -> List[schemas.FileItem]:
+    def _delay_get_item(self, path: Path) -> Optional[schemas.FileItem]:
         """
         自动延迟重试 get_item 模块
         """
