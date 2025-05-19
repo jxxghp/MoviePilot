@@ -435,6 +435,17 @@ class AliPan(StorageBase, metaclass=Singleton):
                 break
         return items
 
+    def _delay_get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        自动延迟重试 get_item 模块
+        """
+        for _ in range(2):
+            time.sleep(2)
+            fileitem = self.get_item(path)
+            if fileitem:
+                return fileitem
+        return None
+
     def create_folder(self, parent_item: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
@@ -457,7 +468,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         # 缓存新目录
         new_path = Path(parent_item.path) / name
         self._id_cache[str(new_path)] = (resp.get("drive_id"), resp.get("file_id"))
-        return self.get_item(new_path)
+        return self._delay_get_item(new_path)
 
     @staticmethod
     def _calculate_pre_hash(file_path: Path):
@@ -676,7 +687,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                                        chunk_size=chunk_size)
         if create_res.get('rapid_upload', False):
             logger.info(f"【阿里云盘】{target_name} 秒传完成！")
-            return self.get_item(target_path)
+            return self._delay_get_item(target_path)
 
         if create_res.get("exist", False):
             logger.info(f"【阿里云盘】{target_name} 已存在")
@@ -919,7 +930,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return False
         # 重命名
         new_path = Path(path) / fileitem.name
-        new_file = self.get_item(new_path)
+        new_file = self._delay_get_item(new_path)
         self.rename(new_file, new_name)
         # 更新缓存
         del self._id_cache[fileitem.path]
