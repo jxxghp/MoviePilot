@@ -577,7 +577,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         torrent_mediainfo = self.recognize_media(meta=torrent_meta)
                         if torrent_mediainfo:
                             # 更新种子缓存
-                            _context.media_info = torrent_mediainfo
+                            context.media_info = torrent_mediainfo
                     # 添加已预处理
                     processed_torrents[domain].append(_context)
 
