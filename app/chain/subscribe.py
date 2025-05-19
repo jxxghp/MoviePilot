@@ -561,6 +561,32 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             logger.debug(f"match lock acquired at {datetime.now()}")
             # 所有订阅
             subscribes = self.subscribeoper.list(self.get_states_for_search('R'))
+
+            # 预识别所有未识别的种子，并标记是否已识别过
+            processed_torrents = {}
+            for domain, contexts in torrents.items():
+                processed_torrents[domain] = []
+                for context in contexts:
+                    # 复制上下文避免修改原始数据
+                    _context = copy.deepcopy(context)
+                    torrent_meta = _context.meta_info
+                    torrent_mediainfo = _context.media_info
+                    torrent_info = _context.torrent_info
+
+                    # 标记是否已经尝试过识别（初始为False）
+                    _context._recognized = False
+
+                    # 如果种子未识别，尝试识别
+                    if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
+                        torrent_mediainfo = self.recognize_media(meta=torrent_meta)
+                        if torrent_mediainfo:
+                            # 更新种子缓存
+                            _context.media_info = torrent_mediainfo
+                        # 标记为已尝试识别
+                        _context._recognized = True
+
+                    processed_torrents[domain].append(_context)
+
             # 遍历订阅
             for subscribe in subscribes:
                 if global_vars.is_system_stopped:
@@ -604,9 +630,9 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 else:
                     custom_words_list = None
 
-                # 遍历缓存种子
+                # 遍历预识别后的种子
                 _match_context = []
-                for domain, contexts in torrents.items():
+                for domain, contexts in processed_torrents.items():
                     if global_vars.is_system_stopped:
                         break
                     if domains and domain not in domains:
@@ -639,31 +665,36 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 # 更新元数据缓存
                                 context.meta_info = torrent_meta
                                 # 媒体信息需要重新识别
-                                torrent_mediainfo = None
+                                need_reprocess = None
+                                # 重置识别标记
+                                _context._recognized = False
 
-                        # 先判断是否有没识别的种子，否则重新识别
-                        if not torrent_mediainfo \
-                                or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
-                            # 重新识别媒体信息
+                        # 重新识别媒体信息（仅当有自定义识别词或尚未尝试识别时才需要）
+                        if need_reprocess or (not _context._recognized and
+                                              (not torrent_mediainfo or
+                                               (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id))):
                             torrent_mediainfo = self.recognize_media(meta=torrent_meta,
                                                                      episode_group=subscribe.episode_group)
                             if torrent_mediainfo:
                                 # 更新种子缓存
-                                context.media_info = torrent_mediainfo
+                                _context.media_info = torrent_mediainfo
+                            # 标记为已尝试识别
+                            _context._recognized = True
+
+                        # 如果仍然没有识别到媒体信息，尝试标题匹配
+                        if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
+                            logger.warn(
+                                f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
+                            if self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                                torrent_meta=torrent_meta,
+                                                                torrent=torrent_info):
+                                # 匹配成功
+                                logger.info(
+                                    f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                                torrent_mediainfo = mediainfo
+                                _context.media_info = torrent_mediainfo
                             else:
-                                # 通过标题匹配兜底
-                                logger.warn(
-                                    f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
-                                if self.torrenthelper.match_torrent(mediainfo=mediainfo,
-                                                                    torrent_meta=torrent_meta,
-                                                                    torrent=torrent_info):
-                                    # 匹配成功
-                                    logger.info(
-                                        f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                    torrent_mediainfo = mediainfo
-                                    context.media_info = torrent_mediainfo
-                                else:
-                                    continue
+                                continue
 
                         # 直接比对媒体信息
                         if torrent_mediainfo and (torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id):
