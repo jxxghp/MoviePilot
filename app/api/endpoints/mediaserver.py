@@ -121,7 +121,7 @@ def not_exists(media_in: schemas.MediaInfo,
 
 
 @router.get("/latest", summary="最新入库条目", response_model=List[schemas.MediaServerPlayItem])
-def latest(server: str, count: Optional[int] = 18,
+def latest(server: str, count: Optional[int] = 20,
            userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器最新入库条目
