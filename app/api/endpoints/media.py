@@ -219,14 +219,13 @@ def detail(mediaid: str, type_name: str, title: Optional[str] = None, year: str 
         )
         event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
         # 使用事件返回的上下文数据
-        if event and event.event_data:
+        if event and event.event_data and event.event_data.media_dict:
             event_data: MediaRecognizeConvertEventData = event.event_data
-            if event_data.media_dict:
-                new_id = event_data.media_dict.get("id")
-                if event_data.convert_type == "themoviedb":
-                    mediainfo = MediaChain().recognize_media(tmdbid=new_id, mtype=mtype)
-                elif event_data.convert_type == "douban":
-                    mediainfo = MediaChain().recognize_media(doubanid=new_id, mtype=mtype)
+            new_id = event_data.media_dict.get("id")
+            if event_data.convert_type == "themoviedb":
+                mediainfo = MediaChain().recognize_media(tmdbid=new_id, mtype=mtype)
+            elif event_data.convert_type == "douban":
+                mediainfo = MediaChain().recognize_media(doubanid=new_id, mtype=mtype)
         elif title:
             # 使用名称识别兜底
             meta = MetaInfo(title)

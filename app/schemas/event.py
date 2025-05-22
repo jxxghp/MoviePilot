@@ -306,7 +306,7 @@ class MediaRecognizeConvertEventData(ChainEventData):
     convert_type: str = Field(..., description="转换类型（themoviedb/douban）")
 
     # 输出参数
-    media_dict: dict = Field(default=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）")
+    media_dict: dict = Field(default_factory=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）")
 
 
 class StorageOperSelectionEventData(ChainEventData):
