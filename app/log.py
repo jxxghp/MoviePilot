@@ -30,7 +30,7 @@ class LogConfigModel(BaseModel):
     # 备份的日志文件数量
     LOG_BACKUP_COUNT: int = 3
     # 控制台日志格式
-    LOG_CONSOLE_FORMAT: str = "%(leveltext)s%(message)s"
+    LOG_CONSOLE_FORMAT: str = "%(leveltext)s[%(name)s] %(asctime)s %(message)s"
     # 文件日志格式
     LOG_FILE_FORMAT: str = "【%(levelname)s】%(asctime)s - %(message)s"
 
