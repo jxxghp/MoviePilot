@@ -394,6 +394,74 @@ def plugin_static_file(plugin_id: str, filepath: str):
         logger.error(f"Error creating/sending FileResponse for {plugin_file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+@router.get("/folders", summary="获取插件文件夹配置", response_model=dict)
+def get_plugin_folders(_: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
+    """
+    获取插件文件夹分组配置
+    """
+    try:
+        result = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+        return result
+    except Exception as e:
+        logger.error(f"[文件夹API] 获取文件夹配置失败: {str(e)}")
+        return {}
+
+
+@router.post("/folders", summary="保存插件文件夹配置", response_model=schemas.Response)
+def save_plugin_folders(folders: dict, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    保存插件文件夹分组配置
+    """
+    try:
+        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+
+        # 验证保存结果
+        saved_result = SystemConfigOper().get(SystemConfigKey.PluginFolders)
+
+        return schemas.Response(success=True)
+    except Exception as e:
+        logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
+        return schemas.Response(success=False, message=str(e))
+
+
+@router.post("/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response)
+def create_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    创建新的插件文件夹
+    """
+    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    if folder_name not in folders:
+        folders[folder_name] = []
+        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 创建成功")
+    else:
+        return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 已存在")
+
+
+@router.delete("/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response)
+def delete_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    删除插件文件夹
+    """
+    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    if folder_name in folders:
+        del folders[folder_name]
+        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 删除成功")
+    else:
+        return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 不存在")
+
+
+@router.put("/folders/{folder_name}/plugins", summary="更新文件夹中的插件", response_model=schemas.Response)
+def update_folder_plugins(folder_name: str, plugin_ids: List[str], _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    更新指定文件夹中的插件列表
+    """
+    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    folders[folder_name] = plugin_ids
+    SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+    return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 中的插件已更新")
+
 
 @router.get("/{plugin_id}", summary="获取插件配置")
 def plugin_config(plugin_id: str,
