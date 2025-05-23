@@ -229,7 +229,8 @@ class ConfigModel(BaseModel):
                           "https://github.com/baozaodetudou/MoviePilot-Plugins,"
                           "https://github.com/Aqr-K/MoviePilot-Plugins,"
                           "https://github.com/hotlcc/MoviePilot-Plugins-Third,"
-                          "https://github.com/gxterry/MoviePilot-Plugins")
+                          "https://github.com/gxterry/MoviePilot-Plugins,"
+                          "https://github.com/DzAvril/MoviePilot-Plugins")
     # 插件安装数据共享
     PLUGIN_STATISTIC_SHARE: bool = True
     # 是否开启插件热加载
