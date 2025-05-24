@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class FileItem(BaseModel):
     # 存储类型
-    storage: Optional[str] = "local"
+    storage: Optional[str] = Field(default="local")
     # 类型 dir/file
     type: Optional[str] = None
     # 文件路径

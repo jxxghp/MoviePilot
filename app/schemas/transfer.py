@@ -115,13 +115,13 @@ class TransferInfo(BaseModel):
     # 整理方式
     transfer_type: Optional[str] = None
     # 处理文件数
-    file_count: Optional[int] = 0
+    file_count: Optional[int] = Field(default=0)
     # 处理文件清单
     file_list: Optional[list] = Field(default_factory=list)
     # 目标文件清单
     file_list_new: Optional[list] = Field(default_factory=list)
     # 总文件大小
-    total_size: Optional[float] = 0.0
+    total_size: Optional[int] = Field(default=0)
     # 失败清单
     fail_list: Optional[list] = Field(default_factory=list)
     # 处理字幕文件清单
