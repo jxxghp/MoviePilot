@@ -2,6 +2,8 @@ import sys
 import json
 import shutil
 import traceback
+import site
+import importlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 
@@ -452,7 +454,7 @@ class PluginHelper(metaclass=Singleton):
     @staticmethod
     def __pip_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
         """
-        使用自动降级策略，PIP 安装依赖，优先级依次为镜像站、代理、直连
+        使用自动降级策略安装依赖，并确保新安装的包可被动态导入
         :param requirements_file: 依赖的 requirements.txt 文件路径
         :return: (是否成功, 错误信息)
         """
@@ -466,12 +468,25 @@ class PluginHelper(metaclass=Singleton):
             strategies.append(("代理", base_cmd + ["--proxy", settings.PROXY_HOST]))
         strategies.append(("直连", base_cmd))
 
+        # 记录当前已安装的包，以便后续刷新
+        before_installation = set(sys.modules.keys())
+
         # 遍历策略进行安装
         for strategy_name, pip_command in strategies:
             logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
             success, message = SystemUtils.execute_with_subprocess(pip_command)
             if success:
                 logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
+                # 安装成功后刷新Python的模块系统
+                importlib.reload(site)
+                # 获取新安装的模块
+                current_modules = set(sys.modules.keys())
+                new_modules = current_modules - before_installation
+                # 重新加载新安装的模块
+                for module in new_modules:
+                    if module in sys.modules:
+                        del sys.modules[module]
+                logger.debug(f"[PIP] 已刷新导入系统，新加载的模块: {new_modules}")
                 return True, message
             else:
                 logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")

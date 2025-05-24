@@ -188,7 +188,7 @@ class LoggerManager:
         file_formatter = CustomFormatter(log_settings.LOG_FILE_FORMAT)
         file_handler.setFormatter(file_formatter)
         _logger.addHandler(file_handler)
-        
+
         # 禁止向父级log传递
         _logger.propagate = False
 
