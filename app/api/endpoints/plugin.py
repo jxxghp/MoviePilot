@@ -144,34 +144,13 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     local_plugins = PluginManager().get_local_plugins()
     # 已安装插件
     installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
-    # 未安装的本地插件
-    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
-
-    # 在线插件
-    online_plugins = PluginManager().get_online_plugins()
-    
-    # 为已安装插件补充标签信息
-    if online_plugins:
-        # 创建在线插件的ID到插件对象的映射
-        online_plugin_map = {plugin.id: plugin for plugin in online_plugins}
-        
-        # 为已安装插件补充标签信息
-        updated_installed_plugins = []
-        for installed_plugin in installed_plugins:
-            if installed_plugin.id in online_plugin_map:
-                online_plugin = online_plugin_map[installed_plugin.id]
-                # 如果已安装插件没有标签但在线插件有标签，则补充标签信息
-                if not installed_plugin.plugin_label and online_plugin.plugin_label:
-                    # 直接更新原对象的标签字段，避免创建新对象可能导致的状态丢失
-                    installed_plugin.plugin_label = online_plugin.plugin_label
-            
-            updated_installed_plugins.append(installed_plugin)
-        
-        installed_plugins = updated_installed_plugins
-    
     if state == "installed":
         return installed_plugins
-
+        
+    # 未安装的本地插件
+    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
+    # 在线插件
+    online_plugins = PluginManager().get_online_plugins()
     if not online_plugins:
         # 没有获取在线插件
         if state == "market":
@@ -198,6 +177,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     if state == "market":
         # 返回未安装的插件
         return market_plugins
+        
     # 返回所有插件
     return installed_plugins + market_plugins
 
