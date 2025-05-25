@@ -395,10 +395,6 @@ def save_plugin_folders(folders: dict, _: schemas.TokenPayload = Depends(get_cur
     """
     try:
         SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
-        
-        # 验证保存结果
-        saved_result = SystemConfigOper().get(SystemConfigKey.PluginFolders)
-        
         return schemas.Response(success=True)
     except Exception as e:
         logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
