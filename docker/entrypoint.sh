@@ -174,8 +174,8 @@ if [ "${ENABLE_SSL}" = "true" ]; then
         server_name ${SSL_DOMAIN:-moviepilot};
 
         # SSL证书路径
-        ssl_certificate "${CONFIG_DIR}"/certs/latest/fullchain.pem;
-        ssl_certificate_key "${CONFIG_DIR}"/certs/latest/privkey.pem;
+        ssl_certificate ${CONFIG_DIR}/certs/latest/fullchain.pem;
+        ssl_certificate_key ${CONFIG_DIR}/certs/latest/privkey.pem;
 
         # SSL安全配置
         ssl_protocols TLSv1.2 TLSv1.3;
