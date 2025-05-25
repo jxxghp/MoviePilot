@@ -8,13 +8,15 @@ from app.utils.system import SystemUtils
 
 
 class SystemHelper:
-
     @staticmethod
     def can_restart() -> bool:
         """
         判断是否可以内部重启
         """
-        return Path("/var/run/docker.sock").exists()
+        return (
+            Path("/var/run/docker.sock").exists()
+            or settings.DOCKER_CLIENT_API != "tcp://127.0.0.1:38379"
+        )
 
     @staticmethod
     def restart() -> Tuple[bool, str]:
@@ -28,7 +30,7 @@ class SystemHelper:
             client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
             # 获取当前容器的 ID
             container_id = None
-            with open('/proc/self/mountinfo', 'r') as f:
+            with open("/proc/self/mountinfo", "r") as f:
                 data = f.read()
                 index_resolv_conf = data.find("resolv.conf")
                 if index_resolv_conf != -1:
@@ -39,7 +41,9 @@ class SystemHelper:
                         index_resolv_conf = data.find("/sys/fs/cgroup/devices")
                         if index_resolv_conf != -1:
                             index_second_slash = data.rfind(" ", 0, index_resolv_conf)
-                            index_first_slash = data.rfind("/", 0, index_second_slash) + 1
+                            index_first_slash = (
+                                data.rfind("/", 0, index_second_slash) + 1
+                            )
                             container_id = data[index_first_slash:index_second_slash]
             if not container_id:
                 return False, "获取容器ID失败！"
