@@ -7,10 +7,7 @@ ENV LANG="C.UTF-8" \
     DISPLAY=:987 \
     PUID=0 \
     PGID=0 \
-    UMASK=000 \
-    PORT=3001 \
-    NGINX_PORT=3000 \
-    MOVIEPILOT_AUTO_UPDATE=release
+    UMASK=000
 WORKDIR "/app"
 RUN apt-get update -y \
     && apt-get upgrade -y \
@@ -87,5 +84,5 @@ RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
     && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
     && rm -rf /tmp/*
 EXPOSE 3000
-VOLUME [ "/config" ]
+VOLUME [ "${CONFIG_DIR}" ]
 ENTRYPOINT [ "/entrypoint.sh" ]
