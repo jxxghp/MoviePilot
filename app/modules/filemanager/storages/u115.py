@@ -524,6 +524,31 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # Step 3: 秒传
         if init_result.get("status") == 2:
             logger.info(f"【115】{target_name} 秒传成功")
+            file_id = init_result.get("file_id", None)
+            if file_id:
+                logger.debug(f"【115】{target_name} 使用秒传返回ID获取文件信息")
+                time.sleep(2)
+                info_resp = self._request_api(
+                    "GET",
+                    "/open/folder/get_info",
+                    "data",
+                    params={
+                        "file_id": int(file_id)
+                    }
+                )
+                if info_resp:
+                    return schemas.FileItem(
+                        storage=self.schema.value,
+                        fileid=str(info_resp["file_id"]),
+                        path=str(target_path) + ("/" if info_resp["file_category"] == "0" else ""),
+                        type="file" if info_resp["file_category"] == "1" else "dir",
+                        name=info_resp["file_name"],
+                        basename=Path(info_resp["file_name"]).stem,
+                        extension=Path(info_resp["file_name"]).suffix[1:] if info_resp["file_category"] == "1" else None,
+                        pickcode=info_resp["pick_code"],
+                        size=StringUtils.num_filesize(info_resp['size']) if info_resp["file_category"] == "1" else None,
+                        modify_time=info_resp["utime"]
+                    )
             return self._delay_get_item(target_path)
 
         # Step 4: 获取上传凭证
