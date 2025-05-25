@@ -329,36 +329,36 @@ class SearchChain(ChainBase):
         self.progress.update(value=0,
                              text=f"开始搜索，共 {total_num} 个站点 ...",
                              key=ProgressKey.Search)
-        # 多线程
-        executor = ThreadPoolExecutor(max_workers=len(indexer_sites))
-        all_task = []
-        for site in indexer_sites:
-            if area == "imdbid":
-                # 搜索IMDBID
-                task = executor.submit(self.search_torrents, site=site,
-                                       keywords=[mediainfo.imdb_id] if mediainfo else None,
-                                       mtype=mediainfo.type if mediainfo else None,
-                                       page=page)
-            else:
-                # 搜索标题
-                task = executor.submit(self.search_torrents, site=site,
-                                       keywords=keywords,
-                                       mtype=mediainfo.type if mediainfo else None,
-                                       page=page)
-            all_task.append(task)
         # 结果集
         results = []
-        for future in as_completed(all_task):
-            if global_vars.is_system_stopped:
-                break
-            finish_count += 1
-            result = future.result()
-            if result:
-                results.extend(result)
-            logger.info(f"站点搜索进度：{finish_count} / {total_num}")
-            self.progress.update(value=finish_count / total_num * 100,
-                                 text=f"正在搜索{keywords or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
-                                 key=ProgressKey.Search)
+        # 多线程
+        with ThreadPoolExecutor(max_workers=len(indexer_sites)) as executor:
+            all_task = []
+            for site in indexer_sites:
+                if area == "imdbid":
+                    # 搜索IMDBID
+                    task = executor.submit(self.search_torrents, site=site,
+                                           keywords=[mediainfo.imdb_id] if mediainfo else None,
+                                           mtype=mediainfo.type if mediainfo else None,
+                                           page=page)
+                else:
+                    # 搜索标题
+                    task = executor.submit(self.search_torrents, site=site,
+                                           keywords=keywords,
+                                           mtype=mediainfo.type if mediainfo else None,
+                                           page=page)
+                all_task.append(task)
+            for future in as_completed(all_task):
+                if global_vars.is_system_stopped:
+                    break
+                finish_count += 1
+                result = future.result()
+                if result:
+                    results.extend(result)
+                logger.info(f"站点搜索进度：{finish_count} / {total_num}")
+                self.progress.update(value=finish_count / total_num * 100,
+                                     text=f"正在搜索{keywords or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
+                                     key=ProgressKey.Search)
         # 计算耗时
         end_time = datetime.now()
         # 更新进度
