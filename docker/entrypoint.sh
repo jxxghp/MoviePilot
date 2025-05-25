@@ -159,6 +159,9 @@ function load_config_from_app_env() {
     INFO "配置加载流程执行完毕。"
 }
 
+# 使用env配置
+load_config_from_app_env
+
 # 生成HTTPS配置块
 if [ "${ENABLE_SSL}" = "true" ]; then
     export HTTPS_SERVER_CONF=$(cat <<EOF
