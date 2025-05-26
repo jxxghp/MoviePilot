@@ -485,3 +485,29 @@ def uninstall_plugin(plugin_id: str,
     # 移除插件
     PluginManager().remove_plugin(plugin_id)
     return schemas.Response(success=True)
+
+
+@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response)
+def clone_plugin(plugin_id: str,
+                 clone_data: dict,
+                 _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    创建插件分身
+    """
+    try:
+        success, message = PluginManager().clone_plugin(
+            plugin_id=plugin_id,
+            suffix=clone_data.get("suffix", ""),
+            name=clone_data.get("name", ""),
+            description=clone_data.get("description", ""),
+            version=clone_data.get("version", ""),
+            icon=clone_data.get("icon", "")
+        )
+        
+        if success:
+            return schemas.Response(success=True, message="插件分身创建成功")
+        else:
+            return schemas.Response(success=False, message=message)
+    except Exception as e:
+        logger.error(f"创建插件分身失败：{str(e)}")
+        return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")
