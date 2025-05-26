@@ -34,6 +34,8 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_desc: Optional[str] = ""
     # 插件顺序
     plugin_order: Optional[int] = 9999
+    # 是否为插件分身
+    is_clone: bool = False
 
     def __init__(self):
         # 插件数据

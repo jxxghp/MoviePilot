@@ -1,4 +1,5 @@
 import mimetypes
+import shutil
 from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -331,10 +332,11 @@ def reset_plugin(plugin_id: str,
     """
     根据插件ID重置插件配置及数据
     """
+    plugin_manager = PluginManager()
     # 删除配置
-    PluginManager().delete_plugin_config(plugin_id)
+    plugin_manager.delete_plugin_config(plugin_id)
     # 删除插件所有数据
-    PluginManager().delete_plugin_data(plugin_id)
+    plugin_manager.delete_plugin_data(plugin_id)
     # 重新加载插件
     reload_plugin(plugin_id)
     return schemas.Response(success=True)
@@ -455,10 +457,11 @@ def set_plugin_config(plugin_id: str, conf: dict,
     """
     更新插件配置
     """
+    plugin_manager = PluginManager()
     # 保存配置
-    PluginManager().save_plugin_config(plugin_id, conf)
+    plugin_manager.save_plugin_config(plugin_id, conf)
     # 重新生效插件
-    PluginManager().init_plugin(plugin_id, conf)
+    plugin_manager.init_plugin(plugin_id, conf)
     # 注册插件服务
     register_plugin(plugin_id)
     return schemas.Response(success=True)
@@ -470,20 +473,34 @@ def uninstall_plugin(plugin_id: str,
     """
     卸载插件
     """
+    config_oper = SystemConfigOper()
     # 删除已安装信息
-    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
     for plugin in install_plugins:
         if plugin == plugin_id:
             install_plugins.remove(plugin)
             break
-    # 保存
-    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    config_oper.set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 移除插件API
     remove_plugin_api(plugin_id)
     # 移除插件服务
     Scheduler().remove_plugin_job(plugin_id)
+    # 判断是否为分身
+    plugin_manager = PluginManager()
+    plugin_class = plugin_manager.plugins.get(plugin_id)
+    if getattr(plugin_class, "is_clone", False):
+        # 如果是分身插件，则删除分身数据和配置
+        plugin_manager.delete_plugin_config(plugin_id)
+        plugin_manager.delete_plugin_data(plugin_id)
+        # 删除分身文件
+        plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        if plugin_base_dir.exists():
+            try:
+                shutil.rmtree(plugin_base_dir)
+            except Exception as e:
+                logger.error(f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}")
     # 移除插件
-    PluginManager().remove_plugin(plugin_id)
+    plugin_manager.remove_plugin(plugin_id)
     return schemas.Response(success=True)
 
 
