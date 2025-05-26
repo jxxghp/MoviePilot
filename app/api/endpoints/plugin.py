@@ -497,6 +497,7 @@ def uninstall_plugin(plugin_id: str,
         if plugin_base_dir.exists():
             try:
                 shutil.rmtree(plugin_base_dir)
+                plugin_manager.plugins.pop(plugin_id, None)
             except Exception as e:
                 logger.error(f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}")
     # 移除插件
