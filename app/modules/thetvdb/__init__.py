@@ -30,10 +30,13 @@ class TheTvDbModule(_ModuleBase):
             return func(*args, **kwargs)
         except ValueError as e:
             # 检查错误信息中是否包含 token 失效相关描述
-            if "failed to get" in str(e) or "Unauthorized" in str(e) or "NOT_MODIFIED" in str(e):
+            if "Unauthorized" in str(e):
                 logger.warning("TVDB Token 可能已失效，正在尝试重新登录...")
                 self._initialize_tvdb_session()
                 return func(*args, **kwargs)
+            elif "NotFoundException" in str(e):
+                logger.warning("TVDB 剧集不存在")
+                return None
             else:
                 raise
         except Exception as e:
@@ -96,13 +99,14 @@ class TheTvDbModule(_ModuleBase):
 
     def search_tvdb(self, title: str) -> list:
         """
-        用标题搜索TVDB
+        用标题搜索TVDB剧集
         :param title: 标题
         :return: TVDB信息
         """
         try:
-            logger.info(f"开始用标题搜索TVDB: {title} ...")
-            return self._handle_tvdb_call(self.tvdb.search, title)
+            logger.info(f"开始用标题搜索TVDB剧集: {title} ...")
+            res = self._handle_tvdb_call(self.tvdb.search, title)
+            return [item for item in res if item.get("type") == "series"]
         except Exception as err:
-            logger.error(f"用标题搜索TVDB失败: {str(err)}")
+            logger.error(f"用标题搜索TVDB剧集失败: {str(err)}")
             return []
