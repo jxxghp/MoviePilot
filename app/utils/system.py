@@ -11,7 +11,6 @@ from glob import glob
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-import docker
 import psutil
 
 from app import schemas

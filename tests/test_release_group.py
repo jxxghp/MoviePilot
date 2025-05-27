@@ -2,6 +2,7 @@ from unittest import TestCase
 from tests.cases.groups import release_group_cases
 from app.core.meta.releasegroup import ReleaseGroupsMatcher
 
+
 class MetaInfoTest(TestCase):
     def test_release_group(self):
         for info in release_group_cases:

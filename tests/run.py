@@ -7,6 +7,7 @@ if __name__ == '__main__':
 
     # 测试名称识别
     suite.addTest(MetaInfoTest('test_metainfo'))
+    suite.addTest(MetaInfoTest('test_emby_format_ids'))
 
     # 运行测试
     runner = unittest.TextTestRunner()

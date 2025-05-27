@@ -67,7 +67,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         try:
             with open(settings.TEMP_PATH / filename, 'wb') as f:
-                pickle.dump(cache, f) # noqa
+                pickle.dump(cache, f)  # noqa
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{str(err)}")
         finally:
@@ -374,7 +374,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_torrents", site=site, keywords=keywords,
                                mtype=mtype, page=page)
 
-    def refresh_torrents(self, site: dict, keyword: Optional[str] = None, 
+    def refresh_torrents(self, site: dict, keyword: Optional[str] = None,
                          cat: Optional[str] = None, page: Optional[int] = 0) -> List[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
@@ -543,12 +543,12 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("media_files", mediainfo=mediainfo)
 
     def post_message(self,
-                    message: Optional[Notification] = None,
-                    meta: Optional[MetaBase] = None,
-                    mediainfo: Optional[MediaInfo] = None,
-                    torrentinfo: Optional[TorrentInfo] = None,
-                    transferinfo: Optional[TransferInfo] = None,
-                    **kwargs) -> None:
+                     message: Optional[Notification] = None,
+                     meta: Optional[MetaBase] = None,
+                     mediainfo: Optional[MediaInfo] = None,
+                     torrentinfo: Optional[TorrentInfo] = None,
+                     transferinfo: Optional[TransferInfo] = None,
+                     **kwargs) -> None:
         """
         发送消息
         :param message:  Notification实例
@@ -561,7 +561,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         # 渲染消息
         message = MessageTemplateHelper.render(message=message, meta=meta, mediainfo=mediainfo,
-                                       torrentinfo=torrentinfo, transferinfo=transferinfo, **kwargs)
+                                               torrentinfo=torrentinfo, transferinfo=transferinfo, **kwargs)
         # 保存消息
         self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.dict())
@@ -643,7 +643,7 @@ class ChainBase(metaclass=ABCMeta):
         self.messageoper.add(**message.dict(), note=note_list)
         return self.messagequeue.send_message("post_torrents_message", message=message, torrents=torrents)
 
-    def metadata_img(self, mediainfo: MediaInfo, 
+    def metadata_img(self, mediainfo: MediaInfo,
                      season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
         """
         获取图片名称和url

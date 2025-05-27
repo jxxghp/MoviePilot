@@ -306,6 +306,17 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     sha1.update(chunk)
         return sha1.hexdigest()
 
+    def _delay_get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        自动延迟重试 get_item 模块
+        """
+        for _ in range(2):
+            time.sleep(2)
+            fileitem = self.get_item(path)
+            if fileitem:
+                return fileitem
+        return None
+
     def init_storage(self):
         pass
 
@@ -513,7 +524,32 @@ class U115Pan(StorageBase, metaclass=Singleton):
         # Step 3: 秒传
         if init_result.get("status") == 2:
             logger.info(f"【115】{target_name} 秒传成功")
-            return self.get_item(target_path)
+            file_id = init_result.get("file_id", None)
+            if file_id:
+                logger.debug(f"【115】{target_name} 使用秒传返回ID获取文件信息")
+                time.sleep(2)
+                info_resp = self._request_api(
+                    "GET",
+                    "/open/folder/get_info",
+                    "data",
+                    params={
+                        "file_id": int(file_id)
+                    }
+                )
+                if info_resp:
+                    return schemas.FileItem(
+                        storage=self.schema.value,
+                        fileid=str(info_resp["file_id"]),
+                        path=str(target_path) + ("/" if info_resp["file_category"] == "0" else ""),
+                        type="file" if info_resp["file_category"] == "1" else "dir",
+                        name=info_resp["file_name"],
+                        basename=Path(info_resp["file_name"]).stem,
+                        extension=Path(info_resp["file_name"]).suffix[1:] if info_resp["file_category"] == "1" else None,
+                        pickcode=info_resp["pick_code"],
+                        size=StringUtils.num_filesize(info_resp['size']) if info_resp["file_category"] == "1" else None,
+                        modify_time=info_resp["utime"]
+                    )
+            return self._delay_get_item(target_path)
 
         # Step 4: 获取上传凭证
         token_resp = self._request_api(
@@ -618,7 +654,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 logger.error(f"【115】{target_name} 上传失败: {e.status}, 错误码: {e.code}, 详情: {e.message}")
                 return None
         # 返回结果
-        return self.get_item(target_path)
+        return self._delay_get_item(target_path)
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
@@ -783,7 +819,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return False
         if resp["state"]:
             new_path = Path(path) / fileitem.name
-            new_item = self.get_item(new_path)
+            new_item = self._delay_get_item(new_path)
             self.rename(new_item, new_name)
             # 更新缓存
             del self._id_cache[fileitem.path]
@@ -811,7 +847,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return False
         if resp["state"]:
             new_path = Path(path) / fileitem.name
-            new_file = self.get_item(new_path)
+            new_file = self._delay_get_item(new_path)
             self.rename(new_file, new_name)
             # 更新缓存
             del self._id_cache[fileitem.path]

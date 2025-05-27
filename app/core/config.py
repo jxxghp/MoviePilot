@@ -229,7 +229,8 @@ class ConfigModel(BaseModel):
                           "https://github.com/baozaodetudou/MoviePilot-Plugins,"
                           "https://github.com/Aqr-K/MoviePilot-Plugins,"
                           "https://github.com/hotlcc/MoviePilot-Plugins-Third,"
-                          "https://github.com/gxterry/MoviePilot-Plugins")
+                          "https://github.com/gxterry/MoviePilot-Plugins,"
+                          "https://github.com/DzAvril/MoviePilot-Plugins")
     # 插件安装数据共享
     PLUGIN_STATISTIC_SHARE: bool = True
     # 是否开启插件热加载
@@ -279,6 +280,8 @@ class ConfigModel(BaseModel):
     TOKENIZED_SEARCH: bool = False
     # 为指定默认字幕添加.default后缀
     DEFAULT_SUB: Optional[str] = "zh-cn"
+    # Docker Client API地址
+    DOCKER_CLIENT_API: Optional[str] = "tcp://127.0.0.1:38379"
 
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
@@ -426,7 +429,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             else:
                 value_to_write = str(converted_value) if converted_value is not None else ""
 
-            set_key(SystemUtils.get_env_path(), field.name, value_to_write)
+            set_key(dotenv_path=SystemUtils.get_env_path(), key_to_set=field.name, value_to_set=value_to_write,
+                    quote_mode="always")
             if is_converted:
                 logger.info(f"配置项 '{field.name}' 已自动修正并写入到 'app.env' 文件")
         return True, message

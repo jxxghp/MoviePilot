@@ -1,4 +1,5 @@
 import mimetypes
+import shutil
 from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -144,11 +145,11 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     local_plugins = PluginManager().get_local_plugins()
     # 已安装插件
     installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
-    # 未安装的本地插件
-    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     if state == "installed":
         return installed_plugins
-
+        
+    # 未安装的本地插件
+    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     # 在线插件
     online_plugins = PluginManager().get_online_plugins()
     if not online_plugins:
@@ -177,6 +178,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     if state == "market":
         # 返回未安装的插件
         return market_plugins
+        
     # 返回所有插件
     return installed_plugins + market_plugins
 
@@ -330,10 +332,11 @@ def reset_plugin(plugin_id: str,
     """
     根据插件ID重置插件配置及数据
     """
+    plugin_manager = PluginManager()
     # 删除配置
-    PluginManager().delete_plugin_config(plugin_id)
+    plugin_manager.delete_plugin_config(plugin_id)
     # 删除插件所有数据
-    PluginManager().delete_plugin_data(plugin_id)
+    plugin_manager.delete_plugin_data(plugin_id)
     # 重新加载插件
     reload_plugin(plugin_id)
     return schemas.Response(success=True)
@@ -374,6 +377,71 @@ def plugin_static_file(plugin_id: str, filepath: str):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+@router.get("/folders", summary="获取插件文件夹配置", response_model=dict)
+def get_plugin_folders(_: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
+    """
+    获取插件文件夹分组配置
+    """
+    try:
+        result = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+        return result
+    except Exception as e:
+        logger.error(f"[文件夹API] 获取文件夹配置失败: {str(e)}")
+        return {}
+
+
+@router.post("/folders", summary="保存插件文件夹配置", response_model=schemas.Response)
+def save_plugin_folders(folders: dict, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    保存插件文件夹分组配置
+    """
+    try:
+        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        return schemas.Response(success=True)
+    except Exception as e:
+        logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
+        return schemas.Response(success=False, message=str(e))
+
+
+@router.post("/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response)
+def create_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    创建新的插件文件夹
+    """
+    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    if folder_name not in folders:
+        folders[folder_name] = []
+        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 创建成功")
+    else:
+        return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 已存在")
+
+
+@router.delete("/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response)
+def delete_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    删除插件文件夹
+    """
+    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    if folder_name in folders:
+        del folders[folder_name]
+        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 删除成功")
+    else:
+        return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 不存在")
+
+
+@router.put("/folders/{folder_name}/plugins", summary="更新文件夹中的插件", response_model=schemas.Response)
+def update_folder_plugins(folder_name: str, plugin_ids: List[str], _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    更新指定文件夹中的插件列表
+    """
+    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    folders[folder_name] = plugin_ids
+    SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+    return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 中的插件已更新")
+
+
 @router.get("/{plugin_id}", summary="获取插件配置")
 def plugin_config(plugin_id: str,
                   _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
@@ -389,10 +457,11 @@ def set_plugin_config(plugin_id: str, conf: dict,
     """
     更新插件配置
     """
+    plugin_manager = PluginManager()
     # 保存配置
-    PluginManager().save_plugin_config(plugin_id, conf)
+    plugin_manager.save_plugin_config(plugin_id, conf)
     # 重新生效插件
-    PluginManager().init_plugin(plugin_id, conf)
+    plugin_manager.init_plugin(plugin_id, conf)
     # 注册插件服务
     register_plugin(plugin_id)
     return schemas.Response(success=True)
@@ -404,18 +473,59 @@ def uninstall_plugin(plugin_id: str,
     """
     卸载插件
     """
+    config_oper = SystemConfigOper()
     # 删除已安装信息
-    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
     for plugin in install_plugins:
         if plugin == plugin_id:
             install_plugins.remove(plugin)
             break
-    # 保存
-    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    config_oper.set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 移除插件API
     remove_plugin_api(plugin_id)
     # 移除插件服务
     Scheduler().remove_plugin_job(plugin_id)
+    # 判断是否为分身
+    plugin_manager = PluginManager()
+    plugin_class = plugin_manager.plugins.get(plugin_id)
+    if getattr(plugin_class, "is_clone", False):
+        # 如果是分身插件，则删除分身数据和配置
+        plugin_manager.delete_plugin_config(plugin_id)
+        plugin_manager.delete_plugin_data(plugin_id)
+        # 删除分身文件
+        plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        if plugin_base_dir.exists():
+            try:
+                shutil.rmtree(plugin_base_dir)
+                plugin_manager.plugins.pop(plugin_id, None)
+            except Exception as e:
+                logger.error(f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}")
     # 移除插件
-    PluginManager().remove_plugin(plugin_id)
+    plugin_manager.remove_plugin(plugin_id)
     return schemas.Response(success=True)
+
+
+@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response)
+def clone_plugin(plugin_id: str,
+                 clone_data: dict,
+                 _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    创建插件分身
+    """
+    try:
+        success, message = PluginManager().clone_plugin(
+            plugin_id=plugin_id,
+            suffix=clone_data.get("suffix", ""),
+            name=clone_data.get("name", ""),
+            description=clone_data.get("description", ""),
+            version=clone_data.get("version", ""),
+            icon=clone_data.get("icon", "")
+        )
+        
+        if success:
+            return schemas.Response(success=True, message="插件分身创建成功")
+        else:
+            return schemas.Response(success=False, message=message)
+    except Exception as e:
+        logger.error(f"创建插件分身失败：{str(e)}")
+        return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")

@@ -10,6 +10,7 @@ from app.schemas import Notification, MessageChannel
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
+from helper.system import SystemHelper
 from version import FRONTEND_VERSION, APP_VERSION
 
 
@@ -45,7 +46,8 @@ class SystemChain(ChainBase, metaclass=Singleton):
                 "channel": channel.value,
                 "userid": userid
             }, self._restart_file)
-        SystemUtils.restart()
+        # 重启
+        SystemHelper.restart()
 
     def __get_version_message(self) -> str:
         """
