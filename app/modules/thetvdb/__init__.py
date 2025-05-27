@@ -3,19 +3,45 @@ from typing import Optional, Tuple, Union
 from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
-from app.modules.thetvdb import tvdbapi
+from app.modules.thetvdb import tvdb_v4_official
 from app.schemas.types import ModuleType, MediaRecognizeType
-from app.utils.http import RequestUtils
 
 
 class TheTvDbModule(_ModuleBase):
-    tvdb: tvdbapi.Tvdb = None
+    tvdb: tvdb_v4_official.TVDB = None
 
     def init_module(self) -> None:
-        self.tvdb = tvdbapi.Tvdb(apikey=settings.TVDB_API_KEY,
-                                 cache=False,
-                                 select_first=True,
-                                 proxies=settings.PROXY)
+        self._initialize_tvdb_session()
+
+    def _initialize_tvdb_session(self) -> None:
+        """
+        创建或刷新 TVDB 登录会话
+        """
+        try:
+            self.tvdb = tvdb_v4_official.TVDB(apikey=settings.TVDB_V4_API_KEY, pin=settings.TVDB_V4_API_PIN)
+        except Exception as e:
+            logger.error(f"TVDB 登录失败: {str(e)}")
+
+    def _handle_tvdb_call(self, func, *args, **kwargs):
+        """
+        包裹 TVDB 调用，处理 token 失效情况并尝试重新初始化
+        """
+        try:
+            return func(*args, **kwargs)
+        except ValueError as e:
+            # 检查错误信息中是否包含 token 失效相关描述
+            if "Unauthorized" in str(e):
+                logger.warning("TVDB Token 可能已失效，正在尝试重新登录...")
+                self._initialize_tvdb_session()
+                return func(*args, **kwargs)
+            elif "NotFoundException" in str(e):
+                logger.warning("TVDB 剧集不存在")
+                return None
+            else:
+                raise
+        except Exception as e:
+            logger.error(f"TVDB 调用出错: {str(e)}")
+            raise
 
     @staticmethod
     def get_name() -> str:
@@ -43,18 +69,17 @@ class TheTvDbModule(_ModuleBase):
         return 4
 
     def stop(self):
-        self.tvdb.close()
+        pass
 
     def test(self) -> Tuple[bool, str]:
         """
         测试模块连接性
         """
-        ret = RequestUtils(proxies=settings.PROXY).get_res("https://api.thetvdb.com/series/81189")
-        if ret and ret.status_code == 200:
+        try:
+            self._handle_tvdb_call(self.tvdb.get_series, 81189)
             return True, ""
-        elif ret:
-            return False, f"无法连接 api.thetvdb.com，错误码：{ret.status_code}"
-        return False, "api.thetvdb.com 网络连接失败"
+        except Exception as e:
+            return False, str(e)
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
@@ -67,6 +92,21 @@ class TheTvDbModule(_ModuleBase):
         """
         try:
             logger.info(f"开始获取TVDB信息: {tvdbid} ...")
-            return self.tvdb[tvdbid].data
+            return self._handle_tvdb_call(self.tvdb.get_series_extended, tvdbid)
         except Exception as err:
             logger.error(f"获取TVDB信息失败: {str(err)}")
+            return None
+
+    def search_tvdb(self, title: str) -> list:
+        """
+        用标题搜索TVDB剧集
+        :param title: 标题
+        :return: TVDB信息
+        """
+        try:
+            logger.info(f"开始用标题搜索TVDB剧集: {title} ...")
+            res = self._handle_tvdb_call(self.tvdb.search, title)
+            return [item for item in res if item.get("type") == "series"]
+        except Exception as err:
+            logger.error(f"用标题搜索TVDB剧集失败: {str(err)}")
+            return []
