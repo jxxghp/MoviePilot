@@ -1107,7 +1107,7 @@ class PluginManager(metaclass=Singleton):
 
             # 注册分身插件的API和服务
             logger.info(f"正在注册分身插件 {clone_id} ...")
-            PluginManager().reload_plugin(plugin_id)
+            PluginManager().reload_plugin(clone_id)
             # 确保分身插件正确初始化配置
             if clone_id in self._running_plugins:
                 clone_instance = self._running_plugins[clone_id]
