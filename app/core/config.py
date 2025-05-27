@@ -111,7 +111,8 @@ class ConfigModel(BaseModel):
     # TMDB API Key
     TMDB_API_KEY: str = "db55323b8d3e4154498498a75642b381"
     # TVDB API Key
-    TVDB_API_KEY: str = "6b481081-10aa-440c-99f2-21d17717ee02"
+    TVDB_V4_API_KEY: str = "ed2aa66b-7899-4677-92a7-67bc9ce3d93a"
+    TVDB_V4_API_PIN:  str = ""
     # Fanart开关
     FANART_ENABLE: bool = True
     # Fanart API Key
