@@ -4,6 +4,7 @@ __author__ = "Weylin Wagnon"
 __version__ = "1.0.12"
 
 import json
+import ssl
 import string
 import urllib
 import urllib.request
@@ -12,16 +13,21 @@ from urllib.error import HTTPError
 
 
 class Auth:
-    def __init__(self, url, apikey, pin=""):
+    def __init__(self, url, apikey, pin="", proxy=None):
         loginInfo = {"apikey": apikey}
         if pin != "":
             loginInfo["pin"] = pin
 
         loginInfoBytes = json.dumps(loginInfo, indent=2).encode("utf-8")
+        if proxy:
+            proxy_handler = urllib.request.ProxyHandler(proxy)
+            opener = urllib.request.build_opener(proxy_handler)
+            urllib.request.install_opener(opener)
         req = urllib.request.Request(url, data=loginInfoBytes)
         req.add_header("Content-Type", "application/json")
         try:
-            with urllib.request.urlopen(req, data=loginInfoBytes) as response:
+            context = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=context, data=loginInfoBytes) as response:
                 res = json.load(response)
                 self.token = res["data"]["token"]
         except HTTPError as e:
@@ -33,17 +39,24 @@ class Auth:
 
 
 class Request:
-    def __init__(self, auth_token):
+    def __init__(self, auth_token, proxy=None):
         self.auth_token = auth_token
         self.links = None
+        self.proxy = proxy
 
     def make_request(self, url, if_modified_since=None):
+        """Makes a request to the given URL and returns the data"""
+        if self.proxy:
+            proxy_handler = urllib.request.ProxyHandler(self.proxy)
+            opener = urllib.request.build_opener(proxy_handler)
+            urllib.request.install_opener(opener)
         req = urllib.request.Request(url)
         req.add_header("Authorization", "Bearer {}".format(self.auth_token))
         if if_modified_since:
             req.add_header("If-Modified-Since", "{}".format(if_modified_since))
         try:
-            with urllib.request.urlopen(req) as response:
+            context = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=context) as response:
                 res = json.load(response)
         except HTTPError as e:
             try:
@@ -87,12 +100,12 @@ class Url:
 
 
 class TVDB:
-    def __init__(self, apikey: str, pin=""):
+    def __init__(self, apikey: str, pin="", proxy=None):
         self.url = Url()
         login_url = self.url.construct("login")
-        self.auth = Auth(login_url, apikey, pin)
+        self.auth = Auth(login_url, apikey, pin, proxy)
         auth_token = self.auth.get_token()
-        self.request = Request(auth_token)
+        self.request = Request(auth_token, proxy)
 
     def get_req_links(self) -> dict:
         return self.request.links
