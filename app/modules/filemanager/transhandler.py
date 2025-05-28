@@ -59,6 +59,8 @@ class TransHandler:
                             current_value.update(value)
                         else:
                             current_value[key] = value
+                    elif isinstance(current_value, bool):
+                        current_value = value
                     elif isinstance(current_value, int):
                         current_value += value
                     else:
