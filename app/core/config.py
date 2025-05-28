@@ -6,7 +6,7 @@ import secrets
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
@@ -86,7 +86,7 @@ class ConfigModel(BaseModel):
     AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
     API_TOKEN: Optional[str] = None
-    # 网络代理 IP:PORT
+    # 网络代理服务器地址
     PROXY_HOST: Optional[str] = None
     # 登录页面电影海报,tmdb/bing/mediaserver
     WALLPAPER: str = "tmdb"
@@ -127,6 +127,8 @@ class ConfigModel(BaseModel):
     ANIME_GENREIDS = [16]
     # 用户认证站点
     AUTH_SITE: str = ""
+    # 重启自动升级
+    MOVIEPILOT_AUTO_UPDATE: str = 'release'
     # 自动检查和更新站点资源包（站点索引、认证等）
     AUTO_UPDATE_RESOURCE: bool = True
     # 是否启用DOH解析域名
