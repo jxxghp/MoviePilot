@@ -18,7 +18,9 @@ class TheTvDbModule(_ModuleBase):
         创建或刷新 TVDB 登录会话
         """
         try:
-            self.tvdb = tvdb_v4_official.TVDB(apikey=settings.TVDB_V4_API_KEY, pin=settings.TVDB_V4_API_PIN)
+            self.tvdb = tvdb_v4_official.TVDB(apikey=settings.TVDB_V4_API_KEY,
+                                              pin=settings.TVDB_V4_API_PIN,
+                                              proxy=settings.PROXY)
         except Exception as e:
             logger.error(f"TVDB 登录失败: {str(e)}")
 
@@ -75,6 +77,8 @@ class TheTvDbModule(_ModuleBase):
         """
         测试模块连接性
         """
+        if not self.tvdb:
+            return False, "TheTVDB 连接失败"
         try:
             self._handle_tvdb_call(self.tvdb.get_series, 81189)
             return True, ""
