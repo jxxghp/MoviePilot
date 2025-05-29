@@ -500,6 +500,8 @@ def uninstall_plugin(plugin_id: str,
                 plugin_manager.plugins.pop(plugin_id, None)
             except Exception as e:
                 logger.error(f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}")
+    # 从插件文件夹中移除该插件
+    _remove_plugin_from_folders(plugin_id)
     # 移除插件
     plugin_manager.remove_plugin(plugin_id)
     return schemas.Response(success=True)
@@ -523,9 +525,101 @@ def clone_plugin(plugin_id: str,
         )
         
         if success:
+            # 插件分身创建成功后，处理插件文件夹：如果原插件在某个文件夹中，则将分身插件也添加到同一个文件夹中
+            clone_id = f"{plugin_id}{clone_data.get('suffix', '').lower()}"
+            _add_clone_to_plugin_folder(plugin_id, clone_id)
+            
             return schemas.Response(success=True, message="插件分身创建成功")
         else:
             return schemas.Response(success=False, message=message)
     except Exception as e:
         logger.error(f"创建插件分身失败：{str(e)}")
         return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")
+
+
+def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):
+    """
+    将分身插件添加到原插件所在的文件夹中
+    :param original_plugin_id: 原插件ID
+    :param clone_plugin_id: 分身插件ID
+    """
+    try:
+        config_oper = SystemConfigOper()
+        # 获取插件文件夹配置
+        folders = config_oper.get(SystemConfigKey.PluginFolders) or {}
+        
+        # 查找原插件所在的文件夹
+        target_folder = None
+        for folder_name, folder_data in folders.items():
+            if isinstance(folder_data, dict) and 'plugins' in folder_data:
+                # 新格式：{"plugins": [...], "order": ..., "icon": ...}
+                if original_plugin_id in folder_data['plugins']:
+                    target_folder = folder_name
+                    break
+            elif isinstance(folder_data, list):
+                # 旧格式：直接是插件列表
+                if original_plugin_id in folder_data:
+                    target_folder = folder_name
+                    break
+        
+        # 如果找到了原插件所在的文件夹，则将分身插件也添加到该文件夹中
+        if target_folder:
+            folder_data = folders[target_folder]
+            if isinstance(folder_data, dict) and 'plugins' in folder_data:
+                # 新格式
+                if clone_plugin_id not in folder_data['plugins']:
+                    folder_data['plugins'].append(clone_plugin_id)
+                    logger.info(f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中")
+            elif isinstance(folder_data, list):
+                # 旧格式
+                if clone_plugin_id not in folder_data:
+                    folder_data.append(clone_plugin_id)
+                    logger.info(f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中")
+            
+            # 保存更新后的文件夹配置
+            config_oper.set(SystemConfigKey.PluginFolders, folders)
+        else:
+            logger.info(f"原插件 {original_plugin_id} 不在任何文件夹中，分身插件 {clone_plugin_id} 将保持独立")
+            
+    except Exception as e:
+        logger.error(f"处理插件文件夹时出错：{str(e)}")
+        # 文件夹处理失败不影响插件分身创建的整体流程
+
+
+def _remove_plugin_from_folders(plugin_id: str):
+    """
+    从所有文件夹中移除指定的插件
+    :param plugin_id: 要移除的插件ID
+    """
+    try:
+        config_oper = SystemConfigOper()
+        # 获取插件文件夹配置
+        folders = config_oper.get(SystemConfigKey.PluginFolders) or {}
+        
+        # 标记是否有修改
+        modified = False
+        
+        # 遍历所有文件夹，移除指定插件
+        for folder_name, folder_data in folders.items():
+            if isinstance(folder_data, dict) and 'plugins' in folder_data:
+                # 新格式：{"plugins": [...], "order": ..., "icon": ...}
+                if plugin_id in folder_data['plugins']:
+                    folder_data['plugins'].remove(plugin_id)
+                    logger.info(f"已从文件夹 '{folder_name}' 中移除插件 {plugin_id}")
+                    modified = True
+            elif isinstance(folder_data, list):
+                # 旧格式：直接是插件列表
+                if plugin_id in folder_data:
+                    folder_data.remove(plugin_id)
+                    logger.info(f"已从文件夹 '{folder_name}' 中移除插件 {plugin_id}")
+                    modified = True
+        
+        # 如果有修改，保存更新后的文件夹配置
+        if modified:
+            config_oper.set(SystemConfigKey.PluginFolders, folders)
+        else:
+            logger.debug(f"插件 {plugin_id} 不在任何文件夹中，无需移除")
+            
+    except Exception as e:
+        logger.error(f"从文件夹中移除插件时出错：{str(e)}")
+        # 文件夹处理失败不影响插件卸载的整体流程
