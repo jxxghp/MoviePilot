@@ -525,10 +525,7 @@ def clone_plugin(plugin_id: str,
         )
         
         if success:
-            # 插件分身创建成功后，处理插件文件夹：如果原插件在某个文件夹中，则将分身插件也添加到同一个文件夹中
-            clone_id = f"{plugin_id}{clone_data.get('suffix', '').lower()}"
-            _add_clone_to_plugin_folder(plugin_id, clone_id)
-            
+            _add_clone_to_plugin_folder(plugin_id, message)
             return schemas.Response(success=True, message="插件分身创建成功")
         else:
             return schemas.Response(success=False, message=message)

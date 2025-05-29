@@ -1118,7 +1118,7 @@ class PluginManager(metaclass=Singleton):
                     logger.info(f"分身插件 {clone_id} 配置重新初始化完成")
 
             logger.info(f"插件分身 {clone_id} 创建成功")
-            return True, "插件分身创建成功"
+            return True, clone_id
 
         except Exception as e:
             logger.error(f"创建插件分身失败：{str(e)}")
