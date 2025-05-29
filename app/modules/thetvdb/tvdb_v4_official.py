@@ -4,12 +4,10 @@ __author__ = "Weylin Wagnon"
 __version__ = "1.0.12"
 
 import json
-import ssl
-import string
-import urllib
-import urllib.request
+import urllib.parse
 from http import HTTPStatus
-from urllib.error import HTTPError
+
+from app.utils.http import RequestUtils
 
 
 class Auth:
@@ -18,21 +16,31 @@ class Auth:
         if pin != "":
             loginInfo["pin"] = pin
 
-        loginInfoBytes = json.dumps(loginInfo, indent=2).encode("utf-8")
-        if proxy:
-            proxy_handler = urllib.request.ProxyHandler(proxy)
-            opener = urllib.request.build_opener(proxy_handler)
-            urllib.request.install_opener(opener)
-        req = urllib.request.Request(url, data=loginInfoBytes)
-        req.add_header("Content-Type", "application/json")
+        loginInfoBytes = json.dumps(loginInfo, indent=2)
+
         try:
-            context = ssl._create_unverified_context()
-            with urllib.request.urlopen(req, context=context, data=loginInfoBytes) as response:
-                res = json.load(response)
+            # 使用项目统一的RequestUtils类
+            req_utils = RequestUtils(proxies=proxy, timeout=30)
+            response = req_utils.post_res(
+                url=url,
+                data=loginInfoBytes,
+                headers={"Content-Type": "application/json"}
+            )
+
+            if response and response.status_code == 200:
+                res = response.json()
                 self.token = res["data"]["token"]
-        except HTTPError as e:
-            res = json.load(e)
-            raise Exception("Code:{}, {}".format(e, res["message"]))
+            else:
+                error_msg = f"登录失败，状态码: {response.status_code if response else 'None'}"
+                if response:
+                    try:
+                        error_data = response.json()
+                        error_msg = f"Code: {response.status_code}, {error_data.get('message', '未知错误')}"
+                    except:
+                        error_msg = f"Code: {response.status_code}, 响应解析失败"
+                raise Exception(error_msg)
+        except Exception as e:
+            raise Exception(f"TVDB认证失败: {str(e)}")
 
     def get_token(self):
         return self.token
@@ -46,36 +54,46 @@ class Request:
 
     def make_request(self, url, if_modified_since=None):
         """Makes a request to the given URL and returns the data"""
-        if self.proxy:
-            proxy_handler = urllib.request.ProxyHandler(self.proxy)
-            opener = urllib.request.build_opener(proxy_handler)
-            urllib.request.install_opener(opener)
-        req = urllib.request.Request(url)
-        req.add_header("Authorization", "Bearer {}".format(self.auth_token))
+        headers = {"Authorization": f"Bearer {self.auth_token}"}
         if if_modified_since:
-            req.add_header("If-Modified-Since", "{}".format(if_modified_since))
+            headers["If-Modified-Since"] = str(if_modified_since)
+
         try:
-            context = ssl._create_unverified_context()
-            with urllib.request.urlopen(req, context=context) as response:
-                res = json.load(response)
-        except HTTPError as e:
-            try:
-                if e.code == HTTPStatus.NOT_MODIFIED:
-                    return {
-                        "code": HTTPStatus.NOT_MODIFIED.real,
-                        "message": "Not-Modified",
-                    }
-                res = json.load(e)
-            except:
-                res = {}
-        data = res.get("data", None)
-        if data is not None and res.get("status", "failure") != "failure":
-            self.links = res.get("links", None)
-            return data
-        msg = res.get("message", None)
-        if not msg:
-            msg = "UNKNOWN FAILURE"
-        raise ValueError("failed to get " + url + "\n  " + str(msg))
+            # 使用项目统一的RequestUtils类
+            req_utils = RequestUtils(proxies=self.proxy, timeout=30)
+            response = req_utils.get_res(url=url, headers=headers)
+
+            if response is None:
+                raise ValueError(f"failed to get {url}\n  网络连接失败")
+
+            if response.status_code == HTTPStatus.NOT_MODIFIED:
+                return {
+                    "code": HTTPStatus.NOT_MODIFIED.real,
+                    "message": "Not-Modified",
+                }
+
+            if response.status_code == 200:
+                res = response.json()
+                data = res.get("data", None)
+                if data is not None and res.get("status", "failure") != "failure":
+                    self.links = res.get("links", None)
+                    return data
+
+                msg = res.get("message", "UNKNOWN FAILURE")
+                raise ValueError(f"failed to get {url}\n  {str(msg)}")
+            else:
+                # 处理其他HTTP错误状态码
+                try:
+                    error_data = response.json()
+                    msg = error_data.get("message", f"HTTP {response.status_code}")
+                except:
+                    msg = f"HTTP {response.status_code}"
+                raise ValueError(f"failed to get {url}\n  {str(msg)}")
+
+        except Exception as e:
+            if isinstance(e, ValueError):
+                raise
+            raise ValueError(f"failed to get {url}\n  {str(e)}")
 
 
 class Url:
@@ -198,7 +216,7 @@ class TVDB:
         return self.request.make_request(url, if_modified_since)
 
     def get_series_by_slug(
-        self, slug: string, meta=None, if_modified_since=None
+        self, slug: str, meta=None, if_modified_since=None
     ) -> dict:
         """Returns a series dictionary"""
         url = self.url.construct("series/slug", slug, meta=meta)
@@ -257,7 +275,7 @@ class TVDB:
         return self.request.make_request(url, if_modified_since)
 
     def get_movie_by_slug(
-        self, slug: string, meta=None, if_modified_since=None
+        self, slug: str, meta=None, if_modified_since=None
     ) -> dict:
         """Returns a movie dictionary"""
         url = self.url.construct("movies/slug", slug, meta=meta)
@@ -415,7 +433,7 @@ class TVDB:
         url = self.url.construct("lists", id, meta=meta)
         return self.request.make_request(url), if_modified_since
 
-    def get_list_by_slug(self, slug: string, meta=None, if_modified_since=None) -> dict:
+    def get_list_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
         """Returns a movie dictionary"""
         url = self.url.construct("lists/slug", slug, meta=meta)
         return self.request.make_request(url, if_modified_since)
