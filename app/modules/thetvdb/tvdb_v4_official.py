@@ -11,42 +11,47 @@ from app.utils.http import RequestUtils
 
 
 class Auth:
-    def __init__(self, url, apikey, pin="", proxy=None):
-        loginInfo = {"apikey": apikey}
-        if pin != "":
-            loginInfo["pin"] = pin
+    """TVDB认证类"""
 
-        loginInfoBytes = json.dumps(loginInfo, indent=2)
+    def __init__(self, url, apikey, pin="", proxy=None):
+        login_info = {"apikey": apikey}
+        if pin != "":
+            login_info["pin"] = pin
+
+        login_info_bytes = json.dumps(login_info, indent=2)
 
         try:
             # 使用项目统一的RequestUtils类
             req_utils = RequestUtils(proxies=proxy, timeout=30)
             response = req_utils.post_res(
                 url=url,
-                data=loginInfoBytes,
+                data=login_info_bytes,
                 headers={"Content-Type": "application/json"}
             )
 
             if response and response.status_code == 200:
-                res = response.json()
-                self.token = res["data"]["token"]
+                result = response.json()
+                self.token = result["data"]["token"]
             else:
                 error_msg = f"登录失败，状态码: {response.status_code if response else 'None'}"
                 if response:
                     try:
                         error_data = response.json()
                         error_msg = f"Code: {response.status_code}, {error_data.get('message', '未知错误')}"
-                    except:
-                        error_msg = f"Code: {response.status_code}, 响应解析失败"
+                    except Exception as err:
+                        error_msg = f"Code: {response.status_code}, 响应解析失败：{err}"
                 raise Exception(error_msg)
         except Exception as e:
             raise Exception(f"TVDB认证失败: {str(e)}")
 
     def get_token(self):
+        """获取认证token"""
         return self.token
 
 
 class Request:
+    """请求处理类"""
+
     def __init__(self, auth_token, proxy=None):
         self.auth_token = auth_token
         self.links = None
@@ -73,21 +78,21 @@ class Request:
                 }
 
             if response.status_code == 200:
-                res = response.json()
-                data = res.get("data", None)
-                if data is not None and res.get("status", "failure") != "failure":
-                    self.links = res.get("links", None)
+                result = response.json()
+                data = result.get("data", None)
+                if data is not None and result.get("status", "failure") != "failure":
+                    self.links = result.get("links", None)
                     return data
 
-                msg = res.get("message", "UNKNOWN FAILURE")
+                msg = result.get("message", "UNKNOWN FAILURE")
                 raise ValueError(f"failed to get {url}\n  {str(msg)}")
             else:
                 # 处理其他HTTP错误状态码
                 try:
                     error_data = response.json()
                     msg = error_data.get("message", f"HTTP {response.status_code}")
-                except:
-                    msg = f"HTTP {response.status_code}"
+                except Exception as err:
+                    msg = f"HTTP {response.status_code} {err}"
                 raise ValueError(f"failed to get {url}\n  {str(msg)}")
 
         except Exception as e:
@@ -97,12 +102,13 @@ class Request:
 
 
 class Url:
+    """URL构建类"""
+
     def __init__(self):
         self.base_url = "https://api4.thetvdb.com/v4/"
 
-    def construct(
-        self, url_sect, url_id=None, url_subsect=None, url_lang=None, **query
-    ):
+    def construct(self, url_sect, url_id=None, url_subsect=None, url_lang=None, **kwargs):
+        """构建API URL"""
         url = self.base_url + url_sect
         if url_id:
             url += "/" + str(url_id)
@@ -110,14 +116,16 @@ class Url:
             url += "/" + url_subsect
         if url_lang:
             url += "/" + url_lang
-        if query:
-            query = {var: val for var, val in query.items() if val is not None}
-            if query:
-                url += "?" + urllib.parse.urlencode(query)
+        if kwargs:
+            params = {var: val for var, val in kwargs.items() if val is not None}
+            if params:
+                url += "?" + urllib.parse.urlencode(params)
         return url
 
 
 class TVDB:
+    """TVDB API主类"""
+
     def __init__(self, apikey: str, pin="", proxy=None):
         self.url = Url()
         login_url = self.url.construct("login")
@@ -126,6 +134,7 @@ class TVDB:
         self.request = Request(auth_token, proxy)
 
     def get_req_links(self) -> dict:
+        """获取请求链接"""
         return self.request.links
 
     def get_artwork_statuses(self, meta=None, if_modified_since=None) -> list:
@@ -173,9 +182,7 @@ class TVDB:
         url = self.url.construct("awards/categories", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_award_category_extended(
-        self, id: int, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_award_category_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
         """Returns an award category extended dictionary"""
         url = self.url.construct("awards/categories", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
@@ -215,51 +222,35 @@ class TVDB:
         url = self.url.construct("series", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_by_slug(
-        self, slug: str, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_series_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
         """Returns a series dictionary"""
         url = self.url.construct("series/slug", slug, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_extended(
-        self, id: int, meta=None, short=False, if_modified_since=None
-    ) -> dict:
+    def get_series_extended(self, id: int, meta=None, short=False, if_modified_since=None) -> dict:
         """Returns a series extended dictionary"""
         url = self.url.construct("series", id, "extended", meta=meta, short=short)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_episodes(
-        self,
-        id: int,
-        season_type: str = "default",
-        page: int = 0,
-        lang: str = None,
-        meta=None,
-        if_modified_since=None,
-        **kwargs
-    ) -> dict:
+    def get_series_episodes(self, id: int, season_type: str = "default", page: int = 0,
+                            lang: str = None, meta=None, if_modified_since=None, **kwargs) -> dict:
         """Returns a series episodes dictionary"""
         url = self.url.construct(
             "series", id, "episodes/" + season_type, lang, page=page, meta=meta, **kwargs
         )
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_translation(
-        self, id: int, lang: str, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_series_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
         """Returns a series translation dictionary"""
         url = self.url.construct("series", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_artworks(
-        self, id: int, lang: str, type=None, if_modified_since=None
-    ) -> dict:
+    def get_series_artworks(self, id: int, lang: str, type=None, if_modified_since=None) -> dict:
         """Returns a series record with an artwork array"""
         url = self.url.construct("series", id, "artworks", lang=lang, type=type)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_nextAired(self, id: int, if_modified_since=None) -> dict:
+    def get_series_next_aired(self, id: int, if_modified_since=None) -> dict:
         """Returns a series extended dictionary"""
         url = self.url.construct("series", id, "nextAired")
         return self.request.make_request(url, if_modified_since)
@@ -274,23 +265,17 @@ class TVDB:
         url = self.url.construct("movies", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_movie_by_slug(
-        self, slug: str, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_movie_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
         """Returns a movie dictionary"""
         url = self.url.construct("movies/slug", slug, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_movie_extended(
-        self, id: int, meta=None, short=False, if_modified_since=None
-    ) -> dict:
+    def get_movie_extended(self, id: int, meta=None, short=False, if_modified_since=None) -> dict:
         """Returns a movie extended dictionary"""
         url = self.url.construct("movies", id, "extended", meta=meta, short=short)
         return self.request.make_request(url, if_modified_since)
 
-    def get_movie_translation(
-        self, id: int, lang: str, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_movie_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
         """Returns a movie translation dictionary"""
         url = self.url.construct("movies", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
@@ -315,9 +300,7 @@ class TVDB:
         url = self.url.construct("seasons/types", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_season_translation(
-        self, id: int, lang: str, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_season_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
         """Returns a seasons translation dictionary"""
         url = self.url.construct("seasons", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
@@ -337,16 +320,13 @@ class TVDB:
         url = self.url.construct("episodes", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_episode_translation(
-        self, id: int, lang: str, meta=None, if_modified_since=None
-    ) -> dict:
+    def get_episode_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
         """Returns an episode translation dictionary"""
         url = self.url.construct("episodes", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    get_episodes_translation = (
-        get_episode_translation  # Support the old name of the function.
-    )
+    # Support the old name of the function.
+    get_episodes_translation = get_episode_translation
 
     def get_all_genders(self, meta=None, if_modified_since=None) -> list:
         """Returns a list of genders"""
@@ -383,10 +363,8 @@ class TVDB:
         url = self.url.construct("people", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_person_translation(
-        self, id: int, lang: str, meta=None, if_modified_since=None
-    ) -> dict:
-        """Returns an people translation dictionary"""
+    def get_person_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+        """Returns a people translation dictionary"""
         url = self.url.construct("people", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
@@ -400,18 +378,24 @@ class TVDB:
         url = self.url.construct("people/types", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    get_all_people_types = get_people_types  # Support the old function name
+    # Support the old function name
+    get_all_people_types = get_people_types
 
     def get_source_types(self, meta=None, if_modified_since=None) -> list:
         """Returns a list of source types"""
         url = self.url.construct("sources/types", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    get_all_sourcetypes = get_source_types  # Support the old function name
+    # Support the old function name
+    get_all_sourcetypes = get_source_types
 
-    # kwargs accepts args such as: page=2, action='update', type='artwork'
     def get_updates(self, since: int, **kwargs) -> list:
-        """Returns a list of updates"""
+        """Returns a list of updates
+
+        Args:
+            since: Timestamp since when to get updates
+            **kwargs: Additional parameters such as page=2, action='update', type='artwork'
+        """
         url = self.url.construct("updates", since=since, **kwargs)
         return self.request.make_request(url)
 
@@ -426,32 +410,34 @@ class TVDB:
         return self.request.make_request(url, if_modified_since)
 
     def get_all_lists(self, page=None, meta=None) -> dict:
+        """Returns all lists"""
         url = self.url.construct("lists", page=page, meta=meta)
         return self.request.make_request(url)
 
     def get_list(self, id: int, meta=None, if_modified_since=None) -> dict:
+        """Returns a list dictionary"""
         url = self.url.construct("lists", id, meta=meta)
-        return self.request.make_request(url), if_modified_since
+        return self.request.make_request(url, if_modified_since)
 
     def get_list_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
-        """Returns a movie dictionary"""
+        """Returns a list dictionary by slug"""
         url = self.url.construct("lists/slug", slug, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
     def get_list_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+        """Returns an extended list dictionary"""
         url = self.url.construct("lists", id, "extended", meta=meta)
-        return self.request.make_request(url), if_modified_since
+        return self.request.make_request(url, if_modified_since)
 
-    def get_list_translation(
-        self, id: int, lang: str, meta=None, if_modified_since=None
-    ) -> dict:
-        """Returns an list translation dictionary"""
+    def get_list_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+        """Returns a list translation dictionary"""
         url = self.url.construct("lists", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
     def get_inspiration_types(self, meta=None, if_modified_since=None) -> dict:
+        """Returns inspiration types"""
         url = self.url.construct("inspiration/types", meta=meta)
-        return self.request.make_request(url), if_modified_since
+        return self.request.make_request(url, if_modified_since)
 
     def search(self, query, **kwargs) -> list:
         """Returns a list of search results"""
@@ -469,7 +455,7 @@ class TVDB:
         return self.request.make_request(url, if_modified_since)
 
     def get_entities_types(self, if_modified_since=None) -> dict:
-        """Returns a entities types dictionary"""
+        """Returns an entities types dictionary"""
         url = self.url.construct("entities")
         return self.request.make_request(url, if_modified_since)
 
@@ -484,13 +470,6 @@ class TVDB:
         return self.request.make_request(url)
 
     def get_user_favorites(self) -> dict:
-        """Returns a user info dictionary"""
+        """Returns a user favorites dictionary"""
         url = self.url.construct('user/favorites')
         return self.request.make_request(url)
-
-
-if __name__ == "__main__":
-    tvdb = TVDB("ed2aa66b-7899-4677-92a7-67bc9ce3d93a")
-    query = "romance in the alley"
-    res = tvdb.search(query)
-    print(res)
