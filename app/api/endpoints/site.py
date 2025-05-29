@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
 from app import schemas
+from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.command import Command
@@ -17,13 +18,13 @@ from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
+from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
-from startup.plugins_initializer import register_plugin_api
 
 router = APIRouter()
 
@@ -393,6 +394,21 @@ def auth_site(
     Command().init_commands()
     register_plugin_api()
     return schemas.Response(success=status, message=msg)
+
+
+@router.get("/mapping", summary="获取站点域名到名称的映射", response_model=schemas.Response)
+def site_mapping(_: User = Depends(get_current_active_superuser)):
+    """
+    获取站点域名到名称的映射关系
+    """
+    try:
+        sites = SiteOper().list()
+        mapping = {}
+        for site in sites:
+            mapping[site.domain] = site.name
+        return schemas.Response(success=True, data=mapping)
+    except Exception as e:
+        return schemas.Response(success=False, message=f"获取映射失败：{str(e)}")
 
 
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
