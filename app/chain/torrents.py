@@ -38,6 +38,15 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.mediachain = MediaChain()
         self.torrenthelper = TorrentHelper()
 
+    @property
+    def cache_file(self) -> str:
+        """
+        返回缓存文件列表
+        """
+        if settings.SUBSCRIBE_MODE == 'spider':
+            return self._spider_file
+        return self._rss_file
+
     def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
         远程刷新订阅，发送消息
