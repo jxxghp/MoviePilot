@@ -540,17 +540,18 @@ class Scheduler(metaclass=Singleton):
         self.remove_plugin_job(pid)
         # 获取插件服务列表
         with self._lock:
+            plugin_manager = PluginManager()
             try:
-                plugin_services = PluginManager().get_plugin_services(pid=pid)
+                plugin_services = plugin_manager.get_plugin_services(pid=pid)
             except Exception as e:
                 logger.error(f"运行插件 {pid} 服务失败：{str(e)} - {traceback.format_exc()}")
                 return
             # 获取插件名称
-            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
+            plugin_name = plugin_manager.get_plugin_attr(pid, "plugin_name")
             # 开始注册插件服务
             for service in plugin_services:
                 try:
-                    sid = f"{service['id']}"
+                    sid = f"{pid}_{service['id']}"
                     job_id = sid.split("|")[0]
                     self.remove_plugin_job(pid, job_id)
                     self._jobs[job_id] = {
@@ -599,8 +600,8 @@ class Scheduler(metaclass=Singleton):
                 name = service.get("name")
                 provider_name = service.get("provider_name")
                 if service.get("running") and name and provider_name:
-                    if name not in added:
-                        added.append(name)
+                    if job_id not in added:
+                        added.append(job_id)
                     schedulers.append(schemas.ScheduleInfo(
                         id=job_id,
                         name=name,
@@ -609,11 +610,11 @@ class Scheduler(metaclass=Singleton):
                     ))
             # 获取其他待执行任务
             for job in jobs:
-                if job.name not in added:
-                    added.append(job.name)
+                job_id = job.id.split("|")[0]
+                if job_id not in added:
+                    added.append(job_id)
                 else:
                     continue
-                job_id = job.id.split("|")[0]
                 service = self._jobs.get(job_id)
                 if not service:
                     continue
