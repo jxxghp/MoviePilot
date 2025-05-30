@@ -750,6 +750,16 @@ class TransHandler:
             else:
                 logger.info(f"正在删除已存在的文件：{target_file}")
                 target_file.unlink()
+        else:
+            exists_item = target_oper.get_item(target_file)
+            if exists_item:
+                if not over_flag:
+                    logger.warn(f"文件已存在：【{target_storage}】{target_file}")
+                    return None, f"【{target_storage}】{target_file} 已存在"
+                else:
+                    logger.info(f"正在删除已存在的文件：【{target_storage}】{target_file}")
+                    target_oper.delete(exists_item)
+        # 执行文件整理命令
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    source_oper=source_oper,
