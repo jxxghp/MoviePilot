@@ -526,11 +526,7 @@ def clone_plugin(plugin_id: str,
         
         if success:
             # 注册插件服务
-            Scheduler().update_plugin_job(message)
-            # 注册菜单命令
-            Command().init_commands(message)
-            # 注册插件API
-            register_plugin_api(message)
+            reload_plugin(message)
             # 将分身插件添加到原插件所在的文件夹中
             _add_clone_to_plugin_folder(plugin_id, message)
             return schemas.Response(success=True, message="插件分身创建成功")
