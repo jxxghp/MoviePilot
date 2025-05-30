@@ -149,10 +149,11 @@ def seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any
     """
     查询媒体剧集组列表（themoviedb）
     """
-    mediainfo  = MediaChain().recognize_media(tmdbid=tmdbid, mtype=MediaType.TV)
+    mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, mtype=MediaType.TV)
     if not mediainfo:
         return []
     return mediainfo.episode_groups
+
 
 @router.get("/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason])
 def seasons(mediaid: Optional[str] = None,
