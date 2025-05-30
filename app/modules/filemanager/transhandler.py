@@ -62,7 +62,7 @@ class TransHandler:
                     elif isinstance(current_value, bool):
                         current_value = value
                     elif isinstance(current_value, int):
-                        current_value += value
+                        current_value += (value or 0)
                     else:
                         current_value = value
                     setattr(self.result, key, current_value)
