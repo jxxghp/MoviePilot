@@ -162,47 +162,50 @@ def rename(fileitem: schemas.FileItem,
     """
     if not new_name:
         return schemas.Response(success=False, message="新名称为空")
+
+    # 重命名目录内文件
+    if recursive:
+        transferchain = TransferChain()
+        media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
+        # 递归修改目录内文件（智能识别命名）
+        sub_files: List[schemas.FileItem] = StorageChain().list_files(fileitem)
+        if sub_files:
+            # 开始进度
+            progress = ProgressHelper()
+            progress.start(ProgressKey.BatchRename)
+            total = len(sub_files)
+            handled = 0
+            for sub_file in sub_files:
+                handled += 1
+                progress.update(value=handled / total * 100,
+                                text=f"正在处理 {sub_file.name} ...",
+                                key=ProgressKey.BatchRename)
+                if sub_file.type == "dir":
+                    continue
+                if not sub_file.extension:
+                    continue
+                if f".{sub_file.extension.lower()}" not in media_exts:
+                    continue
+                sub_path = Path(f"{fileitem.path}{sub_file.name}")
+                meta = MetaInfoPath(sub_path)
+                mediainfo = transferchain.recognize_media(meta)
+                if not mediainfo:
+                    progress.end(ProgressKey.BatchRename)
+                    return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
+                new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
+                if not new_path:
+                    progress.end(ProgressKey.BatchRename)
+                    return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
+                ret: schemas.Response = rename(fileitem=sub_file,
+                                               new_name=Path(new_path).name,
+                                               recursive=False)
+                if not ret.success:
+                    progress.end(ProgressKey.BatchRename)
+                    return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
+            progress.end(ProgressKey.BatchRename)
+    # 重命名自己
     result = StorageChain().rename_file(fileitem, new_name)
     if result:
-        if recursive:
-            transferchain = TransferChain()
-            media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
-            # 递归修改目录内文件（智能识别命名）
-            sub_files: List[schemas.FileItem] = StorageChain().list_files(fileitem)
-            if sub_files:
-                # 开始进度
-                progress = ProgressHelper()
-                progress.start(ProgressKey.BatchRename)
-                total = len(sub_files)
-                handled = 0
-                for sub_file in sub_files:
-                    handled += 1
-                    progress.update(value=handled / total * 100,
-                                    text=f"正在处理 {sub_file.name} ...",
-                                    key=ProgressKey.BatchRename)
-                    if sub_file.type == "dir":
-                        continue
-                    if not sub_file.extension:
-                        continue
-                    if f".{sub_file.extension.lower()}" not in media_exts:
-                        continue
-                    sub_path = Path(f"{fileitem.path}{sub_file.name}")
-                    meta = MetaInfoPath(sub_path)
-                    mediainfo = transferchain.recognize_media(meta)
-                    if not mediainfo:
-                        progress.end(ProgressKey.BatchRename)
-                        return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
-                    new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
-                    if not new_path:
-                        progress.end(ProgressKey.BatchRename)
-                        return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
-                    ret: schemas.Response = rename(fileitem=sub_file,
-                                                   new_name=Path(new_path).name,
-                                                   recursive=False)
-                    if not ret.success:
-                        progress.end(ProgressKey.BatchRename)
-                        return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
-                progress.end(ProgressKey.BatchRename)
         return schemas.Response(success=True)
     return schemas.Response(success=False)
 
