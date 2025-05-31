@@ -17,7 +17,7 @@ from app.utils.site import SiteUtils
 
 # 站点框架
 class SiteSchema(Enum):
-    DiscuzX = "Discuz!"
+    DiscuzX = "DiscuzX"
     Gazelle = "Gazelle"
     Ipt = "IPTorrents"
     NexusPhp = "NexusPhp"
