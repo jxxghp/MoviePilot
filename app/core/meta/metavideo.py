@@ -309,11 +309,7 @@ class MetaVideo(MetaBase):
         """
         if not self.name:
             return
-        if not self.year \
-                and not self.begin_season \
-                and not self.begin_episode \
-                and not self.resource_pix \
-                and not self.resource_type:
+        if not self.year:
             return
         re_res = re.search(r"%s" % self._part_re, token, re.IGNORECASE)
         if re_res:
