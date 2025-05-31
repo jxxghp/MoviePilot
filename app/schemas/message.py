@@ -102,7 +102,7 @@ class Subscription(BaseModel):
     """
     客户端消息订阅
     """
-    endpoint: Optional[str]
+    endpoint: Optional[str] = None
     keys: Optional[dict] = Field(default_factory=dict)
 
 
@@ -110,8 +110,8 @@ class SubscriptionMessage(BaseModel):
     """
     客户端订阅消息体
     """
-    title: Optional[str]
-    body: Optional[str]
-    icon: Optional[str]
-    url: Optional[str]
+    title: Optional[str] = None
+    body: Optional[str] = None
+    icon: Optional[str] = None
+    url: Optional[str] = None
     data: Optional[dict] = Field(default_factory=dict)
