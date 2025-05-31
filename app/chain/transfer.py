@@ -866,19 +866,22 @@ class TransferChain(ChainBase, metaclass=Singleton):
             logger.info("所有下载器中下载完成的文件已整理完成")
             return True
 
-    def __get_trans_fileitems(self, fileitem: FileItem) -> List[Tuple[FileItem, bool]]:
+    def __get_trans_fileitems(
+        self, fileitem: FileItem, depth: int = 1
+    ) -> List[Tuple[FileItem, bool]]:
         """
         获取整理目录或文件列表
+        
         :param fileitem: 文件项
+        :param depth: 递归深度，默认为1
         """
 
-        def __is_bluray_dir(_fileitem: FileItem) -> bool:
+        def __contains_bluray_sub(_fileitems: List[FileItem]) -> bool:
             """
-            判断是不是蓝光目录
+            判断是否包含蓝光子目录
             """
-            subs = self.storagechain.list_files(_fileitem)
-            if subs:
-                for sub in subs:
+            if _fileitems:
+                for sub in _fileitems:
                     if sub.type == "dir" and sub.name in ["BDMV", "CERTIFICATE"]:
                         return True
             return False
@@ -913,25 +916,22 @@ class TransferChain(ChainBase, metaclass=Singleton):
             return [(fileitem, False)]
 
         # 蓝光原盘根目录
-        if __is_bluray_dir(fileitem):
+        sub_items = self.storagechain.list_files(fileitem) or []
+        if __contains_bluray_sub(sub_items):
             return [(fileitem, True)]
 
         # 需要整理的文件项列表
         trans_items = []
         # 先检查当前目录的下级目录，以支持合集的情况
-        for sub_dir in self.storagechain.list_files(fileitem):
+        for sub_dir in sub_items if depth >= 1 else []:
             if sub_dir.type == "dir":
-                if __is_bluray_dir(sub_dir):
-                    trans_items.append((sub_dir, True))
-                else:
-                    trans_items.append((sub_dir, False))
+                trans_items.extend(self.__get_trans_fileitems(sub_dir, depth=depth - 1))
 
         if not trans_items:
             # 没有有效子目录，直接整理当前目录
             trans_items.append((fileitem, False))
         else:
             # 有子目录时，把当前目录的文件添加到整理任务中
-            sub_items = self.storagechain.list_files(fileitem)
             if sub_items:
                 trans_items.extend([(f, False) for f in sub_items if f.type == "file"])
 
@@ -997,7 +997,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 汇总错误信息
         err_msgs: List[str] = []
         # 待整理目录或文件项
-        trans_items = self.__get_trans_fileitems(fileitem)
+        trans_items = self.__get_trans_fileitems(
+            fileitem, depth=2  # 为解决 issue#4371 深度至少需要>=2
+        )
         # 待整理的文件列表
         file_items: List[Tuple[FileItem, bool]] = []
 
