@@ -25,7 +25,7 @@ class ConfigModel(BaseModel):
         extra = "ignore"  # 忽略未定义的配置项
 
     # 项目名称
-    PROJECT_NAME = "MoviePilot"
+    PROJECT_NAME: str = "MoviePilot"
     # 域名 格式；https://movie-pilot.org
     APP_DOMAIN: str = ""
     # API路径
@@ -124,7 +124,7 @@ class ConfigModel(BaseModel):
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
     # 电视剧动漫的分类genre_ids
-    ANIME_GENREIDS = [16]
+    ANIME_GENREIDS: list[int] = [16]
     # 用户认证站点
     AUTH_SITE: str = ""
     # 重启自动升级
@@ -204,7 +204,7 @@ class ConfigModel(BaseModel):
     # CookieCloud同步黑名单，多个域名,分割
     COOKIECLOUD_BLACKLIST: Optional[str] = None
     # CookieCloud对应的浏览器UA
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
+    USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
                                "/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}" \
@@ -396,6 +396,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型，使用默认值 '{default}'，错误信息: {e}")
         return default, True
 
+    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @validator('*', pre=True, always=True)
     def generic_type_validator(cls, value: Any, field):  # noqa
         """

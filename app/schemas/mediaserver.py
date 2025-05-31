@@ -11,7 +11,7 @@ class ExistMediaInfo(BaseModel):
     媒体服务器存在媒体信息
     """
     # 类型 电影、电视剧
-    type: Optional[MediaType]
+    type: Optional[MediaType] = None
     # 季
     seasons: Optional[Dict[int, list]] = Field(default_factory=dict)
     # 媒体服务器类型：plex、jellyfin、emby、trimemedia
