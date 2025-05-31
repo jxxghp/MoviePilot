@@ -139,7 +139,7 @@ meta_cases = [{
         "episode": "E06",
         "restype": "WEB-DL",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "AAC"
     }
 }, {
@@ -155,7 +155,7 @@ meta_cases = [{
         "episode": "E02",
         "restype": "WEB-DL",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "AAC"
     }
 }, {
@@ -235,7 +235,7 @@ meta_cases = [{
         "episode": "",
         "restype": "BluRay",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "Atmos TrueHD 7.1"
     }
 }, {
@@ -363,7 +363,7 @@ meta_cases = [{
         "episode": "E01",
         "restype": "UHD BluRay",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": ""
     }
 }, {
@@ -523,7 +523,7 @@ meta_cases = [{
         "episode": "E02",
         "restype": "BDRIP",
         "pix": "1080p",
-        "video_codec": "X265",
+        "video_codec": "x265",
         "audio_codec": "FLAC"
     }
 }, {
@@ -571,7 +571,7 @@ meta_cases = [{
         "episode": "E05",
         "restype": "WEB-DL",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "AAC"
     }
 }, {
@@ -667,7 +667,7 @@ meta_cases = [{
         "episode": "",
         "restype": "UHD BluRay DoVi",
         "pix": "1080p",
-        "video_codec": "X265",
+        "video_codec": "x265",
         "audio_codec": "DD+ 7.1"
     }
 }, {
@@ -683,7 +683,7 @@ meta_cases = [{
         "episode": "E16",
         "restype": "WEB-DL",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "AAC"
     }
 }, {
@@ -763,7 +763,7 @@ meta_cases = [{
         "episode": "",
         "restype": "BluRay",
         "pix": "1080p",
-        "video_codec": "X265 10bit",
+        "video_codec": "x265 10bit",
         "audio_codec": "DTS-HD MA 5.1"
     }
 }, {
@@ -779,7 +779,7 @@ meta_cases = [{
         "episode": "",
         "restype": "WEB-DL",
         "pix": "1080p",
-        "video_codec": "X265",
+        "video_codec": "x265",
         "audio_codec": ""
     }
 }, {
@@ -827,7 +827,7 @@ meta_cases = [{
         "episode": "",
         "restype": "BluRay",
         "pix": "4k",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "DTS"
     }
 }, {
@@ -859,7 +859,7 @@ meta_cases = [{
         "episode": "E01",
         "restype": "WEB-DL",
         "pix": "1080p",
-        "video_codec": "X265",
+        "video_codec": "x265",
         "audio_codec": ""
     }
 }, {
@@ -923,7 +923,7 @@ meta_cases = [{
         "episode": "E06",
         "restype": "WEBRip",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "DD 5.1"
     }
 }, {
@@ -939,7 +939,7 @@ meta_cases = [{
         "episode": "E05",
         "restype": "WEBRip",
         "pix": "1080p",
-        "video_codec": "X264",
+        "video_codec": "x264",
         "audio_codec": "DD 5.1"
     }
 }, {
