@@ -563,7 +563,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             subscribes = self.subscribeoper.list(self.get_states_for_search('R'))
 
             # 预识别所有未识别的种子
-            processed_torrents = {}
+            processed_torrents: Dict[str, List[Context]] = {}
             for domain, contexts in torrents.items():
                 processed_torrents[domain] = []
                 for context in contexts:
