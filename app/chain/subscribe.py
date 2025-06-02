@@ -667,7 +667,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
                         # 如果仍然没有识别到媒体信息，尝试标题匹配
                         if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
-                            logger.warn(
+                            logger.info(
                                 f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
                             if self.torrenthelper.match_torrent(mediainfo=mediainfo,
                                                                 torrent_meta=torrent_meta,
