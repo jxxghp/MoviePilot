@@ -563,7 +563,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             subscribes = self.subscribeoper.list(self.get_states_for_search('R'))
 
             # 预识别所有未识别的种子
-            processed_torrents = {}
+            processed_torrents: dict[str, list[Context]] = {}
             for domain, contexts in torrents.items():
                 processed_torrents[domain] = []
                 for context in contexts:
@@ -577,7 +577,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         torrent_mediainfo = self.recognize_media(meta=torrent_meta)
                         if torrent_mediainfo:
                             # 更新种子缓存
-                            context.media_info = torrent_mediainfo
+                            _context.media_info = torrent_mediainfo
                     # 添加已预处理
                     processed_torrents[domain].append(_context)
 
