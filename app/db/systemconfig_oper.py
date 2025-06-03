@@ -1,10 +1,10 @@
 from typing import Any, Union
 
-from app.core.config import ConfigChangeEvent, config_notifier, ConfigChangeType
 from app.db import DbOper
 from app.db.models.systemconfig import SystemConfig
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.singleton import Singleton
+from app.schemas import ConfigChangeEventData
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
@@ -35,22 +35,34 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 conf.update(self._db, {"value": value})
                 # 发送配置变更通知
                 if old_value != value:
-                    event = ConfigChangeEvent(key, old_value=old_value, new_value=value,
-                                              change_type=ConfigChangeType.UPDATE)
-                    config_notifier.notify(event)
+                    from app.core.event import eventmanager
+                    eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                        key=key,
+                        old_value=old_value,
+                        new_value=value,
+                        change_type="update"
+                    ))
             else:
                 conf.delete(self._db, conf.id)
                 # 发送配置删除通知
-                event = ConfigChangeEvent(key, old_value=old_value, new_value=None,
-                                          change_type=ConfigChangeType.DELETE)
-                config_notifier.notify(event)
+                from app.core.event import eventmanager
+                eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                    key=key,
+                    old_value=old_value,
+                    new_value=value,
+                    change_type="delete"
+                ))
         else:
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
             # 发送配置变更通知
-            event = ConfigChangeEvent(key, old_value=None, new_value=value,
-                                      change_type=ConfigChangeType.ADD)
-            config_notifier.notify(event)
+            from app.core.event import eventmanager
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                old_value=old_value,
+                new_value=value,
+                change_type="add"
+            ))
 
     def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
         """
@@ -81,9 +93,13 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         if conf:
             conf.delete(self._db, conf.id)
             # 发送配置变更通知
-            event = ConfigChangeEvent(key, old_value=old_value, new_value=None,
-                                      change_type=ConfigChangeType.ADD)
-            config_notifier.notify(event)
+            from app.core.event import eventmanager
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                old_value=old_value,
+                new_value=None,
+                change_type="delete"
+            ))
         return True
 
     def __del__(self):

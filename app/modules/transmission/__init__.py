@@ -5,25 +5,38 @@ from torrentool.torrent import Torrent
 from transmission_rpc import File
 
 from app import schemas
-from app.core.config import settings, on_config_change
+from app.core.config import settings
 from app.core.metainfo import MetaInfo
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.transmission.transmission import Transmission
 from app.schemas import TransferTorrent, DownloadingTorrent
-from app.schemas.types import TorrentStatus, ModuleType, DownloaderType, SystemConfigKey
+from app.schemas.types import TorrentStatus, ModuleType, DownloaderType, SystemConfigKey, EventType
 from app.utils.string import StringUtils
 
 
 class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
-    @on_config_change([SystemConfigKey.Downloaders.value])
     def init_module(self) -> None:
         """
         初始化模块
         """
         super().init_service(service_name=Transmission.__name__.lower(),
                              service_type=Transmission)
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: schemas.ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.Downloaders.value]:
+            return
+        self.init_module()
 
     @staticmethod
     def get_name() -> str:

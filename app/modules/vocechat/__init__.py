@@ -1,18 +1,17 @@
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
-from app.core.config import on_config_change
 from app.core.context import Context, MediaInfo
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
-from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType, SystemConfigKey
+from app.schemas import MessageChannel, CommingMessage, Notification, ConfigChangeEventData
+from app.schemas.types import ModuleType, SystemConfigKey, EventType
 
 
 class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
 
-    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块
@@ -20,6 +19,19 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         super().init_service(service_name=VoceChat.__name__.lower(),
                              service_type=VoceChat)
         self._channel = MessageChannel.VoceChat
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.Notifications.value]:
+            return
+        self.init_module()
 
     @staticmethod
     def get_name() -> str:

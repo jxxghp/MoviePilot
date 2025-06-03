@@ -1,24 +1,35 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
-from app.core.config import on_config_change
 from app.core.context import MediaInfo
-from app.core.event import eventmanager
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType, SystemConfigKey
+from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType, SystemConfigKey, EventType
 
 
 class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
 
-    @on_config_change([SystemConfigKey.MediaServers.value])
     def init_module(self) -> None:
         """
         初始化模块
         """
         super().init_service(service_name=Emby.__name__.lower(),
                              service_type=lambda conf: Emby(**conf.config, sync_libraries=conf.sync_libraries))
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: schemas.ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.MediaServers.value]:
+            return
+        self.init_module()
 
     @staticmethod
     def get_name() -> str:
@@ -271,7 +282,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, server: str,
-                            count: Optional[int] = 20, username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:
+                            count: Optional[int] = 20, username: Optional[str] = None) -> List[
+        schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
@@ -290,7 +302,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         return server_obj.get_play_url(item_id)
 
     def mediaserver_latest(self, server: Optional[str] = None,
-                           count: Optional[int] = 20, username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:
+                           count: Optional[int] = 20, username: Optional[str] = None) -> List[
+        schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """

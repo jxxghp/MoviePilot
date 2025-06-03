@@ -4,115 +4,17 @@ import os
 import secrets
 import sys
 import threading
-from collections import defaultdict
-from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Callable
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
 
 from app.log import logger, log_settings, LogConfigModel
-from app.utils.object import ObjectUtils
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
-
-
-class ConfigChangeType(Enum):
-    """
-    配置变更类型
-    """
-    ADD = "add"
-    UPDATE = "update"
-    DELETE = "delete"
-
-
-class ConfigChangeEvent:
-    """
-    配置变更事件
-    """
-
-    def __init__(self, key: str, old_value: Any, new_value: Any,
-                 change_type: ConfigChangeType = ConfigChangeType.UPDATE):
-        self.key = key
-        self.old_value = old_value
-        self.new_value = new_value
-        self.change_type = change_type
-        self.timestamp = threading.Event()
-
-
-class ConfigObserver:
-    """
-    配置观察者接口
-    """
-
-    def on_config_changed(self, event: ConfigChangeEvent):
-        """
-        配置变更回调
-        """
-        pass
-
-
-class ConfigNotifier:
-    """
-    配置变更通知器
-    """
-
-    def __init__(self):
-        self._observers: Dict[str, List[ConfigObserver]] = defaultdict(list)
-        self._global_observers: List[ConfigObserver] = []
-        self._lock = threading.RLock()
-
-    def add_observer(self, observer: ConfigObserver, config_keys: Optional[List[str]] = None):
-        """
-        添加观察者
-        :param observer: 观察者对象
-        :param config_keys: 监听的配置键列表，为None时监听所有配置变更
-        """
-        with self._lock:
-            if config_keys is None:
-                self._global_observers.append(observer)
-            else:
-                for key in config_keys:
-                    self._observers[key].append(observer)
-
-    def remove_observer(self, observer: ConfigObserver, config_keys: Optional[List[str]] = None):
-        """
-        移除观察者
-        :param observer: 观察者对象
-        :param config_keys: 监听的配置键列表，为None时移除全局观察者
-        """
-        with self._lock:
-            if config_keys is None:
-                if observer in self._global_observers:
-                    self._global_observers.remove(observer)
-            else:
-                for key in config_keys:
-                    if observer in self._observers[key]:
-                        self._observers[key].remove(observer)
-
-    def notify(self, event: ConfigChangeEvent):
-        """
-        通知观察者配置变更
-        """
-        with self._lock:
-            # 通知全局观察者
-            for observer in self._global_observers:
-                try:
-                    observer.on_config_changed(event)
-                except Exception as e:
-                    logger.error(f"配置观察者 {observer} 处理配置变更时出错: {e}")
-
-            # 通知特定配置键的观察者
-            for observer in self._observers.get(event.key, []):
-                try:
-                    observer.on_config_changed(event)
-                except Exception as e:
-                    logger.error(f"配置观察者 {observer} 处理配置变更 {event.key} 时出错: {e}")
-
-
-# 全局配置通知器
-config_notifier = ConfigNotifier()
+from app.schemas.types import EventType
+from app.schemas import ConfigChangeEventData
 
 
 class ConfigModel(BaseModel):
@@ -558,8 +460,13 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                     if hasattr(log_settings, key):
                         setattr(log_settings, key, converted_value)
                     # 发送配置变更通知
-                    event = ConfigChangeEvent(key, old_value, converted_value)
-                    config_notifier.notify(event)
+                    from app.core.event import eventmanager
+                    eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                        key=key,
+                        old_value=old_value,
+                        new_value=converted_value,
+                        change_type="update"
+                    ))
 
                 return success, message
             return True, ""
@@ -791,91 +698,3 @@ class GlobalVar(object):
 
 # 全局标识
 global_vars = GlobalVar()
-
-
-class HotReloadManager(ConfigObserver):
-    """
-    配置热更新管理器
-    """
-
-    def __init__(self):
-        self._reload_handlers: Dict[str, Callable] = {}
-        # 注册为全局配置观察者
-        config_notifier.add_observer(self)
-
-    def register_handler(self, config_keys: List[str], handler: Callable[[Any, Any], None]):
-        """
-        注册配置变更处理器
-        :param config_keys: 配置键列表
-        :param handler: 处理函数，接收 (old_value, new_value) 参数
-        """
-        for key in config_keys:
-            self._reload_handlers[key] = handler
-
-    @staticmethod
-    def __get_callable(name: str):
-        """
-        根据类名获取类实例，首先检查全局变量中是否存在该类，如果不存在则尝试动态导入模块。
-        :param name: 方法名/类名.方法名
-        :return: 类的实例
-        """
-        # 检查类是否在全局变量中
-        if name in globals():
-            try:
-                class_obj = globals()[name]()
-                return class_obj
-            except Exception as e:
-                logger.error(str(e))
-                return None
-
-        # TODO 如果类不在全局变量中，尝试动态导入模块并创建实例
-
-        return None
-
-    def on_config_changed(self, event: ConfigChangeEvent):
-        """
-        处理配置变更事件
-        """
-        if event.key in self._reload_handlers:
-            try:
-                handler = self._reload_handlers[event.key]
-                # 可执行函数
-                func = self.__get_callable(handler.__qualname__)
-                # 参数数量
-                args_num = ObjectUtils.arguments(func)
-                if args_num < 2:
-                    func()
-                else:
-                    func(event.old_value, event.new_value)
-                logger.info(f"配置 {event.key} 热更新成功：{func}")
-            except Exception as e:
-                logger.error(f"配置 {event.key} 热更新失败: {e}")
-
-
-# 初始化热更新管理器
-hot_reload_manager = HotReloadManager()
-
-
-def on_config_change(config_keys: List[str]):
-    """
-    装饰器：用于注册配置变更处理函数
-
-    使用示例:
-    @on_config_change(['PROXY_HOST', 'TMDB_API_KEY'])
-    def handle_config_change(old_value, new_value):
-        pass
-    """
-
-    def decorator(func: Callable[[Any, Any], None]):
-        hot_reload_manager.register_handler(config_keys, func)
-        return func
-
-    return decorator
-
-
-@on_config_change(['DEBUG', 'LOG_LEVEL'])
-def handle_logger_change():
-    """
-    默认的配置变更处理函数
-    """
-    logger.update_loggers()

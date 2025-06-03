@@ -37,6 +37,7 @@ from app.utils.crypto import HashUtils
 from app.utils.http import RequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.url import UrlUtils
+from core.event import eventmanager
 from version import APP_VERSION
 
 router = APIRouter()
@@ -229,6 +230,10 @@ def set_env_setting(env: dict,
                 "failed_updates": failed_updates
             }
         )
+
+    if success_updates:
+        for key, value in success_updates.items():
+            eventmanager.send_event()
 
     return schemas.Response(
         success=True,

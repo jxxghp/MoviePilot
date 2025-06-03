@@ -1,17 +1,16 @@
 from typing import Optional, Union, List, Tuple, Any
 
-from app.core.config import on_config_change
 from app.core.context import MediaInfo, Context
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
-from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType, SystemConfigKey
+from app.schemas import MessageChannel, CommingMessage, Notification, ConfigChangeEventData
+from app.schemas.types import ModuleType, SystemConfigKey, EventType
 
 
 class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
 
-    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块
@@ -19,6 +18,19 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         super().init_service(service_name=SynologyChat.__name__.lower(),
                              service_type=SynologyChat)
         self._channel = MessageChannel.SynologyChat
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.Notifications.value]:
+            return
+        self.init_module()
 
     @staticmethod
     def get_name() -> str:

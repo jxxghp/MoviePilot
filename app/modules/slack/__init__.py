@@ -2,18 +2,17 @@ import json
 import re
 from typing import Optional, Union, List, Tuple, Any
 
-from app.core.config import on_config_change
 from app.core.context import MediaInfo, Context
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
-from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType, SystemConfigKey
+from app.schemas import MessageChannel, CommingMessage, Notification, ConfigChangeEventData
+from app.schemas.types import ModuleType, SystemConfigKey, EventType
 
 
 class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
-    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块
@@ -21,6 +20,19 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         super().init_service(service_name=Slack.__name__.lower(),
                              service_type=Slack)
         self._channel = MessageChannel.Slack
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.Notifications.value]:
+            return
+        self.init_module()
 
     @staticmethod
     def get_name() -> str:
