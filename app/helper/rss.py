@@ -3,6 +3,7 @@ import traceback
 import xml.dom.minidom
 from typing import List, Tuple, Union, Optional
 from urllib.parse import urljoin
+import gc
 
 import chardet
 from lxml import etree
@@ -19,6 +20,11 @@ class RssHelper:
     """
     RSS帮助类，解析RSS报文、获取RSS地址等
     """
+    
+    # RSS解析限制配置
+    MAX_RSS_SIZE = 50 * 1024 * 1024  # 50MB最大RSS文件大小
+    MAX_RSS_ITEMS = 1000  # 最大解析条目数
+    
     # 各站点RSS链接获取配置
     rss_link_conf = {
         "default": {
@@ -224,8 +230,7 @@ class RssHelper:
         },
     }
 
-    @staticmethod
-    def parse(url, proxy: bool = False, timeout: Optional[int] = 15, headers: dict = None) -> Union[List[dict], None, bool]:
+    def parse(self, url, proxy: bool = False, timeout: Optional[int] = 15, headers: dict = None) -> Union[List[dict], None, bool]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
@@ -238,6 +243,7 @@ class RssHelper:
         ret_array: list = []
         if not url:
             return False
+        
         try:
             ret = RequestUtils(proxies=settings.PROXY if proxy else None,
                                timeout=timeout, headers=headers).get_res(url)
@@ -246,11 +252,15 @@ class RssHelper:
         except Exception as err:
             logger.error(f"获取RSS失败：{str(err)} - {traceback.format_exc()}")
             return False
+        
         if ret:
-            ret_xml = ""
             try:
-                # 使用chardet检测字符编码
+                # 检查响应大小，避免处理过大的RSS文件
                 raw_data = ret.content
+                if raw_data and len(raw_data) > self.MAX_RSS_SIZE:
+                    logger.warning(f"RSS文件过大: {len(raw_data)/1024/1024:.1f}MB，跳过解析")
+                    return False
+                
                 if raw_data:
                     try:
                         result = chardet.detect(raw_data)
@@ -269,65 +279,84 @@ class RssHelper:
                             ret.encoding = ret.apparent_encoding
                 if not ret_xml:
                     ret_xml = ret.text
-                # 解析XML
-                dom_tree = xml.dom.minidom.parseString(ret_xml)
-                rootNode = dom_tree.documentElement
-                items = rootNode.getElementsByTagName("item")
-                for item in items:
-                    try:
-                        # 标题
-                        title = DomUtils.tag_value(item, "title", default="")
-                        if not title:
+                
+                # 解析XML - 使用try-finally确保DOM树被清理
+                dom_tree = None
+                try:
+                    dom_tree = xml.dom.minidom.parseString(ret_xml)
+                    rootNode = dom_tree.documentElement
+                    items = rootNode.getElementsByTagName("item")
+                    
+                    # 限制处理的条目数量
+                    items_count = min(len(items), self.MAX_RSS_ITEMS)
+                    if len(items) > self.MAX_RSS_ITEMS:
+                        logger.warning(f"RSS条目过多: {len(items)}，仅处理前{self.MAX_RSS_ITEMS}个")
+                    
+                    for i, item in enumerate(items[:items_count]):
+                        try:
+                            # 定期执行垃圾回收
+                            if i > 0 and i % 100 == 0:
+                                gc.collect()
+                            
+                            # 标题
+                            title = DomUtils.tag_value(item, "title", default="")
+                            if not title:
+                                continue
+                            # 描述
+                            description = DomUtils.tag_value(item, "description", default="")
+                            # 种子页面
+                            link = DomUtils.tag_value(item, "link", default="")
+                            # 种子链接
+                            enclosure = DomUtils.tag_value(item, "enclosure", "url", default="")
+                            if not enclosure and not link:
+                                continue
+                            # 部分RSS只有link没有enclosure
+                            if not enclosure and link:
+                                enclosure = link
+                            # 大小
+                            size = DomUtils.tag_value(item, "enclosure", "length", default=0)
+                            if size and str(size).isdigit():
+                                size = int(size)
+                            else:
+                                size = 0
+                            # 发布日期
+                            pubdate = DomUtils.tag_value(item, "pubDate", default="")
+                            if pubdate:
+                                # 转换为时间
+                                pubdate = StringUtils.get_time(pubdate)
+                            # 获取豆瓣昵称
+                            nickname = DomUtils.tag_value(item, "dc:createor", default="")
+                            # 返回对象
+                            tmp_dict = {'title': title,
+                                        'enclosure': enclosure,
+                                        'size': size,
+                                        'description': description,
+                                        'link': link,
+                                        'pubdate': pubdate}
+                            # 如果豆瓣昵称不为空，返回数据增加豆瓣昵称，供doubansync插件获取
+                            if nickname:
+                                tmp_dict['nickname'] = nickname
+                            ret_array.append(tmp_dict)
+                        except Exception as e1:
+                            logger.debug(f"解析RSS条目失败：{str(e1)} - {traceback.format_exc()}")
                             continue
-                        # 描述
-                        description = DomUtils.tag_value(item, "description", default="")
-                        # 种子页面
-                        link = DomUtils.tag_value(item, "link", default="")
-                        # 种子链接
-                        enclosure = DomUtils.tag_value(item, "enclosure", "url", default="")
-                        if not enclosure and not link:
-                            continue
-                        # 部分RSS只有link没有enclosure
-                        if not enclosure and link:
-                            enclosure = link
-                        # 大小
-                        size = DomUtils.tag_value(item, "enclosure", "length", default=0)
-                        if size and str(size).isdigit():
-                            size = int(size)
-                        else:
-                            size = 0
-                        # 发布日期
-                        pubdate = DomUtils.tag_value(item, "pubDate", default="")
-                        if pubdate:
-                            # 转换为时间
-                            pubdate = StringUtils.get_time(pubdate)
-                        # 获取豆瓣昵称
-                        nickname = DomUtils.tag_value(item, "dc:createor", default="")
-                        # 返回对象
-                        tmp_dict = {'title': title,
-                                    'enclosure': enclosure,
-                                    'size': size,
-                                    'description': description,
-                                    'link': link,
-                                    'pubdate': pubdate}
-                        # 如果豆瓣昵称不为空，返回数据增加豆瓣昵称，供doubansync插件获取
-                        if nickname:
-                            tmp_dict['nickname'] = nickname
-                        ret_array.append(tmp_dict)
-                    except Exception as e1:
-                        logger.debug(f"解析RSS失败：{str(e1)} - {traceback.format_exc()}")
-                        continue
+                finally:
+                    # DOM树必须显式清理 - 这是xml.dom.minidom的特殊要求
+                    if dom_tree:
+                        dom_tree.unlink()
+                    
             except Exception as e2:
                 logger.error(f"解析RSS失败：{str(e2)} - {traceback.format_exc()}")
-                # RSS过期 观众RSS 链接已过期，您需要获得一个新的！  pthome RSS Link has expired, You need to get a new one!
+                # RSS过期检查
                 _rss_expired_msg = [
                     "RSS 链接已过期, 您需要获得一个新的!",
                     "RSS Link has expired, You need to get a new one!",
                     "RSS Link has expired, You need to get new!"
                 ]
-                if ret_xml in _rss_expired_msg:
+                if 'ret_xml' in locals() and ret_xml and ret_xml in _rss_expired_msg:
                     return None
                 return False
+        
         return ret_array
 
     def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False) -> Tuple[str, str]:
@@ -369,12 +398,14 @@ class RssHelper:
                     return "", f"获取 {url} RSS链接失败，错误码：{res.status_code}，错误原因：{res.reason}"
                 else:
                     return "", f"获取RSS链接失败：无法连接 {url} "
+            
             # 解析HTML
-            html = etree.HTML(html_text)
-            if StringUtils.is_valid_html_element(html):
-                rss_link = html.xpath(site_conf.get("xpath"))
-                if rss_link:
-                    return str(rss_link[-1]), ""
+            if html_text:
+                html = etree.HTML(html_text)
+                if StringUtils.is_valid_html_element(html):
+                    rss_link = html.xpath(site_conf.get("xpath"))
+                    if rss_link:
+                        return str(rss_link[-1]), ""
             return "", f"获取RSS链接失败：{url}"
         except Exception as e:
             return "", f"获取 {url} RSS链接失败：{str(e)}"
