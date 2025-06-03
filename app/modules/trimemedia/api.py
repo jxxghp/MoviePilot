@@ -111,6 +111,7 @@ class Api:
         "_api_path",
         "_request_utils",
         "_version",
+        "_session"
     )
 
     @property
@@ -138,7 +139,8 @@ class Api:
         self._apikey = apikey
         self._token: Optional[str] = None
         self._version: Optional[Version] = None
-        self._request_utils = RequestUtils(session=requests.Session())
+        self._session = requests.Session()
+        self._request_utils = RequestUtils(session=self._session)
 
     def sys_version(self) -> Optional[Version]:
         """
@@ -352,7 +354,7 @@ class Api:
     def del_item(self, guid: str, delete_file: bool) -> bool:
         """
         删除媒体
-
+        :param guid: 媒体GUID
         :param delete_file: True删除媒体文件，False仅从媒体库移除
         """
         if (
@@ -491,3 +493,10 @@ class Api:
             if not suppress_log:
                 logger.error(f"请求接口 {url} 异常：" + str(e))
         return None
+
+    def close(self):
+        """
+        关闭API会话
+        """
+        if self._session:
+            self._session.close()

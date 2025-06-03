@@ -14,7 +14,7 @@ from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
-from schemas import MediaServerItem
+from app.schemas import MediaServerItem
 
 
 class Plex:
@@ -890,3 +890,7 @@ class Plex:
         session = Session()
         session.headers = headers
         return session
+
+    def close(self):
+        if self._session:
+            self._session.close()

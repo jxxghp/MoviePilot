@@ -1,4 +1,5 @@
 import re
+from contextlib import contextmanager
 from typing import Any, Optional, Union
 
 import chardet
@@ -142,6 +143,22 @@ class RequestUtils:
                             allow_redirects=allow_redirects,
                             raise_exception=raise_exception,
                             **kwargs)
+
+    @contextmanager
+    def get_stream(self, url: str, params: dict = None, **kwargs):
+        """
+        获取流式响应的上下文管理器，适用于大文件下载
+        :param url: 请求的URL
+        :param params: 请求的参数
+        :param kwargs: 其他请求参数
+        """
+        kwargs['stream'] = True
+        response = self.request(method="get", url=url, params=params, **kwargs)
+        try:
+            yield response
+        finally:
+            if response:
+                response.close()
 
     def post_res(self,
                  url: str,
@@ -343,11 +360,6 @@ class RequestUtils:
                 content_type = response.headers.get("Content-Type", "")
                 if re.search(r"charset=[\"']?utf-8[\"']?", content_type, re.IGNORECASE):
                     return "utf-8"
-                # 暂不支持直接提取字符集，仅提取UTF8
-                # match = re.search(r"charset=[\"']?([^\"';\s]+)", content_type, re.IGNORECASE)
-                # if match:
-                #     return match.group(1)
-
                 # 2. 检查响应体中的 BOM 标记（例如 UTF-8 BOM）
                 if response.content[:3] == b"\xef\xbb\xbf":
                     return "utf-8"
@@ -355,11 +367,6 @@ class RequestUtils:
                 # 3. 如果是 HTML 响应体，检查其中的 <meta charset="..."> 标签
                 if re.search(r"charset=[\"']?utf-8[\"']?", response.text, re.IGNORECASE):
                     return "utf-8"
-                # 暂不支持直接提取字符集，仅提取UTF8
-                # match = re.search(r"<meta[^>]+charset=[\"']?([^\"'>\s]+)", response.text, re.IGNORECASE)
-                # if match:
-                #     return match.group(1)
-
                 # 4. 使用 chardet 库进一步分析内容
                 detection = chardet.detect(response.content)
                 if detection.get("confidence", 0) > confidence_threshold:

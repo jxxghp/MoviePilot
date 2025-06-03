@@ -55,7 +55,8 @@ class TrimeMedia:
         """
         return self._api
 
-    def __create_api(self, host: Optional[str]) -> Optional[fnapi.Api]:
+    @staticmethod
+    def __create_api(host: Optional[str]) -> Optional[fnapi.Api]:
         """
         创建一个飞牛API
 
@@ -76,7 +77,7 @@ class TrimeMedia:
         api = fnapi.Api(host, api_key)
         return api if api.sys_version() else None
 
-    def __del__(self):
+    def close(self):
         self.disconnect()
 
     def is_configured(self) -> bool:
@@ -118,6 +119,7 @@ class TrimeMedia:
         """
         if self.is_authenticated():
             self._api.logout()
+            self._api.close()
             self._userinfo = None
             logger.debug(f"{self._username} 已断开飞牛影视")
 

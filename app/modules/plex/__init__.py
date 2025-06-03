@@ -45,7 +45,12 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         return 3
 
     def stop(self):
-        pass
+        """
+        停止模块服务
+        """
+        for server in self.get_instances().values():
+            if server:
+                server.close()
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
@@ -273,7 +278,8 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, server: str, count: Optional[int] = 20, **kwargs) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, server: str, count: Optional[int] = 20, **kwargs) -> List[
+        schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
