@@ -32,11 +32,13 @@ from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
 from app.scheduler import Scheduler
-from app.schemas.types import SystemConfigKey
+from app.schemas import ConfigChangeEventData
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.crypto import HashUtils
 from app.utils.http import RequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.url import UrlUtils
+from core.event import eventmanager
 from version import APP_VERSION
 
 router = APIRouter()
@@ -218,7 +220,7 @@ def set_env_setting(env: dict,
     result = settings.update_settings(env=env)
     # 统计成功和失败的结果
     success_updates = {k: v for k, v in result.items() if v[0]}
-    failed_updates = {k: v for k, v in result.items() if not v[0]}
+    failed_updates = {k: v for k, v in result.items() if v[0] is False}
 
     if failed_updates:
         return schemas.Response(
@@ -229,6 +231,15 @@ def set_env_setting(env: dict,
                 "failed_updates": failed_updates
             }
         )
+
+    if success_updates:
+        for key in success_updates.keys():
+            # 发送配置变更事件
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                value=getattr(settings, key, None),
+                change_type="update"
+            ))
 
     return schemas.Response(
         success=True,
@@ -283,12 +294,26 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
     """
     if hasattr(settings, key):
         success, message = settings.update_setting(key=key, value=value)
+        if success:
+            # 发送配置变更事件
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                value=value,
+                change_type="update"
+            ))
         return schemas.Response(success=success, message=message)
     elif key in {item.value for item in SystemConfigKey}:
         if isinstance(value, list):
             value = list(filter(None, value))
             value = value if value else None
-        SystemConfigOper().set(key, value)
+        success = SystemConfigOper().set(key, value)
+        if success:
+            # 发送配置变更事件
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                value=value,
+                change_type="update"
+            ))
         return schemas.Response(success=True)
     else:
         return schemas.Response(success=False, message=f"配置项 '{key}' 不存在")

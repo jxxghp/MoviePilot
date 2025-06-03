@@ -27,8 +27,7 @@ class ConfigChangeEventData(BaseEventData):
     ConfigChange 事件的数据模型
     """
     key: str = Field(..., description="配置项的键")
-    old_value: Optional[Any] = Field(default=None, description="配置项的旧值")
-    new_value: Optional[Any] = Field(default=None, description="配置项的新值")
+    value: Optional[Any] = Field(default=None, description="配置项的新值")
     change_type: str = Field(default="update", description="配置项的变更类型，如 'add', 'update', 'delete'")
 
 
