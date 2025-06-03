@@ -146,7 +146,7 @@ def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):
             
             if log_memory:
                 before_memory = memory_manager.get_memory_usage()
-                logger.debug(f"{func.__name__} 执行前内存: {before_memory['rss']:.1f}MB")
+                logger.info(f"{func.__name__} 执行前内存: {before_memory['rss']:.1f}MB")
             
             try:
                 result = func(*args, **kwargs)
@@ -157,7 +157,7 @@ def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):
                 
                 if log_memory:
                     after_memory = memory_manager.get_memory_usage()
-                    logger.debug(f"{func.__name__} 执行后内存: {after_memory['rss']:.1f}MB")
+                    logger.info(f"{func.__name__} 执行后内存: {after_memory['rss']:.1f}MB")
         
         return wrapper
     return decorator
