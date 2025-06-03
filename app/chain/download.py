@@ -19,8 +19,10 @@ from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, ResourceDownloadEventData
-from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, ChainEventType
+from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, \
+    ResourceDownloadEventData
+from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
+    ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -450,6 +452,7 @@ class DownloadChain(ChainBase):
             if not no_exist.get(season):
                 return 9999
             return no_exist[season].total_episode
+
         def _calculate_intersection_ratio(episodes_set: set, target_set: set) -> Tuple[float, set]:
             """
             计算种子与目标缺失集之间的交集比例。
@@ -462,6 +465,7 @@ class DownloadChain(ChainBase):
                 return 0.0, set()
             cal_ratio = len(cal_intersection) / len(episodes_set)
             return cal_ratio, cal_intersection
+
         # 发送资源选择事件，允许外部修改上下文数据
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
@@ -651,7 +655,7 @@ class DownloadChain(ChainBase):
                             # 计算交集
                             # 若种子[5-10],[7-10],[9-10]  need_episodes=[9,10,11,12,13,14]
                             # 计算后的交集比例( len(torrent_episodes ∩ need_episodes) / len(torrent_episodes)  )分别  0.33 0.66  1.0
-                            ratio, intersection = _calculate_intersection_ratio(torrent_episodes,set(need_episodes))
+                            ratio, intersection = _calculate_intersection_ratio(torrent_episodes, set(need_episodes))
                             if ratio <= (settings.EPISODE_INTERSECTION_MIN_CONFIDENCE or 0.05):
                                 # 可以设定阈值
                                 logger.info(
