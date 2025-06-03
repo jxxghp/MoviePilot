@@ -14,13 +14,12 @@ class MemoryManager(metaclass=Singleton):
     """
     
     def __init__(self):
-        self._memory_threshold = 80  # 内存使用率阈值(%)
+        self._memory_threshold = 512  # 内存使用阈值(MB)
         self._check_interval = 300   # 检查间隔(秒)
         self._monitoring = False
         self._monitor_thread: Optional[threading.Thread] = None
         
-    @staticmethod
-    def get_memory_usage() -> dict:
+    def get_memory_usage(self) -> dict:
         """
         获取当前内存使用情况
         """
@@ -59,14 +58,19 @@ class MemoryManager(metaclass=Singleton):
     
     def check_memory_and_cleanup(self) -> bool:
         """
-        检查内存使用率，如果过高则执行清理
+        检查内存使用量，如果超过阈值则执行清理
         :return: 是否执行了清理
         """
         memory_info = self.get_memory_usage()
+        current_memory_mb = memory_info['rss']
         
-        if memory_info['percent'] > self._memory_threshold:
-            logger.warning(f"内存使用率过高: {memory_info['percent']:.1f}%, 开始清理...")
+        if current_memory_mb > self._memory_threshold:
+            logger.warning(f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold}MB, 开始清理...")
             self.force_gc()
+            
+            # 再次检查清理效果
+            after_memory = self.get_memory_usage()
+            logger.info(f"清理后内存: {after_memory['rss']:.1f}MB")
             return True
         return False
     
@@ -80,7 +84,7 @@ class MemoryManager(metaclass=Singleton):
         self._monitoring = True
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()
-        logger.info("内存监控已启动")
+        logger.info(f"内存监控已启动 - 阈值: {self._memory_threshold}MB, 检查间隔: {self._check_interval}秒")
     
     def stop_monitoring(self):
         """
@@ -103,17 +107,28 @@ class MemoryManager(metaclass=Singleton):
                 logger.error(f"内存监控出错: {e}")
                 time.sleep(60)  # 出错后等待1分钟再继续
     
-    def set_threshold(self, threshold: int):
+    def set_threshold(self, threshold_mb: int):
         """
-        设置内存使用率阈值
+        设置内存使用阈值
+        :param threshold_mb: 内存阈值，单位MB（50-4096之间）
         """
-        self._memory_threshold = max(50, min(95, threshold))
+        self._memory_threshold = max(50, min(4096, threshold_mb))
+        logger.info(f"内存阈值已设置为: {self._memory_threshold}MB")
     
     def set_check_interval(self, interval: int):
         """
         设置检查间隔
+        :param interval: 检查间隔，单位秒（最少60秒）
         """
         self._check_interval = max(60, interval)
+        logger.info(f"内存检查间隔已设置为: {self._check_interval}秒")
+    
+    def get_threshold(self) -> int:
+        """
+        获取当前内存阈值
+        :return: 当前阈值(MB)
+        """
+        return self._memory_threshold
 
 
 def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):

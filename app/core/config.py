@@ -546,7 +546,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "tmdb": "TMDB请求缓存数量",
             "douban": "豆瓣请求缓存数量",
             "fanart": "Fanart请求缓存数量",
-            "meta": "元数据缓存过期时间（秒）"
+            "meta": "元数据缓存过期时间（秒）",
+            "memory": "最大占用内存（MB）"
         }
         """
         if self.BIG_MEMORY_MODE:
@@ -557,7 +558,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 "douban": 512,
                 "bangumi": 512,
                 "fanart": 512,
-                "meta": (self.META_CACHE_EXPIRE or 24) * 3600
+                "meta": (self.META_CACHE_EXPIRE or 24) * 3600,
+                "memory": 2 * 1024
             }
         return {
             "torrents": 100,
@@ -566,7 +568,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "douban": 256,
             "bangumi": 256,
             "fanart": 128,
-            "meta": (self.META_CACHE_EXPIRE or 2) * 3600
+            "meta": (self.META_CACHE_EXPIRE or 2) * 3600,
+            "memory": 1024
         }
 
     @property
