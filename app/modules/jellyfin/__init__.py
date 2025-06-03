@@ -1,17 +1,19 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
+from app.core.config import on_config_change
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.schemas import AuthCredentials, AuthInterceptCredentials
-from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
+from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType, SystemConfigKey
 
 
 class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
 
+    @on_config_change([SystemConfigKey.MediaServers.value])
     def init_module(self) -> None:
         """
         初始化模块

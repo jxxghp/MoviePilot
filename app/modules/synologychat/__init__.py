@@ -1,15 +1,17 @@
 from typing import Optional, Union, List, Tuple, Any
 
+from app.core.config import on_config_change
 from app.core.context import MediaInfo, Context
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, SystemConfigKey
 
 
 class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
 
+    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块

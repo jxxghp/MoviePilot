@@ -1,16 +1,18 @@
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
+from app.core.config import on_config_change
 from app.core.context import Context, MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, SystemConfigKey
 
 
 class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
 
+    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块

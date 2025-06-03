@@ -1,16 +1,18 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
+from app.core.config import on_config_change
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
+from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType, SystemConfigKey
 
 
 class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
 
+    @on_config_change([SystemConfigKey.MediaServers.value])
     def init_module(self) -> None:
         """
         初始化模块

@@ -2,18 +2,20 @@ import copy
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
+from app.core.config import on_config_change
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
 from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData
-from app.schemas.types import ModuleType, ChainEventType
+from app.schemas.types import ModuleType, ChainEventType, SystemConfigKey
 from app.utils.structures import DictUtils
 
 
 class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
 
+    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块

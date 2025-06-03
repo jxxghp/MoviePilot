@@ -5,18 +5,19 @@ from torrentool.torrent import Torrent
 from transmission_rpc import File
 
 from app import schemas
-from app.core.config import settings
+from app.core.config import settings, on_config_change
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.transmission.transmission import Transmission
 from app.schemas import TransferTorrent, DownloadingTorrent
-from app.schemas.types import TorrentStatus, ModuleType, DownloaderType
+from app.schemas.types import TorrentStatus, ModuleType, DownloaderType, SystemConfigKey
 from app.utils.string import StringUtils
 
 
 class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
+    @on_config_change([SystemConfigKey.Downloaders.value])
     def init_module(self) -> None:
         """
         初始化模块

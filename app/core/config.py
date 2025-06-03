@@ -1,19 +1,118 @@
 import copy
 import json
 import os
-import re
 import secrets
 import sys
 import threading
+from collections import defaultdict
+from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type, Callable
 
 from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
 
 from app.log import logger, log_settings, LogConfigModel
+from app.utils.object import ObjectUtils
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
+
+
+class ConfigChangeType(Enum):
+    """
+    配置变更类型
+    """
+    ADD = "add"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
+class ConfigChangeEvent:
+    """
+    配置变更事件
+    """
+
+    def __init__(self, key: str, old_value: Any, new_value: Any,
+                 change_type: ConfigChangeType = ConfigChangeType.UPDATE):
+        self.key = key
+        self.old_value = old_value
+        self.new_value = new_value
+        self.change_type = change_type
+        self.timestamp = threading.Event()
+
+
+class ConfigObserver:
+    """
+    配置观察者接口
+    """
+
+    def on_config_changed(self, event: ConfigChangeEvent):
+        """
+        配置变更回调
+        """
+        pass
+
+
+class ConfigNotifier:
+    """
+    配置变更通知器
+    """
+
+    def __init__(self):
+        self._observers: Dict[str, List[ConfigObserver]] = defaultdict(list)
+        self._global_observers: List[ConfigObserver] = []
+        self._lock = threading.RLock()
+
+    def add_observer(self, observer: ConfigObserver, config_keys: Optional[List[str]] = None):
+        """
+        添加观察者
+        :param observer: 观察者对象
+        :param config_keys: 监听的配置键列表，为None时监听所有配置变更
+        """
+        with self._lock:
+            if config_keys is None:
+                self._global_observers.append(observer)
+            else:
+                for key in config_keys:
+                    self._observers[key].append(observer)
+
+    def remove_observer(self, observer: ConfigObserver, config_keys: Optional[List[str]] = None):
+        """
+        移除观察者
+        :param observer: 观察者对象
+        :param config_keys: 监听的配置键列表，为None时移除全局观察者
+        """
+        with self._lock:
+            if config_keys is None:
+                if observer in self._global_observers:
+                    self._global_observers.remove(observer)
+            else:
+                for key in config_keys:
+                    if observer in self._observers[key]:
+                        self._observers[key].remove(observer)
+
+    def notify(self, event: ConfigChangeEvent):
+        """
+        通知观察者配置变更
+        """
+        with self._lock:
+            # 通知全局观察者
+            for observer in self._global_observers:
+                try:
+                    observer.on_config_changed(event)
+                except Exception as e:
+                    logger.error(f"配置观察者 {observer} 处理配置变更时出错: {e}")
+
+            # 通知特定配置键的观察者
+            for observer in self._observers.get(event.key, []):
+                try:
+                    observer.on_config_changed(event)
+                except Exception as e:
+                    logger.error(f"配置观察者 {observer} 处理配置变更 {event.key} 时出错: {e}")
+
+
+# 全局配置通知器
+config_notifier = ConfigNotifier()
 
 
 class ConfigModel(BaseModel):
@@ -255,30 +354,26 @@ class ConfigModel(BaseModel):
     # 编码探测的最低置信度阈值
     ENCODING_DETECTION_MIN_CONFIDENCE: float = 0.8
     # 允许的图片缓存域名
-    SECURITY_IMAGE_DOMAINS: List[str] = Field(
-        default_factory=lambda: ["image.tmdb.org",
-                                 "static-mdb.v.geilijiasu.com",
-                                 "bing.com",
-                                 "doubanio.com",
-                                 "lain.bgm.tv",
-                                 "raw.githubusercontent.com",
-                                 "github.com",
-                                 "thetvdb.com",
-                                 "cctvpic.com",
-                                 "iqiyipic.com",
-                                 "hdslb.com",
-                                 "cmvideo.cn",
-                                 "ykimg.com",
-                                 "qpic.cn"]
-    )
+    SECURITY_IMAGE_DOMAINS: list = Field(default=[
+        "image.tmdb.org",
+        "static-mdb.v.geilijiasu.com",
+        "bing.com",
+        "doubanio.com",
+        "lain.bgm.tv",
+        "raw.githubusercontent.com",
+        "github.com",
+        "thetvdb.com",
+        "cctvpic.com",
+        "iqiyipic.com",
+        "hdslb.com",
+        "cmvideo.cn",
+        "ykimg.com",
+        "qpic.cn"
+    ])
     # 允许的图片文件后缀格式
-    SECURITY_IMAGE_SUFFIXES: List[str] = Field(
-        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"]
-    )
+    SECURITY_IMAGE_SUFFIXES: list = Field(default=[".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"])
     # 重命名时支持的S0别名
-    RENAME_FORMAT_S0_NAMES: List[str] = Field(
-        default_factory=lambda: ["Specials", "SPs"]
-    )
+    RENAME_FORMAT_S0_NAMES: list = Field(default=["Specials", "SPs"])
     # 启用分词搜索
     TOKENIZED_SEARCH: bool = False
     # 为指定默认字幕添加.default后缀
@@ -333,6 +428,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                                raise_exception: bool = False) -> Tuple[Any, bool]:
         """
         通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
+        :return: 元组 (转换后的值, 是否需要更新)
         """
         if isinstance(value, (list, dict, set)):
             value = copy.deepcopy(value)
@@ -373,12 +469,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                     converted = float(value)
                     return converted, str(converted) != str(original_value)
             elif expected_type is str:
-                # 清理 value 中所有空白字符的字段
-                fields_not_keep_spaces = {"AUTO_DOWNLOAD_USER", "REPO_GITHUB_TOKEN", "PLUGIN_MARKET"}
-                if field_name in fields_not_keep_spaces:
-                    value = re.sub(r"\s+", "", value)
-                return value, str(value) != str(original_value)
-            # 支持 list 类型的处理
+                converted = str(value).strip()
+                return converted, converted != str(original_value)
             elif expected_type is list:
                 if isinstance(value, list):
                     return value, str(value) != str(original_value)
@@ -388,7 +480,6 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                         return items, items != original_value
                     else:
                         return items, str(items) != str(original_value)
-            # 可根据需要添加更多类型处理
             else:
                 return value, str(value) != str(original_value)
         except (ValueError, TypeError) as e:
@@ -462,9 +553,14 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 success, message = self.update_env_config(field, value, converted_value)
                 # 仅成功更新配置时，才更新内存
                 if success:
+                    old_value = getattr(self, key)
                     setattr(self, key, converted_value)
                     if hasattr(log_settings, key):
                         setattr(log_settings, key, converted_value)
+                    # 发送配置变更通知
+                    event = ConfigChangeEvent(key, old_value, converted_value)
+                    config_notifier.notify(event)
+
                 return success, message
             return True, ""
         except Exception as e:
@@ -475,21 +571,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         更新多个配置项
         """
         results = {}
-        log_updated, plugin_monitor_updated = False, False
         for k, v in env.items():
             results[k] = self.update_setting(k, v)
-            if hasattr(log_settings, k):
-                log_updated = True
-            if k in ["PLUGIN_AUTO_RELOAD", "DEV"]:
-                plugin_monitor_updated = True
-        # 本次更新存在日志配置项更新，需要重新加载日志配置
-        if log_updated:
-            logger.update_loggers()
-        # 本次更新存在插件监控配置项更新，需要重新加载插件监控
-        if plugin_monitor_updated:
-            # 解决顶层循环导入问题
-            from app.core.plugin import PluginManager
-            PluginManager().reload_monitor()
         return results
 
     @property
@@ -645,6 +728,10 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return UrlUtils.combine_url(host=self.APP_DOMAIN, path=url)
 
 
+# 实例化配置
+settings = Settings()
+
+
 class GlobalVar(object):
     """
     全局标识
@@ -702,8 +789,93 @@ class GlobalVar(object):
         return self.is_system_stopped or workflow_id in self.EMERGENCY_STOP_WORKFLOWS
 
 
-# 实例化配置
-settings = Settings()
-
 # 全局标识
 global_vars = GlobalVar()
+
+
+class HotReloadManager(ConfigObserver):
+    """
+    配置热更新管理器
+    """
+
+    def __init__(self):
+        self._reload_handlers: Dict[str, Callable] = {}
+        # 注册为全局配置观察者
+        config_notifier.add_observer(self)
+
+    def register_handler(self, config_keys: List[str], handler: Callable[[Any, Any], None]):
+        """
+        注册配置变更处理器
+        :param config_keys: 配置键列表
+        :param handler: 处理函数，接收 (old_value, new_value) 参数
+        """
+        for key in config_keys:
+            self._reload_handlers[key] = handler
+
+    @staticmethod
+    def __get_callable(name: str):
+        """
+        根据类名获取类实例，首先检查全局变量中是否存在该类，如果不存在则尝试动态导入模块。
+        :param name: 方法名/类名.方法名
+        :return: 类的实例
+        """
+        # 检查类是否在全局变量中
+        if name in globals():
+            try:
+                class_obj = globals()[name]()
+                return class_obj
+            except Exception as e:
+                logger.error(str(e))
+                return None
+
+        # TODO 如果类不在全局变量中，尝试动态导入模块并创建实例
+
+        return None
+
+    def on_config_changed(self, event: ConfigChangeEvent):
+        """
+        处理配置变更事件
+        """
+        if event.key in self._reload_handlers:
+            try:
+                handler = self._reload_handlers[event.key]
+                # 可执行函数
+                func = self.__get_callable(handler.__qualname__)
+                # 参数数量
+                args_num = ObjectUtils.arguments(func)
+                if args_num < 2:
+                    func()
+                else:
+                    func(event.old_value, event.new_value)
+                logger.info(f"配置 {event.key} 热更新成功：{func}")
+            except Exception as e:
+                logger.error(f"配置 {event.key} 热更新失败: {e}")
+
+
+# 初始化热更新管理器
+hot_reload_manager = HotReloadManager()
+
+
+def on_config_change(config_keys: List[str]):
+    """
+    装饰器：用于注册配置变更处理函数
+
+    使用示例:
+    @on_config_change(['PROXY_HOST', 'TMDB_API_KEY'])
+    def handle_config_change(old_value, new_value):
+        pass
+    """
+
+    def decorator(func: Callable[[Any, Any], None]):
+        hot_reload_manager.register_handler(config_keys, func)
+        return func
+
+    return decorator
+
+
+@on_config_change(['DEBUG', 'LOG_LEVEL'])
+def handle_logger_change():
+    """
+    默认的配置变更处理函数
+    """
+    logger.update_loggers()

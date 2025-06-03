@@ -24,14 +24,13 @@ from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.mediaserver import MediaServerHelper
-from app.helper.message import MessageHelper, MessageQueueManager
+from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
-from app.monitor import Monitor
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey
 from app.utils.crypto import HashUtils
@@ -481,18 +480,6 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
     # 执行重启
     ret, msg = SystemHelper.restart()
     return schemas.Response(success=ret, message=msg)
-
-
-@router.get("/reload", summary="重新加载模块", response_model=schemas.Response)
-def reload_module(_: User = Depends(get_current_active_superuser)):
-    """
-    重新加载模块（仅管理员）
-    """
-    MessageQueueManager().init_config()
-    ModuleManager().reload()
-    Scheduler().init()
-    Monitor().init()
-    return schemas.Response(success=True)
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=schemas.Response)

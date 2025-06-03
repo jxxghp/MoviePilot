@@ -18,7 +18,7 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
-from app.core.config import settings
+from app.core.config import settings, on_config_change
 from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
@@ -57,6 +57,8 @@ class Scheduler(metaclass=Singleton):
     def __init__(self):
         self.init()
 
+    @on_config_change(['DEV', 'COOKIECLOUD_INTERVAL', 'MEDIASERVER_SYNC_INTERVAL', 'SUBSCRIBE_SEARCH',
+                       'SUBSCRIBE_MODE', 'SUBSCRIBE_RSS_INTERVAL', 'SITEDATA_REFRESH_INTERVAL'])
     def init(self):
         """
         初始化定时服务

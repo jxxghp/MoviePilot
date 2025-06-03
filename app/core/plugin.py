@@ -15,7 +15,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from app import schemas
-from app.core.config import settings
+from app.core.config import settings, on_config_change
 from app.core.event import eventmanager
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -240,6 +240,13 @@ class PluginManager(metaclass=Singleton):
         :return: 插件列表
         """
         return self._plugins
+
+    @on_config_change(['PLUGIN_AUTO_RELOAD', 'DEV'])
+    def handle_config_change(self):
+        """
+        处理配置变更事件，重新加载插件监测
+        """
+        self.reload_monitor()
 
     def reload_monitor(self):
         """

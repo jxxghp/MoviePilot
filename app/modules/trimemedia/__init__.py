@@ -1,17 +1,19 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
+from app.core.config import on_config_change
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.schemas import AuthCredentials, AuthInterceptCredentials
-from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType
+from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType, SystemConfigKey
 
 
 class TrimeMediaModule(_ModuleBase, _MediaServerBase[TrimeMedia]):
 
+    @on_config_change([SystemConfigKey.MediaServers.value])
     def init_module(self) -> None:
         """
         初始化模块

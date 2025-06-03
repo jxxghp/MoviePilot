@@ -14,12 +14,13 @@ from watchdog.observers.polling import PollingObserver
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
-from app.core.config import settings
+from app.core.config import settings, on_config_change
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
 from app.schemas import FileItem
+from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
 
 lock = Lock()
@@ -85,6 +86,7 @@ class Monitor(metaclass=Singleton):
         # 启动目录监控和文件整理
         self.init()
 
+    @on_config_change([SystemConfigKey.Directories.value])
     def init(self):
         """
         启动监控

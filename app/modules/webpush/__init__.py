@@ -3,15 +3,16 @@ from typing import Union, Tuple
 
 from pywebpush import webpush, WebPushException
 
-from app.core.config import global_vars, settings
+from app.core.config import global_vars, settings, on_config_change
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
-from app.schemas.types import ModuleType, MessageChannel
+from app.schemas.types import ModuleType, MessageChannel, SystemConfigKey
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
 
+    @on_config_change([SystemConfigKey.Notifications.value])
     def init_module(self) -> None:
         """
         初始化模块
