@@ -43,7 +43,8 @@ class MemoryManager(metaclass=Singleton):
         :return: 回收的对象数量
         """
         before_memory = self.get_memory_usage()
-        
+        logger.info(f"开始强制垃圾回收，当前内存使用: {before_memory['rss']}")
+
         if generation is not None:
             collected = gc.collect(generation)
         else:
@@ -52,7 +53,7 @@ class MemoryManager(metaclass=Singleton):
         after_memory = self.get_memory_usage()
         memory_freed = before_memory['rss'] - after_memory['rss']
         
-        if memory_freed > 1:  # 释放超过1MB才记录
+        if memory_freed > 0:
             logger.info(f"垃圾回收完成: 回收对象 {collected} 个, 释放内存 {memory_freed:.2f}MB")
             
         return collected
