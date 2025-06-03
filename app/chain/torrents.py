@@ -3,8 +3,6 @@ import re
 import traceback
 from typing import Dict, List, Union, Optional
 
-from cachetools import cached, TTLCache
-
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.core.config import settings, global_vars
@@ -90,7 +88,6 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.remove_cache(self._rss_file)
         logger.info(f'种子缓存数据清理完成')
 
-    @cached(cache=TTLCache(maxsize=64, ttl=300))
     @memory_optimized(force_gc_after=True, log_memory=True)
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
                page: Optional[int] = 0) -> List[TorrentInfo]:
@@ -108,7 +105,6 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             return []
         return self.refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
-    @cached(cache=TTLCache(maxsize=64, ttl=180))
     @memory_optimized(force_gc_after=True, log_memory=True)
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
