@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import global_vars
+from app.chain.torrents import TorrentsChain
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI):
     init_modules()
     # 初始化路由
     init_routers(app)
+    # 资源缓存
+    TorrentsChain()
     # 初始化插件
     init_plugins()
     # 初始化定时器
