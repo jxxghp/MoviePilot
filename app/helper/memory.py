@@ -43,7 +43,8 @@ class MemoryManager(metaclass=Singleton):
         :return: 回收的对象数量
         """
         before_memory = self.get_memory_usage()
-        
+        logger.info(f"开始强制垃圾回收，当前内存使用: {before_memory['rss']}")
+
         if generation is not None:
             collected = gc.collect(generation)
         else:
@@ -52,7 +53,7 @@ class MemoryManager(metaclass=Singleton):
         after_memory = self.get_memory_usage()
         memory_freed = before_memory['rss'] - after_memory['rss']
         
-        if memory_freed > 1:  # 释放超过1MB才记录
+        if memory_freed > 0:
             logger.info(f"垃圾回收完成: 回收对象 {collected} 个, 释放内存 {memory_freed:.2f}MB")
             
         return collected
@@ -66,7 +67,7 @@ class MemoryManager(metaclass=Singleton):
         current_memory_mb = memory_info['rss']
         
         if current_memory_mb > self._memory_threshold:
-            logger.warning(f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold}MB, 开始清理...")
+            logger.warning(f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold:.1f}MB, 开始清理...")
             self.force_gc()
             
             # 再次检查清理效果
@@ -145,7 +146,7 @@ def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):
             
             if log_memory:
                 before_memory = memory_manager.get_memory_usage()
-                logger.debug(f"{func.__name__} 执行前内存: {before_memory['rss']:.1f}MB")
+                logger.info(f"{func.__name__} 执行前内存: {before_memory['rss']:.1f}MB")
             
             try:
                 result = func(*args, **kwargs)
@@ -156,7 +157,7 @@ def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):
                 
                 if log_memory:
                     after_memory = memory_manager.get_memory_usage()
-                    logger.debug(f"{func.__name__} 执行后内存: {after_memory['rss']:.1f}MB")
+                    logger.info(f"{func.__name__} 执行后内存: {after_memory['rss']:.1f}MB")
         
         return wrapper
     return decorator

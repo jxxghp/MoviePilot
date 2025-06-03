@@ -25,19 +25,18 @@ class BangumiApi(object):
         "person_credits": "v0/persons/%s/subjects",
     }
     _base_url = "https://api.bgm.tv/"
-    _req = RequestUtils(session=requests.Session())
 
     def __init__(self):
-        pass
+        self._session = requests.Session()
+        self._req = RequestUtils(session=self._session)
 
-    @classmethod
     @cached(maxsize=settings.CACHE_CONF["bangumi"], ttl=settings.CACHE_CONF["meta"])
-    def __invoke(cls, url, key: Optional[str] = None, **kwargs):
-        req_url = cls._base_url + url
+    def __invoke(self, url, key: Optional[str] = None, **kwargs):
+        req_url = self._base_url + url
         params = {}
         if kwargs:
             params.update(kwargs)
-        resp = cls._req.get_res(url=req_url, params=params)
+        resp = self._req.get_res(url=req_url, params=params)
         try:
             if not resp:
                 return None
@@ -207,3 +206,7 @@ class BangumiApi(object):
         return self.__invoke(self._urls["discover"],
                              key="data",
                              _ts=datetime.strftime(datetime.now(), '%Y%m%d'), **kwargs)
+
+    def close(self):
+        if self._session:
+            self._session.close()

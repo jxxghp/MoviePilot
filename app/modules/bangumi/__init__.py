@@ -18,7 +18,7 @@ class BangumiModule(_ModuleBase):
         self.bangumiapi = BangumiApi()
 
     def stop(self):
-        pass
+        self.bangumiapi.close()
 
     def test(self) -> Tuple[bool, str]:
         """

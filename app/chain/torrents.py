@@ -1,9 +1,7 @@
+import gc
 import re
 import traceback
 from typing import Dict, List, Union, Optional
-import gc
-
-from cachetools import cached, TTLCache
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
@@ -12,10 +10,10 @@ from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.memory import memory_optimized, clear_large_objects
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
-from app.helper.memory import MemoryManager, memory_optimized, clear_large_objects
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
@@ -39,11 +37,6 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.systemconfig = SystemConfigOper()
         self.mediachain = MediaChain()
         self.torrenthelper = TorrentHelper()
-        # 初始化内存管理器
-        self.memory_manager = MemoryManager()
-        # 设置内存阈值和启动监控
-        self.memory_manager.set_threshold(settings.CACHE_CONF['memory'])
-        self.memory_manager.start_monitoring()
 
     def __del__(self):
         """
@@ -93,11 +86,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         logger.info(f'开始清理种子缓存数据 ...')
         self.remove_cache(self._spider_file)
         self.remove_cache(self._rss_file)
-        # 强制垃圾回收
-        self.memory_manager.force_gc()
         logger.info(f'种子缓存数据清理完成')
 
-    @cached(cache=TTLCache(maxsize=64, ttl=300))
     @memory_optimized(force_gc_after=True, log_memory=True)
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
                page: Optional[int] = 0) -> List[TorrentInfo]:
@@ -115,7 +105,6 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             return []
         return self.refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
-    @cached(cache=TTLCache(maxsize=64, ttl=180))
     @memory_optimized(force_gc_after=True, log_memory=True)
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
@@ -189,8 +178,6 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         indexers = self.siteshelper.get_indexers()
         # 需要刷新的站点domain
         domains = []
-        # 处理计数器，用于定期内存检查
-        processed_count = 0
         
         # 遍历站点缓存资源
         for indexer in indexers:
@@ -256,15 +243,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                         torrents_cache[domain] = torrents_cache[domain][-settings.CACHE_CONF["torrents"]:]
                         # 清理旧对象
                         clear_large_objects(*old_contexts)
-                    
                     # 优化：清理不再需要的临时变量
                     del meta, mediainfo, context
-                    
-                    # 每处理一定数量的种子后检查内存
-                    processed_count += 1
-                    if processed_count % 10 == 0:
-                        self.memory_manager.check_memory_and_cleanup()
-                        
                 # 回收资源
                 del torrents
                 # 定期执行垃圾回收

@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 
+import requests
 from requests import Response
 
 from app import schemas
@@ -529,20 +530,19 @@ class Alist(StorageBase, metaclass=Singleton):
             if result["data"]["sign"]:
                 download_url = download_url + "?sign=" + result["data"]["sign"]
 
-        resp = RequestUtils(
-            headers=self.__get_header_with_token()
-        ).get_res(download_url)
-
         if not path:
-            new_path = settings.TEMP_PATH / fileitem.name
+            local_path = settings.TEMP_PATH / fileitem.name
         else:
-            new_path = path / fileitem.name
+            local_path = path / fileitem.name
 
-        with open(new_path, "wb") as f:
-            f.write(resp.content)
+        with requests.get(download_url, headers=self.__get_header_with_token(), stream=True) as r:
+            r.raise_for_status()
+            with open(local_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
-        if new_path.exists():
-            return new_path
+        if local_path.exists():
+            return local_path
         return None
 
     def upload(
