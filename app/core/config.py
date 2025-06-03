@@ -6,7 +6,7 @@ import secrets
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
@@ -124,7 +124,7 @@ class ConfigModel(BaseModel):
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
     # 电视剧动漫的分类genre_ids
-    ANIME_GENREIDS: list[int] = [16]
+    ANIME_GENREIDS: List[int] = [16]
     # 用户认证站点
     AUTH_SITE: str = ""
     # 重启自动升级

@@ -569,15 +569,14 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 for context in contexts:
                     # 复制上下文避免修改原始数据
                     _context = copy.deepcopy(context)
-                    torrent_meta = _context.meta_info
-                    torrent_mediainfo = _context.media_info
-
                     # 如果种子未识别，尝试识别
-                    if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
-                        torrent_mediainfo = self.recognize_media(meta=torrent_meta)
-                        if torrent_mediainfo:
+                    if not _context.media_info or (not _context.media_info.tmdb_id
+                                                   and not _context.media_info.douban_id):
+                        re_mediainfo = self.recognize_media(meta=_context.meta_info)
+                        if re_mediainfo:
                             # 更新种子缓存
-                            context.media_info = torrent_mediainfo
+                            _context.media_info = re_mediainfo
+                            context.media_info = re_mediainfo
                     # 添加已预处理
                     processed_torrents[domain].append(_context)
 
@@ -657,12 +656,14 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
                                                         custom_words=custom_words_list)
                                 # 更新元数据缓存
+                                _context.meta_info = torrent_meta
                                 context.meta_info = torrent_meta
                                 # 重新识别媒体信息
                                 torrent_mediainfo = self.recognize_media(meta=torrent_meta,
                                                                          episode_group=subscribe.episode_group)
                                 if torrent_mediainfo:
                                     # 更新种子缓存
+                                    _context.media_info = torrent_mediainfo
                                     context.media_info = torrent_mediainfo
 
                         # 如果仍然没有识别到媒体信息，尝试标题匹配
@@ -677,6 +678,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                     f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
                                 torrent_mediainfo = mediainfo
                                 # 更新种子缓存
+                                _context.media_info = mediainfo
                                 context.media_info = mediainfo
                             else:
                                 continue
