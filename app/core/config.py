@@ -13,8 +13,6 @@ from pydantic import BaseModel, BaseSettings, validator, Field
 from app.log import logger, log_settings, LogConfigModel
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
-from app.schemas.types import EventType
-from app.schemas import ConfigChangeEventData
 
 
 class ConfigModel(BaseModel):
@@ -391,8 +389,6 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型，使用默认值 '{default}'，错误信息: {e}")
         return default, True
 
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @validator('*', pre=True, always=True)
     def generic_type_validator(cls, value: Any, field):  # noqa
         """
@@ -435,9 +431,12 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 logger.info(f"配置项 '{field.name}' 已自动修正并写入到 'app.env' 文件")
         return True, message
 
-    def update_setting(self, key: str, value: Any) -> Tuple[bool, str]:
+    def update_setting(self, key: str, value: Any) -> Tuple[Optional[bool], str]:
         """
         更新单个配置项
+        :param key: 配置项的名称
+        :param value: 配置项的新值
+        :return: (是否成功 True 成功/False 失败/None 无需更新, 错误信息)
         """
         if not hasattr(self, key):
             return False, f"配置项 '{key}' 不存在"
@@ -448,32 +447,25 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             if field.name == "API_TOKEN":
                 converted_value, needs_update = self.validate_api_token(value, original_value)
             else:
-                converted_value, needs_update = self.generic_type_converter(value, original_value, field.type_,
-                                                                            field.default, key)
+                converted_value, needs_update = self.generic_type_converter(value,
+                                                                            original_value,
+                                                                            field.type_,
+                                                                            field.default,
+                                                                            key)
             # 如果没有抛出异常，则统一使用 converted_value 进行更新
             if needs_update or str(value) != str(converted_value):
                 success, message = self.update_env_config(field, value, converted_value)
                 # 仅成功更新配置时，才更新内存
                 if success:
-                    old_value = getattr(self, key)
                     setattr(self, key, converted_value)
                     if hasattr(log_settings, key):
                         setattr(log_settings, key, converted_value)
-                    # 发送配置变更通知
-                    from app.core.event import eventmanager
-                    eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
-                        key=key,
-                        old_value=old_value,
-                        new_value=converted_value,
-                        change_type="update"
-                    ))
-
                 return success, message
-            return True, ""
+            return None, ""
         except Exception as e:
             return False, str(e)
 
-    def update_settings(self, env: Dict[str, Any]) -> Dict[str, Tuple[bool, str]]:
+    def update_settings(self, env: Dict[str, Any]) -> Dict[str, Tuple[Optional[bool], str]]:
         """
         更新多个配置项
         """
