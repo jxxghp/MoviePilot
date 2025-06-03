@@ -254,6 +254,7 @@ class RssHelper:
             return False
         
         if ret:
+            ret_xml = None
             try:
                 # 检查响应大小，避免处理过大的RSS文件
                 raw_data = ret.content

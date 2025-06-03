@@ -19,7 +19,8 @@ class MemoryManager(metaclass=Singleton):
         self._monitoring = False
         self._monitor_thread: Optional[threading.Thread] = None
         
-    def get_memory_usage(self) -> dict:
+    @staticmethod
+    def get_memory_usage() -> dict:
         """
         获取当前内存使用情况
         """
@@ -155,4 +156,4 @@ def clear_large_objects(*objects):
         elif hasattr(obj, '__dict__'):
             obj.__dict__.clear()
         del obj
-    gc.collect() 
+    gc.collect()
