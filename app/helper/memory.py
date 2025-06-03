@@ -19,7 +19,8 @@ class MemoryManager(metaclass=Singleton):
         self._monitoring = False
         self._monitor_thread: Optional[threading.Thread] = None
         
-    def get_memory_usage(self) -> dict:
+    @staticmethod
+    def get_memory_usage() -> dict:
         """
         获取当前内存使用情况
         """
@@ -110,9 +111,9 @@ class MemoryManager(metaclass=Singleton):
     def set_threshold(self, threshold_mb: int):
         """
         设置内存使用阈值
-        :param threshold_mb: 内存阈值，单位MB（50-4096之间）
+        :param threshold_mb: 内存阈值，单位MB（500-4096之间）
         """
-        self._memory_threshold = max(50, min(4096, threshold_mb))
+        self._memory_threshold = max(512, min(4096, threshold_mb))
         logger.info(f"内存阈值已设置为: {self._memory_threshold}MB")
     
     def set_check_interval(self, interval: int):
