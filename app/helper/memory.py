@@ -67,7 +67,7 @@ class MemoryManager(metaclass=Singleton):
         current_memory_mb = memory_info['rss']
         
         if current_memory_mb > self._memory_threshold:
-            logger.warning(f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold}MB, 开始清理...")
+            logger.warning(f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold:.1f}MB, 开始清理...")
             self.force_gc()
             
             # 再次检查清理效果
