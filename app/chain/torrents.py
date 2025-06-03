@@ -42,10 +42,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         # 初始化内存管理器
         self.memory_manager = MemoryManager()
         # 设置内存阈值和启动监控
-        max_memory = settings.CACHE_CONF['memory']
-        self.memory_manager.set_threshold(max_memory)
+        self.memory_manager.set_threshold(settings.CACHE_CONF['memory'])
         self.memory_manager.start_monitoring()
-        logger.info(f"内存监控已启用 - 阈值: {max_memory}MB")
 
     def __del__(self):
         """
