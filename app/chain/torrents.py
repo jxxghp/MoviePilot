@@ -41,11 +41,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.torrenthelper = TorrentHelper()
         # 初始化内存管理器
         self.memory_manager = MemoryManager()
-        # 启动内存监控（如果需要）
-        if settings.BIG_MEMORY_MODE:
-            self.memory_manager.set_threshold(85)  # 大内存模式下提高阈值
-        else:
-            self.memory_manager.set_threshold(75)  # 普通模式下较低阈值
+        # 设置内存阈值和启动监控
+        self.memory_manager.set_threshold(settings.CACHE_CONF['memory'])
         self.memory_manager.start_monitoring()
 
     def __del__(self):
