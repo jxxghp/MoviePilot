@@ -20,7 +20,10 @@ from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
 from app.schemas import FileItem
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.singleton import Singleton
+from app.core.event import Event, eventmanager
+from app.schemas import ConfigChangeEventData
 
 lock = Lock()
 snapshot_lock = Lock()
@@ -83,6 +86,19 @@ class Monitor(metaclass=Singleton):
         self.all_exts = settings.RMT_MEDIAEXT
 
         # 启动目录监控和文件整理
+        self.init()
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.Directories.value]:
+            return
         self.init()
 
     def init(self):

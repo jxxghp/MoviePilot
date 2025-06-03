@@ -2,8 +2,9 @@ from typing import Any, Union
 
 from app.db import DbOper
 from app.db.models.systemconfig import SystemConfig
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.singleton import Singleton
+from app.schemas import ConfigChangeEventData
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
@@ -24,17 +25,44 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         """
         if isinstance(key, SystemConfigKey):
             key = key.value
+        # 旧值
+        old_value = self.__SYSTEMCONF.get(key)
         # 更新内存
         self.__SYSTEMCONF[key] = value
         conf = SystemConfig.get_by_key(self._db, key)
         if conf:
             if value:
                 conf.update(self._db, {"value": value})
+                # 发送配置变更通知
+                if old_value != value:
+                    from app.core.event import eventmanager
+                    eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                        key=key,
+                        old_value=old_value,
+                        new_value=value,
+                        change_type="update"
+                    ))
             else:
                 conf.delete(self._db, conf.id)
+                # 发送配置删除通知
+                from app.core.event import eventmanager
+                eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                    key=key,
+                    old_value=old_value,
+                    new_value=value,
+                    change_type="delete"
+                ))
         else:
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
+            # 发送配置变更通知
+            from app.core.event import eventmanager
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                old_value=old_value,
+                new_value=value,
+                change_type="add"
+            ))
 
     def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
         """
@@ -59,11 +87,19 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         if isinstance(key, SystemConfigKey):
             key = key.value
         # 更新内存
-        self.__SYSTEMCONF.pop(key, None)
+        old_value = self.__SYSTEMCONF.pop(key, None)
         # 写入数据库
         conf = SystemConfig.get_by_key(self._db, key)
         if conf:
             conf.delete(self._db, conf.id)
+            # 发送配置变更通知
+            from app.core.event import eventmanager
+            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                key=key,
+                old_value=old_value,
+                new_value=None,
+                change_type="delete"
+            ))
         return True
 
     def __del__(self):

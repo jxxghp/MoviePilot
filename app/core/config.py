@@ -1,7 +1,6 @@
 import copy
 import json
 import os
-import re
 import secrets
 import sys
 import threading
@@ -14,6 +13,8 @@ from pydantic import BaseModel, BaseSettings, validator, Field
 from app.log import logger, log_settings, LogConfigModel
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
+from app.schemas.types import EventType
+from app.schemas import ConfigChangeEventData
 
 
 class ConfigModel(BaseModel):
@@ -255,30 +256,26 @@ class ConfigModel(BaseModel):
     # 编码探测的最低置信度阈值
     ENCODING_DETECTION_MIN_CONFIDENCE: float = 0.8
     # 允许的图片缓存域名
-    SECURITY_IMAGE_DOMAINS: List[str] = Field(
-        default_factory=lambda: ["image.tmdb.org",
-                                 "static-mdb.v.geilijiasu.com",
-                                 "bing.com",
-                                 "doubanio.com",
-                                 "lain.bgm.tv",
-                                 "raw.githubusercontent.com",
-                                 "github.com",
-                                 "thetvdb.com",
-                                 "cctvpic.com",
-                                 "iqiyipic.com",
-                                 "hdslb.com",
-                                 "cmvideo.cn",
-                                 "ykimg.com",
-                                 "qpic.cn"]
-    )
+    SECURITY_IMAGE_DOMAINS: list = Field(default=[
+        "image.tmdb.org",
+        "static-mdb.v.geilijiasu.com",
+        "bing.com",
+        "doubanio.com",
+        "lain.bgm.tv",
+        "raw.githubusercontent.com",
+        "github.com",
+        "thetvdb.com",
+        "cctvpic.com",
+        "iqiyipic.com",
+        "hdslb.com",
+        "cmvideo.cn",
+        "ykimg.com",
+        "qpic.cn"
+    ])
     # 允许的图片文件后缀格式
-    SECURITY_IMAGE_SUFFIXES: List[str] = Field(
-        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"]
-    )
+    SECURITY_IMAGE_SUFFIXES: list = Field(default=[".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"])
     # 重命名时支持的S0别名
-    RENAME_FORMAT_S0_NAMES: List[str] = Field(
-        default_factory=lambda: ["Specials", "SPs"]
-    )
+    RENAME_FORMAT_S0_NAMES: list = Field(default=["Specials", "SPs"])
     # 启用分词搜索
     TOKENIZED_SEARCH: bool = False
     # 为指定默认字幕添加.default后缀
@@ -333,6 +330,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                                raise_exception: bool = False) -> Tuple[Any, bool]:
         """
         通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
+        :return: 元组 (转换后的值, 是否需要更新)
         """
         if isinstance(value, (list, dict, set)):
             value = copy.deepcopy(value)
@@ -373,12 +371,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                     converted = float(value)
                     return converted, str(converted) != str(original_value)
             elif expected_type is str:
-                # 清理 value 中所有空白字符的字段
-                fields_not_keep_spaces = {"AUTO_DOWNLOAD_USER", "REPO_GITHUB_TOKEN", "PLUGIN_MARKET"}
-                if field_name in fields_not_keep_spaces:
-                    value = re.sub(r"\s+", "", value)
-                return value, str(value) != str(original_value)
-            # 支持 list 类型的处理
+                converted = str(value).strip()
+                return converted, converted != str(original_value)
             elif expected_type is list:
                 if isinstance(value, list):
                     return value, str(value) != str(original_value)
@@ -388,7 +382,6 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                         return items, items != original_value
                     else:
                         return items, str(items) != str(original_value)
-            # 可根据需要添加更多类型处理
             else:
                 return value, str(value) != str(original_value)
         except (ValueError, TypeError) as e:
@@ -462,9 +455,19 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 success, message = self.update_env_config(field, value, converted_value)
                 # 仅成功更新配置时，才更新内存
                 if success:
+                    old_value = getattr(self, key)
                     setattr(self, key, converted_value)
                     if hasattr(log_settings, key):
                         setattr(log_settings, key, converted_value)
+                    # 发送配置变更通知
+                    from app.core.event import eventmanager
+                    eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+                        key=key,
+                        old_value=old_value,
+                        new_value=converted_value,
+                        change_type="update"
+                    ))
+
                 return success, message
             return True, ""
         except Exception as e:
@@ -475,21 +478,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         更新多个配置项
         """
         results = {}
-        log_updated, plugin_monitor_updated = False, False
         for k, v in env.items():
             results[k] = self.update_setting(k, v)
-            if hasattr(log_settings, k):
-                log_updated = True
-            if k in ["PLUGIN_AUTO_RELOAD", "DEV"]:
-                plugin_monitor_updated = True
-        # 本次更新存在日志配置项更新，需要重新加载日志配置
-        if log_updated:
-            logger.update_loggers()
-        # 本次更新存在插件监控配置项更新，需要重新加载插件监控
-        if plugin_monitor_updated:
-            # 解决顶层循环导入问题
-            from app.core.plugin import PluginManager
-            PluginManager().reload_monitor()
         return results
 
     @property
@@ -645,6 +635,10 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return UrlUtils.combine_url(host=self.APP_DOMAIN, path=url)
 
 
+# 实例化配置
+settings = Settings()
+
+
 class GlobalVar(object):
     """
     全局标识
@@ -701,9 +695,6 @@ class GlobalVar(object):
         """
         return self.is_system_stopped or workflow_id in self.EMERGENCY_STOP_WORKFLOWS
 
-
-# 实例化配置
-settings = Settings()
 
 # 全局标识
 global_vars = GlobalVar()

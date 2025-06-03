@@ -61,6 +61,8 @@ class EventType(Enum):
     MetadataScrape = "metadata.scrape"
     # 模块需要重载
     ModuleReload = "module.reload"
+    # 配置项更新
+    ConfigChanged = "config.updated"
 
 
 # 同步链式事件

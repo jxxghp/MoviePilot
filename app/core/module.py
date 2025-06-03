@@ -1,5 +1,5 @@
 import traceback
-from typing import Generator, Optional, Tuple, Any, Union
+from typing import Generator, Optional, Tuple, Any, Union, List
 
 from app.core.config import settings
 from app.core.event import eventmanager
@@ -164,3 +164,9 @@ class ModuleManager(metaclass=Singleton):
         获取模块列表
         """
         return self._modules
+
+    def get_module_ids(self) -> List[str]:
+        """
+        获取模块id列表
+        """
+        return list(self._modules.keys())

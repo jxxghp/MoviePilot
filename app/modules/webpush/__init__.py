@@ -4,10 +4,11 @@ from typing import Union, Tuple
 from pywebpush import webpush, WebPushException
 
 from app.core.config import global_vars, settings
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
-from app.schemas import Notification
-from app.schemas.types import ModuleType, MessageChannel
+from app.schemas import Notification, ConfigChangeEventData
+from app.schemas.types import ModuleType, MessageChannel, SystemConfigKey, EventType
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
@@ -18,6 +19,19 @@ class WebPushModule(_ModuleBase, _MessageBase):
         """
         super().init_service(service_name=self.get_name().lower())
         self._channel = MessageChannel.WebPush
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in [SystemConfigKey.Notifications.value]:
+            return
+        self.init_module()
 
     @staticmethod
     def get_name() -> str:
