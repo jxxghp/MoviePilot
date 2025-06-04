@@ -13,7 +13,7 @@ from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
-from schemas import MediaServerItem
+from app.schemas import MediaServerItem
 
 
 class Emby:
