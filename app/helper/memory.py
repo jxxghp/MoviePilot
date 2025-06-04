@@ -43,7 +43,7 @@ class MemoryManager(metaclass=Singleton):
         :return: 回收的对象数量
         """
         before_memory = self.get_memory_usage()
-        logger.info(f"开始强制垃圾回收，当前内存使用: {before_memory['rss']}")
+        logger.info(f"开始强制垃圾回收，当前内存使用: {before_memory['rss']:.2f}MB")
 
         if generation is not None:
             collected = gc.collect(generation)

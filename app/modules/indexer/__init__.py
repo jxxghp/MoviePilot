@@ -238,7 +238,11 @@ class IndexerModule(_ModuleBase):
                              cat=cat,
                              page=page)
 
-        return _spider.is_error, _spider.get_torrents()
+        try:
+            return _spider.is_error, _spider.get_torrents()
+        finally:
+            # 显式清理SiteSpider对象
+            del _spider
 
     def refresh_torrents(self, site: dict,
                          keyword: Optional[str] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Optional[List[TorrentInfo]]:
