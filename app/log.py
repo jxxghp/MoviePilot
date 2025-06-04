@@ -28,7 +28,7 @@ class LogConfigModel(BaseModel):
     # 日志文件最大大小（单位：MB）
     LOG_MAX_FILE_SIZE: int = 5
     # 备份的日志文件数量
-    LOG_BACKUP_COUNT: int = 3
+    LOG_BACKUP_COUNT: int = 10
     # 控制台日志格式
     LOG_CONSOLE_FORMAT: str = "%(leveltext)s[%(name)s] %(asctime)s %(message)s"
     # 文件日志格式
