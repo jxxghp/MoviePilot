@@ -281,6 +281,7 @@ class RssHelper:
                     ret_xml = ret.text
                 
                 # 使用lxml.etree解析XML
+                parser = None
                 try:
                     # 创建解析器，禁用网络访问以提高安全性和性能
                     parser = etree.XMLParser(
@@ -303,6 +304,9 @@ class RssHelper:
                     except Exception as e:
                         logger.error(f"HTML解析也失败：{str(e)}")
                         return False
+                finally:
+                    if parser is not None:
+                        del parser
                 
                 if root is None:
                     logger.error("无法解析RSS内容")
@@ -362,7 +366,7 @@ class RssHelper:
                             pubdate = StringUtils.get_time(pubdate_nodes[0].text)
                         
                         # 获取豆瓣昵称
-                        nickname_nodes = item.xpath('.//dc:creator | .//*[local-name()="creator"]')
+                        nickname_nodes = item.xpath('.//*[local-name()="creator"]')
                         nickname = nickname_nodes[0].text if nickname_nodes and nickname_nodes[0].text else ""
                         
                         # 返回对象
@@ -391,21 +395,14 @@ class RssHelper:
                     "RSS Link has expired, You need to get a new one!",
                     "RSS Link has expired, You need to get new!"
                 ]
-                if 'ret_xml' in locals() and ret_xml and ret_xml in _rss_expired_msg:
+                if ret_xml in _rss_expired_msg:
                     return None
                 return False
             finally:
-                # 显式清理XML树，避免内存泄漏
                 if root is not None:
-                    root.clear()
-                    # 清理根节点的父节点引用
-                    while root.getparent() is not None:
-                        parent = root.getparent()
-                        parent.remove(root)
-                        root = parent
-                # 清理局部变量
-                del root, ret_xml
-                # 强制垃圾回收
+                    del root
+                if ret_xml is not None:
+                    del ret_xml
                 gc.collect()
         
         return ret_array
@@ -419,7 +416,6 @@ class RssHelper:
         :param proxy: 是否使用代理
         :return: rss地址、错误信息
         """
-        html = None
         try:
             # 获取站点域名
             domain = StringUtils.get_url_domain(url)
@@ -453,6 +449,7 @@ class RssHelper:
             
             # 解析HTML
             if html_text:
+                html = None
                 try:
                     html = etree.HTML(html_text)
                     if StringUtils.is_valid_html_element(html):
@@ -460,20 +457,9 @@ class RssHelper:
                         if rss_link:
                             return str(rss_link[-1]), ""
                 finally:
-                    # 显式清理HTML树
                     if html is not None:
-                        html.clear()
-                        # 清理父节点引用
-                        while html.getparent() is not None:
-                            parent = html.getparent()
-                            parent.remove(html)
-                            html = parent
-                    del html
-                    gc.collect()
+                        del html
                     
             return "", f"获取RSS链接失败：{url}"
         except Exception as e:
             return "", f"获取 {url} RSS链接失败：{str(e)}"
-        finally:
-            del html
-            gc.collect()
