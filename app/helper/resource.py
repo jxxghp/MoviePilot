@@ -8,7 +8,7 @@ from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
-from helper.system import SystemHelper
+from app.helper.system import SystemHelper
 
 
 class ResourceHelper(metaclass=Singleton):

@@ -450,24 +450,15 @@ class EventManager(metaclass=Singleton):
 
         # 如果类不在全局变量中，尝试动态导入模块并创建实例
         try:
-            if class_name == "Command":
-                module_name = "app.command"
-                module = importlib.import_module(module_name)
-            elif class_name == "Monitor":
-                module_name = "app.monitor"
-                module = importlib.import_module(module_name)
-            elif class_name == "Scheduler":
-                module_name = "app.scheduler"
-                module = importlib.import_module(module_name)
-            elif class_name == "PluginManager":
-                module_name = "app.core.plugin"
+            if class_name.endswith("Manager"):
+                module_name = f"app.core.{class_name[:-7].lower()}"
                 module = importlib.import_module(module_name)
             elif class_name.endswith("Chain"):
                 module_name = f"app.chain.{class_name[:-5].lower()}"
                 module = importlib.import_module(module_name)
             else:
-                logger.debug(f"事件处理出错：不支持的类名: {class_name}")
-                return None
+                module_name = f"app.{class_name.lower()}"
+                module = importlib.import_module(module_name)
             if hasattr(module, class_name):
                 class_obj = getattr(module, class_name)()
                 return class_obj
