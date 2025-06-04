@@ -20,6 +20,7 @@ from app.core.config import global_vars, settings
 from app.core.metainfo import MetaInfo
 from app.core.module import ModuleManager
 from app.core.security import verify_apitoken, verify_resource_token, verify_token
+from app.core.event import eventmanager
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
@@ -38,7 +39,6 @@ from app.utils.crypto import HashUtils
 from app.utils.http import RequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.url import UrlUtils
-from core.event import eventmanager
 from version import APP_VERSION
 
 router = APIRouter()
@@ -225,7 +225,7 @@ def set_env_setting(env: dict,
     if failed_updates:
         return schemas.Response(
             success=False,
-            message="部分配置项更新失败",
+            message=f"{', '.join(failed_updates.keys())} 配置项更新失败",
             data={
                 "success_updates": success_updates,
                 "failed_updates": failed_updates
