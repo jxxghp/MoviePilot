@@ -15,7 +15,6 @@ from app.chain.mediaserver import MediaServerChain
 from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
-from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
 from app.core.config import settings
@@ -23,6 +22,7 @@ from app.core.event import EventManager, eventmanager, Event
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper
+from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow, ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey
@@ -148,7 +148,7 @@ class Scheduler(metaclass=Singleton):
                 },
                 "random_wallpager": {
                     "name": "壁纸缓存",
-                    "func": TmdbChain().get_trending_wallpapers,
+                    "func": WallpaperHelper().get_wallpapers,
                     "running": False,
                 },
                 "sitedata_refresh": {

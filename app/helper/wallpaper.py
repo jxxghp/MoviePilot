@@ -13,34 +13,32 @@ class WallpaperHelper(metaclass=Singleton):
     def __init__(self):
         self.req = RequestUtils(timeout=5)
 
-    @staticmethod
-    def get_wallpaper() -> Optional[str]:
+    def get_wallpaper(self) -> Optional[str]:
         """
         获取登录页面壁纸
         """
         if settings.WALLPAPER == "bing":
-            url = WallpaperHelper().get_bing_wallpaper()
+            url = self.get_bing_wallpaper()
         elif settings.WALLPAPER == "mediaserver":
-            url = MediaServerChain().get_latest_wallpaper()
+            url = self.get_mediaserver_wallpaper()
         elif settings.WALLPAPER == "customize":
-            url = WallpaperHelper().get_customize_wallpaper()
+            url = self.get_customize_wallpaper()
         else:
-            url = WallpaperHelper().get_tmdb_wallpaper()
+            url = self.get_tmdb_wallpaper()
         return url
 
-    @staticmethod
-    def get_wallpapers(num: int = 10) -> List[str]:
+    def get_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取登录页面壁纸列表
         """
         if settings.WALLPAPER == "bing":
-            return WallpaperHelper().get_bing_wallpapers(num)
+            return self.get_bing_wallpapers(num)
         elif settings.WALLPAPER == "mediaserver":
-            return MediaServerChain().get_latest_wallpapers(count=num)
+            return self.get_mediaserver_wallpapers(num)
         elif settings.WALLPAPER == "customize":
-            return WallpaperHelper().get_customize_wallpapers(num)
+            return self.get_customize_wallpapers(num)
         else:
-            return WallpaperHelper().get_tmdb_wallpapers(num)
+            return self.get_tmdb_wallpapers(num)
 
     @cached(maxsize=1, ttl=3600)
     def get_tmdb_wallpaper(self) -> Optional[str]:
@@ -88,6 +86,20 @@ class WallpaperHelper(metaclass=Singleton):
             except Exception as err:
                 print(str(err))
         return []
+
+    @cached(maxsize=1, ttl=3600)
+    def get_mediaserver_wallpaper(self) -> Optional[str]:
+        """
+        获取媒体服务器壁纸
+        """
+        return MediaServerChain().get_latest_wallpaper()
+
+    @cached(maxsize=1, ttl=3600)
+    def get_mediaserver_wallpapers(self, num: int = 10) -> List[str]:
+        """
+        获取媒体服务器壁纸列表
+        """
+        return MediaServerChain().get_latest_wallpapers(count=num)
 
     @cached(maxsize=1, ttl=3600)
     def get_customize_wallpaper(self) -> Optional[str]:
