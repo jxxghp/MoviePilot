@@ -434,9 +434,13 @@ class SystemUtils:
     @staticmethod
     def memory_usage() -> List[int]:
         """
-        获取内存使用量和使用率
+        获取当前程序的内存使用量和使用率
         """
-        return [psutil.virtual_memory().used, int(psutil.virtual_memory().percent)]
+        current_process = psutil.Process()
+        process_memory = current_process.memory_info().rss
+        system_memory = psutil.virtual_memory().total
+        process_memory_percent = (process_memory / system_memory) * 100 
+        return [process_memory, int(process_memory_percent)]
 
     @staticmethod
     def is_hardlink(src: Path, dest: Path) -> bool:
