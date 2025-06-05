@@ -29,12 +29,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     推荐处理链，单例运行
     """
 
-    def __init__(self):
-        super().__init__()
-        self.tmdbchain = TmdbChain()
-        self.doubanchain = DoubanChain()
-        self.bangumichain = BangumiChain()
-        self.cache_max_pages = 5
+    # 推荐数据的缓存页数
+    cache_max_pages = 5
 
     def refresh_recommend(self):
         """
@@ -174,16 +170,16 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         TMDB热门电影
         """
-        movies = self.tmdbchain.tmdb_discover(mtype=MediaType.MOVIE,
-                                              sort_by=sort_by,
-                                              with_genres=with_genres,
-                                              with_original_language=with_original_language,
-                                              with_keywords=with_keywords,
-                                              with_watch_providers=with_watch_providers,
-                                              vote_average=vote_average,
-                                              vote_count=vote_count,
-                                              release_date=release_date,
-                                              page=page)
+        movies = TmdbChain().tmdb_discover(mtype=MediaType.MOVIE,
+                                           sort_by=sort_by,
+                                           with_genres=with_genres,
+                                           with_original_language=with_original_language,
+                                           with_keywords=with_keywords,
+                                           with_watch_providers=with_watch_providers,
+                                           vote_average=vote_average,
+                                           vote_count=vote_count,
+                                           release_date=release_date,
+                                           page=page)
         return [movie.to_dict() for movie in movies] if movies else []
 
     @log_execution_time(logger=logger)
@@ -200,16 +196,16 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         TMDB热门电视剧
         """
-        tvs = self.tmdbchain.tmdb_discover(mtype=MediaType.TV,
-                                           sort_by=sort_by,
-                                           with_genres=with_genres,
-                                           with_original_language=with_original_language,
-                                           with_keywords=with_keywords,
-                                           with_watch_providers=with_watch_providers,
-                                           vote_average=vote_average,
-                                           vote_count=vote_count,
-                                           release_date=release_date,
-                                           page=page)
+        tvs = TmdbChain().tmdb_discover(mtype=MediaType.TV,
+                                        sort_by=sort_by,
+                                        with_genres=with_genres,
+                                        with_original_language=with_original_language,
+                                        with_keywords=with_keywords,
+                                        with_watch_providers=with_watch_providers,
+                                        vote_average=vote_average,
+                                        vote_count=vote_count,
+                                        release_date=release_date,
+                                        page=page)
         return [tv.to_dict() for tv in tvs] if tvs else []
 
     @log_execution_time(logger=logger)
@@ -218,7 +214,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         TMDB流行趋势
         """
-        infos = self.tmdbchain.tmdb_trending(page=page)
+        infos = TmdbChain().tmdb_trending(page=page)
         return [info.to_dict() for info in infos] if infos else []
 
     @log_execution_time(logger=logger)
@@ -227,7 +223,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         Bangumi每日放送
         """
-        medias = self.bangumichain.calendar()
+        medias = BangumiChain().calendar()
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]] if medias else []
 
     @log_execution_time(logger=logger)
@@ -236,7 +232,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣正在热映
         """
-        movies = self.doubanchain.movie_showing(page=page, count=count)
+        movies = DoubanChain().movie_showing(page=page, count=count)
         return [media.to_dict() for media in movies] if movies else []
 
     @log_execution_time(logger=logger)
@@ -246,8 +242,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣最新电影
         """
-        movies = self.doubanchain.douban_discover(mtype=MediaType.MOVIE,
-                                                  sort=sort, tags=tags, page=page, count=count)
+        movies = DoubanChain().douban_discover(mtype=MediaType.MOVIE,
+                                               sort=sort, tags=tags, page=page, count=count)
         return [media.to_dict() for media in movies] if movies else []
 
     @log_execution_time(logger=logger)
@@ -257,8 +253,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣最新电视剧
         """
-        tvs = self.doubanchain.douban_discover(mtype=MediaType.TV,
-                                               sort=sort, tags=tags, page=page, count=count)
+        tvs = DoubanChain().douban_discover(mtype=MediaType.TV,
+                                            sort=sort, tags=tags, page=page, count=count)
         return [media.to_dict() for media in tvs] if tvs else []
 
     @log_execution_time(logger=logger)
@@ -267,7 +263,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣电影TOP250
         """
-        movies = self.doubanchain.movie_top250(page=page, count=count)
+        movies = DoubanChain().movie_top250(page=page, count=count)
         return [media.to_dict() for media in movies] if movies else []
 
     @log_execution_time(logger=logger)
@@ -276,7 +272,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣国产剧集榜
         """
-        tvs = self.doubanchain.tv_weekly_chinese(page=page, count=count)
+        tvs = DoubanChain().tv_weekly_chinese(page=page, count=count)
         return [media.to_dict() for media in tvs] if tvs else []
 
     @log_execution_time(logger=logger)
@@ -285,7 +281,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣全球剧集榜
         """
-        tvs = self.doubanchain.tv_weekly_global(page=page, count=count)
+        tvs = DoubanChain().tv_weekly_global(page=page, count=count)
         return [media.to_dict() for media in tvs] if tvs else []
 
     @log_execution_time(logger=logger)
@@ -294,7 +290,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣热门动漫
         """
-        tvs = self.doubanchain.tv_animation(page=page, count=count)
+        tvs = DoubanChain().tv_animation(page=page, count=count)
         return [media.to_dict() for media in tvs] if tvs else []
 
     @log_execution_time(logger=logger)
@@ -303,7 +299,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣热门电影
         """
-        movies = self.doubanchain.movie_hot(page=page, count=count)
+        movies = DoubanChain().movie_hot(page=page, count=count)
         return [media.to_dict() for media in movies] if movies else []
 
     @log_execution_time(logger=logger)
@@ -312,5 +308,5 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         豆瓣热门电视剧
         """
-        tvs = self.doubanchain.tv_hot(page=page, count=count)
+        tvs = DoubanChain().tv_hot(page=page, count=count)
         return [media.to_dict() for media in tvs] if tvs else []

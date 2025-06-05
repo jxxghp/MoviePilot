@@ -5,9 +5,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app import schemas
-from app.chain.tmdb import TmdbChain
 from app.chain.user import UserChain
-from app.chain.mediaserver import MediaServerChain
 from app.core import security
 from app.core.config import settings
 from app.helper.sites import SitesHelper
@@ -54,14 +52,7 @@ def wallpaper() -> Any:
     """
     获取登录页面电影海报
     """
-    if settings.WALLPAPER == "bing":
-        url = WallpaperHelper().get_bing_wallpaper()
-    elif settings.WALLPAPER == "mediaserver":
-        url = MediaServerChain().get_latest_wallpaper()
-    elif settings.WALLPAPER == "customize":
-        url = WallpaperHelper().get_customize_wallpaper()
-    else:
-        url = TmdbChain().get_random_wallpager()
+    url = WallpaperHelper().get_wallpaper()
     if url:
         return schemas.Response(
             success=True,
@@ -75,13 +66,4 @@ def wallpapers() -> Any:
     """
     获取登录页面电影海报
     """
-    if settings.WALLPAPER == "bing":
-        return WallpaperHelper().get_bing_wallpapers()
-    elif settings.WALLPAPER == "mediaserver":
-        return MediaServerChain().get_latest_wallpapers()
-    elif settings.WALLPAPER == "tmdb":
-        return TmdbChain().get_trending_wallpapers()
-    elif settings.WALLPAPER == "customize":
-        return WallpaperHelper().get_customize_wallpapers()
-    else:
-        return []
+    return WallpaperHelper().get_wallpaper()

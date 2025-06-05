@@ -9,10 +9,8 @@ from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
-from app.core.event import EventManager
 from app.core.meta import MetaBase
-from app.db.message_oper import MessageOper
-from app.helper.message import MessageHelper
+from app.db.user_oper import UserOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification, NotExistMediaInfo, CommingMessage
@@ -36,19 +34,8 @@ class MessageChain(ChainBase):
     # 每页数据量
     _page_size: int = 8
 
-    def __init__(self):
-        super().__init__()
-        self.downloadchain = DownloadChain()
-        self.subscribechain = SubscribeChain()
-        self.searchchain = SearchChain()
-        self.mediachain = MediaChain()
-        self.eventmanager = EventManager()
-        self.torrenthelper = TorrentHelper()
-        self.messagehelper = MessageHelper()
-        self.messageoper = MessageOper()
-
+    @staticmethod
     def __get_noexits_info(
-            self,
             _meta: MetaBase,
             _mediainfo: MediaInfo) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
         """
@@ -57,10 +44,10 @@ class MessageChain(ChainBase):
         if _mediainfo.type == MediaType.TV:
             if not _mediainfo.seasons:
                 # 补充媒体信息
-                _mediainfo = self.mediachain.recognize_media(mtype=_mediainfo.type,
-                                                             tmdbid=_mediainfo.tmdb_id,
-                                                             doubanid=_mediainfo.douban_id,
-                                                             cache=False)
+                _mediainfo = MediaChain().recognize_media(mtype=_mediainfo.type,
+                                                          tmdbid=_mediainfo.tmdb_id,
+                                                          doubanid=_mediainfo.douban_id,
+                                                          cache=False)
                 if not _mediainfo:
                     logger.warn(f"{_mediainfo.tmdb_id or _mediainfo.douban_id} 媒体信息识别失败！")
                     return {}
@@ -193,8 +180,8 @@ class MessageChain(ChainBase):
                 mediainfo: MediaInfo = cache_list[_choice]
                 _current_media = mediainfo
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=_current_meta,
-                                                                              mediainfo=_current_media)
+                exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=_current_meta,
+                                                                           mediainfo=_current_media)
                 if exist_flag and cache_type == "Search":
                     # 媒体库中已存在
                     self.post_message(
@@ -234,8 +221,8 @@ class MessageChain(ChainBase):
                                  title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...",
                                  userid=userid))
                 # 开始搜索
-                contexts = self.searchchain.process(mediainfo=mediainfo,
-                                                    no_exists=no_exists)
+                contexts = SearchChain().process(mediainfo=mediainfo,
+                                                 no_exists=no_exists)
                 if not contexts:
                     # 没有数据
                     self.post_message(Notification(
@@ -246,7 +233,7 @@ class MessageChain(ChainBase):
                         userid=userid))
                     return
                 # 搜索结果排序
-                contexts = self.torrenthelper.sort_torrents(contexts)
+                contexts = TorrentHelper().sort_torrents(contexts)
                 # 判断是否设置自动下载
                 auto_download_user = settings.AUTO_DOWNLOAD_USER
                 # 匹配到自动下载用户
@@ -287,8 +274,8 @@ class MessageChain(ChainBase):
                 best_version = False
                 # 查询缺失的媒体信息
                 if cache_type == "Subscribe":
-                    exist_flag, _ = self.downloadchain.get_no_exists_info(meta=_current_meta,
-                                                                          mediainfo=mediainfo)
+                    exist_flag, _ = DownloadChain().get_no_exists_info(meta=_current_meta,
+                                                                       mediainfo=mediainfo)
                     if exist_flag:
                         self.post_message(Notification(
                             channel=channel,
@@ -300,18 +287,18 @@ class MessageChain(ChainBase):
                 else:
                     best_version = True
                 # 转换用户名
-                mp_name = self.useroper.get_name(**{f"{channel.name.lower()}_userid": userid}) if channel else None
+                mp_name = UserOper().get_name(**{f"{channel.name.lower()}_userid": userid}) if channel else None
                 # 添加订阅，状态为N
-                self.subscribechain.add(title=mediainfo.title,
-                                        year=mediainfo.year,
-                                        mtype=mediainfo.type,
-                                        tmdbid=mediainfo.tmdb_id,
-                                        season=_current_meta.begin_season,
-                                        channel=channel,
-                                        source=source,
-                                        userid=userid,
-                                        username=mp_name or username,
-                                        best_version=best_version)
+                SubscribeChain().add(title=mediainfo.title,
+                                     year=mediainfo.year,
+                                     mtype=mediainfo.type,
+                                     tmdbid=mediainfo.tmdb_id,
+                                     season=_current_meta.begin_season,
+                                     channel=channel,
+                                     source=source,
+                                     userid=userid,
+                                     username=mp_name or username,
+                                     best_version=best_version)
             elif cache_type == "Torrent":
                 if int(text) == 0:
                     # 自动选择下载，强制下载模式
@@ -324,8 +311,8 @@ class MessageChain(ChainBase):
                     # 下载种子
                     context: Context = cache_list[_choice]
                     # 下载
-                    self.downloadchain.download_single(context, channel=channel, source=source,
-                                                       userid=userid, username=username)
+                    DownloadChain().download_single(context, channel=channel, source=source,
+                                                    userid=userid, username=username)
 
         elif text.lower() == "p":
             # 上一页
@@ -444,7 +431,7 @@ class MessageChain(ChainBase):
 
             if action in ["Search", "ReSearch", "Subscribe", "ReSubscribe"]:
                 # 搜索
-                meta, medias = self.mediachain.search(content)
+                meta, medias = MediaChain().search(content)
                 # 识别
                 if not meta.name:
                     self.post_message(Notification(
@@ -497,9 +484,10 @@ class MessageChain(ChainBase):
         """
         自动择优下载
         """
+        downloadchain = DownloadChain()
         if no_exists is None:
             # 查询缺失的媒体信息
-            exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+            exist_flag, no_exists = downloadchain.get_no_exists_info(
                 meta=_current_meta,
                 mediainfo=_current_media
             )
@@ -508,12 +496,12 @@ class MessageChain(ChainBase):
                 no_exists = self.__get_noexits_info(_current_meta, _current_media)
 
         # 批量下载
-        downloads, lefts = self.downloadchain.batch_download(contexts=cache_list,
-                                                             no_exists=no_exists,
-                                                             channel=channel,
-                                                             source=source,
-                                                             userid=userid,
-                                                             username=username)
+        downloads, lefts = downloadchain.batch_download(contexts=cache_list,
+                                                        no_exists=no_exists,
+                                                        channel=channel,
+                                                        source=source,
+                                                        userid=userid,
+                                                        username=username)
         if downloads and not lefts:
             # 全部下载完成
             logger.info(f'{_current_media.title_year} 下载完成')
@@ -528,19 +516,19 @@ class MessageChain(ChainBase):
             else:
                 note = None
             # 转换用户名
-            mp_name = self.useroper.get_name(**{f"{channel.name.lower()}_userid": userid}) if channel else None
+            mp_name = UserOper().get_name(**{f"{channel.name.lower()}_userid": userid}) if channel else None
             # 添加订阅，状态为R
-            self.subscribechain.add(title=_current_media.title,
-                                    year=_current_media.year,
-                                    mtype=_current_media.type,
-                                    tmdbid=_current_media.tmdb_id,
-                                    season=_current_meta.begin_season,
-                                    channel=channel,
-                                    source=source,
-                                    userid=userid,
-                                    username=mp_name or username,
-                                    state="R",
-                                    note=note)
+            SubscribeChain().add(title=_current_media.title,
+                                 year=_current_media.year,
+                                 mtype=_current_media.type,
+                                 tmdbid=_current_media.tmdb_id,
+                                 season=_current_meta.begin_season,
+                                 channel=channel,
+                                 source=source,
+                                 userid=userid,
+                                 username=mp_name or username,
+                                 state="R",
+                                 note=note)
 
     def __post_medias_message(self, channel: MessageChannel, source: str,
                               title: str, items: list, userid: str, total: int):

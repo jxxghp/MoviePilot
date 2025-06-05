@@ -43,7 +43,6 @@ class ChainBase(metaclass=ABCMeta):
         self.messagequeue = MessageQueueManager(
             send_callback=self.run_module
         )
-        self.useroper = UserOper()
         self.pluginmanager = PluginManager()
 
     @staticmethod
@@ -575,26 +574,27 @@ class ChainBase(metaclass=ABCMeta):
                 # 是否已发送管理员标志
                 admin_sended = False
                 send_orignal = False
+                useroper = UserOper()
                 for action in actions:
                     send_message = copy.deepcopy(message)
                     if action == "admin" and not admin_sended:
                         # 仅发送管理员
                         logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
                         # 读取管理员消息IDS
-                        send_message.targets = self.useroper.get_settings(settings.SUPERUSER)
+                        send_message.targets = useroper.get_settings(settings.SUPERUSER)
                         admin_sended = True
                     elif action == "user" and send_message.username:
                         # 发送对应用户
                         logger.info(f"{send_message.mtype} 的消息已设置发送给用户 {send_message.username}")
                         # 读取用户消息IDS
-                        send_message.targets = self.useroper.get_settings(send_message.username)
+                        send_message.targets = useroper.get_settings(send_message.username)
                         if send_message.targets is None:
                             # 没有找到用户
                             if not admin_sended:
                                 # 回滚发送管理员
                                 logger.info(f"用户 {send_message.username} 不存在，消息将发送给管理员")
                                 # 读取管理员消息IDS
-                                send_message.targets = self.useroper.get_settings(settings.SUPERUSER)
+                                send_message.targets = useroper.get_settings(settings.SUPERUSER)
                                 admin_sended = True
                             else:
                                 # 管理员发过了，此消息不发了

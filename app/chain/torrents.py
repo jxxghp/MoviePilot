@@ -17,33 +17,16 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 
-class TorrentsChain(ChainBase, metaclass=Singleton):
+class TorrentsChain(ChainBase):
     """
     站点首页或RSS种子处理链，服务于订阅、刷流等
     """
 
     _spider_file = "__torrents_cache__"
     _rss_file = "__rss_cache__"
-
-    def __init__(self):
-        super().__init__()
-        self.siteshelper = SitesHelper()
-        self.siteoper = SiteOper()
-        self.rsshelper = RssHelper()
-        self.systemconfig = SystemConfigOper()
-        self.mediachain = MediaChain()
-        self.torrenthelper = TorrentHelper()
-
-    def __del__(self):
-        """
-        析构函数，停止内存监控
-        """
-        if hasattr(self, 'memory_manager'):
-            self.memory_manager.stop_monitoring()
 
     @property
     def cache_file(self) -> str:
@@ -99,7 +82,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         :param page: 页码
         """
         logger.info(f'开始获取站点 {domain} 最新种子 ...')
-        site = self.siteshelper.get_indexer(domain)
+        site = SitesHelper().get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
@@ -112,15 +95,15 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         :param domain: 站点域名
         """
         logger.info(f'开始获取站点 {domain} RSS ...')
-        site = self.siteshelper.get_indexer(domain)
+        site = SitesHelper().get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
         if not site.get("rss"):
             logger.error(f'站点 {domain} 未配置RSS地址！')
             return []
-        rss_items = self.rsshelper.parse(site.get("rss"), True if site.get("proxy") else False,
-                                         timeout=int(site.get("timeout") or 30))
+        rss_items = RssHelper().parse(site.get("rss"), True if site.get("proxy") else False,
+                                      timeout=int(site.get("timeout") or 30))
         if rss_items is None:
             # rss过期，尝试保留原配置生成新的rss
             self.__renew_rss_url(domain=domain, site=site)
@@ -164,7 +147,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         # 刷新站点
         if not sites:
-            sites = self.systemconfig.get(SystemConfigKey.RssSites) or []
+            sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
 
         # 读取缓存
         torrents_cache = self.get_torrents()
@@ -172,10 +155,10 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         # 缓存过滤掉无效种子
         for _domain, _torrents in torrents_cache.items():
             torrents_cache[_domain] = [_torrent for _torrent in _torrents
-                                       if not self.torrenthelper.is_invalid(_torrent.torrent_info.enclosure)]
+                                       if not TorrentHelper().is_invalid(_torrent.torrent_info.enclosure)]
 
         # 所有站点索引
-        indexers = self.siteshelper.get_indexers()
+        indexers = SitesHelper().get_indexers()
         # 需要刷新的站点domain
         domains = []
 
@@ -222,7 +205,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                             and torrent.category == MediaType.TV.value:
                         meta.type = MediaType.TV
                     # 识别媒体信息
-                    mediainfo: MediaInfo = self.mediachain.recognize_by_meta(meta)
+                    mediainfo: MediaInfo = MediaChain().recognize_by_meta(meta)
                     if not mediainfo:
                         logger.warn(f'{torrent.title} 未识别到媒体信息')
                         # 存储空的媒体信息
@@ -282,7 +265,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             # RSS链接过期
             logger.error(f"站点 {domain} RSS链接已过期，正在尝试自动获取！")
             # 自动生成rss地址
-            rss_url, errmsg = self.rsshelper.get_rss_link(
+            rss_url, errmsg = RssHelper().get_rss_link(
                 url=site.get("url"),
                 cookie=site.get("cookie"),
                 ua=site.get("ua") or settings.USER_AGENT,
@@ -296,7 +279,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     # 获取过期rss除去passkey部分
                     new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site.get("rss"))
                     logger.info(f"更新站点 {domain} RSS地址 ...")
-                    self.siteoper.update_rss(domain=domain, rss=new_rss)
+                    SiteOper().update_rss(domain=domain, rss=new_rss)
                 else:
                     # 发送消息
                     self.post_message(

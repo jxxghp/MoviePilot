@@ -2,10 +2,9 @@ from typing import Any
 
 from app.chain import ChainBase
 from app.schemas.types import EventType
-from app.utils.singleton import Singleton
 
 
-class WebhookChain(ChainBase, metaclass=Singleton):
+class WebhookChain(ChainBase):
     """
     Webhook处理链
     """
