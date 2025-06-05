@@ -1,16 +1,6 @@
 name: Pylint Code Quality Check
 
 on:
-  # 在推送到任何分支时运行
-  push:
-    branches: [ "main", "v2", "develop" ]
-    paths:
-      - '**.py'
-  # 在PR时运行
-  pull_request:
-    branches: [ "main", "v2", "develop" ]
-    paths:
-      - '**.py'
   # 允许手动触发
   workflow_dispatch:
 
