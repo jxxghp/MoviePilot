@@ -291,8 +291,8 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, server: str, count: Optional[int] = 20, **kwargs) -> List[
-        schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, server: str, count: Optional[int] = 20,
+                            **kwargs) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """

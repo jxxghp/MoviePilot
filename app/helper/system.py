@@ -8,6 +8,10 @@ from app.utils.system import SystemUtils
 
 
 class SystemHelper:
+    """
+    系统工具类，提供系统相关的操作和判断
+    """
+
     @staticmethod
     def can_restart() -> bool:
         """

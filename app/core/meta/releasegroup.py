@@ -81,7 +81,6 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
     }
 
     def __init__(self):
-        self.systemconfig = SystemConfigOper()
         release_groups = []
         for site_groups in self.RELEASE_GROUPS.values():
             for release_group in site_groups:
@@ -98,7 +97,7 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
             return ""
         if not groups:
             # 自定义组
-            custom_release_groups = self.systemconfig.get(SystemConfigKey.CustomReleaseGroups)
+            custom_release_groups = SystemConfigOper().get(SystemConfigKey.CustomReleaseGroups)
             if isinstance(custom_release_groups, list):
                 custom_release_groups = list(filter(None, custom_release_groups))
             if custom_release_groups:

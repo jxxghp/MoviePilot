@@ -13,14 +13,12 @@ class DirectoryHelper:
     下载目录/媒体库目录帮助类
     """
 
-    def __init__(self):
-        self.systemconfig = SystemConfigOper()
-
-    def get_dirs(self) -> List[schemas.TransferDirectoryConf]:
+    @staticmethod
+    def get_dirs() -> List[schemas.TransferDirectoryConf]:
         """
         获取所有下载目录
         """
-        dir_confs: List[dict] = self.systemconfig.get(SystemConfigKey.Directories)
+        dir_confs: List[dict] = SystemConfigOper().get(SystemConfigKey.Directories)
         if not dir_confs:
             return []
         return [schemas.TransferDirectoryConf(**d) for d in dir_confs]

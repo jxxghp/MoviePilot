@@ -406,7 +406,8 @@ class TheMovieDbModule(_ModuleBase):
             return None
         return self.scraper.get_metadata_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
+    def metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None,
+                     episode: Optional[int] = None) -> Optional[dict]:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息
@@ -505,7 +506,6 @@ class TheMovieDbModule(_ModuleBase):
             episode_count=len(sea.get("episodes") or []),
             air_date=sea.get("episodes")[0].get("air_date") if sea.get("episodes") else None,
         ) for sea in group_seasons]
-
 
     def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
         """

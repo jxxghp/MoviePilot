@@ -9,9 +9,9 @@ from app.utils.singleton import Singleton
 
 
 class WallpaperHelper(metaclass=Singleton):
-
-    def __init__(self):
-        self.req = RequestUtils(timeout=5)
+    """
+    壁纸帮助类
+    """
 
     def get_wallpaper(self) -> Optional[str]:
         """
@@ -60,7 +60,7 @@ class WallpaperHelper(metaclass=Singleton):
         获取Bing每日壁纸
         """
         url = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
-        resp = self.req.get_res(url)
+        resp = RequestUtils(timeout=5).get_res(url)
         if resp and resp.status_code == 200:
             try:
                 result = resp.json()
@@ -77,7 +77,7 @@ class WallpaperHelper(metaclass=Singleton):
         获取7天的Bing每日壁纸
         """
         url = f"https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n={num}"
-        resp = self.req.get_res(url)
+        resp = RequestUtils(timeout=5).get_res(url)
         if resp and resp.status_code == 200:
             try:
                 result = resp.json()
@@ -144,7 +144,7 @@ class WallpaperHelper(metaclass=Singleton):
         # 判断是否存在自定义壁纸api
         if settings.CUSTOMIZE_WALLPAPER_API_URL:
             wallpaper_list = []
-            resp = self.req.get_res(settings.CUSTOMIZE_WALLPAPER_API_URL)
+            resp = RequestUtils(timeout=15).get_res(settings.CUSTOMIZE_WALLPAPER_API_URL)
             if resp and resp.status_code == 200:
                 # 如果返回的是图片格式
                 content_type = resp.headers.get('Content-Type')

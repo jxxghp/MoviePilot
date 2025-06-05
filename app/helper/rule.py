@@ -11,14 +11,12 @@ class RuleHelper:
     规划帮助类
     """
 
-    def __init__(self):
-        self.systemconfig = SystemConfigOper()
-
-    def get_rule_groups(self) -> List[FilterRuleGroup]:
+    @staticmethod
+    def get_rule_groups() -> List[FilterRuleGroup]:
         """
         获取用户所有规则组
         """
-        rule_groups: List[dict] = self.systemconfig.get(SystemConfigKey.UserFilterRuleGroups)
+        rule_groups: List[dict] = SystemConfigOper().get(SystemConfigKey.UserFilterRuleGroups)
         if not rule_groups:
             return []
         return [FilterRuleGroup(**group) for group in rule_groups]
@@ -50,11 +48,12 @@ class RuleHelper:
                 ret_groups.append(group)
         return ret_groups
 
-    def get_custom_rules(self) -> List[CustomRule]:
+    @staticmethod
+    def get_custom_rules() -> List[CustomRule]:
         """
         获取用户所有自定义规则
         """
-        rules: List[dict] = self.systemconfig.get(SystemConfigKey.CustomFilterRules)
+        rules: List[dict] = SystemConfigOper().get(SystemConfigKey.CustomFilterRules)
         if not rules:
             return []
         return [CustomRule(**rule) for rule in rules]

@@ -15,15 +15,14 @@ from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
-from app.db.systemconfig_oper import SystemConfigOper
+from app.core.event import Event, eventmanager
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
+from app.schemas import ConfigChangeEventData
 from app.schemas import FileItem
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.singleton import Singleton
-from app.core.event import Event, eventmanager
-from app.schemas import ConfigChangeEventData
 
 lock = Lock()
 snapshot_lock = Lock()
@@ -77,14 +76,7 @@ class Monitor(metaclass=Singleton):
 
     def __init__(self):
         super().__init__()
-        self.transferchain = TransferChain()
-        self.storagechain = StorageChain()
-        self.directoryhelper = DirectoryHelper()
-        self.systemmessage = MessageHelper()
-        self.systemconfig = SystemConfigOper()
-
         self.all_exts = settings.RMT_MEDIAEXT
-
         # 启动目录监控和文件整理
         self.init()
 
@@ -109,7 +101,7 @@ class Monitor(metaclass=Singleton):
         self.stop()
 
         # 读取目录配置
-        monitor_dirs = self.directoryhelper.get_download_dirs()
+        monitor_dirs = DirectoryHelper().get_download_dirs()
         if not monitor_dirs:
             return
 
@@ -119,6 +111,7 @@ class Monitor(metaclass=Singleton):
         # 启动定时服务进程
         self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
+        messagehelper = MessageHelper()
         for mon_dir in monitor_dirs:
             if not mon_dir.library_path:
                 continue
@@ -129,7 +122,7 @@ class Monitor(metaclass=Singleton):
             target_path = Path(mon_dir.library_path)
             if target_path.is_relative_to(mon_path):
                 logger.warn(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控！")
-                self.systemmessage.put(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控", title="目录监控")
+                messagehelper.put(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控", title="目录监控")
                 continue
 
             # 启动监控
@@ -159,7 +152,7 @@ class Monitor(metaclass=Singleton):
                              """)
                     else:
                         logger.error(f"{mon_path} 启动目录监控失败：{err_msg}")
-                    self.systemmessage.put(f"{mon_path} 启动目录监控失败：{err_msg}", title="目录监控")
+                    messagehelper.put(f"{mon_path} 启动目录监控失败：{err_msg}", title="目录监控")
             else:
                 # 远程目录监控
                 self._scheduler.add_job(self.polling_observer, 'interval', minutes=self._snapshot_interval,
@@ -199,7 +192,7 @@ class Monitor(metaclass=Singleton):
         """
         with snapshot_lock:
             # 快照存储
-            new_snapshot = self.storagechain.snapshot_storage(storage=storage, path=mon_path)
+            new_snapshot = StorageChain().snapshot_storage(storage=storage, path=mon_path)
             if new_snapshot:
                 # 比较快照
                 old_snapshot = self._storage_snapshot.get(storage)
@@ -265,7 +258,7 @@ class Monitor(metaclass=Singleton):
 
             try:
                 # 开始整理
-                self.transferchain.do_transfer(
+                TransferChain().do_transfer(
                     fileitem=FileItem(
                         storage=storage,
                         path=str(event_path).replace("\\", "/"),

@@ -3,15 +3,14 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.helper.sites import SitesHelper
+from app.helper.system import SystemHelper
 from app.log import logger
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
-from app.helper.system import SystemHelper
 
 
-class ResourceHelper(metaclass=Singleton):
+class ResourceHelper:
     """
     检测和更新资源包
     """
@@ -21,7 +20,6 @@ class ResourceHelper(metaclass=Singleton):
     _base_dir: Path = settings.ROOT_PATH
 
     def __init__(self):
-        self.siteshelper = SitesHelper()
         self.check()
 
     @property
@@ -59,10 +57,10 @@ class ResourceHelper(metaclass=Singleton):
                         # 判断版本号
                         if rtype == "auth":
                             # 站点认证资源
-                            local_version = self.siteshelper.auth_version
+                            local_version = SitesHelper().auth_version
                         elif rtype == "sites":
                             # 站点索引资源
-                            local_version = self.siteshelper.indexer_version
+                            local_version = SitesHelper().indexer_version
                         else:
                             continue
                         if StringUtils.compare_version(version, ">", local_version):
