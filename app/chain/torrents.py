@@ -178,7 +178,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         indexers = self.siteshelper.get_indexers()
         # 需要刷新的站点domain
         domains = []
-        
+
         # 遍历站点缓存资源
         for indexer in indexers:
             if global_vars.is_system_stopped:
@@ -199,11 +199,11 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             # 取前N条
             torrents = torrents[:settings.CACHE_CONF["refresh"]]
             if torrents:
-                # 过滤出没有处理过的种子
+                # 过滤出没有处理过的种子 - 优化：使用集合查找，避免重复创建字符串列表
+                cached_signatures = {f'{t.torrent_info.title}{t.torrent_info.description}'
+                                     for t in torrents_cache.get(domain) or []}
                 torrents = [torrent for torrent in torrents
-                            if f'{torrent.title}{torrent.description}'
-                            not in [f'{t.torrent_info.title}{t.torrent_info.description}'
-                                    for t in torrents_cache.get(domain) or []]]
+                            if f'{torrent.title}{torrent.description}' not in cached_signatures]
                 if torrents:
                     logger.info(f'{indexer.get("name")} 有 {len(torrents)} 个新种子')
                 else:
@@ -246,8 +246,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     # 优化：清理不再需要的临时变量
                     del meta, mediainfo, context
                 # 回收资源
+                torrents.clear()
                 del torrents
-                # 定期执行垃圾回收
                 gc.collect()
             else:
                 logger.info(f'{indexer.get("name")} 没有获取到种子')
@@ -271,7 +271,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             if removed_contexts:
                 clear_large_objects(*removed_contexts)
             del old_cache
-            
+
         return torrents_cache
 
     def __renew_rss_url(self, domain: str, site: dict):
