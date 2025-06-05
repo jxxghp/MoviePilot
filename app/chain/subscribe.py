@@ -29,7 +29,8 @@ from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import MediaRecognizeConvertEventData
-from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, ContentType
+from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
+    ContentType
 from app.utils.singleton import Singleton
 
 
@@ -567,18 +568,17 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             for domain, contexts in torrents.items():
                 processed_torrents[domain] = []
                 for context in contexts:
-                    # 复制上下文避免修改原始数据
-                    _context = copy.deepcopy(context)
                     # 如果种子未识别，尝试识别
-                    if not _context.media_info or (not _context.media_info.tmdb_id
-                                                   and not _context.media_info.douban_id):
-                        re_mediainfo = self.recognize_media(meta=_context.meta_info)
+                    if not context.media_info or (not context.media_info.tmdb_id
+                                                  and not context.media_info.douban_id):
+                        re_mediainfo = self.recognize_media(meta=context.meta_info)
                         if re_mediainfo:
+                            # 清理多余信息
+                            re_mediainfo.clear()
                             # 更新种子缓存
-                            _context.media_info = re_mediainfo
                             context.media_info = re_mediainfo
                     # 添加已预处理
-                    processed_torrents[domain].append(_context)
+                    processed_torrents[domain].append(context)
 
             # 遍历订阅
             for subscribe in subscribes:
@@ -617,6 +617,9 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 if exist_flag:
                     continue
 
+                # 清理多余信息
+                mediainfo.clear()
+
                 # 订阅识别词
                 if subscribe.custom_words:
                     custom_words_list = subscribe.custom_words.split("\n")
@@ -633,7 +636,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
                     for context in contexts:
                         # 提取信息
-                        _context = copy.deepcopy(context)
+                        _context = copy.copy(context)
                         torrent_meta = _context.meta_info
                         torrent_mediainfo = _context.media_info
                         torrent_info = _context.torrent_info
@@ -657,14 +660,14 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                         custom_words=custom_words_list)
                                 # 更新元数据缓存
                                 _context.meta_info = torrent_meta
-                                context.meta_info = torrent_meta
                                 # 重新识别媒体信息
                                 torrent_mediainfo = self.recognize_media(meta=torrent_meta,
                                                                          episode_group=subscribe.episode_group)
                                 if torrent_mediainfo:
+                                    # 清理多余信息
+                                    torrent_mediainfo.clear()
                                     # 更新种子缓存
                                     _context.media_info = torrent_mediainfo
-                                    context.media_info = torrent_mediainfo
 
                         # 如果仍然没有识别到媒体信息，尝试标题匹配
                         if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
@@ -679,7 +682,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 torrent_mediainfo = mediainfo
                                 # 更新种子缓存
                                 _context.media_info = mediainfo
-                                context.media_info = mediainfo
                             else:
                                 continue
 
@@ -774,6 +776,10 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             torrent_mediainfo.episode_group = subscribe.episode_group
                         _match_context.append(_context)
 
+                    # 清理内存
+                    contexts.clear()
+                    del contexts
+
                 if not _match_context:
                     # 未匹配到资源
                     logger.info(f'{mediainfo.title_year} 未匹配到符合条件的资源')
@@ -799,6 +805,18 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 if subscribe:
                     self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
                                                  downloads=downloads, lefts=lefts)
+                # 清理内存
+                _match_context.clear()
+                del _match_context
+                downloads.clear()
+                del downloads
+                lefts.clear()
+                del lefts
+
+            # 清理内存
+            processed_torrents.clear()
+            del processed_torrents
+
             logger.debug(f"match Lock released at {datetime.now()}")
 
     def check(self):
