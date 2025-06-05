@@ -24,6 +24,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.memory import memory_optimized
 from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
@@ -267,6 +268,7 @@ class SubscribeChain(ChainBase):
             return True
         return False
 
+    @memory_optimized(force_gc_after=True, log_memory=True)
     def search(self, sid: Optional[int] = None, state: Optional[str] = 'N', manual: Optional[bool] = False):
         """
         订阅搜索
@@ -538,6 +540,7 @@ class SubscribeChain(ChainBase):
 
         return ret_sites
 
+    @memory_optimized(force_gc_after=True, log_memory=True)
     def match(self, torrents: Dict[str, List[Context]]):
         """
         从缓存中匹配订阅，并自动下载
