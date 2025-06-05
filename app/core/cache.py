@@ -196,7 +196,7 @@ class CacheToolsBackend(CacheBackend):
             return None
         return region_cache.get(key)
 
-    def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION):
         """
         删除缓存
 
@@ -205,7 +205,7 @@ class CacheToolsBackend(CacheBackend):
         """
         region_cache = self.__get_region_cache(region)
         if region_cache is None:
-            return None
+            return
         with lock:
             del region_cache[key]
 
