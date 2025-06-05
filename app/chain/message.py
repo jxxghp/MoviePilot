@@ -1,4 +1,4 @@
-import copy
+import gc
 import re
 from typing import Any, Optional, Dict, Union
 
@@ -173,7 +173,7 @@ class MessageChain(ChainBase):
         elif text.isdigit():
             # 用户选择了具体的条目
             # 缓存
-            cache_data: dict = user_cache.get(userid)
+            cache_data: dict = user_cache.get(userid).copy()
             # 选择项目
             if not cache_data \
                     or not cache_data.get('items') \
@@ -186,7 +186,7 @@ class MessageChain(ChainBase):
             # 缓存类型
             cache_type: str = cache_data.get('type')
             # 缓存列表
-            cache_list: list = copy.deepcopy(cache_data.get('items'))
+            cache_list: list = cache_data.get('items').copy()
             # 选择
             if cache_type in ["Search", "ReSearch"]:
                 # 当前媒体信息
@@ -276,6 +276,10 @@ class MessageChain(ChainBase):
                                                  userid=userid,
                                                  total=len(contexts))
 
+                # 清理内存
+                del cache_list
+                del cache_data
+
             elif cache_type in ["Subscribe", "ReSubscribe"]:
                 # 订阅或洗版媒体
                 mediainfo: MediaInfo = cache_list[_choice]
@@ -325,7 +329,7 @@ class MessageChain(ChainBase):
 
         elif text.lower() == "p":
             # 上一页
-            cache_data: dict = user_cache.get(userid)
+            cache_data: dict = user_cache.get(userid).copy()
             if not cache_data:
                 # 没有缓存
                 self.post_message(Notification(
@@ -341,7 +345,7 @@ class MessageChain(ChainBase):
             _current_page -= 1
             cache_type: str = cache_data.get('type')
             # 产生副本，避免修改原值
-            cache_list: list = copy.deepcopy(cache_data.get('items'))
+            cache_list: list = cache_data.get('items').copy()
             if _current_page == 0:
                 start = 0
                 end = self._page_size
@@ -364,10 +368,13 @@ class MessageChain(ChainBase):
                                            items=cache_list[start:end],
                                            userid=userid,
                                            total=len(cache_list))
+            # 清理内存
+            del cache_list
+            del cache_data
 
         elif text.lower() == "n":
             # 下一页
-            cache_data: dict = user_cache.get(userid)
+            cache_data: dict = user_cache.get(userid).copy()
             if not cache_data:
                 # 没有缓存
                 self.post_message(Notification(
@@ -375,7 +382,7 @@ class MessageChain(ChainBase):
                 return
             cache_type: str = cache_data.get('type')
             # 产生副本，避免修改原值
-            cache_list: list = copy.deepcopy(cache_data.get('items'))
+            cache_list: list = cache_data.get('items').copy()
             total = len(cache_list)
             # 加一页
             cache_list = cache_list[
@@ -400,6 +407,9 @@ class MessageChain(ChainBase):
                                                source=source,
                                                title=_current_meta.name,
                                                items=cache_list, userid=userid, total=total)
+            # 清理内存
+            del cache_list
+            del cache_data
 
         else:
             # 搜索或订阅
@@ -474,6 +484,12 @@ class MessageChain(ChainBase):
 
         # 保存缓存
         self.save_cache(user_cache, self._cache_file)
+
+        # 清理内存
+        user_cache.clear()
+        del user_cache
+
+        gc.collect()
 
     def __auto_download(self, channel: MessageChannel, source: str, cache_list: list[Context],
                         userid: Union[str, int], username: str,
