@@ -34,9 +34,9 @@ class WallpaperHelper(metaclass=Singleton):
         if settings.WALLPAPER == "bing":
             return self.get_bing_wallpapers(num)
         elif settings.WALLPAPER == "mediaserver":
-            return self.get_mediaserver_wallpapers(num)
+            return self.get_mediaserver_wallpapers()
         elif settings.WALLPAPER == "customize":
-            return self.get_customize_wallpapers(num)
+            return self.get_customize_wallpapers()
         else:
             return self.get_tmdb_wallpapers(num)
 
