@@ -2,7 +2,6 @@ import threading
 from typing import List, Union, Optional, Generator, Any
 
 from app.chain import ChainBase
-from app.core.cache import cached
 from app.core.config import global_vars
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.service import ServiceConfigHelper
@@ -92,7 +91,6 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_latest", count=count, server=server, username=username)
 
-    @cached(maxsize=1, ttl=3600)
     def get_latest_wallpapers(self, server: Optional[str] = None, count: Optional[int] = 10,
                               remote: bool = True, username: Optional[str] = None) -> List[str]:
         """

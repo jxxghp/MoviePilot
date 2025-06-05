@@ -66,4 +66,4 @@ def wallpapers() -> Any:
     """
     获取登录页面电影海报
     """
-    return WallpaperHelper().get_wallpaper()
+    return WallpaperHelper().get_wallpapers()
