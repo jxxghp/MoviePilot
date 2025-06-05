@@ -1,0 +1,83 @@
+[MASTER]
+# 指定Python路径
+init-hook='import sys; sys.path.append(".")'
+
+# 忽略的文件和目录
+ignore=.git,__pycache__,.venv,build,dist,tests,docs
+
+# 并行作业数量
+jobs=0
+
+[MESSAGES CONTROL]
+# 只关注错误级别的问题，禁用警告、约定和重构建议
+# E = Error (错误) - 会导致构建失败
+# W = Warning (警告) - 仅显示，不会失败
+# R = Refactor (重构建议) - 仅显示，不会失败  
+# C = Convention (约定) - 仅显示，不会失败
+# I = Information (信息) - 仅显示，不会失败
+
+# 禁用大部分警告、约定和重构建议，只保留错误和重要警告
+disable=all
+enable=error,
+       syntax-error,
+       undefined-variable,
+       used-before-assignment,
+       unreachable,
+       return-outside-function,
+       yield-outside-function,
+       continue-in-finally,
+       nonlocal-without-binding,
+       undefined-loop-variable,
+       redefined-builtin,
+       not-callable,
+       assignment-from-no-return,
+       no-value-for-parameter,
+       too-many-function-args,
+       unexpected-keyword-arg,
+       redundant-keyword-arg,
+       import-error,
+       relative-beyond-top-level
+
+[REPORTS]
+# 设置报告格式
+output-format=colorized
+reports=yes
+score=yes
+
+[FORMAT]
+# 最大行长度
+max-line-length=120
+# 缩进大小
+indent-string='    '
+
+[DESIGN]
+# 最大参数数量
+max-args=10
+# 最大本地变量数量
+max-locals=20
+# 最大分支数量
+max-branches=15
+# 最大语句数量
+max-statements=50
+# 最大父类数量
+max-parents=7
+# 最大属性数量
+max-attributes=10
+# 最小公共方法数量
+min-public-methods=1
+# 最大公共方法数量
+max-public-methods=25
+
+[SIMILARITIES]
+# 最小相似行数
+min-similarity-lines=6
+# 忽略注释
+ignore-comments=yes
+# 忽略文档字符串
+ignore-docstrings=yes
+# 忽略导入
+ignore-imports=yes
+
+[TYPECHECK]
+# 生成缺失成员提示的类列表
+generated-members=requests.packages.urllib3 
