@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.chain.system import SystemChain
 from app.core.config import global_vars
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.memory_initializer import init_memory_manager, stop_memory_manager
@@ -23,6 +24,8 @@ async def init_plugin_system():
         init_plugin_scheduler()
         # 重新注册命令
         restart_command()
+    # 重启完成
+    SystemChain().restart_finish()
 
 
 @asynccontextmanager

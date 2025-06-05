@@ -4,12 +4,11 @@ from app import schemas
 from app.chain import ChainBase
 from app.core.context import MediaInfo
 from app.schemas import MediaType
-from app.utils.singleton import Singleton
 
 
-class DoubanChain(ChainBase, metaclass=Singleton):
+class DoubanChain(ChainBase):
     """
-    豆瓣处理链，单例运行
+    豆瓣处理链
     """
 
     def person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:

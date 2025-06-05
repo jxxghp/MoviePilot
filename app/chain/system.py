@@ -8,23 +8,17 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import Notification, MessageChannel
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
-from helper.system import SystemHelper
+from app.helper.system import SystemHelper
 from version import FRONTEND_VERSION, APP_VERSION
 
 
-class SystemChain(ChainBase, metaclass=Singleton):
+class SystemChain(ChainBase):
     """
     系统级处理链
     """
 
     _restart_file = "__system_restart__"
-
-    def __init__(self):
-        super().__init__()
-        # 重启完成检测
-        self.restart_finish()
 
     def remote_clear_cache(self, channel: MessageChannel, userid: Union[int, str], source: Optional[str] = None):
         """

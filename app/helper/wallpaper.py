@@ -1,5 +1,7 @@
 from typing import Optional, List
 
+from app.chain.mediaserver import MediaServerChain
+from app.chain.tmdb import TmdbChain
 from app.core.cache import cached
 from app.core.config import settings
 from app.utils.http import RequestUtils
@@ -10,6 +12,49 @@ class WallpaperHelper(metaclass=Singleton):
 
     def __init__(self):
         self.req = RequestUtils(timeout=5)
+
+    @staticmethod
+    def get_wallpaper() -> Optional[str]:
+        """
+        获取登录页面壁纸
+        """
+        if settings.WALLPAPER == "bing":
+            url = WallpaperHelper().get_bing_wallpaper()
+        elif settings.WALLPAPER == "mediaserver":
+            url = MediaServerChain().get_latest_wallpaper()
+        elif settings.WALLPAPER == "customize":
+            url = WallpaperHelper().get_customize_wallpaper()
+        else:
+            url = WallpaperHelper().get_tmdb_wallpaper()
+        return url
+
+    @staticmethod
+    def get_wallpapers(num: int = 10) -> List[str]:
+        """
+        获取登录页面壁纸列表
+        """
+        if settings.WALLPAPER == "bing":
+            return WallpaperHelper().get_bing_wallpapers(num)
+        elif settings.WALLPAPER == "mediaserver":
+            return MediaServerChain().get_latest_wallpapers(count=num)
+        elif settings.WALLPAPER == "customize":
+            return WallpaperHelper().get_customize_wallpapers(num)
+        else:
+            return WallpaperHelper().get_tmdb_wallpapers(num)
+
+    @cached(maxsize=1, ttl=3600)
+    def get_tmdb_wallpaper(self) -> Optional[str]:
+        """
+        获取TMDB每日壁纸
+        """
+        return TmdbChain().get_random_wallpager()
+
+    @cached(maxsize=1, ttl=3600)
+    def get_tmdb_wallpapers(self, num: int = 10) -> List[str]:
+        """
+        获取7天的TMDB每日壁纸
+        """
+        return TmdbChain().get_trending_wallpapers(num)
 
     @cached(maxsize=1, ttl=3600)
     def get_bing_wallpaper(self) -> Optional[str]:

@@ -1,9 +1,9 @@
 from typing import List
+
 from app.chain import ChainBase
-from app.utils.singleton import Singleton
 
 
-class TvdbChain(ChainBase, metaclass=Singleton):
+class TvdbChain(ChainBase):
     """
     Tvdb处理链，单例运行
     """

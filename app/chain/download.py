@@ -16,7 +16,6 @@ from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.directory import DirectoryHelper
-from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, \
@@ -31,14 +30,6 @@ class DownloadChain(ChainBase):
     """
     下载处理链
     """
-
-    def __init__(self):
-        super().__init__()
-        self.torrent = TorrentHelper()
-        self.downloadhis = DownloadHistoryOper()
-        self.mediaserver = MediaServerOper()
-        self.directoryhelper = DirectoryHelper()
-        self.messagehelper = MessageHelper()
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
@@ -122,7 +113,7 @@ class DownloadChain(ChainBase):
             logger.error(f"{torrent.title} 无法获取下载地址：{torrent.enclosure}！")
             return None, "", []
         # 下载种子文件
-        torrent_file, content, download_folder, files, error_msg = self.torrent.download_torrent(
+        torrent_file, content, download_folder, files, error_msg = TorrentHelper().download_torrent(
             url=torrent_url,
             cookie=site_cookie,
             ua=torrent.site_ua or settings.USER_AGENT,
@@ -220,7 +211,7 @@ class DownloadChain(ChainBase):
         else:
             content = torrent_file
             # 获取种子文件的文件夹名和文件清单
-            _folder_name, _file_list = self.torrent.get_torrent_info(torrent_file)
+            _folder_name, _file_list = TorrentHelper().get_torrent_info(torrent_file)
 
         # 下载目录
         if save_path:
@@ -228,7 +219,7 @@ class DownloadChain(ChainBase):
             download_dir = Path(save_path)
         else:
             # 根据媒体信息查询下载目录配置
-            dir_info = self.directoryhelper.get_dir(_media, storage="local", include_unsorted=True)
+            dir_info = DirectoryHelper().get_dir(_media, storage="local", include_unsorted=True)
             # 拼装子目录
             if dir_info:
                 # 一级目录
@@ -278,7 +269,8 @@ class DownloadChain(ChainBase):
             _save_path = download_dir if _layout == "NoSubfolder" or not _folder_name else download_path
 
             # 登记下载记录
-            self.downloadhis.add(
+            downloadhis = DownloadHistoryOper()
+            downloadhis.add(
                 path=str(download_path),
                 type=_media.type.value,
                 title=_media.title,
@@ -326,7 +318,7 @@ class DownloadChain(ChainBase):
                     "torrentname": _meta.org_string,
                 })
             if files_to_add:
-                self.downloadhis.add_files(files_to_add)
+                downloadhis.add_files(files_to_add)
 
             # 下载成功发送消息
             self.post_message(
@@ -553,7 +545,7 @@ class DownloadChain(ChainBase):
                                 if isinstance(content, str):
                                     logger.warn(f"{meta.org_string} 下载地址是磁力链，无法确定种子文件集数")
                                     continue
-                                torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
+                                torrent_episodes = TorrentHelper().get_torrent_episodes(torrent_files)
                                 logger.info(f"{meta.org_string} 解析种子文件集数为 {torrent_episodes}")
                                 if not torrent_episodes:
                                     continue
@@ -759,7 +751,7 @@ class DownloadChain(ChainBase):
                                 logger.warn(f"{meta.org_string} 下载地址是磁力链，无法解析种子文件集数")
                                 continue
                             # 种子全部集
-                            torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
+                            torrent_episodes = TorrentHelper().get_torrent_episodes(torrent_files)
                             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{torrent_episodes}")
                             # 选中的集
                             selected_episodes = set(torrent_episodes).intersection(set(need_episodes))
@@ -848,11 +840,13 @@ class DownloadChain(ChainBase):
         if not totals:
             totals = {}
 
+        mediaserver = MediaServerOper()
+
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
-                                                  title=mediainfo.title,
-                                                  tmdbid=mediainfo.tmdb_id)
+            itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
+                                             title=mediainfo.title,
+                                             tmdbid=mediainfo.tmdb_id)
             exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
@@ -872,10 +866,10 @@ class DownloadChain(ChainBase):
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
             # 电视剧
-            itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
-                                                  title=mediainfo.title,
-                                                  tmdbid=mediainfo.tmdb_id,
-                                                  season=mediainfo.season)
+            itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
+                                             title=mediainfo.title,
+                                             tmdbid=mediainfo.tmdb_id,
+                                             season=mediainfo.season)
             # 媒体库已存在的剧集
             exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if not exists_tvs:
@@ -974,7 +968,7 @@ class DownloadChain(ChainBase):
             return []
         ret_torrents = []
         for torrent in torrents:
-            history = self.downloadhis.get_by_hash(torrent.hash)
+            history = DownloadHistoryOper().get_by_hash(torrent.hash)
             if history:
                 # 媒体信息
                 torrent.media = {

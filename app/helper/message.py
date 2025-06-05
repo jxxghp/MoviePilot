@@ -61,7 +61,8 @@ class TemplateContextBuilder:
         self._add_transfer_info(transferinfo)
         self._add_torrent_info(torrentinfo)
         self._add_file_info(file_extension)
-        if kwargs: self._context.update(kwargs)
+        if kwargs:
+            self._context.update(kwargs)
 
         if include_raw_objects:
             self._add_raw_objects(meta, mediainfo, torrentinfo, transferinfo, episodes_info)
@@ -73,7 +74,8 @@ class TemplateContextBuilder:
         """
         增加媒体信息
         """
-        if not mediainfo: return
+        if not mediainfo:
+            return
         season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None else None
         base_info = {
             # 标题
@@ -245,7 +247,8 @@ class TemplateContextBuilder:
         """
         添加文件信息
         """
-        if not file_extension: return
+        if not file_extension:
+            return
         file_info = {
             # 文件后缀
             "fileExt": file_extension,

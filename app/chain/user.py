@@ -10,19 +10,14 @@ from app.log import logger
 from app.schemas import AuthCredentials, AuthInterceptCredentials
 from app.schemas.types import ChainEventType
 from app.utils.otp import OtpUtils
-from app.utils.singleton import Singleton
 
 PASSWORD_INVALID_CREDENTIALS_MESSAGE = "用户名或密码或二次校验码不正确"
 
 
-class UserChain(ChainBase, metaclass=Singleton):
+class UserChain(ChainBase):
     """
     用户链，处理多种认证协议
     """
-
-    def __init__(self):
-        super().__init__()
-        self.user_oper = UserOper()
 
     def user_authenticate(
             self,
@@ -90,7 +85,8 @@ class UserChain(ChainBase, metaclass=Singleton):
             logger.debug(f"辅助认证未启用，认证类型 {grant_type} 未实现")
             return False, "不支持的认证类型"
 
-    def password_authenticate(self, credentials: AuthCredentials) -> Tuple[bool, Union[User, str]]:
+    @staticmethod
+    def password_authenticate(credentials: AuthCredentials) -> Tuple[bool, Union[User, str]]:
         """
         密码认证
 
@@ -103,7 +99,7 @@ class UserChain(ChainBase, metaclass=Singleton):
             logger.info("密码认证失败，认证类型不匹配")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
 
-        user = self.user_oper.get_by_name(name=credentials.username)
+        user = UserOper().get_by_name(name=credentials.username)
         if not user:
             logger.info(f"密码认证失败，用户 {credentials.username} 不存在")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
@@ -131,8 +127,9 @@ class UserChain(ChainBase, metaclass=Singleton):
             return False, "认证凭证无效"
 
         # 检查是否因为用户被禁用
+        useroper = UserOper()
         if credentials.username:
-            user = self.user_oper.get_by_name(name=credentials.username)
+            user = useroper.get_by_name(name=credentials.username)
             if user and not user.is_active:
                 logger.info(f"用户 {user.name} 已被禁用，跳过后续身份校验")
                 return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
@@ -156,7 +153,7 @@ class UserChain(ChainBase, metaclass=Singleton):
         success = self._process_auth_success(username=credentials.username, credentials=credentials)
         if success:
             logger.info(f"用户 {credentials.username} 辅助认证通过")
-            return True, self.user_oper.get_by_name(credentials.username)
+            return True, useroper.get_by_name(credentials.username)
         else:
             logger.warning(f"用户 {credentials.username} 辅助认证未通过")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
@@ -213,7 +210,8 @@ class UserChain(ChainBase, metaclass=Singleton):
                 return False
 
         # 检查用户是否存在，如果不存在且当前为密码认证时则创建新用户
-        user = self.user_oper.get_by_name(name=username)
+        useroper = UserOper()
+        user = useroper.get_by_name(name=username)
         if user:
             # 如果用户存在，但是已经被禁用，则直接响应
             if not user.is_active:
@@ -226,8 +224,8 @@ class UserChain(ChainBase, metaclass=Singleton):
             return True
         else:
             if credentials.grant_type == "password":
-                self.user_oper.add(name=username, is_active=True, is_superuser=False,
-                                   hashed_password=get_password_hash(secrets.token_urlsafe(16)))
+                useroper.add(name=username, is_active=True, is_superuser=False,
+                             hashed_password=get_password_hash(secrets.token_urlsafe(16)))
                 logger.info(f"用户 {username} 不存在，已通过 {credentials.grant_type} 认证并已创建普通用户")
                 return True
             else:

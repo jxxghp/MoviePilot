@@ -14,10 +14,6 @@ class StorageChain(ChainBase):
     存储处理链
     """
 
-    def __init__(self):
-        super().__init__()
-        self.directoryhelper = DirectoryHelper()
-
     def save_config(self, storage: str, conf: dict) -> None:
         """
         保存存储配置
@@ -192,7 +188,7 @@ class StorageChain(ChainBase):
         # 检查和删除上级目录
         if dir_item and len(Path(dir_item.path).parts) > 2:
             # 如何目录是所有下载目录、媒体库目录的上级，则不处理
-            for d in self.directoryhelper.get_dirs():
+            for d in DirectoryHelper().get_dirs():
                 if d.download_path and Path(d.download_path).is_relative_to(Path(dir_item.path)):
                     logger.debug(f"【{dir_item.storage}】{dir_item.path} 是下载目录本级或上级目录，不删除")
                     return True

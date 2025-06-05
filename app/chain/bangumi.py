@@ -3,12 +3,11 @@ from typing import Optional, List
 from app import schemas
 from app.chain import ChainBase
 from app.core.context import MediaInfo
-from app.utils.singleton import Singleton
 
 
-class BangumiChain(ChainBase, metaclass=Singleton):
+class BangumiChain(ChainBase):
     """
-    Bangumi处理链，单例运行
+    Bangumi处理链
     """
 
     def calendar(self) -> Optional[List[MediaInfo]]:

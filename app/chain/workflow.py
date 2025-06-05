@@ -188,16 +188,14 @@ class WorkflowChain(ChainBase):
     工作流链
     """
 
-    def __init__(self):
-        super().__init__()
-        self.workflowoper = WorkflowOper()
-
-    def process(self, workflow_id: int, from_begin: Optional[bool] = True) -> Tuple[bool, str]:
+    @staticmethod
+    def process(workflow_id: int, from_begin: Optional[bool] = True) -> Tuple[bool, str]:
         """
         处理工作流
         :param workflow_id: 工作流ID
         :param from_begin: 是否从头开始，默认为True
         """
+        workflowoper = WorkflowOper()
 
         def save_step(action: Action, context: ActionContext):
             """
@@ -207,16 +205,16 @@ class WorkflowChain(ChainBase):
             serialized_data = pickle.dumps(context)
             # 使用Base64编码字节流
             encoded_data = base64.b64encode(serialized_data).decode('utf-8')
-            self.workflowoper.step(workflow_id, action_id=action.id, context={
+            workflowoper.step(workflow_id, action_id=action.id, context={
                 "content": encoded_data
             })
 
         # 重置工作流
         if from_begin:
-            self.workflowoper.reset(workflow_id)
+            workflowoper.reset(workflow_id)
 
         # 查询工作流数据
-        workflow = self.workflowoper.get(workflow_id)
+        workflow = workflowoper.get(workflow_id)
         if not workflow:
             logger.warn(f"工作流 {workflow_id} 不存在")
             return False, "工作流不存在"
@@ -228,7 +226,7 @@ class WorkflowChain(ChainBase):
             return False, "工作流无流程"
 
         logger.info(f"开始处理 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
-        self.workflowoper.start(workflow_id)
+        workflowoper.start(workflow_id)
 
         # 执行工作流
         executor = WorkflowExecutor(workflow, step_callback=save_step)
@@ -236,15 +234,16 @@ class WorkflowChain(ChainBase):
 
         if not executor.success:
             logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}")
-            self.workflowoper.fail(workflow_id, result=executor.errmsg)
+            workflowoper.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         else:
             logger.info(f"工作流 {workflow.name} 执行完成")
-            self.workflowoper.success(workflow_id)
+            workflowoper.success(workflow_id)
             return True, ""
 
-    def get_workflows(self) -> List[Workflow]:
+    @staticmethod
+    def get_workflows() -> List[Workflow]:
         """
         获取工作流列表
         """
-        return self.workflowoper.list_enabled()
+        return WorkflowOper().list_enabled()
