@@ -295,12 +295,15 @@ class PluginManager(metaclass=Singleton):
         停止插件
         :param plugin: 插件实例
         """
-        # 关闭数据库
-        if hasattr(plugin, "close"):
-            plugin.close()
-        # 关闭插件
-        if hasattr(plugin, "stop_service"):
-            plugin.stop_service()
+        try:
+            # 关闭数据库
+            if hasattr(plugin, "close"):
+                plugin.close()
+            # 关闭插件
+            if hasattr(plugin, "stop_service"):
+                plugin.stop_service()
+        except Exception as e:
+            logger.warn(f"停止插件 {plugin.get_name()} 时发生错误: {str(e)}")
 
     def remove_plugin(self, plugin_id: str):
         """
