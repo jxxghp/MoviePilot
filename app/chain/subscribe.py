@@ -770,10 +770,6 @@ class SubscribeChain(ChainBase):
                             torrent_mediainfo.episode_group = subscribe.episode_group
                         _match_context.append(_context)
 
-                    # 清理内存
-                    contexts.clear()
-                    del contexts
-
                 if not _match_context:
                     # 未匹配到资源
                     logger.info(f'{mediainfo.title_year} 未匹配到符合条件的资源')
