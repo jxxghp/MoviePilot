@@ -4,6 +4,10 @@ from typing import Tuple
 import docker
 
 from app.core.config import settings
+from app.core.event import eventmanager, Event
+from app.log import logger
+from app.schemas import ConfigChangeEventData
+from app.schemas.types import EventType
 from app.utils.system import SystemUtils
 
 
@@ -11,6 +15,19 @@ class SystemHelper:
     """
     系统工具类，提供系统相关的操作和判断
     """
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件，更新内存监控设置
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in ['DEBUG', 'LOG_LEVEL']:
+            return
+        logger.update_loggers()
 
     @staticmethod
     def can_restart() -> bool:
