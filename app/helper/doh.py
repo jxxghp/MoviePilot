@@ -22,39 +22,36 @@ _executor = concurrent.futures.ThreadPoolExecutor()
 _doh_timeout = 5
 _doh_cache: Dict[str, str] = {}
 
-
-def _patched_getaddrinfo(host, *args, **kwargs):
-    """
-    socket.getaddrinfo的补丁版本。
-    """
-    if host not in settings.DOH_DOMAINS.split(","):
-        return _orig_getaddrinfo(host, *args, **kwargs)
-
-    # 检查主机是否已解析
-    if host in _doh_cache:
-        ip = _doh_cache[host]
-        logger.info("已解析 [%s] 为 [%s] (缓存)", host, ip)
-        return _orig_getaddrinfo(ip, *args, **kwargs)
-
-    # 使用DoH解析主机
-    futures = []
-    for resolver in settings.DOH_RESOLVERS.split(","):
-        futures.append(_executor.submit(_doh_query, resolver, host))
-
-    for future in concurrent.futures.as_completed(futures):
-        ip = future.result()
-        if ip is not None:
-            logger.info("已解析 [%s] 为 [%s]", host, ip)
-            _doh_cache[host] = ip
-            host = ip
-            break
-
-    return _orig_getaddrinfo(host, *args, **kwargs)
-
-
 # 对 socket.getaddrinfo 进行补丁
 if settings.DOH_ENABLE:
+    # 保存原始的 socket.getaddrinfo 方法
     _orig_getaddrinfo = socket.getaddrinfo
+
+    def _patched_getaddrinfo(host, *args, **kwargs):
+        """
+        socket.getaddrinfo的补丁版本。
+        """
+        if host not in settings.DOH_DOMAINS.split(","):
+            return _orig_getaddrinfo(host, *args, **kwargs)
+        # 检查主机是否已解析
+        if host in _doh_cache:
+            ip = _doh_cache[host]
+            logger.info("已解析 [%s] 为 [%s] (缓存)", host, ip)
+            return _orig_getaddrinfo(ip, *args, **kwargs)
+        # 使用DoH解析主机
+        futures = []
+        for resolver in settings.DOH_RESOLVERS.split(","):
+            futures.append(_executor.submit(_doh_query, resolver, host))
+        for future in concurrent.futures.as_completed(futures):
+            ip = future.result()
+            if ip is not None:
+                logger.info("已解析 [%s] 为 [%s]", host, ip)
+                _doh_cache[host] = ip
+                host = ip
+                break
+        return _orig_getaddrinfo(host, *args, **kwargs)
+
+    # 替换 socket.getaddrinfo 方法
     socket.getaddrinfo = _patched_getaddrinfo
 
 

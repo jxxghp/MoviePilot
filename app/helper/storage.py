@@ -10,14 +10,12 @@ class StorageHelper:
     存储帮助类
     """
 
-    def __init__(self):
-        self.systemconfig = SystemConfigOper()
-
-    def get_storagies(self) -> List[schemas.StorageConf]:
+    @staticmethod
+    def get_storagies() -> List[schemas.StorageConf]:
         """
         获取所有存储设置
         """
-        storage_confs: List[dict] = self.systemconfig.get(SystemConfigKey.Storages)
+        storage_confs: List[dict] = SystemConfigOper().get(SystemConfigKey.Storages)
         if not storage_confs:
             return []
         return [schemas.StorageConf(**s) for s in storage_confs]
@@ -49,7 +47,7 @@ class StorageHelper:
                 if s.type == storage:
                     s.config = conf
                     break
-        self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])
+        SystemConfigOper().set(SystemConfigKey.Storages, [s.dict() for s in storagies])
 
     def add_storage(self, storage: str, name: str, conf: dict):
         """
@@ -70,7 +68,7 @@ class StorageHelper:
                 name=name,
                 config=conf
             ))
-        self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])
+        SystemConfigOper().set(SystemConfigKey.Storages, [s.dict() for s in storagies])
 
     def reset_storage(self, storage: str):
         """
@@ -81,4 +79,4 @@ class StorageHelper:
             if s.type == storage:
                 s.config = {}
                 break
-        self.systemconfig.set(SystemConfigKey.Storages, [s.dict() for s in storagies])
+        SystemConfigOper().set(SystemConfigKey.Storages, [s.dict() for s in storagies])

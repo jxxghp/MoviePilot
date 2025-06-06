@@ -50,11 +50,11 @@ class SubscribeHelper(metaclass=Singleton):
     ]
 
     def __init__(self):
-        self.systemconfig = SystemConfigOper()
+        systemconfig = SystemConfigOper()
         if settings.SUBSCRIBE_STATISTIC_SHARE:
-            if not self.systemconfig.get(SystemConfigKey.SubscribeReport):
+            if not systemconfig.get(SystemConfigKey.SubscribeReport):
                 if self.sub_report():
-                    self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
+                    systemconfig.set(SystemConfigKey.SubscribeReport, "1")
         self.get_user_uuid()
         self.get_github_user()
 

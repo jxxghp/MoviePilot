@@ -636,7 +636,6 @@ class TmdbApi:
             return None
         # dict[地区:分级]
         ratings = {}
-        results = []
         if results := (tmdb_info.get("release_dates") or {}).get("results"):
             """
             [
@@ -1361,8 +1360,6 @@ class TmdbApi:
             if group_season.get('order') == season:
                 return group_season
         return {}
-
-
 
     def get_person_detail(self, person_id: int) -> dict:
         """

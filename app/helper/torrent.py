@@ -28,10 +28,6 @@ class TorrentHelper(metaclass=Singleton):
     # 失败的种子：站点链接
     _invalid_torrents = []
 
-    def __init__(self):
-        self.system_config = SystemConfigOper()
-        self.site_oper = SiteOper()
-
     def download_torrent(self, url: str,
                          cookie: Optional[str] = None,
                          ua: Optional[str] = None,
@@ -192,7 +188,8 @@ class TorrentHelper(metaclass=Singleton):
             file_name = str(datetime.datetime.now())
         return file_name
 
-    def sort_torrents(self, torrent_list: List[Context]) -> List[Context]:
+    @staticmethod
+    def sort_torrents(torrent_list: List[Context]) -> List[Context]:
         """
         对种子对行排序：torrent、site、upload、seeder
         """
@@ -200,11 +197,11 @@ class TorrentHelper(metaclass=Singleton):
             return []
 
         # 下载规则
-        priority_rule: List[str] = self.system_config.get(
+        priority_rule: List[str] = SystemConfigOper().get(
             SystemConfigKey.TorrentsPriority) or ["torrent", "upload", "seeder"]
         # 站点上传量
         site_uploads = {
-            site.name: site.upload for site in self.site_oper.get_userdata_latest()
+            site.name: site.upload for site in SiteOper().get_userdata_latest()
         }
 
         def get_sort_str(_context):

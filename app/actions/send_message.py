@@ -4,7 +4,7 @@ from pydantic import Field
 
 from app.actions import BaseAction, ActionChain
 from app.schemas import ActionParams, ActionContext, Notification
-from core.config import settings
+from app.core.config import settings
 
 
 class SendMessageParams(ActionParams):

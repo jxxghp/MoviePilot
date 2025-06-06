@@ -302,6 +302,8 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
                 value=value,
                 change_type="update"
             ))
+        elif success is None:
+            success = True
         return schemas.Response(success=success, message=message)
     elif key in {item.value for item in SystemConfigKey}:
         if isinstance(value, list):

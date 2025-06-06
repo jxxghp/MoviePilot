@@ -14,7 +14,6 @@ class CookieCloudHelper:
 
     def __init__(self):
         self.__sync_setting()
-        self._req = RequestUtils(content_type="application/json")
 
     def __sync_setting(self):
         """
@@ -46,7 +45,7 @@ class CookieCloudHelper:
                 return {}, "未从本地CookieCloud服务加载到cookie数据，请检查服务器设置、用户KEY及加密密码是否正确"
         else:
             req_url = UrlUtils.combine_url(host=self._server, path=f"get/{self._key}")
-            ret = self._req.get_res(url=req_url)
+            ret = RequestUtils(content_type="application/json").get_res(url=req_url)
             if ret and ret.status_code == 200:
                 try:
                     result = ret.json()
