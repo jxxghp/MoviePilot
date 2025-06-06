@@ -1,4 +1,3 @@
-import gc
 import re
 import traceback
 from typing import Dict, List, Union, Optional
@@ -10,7 +9,7 @@ from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.memory import memory_optimized, clear_large_objects
+from app.helper.memory import memory_optimized
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
@@ -221,17 +220,7 @@ class TorrentsChain(ChainBase):
                         torrents_cache[domain].append(context)
                     # 如果超过了限制条数则移除掉前面的
                     if len(torrents_cache[domain]) > settings.CACHE_CONF["torrents"]:
-                        # 优化：直接删除旧数据，无需重复清理（数据进缓存前已经clear过）
-                        old_contexts = torrents_cache[domain][:-settings.CACHE_CONF["torrents"]]
                         torrents_cache[domain] = torrents_cache[domain][-settings.CACHE_CONF["torrents"]:]
-                        # 清理旧对象
-                        clear_large_objects(*old_contexts)
-                    # 优化：清理不再需要的临时变量
-                    del meta, mediainfo, context
-                # 回收资源
-                torrents.clear()
-                del torrents
-                gc.collect()
             else:
                 logger.info(f'{indexer.get("name")} 没有获取到种子')
 
@@ -243,17 +232,7 @@ class TorrentsChain(ChainBase):
 
         # 去除不在站点范围内的缓存种子
         if sites and torrents_cache:
-            old_cache = torrents_cache
             torrents_cache = {k: v for k, v in torrents_cache.items() if k in domains}
-            # 清理不再使用的缓存数据（数据进缓存前已经clear过，无需重复清理）
-            removed_contexts = []
-            for domain, contexts in old_cache.items():
-                if domain not in domains:
-                    removed_contexts.extend(contexts)
-            # 批量清理
-            if removed_contexts:
-                clear_large_objects(*removed_contexts)
-            del old_cache
 
         return torrents_cache
 
