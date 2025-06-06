@@ -225,7 +225,7 @@ def set_env_setting(env: dict,
     if failed_updates:
         return schemas.Response(
             success=False,
-            message=f"{', '.join(failed_updates.keys())} 配置项更新失败",
+            message=f"{', '.join([v[1] for v in failed_updates.values()])}",
             data={
                 "success_updates": success_updates,
                 "failed_updates": failed_updates
