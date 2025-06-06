@@ -265,10 +265,6 @@ class MessageChain(ChainBase):
                                                  userid=userid,
                                                  total=len(contexts))
 
-                # 清理内存
-                del cache_list
-                del cache_data
-
             elif cache_type in ["Subscribe", "ReSubscribe"]:
                 # 订阅或洗版媒体
                 mediainfo: MediaInfo = cache_list[_choice]
@@ -357,9 +353,6 @@ class MessageChain(ChainBase):
                                            items=cache_list[start:end],
                                            userid=userid,
                                            total=len(cache_list))
-            # 清理内存
-            del cache_list
-            del cache_data
 
         elif text.lower() == "n":
             # 下一页
@@ -396,9 +389,6 @@ class MessageChain(ChainBase):
                                                source=source,
                                                title=_current_meta.name,
                                                items=cache_list, userid=userid, total=total)
-            # 清理内存
-            del cache_list
-            del cache_data
 
         else:
             # 搜索或订阅
