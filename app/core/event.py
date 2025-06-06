@@ -468,7 +468,7 @@ class EventManager(metaclass=Singleton):
             else:
                 logger.debug(f"事件处理出错：模块 {module_name} 中没有找到类 {class_name}")
         except Exception as e:
-            logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
+            logger.debug(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
         return None
 
     def __broadcast_consumer_loop(self):

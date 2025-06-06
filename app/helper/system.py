@@ -25,7 +25,8 @@ class SystemHelper:
         if not event:
             return
         event_data: ConfigChangeEventData = event.event_data
-        if event_data.key not in ['DEBUG', 'LOG_LEVEL']:
+        if event_data.key not in ['DEBUG', 'LOG_LEVEL', 'LOG_MAX_FILE_SIZE', 'LOG_BACKUP_COUNT',
+                                  'LOG_FILE_FORMAT', 'LOG_CONSOLE_FORMAT']:
             return
         logger.update_loggers()
 
