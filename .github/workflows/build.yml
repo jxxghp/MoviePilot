@@ -25,7 +25,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
+          images: |
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
+            ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ env.app_version }}
             type=raw,value=latest
@@ -41,6 +43,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Image
         uses: docker/build-push-action@v5
