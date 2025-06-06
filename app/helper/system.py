@@ -19,7 +19,7 @@ class SystemHelper:
     @eventmanager.register(EventType.ConfigChanged)
     def handle_config_changed(self, event: Event):
         """
-        处理配置变更事件，更新内存监控设置
+        处理配置变更事件，更新日志设置
         :param event: 事件对象
         """
         if not event:
