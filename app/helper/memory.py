@@ -4,11 +4,16 @@ import threading
 import time
 from typing import Optional, Callable, Any
 from functools import wraps
+
+from app.core.config import settings
+from app.core.event import eventmanager, Event
 from app.log import logger
+from app.schemas import ConfigChangeEventData
+from app.schemas.types import EventType
 from app.utils.singleton import Singleton
 
 
-class MemoryManager(metaclass=Singleton):
+class MemoryHelper(metaclass=Singleton):
     """
     内存管理工具类，用于监控和优化内存使用
     """
@@ -75,11 +80,27 @@ class MemoryManager(metaclass=Singleton):
             logger.info(f"清理后内存: {after_memory['rss']:.1f}MB")
             return True
         return False
-    
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def handle_config_changed(self, event: Event):
+        """
+        处理配置变更事件，更新内存监控设置
+        :param event: 事件对象
+        """
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in ['MEMORY_MONITOR_ENABLE']:
+            return
+        self.stop_monitoring()
+        self.start_monitoring()
+
     def start_monitoring(self):
         """
         开始内存监控
         """
+        if not settings.MEMORY_MONITOR_ENABLE:
+            return
         if self._monitoring:
             return
             
@@ -95,7 +116,7 @@ class MemoryManager(metaclass=Singleton):
         self._monitoring = False
         if self._monitor_thread:
             self._monitor_thread.join(timeout=5)
-        logger.info("内存监控已停止")
+            logger.info("内存监控已停止")
     
     def _monitor_loop(self):
         """
@@ -142,22 +163,20 @@ def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
-            memory_manager = MemoryManager()
-            
-            if log_memory:
-                before_memory = memory_manager.get_memory_usage()
-                logger.info(f"{func.__name__} 执行前内存: {before_memory['rss']:.1f}MB")
-            
+            if settings.MEMORY_MONITOR_ENABLE:
+                if log_memory:
+                    before_memory = MemoryHelper().get_memory_usage()
+                    logger.info(f"{func.__name__} 执行前内存: {before_memory['rss']:.1f}MB")
             try:
                 result = func(*args, **kwargs)
                 return result
             finally:
-                if force_gc_after:
-                    memory_manager.force_gc()
-                
-                if log_memory:
-                    after_memory = memory_manager.get_memory_usage()
-                    logger.info(f"{func.__name__} 执行后内存: {after_memory['rss']:.1f}MB")
+                if settings.MEMORY_MONITOR_ENABLE:
+                    if force_gc_after:
+                        MemoryHelper().force_gc()
+                    if log_memory:
+                        after_memory = MemoryHelper().get_memory_usage()
+                        logger.info(f"{func.__name__} 执行后内存: {after_memory['rss']:.1f}MB")
         
         return wrapper
     return decorator
