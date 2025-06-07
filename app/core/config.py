@@ -51,6 +51,12 @@ class ConfigModel(BaseModel):
     NGINX_PORT: int = 3000
     # 是否调试模式
     DEBUG: bool = False
+    # 内存诊断模式
+    MEMORY_DIAGNOSTICS: bool = False
+    # 内存报告间隔时间（秒）
+    MEMORY_REPORTING_INTERVAL: int = 5 * 60
+    # 内存诊断堆栈深度
+    MEMORY_DIAGNOSTICS_STACK_DEPTH: int = 15
     # 是否开发模式
     DEV: bool = False
     # 是否在控制台输出 SQL 语句，默认关闭
