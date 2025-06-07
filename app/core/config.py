@@ -282,8 +282,6 @@ class ConfigModel(BaseModel):
     DEFAULT_SUB: Optional[str] = "zh-cn"
     # Docker Client API地址
     DOCKER_CLIENT_API: Optional[str] = "tcp://127.0.0.1:38379"
-    # 剧集交集最小置信度  计算后的交集比例( len(torrent_episodes ∩ need_episodes) / len(torrent_episodes) 低于这个阈值表明包含过多不需要的剧集
-    EPISODE_INTERSECTION_MIN_CONFIDENCE: float = 0.0
 
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
