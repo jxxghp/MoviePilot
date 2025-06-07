@@ -1,5 +1,6 @@
 name: Close inactive issues
 on:
+  workflow_dispatch:
   schedule:
     # Github Action 只支持 UTC 时间。
     # '0 18 * * *' 对应 UTC 时间的 18:00，也就是中国时区 (UTC+8) 的第二天凌晨 02:00。
