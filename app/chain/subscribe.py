@@ -1178,6 +1178,9 @@ class SubscribeChain(ChainBase):
                     new_episodes = list(range(max(start_episode, start), total_episode + 1))
                     # 与原集列表取交集
                     episodes = list(set(episode_list).intersection(set(new_episodes)))
+                    # 交集为空时，说明订阅的剧集均已入库
+                    if not episodes:
+                        return True, {}
                 # 更新集合
                 no_exists[mediakey][begin_season] = schemas.NotExistMediaInfo(
                     season=begin_season,

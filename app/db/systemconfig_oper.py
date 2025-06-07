@@ -1,4 +1,5 @@
-from typing import Any, Union, Optional
+import copy
+from typing import Any, Optional, Union
 
 from app.db import DbOper
 from app.db.models.systemconfig import SystemConfig
@@ -52,14 +53,16 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         if isinstance(key, SystemConfigKey):
             key = key.value
         if not key:
-            return self.__SYSTEMCONF
-        return self.__SYSTEMCONF.get(key)
+            return self.all()
+        # 避免将__SYSTEMCONF内的值引用出去，会导致set时误判没有变动
+        return copy.deepcopy(self.__SYSTEMCONF.get(key))
 
     def all(self):
         """
         获取所有系统设置
         """
-        return self.__SYSTEMCONF or {}
+        # 避免将__SYSTEMCONF内的值引用出去，会导致set时误判没有变动
+        return copy.deepcopy(self.__SYSTEMCONF)
 
     def delete(self, key: Union[str, SystemConfigKey]) -> bool:
         """
