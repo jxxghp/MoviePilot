@@ -166,7 +166,7 @@ class Scheduler(metaclass=Singleton):
             # 创建定时服务
             self._scheduler = BackgroundScheduler(timezone=settings.TZ,
                                                   executors={
-                                                      'default': ThreadPoolExecutor(20)
+                                                      'default': ThreadPoolExecutor(settings.CONF['scheduler'])
                                                   })
 
             # CookieCloud定时同步
@@ -323,7 +323,7 @@ class Scheduler(metaclass=Singleton):
                 "interval",
                 id="clear_cache",
                 name="缓存清理",
-                hours=settings.CACHE_CONF["meta"] / 3600,
+                hours=settings.CONF["meta"] / 3600,
                 kwargs={
                     'job_id': 'clear_cache'
                 }

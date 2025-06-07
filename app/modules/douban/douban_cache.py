@@ -16,7 +16,7 @@ from app.schemas.types import MediaType
 lock = RLock()
 
 CACHE_EXPIRE_TIMESTAMP_STR = "cache_expire_timestamp"
-EXPIRE_TIMESTAMP = settings.CACHE_CONF["meta"]
+EXPIRE_TIMESTAMP = settings.CONF["meta"]
 
 
 class DoubanCache(metaclass=Singleton):

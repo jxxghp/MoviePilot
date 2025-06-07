@@ -171,14 +171,14 @@ class DoubanApi(metaclass=Singleton):
             ).digest()
         ).decode()
 
-    @cached(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["douban"], ttl=settings.CONF["meta"])
     def __invoke_recommend(self, url: str, **kwargs) -> dict:
         """
         推荐/发现类API
         """
         return self.__invoke(url, **kwargs)
 
-    @cached(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["douban"], ttl=settings.CONF["meta"])
     def __invoke_search(self, url: str, **kwargs) -> dict:
         """
         搜索类API
@@ -213,7 +213,7 @@ class DoubanApi(metaclass=Singleton):
             return resp.json()
         return resp.json() if resp else {}
 
-    @cached(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["douban"], ttl=settings.CONF["meta"])
     def __post(self, url: str, **kwargs) -> dict:
         """
         POST请求

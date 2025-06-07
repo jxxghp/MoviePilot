@@ -8,7 +8,7 @@ def init_memory_manager():
     """
     memory_manager = MemoryHelper()
     # 设置内存阈值和启动监控
-    memory_manager.set_threshold(settings.CACHE_CONF['memory'])
+    memory_manager.set_threshold(settings.CONF['memory'])
     memory_manager.start_monitoring()
 
 

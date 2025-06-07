@@ -522,7 +522,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return self.CONFIG_PATH / "cookies"
 
     @property
-    def CACHE_CONF(self):
+    def CONF(self):
         """
         {
             "torrents": "缓存种子数量",
@@ -531,7 +531,9 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "douban": "豆瓣请求缓存数量",
             "fanart": "Fanart请求缓存数量",
             "meta": "元数据缓存过期时间（秒）",
-            "memory": "最大占用内存（MB）"
+            "memory": "最大占用内存（MB）",
+            "scheduler": "调度器缓存数量"
+            "threadpool": "线程池数量"
         }
         """
         if self.BIG_MEMORY_MODE:
@@ -543,7 +545,9 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 "bangumi": 512,
                 "fanart": 512,
                 "meta": (self.META_CACHE_EXPIRE or 24) * 3600,
-                "memory": 2 * 1024
+                "memory": 2 * 1024,
+                "scheduler": 50,
+                "threadpool": 50
             }
         return {
             "torrents": 100,
@@ -553,7 +557,9 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "bangumi": 256,
             "fanart": 128,
             "meta": (self.META_CACHE_EXPIRE or 2) * 3600,
-            "memory": 1024
+            "memory": 1024,
+            "scheduler": 20,
+            "threadpool": 20
         }
 
     @property

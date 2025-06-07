@@ -179,7 +179,7 @@ class TorrentsChain(ChainBase):
             # 按pubdate降序排列
             torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 取前N条
-            torrents = torrents[:settings.CACHE_CONF["refresh"]]
+            torrents = torrents[:settings.CONF["refresh"]]
             if torrents:
                 # 过滤出没有处理过的种子 - 优化：使用集合查找，避免重复创建字符串列表
                 cached_signatures = {f'{t.torrent_info.title}{t.torrent_info.description}'
@@ -219,8 +219,8 @@ class TorrentsChain(ChainBase):
                     else:
                         torrents_cache[domain].append(context)
                     # 如果超过了限制条数则移除掉前面的
-                    if len(torrents_cache[domain]) > settings.CACHE_CONF["torrents"]:
-                        torrents_cache[domain] = torrents_cache[domain][-settings.CACHE_CONF["torrents"]:]
+                    if len(torrents_cache[domain]) > settings.CONF["torrents"]:
+                        torrents_cache[domain] = torrents_cache[domain][-settings.CONF["torrents"]:]
             else:
                 logger.info(f'{indexer.get("name")} 没有获取到种子')
 
