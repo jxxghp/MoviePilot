@@ -1,6 +1,6 @@
 from app.core.config import settings
 from app.helper.memory import MemoryHelper
-from app.helper.diag_memory import DiagMemoryHelper
+from app.helper.diagmemory import DiagMemoryHelper
 from app.log import logger
 
 
@@ -28,3 +28,4 @@ def stop_memory_manager():
     停止内存监控器
     """
     MemoryHelper().stop_monitoring()
+    DiagMemoryHelper().stop_monitoring()
