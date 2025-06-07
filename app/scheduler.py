@@ -166,7 +166,7 @@ class Scheduler(metaclass=Singleton):
             # 创建定时服务
             self._scheduler = BackgroundScheduler(timezone=settings.TZ,
                                                   executors={
-                                                      'default': ThreadPoolExecutor(100)
+                                                      'default': ThreadPoolExecutor(20)
                                                   })
 
             # CookieCloud定时同步
