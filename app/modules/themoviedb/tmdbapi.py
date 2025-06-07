@@ -500,7 +500,7 @@ class TmdbApi:
 
             return ret_info
 
-    @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["tmdb"], ttl=settings.CONF["meta"])
     @rate_limit_exponential(source="match_tmdb_web", base_wait=5, max_wait=1800, enable_logging=True)
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """

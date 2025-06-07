@@ -445,19 +445,6 @@ class DownloadChain(ChainBase):
                 return 9999
             return no_exist[season].total_episode
 
-        def _calculate_intersection_ratio(episodes_set: set, target_set: set) -> Tuple[float, set]:
-            """
-            计算种子与目标缺失集之间的交集比例。
-            :param episodes_set (Set[int]): 当前种子的集数集合。
-            :param target_set (Set[int]): 当前季缺失的集数集合。
-            :return: Tuple[float, Set[int]]: - 交集比例（0~1）- 交集集合（Set[int]）
-            """
-            cal_intersection = episodes_set & target_set
-            if not cal_intersection:
-                return 0.0, set()
-            cal_ratio = len(cal_intersection) / len(episodes_set)
-            return cal_ratio, cal_intersection
-
         # 发送资源选择事件，允许外部修改上下文数据
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
@@ -616,8 +603,6 @@ class DownloadChain(ChainBase):
                     # 缺失整季的转化为缺失集进行比较
                     if not need_episodes:
                         need_episodes = list(range(start_episode, total_episode + 1))
-                    # 计算每个种子的集数与缺失集数的交集比例 shaw
-                    torrent_ratios = []
                     # 循环种子
                     for context in contexts:
                         if global_vars.is_system_stopped:
@@ -644,54 +629,24 @@ class DownloadChain(ChainBase):
                             # 整季的不处理
                             if not torrent_episodes:
                                 continue
-                            # 计算交集
-                            # 若种子[5-10],[7-10],[9-10]  need_episodes=[9,10,11,12,13,14]
-                            # 计算后的交集比例( len(torrent_episodes ∩ need_episodes) / len(torrent_episodes)  )分别  0.33 0.66  1.0
-                            ratio, intersection = _calculate_intersection_ratio(torrent_episodes, set(need_episodes))
-                            if ratio <= (settings.EPISODE_INTERSECTION_MIN_CONFIDENCE or 0.05):
-                                # 可以设定阈值
-                                logger.info(
-                                    f"{context.meta_info.title} 与当前缺失集数交集比例过低：{ratio:.2%}，跳过")
-                                continue
-
-                            # 收集候选种子
-                            torrent_ratios.append((context, ratio, len(intersection)))
-                    if not torrent_ratios:
-                        continue
-                    # 按交集比例排序
-                    torrent_ratios.sort(key=lambda x: (x[1], x[2]), reverse=True)
-                    # 按排序后的顺序下载
-                    for context, _, _ in torrent_ratios:
-                        if global_vars.is_system_stopped:
-                            break
-                        # 重新计算与当前need_episodes的交集比例
-                        current_episodes = set(context.meta_info.episode_list)
-                        current_ratio, current_intersection = _calculate_intersection_ratio(current_episodes,
-                                                                                            set(need_episodes))
-                        if current_ratio <= (settings.EPISODE_INTERSECTION_MIN_CONFIDENCE or 0.05):
-                            # 可以设定阈值
-                            logger.info(
-                                f"{context.meta_info.title} 与当前缺失集数交集比例过低：{current_ratio:.2%}，跳过")
-                            continue
-                        # 下载
-                        logger.info(f"开始下载 {context.meta_info.title} ...")
-                        download_id = self.download_single(context, save_path=save_path,
-                                                           channel=channel, source=source,
-                                                           userid=userid, username=username,
-                                                           downloader=downloader)
-                        if download_id:
-                            # 下载成功
-                            logger.info(f"{context.meta_info.title} 添加下载成功")
-                            downloaded_list.append(context)
-                            # 更新仍需集数
-                            need_episodes = __update_episodes(_mid=need_mid,
-                                                              _need=need_episodes,
-                                                              _sea=need_season,
-                                                              _current=current_intersection)
-                            logger.info(f"季 {need_season} 剩余需要集：{need_episodes}")
-                            # 如果已经没有需要下载的集数，跳出当前循环
-                            if not need_episodes:
-                                break
+                            # 为需要集的子集则下载
+                            if torrent_episodes.issubset(set(need_episodes)):
+                                # 下载
+                                logger.info(f"开始下载 {meta.title} ...")
+                                download_id = self.download_single(context, save_path=save_path,
+                                                                   channel=channel, source=source,
+                                                                   userid=userid, username=username,
+                                                                   downloader=downloader)
+                                if download_id:
+                                    # 下载成功
+                                    logger.info(f"{meta.title} 添加下载成功")
+                                    downloaded_list.append(context)
+                                    # 更新仍需集数
+                                    need_episodes = __update_episodes(_mid=need_mid,
+                                                                      _need=need_episodes,
+                                                                      _sea=need_season,
+                                                                      _current=torrent_episodes)
+                                    logger.info(f"季 {need_season} 剩余需要集：{need_episodes}")
 
         # 仍然缺失的剧集，从整季中选择需要的集数文件下载，仅支持QB和TR
         if no_exists:
@@ -841,7 +796,6 @@ class DownloadChain(ChainBase):
             totals = {}
 
         mediaserver = MediaServerOper()
-
         if mediainfo.type == MediaType.MOVIE:
             # 电影
             itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,

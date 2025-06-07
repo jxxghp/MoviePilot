@@ -30,7 +30,7 @@ class BangumiApi(object):
         self._session = requests.Session()
         self._req = RequestUtils(session=self._session)
 
-    @cached(maxsize=settings.CACHE_CONF["bangumi"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["bangumi"], ttl=settings.CONF["meta"])
     def __invoke(self, url, key: Optional[str] = None, **kwargs):
         req_url = self._base_url + url
         params = {}

@@ -124,7 +124,7 @@ class TMDb(object):
     def cache(self, cache):
         self._cache_enabled = bool(cache)
 
-    @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["tmdb"], ttl=settings.CONF["meta"])
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """

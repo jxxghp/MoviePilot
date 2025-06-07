@@ -420,7 +420,7 @@ class FanartModule(_ModuleBase):
         return result
 
     @classmethod
-    @cached(maxsize=settings.CACHE_CONF["fanart"], ttl=settings.CACHE_CONF["meta"])
+    @cached(maxsize=settings.CONF["fanart"], ttl=settings.CONF["meta"])
     def __request_fanart(cls, media_type: MediaType, queryid: Union[str, int]) -> Optional[dict]:
         if media_type == MediaType.MOVIE:
             image_url = cls._movie_url % queryid
