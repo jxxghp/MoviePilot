@@ -104,57 +104,20 @@ class MemoryHelper(metaclass=Singleton):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             snapshot_file = self._memory_snapshot_dir / f"memory_snapshot_{timestamp}.txt"
 
-            # 获取当前进程的内存使用情况
-            all_objects = muppy.get_objects()
-            sum1 = summary.summarize(all_objects)
-
             # 获取系统内存使用情况
             memory_usage = psutil.Process().memory_info().rss
 
-            # 写入内存快照文件
-            with open(snapshot_file, 'w', encoding='utf-8') as f:
-                f.write(f"内存快照时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"当前进程内存使用: {memory_usage / 1024 / 1024:.2f} MB\n")
-                f.write("=" * 80 + "\n")
-                f.write("对象类型统计:\n")
-                f.write("-" * 80 + "\n")
+            logger.info(f"开始创建内存快照: {snapshot_file}")
 
-                # 写入对象统计信息
-                for line in summary.format_(sum1):
-                    f.write(line + "\n")
-                
-                # 添加详细的类实例内存使用情况
-                f.write("\n" + "=" * 80 + "\n")
-                f.write("类实例内存使用情况 (按内存大小排序):\n")
-                f.write("-" * 80 + "\n")
-                
-                try:
-                    class_objects = self._get_class_memory_usage()
-                    if class_objects:
-                        for i, class_info in enumerate(class_objects[:50], 1):  # 只显示前50个类
-                            f.write(f"{i:3d}. {class_info['name']:<50} {class_info['size_mb']:>8.2f} MB ({class_info['count']} 个实例)\n")
-                    else:
-                        f.write("未找到有效的类实例信息\n")
-                except Exception as e:
-                    logger.error(f"获取类实例信息失败: {e}")
-                    f.write(f"获取类实例信息失败: {e}\n")
-                
-                # 添加详细的变量内存使用情况
-                f.write("\n" + "=" * 80 + "\n")
-                f.write("大内存变量详情 (前100个):\n")
-                f.write("-" * 80 + "\n")
-                
-                try:
-                    large_variables = self._get_large_variables(100)
-                    if large_variables:
-                        for i, var_info in enumerate(large_variables, 1):
-                            f.write(f"{i:3d}. {var_info['name']:<30} {var_info['type']:<15} {var_info['size_mb']:>8.2f} MB\n")
-                    else:
-                        f.write("未找到大内存变量\n")
-                except Exception as e:
-                    logger.error(f"获取大内存变量信息失败: {e}")
-                    f.write(f"获取变量信息失败: {e}\n")
-                    
+            # 第一步：写入基本信息和对象类型统计
+            self._write_basic_info(snapshot_file, memory_usage)
+
+            # 第二步：分析并写入类实例内存使用情况
+            self._append_class_analysis(snapshot_file)
+
+            # 第三步：分析并写入大内存变量详情
+            self._append_variable_analysis(snapshot_file)
+
             logger.info(f"内存快照已保存: {snapshot_file}, 当前内存使用: {memory_usage / 1024 / 1024:.2f} MB")
 
             # 清理过期的快照文件（保留最近30个）
@@ -162,6 +125,132 @@ class MemoryHelper(metaclass=Singleton):
 
         except Exception as e:
             logger.error(f"创建内存快照失败: {e}")
+
+    @staticmethod
+    def _write_basic_info(snapshot_file, memory_usage):
+        """
+        写入基本信息和对象类型统计
+        """
+        # 获取当前进程的内存使用情况
+        all_objects = muppy.get_objects()
+        sum1 = summary.summarize(all_objects)
+
+        with open(snapshot_file, 'w', encoding='utf-8') as f:
+            f.write(f"内存快照时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"当前进程内存使用: {memory_usage / 1024 / 1024:.2f} MB\n")
+            f.write("=" * 80 + "\n")
+            f.write("对象类型统计:\n")
+            f.write("-" * 80 + "\n")
+
+            # 写入对象统计信息
+            for line in summary.format_(sum1):
+                f.write(line + "\n")
+
+            # 立即刷新到磁盘
+            f.flush()
+
+        logger.debug("基本信息已写入快照文件")
+
+    def _append_class_analysis(self, snapshot_file):
+        """
+        分析并追加类实例内存使用情况
+        """
+        with open(snapshot_file, 'a', encoding='utf-8') as f:
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("类实例内存使用情况 (按内存大小排序):\n")
+            f.write("-" * 80 + "\n")
+            f.write("正在分析中...\n")
+            # 立即刷新，让用户知道这部分开始了
+            f.flush()
+
+        try:
+            logger.debug("开始分析类实例内存使用情况")
+            class_objects = self._get_class_memory_usage()
+
+            # 重新打开文件，移除"正在分析中..."并写入实际结果
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 替换"正在分析中..."
+            content = content.replace("正在分析中...\n", "")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+                if class_objects:
+                    # 只显示前100个类
+                    for i, class_info in enumerate(class_objects[:100], 1):
+                        f.write(f"{i:3d}. {class_info['name']:<50} "
+                                f"{class_info['size_mb']:>8.2f} MB ({class_info['count']} 个实例)\n")
+                else:
+                    f.write("未找到有效的类实例信息\n")
+
+                f.flush()
+
+        except Exception as e:
+            logger.error(f"获取类实例信息失败: {e}")
+
+            # 即使出错也要更新文件
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            content = content.replace("正在分析中...\n", f"获取类实例信息失败: {e}\n")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()
+
+        logger.debug("类实例分析已完成并写入")
+
+    def _append_variable_analysis(self, snapshot_file):
+        """
+        分析并追加大内存变量详情
+        """
+        with open(snapshot_file, 'a', encoding='utf-8') as f:
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("大内存变量详情 (前100个):\n")
+            f.write("-" * 80 + "\n")
+            f.write("正在分析中...\n")
+            # 立即刷新，让用户知道这部分开始了
+            f.flush()
+
+        try:
+            logger.debug("开始分析大内存变量")
+            large_variables = self._get_large_variables(100)
+
+            # 重新打开文件，移除"正在分析中..."并写入实际结果
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 替换最后的"正在分析中..."
+            content = content.replace("正在分析中...\n", "")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+                if large_variables:
+                    for i, var_info in enumerate(large_variables, 1):
+                        f.write(
+                            f"{i:3d}. {var_info['name']:<30} {var_info['type']:<15} {var_info['size_mb']:>8.2f} MB\n")
+                else:
+                    f.write("未找到大内存变量\n")
+
+                f.flush()
+
+        except Exception as e:
+            logger.error(f"获取大内存变量信息失败: {e}")
+
+            # 即使出错也要更新文件
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            content = content.replace("正在分析中...\n", f"获取变量信息失败: {e}\n")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()
+
+        logger.debug("大内存变量分析已完成并写入")
 
     def _cleanup_old_snapshots(self):
         """
@@ -186,20 +275,20 @@ class MemoryHelper(metaclass=Singleton):
         class_info = {}
         processed_count = 0
         error_count = 0
-        
+
         # 获取所有对象
         all_objects = muppy.get_objects()
         logger.debug(f"开始分析 {len(all_objects)} 个对象的类实例内存使用情况")
-        
+
         for obj in all_objects:
             try:
                 # 跳过类对象本身，统计类的实例
                 if isinstance(obj, type):
                     continue
-                    
+
                 # 获取对象的类名 - 这里可能会出错
                 obj_class = type(obj)
-                
+
                 # 安全地获取类名
                 try:
                     if hasattr(obj_class, '__module__') and hasattr(obj_class, '__name__'):
@@ -210,15 +299,15 @@ class MemoryHelper(metaclass=Singleton):
                     # 如果获取类名失败，使用简单的类型描述
                     class_name = f"<unknown_class_{id(obj_class)}>"
                     logger.debug(f"获取类名失败: {e}")
-                
+
                 # 计算对象的内存使用
                 size_bytes = asizeof.asizeof(obj)
                 if size_bytes < 100:  # 跳过太小的对象
                     continue
-                    
+
                 size_mb = size_bytes / 1024 / 1024
                 processed_count += 1
-                
+
                 if class_name in class_info:
                     class_info[class_name]['size_mb'] += size_mb
                     class_info[class_name]['count'] += 1
@@ -228,16 +317,16 @@ class MemoryHelper(metaclass=Singleton):
                         'size_mb': size_mb,
                         'count': 1
                     }
-                    
+
             except Exception as e:
                 # 捕获所有可能的异常，包括SQLAlchemy、ORM等框架的异常
                 error_count += 1
                 if error_count <= 5:  # 只记录前5个错误，避免日志过多
                     logger.debug(f"分析对象时出错: {e}")
                 continue
-        
+
         logger.debug(f"类实例分析完成: 处理了 {processed_count} 个对象, 遇到 {error_count} 个错误")
-        
+
         # 按内存大小排序
         sorted_classes = sorted(class_info.values(), key=lambda x: x['size_mb'], reverse=True)
         return sorted_classes
@@ -248,43 +337,43 @@ class MemoryHelper(metaclass=Singleton):
         """
         large_vars = []
         processed_count = 0
-        
+
         # 获取所有对象
         all_objects = muppy.get_objects()
         logger.debug(f"开始分析 {len(all_objects)} 个对象的内存使用情况")
-        
+
         for obj in all_objects:
             # 跳过类对象
             if isinstance(obj, type):
                 continue
-                
+
             try:
                 # 计算对象大小
                 size_bytes = asizeof.asizeof(obj)
-                
+
                 # 只处理大于10KB的对象，提高分析效率
                 if size_bytes < 10240:
                     continue
-                
+
                 size_mb = size_bytes / 1024 / 1024
                 processed_count += 1
-                
+
                 # 获取对象信息
                 var_info = self._get_variable_info(obj, size_mb)
                 if var_info:
                     large_vars.append(var_info)
-                    
+
                 # 如果已经找到足够多的大对象，可以提前结束
                 if len(large_vars) >= limit * 2:  # 多收集一些，后面排序筛选
                     break
-                    
+
             except Exception as e:
                 # 更广泛的异常捕获
                 logger.debug(f"分析对象失败: {e}")
                 continue
-        
+
         logger.debug(f"处理了 {processed_count} 个大对象，找到 {len(large_vars)} 个有效变量")
-        
+
         # 按内存大小排序并返回前N个
         large_vars.sort(key=lambda x: x['size_mb'], reverse=True)
         return large_vars[:limit]
@@ -295,10 +384,10 @@ class MemoryHelper(metaclass=Singleton):
         """
         try:
             obj_type = type(obj).__name__
-            
+
             # 尝试获取变量名
             var_name = self._get_variable_name(obj)
-            
+
             # 生成描述性信息
             if isinstance(obj, dict):
                 key_count = len(obj)
@@ -316,13 +405,13 @@ class MemoryHelper(metaclass=Singleton):
                 if hasattr(obj, '__dict__'):
                     attr_count = len(obj.__dict__)
                     var_name += f" ({attr_count}个属性)"
-            
+
             return {
                 'name': var_name,
                 'type': obj_type,
                 'size_mb': size_mb
             }
-            
+
         except Exception as e:
             logger.debug(f"获取变量信息失败: {e}")
             return None
