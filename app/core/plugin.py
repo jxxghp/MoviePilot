@@ -307,6 +307,10 @@ class PluginManager(metaclass=Singleton):
         """
         self.stop(plugin_id)
 
+        from sys import modules
+
+        del modules[f"app.plugins.{plugin_id.lower()}"]
+
     def reload_plugin(self, plugin_id: str):
         """
         将一个插件重新加载到内存
