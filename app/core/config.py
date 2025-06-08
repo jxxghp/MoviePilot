@@ -545,7 +545,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 "bangumi": 512,
                 "fanart": 512,
                 "meta": (self.META_CACHE_EXPIRE or 24) * 3600,
-                "memory": 2 * 1024,
+                "memory": 1 * 1024,
                 "scheduler": 50,
                 "threadpool": 50
             }
@@ -557,7 +557,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "bangumi": 256,
             "fanart": 128,
             "meta": (self.META_CACHE_EXPIRE or 2) * 3600,
-            "memory": 1024,
+            "memory": 512,
             "scheduler": 20,
             "threadpool": 20
         }

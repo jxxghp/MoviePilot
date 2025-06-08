@@ -99,11 +99,11 @@ class MemoryAnalyzer:
 
                         # 记录详细的内存使用信息到内存日志
                         if size_mb > 1.0:  # 只记录大于1MB的内存使用
-                            self._memory_logger.debug(f"[{tag}] 内存使用: {os.path.basename(filename)}:{lineno} "
-                                                      f"使用 {size_mb:.2f}MB - {line_content[:50]}")
+                            self._memory_logger.info(f"[{tag}] 内存使用: {os.path.basename(filename)}:{lineno} "
+                                                     f"使用 {size_mb:.2f}MB - {line_content[:50]}")
 
                 except Exception as e:
-                    self._memory_logger.debug(f"处理内存统计项时出错: {e}")
+                    self._memory_logger.error(f"处理内存统计项时出错: {e}")
                     continue
 
             # 记录到历史
@@ -169,11 +169,11 @@ class MemoryAnalyzer:
 
                         # 记录到内存日志
                         if size_mb > 0.5:  # 只记录大于0.5MB的文件
-                            self._memory_logger.debug(f"文件内存使用: {file_info['filename']} "
-                                                      f"使用 {size_mb:.2f}MB ({stat.count} 次分配)")
+                            self._memory_logger.info(f"文件内存使用: {file_info['filename']} "
+                                                     f"使用 {size_mb:.2f}MB ({stat.count} 次分配)")
 
                 except Exception as e:
-                    self._memory_logger.debug(f"处理文件统计项时出错: {e}")
+                    self._memory_logger.error(f"处理文件统计项时出错: {e}")
                     continue
 
             if result:
@@ -298,7 +298,7 @@ class MemoryHelper(metaclass=Singleton):
                     'swap': memory_full_info.swap / 1024 / 1024,  # 交换内存 MB
                 }
             except (psutil.AccessDenied, AttributeError) as e:
-                self._memory_logger.debug(f"获取详细内存信息失败: {e}")
+                self._memory_logger.error(f"获取详细内存信息失败: {e}")
                 detailed_info = {}
 
             # 获取垃圾回收信息
@@ -307,7 +307,7 @@ class MemoryHelper(metaclass=Singleton):
                 for generation in range(3):
                     gc_info[f'gen_{generation}'] = gc.get_count()[generation]
             except Exception as e:
-                self._memory_logger.debug(f"获取垃圾回收信息失败: {e}")
+                self._memory_logger.error(f"获取垃圾回收信息失败: {e}")
 
             # 获取对象统计
             object_counts = {}
@@ -318,10 +318,10 @@ class MemoryHelper(metaclass=Singleton):
                         object_counts[obj_type.__name__] = len([obj for obj in gc.get_objects()
                                                                 if type(obj) is obj_type])
                     except Exception as e:
-                        self._memory_logger.debug(f"统计对象类型 {obj_type.__name__} 失败: {e}")
+                        self._memory_logger.error(f"统计对象类型 {obj_type.__name__} 失败: {e}")
                         continue
             except Exception as e:
-                self._memory_logger.debug(f"获取对象统计失败: {e}")
+                self._memory_logger.error(f"获取对象统计失败: {e}")
 
             detailed_result = {
                 'basic': self.get_memory_usage(),
@@ -372,7 +372,7 @@ class MemoryHelper(metaclass=Singleton):
                         estimated_size = len(objects) * 0.001  # MB
                         module_memory[module_name] = estimated_size
                     except Exception as e:
-                        self._memory_logger.debug(f"获取模块 {module_name} 内存使用失败: {e}")
+                        self._memory_logger.error(f"获取模块 {module_name} 内存使用失败: {e}")
                         continue
 
             # 按内存使用量排序，返回前20个
@@ -436,16 +436,17 @@ class MemoryHelper(metaclass=Singleton):
             current_memory_mb = memory_info['rss']
 
             # 记录常规检查到内存日志
-            self._memory_logger.debug(f"常规内存检查 - RSS: {current_memory_mb:.1f}MB, "
-                                      f"阈值: {self._memory_threshold}MB, "
-                                      f"系统使用率: {memory_info['system_percent']:.1f}%")
+            self._memory_logger.info(f"常规内存检查 - RSS: {current_memory_mb:.1f}MB, "
+                                     f"阈值: {self._memory_threshold}MB, "
+                                     f"系统使用率: {memory_info['system_percent']:.1f}%")
 
             # 记录内存快照
             if self._detailed_logging:
                 self._analyzer.record_memory_snapshot("routine_check")
 
             if current_memory_mb > self._memory_threshold:
-                self._memory_logger.warning(f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold:.1f}MB, 开始清理...")
+                self._memory_logger.warning(
+                    f"内存使用超过阈值: {current_memory_mb:.1f}MB > {self._memory_threshold:.1f}MB, 开始清理...")
 
                 # 详细记录高内存使用情况
                 if self._detailed_logging:
@@ -571,7 +572,8 @@ class MemoryHelper(metaclass=Singleton):
         if settings.MEMORY_DETAILED_ANALYSIS:
             self.enable_detailed_logging(True)
 
-        self._memory_logger.info(f"内存监控已启动 - 阈值: {self._memory_threshold}MB, 检查间隔: {self._check_interval}秒")
+        self._memory_logger.info(
+            f"内存监控已启动 - 阈值: {self._memory_threshold}MB, 检查间隔: {self._check_interval}秒")
 
     def stop_monitoring(self):
         """
