@@ -549,7 +549,7 @@ class MemoryHelper(metaclass=Singleton):
         if not event:
             return
         event_data: ConfigChangeEventData = event.event_data
-        if event_data.key not in ['MEMORY_MONITOR_ENABLE']:
+        if event_data.key not in ['MEMORY_MONITOR_ENABLE', 'MEMORY_DETAILED_ANALYSIS', 'BIG_MEMORY_MODE']:
             return
         self.stop_monitoring()
         self.start_monitoring()
@@ -562,6 +562,9 @@ class MemoryHelper(metaclass=Singleton):
             return
         if self._monitoring:
             return
+
+        # 设置内存阈值
+        self.set_threshold(settings.CONF['memory'])
 
         # 初始化内存分析器
         self._monitoring = True
