@@ -69,8 +69,8 @@ class ConfigModel(BaseModel):
     DB_MAX_OVERFLOW: int = 500
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
-    # SQLite 是否启用 WAL 模式，默认关闭
-    DB_WAL_ENABLE: bool = False
+    # SQLite 是否启用 WAL 模式，默认开启
+    DB_WAL_ENABLE: bool = True
     # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools
     CACHE_BACKEND_TYPE: str = "cachetools"
     # 缓存连接字符串，仅外部缓存（如 Redis、Memcached）需要
@@ -247,6 +247,12 @@ class ConfigModel(BaseModel):
     REPO_GITHUB_TOKEN: Optional[str] = None
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
+    # 是否启用内存监控
+    MEMORY_ANALYSIS: bool = True
+    # 内存快照间隔（分钟）
+    MEMORY_SNAPSHOT_INTERVAL: int = 5
+    # 保留的内存快照文件数量
+    MEMORY_SNAPSHOT_KEEP_COUNT: int = 30
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 是否启用编码探测的性能模式
