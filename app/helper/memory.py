@@ -1,3 +1,5 @@
+import gc
+import sys
 import threading
 import time
 from datetime import datetime
@@ -40,7 +42,7 @@ class MemoryHelper(metaclass=Singleton):
         event_data: ConfigChangeEventData = event.event_data
         if event_data.key not in ['MEMORY_ANALYSIS', 'MEMORY_SNAPSHOT_INTERVAL', 'MEMORY_SNAPSHOT_KEEP_COUNT']:
             return
-        
+
         # 更新配置
         if event_data.key == 'MEMORY_SNAPSHOT_INTERVAL':
             self._check_interval = settings.MEMORY_SNAPSHOT_INTERVAL * 60
@@ -103,40 +105,19 @@ class MemoryHelper(metaclass=Singleton):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             snapshot_file = self._memory_snapshot_dir / f"memory_snapshot_{timestamp}.txt"
 
-            # 获取当前进程的内存使用情况
-            all_objects = muppy.get_objects()
-            sum1 = summary.summarize(all_objects)
-
             # 获取系统内存使用情况
             memory_usage = psutil.Process().memory_info().rss
 
-            # 写入内存快照文件
-            with open(snapshot_file, 'w', encoding='utf-8') as f:
-                f.write(f"内存快照时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"当前进程内存使用: {memory_usage / 1024 / 1024:.2f} MB\n")
-                f.write("=" * 80 + "\n")
-                f.write("对象类型统计:\n")
-                f.write("-" * 80 + "\n")
-                
-                # 写入对象统计信息
-                for line in summary.format_(sum1):
-                    f.write(line + "\n")
-                
-                # 添加最大对象信息
-                f.write("\n" + "=" * 80 + "\n")
-                f.write("最大内存占用对象详情:\n")
-                f.write("-" * 80 + "\n")
-                
-                try:
-                    largest_objects = self._get_largest_objects()
-                    if largest_objects:
-                        for i, obj_info in enumerate(largest_objects[:10], 1):
-                            f.write(f"{i:2d}. {obj_info['type']:<30} {obj_info['size_mb']:>8.2f} MB - {obj_info['description']}\n")
-                    else:
-                        f.write("未找到大于1KB的对象或分析失败\n")
-                except Exception as e:
-                    f.write(f"大对象分析失败: {e}\n")
-                    logger.warning(f"大对象分析失败，但快照生成继续: {e}")
+            logger.info(f"开始创建内存快照: {snapshot_file}")
+
+            # 第一步：写入基本信息和对象类型统计
+            self._write_basic_info(snapshot_file, memory_usage)
+
+            # 第二步：分析并写入类实例内存使用情况
+            self._append_class_analysis(snapshot_file)
+
+            # 第三步：分析并写入大内存变量详情
+            self._append_variable_analysis(snapshot_file)
 
             logger.info(f"内存快照已保存: {snapshot_file}, 当前内存使用: {memory_usage / 1024 / 1024:.2f} MB")
 
@@ -145,6 +126,132 @@ class MemoryHelper(metaclass=Singleton):
 
         except Exception as e:
             logger.error(f"创建内存快照失败: {e}")
+
+    @staticmethod
+    def _write_basic_info(snapshot_file, memory_usage):
+        """
+        写入基本信息和对象类型统计
+        """
+        # 获取当前进程的内存使用情况
+        all_objects = muppy.get_objects()
+        sum1 = summary.summarize(all_objects)
+
+        with open(snapshot_file, 'w', encoding='utf-8') as f:
+            f.write(f"内存快照时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"当前进程内存使用: {memory_usage / 1024 / 1024:.2f} MB\n")
+            f.write("=" * 80 + "\n")
+            f.write("对象类型统计:\n")
+            f.write("-" * 80 + "\n")
+
+            # 写入对象统计信息
+            for line in summary.format_(sum1):
+                f.write(line + "\n")
+
+            # 立即刷新到磁盘
+            f.flush()
+
+        logger.debug("基本信息已写入快照文件")
+
+    def _append_class_analysis(self, snapshot_file):
+        """
+        分析并追加类实例内存使用情况
+        """
+        with open(snapshot_file, 'a', encoding='utf-8') as f:
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("类实例内存使用情况 (按内存大小排序):\n")
+            f.write("-" * 80 + "\n")
+            f.write("正在分析中...\n")
+            # 立即刷新，让用户知道这部分开始了
+            f.flush()
+
+        try:
+            logger.debug("开始分析类实例内存使用情况")
+            class_objects = self._get_class_memory_usage()
+
+            # 重新打开文件，移除"正在分析中..."并写入实际结果
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 替换"正在分析中..."
+            content = content.replace("正在分析中...\n", "")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+                if class_objects:
+                    # 只显示前100个类
+                    for i, class_info in enumerate(class_objects[:100], 1):
+                        f.write(f"{i:3d}. {class_info['name']:<50} "
+                                f"{class_info['size_mb']:>8.2f} MB ({class_info['count']} 个实例)\n")
+                else:
+                    f.write("未找到有效的类实例信息\n")
+
+                f.flush()
+
+        except Exception as e:
+            logger.error(f"获取类实例信息失败: {e}")
+
+            # 即使出错也要更新文件
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            content = content.replace("正在分析中...\n", f"获取类实例信息失败: {e}\n")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()
+
+        logger.debug("类实例分析已完成并写入")
+
+    def _append_variable_analysis(self, snapshot_file):
+        """
+        分析并追加大内存变量详情
+        """
+        with open(snapshot_file, 'a', encoding='utf-8') as f:
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("大内存变量详情 (前100个):\n")
+            f.write("-" * 80 + "\n")
+            f.write("正在分析中...\n")
+            # 立即刷新，让用户知道这部分开始了
+            f.flush()
+
+        try:
+            logger.debug("开始分析大内存变量")
+            large_variables = self._get_large_variables(100)
+
+            # 重新打开文件，移除"正在分析中..."并写入实际结果
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 替换最后的"正在分析中..."
+            content = content.replace("正在分析中...\n", "")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+                if large_variables:
+                    for i, var_info in enumerate(large_variables, 1):
+                        f.write(
+                            f"{i:3d}. {var_info['name']:<30} {var_info['type']:<15} {var_info['size_mb']:>8.2f} MB\n")
+                else:
+                    f.write("未找到大内存变量\n")
+
+                f.flush()
+
+        except Exception as e:
+            logger.error(f"获取大内存变量信息失败: {e}")
+
+            # 即使出错也要更新文件
+            with open(snapshot_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            content = content.replace("正在分析中...\n", f"获取变量信息失败: {e}\n")
+
+            with open(snapshot_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()
+
+        logger.debug("大内存变量分析已完成并写入")
 
     def _cleanup_old_snapshots(self):
         """
@@ -161,166 +268,192 @@ class MemoryHelper(metaclass=Singleton):
         except Exception as e:
             logger.error(f"清理过期快照失败: {e}")
 
-    def _get_largest_objects(self, top_n: int = 20) -> list:
+    @staticmethod
+    def _get_class_memory_usage():
         """
-        获取内存占用最大的对象列表
-        :param top_n: 返回前N个最大对象
-        :return: 对象信息列表
+        获取所有类实例的内存使用情况，按内存大小排序
+        """
+        class_info = {}
+        processed_count = 0
+        error_count = 0
+
+        # 获取所有对象
+        all_objects = muppy.get_objects()
+        logger.debug(f"开始分析 {len(all_objects)} 个对象的类实例内存使用情况")
+
+        for obj in all_objects:
+            try:
+                # 跳过类对象本身，统计类的实例
+                if isinstance(obj, type):
+                    continue
+
+                # 获取对象的类名 - 这里可能会出错
+                obj_class = type(obj)
+
+                # 安全地获取类名
+                try:
+                    if hasattr(obj_class, '__module__') and hasattr(obj_class, '__name__'):
+                        class_name = f"{obj_class.__module__}.{obj_class.__name__}"
+                    else:
+                        class_name = str(obj_class)
+                except Exception as e:
+                    # 如果获取类名失败，使用简单的类型描述
+                    class_name = f"<unknown_class_{id(obj_class)}>"
+                    logger.debug(f"获取类名失败: {e}")
+
+                # 计算对象本身的内存使用（不包括引用对象，避免重复计算）
+                size_bytes = sys.getsizeof(obj)
+                if size_bytes < 100:  # 跳过太小的对象
+                    continue
+
+                size_mb = size_bytes / 1024 / 1024
+                processed_count += 1
+
+                if class_name in class_info:
+                    class_info[class_name]['size_mb'] += size_mb
+                    class_info[class_name]['count'] += 1
+                else:
+                    class_info[class_name] = {
+                        'name': class_name,
+                        'size_mb': size_mb,
+                        'count': 1
+                    }
+
+            except Exception as e:
+                # 捕获所有可能的异常，包括SQLAlchemy、ORM等框架的异常
+                error_count += 1
+                if error_count <= 5:  # 只记录前5个错误，避免日志过多
+                    logger.debug(f"分析对象时出错: {e}")
+                continue
+
+        logger.debug(f"类实例分析完成: 处理了 {processed_count} 个对象, 遇到 {error_count} 个错误")
+
+        # 按内存大小排序
+        sorted_classes = sorted(class_info.values(), key=lambda x: x['size_mb'], reverse=True)
+        return sorted_classes
+
+    def _get_large_variables(self, limit=100):
+        """
+        获取大内存变量信息，按内存大小排序
+        使用已计算对象集合避免重复计算
+        """
+        large_vars = []
+        processed_count = 0
+        calculated_objects = set()  # 避免重复计算
+
+        # 获取所有对象
+        all_objects = muppy.get_objects()
+        logger.debug(f"开始分析 {len(all_objects)} 个对象的内存使用情况")
+
+        for obj in all_objects:
+            # 跳过类对象
+            if isinstance(obj, type):
+                continue
+
+            # 跳过已经计算过的对象
+            obj_id = id(obj)
+            if obj_id in calculated_objects:
+                continue
+
+            try:
+                # 首先使用 sys.getsizeof 快速筛选
+                shallow_size = sys.getsizeof(obj)
+                if shallow_size < 1024:  # 只处理大于1KB的对象
+                    continue
+
+                # 对于较大的对象，使用 asizeof 进行深度计算
+                size_bytes = asizeof.asizeof(obj)
+                
+                # 只处理大于10KB的对象，提高分析效率
+                if size_bytes < 10240:
+                    continue
+
+                size_mb = size_bytes / 1024 / 1024
+                processed_count += 1
+                calculated_objects.add(obj_id)
+
+                # 获取对象信息
+                var_info = self._get_variable_info(obj, size_mb)
+                if var_info:
+                    large_vars.append(var_info)
+
+                # 如果已经找到足够多的大对象，可以提前结束
+                if len(large_vars) >= limit * 2:  # 多收集一些，后面排序筛选
+                    break
+
+            except Exception as e:
+                # 更广泛的异常捕获
+                logger.debug(f"分析对象失败: {e}")
+                continue
+
+        logger.debug(f"处理了 {processed_count} 个大对象，找到 {len(large_vars)} 个有效变量")
+
+        # 按内存大小排序并返回前N个
+        large_vars.sort(key=lambda x: x['size_mb'], reverse=True)
+        return large_vars[:limit]
+
+    def _get_variable_info(self, obj, size_mb):
+        """
+        获取变量的描述信息
         """
         try:
-            # 获取所有对象
-            all_objects = muppy.get_objects()
-            logger.debug(f"开始分析 {len(all_objects)} 个对象")
-            
-            # 计算每个对象的大小并收集信息
-            object_sizes = []
-            failed_count = 0
-            skip_modules = {'tkinter', 'matplotlib', 'PIL', 'cv2'}  # 可能导致GUI库问题的模块
-            
-            for i, obj in enumerate(all_objects):
-                try:
-                    # 检查对象类型，跳过可能有问题的模块
-                    obj_module = getattr(type(obj), '__module__', '')
-                    if any(skip_mod in obj_module for skip_mod in skip_modules):
-                        continue
-                    
-                    # 使用asizeof计算对象真实大小
-                    size = asizeof.asizeof(obj)
-                    if size > 1024:  # 只关注大于1KB的对象
-                        obj_type = type(obj).__name__
-                        
-                        # 生成对象描述
-                        description = self._generate_object_description(obj)
-                        
-                        object_sizes.append({
-                            'size': size,
-                            'type': f"{obj_module}.{obj_type}" if obj_module and obj_module != 'builtins' else obj_type,
-                            'description': description
-                        })
-                        
-                except (TypeError, AttributeError, RuntimeError, OSError, ImportError) as e:
-                    # 扩展异常处理，包括共享库错误
-                    failed_count += 1
-                    if failed_count <= 5:  # 只记录前几个错误，避免日志泛滥
-                        logger.debug(f"跳过对象分析 (第{i+1}个): {type(e).__name__}: {str(e)[:100]}")
-                    continue
-                except Exception as e:
-                    # 处理其他未预期的异常
-                    failed_count += 1
-                    if failed_count <= 5:
-                        logger.debug(f"跳过对象分析 (第{i+1}个): 未知错误: {str(e)[:100]}")
-                    continue
-            
-            if failed_count > 5:
-                logger.debug(f"总共跳过了 {failed_count} 个无法分析的对象")
-            
-            logger.debug(f"成功分析了 {len(object_sizes)} 个大对象")
-            
-            # 按大小排序并取前N个
-            object_sizes.sort(key=lambda x: x['size'], reverse=True)
-            
-            # 转换为所需格式
-            return [
-                {
-                    'type': obj_info['type'],
-                    'size_mb': obj_info['size'] / 1024 / 1024,
-                    'size_bytes': obj_info['size'],
-                    'description': obj_info['description']
-                }
-                for obj_info in object_sizes[:top_n]
-            ]
-            
+            obj_type = type(obj).__name__
+
+            # 尝试获取变量名
+            var_name = self._get_variable_name(obj)
+
+            # 生成描述性信息
+            if isinstance(obj, dict):
+                key_count = len(obj)
+                if key_count > 0:
+                    sample_keys = list(obj.keys())[:3]
+                    var_name += f" ({key_count}项, 键: {sample_keys})"
+            elif isinstance(obj, (list, tuple, set)):
+                var_name += f" ({len(obj)}个元素)"
+            elif isinstance(obj, str):
+                if len(obj) > 50:
+                    var_name += f" (长度: {len(obj)}, 内容: '{obj[:50]}...')"
+                else:
+                    var_name += f" ('{obj}')"
+            elif hasattr(obj, '__class__') and hasattr(obj.__class__, '__name__'):
+                if hasattr(obj, '__dict__'):
+                    attr_count = len(obj.__dict__)
+                    var_name += f" ({attr_count}个属性)"
+
+            return {
+                'name': var_name,
+                'type': obj_type,
+                'size_mb': size_mb
+            }
+
         except Exception as e:
-            logger.error(f"获取最大对象信息失败: {e}")
-            return []
+            logger.debug(f"获取变量信息失败: {e}")
+            return None
 
     @staticmethod
-    def _generate_object_description(obj) -> str:
+    def _get_variable_name(obj):
         """
-        生成对象的描述信息
-        :param obj: 要描述的对象
-        :return: 对象描述字符串
+        尝试获取变量名
         """
         try:
-            # 获取对象类型名称，避免访问可能有问题的属性
-            obj_type_name = type(obj).__name__
-            
-            # 根据对象类型生成不同的描述
-            if isinstance(obj, (list, tuple)):
-                try:
-                    length = len(obj)
-                    first_type = type(obj[0]).__name__ if obj else 'empty'
-                    return f"长度={length}, 示例元素类型={first_type}"
-                except (IndexError, TypeError):
-                    return f"{obj_type_name}(长度未知)"
-            
-            elif isinstance(obj, dict):
-                try:
-                    length = len(obj)
-                    if obj:
-                        first_key = next(iter(obj))
-                        key_type = type(first_key).__name__
-                        return f"键值对数={length}, 示例键类型={key_type}"
-                    return f"键值对数={length}, 示例键类型=empty"
-                except (StopIteration, TypeError):
-                    return f"{obj_type_name}(大小未知)"
-            
-            elif isinstance(obj, set):
-                try:
-                    length = len(obj)
-                    if obj:
-                        first_item = next(iter(obj))
-                        item_type = type(first_item).__name__
-                        return f"元素数={length}, 示例元素类型={item_type}"
-                    return f"元素数={length}, 示例元素类型=empty"
-                except (StopIteration, TypeError):
-                    return f"{obj_type_name}(大小未知)"
-            
-            elif isinstance(obj, str):
-                try:
-                    length = len(obj)
-                    # 限制预览长度，避免显示问题字符
-                    safe_preview = ''.join(c for c in obj[:30] if c.isprintable())
-                    preview = safe_preview + '...' if length > 30 else safe_preview
-                    return f"长度={length}, 内容='{preview}'"
-                except (UnicodeError, TypeError):
-                    return f"{obj_type_name}(字符串，长度未知)"
-            
-            elif isinstance(obj, bytes):
-                try:
-                    length = len(obj)
-                    return f"字节数据，长度={length}"
-                except TypeError:
-                    return f"{obj_type_name}(字节数据，长度未知)"
-            
-            # 谨慎处理可能有问题的属性访问
-            try:
-                if hasattr(obj, '__name__') and callable(getattr(obj, '__name__', None)):
-                    name = str(obj.__name__)[:50]
-                    return f"名称={name}"
-            except (AttributeError, TypeError, OSError):
-                pass
-            
-            try:
-                if hasattr(obj, '__dict__'):
-                    attrs_count = len(obj.__dict__)
-                    return f"实例属性数={attrs_count}"
-            except (AttributeError, TypeError, OSError):
-                pass
-            
-            # 最后的安全转换
-            try:
-                obj_str = str(obj)[:50]
-                # 确保字符串是可打印的
-                safe_str = ''.join(c for c in obj_str if c.isprintable())
-                return f"对象={safe_str}" if safe_str else f"{obj_type_name}对象"
-            except (UnicodeError, TypeError, OSError):
-                return f"{obj_type_name}对象"
-                
+            # 尝试通过gc获取引用该对象的变量名
+            referrers = gc.get_referrers(obj)
+
+            for referrer in referrers:
+                if isinstance(referrer, dict):
+                    # 检查是否在某个模块的全局变量中
+                    for name, value in referrer.items():
+                        if value is obj and isinstance(name, str):
+                            return name
+                elif hasattr(referrer, '__dict__'):
+                    # 检查是否在某个实例的属性中
+                    for name, value in referrer.__dict__.items():
+                        if value is obj and isinstance(name, str):
+                            return f"{type(referrer).__name__}.{name}"
+
+            # 如果找不到变量名，返回对象类型和id
+            return f"{type(obj).__name__}_{id(obj)}"
+
         except Exception as e:
-            # 最后的异常处理，确保总是返回有用信息
-            try:
-                obj_type_name = type(obj).__name__
-                return f"{obj_type_name}(描述生成失败)：{e}"
-            except Exception as e:
-                return f"未知对象(描述生成失败)：{e}"
+            logger.debug(f"获取变量名失败: {e}")
+            return f"{type(obj).__name__}_{id(obj)}"

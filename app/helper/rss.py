@@ -1,4 +1,3 @@
-import gc
 import re
 import traceback
 from typing import List, Tuple, Union, Optional
@@ -18,11 +17,11 @@ class RssHelper:
     """
     RSS帮助类，解析RSS报文、获取RSS地址等
     """
-    
+
     # RSS解析限制配置
     MAX_RSS_SIZE = 50 * 1024 * 1024  # 50MB最大RSS文件大小
     MAX_RSS_ITEMS = 1000  # 最大解析条目数
-    
+
     # 各站点RSS链接获取配置
     rss_link_conf = {
         "default": {
@@ -228,7 +227,8 @@ class RssHelper:
         },
     }
 
-    def parse(self, url, proxy: bool = False, timeout: Optional[int] = 15, headers: dict = None) -> Union[List[dict], None, bool]:
+    def parse(self, url, proxy: bool = False,
+              timeout: Optional[int] = 15, headers: dict = None) -> Union[List[dict], None, bool]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
@@ -241,7 +241,7 @@ class RssHelper:
         ret_array: list = []
         if not url:
             return False
-        
+
         try:
             ret = RequestUtils(proxies=settings.PROXY if proxy else None,
                                timeout=timeout, headers=headers).get_res(url)
@@ -250,7 +250,7 @@ class RssHelper:
         except Exception as err:
             logger.error(f"获取RSS失败：{str(err)} - {traceback.format_exc()}")
             return False
-        
+
         if ret:
             ret_xml = None
             root = None
@@ -258,9 +258,9 @@ class RssHelper:
                 # 检查响应大小，避免处理过大的RSS文件
                 raw_data = ret.content
                 if raw_data and len(raw_data) > self.MAX_RSS_SIZE:
-                    logger.warning(f"RSS文件过大: {len(raw_data)/1024/1024:.1f}MB，跳过解析")
+                    logger.warning(f"RSS文件过大: {len(raw_data) / 1024 / 1024:.1f}MB，跳过解析")
                     return False
-                
+
                 if raw_data:
                     try:
                         result = chardet.detect(raw_data)
@@ -279,7 +279,7 @@ class RssHelper:
                             ret.encoding = ret.apparent_encoding
                 if not ret_xml:
                     ret_xml = ret.text
-                
+
                 # 使用lxml.etree解析XML
                 parser = None
                 try:
@@ -307,42 +307,39 @@ class RssHelper:
                 finally:
                     if parser is not None:
                         del parser
-                
+
                 if root is None:
                     logger.error("无法解析RSS内容")
                     return False
-                
+
                 # 查找所有item或entry节点
                 items = root.xpath('.//item | .//entry')
-                
+
                 # 限制处理的条目数量
                 items_count = min(len(items), self.MAX_RSS_ITEMS)
                 if len(items) > self.MAX_RSS_ITEMS:
                     logger.warning(f"RSS条目过多: {len(items)}，仅处理前{self.MAX_RSS_ITEMS}个")
-                
-                for i, item in enumerate(items[:items_count]):
+
+                for item in items[:items_count]:
                     try:
-                        # 定期执行垃圾回收
-                        if i > 0 and i % 100 == 0:
-                            gc.collect()
-                        
                         # 使用xpath提取信息，更高效
                         title_nodes = item.xpath('.//title')
                         title = title_nodes[0].text if title_nodes and title_nodes[0].text else ""
                         if not title:
                             continue
-                        
+
                         # 描述
                         desc_nodes = item.xpath('.//description | .//summary')
                         description = desc_nodes[0].text if desc_nodes and desc_nodes[0].text else ""
-                        
+
                         # 种子页面
                         link_nodes = item.xpath('.//link')
                         if link_nodes:
-                            link = link_nodes[0].text if hasattr(link_nodes[0], 'text') and link_nodes[0].text else link_nodes[0].get('href', '')
+                            link = link_nodes[0].text if hasattr(link_nodes[0], 'text') and link_nodes[0].text else \
+                            link_nodes[0].get('href', '')
                         else:
                             link = ""
-                        
+
                         # 种子链接
                         enclosure_nodes = item.xpath('.//enclosure')
                         enclosure = enclosure_nodes[0].get('url', '') if enclosure_nodes else ""
@@ -351,24 +348,24 @@ class RssHelper:
                         # 部分RSS只有link没有enclosure
                         if not enclosure and link:
                             enclosure = link
-                        
+
                         # 大小
                         size = 0
                         if enclosure_nodes:
                             size_attr = enclosure_nodes[0].get('length', '0')
                             if size_attr and str(size_attr).isdigit():
                                 size = int(size_attr)
-                        
+
                         # 发布日期
                         pubdate_nodes = item.xpath('.//pubDate | .//published | .//updated')
                         pubdate = ""
                         if pubdate_nodes and pubdate_nodes[0].text:
                             pubdate = StringUtils.get_time(pubdate_nodes[0].text)
-                        
+
                         # 获取豆瓣昵称
                         nickname_nodes = item.xpath('.//*[local-name()="creator"]')
                         nickname = nickname_nodes[0].text if nickname_nodes and nickname_nodes[0].text else ""
-                        
+
                         # 返回对象
                         tmp_dict = {
                             'title': title,
@@ -382,11 +379,11 @@ class RssHelper:
                         if nickname:
                             tmp_dict['nickname'] = nickname
                         ret_array.append(tmp_dict)
-                        
+
                     except Exception as e1:
                         logger.debug(f"解析RSS条目失败：{str(e1)} - {traceback.format_exc()}")
                         continue
-                        
+
             except Exception as e2:
                 logger.error(f"解析RSS失败：{str(e2)} - {traceback.format_exc()}")
                 # RSS过期检查
@@ -403,8 +400,7 @@ class RssHelper:
                     del root
                 if ret_xml is not None:
                     del ret_xml
-                gc.collect()
-        
+
         return ret_array
 
     def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False) -> Tuple[str, str]:
@@ -446,7 +442,7 @@ class RssHelper:
                     return "", f"获取 {url} RSS链接失败，错误码：{res.status_code}，错误原因：{res.reason}"
                 else:
                     return "", f"获取RSS链接失败：无法连接 {url} "
-            
+
             # 解析HTML
             if html_text:
                 html = None
@@ -459,7 +455,7 @@ class RssHelper:
                 finally:
                     if html is not None:
                         del html
-                    
+
             return "", f"获取RSS链接失败：{url}"
         except Exception as e:
             return "", f"获取 {url} RSS链接失败：{str(e)}"
