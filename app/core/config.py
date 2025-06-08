@@ -248,7 +248,7 @@ class ConfigModel(BaseModel):
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
     # 是否启用内存监控
-    MEMORY_ANALYSIS: bool = True
+    MEMORY_ANALYSIS: bool = False
     # 内存快照间隔（分钟）
     MEMORY_SNAPSHOT_INTERVAL: int = 5
     # 保留的内存快照文件数量
