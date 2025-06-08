@@ -123,15 +123,15 @@ class MemoryHelper(metaclass=Singleton):
                 for line in summary.format_(sum1):
                     f.write(line + "\n")
                 
-                # 添加详细的类内存使用情况
+                # 添加详细的类实例内存使用情况
                 f.write("\n" + "=" * 80 + "\n")
-                f.write("类对象内存使用情况 (按内存大小排序):\n")
+                f.write("类实例内存使用情况 (按内存大小排序):\n")
                 f.write("-" * 80 + "\n")
                 
                 try:
                     class_objects = self._get_class_memory_usage()
-                    for i, class_info in enumerate(class_objects, 1):
-                        f.write(f"{i:3d}. {class_info['name']:<50} {class_info['size_mb']:>8.2f} MB\n")
+                    for i, class_info in enumerate(class_objects[:50], 1):  # 只显示前50个类
+                        f.write(f"{i:3d}. {class_info['name']:<50} {class_info['size_mb']:>8.2f} MB ({class_info['count']} 个实例)\n")
                 except Exception as e:
                     f.write(f"获取类对象信息失败: {e}\n")
                 
@@ -173,7 +173,7 @@ class MemoryHelper(metaclass=Singleton):
     @staticmethod
     def _get_class_memory_usage():
         """
-        获取所有类的内存使用情况，按内存大小排序
+        获取所有类实例的内存使用情况，按内存大小排序
         """
         class_info = {}
         
@@ -181,26 +181,34 @@ class MemoryHelper(metaclass=Singleton):
         all_objects = muppy.get_objects()
         
         for obj in all_objects:
-            # 检查是否为类对象
+            # 跳过类对象本身，统计类的实例
             if isinstance(obj, type):
-                class_name = f"{obj.__module__}.{obj.__name__}" if hasattr(obj, '__module__') else obj.__name__
-                try:
-                    # 计算类对象的内存使用
-                    size_bytes = asizeof.asizeof(obj)
-                    size_mb = size_bytes / 1024 / 1024
-                    
-                    if class_name in class_info:
-                        class_info[class_name]['size_mb'] += size_mb
-                        class_info[class_name]['count'] += 1
-                    else:
-                        class_info[class_name] = {
-                            'name': class_name,
-                            'size_mb': size_mb,
-                            'count': 1
-                        }
-                except (OSError, ImportError, AttributeError):
-                    # 跳过有问题的对象
+                continue
+                
+            # 获取对象的类名
+            obj_class = type(obj)
+            class_name = f"{obj_class.__module__}.{obj_class.__name__}" if hasattr(obj_class, '__module__') else obj_class.__name__
+            
+            try:
+                # 计算对象的内存使用
+                size_bytes = asizeof.asizeof(obj)
+                if size_bytes < 100:  # 跳过太小的对象
                     continue
+                    
+                size_mb = size_bytes / 1024 / 1024
+                
+                if class_name in class_info:
+                    class_info[class_name]['size_mb'] += size_mb
+                    class_info[class_name]['count'] += 1
+                else:
+                    class_info[class_name] = {
+                        'name': class_name,
+                        'size_mb': size_mb,
+                        'count': 1
+                    }
+            except (OSError, ImportError, AttributeError, TypeError):
+                # 跳过有问题的对象
+                continue
         
         # 按内存大小排序
         sorted_classes = sorted(class_info.values(), key=lambda x: x['size_mb'], reverse=True)
@@ -211,9 +219,11 @@ class MemoryHelper(metaclass=Singleton):
         获取大内存变量信息，按内存大小排序
         """
         large_vars = []
+        processed_count = 0
         
         # 获取所有对象
         all_objects = muppy.get_objects()
+        logger.debug(f"开始分析 {len(all_objects)} 个对象的内存使用情况")
         
         for obj in all_objects:
             # 跳过类对象
@@ -223,20 +233,29 @@ class MemoryHelper(metaclass=Singleton):
             try:
                 # 计算对象大小
                 size_bytes = asizeof.asizeof(obj)
-                size_mb = size_bytes / 1024 / 1024
                 
-                # 只处理大于1KB的对象
-                if size_bytes < 1024:
+                # 只处理大于10KB的对象，提高分析效率
+                if size_bytes < 10240:
                     continue
+                
+                size_mb = size_bytes / 1024 / 1024
+                processed_count += 1
                 
                 # 获取对象信息
                 var_info = self._get_variable_info(obj, size_mb)
                 if var_info:
                     large_vars.append(var_info)
                     
-            except (OSError, ImportError, AttributeError, TypeError):
-                # 跳过有问题的对象
+                # 如果已经找到足够多的大对象，可以提前结束
+                if len(large_vars) >= limit * 2:  # 多收集一些，后面排序筛选
+                    break
+                    
+            except Exception as e:
+                # 更广泛的异常捕获
+                logger.debug(f"分析对象失败: {e}")
                 continue
+        
+        logger.debug(f"处理了 {processed_count} 个大对象，找到 {len(large_vars)} 个有效变量")
         
         # 按内存大小排序并返回前N个
         large_vars.sort(key=lambda x: x['size_mb'], reverse=True)
