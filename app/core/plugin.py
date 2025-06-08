@@ -462,7 +462,9 @@ class PluginManager(metaclass=Singleton):
         }]
         """
         ret_commands = []
-        for plugin_id, plugin in self._running_plugins.items():
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
             if pid and pid != plugin_id:
                 continue
             if hasattr(plugin, "get_command") and ObjectUtils.check_method(plugin.get_command):
@@ -522,7 +524,9 @@ class PluginManager(metaclass=Singleton):
         }]
         """
         ret_services = []
-        for plugin_id, plugin in self._running_plugins.items():
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
             if pid and pid != plugin_id:
                 continue
             if hasattr(plugin, "get_service") and ObjectUtils.check_method(plugin.get_service):
@@ -545,7 +549,9 @@ class PluginManager(metaclass=Singleton):
         }
         """
         ret_modules = {}
-        for plugin_id, plugin in self._running_plugins.items():
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
             if pid and pid != plugin_id:
                 continue
             if hasattr(plugin, "get_module") and ObjectUtils.check_method(plugin.get_module):
@@ -569,7 +575,9 @@ class PluginManager(metaclass=Singleton):
         }]
         """
         ret_actions = []
-        for plugin_id, plugin in self._running_plugins.items():
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
             if pid and pid != plugin_id:
                 continue
             if hasattr(plugin, "get_actions") and ObjectUtils.check_method(plugin.get_actions):
@@ -606,7 +614,9 @@ class PluginManager(metaclass=Singleton):
         获取插件联邦组件列表
         """
         remotes = []
-        for plugin_id, plugin in self._running_plugins.items():
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
             if pid and pid != plugin_id:
                 continue
             if hasattr(plugin, "get_render_mode"):
@@ -625,7 +635,9 @@ class PluginManager(metaclass=Singleton):
         获取所有插件仪表盘元信息
         """
         dashboard_meta = []
-        for plugin_id, plugin in self._running_plugins.items():
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
             if not hasattr(plugin, "get_dashboard") or not ObjectUtils.check_method(plugin.get_dashboard):
                 continue
             try:
