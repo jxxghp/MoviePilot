@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.chain.system import SystemChain
 from app.core.config import global_vars
 from app.startup.command_initializer import init_command, stop_command, restart_command
+from app.startup.memory_initializer import init_memory_manager, stop_memory_manager
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
 from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
@@ -47,6 +48,8 @@ async def lifespan(app: FastAPI):
     init_command()
     # 初始化工作流
     init_workflow()
+    # 初始化内存管理
+    init_memory_manager()
     # 插件同步到本地
     sync_plugins_task = asyncio.create_task(init_plugin_system())
     try:
@@ -64,6 +67,8 @@ async def lifespan(app: FastAPI):
             pass
         except Exception as e:
             print(str(e))
+        # 停止内存管理器
+        stop_memory_manager()
         # 停止工作流
         stop_workflow()
         # 停止命令

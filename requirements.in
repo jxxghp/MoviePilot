@@ -70,3 +70,4 @@ cf_clearance~=0.31.0
 oss2~=2.19.1
 tqdm~=4.67.1
 setuptools~=78.1.0
+pympler~=0.9
