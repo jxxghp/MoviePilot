@@ -249,6 +249,8 @@ class ConfigModel(BaseModel):
     BIG_MEMORY_MODE: bool = False
     # 内存使用监控
     MEMORY_MONITOR_ENABLE: bool = False
+    # 启用详细内存分析
+    MEMORY_DETAILED_ANALYSIS: bool = False
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 是否启用编码探测的性能模式

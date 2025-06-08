@@ -99,6 +99,24 @@ class LoggerManager:
     # 线程锁
     _lock = threading.Lock()
 
+    def get_logger(self, name: str) -> logging.Logger:
+        """
+        获取一个指定名称的、独立的日志记录器。
+        创建一个独立的日志文件，例如 'diag_memory.log'。
+        :param name: 日志记录器的名称，也将用作文件名。
+        :return: 一个配置好的 logging.Logger 实例。
+        """
+        # 使用名称作为日志文件名
+        logfile = f"{name}.log"
+        with LoggerManager._lock:
+            # 检查是否已经创建过这个 logger
+            _logger = self._loggers.get(logfile)
+            if not _logger:
+                # 如果没有，就使用现有的 __setup_logger 来创建一个新的
+                _logger = self.__setup_logger(log_file=logfile)
+                self._loggers[logfile] = _logger
+        return _logger
+
     @staticmethod
     def __get_caller():
         """
