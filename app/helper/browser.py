@@ -1,8 +1,8 @@
 from typing import Callable, Any, Optional
-import gc
 
-from playwright.sync_api import sync_playwright, Page
 from cf_clearance import sync_cf_retry, sync_stealth
+from playwright.sync_api import sync_playwright, Page
+
 from app.log import logger
 
 
@@ -67,8 +67,6 @@ class PlaywrightHelper:
                         context.close()
                     if browser:
                         browser.close()
-                    # 强制垃圾回收
-                    gc.collect()
         except Exception as e:
             logger.error(f"Playwright初始化失败: {str(e)}")
         
@@ -120,8 +118,6 @@ class PlaywrightHelper:
                         context.close()
                     if browser:
                         browser.close()
-                    # 强制垃圾回收
-                    gc.collect()
         except Exception as e:
             logger.error(f"Playwright初始化失败: {str(e)}")
         
