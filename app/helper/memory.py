@@ -1,4 +1,5 @@
 import gc
+import sys
 import threading
 import time
 from datetime import datetime
@@ -300,8 +301,8 @@ class MemoryHelper(metaclass=Singleton):
                     class_name = f"<unknown_class_{id(obj_class)}>"
                     logger.debug(f"获取类名失败: {e}")
 
-                # 计算对象的内存使用
-                size_bytes = asizeof.asizeof(obj)
+                # 计算对象本身的内存使用（不包括引用对象，避免重复计算）
+                size_bytes = sys.getsizeof(obj)
                 if size_bytes < 100:  # 跳过太小的对象
                     continue
 
@@ -334,9 +335,11 @@ class MemoryHelper(metaclass=Singleton):
     def _get_large_variables(self, limit=100):
         """
         获取大内存变量信息，按内存大小排序
+        使用已计算对象集合避免重复计算
         """
         large_vars = []
         processed_count = 0
+        calculated_objects = set()  # 避免重复计算
 
         # 获取所有对象
         all_objects = muppy.get_objects()
@@ -347,16 +350,27 @@ class MemoryHelper(metaclass=Singleton):
             if isinstance(obj, type):
                 continue
 
-            try:
-                # 计算对象大小
-                size_bytes = asizeof.asizeof(obj)
+            # 跳过已经计算过的对象
+            obj_id = id(obj)
+            if obj_id in calculated_objects:
+                continue
 
+            try:
+                # 首先使用 sys.getsizeof 快速筛选
+                shallow_size = sys.getsizeof(obj)
+                if shallow_size < 1024:  # 只处理大于1KB的对象
+                    continue
+
+                # 对于较大的对象，使用 asizeof 进行深度计算
+                size_bytes = asizeof.asizeof(obj)
+                
                 # 只处理大于10KB的对象，提高分析效率
                 if size_bytes < 10240:
                     continue
 
                 size_mb = size_bytes / 1024 / 1024
                 processed_count += 1
+                calculated_objects.add(obj_id)
 
                 # 获取对象信息
                 var_info = self._get_variable_info(obj, size_mb)

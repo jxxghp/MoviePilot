@@ -250,7 +250,7 @@ class ConfigModel(BaseModel):
     # 是否启用内存监控
     MEMORY_ANALYSIS: bool = False
     # 内存快照间隔（分钟）
-    MEMORY_SNAPSHOT_INTERVAL: int = 30
+    MEMORY_SNAPSHOT_INTERVAL: int = 60
     # 保留的内存快照文件数量
     MEMORY_SNAPSHOT_KEEP_COUNT: int = 20
     # 全局图片缓存，将媒体图片缓存到本地
