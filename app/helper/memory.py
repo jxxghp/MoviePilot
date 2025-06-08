@@ -25,7 +25,7 @@ class MemoryAnalyzer:
     内存分析器，用于分析内存使用详情
     """
 
-    _analyzing_depth = 15  # 默认分析深度
+    _analyzing_depth = 25  # 默认分析深度，增加深度以获取更准确的信息
 
     def __init__(self):
         self.memory_history = deque(maxlen=100)  # 保留最近100次内存记录
@@ -34,6 +34,23 @@ class MemoryAnalyzer:
         # 创建专门的内存日志记录器
         self._memory_logger = logger.get_logger("memory_analysis")
 
+    def _debug_traceback_structure(self, stat, index: int):
+        """
+        调试traceback结构的辅助函数
+        """
+        try:
+            self._memory_logger.debug(f"统计项 {index}: size={stat.size}, count={stat.count}")
+            if hasattr(stat, 'traceback') and stat.traceback:
+                self._memory_logger.debug(f"traceback类型: {type(stat.traceback)}, 长度: {len(stat.traceback)}")
+                for i, frame in enumerate(stat.traceback):
+                    self._memory_logger.debug(f"Frame {i}: {frame.filename}:{frame.lineno}")
+                    if i >= 2:  # 只显示前3个frame
+                        break
+            else:
+                self._memory_logger.debug("没有traceback信息")
+        except Exception as e:
+            self._memory_logger.error(f"调试traceback结构失败: {e}")
+
     def start_analyzing(self):
         """
         开始内存分析
@@ -41,7 +58,7 @@ class MemoryAnalyzer:
         if not self._analyzing:
             tracemalloc.start(self._analyzing_depth)
             self._analyzing = True
-            self._memory_logger.info("内存分析器已启动")
+            self._memory_logger.info(f"内存分析器已启动，分析深度: {self._analyzing_depth}")
             logger.info("内存分析器已启动")
 
     def stop_analyzing(self):
@@ -78,32 +95,54 @@ class MemoryAnalyzer:
             top_memory_lines = []
             for index, stat in enumerate(top_stats[:10]):
                 try:
-                    # 安全地访问traceback属性
+                    # 在调试模式下输出traceback结构信息
+                    if settings.DEBUG and index == 0:
+                        self._debug_traceback_structure(stat, index)
+                    
+                    # 正确访问traceback属性
+                    filename = 'unknown'
+                    lineno = 0
+                    
                     if hasattr(stat, 'traceback') and stat.traceback:
-                        filename = getattr(stat.traceback, 'filename', 'unknown')
-                        lineno = getattr(stat.traceback, 'lineno', 0)
-                        size_mb = stat.size / 1024 / 1024
+                        try:
+                            # 获取traceback的第一个frame
+                            if len(stat.traceback) > 0:
+                                frame = stat.traceback[0]
+                                filename = frame.filename
+                                lineno = frame.lineno
+                        except (IndexError, AttributeError) as e:
+                            self._memory_logger.debug(f"访问traceback frame失败: {e}")
+                    
+                    size_mb = stat.size / 1024 / 1024
 
-                        # 获取代码行内容
+                    # 获取代码行内容
+                    if filename != 'unknown' and lineno > 0:
                         try:
                             line_content = linecache.getline(filename, lineno).strip()
+                            if not line_content:
+                                line_content = "无法读取代码行内容"
                         except Exception as e:
-                            line_content = f"无法读取代码行：{e}"
+                            line_content = f"读取代码行失败：{str(e)}"
+                    else:
+                        line_content = "文件名或行号无效"
 
-                        top_memory_lines.append({
-                            'filename': os.path.basename(filename) if filename != 'unknown' else 'unknown',
-                            'lineno': lineno,
-                            'size_mb': size_mb,
-                            'line_content': line_content
-                        })
+                    top_memory_lines.append({
+                        'filename': os.path.basename(filename) if filename != 'unknown' else 'unknown',
+                        'lineno': lineno,
+                        'size_mb': size_mb,
+                        'line_content': line_content
+                    })
 
-                        # 记录详细的内存使用信息到内存日志
-                        if size_mb > 1.0:  # 只记录大于1MB的内存使用
-                            self._memory_logger.info(f"[{tag}] 内存使用: {os.path.basename(filename)}:{lineno} "
-                                                     f"使用 {size_mb:.2f}MB - {line_content[:50]}")
+                    # 记录详细的内存使用信息到内存日志
+                    if size_mb > 1.0:  # 只记录大于1MB的内存使用
+                        base_filename = os.path.basename(filename) if filename != 'unknown' else 'unknown'
+                        # 确保日志内容完整显示
+                        log_content = line_content[:100] if line_content else "无内容"
+                        self._memory_logger.info(f"[{tag}] 内存使用: {base_filename}:{lineno} "
+                                                 f"使用 {size_mb:.2f}MB - {log_content}")
 
                 except Exception as e:
-                    self._memory_logger.error(f"处理内存统计项时出错: {e}")
+                    self._memory_logger.error(f"处理内存统计项 {index} 时出错: {e}")
                     continue
 
             # 记录到历史
@@ -155,22 +194,31 @@ class MemoryAnalyzer:
             result = []
             for stat in top_stats[:limit]:
                 try:
+                    # 正确访问traceback属性获取文件名
                     if hasattr(stat, 'traceback') and stat.traceback:
-                        filename = getattr(stat.traceback, 'filename', 'unknown')
-                        size_mb = stat.size / 1024 / 1024
+                        # 获取traceback的第一个frame
+                        frame = stat.traceback[0] if len(stat.traceback) > 0 else None
+                        if frame:
+                            filename = frame.filename
+                        else:
+                            filename = 'unknown'
+                    else:
+                        filename = 'unknown'
+                    
+                    size_mb = stat.size / 1024 / 1024
 
-                        file_info = {
-                            'filename': os.path.basename(filename) if filename != 'unknown' else 'unknown',
-                            'full_path': filename,
-                            'size_mb': size_mb,
-                            'count': stat.count
-                        }
-                        result.append(file_info)
+                    file_info = {
+                        'filename': os.path.basename(filename) if filename != 'unknown' else 'unknown',
+                        'full_path': filename,
+                        'size_mb': size_mb,
+                        'count': stat.count
+                    }
+                    result.append(file_info)
 
-                        # 记录到内存日志
-                        if size_mb > 0.5:  # 只记录大于0.5MB的文件
-                            self._memory_logger.info(f"文件内存使用: {file_info['filename']} "
-                                                     f"使用 {size_mb:.2f}MB ({stat.count} 次分配)")
+                    # 记录到内存日志
+                    if size_mb > 0.5:  # 只记录大于0.5MB的文件
+                        self._memory_logger.info(f"文件内存使用: {file_info['filename']} "
+                                                 f"使用 {size_mb:.2f}MB ({stat.count} 次分配)")
 
                 except Exception as e:
                     self._memory_logger.error(f"处理文件统计项时出错: {e}")
