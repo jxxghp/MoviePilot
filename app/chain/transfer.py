@@ -25,7 +25,6 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
-from app.helper.memory import memory_optimized
 from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
@@ -938,7 +937,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         return trans_items
 
-    @memory_optimized(force_gc_after=True, log_memory=True)
     def do_transfer(self, fileitem: FileItem,
                     meta: MetaBase = None, mediainfo: MediaInfo = None,
                     target_directory: TransferDirectoryConf = None,

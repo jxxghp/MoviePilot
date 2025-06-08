@@ -9,7 +9,6 @@ from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.memory import memory_optimized
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
@@ -70,7 +69,6 @@ class TorrentsChain(ChainBase):
         self.remove_cache(self._rss_file)
         logger.info(f'种子缓存数据清理完成')
 
-    @memory_optimized(force_gc_after=True, log_memory=True)
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
                page: Optional[int] = 0) -> List[TorrentInfo]:
         """
@@ -87,7 +85,6 @@ class TorrentsChain(ChainBase):
             return []
         return self.refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
-    @memory_optimized(force_gc_after=True, log_memory=True)
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
         获取站点RSS内容，返回种子清单，TTL缓存3分钟
@@ -133,7 +130,6 @@ class TorrentsChain(ChainBase):
 
         return ret_torrents
 
-    @memory_optimized(force_gc_after=True, log_memory=True)
     def refresh(self, stype: Optional[str] = None, sites: List[int] = None) -> Dict[str, List[Context]]:
         """
         刷新站点最新资源，识别并缓存起来
