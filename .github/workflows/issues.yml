@@ -1,0 +1,30 @@
+name: Close inactive issues
+on:
+ workflow_dispatch:
+
+ schedule:
+   # Github Action 只支持 UTC 时间。
+   # '0 18 * * *' 对应 UTC 时间的 18:00，也就是中国时区 (UTC+8) 的第二天凌晨 02:00。
+   - cron: "0 18 * * *"
+
+jobs:
+ close-issues:
+   runs-on: ubuntu-latest
+   permissions:
+     issues: write
+     pull-requests: write
+   steps:
+     - uses: actions/stale@v5
+       with:
+         # 标记 stale 标签时间
+         days-before-issue-stale: 30
+         # 关闭 issues 标签时间
+         days-before-issue-close: 14
+         # 自定义标签名
+         stale-issue-label: "stale"
+         stale-issue-message: "此问题已过时，因为它已打开 30 天且没有任何活动。"
+         close-issue-message: "此问题已关闭，因为它在标记为 stale 后，已处于无更新状态 14 天。"
+         # 忽略所有的 Pull Request，只处理 Issue
+         days-before-pr-stale: -1
+         days-before-pr-close: -1
+         repo-token: ${{ secrets.GITHUB_TOKEN }}

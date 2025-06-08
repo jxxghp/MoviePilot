@@ -47,7 +47,7 @@ class WallpaperHelper(metaclass=Singleton):
         """
         return TmdbChain().get_random_wallpager()
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, skip_empty=True)
     def get_tmdb_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取7天的TMDB每日壁纸
@@ -71,7 +71,7 @@ class WallpaperHelper(metaclass=Singleton):
                 print(str(err))
         return None
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, skip_empty=True)
     def get_bing_wallpapers(self, num: int = 7) -> List[str]:
         """
         获取7天的Bing每日壁纸
@@ -94,7 +94,7 @@ class WallpaperHelper(metaclass=Singleton):
         """
         return MediaServerChain().get_latest_wallpaper()
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, skip_empty=True)
     def get_mediaserver_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取媒体服务器壁纸列表
@@ -111,7 +111,7 @@ class WallpaperHelper(metaclass=Singleton):
             return wallpaper_list[0]
         return None
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, skip_empty=True)
     def get_customize_wallpapers(self) -> List[str]:
         """
         获取自定义壁纸api壁纸

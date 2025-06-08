@@ -247,8 +247,6 @@ class ConfigModel(BaseModel):
     REPO_GITHUB_TOKEN: Optional[str] = None
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
-    # 内存使用监控
-    MEMORY_MONITOR_ENABLE: bool = False
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 是否启用编码探测的性能模式
@@ -543,9 +541,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 "bangumi": 512,
                 "fanart": 512,
                 "meta": (self.META_CACHE_EXPIRE or 24) * 3600,
-                "memory": 2 * 1024,
-                "scheduler": 50,
-                "threadpool": 50
+                "scheduler": 100,
+                "threadpool": 100
             }
         return {
             "torrents": 100,
@@ -555,9 +552,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "bangumi": 256,
             "fanart": 128,
             "meta": (self.META_CACHE_EXPIRE or 2) * 3600,
-            "memory": 1024,
-            "scheduler": 20,
-            "threadpool": 20
+            "scheduler": 50,
+            "threadpool": 50
         }
 
     @property

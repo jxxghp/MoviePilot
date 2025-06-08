@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from app.utils.singleton import Singleton
-from core.config import settings
+from app.core.config import settings
 
 
 class ThreadHelper(metaclass=Singleton):

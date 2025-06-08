@@ -12,7 +12,6 @@ from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.memory import memory_optimized
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
@@ -98,7 +97,6 @@ class SearchChain(ChainBase):
             logger.error(f'加载搜索结果失败：{str(e)} - {traceback.format_exc()}')
             return []
 
-    @memory_optimized(force_gc_after=True, log_memory=True)
     def process(self, mediainfo: MediaInfo,
                 keyword: Optional[str] = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,

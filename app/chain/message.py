@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.meta import MetaBase
 from app.db.user_oper import UserOper
-from app.helper.memory import memory_optimized
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification, NotExistMediaInfo, CommingMessage
@@ -118,7 +117,6 @@ class MessageChain(ChainBase):
         # 处理消息
         self.handle_message(channel=channel, source=source, userid=userid, username=username, text=text)
 
-    @memory_optimized(force_gc_after=True, log_memory=True)
     def handle_message(self, channel: MessageChannel, source: str,
                        userid: Union[str, int], username: str, text: str) -> None:
         """
