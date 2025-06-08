@@ -69,8 +69,8 @@ class ConfigModel(BaseModel):
     DB_MAX_OVERFLOW: int = 500
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
-    # SQLite 是否启用 WAL 模式，默认关闭
-    DB_WAL_ENABLE: bool = False
+    # SQLite 是否启用 WAL 模式，默认开启
+    DB_WAL_ENABLE: bool = True
     # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools
     CACHE_BACKEND_TYPE: str = "cachetools"
     # 缓存连接字符串，仅外部缓存（如 Redis、Memcached）需要
