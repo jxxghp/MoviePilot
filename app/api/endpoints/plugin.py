@@ -487,11 +487,11 @@ def uninstall_plugin(plugin_id: str,
     Scheduler().remove_plugin_job(plugin_id)
     # 判断是否为分身
     plugin_manager = PluginManager()
-    plugin_class = plugin_manager.plugins.get(plugin_id)
-    if getattr(plugin_class, "is_clone", False):
+    if plugin_manager.is_clone_plugin(plugin_id):
         # 如果是分身插件，则删除分身数据和配置
         plugin_manager.delete_plugin_config(plugin_id)
         plugin_manager.delete_plugin_data(plugin_id)
+        plugin_manager.delete_clone_params(plugin_id)
         # 删除分身文件
         plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
         if plugin_base_dir.exists():

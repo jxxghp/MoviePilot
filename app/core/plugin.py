@@ -94,6 +94,8 @@ class PluginManager(metaclass=Singleton):
     _running_plugins: dict = {}
     # 配置Key
     _config_key: str = "plugin.%s"
+    # 分身配置Key
+    _cloneparams_key: str = "cloneparams.%s"
     # 监听器
     _observer: Observer = None
 
@@ -1057,6 +1059,52 @@ class PluginManager(metaclass=Singleton):
             logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
             return None
 
+    def is_clone_plugin(self, plugin_id: str) -> bool:
+        """
+        判断是否分身插件
+
+        :param plugin_id: 分身ID
+        """
+        if plugin_class := self._plugins.get(plugin_id):
+            if hasattr(plugin_class, "is_clone"):
+                return getattr(plugin_class, "is_clone")
+        return self.get_clone_params(clone_id=plugin_id) is not None
+
+    def get_clone_params(self, clone_id: str) -> Optional[schemas.CloneParams]:
+        """
+        获取分身参数
+
+        :param clone_id: 分身ID
+        """
+        try:
+            params = SystemConfigOper().get(self._cloneparams_key % clone_id) or {}
+            return schemas.CloneParams(**params)
+        except Exception as e:
+            logger.error(f"获取分身参数失败: {e}")
+        return None
+
+    def save_clone_params(
+        self,
+        clone_id: str,
+        params: schemas.CloneParams,
+    ) -> bool:
+        """
+        保存分身参数
+
+        :param clone_id: 分身ID
+        :param params: 参数
+        """
+        SystemConfigOper().set(self._cloneparams_key % clone_id, params.dict())
+        return True
+
+    def delete_clone_params(self, clone_id: str) -> bool:
+        """
+        删除分身参数
+
+        :param clone_id: 分身ID
+        """
+        return SystemConfigOper().delete(self._cloneparams_key % clone_id)
+
     def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
                      version: str = None, icon: str = None) -> Tuple[bool, str]:
         """
@@ -1122,6 +1170,26 @@ class PluginManager(metaclass=Singleton):
                 installed_plugins.append(clone_id)
                 systemconfig.set(SystemConfigKey.UserInstalledPlugins, installed_plugins)
 
+            if parent_params := self.get_clone_params(plugin_id):
+                # 当前是分身的分身
+                online_id = parent_params.online_id
+            else:
+                online_id = plugin_id
+
+            # 保存分身参数，确保系统重置后能正确恢复分身插件
+            self.save_clone_params(
+                clone_id,
+                schemas.CloneParams(
+                    online_id=online_id,
+                    plugin_id=plugin_id,
+                    suffix=suffix,
+                    name=name,
+                    description=description,
+                    version=version,
+                    icon=icon,
+                ),
+            )
+
             # 为分身插件创建初始配置（从原插件复制配置）
             logger.info(f"正在为分身插件 {clone_id} 创建初始配置...")
             original_config = self.get_plugin_config(plugin_id)
@@ -1132,6 +1200,7 @@ class PluginManager(metaclass=Singleton):
                 # 默认禁用分身插件，让用户手动配置
                 clone_config['enable'] = False
                 clone_config['enabled'] = False
+                # FIXME The clone_id has NOT been added to _plugins yet
                 self.save_plugin_config(clone_id, clone_config)
                 logger.info(f"已为分身插件 {clone_id} 设置初始配置")
             else:

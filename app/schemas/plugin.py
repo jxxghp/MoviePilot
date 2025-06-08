@@ -67,3 +67,27 @@ class PluginDashboard(Plugin):
     cols: Optional[dict] = Field(default_factory=dict)
     # 页面元素
     elements: Optional[List[dict]] = Field(default_factory=list)
+
+
+class CloneParams(BaseModel):
+    """
+    分身参数
+    """
+
+    # 线上插件ID
+    online_id: str
+    # 原插件ID
+    plugin_id: str
+    # 后缀
+    suffix: str
+    name: Optional[str] = None
+    description: Optional[str] = None
+    version: Optional[str] = None
+    icon: Optional[str] = None
+
+    @property
+    def clone_id(self) -> str:
+        """
+        分身ID
+        """
+        return f"{self.plugin_id}{self.suffix.lower()}"
