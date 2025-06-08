@@ -482,7 +482,7 @@ class SiteChain(ChainBase):
         domain_host = StringUtils.get_url_host(domain)
         # 查询以"site.domain_host"开头的配置项，并清除
         systemconfig = SystemConfigOper()
-        site_keys = systemconfig.all().keys()
+        site_keys = systemconfig.keys()
         for key in site_keys:
             if key.startswith(f"site.{domain_host}"):
                 logger.info(f"清理站点配置：{key}")

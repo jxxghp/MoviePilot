@@ -95,7 +95,8 @@ class PluginManager(metaclass=Singleton):
     # 配置Key
     _config_key: str = "plugin.%s"
     # 分身配置Key
-    _cloneparams_key: str = "cloneparams.%s"
+    _cloneparams_key_prefix = "cloneparams."
+    _cloneparams_key: str = f"{_cloneparams_key_prefix}%s"
     # 监听器
     _observer: Observer = None
 
@@ -327,7 +328,7 @@ class PluginManager(metaclass=Singleton):
 
     def sync(self) -> List[str]:
         """
-        安装本地不存在的在线插件
+        安装本地不存在的在线插件和分身插件
         """
 
         def install_plugin(plugin):
@@ -343,6 +344,21 @@ class PluginManager(metaclass=Singleton):
                     f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败：{msg}，耗时：{elapsed_time:.2f} 秒")
                 failed_plugins.append(plugin.id)
 
+        def install_clone(params: schemas.CloneParams):
+            start_time = time.time()
+            state, msg = self._clone_plugin(params)
+            elapsed_time = time.time() - start_time
+            if state:
+                logger.info(
+                    f"分身 {params.clone_id} 安装成功，耗时：{elapsed_time:.2f} 秒"
+                )
+                clone_plugins.append(params.clone_id)
+            else:
+                logger.error(
+                    f"分身 {params.clone_id} 安装失败：{msg}，耗时：{elapsed_time:.2f} 秒"
+                )
+                failed_clone.append(params.clone_id)
+
         if SystemUtils.is_frozen():
             return []
 
@@ -356,31 +372,76 @@ class PluginManager(metaclass=Singleton):
             if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id)
         ]
 
-        if not plugins_to_install:
-            return []
-        logger.info("开始安装第三方插件...")
         sync_plugins = []
         failed_plugins = []
+        if plugins_to_install:
+            logger.info("开始安装第三方插件...")
 
-        # 使用 ThreadPoolExecutor 进行并发安装
-        total_start_time = time.time()
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                executor.submit(install_plugin, plugin): plugin
-                for plugin in plugins_to_install
-            }
-            for future in as_completed(futures):
-                plugin = futures[future]
-                try:
-                    future.result()
-                except Exception as exc:
-                    logger.error(f"插件 {plugin.plugin_name} 安装过程中出现异常: {exc}")
+            # 使用 ThreadPoolExecutor 进行并发安装
+            total_start_time = time.time()
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(install_plugin, plugin): plugin
+                    for plugin in plugins_to_install
+                }
+                for future in as_completed(futures):
+                    plugin = futures[future]
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        logger.error(f"插件 {plugin.plugin_name} 安装过程中出现异常: {exc}")
 
-        total_elapsed_time = time.time() - total_start_time
-        logger.info(
-            f"第三方插件安装完成，成功：{len(sync_plugins)} 个，"
-            f"失败：{len(failed_plugins)} 个，总耗时：{total_elapsed_time:.2f} 秒"
-        )
+            total_elapsed_time = time.time() - total_start_time
+            logger.info(
+                f"第三方插件安装完成，成功：{len(sync_plugins)} 个，"
+                f"失败：{len(failed_plugins)} 个，总耗时：{total_elapsed_time:.2f} 秒"
+            )
+
+        # 需要安装的分身插件
+        clone_plugins_to_install: List[schemas.CloneParams] = []
+        for clone_id in self.get_all_clone_ids():
+            clone_params = self.get_clone_params(clone_id)
+            if not clone_params:
+                continue
+            if clone_id not in install_plugins or self.is_plugin_exists(clone_id):
+                # 分身已卸载或存在，不需要安装
+                continue
+            for op in online_plugins:
+                if op.id == clone_params.online_id:
+                    break
+            else:
+                # 找不到分身对应的线上插件 (比如修改了仓库地址、网络不佳)
+                logger.error(
+                    f"分身 {clone_id} 无法安装，找不到线上插件：{clone_params.online_id}"
+                )
+                continue
+            if clone_params.online_id not in install_plugins:
+                """
+                TODO 对应的线上插件被卸载了
+                应对方案
+                    1、临时下载并安装线上插件 分身完毕后再卸载
+                    2、不允许卸载有分身的插件
+                """
+                logger.error(
+                    f"分身 {clone_id} 无法安装，原插件已被卸载：{clone_params.online_id}"
+                )
+                continue
+            clone_plugins_to_install.append(clone_params)
+
+        clone_plugins = []
+        failed_clone = []
+        if clone_plugins_to_install:
+            logger.info("开始安装分身插件...")
+            total_start_time = time.time()
+            for params in clone_plugins_to_install:
+                # TODO 暂不能多线程，潜在配置冲突
+                install_clone(params)
+            total_elapsed_time = time.time() - total_start_time
+            logger.info(
+                f"分身插件安装完成，成功：{len(clone_plugins)} 个，"
+                f"失败：{len(failed_clone)} 个，总耗时：{total_elapsed_time:.2f} 秒"
+            )
+        sync_plugins.extend(clone_plugins)
         return sync_plugins
 
     @staticmethod
@@ -1070,6 +1131,16 @@ class PluginManager(metaclass=Singleton):
                 return getattr(plugin_class, "is_clone")
         return self.get_clone_params(clone_id=plugin_id) is not None
 
+    def get_all_clone_ids(self) -> List[str]:
+        """
+        获取全部分身的ID
+        """
+        return [
+            key[len(self._cloneparams_key_prefix) :]
+            for key in SystemConfigOper().keys()
+            if key.startswith(self._cloneparams_key_prefix)
+        ]
+
     def get_clone_params(self, clone_id: str) -> Optional[schemas.CloneParams]:
         """
         获取分身参数
@@ -1080,7 +1151,7 @@ class PluginManager(metaclass=Singleton):
             params = SystemConfigOper().get(self._cloneparams_key % clone_id) or {}
             return schemas.CloneParams(**params)
         except Exception as e:
-            logger.error(f"获取分身参数失败: {e}")
+            logger.error(f"分身 {clone_id} 获取参数失败: {e}")
         return None
 
     def save_clone_params(
@@ -1105,6 +1176,111 @@ class PluginManager(metaclass=Singleton):
         """
         return SystemConfigOper().delete(self._cloneparams_key % clone_id)
 
+    def _clone_plugin(self, params: schemas.CloneParams):
+        """
+        创建插件分身 不加载
+        """
+        # 生成分身插件ID
+        clone_id = params.clone_id
+
+        # 检查分身插件是否已存在
+        if self.is_plugin_exists(clone_id):
+            return False, f"分身插件 {clone_id} 已存在"
+
+        # 原插件ID
+        original_id = params.plugin_id
+
+        # 获取原插件目录
+        original_plugin_dir = (
+            Path(settings.ROOT_PATH) / "app" / "plugins" / original_id.lower()
+        )
+        if not original_plugin_dir.exists():
+            if params.online_id != original_id:
+                """
+                NOTE 原插件也是分身，但被卸载了
+                比如：线上插件->分身(已卸载)->分身的分身
+                如果后续不允许卸载有子分身的插件，则这段代码可删除
+                """
+                logger.debug(
+                    f"原插件目录 {original_plugin_dir} 不存在，改用线上插件 {params.online_id} 的目录"
+                )
+                original_id = params.online_id
+                original_plugin_dir = (
+                    Path(settings.ROOT_PATH) / "app" / "plugins" / original_id.lower()
+                )
+                if not original_plugin_dir.exists():
+                    return False, f"线上插件目录 {original_plugin_dir} 不存在"
+                # HACK 将原插件调整为线上插件，并修正后缀
+                params.plugin_id = params.online_id
+                params.suffix = clone_id[len(params.online_id) :]
+            else:
+                return False, f"原插件目录 {original_plugin_dir} 不存在"
+
+        if original_id not in self._plugins:
+            # 仅系统重置后 分身同步恢复时才会走进这里
+            self.start(original_id)
+
+        # 创建分身插件目录
+        clone_plugin_dir = (
+            Path(settings.ROOT_PATH) / "app" / "plugins" / clone_id.lower()
+        )
+
+        # 复制插件目录
+        import shutil
+
+        shutil.copytree(original_plugin_dir, clone_plugin_dir)
+        logger.info(f"已复制插件目录：{original_plugin_dir} -> {clone_plugin_dir}")
+
+        # 修改插件文件内容
+        success, msg = self._modify_plugin_files(
+            plugin_dir=clone_plugin_dir,
+            original_id=original_id,
+            suffix=params.suffix.lower(),
+            name=params.name,
+            description=params.description,
+            version=params.version,
+            icon=params.icon,
+        )
+
+        if not success:
+            # 如果修改失败，清理已创建的目录
+            if clone_plugin_dir.exists():
+                shutil.rmtree(clone_plugin_dir)
+            return False, msg
+
+        # 将分身插件添加到已安装列表
+        systemconfig = SystemConfigOper()
+        installed_plugins = systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
+        if clone_id not in installed_plugins:
+            installed_plugins.append(clone_id)
+            systemconfig.set(SystemConfigKey.UserInstalledPlugins, installed_plugins)
+
+        # 保存分身参数，确保系统重置后能正确恢复分身插件
+        self.save_clone_params(clone_id, params)
+
+        if not self.get_plugin_config(clone_id):
+            # 为分身插件创建初始配置（从原插件复制配置）
+            logger.info(f"正在为分身插件 {clone_id} 创建初始配置...")
+            original_config = self.get_plugin_config(params.plugin_id)
+            if original_config:
+                # 复制原插件配置作为分身插件的初始配置
+                clone_config = original_config.copy()
+                # 可以在这里修改一些默认值，比如禁用分身插件
+                # 默认禁用分身插件，让用户手动配置
+                clone_config["enable"] = False
+                clone_config["enabled"] = False
+                # FIXME The clone_id has NOT been added to _plugins yet
+                self.save_plugin_config(clone_id, clone_config)
+                logger.info(f"已为分身插件 {clone_id} 设置初始配置")
+            else:
+                logger.info(
+                    f"原插件 {params.plugin_id} 没有配置，分身插件 {clone_id} 将使用默认配置"
+                )
+        else:
+            logger.info(f"分身插件 {clone_id} 已存在配置")
+
+        return True, clone_id
+
     def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
                      version: str = None, icon: str = None) -> Tuple[bool, str]:
         """
@@ -1126,89 +1302,31 @@ class PluginManager(metaclass=Singleton):
             if plugin_id not in self._plugins:
                 return False, f"原插件 {plugin_id} 不存在"
 
-            # 生成分身插件ID
-            clone_id = f"{plugin_id}{suffix.lower()}"
-
-            # 检查分身插件是否已存在
-            if self.is_plugin_exists(clone_id):
-                return False, f"分身插件 {clone_id} 已存在"
-
-            # 获取原插件目录
-            original_plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / plugin_id.lower()
-            if not original_plugin_dir.exists():
-                return False, f"原插件目录 {original_plugin_dir} 不存在"
-
-            # 创建分身插件目录
-            clone_plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / clone_id.lower()
-
-            # 复制插件目录
-            import shutil
-            shutil.copytree(original_plugin_dir, clone_plugin_dir)
-            logger.info(f"已复制插件目录：{original_plugin_dir} -> {clone_plugin_dir}")
-
-            # 修改插件文件内容
-            success, msg = self._modify_plugin_files(
-                plugin_dir=clone_plugin_dir,
-                original_id=plugin_id,
-                suffix=suffix.lower(),
-                name=name,
-                description=description,
-                version=version,
-                icon=icon
-            )
-
-            if not success:
-                # 如果修改失败，清理已创建的目录
-                if clone_plugin_dir.exists():
-                    shutil.rmtree(clone_plugin_dir)
-                return False, msg
-
-            # 将分身插件添加到已安装列表
-            systemconfig = SystemConfigOper()
-            installed_plugins = systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
-            if clone_id not in installed_plugins:
-                installed_plugins.append(clone_id)
-                systemconfig.set(SystemConfigKey.UserInstalledPlugins, installed_plugins)
-
             if parent_params := self.get_clone_params(plugin_id):
                 # 当前是分身的分身
                 online_id = parent_params.online_id
             else:
                 online_id = plugin_id
-
-            # 保存分身参数，确保系统重置后能正确恢复分身插件
-            self.save_clone_params(
-                clone_id,
-                schemas.CloneParams(
-                    online_id=online_id,
-                    plugin_id=plugin_id,
-                    suffix=suffix,
-                    name=name,
-                    description=description,
-                    version=version,
-                    icon=icon,
-                ),
+            params = schemas.CloneParams(
+                online_id=online_id,
+                plugin_id=plugin_id,
+                suffix=suffix,
+                name=name,
+                description=description,
+                version=version,
+                icon=icon,
             )
 
-            # 为分身插件创建初始配置（从原插件复制配置）
-            logger.info(f"正在为分身插件 {clone_id} 创建初始配置...")
-            original_config = self.get_plugin_config(plugin_id)
-            if original_config:
-                # 复制原插件配置作为分身插件的初始配置
-                clone_config = original_config.copy()
-                # 可以在这里修改一些默认值，比如禁用分身插件
-                # 默认禁用分身插件，让用户手动配置
-                clone_config['enable'] = False
-                clone_config['enabled'] = False
-                # FIXME The clone_id has NOT been added to _plugins yet
-                self.save_plugin_config(clone_id, clone_config)
-                logger.info(f"已为分身插件 {clone_id} 设置初始配置")
-            else:
-                logger.info(f"原插件 {plugin_id} 没有配置，分身插件 {clone_id} 将使用默认配置")
+            state, msg = self._clone_plugin(params)
+            if not state:
+                return False, msg
+
+            # 生成分身插件ID
+            clone_id = params.clone_id
 
             # 注册分身插件的API和服务
             logger.info(f"正在注册分身插件 {clone_id} ...")
-            PluginManager().reload_plugin(clone_id)
+            self.reload_plugin(clone_id)
             # 确保分身插件正确初始化配置
             if clone_id in self._running_plugins:
                 clone_instance = self._running_plugins[clone_id]

@@ -64,6 +64,12 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         # 避免将__SYSTEMCONF内的值引用出去，会导致set时误判没有变动
         return copy.deepcopy(self.__SYSTEMCONF)
 
+    def keys(self):
+        """
+        获取所有系统设置的Key
+        """
+        return self.__SYSTEMCONF.keys()
+
     def delete(self, key: Union[str, SystemConfigKey]) -> bool:
         """
         删除系统设置
