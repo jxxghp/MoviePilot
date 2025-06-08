@@ -34,6 +34,13 @@ class MemoryAnalyzer:
         # 创建专门的内存日志记录器
         self._memory_logger = logger.get_logger("memory_analysis")
 
+    @property
+    def is_analyzing(self):
+        """
+        是否正在进行内存分析
+        """
+        return self._analyzing
+
     def _debug_traceback_structure(self, stat, index: int):
         """
         调试traceback结构的辅助函数
@@ -120,7 +127,7 @@ class MemoryAnalyzer:
                         try:
                             line_content = linecache.getline(filename, lineno).strip()
                             if not line_content:
-                                line_content = "无法读取代码行内容"
+                                line_content = "无法读取代码行内容" # noqa
                         except Exception as e:
                             line_content = f"读取代码行失败：{str(e)}"
                     else:
@@ -350,15 +357,16 @@ class MemoryHelper(metaclass=Singleton):
                 detailed_info = {}
 
             # 获取垃圾回收信息
-            gc_info = {}
+            gc_info: Dict[str, int] = {}
             try:
+                gc_counts = gc.get_count()
                 for generation in range(3):
-                    gc_info[f'gen_{generation}'] = gc.get_count()[generation]
+                    gc_info[f'gen_{generation}'] = gc_counts[generation]
             except Exception as e:
                 self._memory_logger.error(f"获取垃圾回收信息失败: {e}")
 
             # 获取对象统计
-            object_counts = {}
+            object_counts: Dict[str, int] = {}
             try:
                 # 统计主要对象类型的数量
                 for obj_type in [list, dict, tuple, set, str, int, float]:
@@ -498,8 +506,9 @@ class MemoryHelper(metaclass=Singleton):
 
                 # 详细记录高内存使用情况
                 if self._detailed_logging:
-                    self.get_detailed_memory_info()
-                    self._memory_logger.info(f"高内存使用详细信息记录完成")
+                    detailed_info = self.get_detailed_memory_info()
+                    self._memory_logger.info(f"高内存使用详细信息记录完成 - 线程数: {detailed_info.get('thread_count', 0)}, "
+                                           f"文件描述符: {detailed_info.get('fd_count', 0)}")
 
                     # 记录内存使用最多的文件
                     top_files = self._analyzer.get_top_memory_files(10)
@@ -508,16 +517,41 @@ class MemoryHelper(metaclass=Singleton):
                         for file_info in top_files:
                             self._memory_logger.info(f"  {file_info['filename']}: {file_info['size_mb']:.2f}MB")
 
+                    # 分析未跟踪的内存
+                    memory_diff = self.get_tracemalloc_vs_psutil_diff()
+                    if memory_diff['untracked_percentage'] > 50:  # 如果超过50%的内存未被跟踪
+                        self._memory_logger.warning(f"⚠️ 大量未跟踪内存: {memory_diff['untracked_memory_mb']:.1f}MB "
+                                                    f"({memory_diff['untracked_percentage']:.1f}%)，可能是C扩展或外部库内存泄漏")
+                        
+                        # 分析大对象
+                        large_objects = self.analyze_large_objects()
+                        if large_objects:
+                            self._memory_logger.info("检测到的大对象类型:")
+                            for obj in large_objects[:5]:  # 只显示前5个
+                                if obj['total_size_mb'] > 5:  # 只显示超过5MB的
+                                    self._memory_logger.info(f"  {obj['type']}: {obj['count']}个对象, "
+                                                            f"总计{obj['total_size_mb']:.1f}MB")
+
                 self.force_gc()
 
                 # 再次检查清理效果
                 after_memory = self.get_memory_usage()
-                self._memory_logger.info(f"清理后内存: {after_memory['rss']:.1f}MB")
+                memory_freed = current_memory_mb - after_memory['rss']
+                self._memory_logger.info(f"清理后内存: {after_memory['rss']:.1f}MB，释放: {memory_freed:.1f}MB")
 
                 # 检查是否可能存在内存泄漏
                 leak_analysis = self._analyzer.analyze_memory_leaks()
                 if leak_analysis['status'] != 'normal':
                     self._memory_logger.warning(f"内存泄漏分析: {leak_analysis['message']}")
+
+                # 如果清理效果不佳且内存仍然很高，生成完整报告
+                if memory_freed < 50 and after_memory['rss'] > self._memory_threshold:
+                    self._memory_logger.warning(f"⚠️ 垃圾回收效果不佳，生成详细内存报告")
+                    try:
+                        # 生成并打印详细内存报告
+                        self.print_detailed_memory_report()
+                    except Exception as e:
+                        self._memory_logger.error(f"生成详细内存报告失败: {e}")
 
                 return True
             return False
@@ -526,6 +560,161 @@ class MemoryHelper(metaclass=Singleton):
             self._memory_logger.error(f"内存检查和清理失败: {e}")
             logger.error(f"内存检查和清理失败: {e}")
             return False
+
+    def get_tracemalloc_vs_psutil_diff(self) -> Dict:
+        """
+        比较 tracemalloc 和 psutil 的内存统计差异
+        """
+        try:
+            # 获取 psutil 的内存使用
+            psutil_memory = self.get_memory_usage()
+            
+            # 获取 tracemalloc 的总内存统计
+            tracemalloc_total = 0
+            if self._analyzer.is_analyzing:
+                snapshot = tracemalloc.take_snapshot()
+                top_stats = snapshot.statistics('lineno')
+                tracemalloc_total = sum(stat.size for stat in top_stats) / 1024 / 1024  # MB
+            
+            diff_mb = psutil_memory['rss'] - tracemalloc_total
+            diff_percent = (diff_mb / psutil_memory['rss']) * 100 if psutil_memory['rss'] > 0 else 0
+            
+            result = {
+                'psutil_rss_mb': psutil_memory['rss'],
+                'tracemalloc_total_mb': tracemalloc_total,
+                'untracked_memory_mb': diff_mb,
+                'untracked_percentage': diff_percent
+            }
+            
+            self._memory_logger.info(f"内存差异分析: PSUtil={psutil_memory['rss']:.1f}MB, "
+                                     f"Tracemalloc={tracemalloc_total:.1f}MB, "
+                                     f"未跟踪={diff_mb:.1f}MB ({diff_percent:.1f}%)")
+            
+            return result
+            
+        except Exception as e:
+            self._memory_logger.error(f"内存差异分析失败: {e}")
+            return {
+                'psutil_rss_mb': 0,
+                'tracemalloc_total_mb': 0,
+                'untracked_memory_mb': 0,
+                'untracked_percentage': 0,
+                'error': str(e)
+            }
+
+    def analyze_large_objects(self) -> List[Dict]:
+        """
+        分析大对象，查找可能的内存泄漏源
+        """
+        try:
+            self._memory_logger.info("开始分析大对象")
+            large_objects = []
+            
+            # 获取所有对象
+            all_objects = gc.get_objects()
+            
+            # 按类型分组统计
+            type_stats: Dict[str, Dict[str, Any]] = defaultdict(lambda: {'count': 0, 'total_size': 0, 'objects': []})
+            
+            for obj in all_objects:
+                try:
+                    obj_type = type(obj).__name__
+                    obj_size = sys.getsizeof(obj)
+                    
+                    type_stats[obj_type]['count'] += 1
+                    type_stats[obj_type]['total_size'] += obj_size
+                    
+                    # 记录大对象（>1MB）
+                    if obj_size > 1024 * 1024:
+                        type_stats[obj_type]['objects'].append({
+                            'size_mb': obj_size / 1024 / 1024,
+                            'id': id(obj),
+                            'repr': str(obj)[:100] if hasattr(obj, '__str__') else 'N/A'
+                        })
+                        
+                except Exception as e:
+                    self._memory_logger.error(f"处理对象 {obj} 时出错: {e}")
+                    continue
+            
+            # 按总大小排序，取前20个类型
+            sorted_types = sorted(type_stats.items(), 
+                                key=lambda x: x[1]['total_size'], 
+                                reverse=True)[:20]
+            
+            for obj_type, stats in sorted_types:
+                size_mb = stats['total_size'] / 1024 / 1024
+                large_objects.append({
+                    'type': obj_type,
+                    'count': stats['count'],
+                    'total_size_mb': size_mb,
+                    'avg_size_kb': (stats['total_size'] / stats['count']) / 1024,
+                    'large_instances': stats['objects'][:5]  # 只保留前5个大实例
+                })
+                
+                # 记录到日志
+                if size_mb > 10:  # 只记录总大小超过10MB的类型
+                    self._memory_logger.info(f"大对象类型: {obj_type} - 数量: {stats['count']}, "
+                                             f"总大小: {size_mb:.1f}MB, "
+                                             f"平均大小: {(stats['total_size'] / stats['count']) / 1024:.1f}KB")
+            
+            self._memory_logger.info(f"大对象分析完成，共分析 {len(all_objects)} 个对象，"
+                                     f"发现 {len(large_objects)} 种主要类型")
+            
+            return large_objects
+            
+        except Exception as e:
+            self._memory_logger.error(f"分析大对象失败: {e}")
+            return []
+
+    def analyze_reference_cycles(self) -> Dict:
+        """
+        分析引用循环，查找可能导致内存泄漏的循环引用
+        """
+        try:
+            self._memory_logger.info("开始分析引用循环")
+            
+            # 强制垃圾回收前的统计
+            before_counts = gc.get_count()
+            before_objects = len(gc.get_objects())
+            
+            # 检查引用循环
+            cycles_found = gc.collect()
+            
+            # 强制垃圾回收后的统计
+            after_counts = gc.get_count()
+            after_objects = len(gc.get_objects())
+            
+            # 获取垃圾对象（如果有的话）
+            garbage_count = len(gc.garbage)
+            
+            result = {
+                'cycles_collected': cycles_found,
+                'objects_before': before_objects,
+                'objects_after': after_objects,
+                'objects_freed': before_objects - after_objects,
+                'garbage_objects': garbage_count,
+                'gc_counts_before': before_counts,
+                'gc_counts_after': after_counts
+            }
+            
+            self._memory_logger.info(f"引用循环分析: 回收循环 {cycles_found} 个, "
+                                     f"释放对象 {result['objects_freed']} 个, "
+                                     f"垃圾对象 {garbage_count} 个")
+            
+            # 如果有垃圾对象，记录详细信息
+            if garbage_count > 0:
+                garbage_types: Dict[str, int] = defaultdict(int)
+                for obj in gc.garbage[:10]:  # 只检查前10个
+                    garbage_types[type(obj).__name__] += 1
+                
+                result['garbage_types'] = dict(garbage_types) # noqa
+                self._memory_logger.warning(f"发现垃圾对象类型: {dict(garbage_types)}")
+            
+            return result
+            
+        except Exception as e:
+            self._memory_logger.error(f"分析引用循环失败: {e}")
+            return {'error': str(e)}
 
     def generate_memory_report(self) -> Dict:
         """
@@ -542,6 +731,10 @@ class MemoryHelper(metaclass=Singleton):
                 'memory_trend': self._analyzer.get_memory_trend(30),
                 'top_memory_files': self._analyzer.get_top_memory_files(10),
                 'leak_analysis': self._analyzer.analyze_memory_leaks(),
+                'memory_diff': self.get_tracemalloc_vs_psutil_diff(),
+                'large_objects': self.analyze_large_objects(),
+                'reference_cycles': self.analyze_reference_cycles(),
+                'memory_hotspots': self.analyze_memory_hotspots(),
                 'gc_stats': {
                     'thresholds': gc.get_threshold(),
                     'counts': gc.get_count(),
@@ -553,9 +746,13 @@ class MemoryHelper(metaclass=Singleton):
             basic = report['basic_info']
             trend_count = len(report['memory_trend'])
             files_count = len(report['top_memory_files'])
+            untracked_mb = report['memory_diff']['untracked_memory_mb']
+            large_objects_count = len(report['large_objects'])
 
             self._memory_logger.info(f"内存报告生成完成 - RSS: {basic['rss']:.1f}MB, "
+                                     f"未跟踪: {untracked_mb:.1f}MB, "
                                      f"趋势记录: {trend_count}条, 文件统计: {files_count}个, "
+                                     f"大对象类型: {large_objects_count}个, "
                                      f"泄漏状态: {report['leak_analysis']['status']}")
 
             return report
@@ -568,6 +765,242 @@ class MemoryHelper(metaclass=Singleton):
                 'error': str(e),
                 'basic_info': self.get_memory_usage()
             }
+
+    def analyze_memory_hotspots(self) -> Dict:
+        """
+        分析内存热点，识别可能的内存泄漏源
+        """
+        try:
+            self._memory_logger.info("开始分析内存热点")
+            
+            hotspots = {
+                'high_allocation_functions': [],
+                'large_objects_by_module': {},
+                'suspicious_patterns': [],
+                'recommendations': []
+            }
+            
+            # 1. 分析高分配频率的函数
+            if self._analyzer.is_analyzing:
+                snapshot = tracemalloc.take_snapshot()
+                top_stats = snapshot.statistics('lineno')
+                
+                for stat in top_stats[:20]:
+                    try:
+                        if hasattr(stat, 'traceback') and stat.traceback and len(stat.traceback) > 0:
+                            frame = stat.traceback[0]
+                            if frame.filename and frame.lineno:
+                                size_mb = stat.size / 1024 / 1024
+                                if size_mb > 5:  # 只分析大于5MB的
+                                    hotspots['high_allocation_functions'].append({
+                                        'filename': os.path.basename(frame.filename),
+                                        'lineno': frame.lineno,
+                                        'size_mb': size_mb,
+                                        'allocations': stat.count
+                                    })
+                    except Exception as e:
+                        self._memory_logger.error(f"处理高分配函数统计项时出错: {e}")
+                        continue
+            
+            # 2. 按模块分析大对象
+            large_objects = self.analyze_large_objects()
+            for obj in large_objects:
+                if obj['total_size_mb'] > 10:
+                    module_name = 'unknown'
+                    if 'module' in obj['type'].lower() or obj['type'] in ['dict', 'list']:
+                        module_name = f"{obj['type']}_objects"
+                    hotspots['large_objects_by_module'][module_name] = obj
+            
+            # 3. 检测可疑模式
+            suspicious_patterns = []
+            
+            # 检查JSON相关的内存使用
+            for obj in large_objects:
+                if 'decoder' in obj['type'].lower() or 'encoder' in obj['type'].lower():
+                    suspicious_patterns.append(f"JSON处理占用大量内存: {obj['type']} ({obj['total_size_mb']:.1f}MB)")
+            
+            # 检查HTTP/网络相关的内存使用
+            for obj in large_objects:
+                if any(keyword in obj['type'].lower() for keyword in ['http', 'response', 'request', 'models']):
+                    suspicious_patterns.append(f"HTTP/网络对象占用大量内存: {obj['type']} ({obj['total_size_mb']:.1f}MB)")
+            
+            # 检查缓存相关的内存使用
+            for obj in large_objects:
+                if any(keyword in obj['type'].lower() for keyword in ['cache', 'pickle', 'init']):
+                    suspicious_patterns.append(f"缓存/序列化对象占用大量内存: {obj['type']} ({obj['total_size_mb']:.1f}MB)")
+            
+            hotspots['suspicious_patterns'] = suspicious_patterns
+            
+            # 4. 生成建议
+            recommendations = []
+            memory_diff = self.get_tracemalloc_vs_psutil_diff()
+            
+            if memory_diff['untracked_percentage'] > 70:
+                recommendations.append("大量内存未被Python跟踪，可能是C扩展库内存泄漏，建议检查第三方库")
+            
+            if any('json' in pattern.lower() for pattern in suspicious_patterns):
+                recommendations.append("JSON处理占用大量内存，建议使用流式解析或分批处理大JSON数据")
+            
+            if any('http' in pattern.lower() for pattern in suspicious_patterns):
+                recommendations.append("HTTP响应对象占用大量内存，建议及时释放响应对象或使用流式下载")
+            
+            if any('cache' in pattern.lower() or 'pickle' in pattern.lower() for pattern in suspicious_patterns):
+                recommendations.append("缓存或序列化对象占用大量内存，建议检查缓存策略和对象生命周期")
+            
+            hotspots['recommendations'] = recommendations
+            
+            # 记录分析结果
+            self._memory_logger.info(f"内存热点分析完成: 高分配函数 {len(hotspots['high_allocation_functions'])} 个, "
+                                     f"大对象模块 {len(hotspots['large_objects_by_module'])} 个, "
+                                     f"可疑模式 {len(suspicious_patterns)} 个")
+            
+            if suspicious_patterns:
+                self._memory_logger.warning("🔍 发现可疑内存使用模式:")
+                for pattern in suspicious_patterns:
+                    self._memory_logger.warning(f"  - {pattern}")
+            
+            if recommendations:
+                self._memory_logger.info("💡 内存优化建议:")
+                for rec in recommendations:
+                    self._memory_logger.info(f"  - {rec}")
+            
+            return hotspots
+            
+        except Exception as e:
+            self._memory_logger.error(f"分析内存热点失败: {e}")
+            return {'error': str(e)}
+
+    def print_detailed_memory_report(self) -> None:
+        """
+        生成并打印详细的内存使用报告到日志
+        """
+        try:
+            self._memory_logger.info("=" * 80)
+            self._memory_logger.info("📊 开始生成详细内存使用报告")
+            self._memory_logger.info("=" * 80)
+            
+            report = self.generate_memory_report()
+            
+            # 1. 基本内存信息
+            basic = report.get('basic_info', {})
+            self._memory_logger.info(f"💾 基本内存信息:")
+            self._memory_logger.info(f"  - RSS内存: {basic.get('rss', 0):.1f}MB")
+            self._memory_logger.info(f"  - VMS内存: {basic.get('vms', 0):.1f}MB")
+            self._memory_logger.info(f"  - 进程内存占用: {basic.get('percent', 0):.1f}%")
+            self._memory_logger.info(f"  - 系统内存使用率: {basic.get('system_percent', 0):.1f}%")
+            self._memory_logger.info(f"  - 系统可用内存: {basic.get('system_available', 0):.1f}GB")
+            
+            # 2. 内存差异分析
+            memory_diff = report.get('memory_diff', {})
+            self._memory_logger.info(f"\n🔍 内存跟踪差异分析:")
+            self._memory_logger.info(f"  - PSUtil统计内存: {memory_diff.get('psutil_rss_mb', 0):.1f}MB")
+            self._memory_logger.info(f"  - Tracemalloc统计内存: {memory_diff.get('tracemalloc_total_mb', 0):.1f}MB")
+            self._memory_logger.info(f"  - 未跟踪内存: {memory_diff.get('untracked_memory_mb', 0):.1f}MB")
+            self._memory_logger.info(f"  - 未跟踪比例: {memory_diff.get('untracked_percentage', 0):.1f}%")
+            
+            # 3. 内存使用最多的文件
+            top_files = report.get('top_memory_files', [])
+            if top_files:
+                self._memory_logger.info(f"\n📁 内存使用最多的文件 (Top 10):")
+                for i, file_info in enumerate(top_files[:10], 1):
+                    self._memory_logger.info(f"  {i:2d}. {file_info.get('filename', 'unknown'):30s} "
+                                           f"{file_info.get('size_mb', 0):8.2f}MB "
+                                           f"({file_info.get('count', 0):,} 次分配)")
+            
+            # 4. 大对象分析
+            large_objects = report.get('large_objects', [])
+            if large_objects:
+                self._memory_logger.info(f"\n🏗️ 大对象类型分析 (Top 10):")
+                for i, obj in enumerate(large_objects[:10], 1):
+                    self._memory_logger.info(f"  {i:2d}. {obj.get('type', 'unknown'):25s} "
+                                           f"{obj.get('total_size_mb', 0):8.1f}MB "
+                                           f"({obj.get('count', 0):,} 个对象, "
+                                           f"平均 {obj.get('avg_size_kb', 0):.1f}KB)")
+                    
+                    # 显示大实例
+                    large_instances = obj.get('large_instances', [])
+                    if large_instances:
+                        for instance in large_instances[:3]:  # 只显示前3个
+                            self._memory_logger.info(f"      └─ 大实例: {instance.get('size_mb', 0):.2f}MB - "
+                                                   f"{instance.get('repr', 'N/A')[:60]}...")
+            
+            # 5. 内存热点分析
+            hotspots = report.get('memory_hotspots', {})
+            high_alloc_funcs = hotspots.get('high_allocation_functions', [])
+            if high_alloc_funcs:
+                self._memory_logger.info(f"\n🔥 高内存分配函数:")
+                for i, func in enumerate(high_alloc_funcs[:10], 1):
+                    self._memory_logger.info(f"  {i:2d}. {func.get('filename', 'unknown')}:{func.get('lineno', 0)} "
+                                           f"- {func.get('size_mb', 0):.2f}MB "
+                                           f"({func.get('allocations', 0):,} 次分配)")
+            
+            suspicious_patterns = hotspots.get('suspicious_patterns', [])
+            if suspicious_patterns:
+                self._memory_logger.info(f"\n⚠️ 可疑内存使用模式:")
+                for i, pattern in enumerate(suspicious_patterns, 1):
+                    self._memory_logger.info(f"  {i}. {pattern}")
+            
+            recommendations = hotspots.get('recommendations', [])
+            if recommendations:
+                self._memory_logger.info(f"\n💡 内存优化建议:")
+                for i, rec in enumerate(recommendations, 1):
+                    self._memory_logger.info(f"  {i}. {rec}")
+            
+            # 6. 引用循环分析
+            ref_cycles = report.get('reference_cycles', {})
+            if ref_cycles and not ref_cycles.get('error'):
+                self._memory_logger.info(f"\n🔄 引用循环分析:")
+                self._memory_logger.info(f"  - 回收的循环: {ref_cycles.get('cycles_collected', 0)} 个")
+                self._memory_logger.info(f"  - 释放的对象: {ref_cycles.get('objects_freed', 0)} 个")
+                self._memory_logger.info(f"  - 垃圾对象: {ref_cycles.get('garbage_objects', 0)} 个")
+                
+                garbage_types = ref_cycles.get('garbage_types', {})
+                if garbage_types:
+                    self._memory_logger.info(f"  - 垃圾对象类型: {garbage_types}")
+            
+            # 7. 内存泄漏分析
+            leak_analysis = report.get('leak_analysis', {})
+            if leak_analysis:
+                self._memory_logger.info(f"\n🚨 内存泄漏分析:")
+                self._memory_logger.info(f"  - 状态: {leak_analysis.get('status', 'unknown')}")
+                self._memory_logger.info(f"  - 详情: {leak_analysis.get('message', 'N/A')}")
+                if 'growth_rate_mb' in leak_analysis:
+                    self._memory_logger.info(f"  - 增长率: {leak_analysis['growth_rate_mb']:.2f}MB/次检查")
+            
+            # 8. 内存趋势
+            memory_trend = report.get('memory_trend', [])
+            if len(memory_trend) >= 2:
+                first_record = memory_trend[0]
+                last_record = memory_trend[-1]
+                time_diff = (last_record['timestamp'] - first_record['timestamp']).total_seconds() / 60
+                memory_diff_mb = last_record['memory_info']['rss'] - first_record['memory_info']['rss']
+                
+                self._memory_logger.info(f"\n📈 内存趋势 (最近 {len(memory_trend)} 个记录):")
+                self._memory_logger.info(f"  - 时间跨度: {time_diff:.1f} 分钟")
+                self._memory_logger.info(f"  - 内存变化: {memory_diff_mb:+.1f}MB")
+                self._memory_logger.info(f"  - 平均变化率: {memory_diff_mb/time_diff:+.2f}MB/分钟")
+            
+            # 9. 系统信息
+            detailed_info = report.get('detailed_info', {})
+            if detailed_info:
+                self._memory_logger.info(f"\n🖥️ 系统信息:")
+                self._memory_logger.info(f"  - 线程数量: {detailed_info.get('thread_count', 0)}")
+                self._memory_logger.info(f"  - 文件描述符: {detailed_info.get('fd_count', 0)}")
+                
+                gc_info = detailed_info.get('gc_info', {})
+                if gc_info:
+                    self._memory_logger.info(f"  - GC计数: Gen0={gc_info.get('gen_0', 0)}, "
+                                           f"Gen1={gc_info.get('gen_1', 0)}, "
+                                           f"Gen2={gc_info.get('gen_2', 0)}")
+            
+            self._memory_logger.info("=" * 80)
+            self._memory_logger.info("📊 详细内存报告生成完成")
+            self._memory_logger.info("=" * 80)
+            
+        except Exception as e:
+            self._memory_logger.error(f"打印详细内存报告失败: {e}")
+            import traceback
+            self._memory_logger.error(f"错误详情: {traceback.format_exc()}")
 
     def enable_detailed_logging(self, enable: bool = True):
         """
@@ -691,6 +1124,16 @@ class MemoryHelper(metaclass=Singleton):
         :return: 当前阈值(MB)
         """
         return self._memory_threshold
+
+    def print_memory_report(self) -> None:
+        """
+        手动生成并打印详细内存报告
+        """
+        try:
+            self.print_detailed_memory_report()
+        except Exception as e:
+            self._memory_logger.error(f"手动生成内存报告失败: {e}")
+            logger.error(f"手动生成内存报告失败: {e}")
 
 
 def memory_optimized(force_gc_after: bool = False, log_memory: bool = False):
