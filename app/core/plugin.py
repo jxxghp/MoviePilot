@@ -397,6 +397,32 @@ class PluginManager(metaclass=Singleton):
                 f"失败：{len(failed_plugins)} 个，总耗时：{total_elapsed_time:.2f} 秒"
             )
 
+        # 补全老版本缺失的分身参数
+        for plugin_id in self._plugins.keys():
+            if not self.get_clone_params(plugin_id) and self.is_clone_plugin(plugin_id):
+                # HACK 原插件是老版本创建的分身 缺少线上ID
+                # 尝试找出线上ID
+                parent_id = plugin_id
+                while parent_id:
+                    parent_id = parent_id[:-1]
+                    if parent_id in self._plugins:
+                        if not self.is_clone_plugin(parent_id):
+                            """
+                            FIXME 存在一种可能，有两个线上插件，分别是foo和foobar
+                            如果分身实际是从foo克隆出来，但后缀叫bar2
+                            则会误判分身是从foobar克隆而来
+                            """
+                            self.save_clone_params(
+                                plugin_id,
+                                schemas.CloneParams(
+                                    online_id=parent_id,
+                                    plugin_id=parent_id,
+                                    suffix=plugin_id[len(parent_id) :],
+                                ),
+                            )
+                            logger.warn(f"假定老版本的分身 {plugin_id} 对应的原插件为 {parent_id}")
+                            break
+
         # 需要安装的分身插件
         clone_plugins_to_install: List[schemas.CloneParams] = []
         for clone_id in self.get_all_clone_ids():
@@ -1149,6 +1175,8 @@ class PluginManager(metaclass=Singleton):
         """
         try:
             params = SystemConfigOper().get(self._cloneparams_key % clone_id) or {}
+            if not params:
+                return None
             return schemas.CloneParams(**params)
         except Exception as e:
             logger.error(f"分身 {clone_id} 获取参数失败: {e}")
