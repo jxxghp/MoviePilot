@@ -16,11 +16,8 @@ class FetchDownloadsAction(BaseAction):
     获取下载任务
     """
 
-    _downloads = []
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.chain = ActionChain()
         self._downloads = []
 
     @classmethod
@@ -51,7 +48,7 @@ class FetchDownloadsAction(BaseAction):
             if global_vars.is_workflow_stopped(workflow_id):
                 break
             logger.info(f"获取下载任务 {download.download_id} 状态 ...")
-            torrents = self.chain.list_torrents(hashs=[download.download_id])
+            torrents = ActionChain().list_torrents(hashs=[download.download_id])
             if not torrents:
                 download.completed = True
                 continue

@@ -26,37 +26,31 @@ class AddDownloadAction(BaseAction):
     添加下载资源
     """
 
-    # 已添加的下载
-    _added_downloads = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.downloadchain = DownloadChain()
-        self.mediachain = MediaChain()
         self._added_downloads = []
         self._has_error = False
 
     @classmethod
     @property
-    def name(cls) -> str: # noqa
+    def name(cls) -> str:  # noqa
         return "添加下载"
 
     @classmethod
     @property
-    def description(cls) -> str: # noqa
+    def description(cls) -> str:  # noqa
         return "根据资源列表添加下载任务"
 
     @classmethod
     @property
-    def data(cls) -> dict: # noqa
+    def data(cls) -> dict:  # noqa
         return AddDownloadParams().dict()
 
     @property
     def success(self) -> bool:
         return not self._has_error
 
-    def execute(self, workflow_id: int,  params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         将上下文中的torrents添加到下载任务中
         """
@@ -73,13 +67,13 @@ class AddDownloadAction(BaseAction):
             if not t.meta_info:
                 t.meta_info = MetaInfo(title=t.torrent_info.title, subtitle=t.torrent_info.description)
             if not t.media_info:
-                t.media_info = self.mediachain.recognize_media(meta=t.meta_info)
+                t.media_info = MediaChain().recognize_media(meta=t.meta_info)
             if not t.media_info:
                 self._has_error = True
                 logger.warning(f"{t.torrent_info.title} 未识别到媒体信息，无法下载")
                 continue
             if params.only_lack:
-                exists_info = self.downloadchain.media_exists(t.media_info)
+                exists_info = DownloadChain().media_exists(t.media_info)
                 if exists_info:
                     if t.media_info.type == MediaType.MOVIE:
                         # 电影
@@ -96,14 +90,15 @@ class AddDownloadAction(BaseAction):
                             exists_episodes = exists_seasons.get(t.meta_info.begin_season)
                             if exists_episodes:
                                 if set(t.meta_info.episode_list).issubset(exists_episodes):
-                                    logger.warning(f"{t.meta_info.title} 第 {t.meta_info.begin_season} 季第 {t.meta_info.episode_list} 集已存在，跳过")
+                                    logger.warning(
+                                        f"{t.meta_info.title} 第 {t.meta_info.begin_season} 季第 {t.meta_info.episode_list} 集已存在，跳过")
                                     continue
 
             _started = True
-            did = self.downloadchain.download_single(context=t,
-                                                     downloader=params.downloader,
-                                                     save_path=params.save_path,
-                                                     label=params.labels)
+            did = DownloadChain().download_single(context=t,
+                                                  downloader=params.downloader,
+                                                  save_path=params.save_path,
+                                                  label=params.labels)
             if did:
                 self._added_downloads.append(did)
                 # 保存缓存

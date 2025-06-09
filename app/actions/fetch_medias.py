@@ -27,10 +27,6 @@ class FetchMediasAction(BaseAction):
     获取媒体数据
     """
 
-    _inner_sources = []
-    _medias = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
 

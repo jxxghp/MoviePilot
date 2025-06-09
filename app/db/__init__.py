@@ -236,7 +236,6 @@ class DbOper:
     """
     数据库操作基类
     """
-    _db: Session = None
 
     def __init__(self, db: Session = None):
         self._db = db

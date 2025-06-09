@@ -24,12 +24,8 @@ class ScanFileAction(BaseAction):
     整理文件
     """
 
-    _fileitems = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.storagechain = StorageChain()
         self._fileitems = []
         self._has_error = False
 
@@ -59,12 +55,13 @@ class ScanFileAction(BaseAction):
         params = ScanFileParams(**params)
         if not params.storage or not params.directory:
             return context
-        fileitem = self.storagechain.get_file_item(params.storage, Path(params.directory))
+        storagechain = StorageChain()
+        fileitem = storagechain.get_file_item(params.storage, Path(params.directory))
         if not fileitem:
             logger.error(f"目录不存在: 【{params.storage}】{params.directory}")
             self._has_error = True
             return context
-        files = self.storagechain.list_files(fileitem, recursion=True)
+        files = storagechain.list_files(fileitem, recursion=True)
         for file in files:
             if global_vars.is_workflow_stopped(workflow_id):
                 break

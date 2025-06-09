@@ -27,12 +27,8 @@ class FilterTorrentsAction(BaseAction):
     过滤资源数据
     """
 
-    _torrents = []
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.torrenthelper = TorrentHelper()
-        self.chain = ActionChain()
         self._torrents = []
 
     @classmethod
@@ -62,7 +58,7 @@ class FilterTorrentsAction(BaseAction):
         for torrent in context.torrents:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
-            if self.torrenthelper.filter_torrent(
+            if TorrentHelper().filter_torrent(
                     torrent_info=torrent.torrent_info,
                     filter_params={
                         "quality": params.quality,
@@ -73,7 +69,7 @@ class FilterTorrentsAction(BaseAction):
                         "size": params.size
                     }
             ):
-                if self.chain.filter_torrents(
+                if ActionChain().filter_torrents(
                         rule_groups=params.rule_groups,
                         torrent_list=[torrent.torrent_info],
                         mediainfo=torrent.media_info

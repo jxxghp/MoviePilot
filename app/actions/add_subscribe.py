@@ -19,29 +19,24 @@ class AddSubscribeAction(BaseAction):
     添加订阅
     """
 
-    _added_subscribes = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.subscribechain = SubscribeChain()
-        self.subscribeoper = SubscribeOper()
         self._added_subscribes = []
         self._has_error = False
 
     @classmethod
     @property
-    def name(cls) -> str: # noqa
+    def name(cls) -> str:  # noqa
         return "添加订阅"
 
     @classmethod
     @property
-    def description(cls) -> str: # noqa
+    def description(cls) -> str:  # noqa
         return "根据媒体列表添加订阅"
 
     @classmethod
     @property
-    def data(cls) -> dict: # noqa
+    def data(cls) -> dict:  # noqa
         return AddSubscribeParams().dict()
 
     @property
@@ -63,19 +58,20 @@ class AddSubscribeAction(BaseAction):
                 continue
             mediainfo = MediaInfo()
             mediainfo.from_dict(media.dict())
-            if self.subscribechain.exists(mediainfo):
+            subscribechain = SubscribeChain()
+            if subscribechain.exists(mediainfo):
                 logger.info(f"{media.title} 已存在订阅")
                 continue
             # 添加订阅
             _started = True
-            sid, message = self.subscribechain.add(mtype=mediainfo.type,
-                                                   title=mediainfo.title,
-                                                   year=mediainfo.year,
-                                                   tmdbid=mediainfo.tmdb_id,
-                                                   season=mediainfo.season,
-                                                   doubanid=mediainfo.douban_id,
-                                                   bangumiid=mediainfo.bangumi_id,
-                                                   username=settings.SUPERUSER)
+            sid, message = subscribechain.add(mtype=mediainfo.type,
+                                              title=mediainfo.title,
+                                              year=mediainfo.year,
+                                              tmdbid=mediainfo.tmdb_id,
+                                              season=mediainfo.season,
+                                              doubanid=mediainfo.douban_id,
+                                              bangumiid=mediainfo.bangumi_id,
+                                              username=settings.SUPERUSER)
             if sid:
                 self._added_subscribes.append(sid)
                 # 保存缓存
@@ -84,7 +80,7 @@ class AddSubscribeAction(BaseAction):
         if self._added_subscribes:
             logger.info(f"已添加 {len(self._added_subscribes)} 个订阅")
             for sid in self._added_subscribes:
-                context.subscribes.append(self.subscribeoper.get(sid))
+                context.subscribes.append(SubscribeOper().get(sid))
         elif _started:
             self._has_error = True
 
