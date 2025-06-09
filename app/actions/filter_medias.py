@@ -22,8 +22,6 @@ class FilterMediasAction(BaseAction):
     过滤媒体数据
     """
 
-    _medias = []
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._medias = []

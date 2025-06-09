@@ -26,30 +26,24 @@ class TransferFileAction(BaseAction):
     整理文件
     """
 
-    _fileitems = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.transferchain = TransferChain()
-        self.storagechain = StorageChain()
-        self.transferhis = TransferHistoryOper()
         self._fileitems = []
         self._has_error = False
 
     @classmethod
     @property
-    def name(cls) -> str: # noqa
+    def name(cls) -> str:  # noqa
         return "整理文件"
 
     @classmethod
     @property
-    def description(cls) -> str: # noqa
+    def description(cls) -> str:  # noqa
         return "整理队列中的文件"
 
     @classmethod
     @property
-    def data(cls) -> dict: # noqa
+    def data(cls) -> dict:  # noqa
         return TransferFileParams().dict()
 
     @property
@@ -72,6 +66,9 @@ class TransferFileAction(BaseAction):
         params = TransferFileParams(**params)
         # 失败次数
         _failed_count = 0
+        storagechain = StorageChain()
+        transferchain = TransferChain()
+        transferhis = TransferHistoryOper()
         if params.source == "downloads":
             # 从下载任务中整理文件
             for download in context.downloads:
@@ -85,16 +82,16 @@ class TransferFileAction(BaseAction):
                 if self.check_cache(workflow_id, cache_key):
                     logger.info(f"{download.path} 已整理过，跳过")
                     continue
-                fileitem = self.storagechain.get_file_item(storage="local", path=Path(download.path))
+                fileitem = storagechain.get_file_item(storage="local", path=Path(download.path))
                 if not fileitem:
                     logger.info(f"文件 {download.path} 不存在")
                     continue
-                transferd = self.transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
+                transferd = transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
                 if transferd:
                     # 已经整理过的文件不再整理
                     continue
                 logger.info(f"开始整理文件 {download.path} ...")
-                state, errmsg = self.transferchain.do_transfer(fileitem, background=False)
+                state, errmsg = transferchain.do_transfer(fileitem, background=False)
                 if not state:
                     _failed_count += 1
                     logger.error(f"整理文件 {download.path} 失败: {errmsg}")
@@ -112,13 +109,13 @@ class TransferFileAction(BaseAction):
                 if self.check_cache(workflow_id, cache_key):
                     logger.info(f"{fileitem.path} 已整理过，跳过")
                     continue
-                transferd = self.transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
+                transferd = transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
                 if transferd:
                     # 已经整理过的文件不再整理
                     continue
                 logger.info(f"开始整理文件 {fileitem.path} ...")
-                state, errmsg = self.transferchain.do_transfer(fileitem, background=False,
-                                                               continue_callback=check_continue)
+                state, errmsg = transferchain.do_transfer(fileitem, background=False,
+                                                          continue_callback=check_continue)
                 if not state:
                     _failed_count += 1
                     logger.error(f"整理文件 {fileitem.path} 失败: {errmsg}")

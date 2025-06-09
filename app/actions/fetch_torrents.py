@@ -29,26 +29,23 @@ class FetchTorrentsAction(BaseAction):
     搜索站点资源
     """
 
-    _torrents = []
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.searchchain = SearchChain()
         self._torrents = []
 
     @classmethod
     @property
-    def name(cls) -> str: # noqa
+    def name(cls) -> str:  # noqa
         return "搜索站点资源"
 
     @classmethod
     @property
-    def description(cls) -> str: # noqa
+    def description(cls) -> str:  # noqa
         return "搜索站点种子资源列表"
 
     @classmethod
     @property
-    def data(cls) -> dict: # noqa
+    def data(cls) -> dict:  # noqa
         return FetchTorrentsParams().dict()
 
     @property
@@ -60,9 +57,10 @@ class FetchTorrentsAction(BaseAction):
         搜索站点，获取资源列表
         """
         params = FetchTorrentsParams(**params)
+        searchchain = SearchChain()
         if params.search_type == "keyword":
             # 按关键字搜索
-            torrents = self.searchchain.search_by_title(title=params.name, sites=params.sites)
+            torrents = searchchain.search_by_title(title=params.name, sites=params.sites)
             for torrent in torrents:
                 if global_vars.is_workflow_stopped(workflow_id):
                     break
@@ -74,7 +72,7 @@ class FetchTorrentsAction(BaseAction):
                     continue
                 # 识别媒体信息
                 if params.match_media:
-                    torrent.media_info = self.searchchain.recognize_media(torrent.meta_info)
+                    torrent.media_info = searchchain.recognize_media(torrent.meta_info)
                     if not torrent.media_info:
                         logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
                         continue
@@ -84,10 +82,10 @@ class FetchTorrentsAction(BaseAction):
             for media in context.medias:
                 if global_vars.is_workflow_stopped(workflow_id):
                     break
-                torrents = self.searchchain.search_by_id(tmdbid=media.tmdb_id,
-                                                         doubanid=media.douban_id,
-                                                         mtype=MediaType(media.type),
-                                                         sites=params.sites)
+                torrents = searchchain.search_by_id(tmdbid=media.tmdb_id,
+                                                    doubanid=media.douban_id,
+                                                    mtype=MediaType(media.type),
+                                                    sites=params.sites)
                 for torrent in torrents:
                     self._torrents.append(torrent)
 
