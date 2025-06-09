@@ -31,6 +31,9 @@ from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
+# 分身配置Key前缀
+CLONE_KEY_PREFIX = "cloneparams."
+
 
 class PluginMonitorHandler(FileSystemEventHandler):
 
@@ -94,9 +97,6 @@ class PluginManager(metaclass=Singleton):
     _running_plugins: dict = {}
     # 配置Key
     _config_key: str = "plugin.%s"
-    # 分身配置Key
-    _cloneparams_key_prefix = "cloneparams."
-    _cloneparams_key: str = f"{_cloneparams_key_prefix}%s"
     # 监听器
     _observer: Observer = None
 
@@ -397,30 +397,33 @@ class PluginManager(metaclass=Singleton):
                 f"失败：{len(failed_plugins)} 个，总耗时：{total_elapsed_time:.2f} 秒"
             )
 
-        # 补全老版本缺失的分身参数
+        # 补全旧版缺失的分身参数
         for plugin_id in self._plugins.keys():
             if not self.get_clone_params(plugin_id) and self.is_clone_plugin(plugin_id):
-                # HACK 原插件是老版本创建的分身 缺少线上ID
-                # 尝试找出线上ID
+                # 原插件是旧版创建的分身 缺少原插件ID
                 parent_id = plugin_id
                 while parent_id:
                     parent_id = parent_id[:-1]
                     if parent_id in self._plugins:
                         if not self.is_clone_plugin(parent_id):
                             """
-                            FIXME 存在一种可能，有两个线上插件，分别是foo和foobar
-                            如果分身实际是从foo克隆出来，但后缀叫bar2
+                            FIXME 假设有两个插件, 分别是foo和foobar
+                            如果分身是从foo克隆出来, 但后缀叫bar2
                             则会误判分身是从foobar克隆而来
                             """
+                            plugin = self._plugins.get(plugin_id)
                             self.save_clone_params(
                                 plugin_id,
                                 schemas.CloneParams(
-                                    online_id=parent_id,
                                     plugin_id=parent_id,
                                     suffix=plugin_id[len(parent_id) :],
+                                    name=getattr(plugin, "plugin_name", None),
+                                    description=getattr(plugin, "plugin_desc", None),
+                                    version=getattr(plugin, "plugin_version", None),
+                                    icon=getattr(plugin, "plugin_icon", None),
                                 ),
                             )
-                            logger.warn(f"假定老版本的分身 {plugin_id} 对应的原插件为 {parent_id}")
+                            logger.warn(f"假定旧版分身 {plugin_id} 对应的原插件为 {parent_id}")
                             break
 
         # 需要安装的分身插件
@@ -433,23 +436,23 @@ class PluginManager(metaclass=Singleton):
                 # 分身已卸载或存在，不需要安装
                 continue
             for op in online_plugins:
-                if op.id == clone_params.online_id:
+                if op.id == clone_params.plugin_id:
                     break
             else:
-                # 找不到分身对应的线上插件 (比如修改了仓库地址、网络不佳)
+                # 找不到分身对应的原插件 (比如修改了仓库地址、网络不佳)
                 logger.error(
-                    f"分身 {clone_id} 无法安装，找不到线上插件：{clone_params.online_id}"
+                    f"分身 {clone_id} 无法安装，找不到原插件：{clone_params.plugin_id}"
                 )
                 continue
-            if clone_params.online_id not in install_plugins:
+            if clone_params.plugin_id not in install_plugins:
                 """
-                TODO 对应的线上插件被卸载了
+                TODO 对应的原插件被卸载了
                 应对方案
-                    1、临时下载并安装线上插件 分身完毕后再卸载
+                    1、临时下载并安装原插件 分身完毕后再卸载
                     2、不允许卸载有分身的插件
                 """
                 logger.error(
-                    f"分身 {clone_id} 无法安装，原插件已被卸载：{clone_params.online_id}"
+                    f"分身 {clone_id} 无法安装，原插件已被卸载：{clone_params.plugin_id}"
                 )
                 continue
             clone_plugins_to_install.append(clone_params)
@@ -1162,9 +1165,9 @@ class PluginManager(metaclass=Singleton):
         获取全部分身的ID
         """
         return [
-            key[len(self._cloneparams_key_prefix) :]
+            key[len(CLONE_KEY_PREFIX) :]
             for key in SystemConfigOper().keys()
-            if key.startswith(self._cloneparams_key_prefix)
+            if key.startswith(CLONE_KEY_PREFIX)
         ]
 
     def get_clone_params(self, clone_id: str) -> Optional[schemas.CloneParams]:
@@ -1174,7 +1177,7 @@ class PluginManager(metaclass=Singleton):
         :param clone_id: 分身ID
         """
         try:
-            params = SystemConfigOper().get(self._cloneparams_key % clone_id) or {}
+            params = SystemConfigOper().get(f"{CLONE_KEY_PREFIX}{clone_id}") or {}
             if not params:
                 return None
             return schemas.CloneParams(**params)
@@ -1193,7 +1196,7 @@ class PluginManager(metaclass=Singleton):
         :param clone_id: 分身ID
         :param params: 参数
         """
-        SystemConfigOper().set(self._cloneparams_key % clone_id, params.dict())
+        SystemConfigOper().set(f"{CLONE_KEY_PREFIX}{clone_id}", params.dict())
         return True
 
     def delete_clone_params(self, clone_id: str) -> bool:
@@ -1202,7 +1205,7 @@ class PluginManager(metaclass=Singleton):
 
         :param clone_id: 分身ID
         """
-        return SystemConfigOper().delete(self._cloneparams_key % clone_id)
+        return SystemConfigOper().delete(f"{CLONE_KEY_PREFIX}{clone_id}")
 
     def _clone_plugin(self, params: schemas.CloneParams):
         """
@@ -1223,26 +1226,7 @@ class PluginManager(metaclass=Singleton):
             Path(settings.ROOT_PATH) / "app" / "plugins" / original_id.lower()
         )
         if not original_plugin_dir.exists():
-            if params.online_id != original_id:
-                """
-                NOTE 原插件也是分身，但被卸载了
-                比如：线上插件->分身(已卸载)->分身的分身
-                如果后续不允许卸载有子分身的插件，则这段代码可删除
-                """
-                logger.debug(
-                    f"原插件目录 {original_plugin_dir} 不存在，改用线上插件 {params.online_id} 的目录"
-                )
-                original_id = params.online_id
-                original_plugin_dir = (
-                    Path(settings.ROOT_PATH) / "app" / "plugins" / original_id.lower()
-                )
-                if not original_plugin_dir.exists():
-                    return False, f"线上插件目录 {original_plugin_dir} 不存在"
-                # HACK 将原插件调整为线上插件，并修正后缀
-                params.plugin_id = params.online_id
-                params.suffix = clone_id[len(params.online_id) :]
-            else:
-                return False, f"原插件目录 {original_plugin_dir} 不存在"
+            return False, f"原插件目录 {original_plugin_dir} 不存在"
 
         if original_id not in self._plugins:
             # 仅系统重置后 分身同步恢复时才会走进这里
@@ -1297,7 +1281,7 @@ class PluginManager(metaclass=Singleton):
                 # 默认禁用分身插件，让用户手动配置
                 clone_config["enable"] = False
                 clone_config["enabled"] = False
-                # FIXME The clone_id has NOT been added to _plugins yet
+                # BUG 此处保存无效 因为分身尚未加载
                 self.save_plugin_config(clone_id, clone_config)
                 logger.info(f"已为分身插件 {clone_id} 设置初始配置")
             else:
@@ -1326,17 +1310,16 @@ class PluginManager(metaclass=Singleton):
             if not plugin_id or not suffix:
                 return False, "插件ID和分身后缀不能为空"
 
+            if parent_params := self.get_clone_params(plugin_id):
+                # 当前是分身的分身 共用同一个原插件
+                logger.warn(f"原插件 {plugin_id} 是分身，改用 {parent_params.plugin_id}")
+                plugin_id = parent_params.plugin_id
+
             # 检查原插件是否存在
             if plugin_id not in self._plugins:
                 return False, f"原插件 {plugin_id} 不存在"
 
-            if parent_params := self.get_clone_params(plugin_id):
-                # 当前是分身的分身
-                online_id = parent_params.online_id
-            else:
-                online_id = plugin_id
             params = schemas.CloneParams(
-                online_id=online_id,
                 plugin_id=plugin_id,
                 suffix=suffix,
                 name=name,

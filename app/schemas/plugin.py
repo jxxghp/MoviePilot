@@ -74,8 +74,6 @@ class CloneParams(BaseModel):
     分身参数
     """
 
-    # 线上插件ID
-    online_id: str
     # 原插件ID
     plugin_id: str
     # 后缀
