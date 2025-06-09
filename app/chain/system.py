@@ -32,6 +32,8 @@ class SystemChain(ChainBase):
         """
         重启系统
         """
+        from app.core.config import global_vars
+        
         if channel and userid:
             self.post_message(Notification(channel=channel, source=source,
                                            title="系统正在重启，请耐心等候！", userid=userid))
@@ -40,6 +42,8 @@ class SystemChain(ChainBase):
                 "channel": channel.value,
                 "userid": userid
             }, self._restart_file)
+        # 设置停止标志，通知所有模块准备停止
+        global_vars.stop_system()
         # 重启
         SystemHelper.restart()
 
