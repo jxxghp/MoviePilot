@@ -416,13 +416,14 @@ class PluginManager(metaclass=Singleton):
             return {k: v for k, v in conf.items() if k}
         return {}
 
-    def save_plugin_config(self, pid: str, conf: dict) -> bool:
+    def save_plugin_config(self, pid: str, conf: dict, force = False) -> bool:
         """
         保存插件配置
         :param pid: 插件ID
         :param conf: 配置
+        :param force: 强制保存
         """
-        if not self._plugins.get(pid):
+        if not force and not self._plugins.get(pid):
             return False
         SystemConfigOper().set(self._config_key % pid, conf)
         return True
@@ -1132,7 +1133,7 @@ class PluginManager(metaclass=Singleton):
                 # 默认禁用分身插件，让用户手动配置
                 clone_config['enable'] = False
                 clone_config['enabled'] = False
-                self.save_plugin_config(clone_id, clone_config)
+                self.save_plugin_config(clone_id, clone_config, force=True)
                 logger.info(f"已为分身插件 {clone_id} 设置初始配置")
             else:
                 logger.info(f"原插件 {plugin_id} 没有配置，分身插件 {clone_id} 将使用默认配置")
