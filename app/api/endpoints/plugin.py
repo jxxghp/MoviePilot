@@ -473,6 +473,10 @@ def uninstall_plugin(plugin_id: str,
     """
     卸载插件
     """
+    plugin_manager = PluginManager()
+    if plugin_manager.get_all_clone_ids(plugin_id):
+        # TODO 或可一个强制标志 把分身也一并卸载了
+        return schemas.Response(success=False, message=f"插件存在分身 无法卸载")
     config_oper = SystemConfigOper()
     # 删除已安装信息
     install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
@@ -486,7 +490,6 @@ def uninstall_plugin(plugin_id: str,
     # 移除插件服务
     Scheduler().remove_plugin_job(plugin_id)
     # 判断是否为分身
-    plugin_manager = PluginManager()
     if plugin_manager.is_clone_plugin(plugin_id):
         # 如果是分身插件，则删除分身数据和配置
         plugin_manager.delete_plugin_config(plugin_id)

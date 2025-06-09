@@ -1160,10 +1160,25 @@ class PluginManager(metaclass=Singleton):
                 return getattr(plugin_class, "is_clone")
         return self.get_clone_params(clone_id=plugin_id) is not None
 
-    def get_all_clone_ids(self) -> List[str]:
+    def get_all_clone_ids(self, plugin_id: Optional[str] = None) -> List[str]:
         """
-        获取全部分身的ID
+        获取指定插件的全部分身ID
+
+        :params plugin_id: 插件ID
+        :return: 分身ID
         """
+        if plugin_id:
+            clone_ids = []
+            for key in SystemConfigOper().keys():
+                if not key.startswith(CLONE_KEY_PREFIX):
+                    continue
+                clone_id = key[len(CLONE_KEY_PREFIX) :]
+                params = self.get_clone_params(clone_id)
+                if not params:
+                    break
+                if params.plugin_id == plugin_id:
+                    clone_ids.append(clone_id)
+            return clone_ids
         return [
             key[len(CLONE_KEY_PREFIX) :]
             for key in SystemConfigOper().keys()
