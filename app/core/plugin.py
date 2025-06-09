@@ -307,9 +307,12 @@ class PluginManager(metaclass=Singleton):
         """
         self.stop(plugin_id)
 
+        # 从模块列表中移除插件
         from sys import modules
-
-        del modules[f"app.plugins.{plugin_id.lower()}"]
+        try:
+            del modules[f"app.plugins.{plugin_id.lower()}"]
+        except KeyError:
+            pass
 
     def reload_plugin(self, plugin_id: str):
         """
@@ -416,7 +419,7 @@ class PluginManager(metaclass=Singleton):
             return {k: v for k, v in conf.items() if k}
         return {}
 
-    def save_plugin_config(self, pid: str, conf: dict, force = False) -> bool:
+    def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """
         保存插件配置
         :param pid: 插件ID
