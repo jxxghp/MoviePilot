@@ -9,7 +9,7 @@ from app.startup.command_initializer import init_command, stop_command, restart_
 from app.startup.memory_initializer import init_memory_manager, stop_memory_manager
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
-from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
+from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins, backup_plugins, restore_plugins
 from app.startup.routers_initializer import init_routers
 from app.startup.scheduler_initializer import stop_scheduler, init_scheduler, init_plugin_scheduler
 from app.startup.workflow_initializer import init_workflow, stop_workflow
@@ -38,6 +38,8 @@ async def lifespan(app: FastAPI):
     init_modules()
     # 初始化路由
     init_routers(app)
+    # 恢复插件备份
+    restore_plugins()
     # 初始化插件
     init_plugins()
     # 初始化定时器
@@ -67,6 +69,8 @@ async def lifespan(app: FastAPI):
             pass
         except Exception as e:
             print(str(e))
+        # 备份插件
+        backup_plugins()
         # 停止内存管理器
         stop_memory_manager()
         # 停止工作流

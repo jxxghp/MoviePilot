@@ -1,5 +1,7 @@
 import asyncio
+import shutil
 
+from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.log import logger
 
@@ -75,3 +77,93 @@ def stop_plugins():
         plugin_manager.stop_monitor()
     except Exception as e:
         logger.error(f"停止插件时发生错误：{e}", exc_info=True)
+
+
+def backup_plugins():
+    """
+    备份插件到用户配置目录
+    """
+    try:
+        # 使用绝对路径确保准确性
+        plugins_dir = settings.ROOT_PATH / "app" / "plugins"
+        backup_dir = settings.CONFIG_PATH / "plugins_backup"
+        
+        if not plugins_dir.exists():
+            logger.info("插件目录不存在，跳过备份")
+            return
+            
+        # 确保备份目录存在
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 需要排除的文件和目录
+        exclude_items = {"__init__.py", "__pycache__", ".DS_Store"}
+        
+        # 遍历插件目录，备份除排除项外的所有内容
+        for item in plugins_dir.iterdir():
+            if item.name in exclude_items:
+                continue
+                
+            target_path = backup_dir / item.name
+            
+            # 如果是目录
+            if item.is_dir():
+                if target_path.exists():
+                    shutil.rmtree(target_path)
+                shutil.copytree(item, target_path)
+                logger.info(f"已备份插件目录: {item.name}")
+            # 如果是文件
+            elif item.is_file():
+                shutil.copy2(item, target_path)
+                logger.info(f"已备份插件文件: {item.name}")
+                
+        logger.info(f"插件备份完成，备份位置: {backup_dir}")
+        
+    except Exception as e:
+        logger.error(f"插件备份失败: {str(e)}")
+
+
+def restore_plugins():
+    """
+    从备份恢复插件到app/plugins目录，恢复完成后删除备份
+    """
+    try:
+        # 使用绝对路径确保准确性
+        plugins_dir = settings.ROOT_PATH / "app" / "plugins"
+        backup_dir = settings.CONFIG_PATH / "plugins_backup"
+        
+        if not backup_dir.exists():
+            logger.info("插件备份目录不存在，跳过恢复")
+            return
+            
+        # 确保插件目录存在
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 遍历备份目录，恢复所有内容
+        restored_count = 0
+        for item in backup_dir.iterdir():
+            target_path = plugins_dir / item.name
+            
+            # 如果是目录
+            if item.is_dir():
+                if target_path.exists():
+                    shutil.rmtree(target_path)
+                shutil.copytree(item, target_path)
+                logger.info(f"已恢复插件目录: {item.name}")
+                restored_count += 1
+            # 如果是文件
+            elif item.is_file():
+                shutil.copy2(item, target_path)
+                logger.info(f"已恢复插件文件: {item.name}")
+                restored_count += 1
+                
+        logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
+        
+        # 恢复完成后删除备份目录
+        try:
+            shutil.rmtree(backup_dir)
+            logger.info(f"已删除插件备份目录: {backup_dir}")
+        except Exception as e:
+            logger.warning(f"删除备份目录失败: {str(e)}")
+        
+    except Exception as e:
+        logger.error(f"插件恢复失败: {str(e)}")
