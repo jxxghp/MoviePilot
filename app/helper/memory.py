@@ -76,8 +76,7 @@ class MemoryHelper(metaclass=Singleton):
         self._monitoring = False
         if self._monitor_thread:
             self._monitor_thread.join(timeout=5)
-
-        logger.info("内存监控已停止")
+            logger.info("内存监控已停止")
 
     def _monitor_loop(self):
         """
@@ -93,7 +92,6 @@ class MemoryHelper(metaclass=Singleton):
                 logger.error(f"内存监控出错: {e}")
                 # 出错后等待1分钟再继续
                 time.sleep(60)
-
         logger.info("内存监控循环结束")
 
     def _create_memory_snapshot(self):
