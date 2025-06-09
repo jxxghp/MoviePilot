@@ -12,7 +12,7 @@ from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plu
 from app.startup.routers_initializer import init_routers
 from app.startup.scheduler_initializer import stop_scheduler, init_scheduler, init_plugin_scheduler
 from app.startup.workflow_initializer import init_workflow, stop_workflow
-from app.utils.system import SystemUtils
+from app.helper.system import SystemHelper
 
 
 async def init_extra():
@@ -25,7 +25,7 @@ async def init_extra():
         # 重新注册命令
         restart_command()
     # 设置系统已修改标志
-    SystemUtils.set_system_modified()
+    SystemHelper().set_system_modified()
     # 重启完成
     SystemChain().restart_finish()
 

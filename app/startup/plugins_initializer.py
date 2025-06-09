@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.log import logger
 from app.utils.system import SystemUtils
+from app.helper.system import SystemHelper
 
 
 async def sync_plugins() -> bool:
@@ -147,8 +148,8 @@ def restore_plugins():
             return
 
         # 系统被重置才恢复插件
-        if SystemUtils.is_system_reset():
-            
+        if SystemHelper().is_system_reset():
+
             # 确保插件目录存在
             plugins_dir.mkdir(parents=True, exist_ok=True)
 

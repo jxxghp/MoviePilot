@@ -1,6 +1,5 @@
 import os
 import signal
-import time
 from pathlib import Path
 from typing import Tuple
 
@@ -18,6 +17,8 @@ class SystemHelper:
     """
     系统工具类，提供系统相关的操作和判断
     """
+
+    __system_flag_file = "/var/log/nginx/__moviepilot__"
 
     @eventmanager.register(EventType.ConfigChanged)
     def handle_config_changed(self, event: Event):
@@ -75,17 +76,17 @@ class SystemHelper:
         检查当前容器是否配置了自动重启策略
         """
         try:
-            # 创建 Docker 客户端
-            client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
+            # 获取当前容器ID
             container_id = SystemHelper._get_container_id()
             if not container_id:
                 return False
-            
+
+            # 创建 Docker 客户端
+            client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
             # 获取容器信息
             container = client.containers.get(container_id)
             restart_policy = container.attrs.get('HostConfig', {}).get('RestartPolicy', {})
             policy_name = restart_policy.get('Name', 'no')
-            
             # 检查是否有有效的重启策略
             auto_restart_policies = ['always', 'unless-stopped', 'on-failure']
             has_restart_policy = policy_name in auto_restart_policies
@@ -137,37 +138,28 @@ class SystemHelper:
             container_id = SystemHelper._get_container_id()
             if not container_id:
                 return False, "获取容器ID失败！"
-            
-            container = client.containers.get(container_id)
-            
-            # 尝试优雅停止：先发送SIGTERM信号，给容器30秒时间优雅停止
-            try:
-                logger.info("发送SIGTERM信号，尝试优雅停止...")
-                container.kill(signal='SIGTERM')
-                
-                # 等待容器优雅停止，最多等待30秒
-                for i in range(30):
-                    container.reload()
-                    if container.status != 'running':
-                        logger.info(f"容器已优雅停止 (耗时 {i+1} 秒)")
-                        break
-                    time.sleep(1)
-                else:
-                    # 30秒后仍未停止，强制停止
-                    logger.warning("优雅停止超时，强制停止容器...")
-                    container.kill(signal='SIGKILL')
-                    
-            except Exception as stop_err:
-                logger.warning(f"优雅停止失败: {str(stop_err)}")
-                # 直接重启
-                container.restart()
-                return True, ""
-            
-            # 启动容器
-            logger.info("启动容器...")
-            container.start()
+            # 重启容器
+            client.containers.get(container_id).restart()
             return True, ""
-            
+
         except Exception as docker_err:
-            print(str(docker_err))
             return False, f"重启时发生错误：{str(docker_err)}"
+
+    def set_system_modified(self):
+        """
+        设置系统已修改标志
+        """
+        try:
+            if SystemUtils.is_docker():
+                Path(self.__system_flag_file).touch(exist_ok=True)
+        except Exception as e:
+            print(f"设置系统修改标志失败: {str(e)}")
+
+    def is_system_reset(self) -> bool:
+        """
+        检查系统是否已被重置
+        :return: 如果系统已重置，返回 True；否则返回 False
+        """
+        if SystemUtils.is_docker():
+            return not Path(self.__system_flag_file).exists()
+        return False
