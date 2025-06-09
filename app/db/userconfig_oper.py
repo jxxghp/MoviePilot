@@ -7,14 +7,15 @@ from app.utils.singleton import Singleton
 
 
 class UserConfigOper(DbOper, metaclass=Singleton):
-    # 配置缓存
-    __USERCONF: Dict[str, Dict[str, Any]] = {}
-
+    """
+    用户配置管理
+    """
     def __init__(self):
         """
         加载配置到内存
         """
         super().__init__()
+        self.__USERCONF = {}
         for item in UserConfig.list(self._db):
             self.__set_config_cache(username=item.username, key=item.key, value=item.value)
 
