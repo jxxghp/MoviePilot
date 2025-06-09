@@ -4,6 +4,7 @@ import shutil
 from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.log import logger
+from app.utils.system import SystemUtils
 
 
 async def sync_plugins() -> bool:
@@ -81,8 +82,13 @@ def stop_plugins():
 
 def backup_plugins():
     """
-    备份插件到用户配置目录
+    备份插件到用户配置目录（仅docker环境）
     """
+
+    # 非docker环境不处理
+    if not SystemUtils.is_docker():
+        return
+
     try:
         # 使用绝对路径确保准确性
         plugins_dir = settings.ROOT_PATH / "app" / "plugins"
@@ -124,8 +130,13 @@ def backup_plugins():
 
 def restore_plugins():
     """
-    从备份恢复插件到app/plugins目录，恢复完成后删除备份
+    从备份恢复插件到app/plugins目录，恢复完成后删除备份（仅docker环境）
     """
+
+    # 非docker环境不处理
+    if not SystemUtils.is_docker():
+        return
+
     try:
         # 使用绝对路径确保准确性
         plugins_dir = settings.ROOT_PATH / "app" / "plugins"
@@ -134,31 +145,34 @@ def restore_plugins():
         if not backup_dir.exists():
             logger.info("插件备份目录不存在，跳过恢复")
             return
+
+        # 系统被重置才恢复插件
+        if SystemUtils.is_system_reset():
             
-        # 确保插件目录存在
-        plugins_dir.mkdir(parents=True, exist_ok=True)
+            # 确保插件目录存在
+            plugins_dir.mkdir(parents=True, exist_ok=True)
+
+            # 遍历备份目录，恢复所有内容
+            restored_count = 0
+            for item in backup_dir.iterdir():
+                target_path = plugins_dir / item.name
+
+                # 如果是目录，且目录内有内容
+                if item.is_dir() and any(item.iterdir()):
+                    if target_path.exists():
+                        shutil.rmtree(target_path)
+                    shutil.copytree(item, target_path)
+                    logger.info(f"已恢复插件目录: {item.name}")
+                    restored_count += 1
+                # 如果是文件
+                elif item.is_file():
+                    shutil.copy2(item, target_path)
+                    logger.info(f"已恢复插件文件: {item.name}")
+                    restored_count += 1
+
+            logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
         
-        # 遍历备份目录，恢复所有内容
-        restored_count = 0
-        for item in backup_dir.iterdir():
-            target_path = plugins_dir / item.name
-            
-            # 如果是目录，且目录内有内容
-            if item.is_dir() and any(item.iterdir()):
-                if target_path.exists():
-                    shutil.rmtree(target_path)
-                shutil.copytree(item, target_path)
-                logger.info(f"已恢复插件目录: {item.name}")
-                restored_count += 1
-            # 如果是文件
-            elif item.is_file():
-                shutil.copy2(item, target_path)
-                logger.info(f"已恢复插件文件: {item.name}")
-                restored_count += 1
-                
-        logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
-        
-        # 恢复完成后删除备份目录
+        # 删除备份目录
         try:
             shutil.rmtree(backup_dir)
             logger.info(f"已删除插件备份目录: {backup_dir}")

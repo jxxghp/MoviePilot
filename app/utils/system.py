@@ -17,6 +17,9 @@ from app import schemas
 
 
 class SystemUtils:
+    """
+    系统工具类，提供系统相关的操作和信息获取方法。
+    """
 
     @staticmethod
     def execute(cmd: str) -> str:
@@ -439,7 +442,7 @@ class SystemUtils:
         current_process = psutil.Process()
         process_memory = current_process.memory_info().rss
         system_memory = psutil.virtual_memory().total
-        process_memory_percent = (process_memory / system_memory) * 100 
+        process_memory_percent = (process_memory / system_memory) * 100
         return [process_memory, int(process_memory_percent)]
 
     @staticmethod
@@ -562,3 +565,24 @@ class SystemUtils:
             if unique_id:
                 return unique_id
         return None
+
+    @staticmethod
+    def set_system_modified():
+        """
+        设置系统已修改标志
+        """
+        try:
+            if SystemUtils.is_docker():
+                Path("/__moviepilot__").touch(exist_ok=True)
+        except Exception as e:
+            print(f"设置系统修改标志失败: {str(e)}")
+
+    @staticmethod
+    def is_system_reset() -> bool:
+        """
+        检查系统是否已被重置
+        :return: 如果系统已重置，返回 True；否则返回 False
+        """
+        if SystemUtils.is_docker():
+            return not Path("/__moviepilot__").exists()
+        return False

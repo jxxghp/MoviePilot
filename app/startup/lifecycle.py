@@ -13,9 +13,10 @@ from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plu
 from app.startup.routers_initializer import init_routers
 from app.startup.scheduler_initializer import stop_scheduler, init_scheduler, init_plugin_scheduler
 from app.startup.workflow_initializer import init_workflow, stop_workflow
+from app.utils.system import SystemUtils
 
 
-async def init_plugin_system():
+async def init_extra():
     """
     同步插件及重启相关依赖服务
     """
@@ -24,6 +25,8 @@ async def init_plugin_system():
         init_plugin_scheduler()
         # 重新注册命令
         restart_command()
+    # 设置系统已修改标志
+    SystemUtils.set_system_modified()
     # 重启完成
     SystemChain().restart_finish()
 
@@ -53,7 +56,7 @@ async def lifespan(app: FastAPI):
     # 初始化内存管理
     init_memory_manager()
     # 插件同步到本地
-    sync_plugins_task = asyncio.create_task(init_plugin_system())
+    sync_plugins_task = asyncio.create_task(init_extra())
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
         yield
