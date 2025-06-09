@@ -573,7 +573,7 @@ class SystemUtils:
         """
         try:
             if SystemUtils.is_docker():
-                Path("/__moviepilot__").touch(exist_ok=True)
+                Path("/var/log/nginx/__moviepilot__").touch(exist_ok=True)
         except Exception as e:
             print(f"设置系统修改标志失败: {str(e)}")
 
@@ -584,5 +584,5 @@ class SystemUtils:
         :return: 如果系统已重置，返回 True；否则返回 False
         """
         if SystemUtils.is_docker():
-            return not Path("/__moviepilot__").exists()
+            return not Path("/var/log/nginx/__moviepilot__").exists()
         return False
