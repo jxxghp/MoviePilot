@@ -143,8 +143,8 @@ def restore_plugins():
         for item in backup_dir.iterdir():
             target_path = plugins_dir / item.name
             
-            # 如果是目录
-            if item.is_dir():
+            # 如果是目录，且目录内有内容
+            if item.is_dir() and any(item.iterdir()):
                 if target_path.exists():
                     shutil.rmtree(target_path)
                 shutil.copytree(item, target_path)
