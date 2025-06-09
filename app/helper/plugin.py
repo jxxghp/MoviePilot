@@ -41,10 +41,33 @@ class PluginHelper(metaclass=Singleton):
                 if self.install_report():
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
-    @cached(maxsize=64, ttl=1800)
-    def get_plugins(self, repo_url: str, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+    def get_plugins(self, repo_url: str, package_version: Optional[str] = None,
+                    force: bool = False) -> Optional[Dict[str, dict]]:
         """
         获取Github所有最新插件列表
+        :param repo_url: Github仓库地址
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
+        :param force: 是否强制刷新，忽略缓存
+        """
+        # 如果强制刷新，直接调用不带缓存的版本
+        if force:
+            return self._get_plugins_uncached(repo_url, package_version)
+        
+        # 正常情况下调用带缓存的版本
+        return self._get_plugins_cached(repo_url, package_version)
+    
+    @cached(maxsize=64, ttl=1800)
+    def _get_plugins_cached(self, repo_url: str, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+        """
+        获取Github所有最新插件列表（使用缓存）
+        :param repo_url: Github仓库地址
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
+        """
+        return self._get_plugins_uncached(repo_url, package_version)
+    
+    def _get_plugins_uncached(self, repo_url: str, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+        """
+        获取Github所有最新插件列表（不使用缓存）
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """

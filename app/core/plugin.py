@@ -754,7 +754,7 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._running_plugins.keys())
 
-    def get_online_plugins(self) -> List[schemas.Plugin]:
+    def get_online_plugins(self, force: bool = False) -> List[schemas.Plugin]:
         """
         获取所有在线插件信息
         """
@@ -775,12 +775,13 @@ class PluginManager(metaclass=Singleton):
                 if not m:
                     continue
                 # 提交任务获取 v1 版本插件，存储 future 到 version 的映射
-                base_future = executor.submit(self.get_plugins_from_market, m, None)
+                base_future = executor.submit(self.get_plugins_from_market, m, None, force)
                 futures_to_version[base_future] = "base_version"
 
                 # 提交任务获取高版本插件（如 v2、v3），存储 future 到 version 的映射
                 if settings.VERSION_FLAG:
-                    higher_version_future = executor.submit(self.get_plugins_from_market, m, settings.VERSION_FLAG)
+                    higher_version_future = executor.submit(self.get_plugins_from_market, m,
+                                                            settings.VERSION_FLAG, force)
                     futures_to_version[higher_version_future] = "higher_version"
 
             # 按照完成顺序处理结果
@@ -908,11 +909,13 @@ class PluginManager(metaclass=Singleton):
             return False
 
     def get_plugins_from_market(self, market: str,
-                                package_version: Optional[str] = None) -> Optional[List[schemas.Plugin]]:
+                                package_version: Optional[str] = None,
+                                force: bool = False) -> Optional[List[schemas.Plugin]]:
         """
         从指定的市场获取插件信息
         :param market: 市场的 URL 或标识
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
+        :param force: 是否强制刷新（忽略缓存）
         :return: 返回插件的列表，若获取失败返回 []
         """
         if not market:
@@ -920,7 +923,7 @@ class PluginManager(metaclass=Singleton):
         # 已安装插件
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         # 获取在线插件
-        online_plugins = PluginHelper().get_plugins(market, package_version)
+        online_plugins = PluginHelper().get_plugins(market, package_version, force)
         if online_plugins is None:
             logger.warning(
                 f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
