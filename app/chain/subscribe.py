@@ -360,6 +360,8 @@ class SubscribeChain(ChainBase):
                     # 过滤搜索结果
                     matched_contexts = []
                     for context in contexts:
+                        if global_vars.is_system_stopped:
+                            break
                         torrent_meta = context.meta_info
                         torrent_info = context.torrent_info
                         torrent_mediainfo = context.media_info
@@ -554,8 +556,12 @@ class SubscribeChain(ChainBase):
             # 预识别所有未识别的种子
             processed_torrents: Dict[str, List[Context]] = {}
             for domain, contexts in torrents.items():
+                if global_vars.is_system_stopped:
+                    break
                 processed_torrents[domain] = []
                 for context in contexts:
+                    if global_vars.is_system_stopped:
+                        break
                     # 如果种子未识别，尝试识别
                     if not context.media_info or (not context.media_info.tmdb_id
                                                   and not context.media_info.douban_id):
@@ -626,6 +632,8 @@ class SubscribeChain(ChainBase):
                         continue
                     logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
                     for context in contexts:
+                        if global_vars.is_system_stopped:
+                            break
                         # 提取信息
                         _context = copy.copy(context)
                         torrent_meta = _context.meta_info
@@ -867,6 +875,8 @@ class SubscribeChain(ChainBase):
         success_count = 0
         subscribeoper = SubscribeOper()
         for share_sub in share_subs:
+            if global_vars.is_system_stopped:
+                break
             uid = share_sub.get("share_uid")
             if uid and uid in follow_users:
                 # 订阅已存在则跳过

@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.chain.system import SystemChain
-from app.core.config import global_vars
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.memory_initializer import init_memory_manager, stop_memory_manager
 from app.startup.modules_initializer import init_modules, stop_modules
@@ -62,8 +61,6 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         print("Shutting down...")
-        # 停止信号
-        global_vars.stop_system()
         # 取消同步插件任务
         try:
             sync_plugins_task.cancel()
