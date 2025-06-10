@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Token(BaseModel):
@@ -18,6 +18,8 @@ class Token(BaseModel):
     avatar: Optional[str] = None
     # 权限级别
     level: int = 1
+    # 详细权限
+    permissions: Optional[dict] = Field(default_factory=dict)
 
 
 class TokenPayload(BaseModel):

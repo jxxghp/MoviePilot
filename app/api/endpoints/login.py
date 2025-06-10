@@ -43,7 +43,8 @@ def login_access_token(
         user_id=user_or_message.id,
         user_name=user_or_message.name,
         avatar=user_or_message.avatar,
-        level=level
+        level=level,
+        permissions= user_or_message.permissions or {},
     )
 
 
