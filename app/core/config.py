@@ -114,6 +114,8 @@ class ConfigModel(BaseModel):
     TVDB_V4_API_PIN: str = ""
     # Fanart开关
     FANART_ENABLE: bool = True
+    # Fanart语言
+    FANART_LANG: str = "zh,en"
     # Fanart API Key
     FANART_API_KEY: str = "d2d31f9ecabea050fc7d68aa3146015f"
     # 115 AppId
