@@ -282,8 +282,6 @@ class ConfigModel(BaseModel):
     SECURITY_IMAGE_SUFFIXES: list = Field(default=[".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"])
     # 重命名时支持的S0别名
     RENAME_FORMAT_S0_NAMES: list = Field(default=["Specials", "SPs"])
-    # 启用分词搜索
-    TOKENIZED_SEARCH: bool = False
     # 为指定默认字幕添加.default后缀
     DEFAULT_SUB: Optional[str] = "zh-cn"
     # Docker Client API地址

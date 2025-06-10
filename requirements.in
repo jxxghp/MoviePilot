@@ -61,7 +61,6 @@ Pinyin2Hanzi~=0.1.1
 pywebpush~=2.0.0
 python-cookietools==0.0.2.1
 aiofiles~=24.1.0
-jieba~=0.42.1
 rsa~=4.9
 redis~=5.2.1
 async_timeout~=5.0.1; python_full_version < "3.11.3"
