@@ -32,6 +32,7 @@ class UserCreate(UserBase):
     email: Optional[str] = None
     password: Optional[str] = None
     settings: Optional[dict] = Field(default_factory=dict)
+    permissions: Optional[dict] = Field(default_factory=dict)
 
 
 # Properties to receive via API on update
@@ -41,6 +42,7 @@ class UserUpdate(UserBase):
     email: Optional[str] = None
     password: Optional[str] = None
     settings: Optional[dict] = Field(default_factory=dict)
+    permissions: Optional[dict] = Field(default_factory=dict)
 
 
 class UserInDBBase(UserBase):
