@@ -157,6 +157,8 @@ class SystemConfigKey(Enum):
     NotificationSendTime = "NotificationSendTime"
     # 通知消息格式模板
     NotificationTemplates = "NotificationTemplates"
+    # 刮削开关设置
+    ScrapingSwitchs = "ScrapingSwitchs"
 
 
 # 处理进度Key字典
