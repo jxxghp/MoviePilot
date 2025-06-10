@@ -249,10 +249,14 @@ class ConfigModel(BaseModel):
     BIG_MEMORY_MODE: bool = False
     # 是否启用内存监控
     MEMORY_ANALYSIS: bool = False
+    # 是否启用内存分析
+    MEMORY_TRACEMALLOC: bool = False
+    # 是否启用全局内存分析
+    MEMORY_TRACEMALLOC_GLOBAL: bool = False
     # 内存快照间隔（分钟）
     MEMORY_SNAPSHOT_INTERVAL: int = 60
     # 保留的内存快照文件数量
-    MEMORY_SNAPSHOT_KEEP_COUNT: int = 20
+    MEMORY_SNAPSHOT_AND_LOG_KEEP_COUNT: int = 20
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 是否启用编码探测的性能模式
