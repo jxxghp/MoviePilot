@@ -307,6 +307,13 @@ class PluginManager(metaclass=Singleton):
         """
         self.stop(plugin_id)
 
+        # 从模块列表中移除插件
+        from sys import modules
+        try:
+            del modules[f"app.plugins.{plugin_id.lower()}"]
+        except KeyError:
+            pass
+
     def reload_plugin(self, plugin_id: str):
         """
         将一个插件重新加载到内存
@@ -412,13 +419,14 @@ class PluginManager(metaclass=Singleton):
             return {k: v for k, v in conf.items() if k}
         return {}
 
-    def save_plugin_config(self, pid: str, conf: dict) -> bool:
+    def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """
         保存插件配置
         :param pid: 插件ID
         :param conf: 配置
+        :param force: 强制保存
         """
-        if not self._plugins.get(pid):
+        if not force and not self._plugins.get(pid):
             return False
         SystemConfigOper().set(self._config_key % pid, conf)
         return True
@@ -746,7 +754,7 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._running_plugins.keys())
 
-    def get_online_plugins(self) -> List[schemas.Plugin]:
+    def get_online_plugins(self, force: bool = False) -> List[schemas.Plugin]:
         """
         获取所有在线插件信息
         """
@@ -767,12 +775,13 @@ class PluginManager(metaclass=Singleton):
                 if not m:
                     continue
                 # 提交任务获取 v1 版本插件，存储 future 到 version 的映射
-                base_future = executor.submit(self.get_plugins_from_market, m, None)
+                base_future = executor.submit(self.get_plugins_from_market, m, None, force)
                 futures_to_version[base_future] = "base_version"
 
                 # 提交任务获取高版本插件（如 v2、v3），存储 future 到 version 的映射
                 if settings.VERSION_FLAG:
-                    higher_version_future = executor.submit(self.get_plugins_from_market, m, settings.VERSION_FLAG)
+                    higher_version_future = executor.submit(self.get_plugins_from_market, m,
+                                                            settings.VERSION_FLAG, force)
                     futures_to_version[higher_version_future] = "higher_version"
 
             # 按照完成顺序处理结果
@@ -900,11 +909,13 @@ class PluginManager(metaclass=Singleton):
             return False
 
     def get_plugins_from_market(self, market: str,
-                                package_version: Optional[str] = None) -> Optional[List[schemas.Plugin]]:
+                                package_version: Optional[str] = None,
+                                force: bool = False) -> Optional[List[schemas.Plugin]]:
         """
         从指定的市场获取插件信息
         :param market: 市场的 URL 或标识
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
+        :param force: 是否强制刷新（忽略缓存）
         :return: 返回插件的列表，若获取失败返回 []
         """
         if not market:
@@ -912,7 +923,7 @@ class PluginManager(metaclass=Singleton):
         # 已安装插件
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         # 获取在线插件
-        online_plugins = PluginHelper().get_plugins(market, package_version)
+        online_plugins = PluginHelper().get_plugins(market, package_version, force)
         if online_plugins is None:
             logger.warning(
                 f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
@@ -1098,7 +1109,7 @@ class PluginManager(metaclass=Singleton):
             success, msg = self._modify_plugin_files(
                 plugin_dir=clone_plugin_dir,
                 original_id=plugin_id,
-                suffix=suffix,
+                suffix=suffix.lower(),
                 name=name,
                 description=description,
                 version=version,
@@ -1128,7 +1139,7 @@ class PluginManager(metaclass=Singleton):
                 # 默认禁用分身插件，让用户手动配置
                 clone_config['enable'] = False
                 clone_config['enabled'] = False
-                self.save_plugin_config(clone_id, clone_config)
+                self.save_plugin_config(clone_id, clone_config, force=True)
                 logger.info(f"已为分身插件 {clone_id} 设置初始配置")
             else:
                 logger.info(f"原插件 {plugin_id} 没有配置，分身插件 {clone_id} 将使用默认配置")

@@ -29,29 +29,24 @@ class FetchRssAction(BaseAction):
     获取RSS资源列表
     """
 
-    _rss_torrents = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.rsshelper = RssHelper()
-        self.chain = ActionChain()
         self._rss_torrents = []
         self._has_error = False
 
     @classmethod
     @property
-    def name(cls) -> str: # noqa
+    def name(cls) -> str:  # noqa
         return "获取RSS资源"
 
     @classmethod
     @property
-    def description(cls) -> str: # noqa
+    def description(cls) -> str:  # noqa
         return "订阅RSS地址获取资源"
 
     @classmethod
     @property
-    def data(cls) -> dict: # noqa
+    def data(cls) -> dict:  # noqa
         return FetchRssParams().dict()
 
     @property
@@ -74,10 +69,10 @@ class FetchRssAction(BaseAction):
         if params.ua:
             headers["User-Agent"] = params.ua
 
-        rss_items = self.rsshelper.parse(url=params.url,
-                                         proxy=settings.PROXY if params.proxy else None,
-                                         timeout=params.timeout,
-                                         headers=headers)
+        rss_items = RssHelper().parse(url=params.url,
+                                      proxy=settings.PROXY if params.proxy else None,
+                                      timeout=params.timeout,
+                                      headers=headers)
         if rss_items is None or rss_items is False:
             logger.error(f'RSS地址 {params.url} 请求失败！')
             self._has_error = True
@@ -103,7 +98,7 @@ class FetchRssAction(BaseAction):
             meta = MetaInfo(title=torrentinfo.title, subtitle=torrentinfo.description)
             mediainfo = None
             if params.match_media:
-                mediainfo = self.chain.recognize_media(meta)
+                mediainfo = ActionChain().recognize_media(meta)
                 if not mediainfo:
                     logger.warning(f"{torrentinfo.title} 未识别到媒体信息")
                     continue

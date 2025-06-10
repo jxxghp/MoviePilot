@@ -22,7 +22,6 @@ class SendMessageAction(BaseAction):
 
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.chain = ActionChain()
 
     @classmethod
     @property
@@ -60,7 +59,7 @@ class SendMessageAction(BaseAction):
             if not params.client:
                 params.client = [""]
             for client in params.client:
-                self.chain.post_message(
+                ActionChain().post_message(
                     Notification(
                         source=client,
                         userid=params.userid,

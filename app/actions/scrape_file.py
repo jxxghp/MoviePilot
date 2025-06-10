@@ -21,13 +21,8 @@ class ScrapeFileAction(BaseAction):
     刮削文件
     """
 
-    _scraped_files = []
-    _has_error = False
-
     def __init__(self, action_id: str):
         super().__init__(action_id)
-        self.storagechain = StorageChain()
-        self.mediachain = MediaChain()
         self._scraped_files = []
         self._has_error = False
 
@@ -61,7 +56,7 @@ class ScrapeFileAction(BaseAction):
                 break
             if fileitem in self._scraped_files:
                 continue
-            if not self.storagechain.exists(fileitem):
+            if not StorageChain().exists(fileitem):
                 continue
             # 检查缓存
             cache_key = f"{fileitem.path}"
@@ -69,12 +64,13 @@ class ScrapeFileAction(BaseAction):
                 logger.info(f"{fileitem.path} 已刮削过，跳过")
                 continue
             meta = MetaInfoPath(Path(fileitem.path))
-            mediainfo = self.mediachain.recognize_media(meta)
+            mediachain = MediaChain()
+            mediainfo = mediachain.recognize_media(meta)
             if not mediainfo:
                 _failed_count += 1
                 logger.info(f"{fileitem.path} 未识别到媒体信息，无法刮削")
                 continue
-            self.mediachain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+            mediachain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
             self._scraped_files.append(fileitem)
             # 保存缓存
             self.save_cache(workflow_id, cache_key)

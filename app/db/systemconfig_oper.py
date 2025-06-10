@@ -8,14 +8,15 @@ from app.utils.singleton import Singleton
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
-    # 配置对象
-    __SYSTEMCONF: dict = {}
-
+    """
+    系统配置管理
+    """
     def __init__(self):
         """
         加载配置到内存
         """
         super().__init__()
+        self.__SYSTEMCONF = {}
         for item in SystemConfig.list(self._db):
             self.__SYSTEMCONF[item.key] = item.value
 

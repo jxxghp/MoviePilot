@@ -137,7 +137,7 @@ def register_plugin(plugin_id: str):
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
 def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
-                state: Optional[str] = "all") -> List[schemas.Plugin]:
+                state: Optional[str] = "all", force: bool = False) -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
@@ -151,7 +151,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     # 未安装的本地插件
     not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     # 在线插件
-    online_plugins = PluginManager().get_online_plugins()
+    online_plugins = PluginManager().get_online_plugins(force)
     if not online_plugins:
         # 没有获取在线插件
         if state == "market":

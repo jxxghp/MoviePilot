@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import signal
 import sys
 import threading
 
@@ -21,7 +22,7 @@ from app.db.init import init_db, update_db
 # uvicorn服务
 Server = uvicorn.Server(Config(app, host=settings.HOST, port=settings.PORT,
                                reload=settings.DEV, workers=multiprocessing.cpu_count(),
-                               timeout_graceful_shutdown=5))
+                               timeout_graceful_shutdown=60))
 
 
 def start_tray():
@@ -70,7 +71,19 @@ def start_tray():
     threading.Thread(target=TrayIcon.run, daemon=True).start()
 
 
+def signal_handler(signum, frame):
+    """
+    信号处理函数，用于优雅停止服务
+    """
+    print(f"收到信号 {signum}，开始优雅停止服务...")
+    Server.should_exit = True
+
+
 if __name__ == '__main__':
+    # 注册信号处理器
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     # 启动托盘
     start_tray()
     # 初始化数据库

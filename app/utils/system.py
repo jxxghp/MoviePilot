@@ -17,6 +17,9 @@ from app import schemas
 
 
 class SystemUtils:
+    """
+    系统工具类，提供系统相关的操作和信息获取方法。
+    """
 
     @staticmethod
     def execute(cmd: str) -> str:
@@ -439,7 +442,7 @@ class SystemUtils:
         current_process = psutil.Process()
         process_memory = current_process.memory_info().rss
         system_memory = psutil.virtual_memory().total
-        process_memory_percent = (process_memory / system_memory) * 100 
+        process_memory_percent = (process_memory / system_memory) * 100
         return [process_memory, int(process_memory_percent)]
 
     @staticmethod
