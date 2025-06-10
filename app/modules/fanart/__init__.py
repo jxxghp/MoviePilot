@@ -399,10 +399,22 @@ class FanartModule(_ModuleBase):
                         if not mediainfo.get_image(season_image):
                             mediainfo.set_image(season_image, image_obj.get('url'))
             else:
-                # 其他图片，按欢迎程度倒排
-                images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
-                # 取第一张图片
-                image_obj = images[0]
+                # 其他图片，优先zh、再en、最后like最多
+                def pick_best_image(images):
+                    # 先找zh
+                    zh_images = [img for img in images if img.get('lang') == 'zh']
+                    if zh_images:
+                        zh_images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
+                        return zh_images[0]
+                    # 再找en
+                    en_images = [img for img in images if img.get('lang') == 'en']
+                    if en_images:
+                        en_images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
+                        return en_images[0]
+                    # 都没有就like最多的
+                    images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
+                    return images[0]
+                image_obj = pick_best_image(images)
                 # 设置图片，没有图片才设置
                 if not mediainfo.get_image(image_name):
                     mediainfo.set_image(image_name, image_obj.get('url'))
