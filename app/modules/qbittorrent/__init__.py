@@ -306,7 +306,6 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                     ))
         else:
             return None
-        return ret_torrents
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
@@ -318,6 +317,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         if not server:
             return None
         server.set_torrents_tag(ids=hashs, tags=['已整理'])
+        return None
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: Optional[bool] = True,
                         downloader: Optional[str] = None) -> Optional[bool]:

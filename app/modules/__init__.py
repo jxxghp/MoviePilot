@@ -191,8 +191,6 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
 
         :return: 返回消息通知的配置字典
         """
-        if self._configs is not None:
-            return self._configs
         configs = ServiceConfigHelper.get_notification_configs()
         if not self._service_name:
             return {}
@@ -260,8 +258,6 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
 
         :return: 返回下载器配置字典
         """
-        if self._configs is not None:
-            return self._configs
         configs = ServiceConfigHelper.get_downloader_configs()
         if not self._service_name:
             return {}
@@ -279,8 +275,6 @@ class _MediaServerBase(ServiceBase[TService, MediaServerConf]):
 
         :return: 返回媒体服务器配置字典
         """
-        if self._configs is not None:
-            return self._configs
         configs = ServiceConfigHelper.get_mediaserver_configs()
         if not self._service_name:
             return {}
