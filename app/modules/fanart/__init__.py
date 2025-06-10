@@ -399,19 +399,25 @@ class FanartModule(_ModuleBase):
                         if not mediainfo.get_image(season_image):
                             mediainfo.set_image(season_image, image_obj.get('url'))
             else:
-                # 其他图片，优先zh、再en、最后like最多
+                # 其他图片，优先环境变量指定语言，再like最多
                 def pick_best_image(images):
-                    # 先找zh
+                    lang_env = settings.FANART_LANG
+                    if lang_env:
+                        langs = [lang.strip() for lang in lang_env.split(",") if lang.strip()]
+                        for lang in langs:
+                            lang_images = [img for img in images if img.get('lang') == lang]
+                            if lang_images:
+                                lang_images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
+                                return lang_images[0]
+                    # 没设置或没找到，按原逻辑 zh、en、like最多
                     zh_images = [img for img in images if img.get('lang') == 'zh']
                     if zh_images:
                         zh_images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
                         return zh_images[0]
-                    # 再找en
                     en_images = [img for img in images if img.get('lang') == 'en']
                     if en_images:
                         en_images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
                         return en_images[0]
-                    # 都没有就like最多的
                     images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
                     return images[0]
                 image_obj = pick_best_image(images)
