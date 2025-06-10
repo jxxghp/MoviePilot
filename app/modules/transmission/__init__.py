@@ -292,7 +292,6 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                     ))
         else:
             return None
-        return ret_torrents
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
@@ -312,6 +311,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         else:
             tags = ['已整理']
         server.set_torrent_tag(ids=hashs, tags=tags)
+        return None
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: Optional[bool] = True,
                         downloader: Optional[str] = None) -> Optional[bool]:

@@ -27,15 +27,12 @@ class MediaChain(ChainBase):
     媒体信息处理链，单例运行
     """
 
-    def __init__(self):
-        super().__init__()
-        self._systemconfig = SystemConfigOper()
-
-    def _get_scraping_switchs(self) -> dict:
+    @staticmethod
+    def _get_scraping_switchs() -> dict:
         """
         获取刮削开关配置
         """
-        switchs = self._systemconfig.get(SystemConfigKey.ScrapingSwitchs) or {}
+        switchs = SystemConfigOper().get(SystemConfigKey.ScrapingSwitchs) or {}
         # 默认配置
         default_switchs = {
             'movie_nfo': True,          # 电影NFO
@@ -63,13 +60,14 @@ class MediaChain(ChainBase):
                 switchs[key] = default_value
         return switchs
 
-    def set_scraping_switchs(self, switchs: dict) -> bool:
+    @staticmethod
+    def set_scraping_switchs(switchs: dict) -> bool:
         """
         设置刮削开关配置
         :param switchs: 开关配置字典
         :return: 是否设置成功
         """
-        return self._systemconfig.set(SystemConfigKey.ScrapingSwitchs, switchs)
+        return SystemConfigOper().set(SystemConfigKey.ScrapingSwitchs, switchs)
 
     def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
                      season: Optional[int] = None, episode: Optional[int] = None) -> Optional[str]:
