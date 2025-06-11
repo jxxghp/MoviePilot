@@ -5,13 +5,10 @@ Revises: 486e56a62dcb
 Create Date: 2025-06-11 19:52:57.185355
 
 """
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import sqlite
+import json
 
 from app.db import SessionFactory
 from app.db.models import User
-from app.core.config import settings
 
 # revision identifiers, used by Alembic.
 revision = '3df653756eec'
@@ -26,16 +23,18 @@ def upgrade() -> None:
         # 所有用户
         users = User.list(db)
         for user in users:
-            if user.name == settings.SUPERUSER:
+            if user.is_superuser:
                 continue
             if not user.permissions:
-                user.permissions = {
+                permissions = {
                     "discovery": True,
                     "search": True,
                     "subscribe": True,
                     "manage": False,
                 }
-                user.update(db)
+                user.update(db, {
+                    "permissions": permissions,
+                })
     # ### end Alembic commands ###
 
 
