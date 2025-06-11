@@ -306,6 +306,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                     ))
         else:
             return None
+        return ret_torrents # noqa
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
