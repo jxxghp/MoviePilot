@@ -292,6 +292,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                     ))
         else:
             return None
+        return ret_torrents # noqa
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
