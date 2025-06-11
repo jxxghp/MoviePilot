@@ -48,6 +48,7 @@ class MediaChain(ChainBase):
             'tv_banner': True,         # 电视剧横幅图
             'tv_logo': True,           # 电视剧Logo
             'tv_thumb': True,          # 电视剧缩略图
+            'season_nfo': True,        # 季NFO
             'season_poster': True,     # 季海报
             'season_banner': True,     # 季横幅图
             'season_thumb': True,      # 季缩略图
@@ -600,8 +601,8 @@ class MediaChain(ChainBase):
                     if filepath.name in settings.RENAME_FORMAT_S0_NAMES:
                         season_meta.begin_season = 0
                     if season_meta.begin_season is not None:
-                        # 检查季NFO开关（暂时使用tv_nfo开关）
-                        if scraping_switchs.get('tv_nfo', True):
+                        # 检查季NFO开关
+                        if scraping_switchs.get('season_nfo', True):
                             # 是否已存在
                             nfo_path = filepath / "season.nfo"
                             if overwrite or not storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
