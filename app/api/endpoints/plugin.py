@@ -348,7 +348,7 @@ def plugin_static_file(plugin_id: str, filepath: str):
     获取插件静态文件
     """
     # 基础安全检查
-    if ".." in filepath or ".." in filepath:
+    if ".." in plugin_id or ".." in filepath:
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
