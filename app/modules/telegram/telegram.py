@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 from threading import Event
 from typing import Optional, List, Dict
+from urllib.parse import urljoin
 
 import telebot
 from telebot import apihelper
@@ -17,8 +18,11 @@ from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
-apihelper.proxy = settings.PROXY
-
+if settings.TG_API_URL:
+    apihelper.API_URL = urljoin(settings.TG_API_URL, '/bot{0}/{1}')
+    apihelper.FILE_URL = urljoin(settings.TG_API_URL, '/file/bot{0}/{1}')
+else:
+    apihelper.proxy = settings.PROXY
 
 class Telegram:
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
