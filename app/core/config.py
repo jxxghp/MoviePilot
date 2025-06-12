@@ -124,8 +124,6 @@ class ConfigModel(BaseModel):
     ALIPAN_APP_ID: str = "ac1bf04dc9fd4d9aaabb65b4a668d403"
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
-    # 电视剧动漫的分类genre_ids
-    ANIME_GENREIDS: List[int] = [16]
     # 用户认证站点
     AUTH_SITE: str = ""
     # 重启自动升级
@@ -243,7 +241,7 @@ class ConfigModel(BaseModel):
     GITHUB_TOKEN: Optional[str] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
-    # pip镜像站点，格式：https://pypi.tuna.tsinghua.edu.cn/simple
+    # pip镜像站点，格式：https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
     PIP_PROXY: Optional[str] = ''
     # 指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
     REPO_GITHUB_TOKEN: Optional[str] = None

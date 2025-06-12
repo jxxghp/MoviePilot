@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 from threading import Event
 from typing import Optional, List, Dict
+from urllib.parse import urljoin
 
 import telebot
 from telebot import apihelper
@@ -16,8 +17,6 @@ from app.log import logger
 from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-
-apihelper.proxy = settings.PROXY
 
 
 class Telegram:
@@ -38,6 +37,12 @@ class Telegram:
         self._telegram_chat_id = TELEGRAM_CHAT_ID
         # 初始化机器人
         if self._telegram_token and self._telegram_chat_id:
+            # telegram bot api 地址，格式：https://api.telegram.org
+            if kwargs.get("API_URL"):
+                apihelper.API_URL = urljoin(kwargs["API_URL"], '/bot{0}/{1}')
+                apihelper.FILE_URL = urljoin(kwargs["API_URL"], '/file/bot{0}/{1}')
+            else:
+                apihelper.proxy = settings.PROXY
             # bot
             _bot = telebot.TeleBot(self._telegram_token, parse_mode="Markdown")
             # 记录句柄
@@ -157,7 +162,8 @@ class Telegram:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: Optional[str] = None, title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
+                          userid: Optional[str] = None, title: Optional[str] = None,
+                          link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """
