@@ -124,8 +124,6 @@ class ConfigModel(BaseModel):
     ALIPAN_APP_ID: str = "ac1bf04dc9fd4d9aaabb65b4a668d403"
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
-    # 电视剧动漫的分类genre_ids
-    ANIME_GENREIDS: List[int] = [16]
     # 用户认证站点
     AUTH_SITE: str = ""
     # 重启自动升级
@@ -286,8 +284,6 @@ class ConfigModel(BaseModel):
     DEFAULT_SUB: Optional[str] = "zh-cn"
     # Docker Client API地址
     DOCKER_CLIENT_API: Optional[str] = "tcp://127.0.0.1:38379"
-    # telegram bot api 地址，格式：https://api.telegram.org
-    TG_API_URL: Optional[str] = None
 
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
