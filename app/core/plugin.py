@@ -328,7 +328,7 @@ class PluginManager(metaclass=Singleton):
 
     def sync(self) -> List[str]:
         """
-        安装本地不存在的在线插件
+        安装本地不存在或需要更新的插件
         """
 
         def install_plugin(plugin):
@@ -354,7 +354,8 @@ class PluginManager(metaclass=Singleton):
         # 确定需要安装的插件
         plugins_to_install = [
             plugin for plugin in online_plugins
-            if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id)
+            if plugin.id in install_plugins
+            and not self.is_plugin_exists(plugin.id, plugin.plugin_version)
         ]
 
         if not plugins_to_install:
@@ -889,10 +890,11 @@ class PluginManager(metaclass=Singleton):
         return plugins
 
     @staticmethod
-    def is_plugin_exists(pid: str) -> bool:
+    def is_plugin_exists(pid: str, version: str = None) -> bool:
         """
-        判断插件是否在本地包中存在
+        判断插件是否存在，并满足版本要求(有传入version时)
         :param pid: 插件ID
+        :param version: 插件版本
         """
         if not pid:
             return False
@@ -903,7 +905,18 @@ class PluginManager(metaclass=Singleton):
             spec = importlib.util.find_spec(package_name)
             package_exists = spec is not None and spec.origin is not None
             logger.debug(f"{pid} exists: {package_exists}")
-            return package_exists
+            if not package_exists:
+                return False
+
+            local_version = PluginManager().get_plugin_attr(pid=pid, attr="plugin_version")
+            if not local_version:
+                return False
+
+            if version and not StringUtils.compare_version(local_version, ">=", version):
+                logger.warn(f"Plugin {pid} version: {local_version} (older than version: {version})")
+                return False
+
+            return True
         except Exception as e:
             logger.debug(f"获取插件是否在本地包中存在失败，{e}")
             return False
