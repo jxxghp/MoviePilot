@@ -243,7 +243,7 @@ class ConfigModel(BaseModel):
     GITHUB_TOKEN: Optional[str] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
-    # pip镜像站点，格式：https://pypi.tuna.tsinghua.edu.cn/simple
+    # pip镜像站点，格式：https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
     PIP_PROXY: Optional[str] = ''
     # 指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
     REPO_GITHUB_TOKEN: Optional[str] = None
@@ -286,6 +286,8 @@ class ConfigModel(BaseModel):
     DEFAULT_SUB: Optional[str] = "zh-cn"
     # Docker Client API地址
     DOCKER_CLIENT_API: Optional[str] = "tcp://127.0.0.1:38379"
+    # telegram bot api 地址，格式：https://api.telegram.org
+    TG_API_URL: Optional[str] = None
 
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
