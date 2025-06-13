@@ -355,7 +355,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         server: Transmission = self.get_instance(downloader)
         if not server:
             return None
-        return server.start_torrents(ids=hashs)
+        return server.stop_torrents(ids=hashs)
 
     def torrent_files(self, tid: str, downloader: Optional[str] = None) -> Optional[List[File]]:
         """
