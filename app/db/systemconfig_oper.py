@@ -31,8 +31,8 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             key = key.value
         # 旧值
         old_value = self.__SYSTEMCONF.get(key)
-        # 更新内存
-        self.__SYSTEMCONF[key] = value
+        # 更新内存(deepcopy避免内存共享)
+        self.__SYSTEMCONF[key] = copy.deepcopy(value)
         conf = SystemConfig.get_by_key(self._db, key)
         if conf:
             if old_value != value:
