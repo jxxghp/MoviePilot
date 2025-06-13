@@ -139,6 +139,7 @@ class ConfigModel(BaseModel):
                         "api.github.com,"
                         "github.com,"
                         "raw.githubusercontent.com,"
+                        "codeload.github.com,"
                         "api.telegram.org")
     # DOH 解析服务器列表
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
@@ -584,7 +585,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         if self.GITHUB_TOKEN:
             return {
-                "Authorization": f"Bearer {self.GITHUB_TOKEN}"
+                "Authorization": f"Bearer {self.GITHUB_TOKEN}",
+                "User-Agent": self.USER_AGENT,
             }
         return {}
 
@@ -612,7 +614,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                     print(f"无效的令牌或仓库信息: {token_pair}")
                     continue
                 headers[repo_info] = {
-                    "Authorization": f"Bearer {token}"
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": self.USER_AGENT,
                 }
             except Exception as e:
                 print(f"处理令牌对 '{token_pair}' 时出错: {e}")

@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import re
 import tempfile
 from collections import deque
 from datetime import datetime
@@ -446,30 +447,55 @@ def ruletest(title: str,
 
 
 @router.get("/nettest", summary="测试网络连通性")
-def nettest(url: str,
-            proxy: bool,
-            _: schemas.TokenPayload = Depends(verify_token)):
+def nettest(
+    url: str,
+    proxy: bool,
+    include: Optional[str] = None,
+    _: schemas.TokenPayload = Depends(verify_token),
+):
     """
     测试网络连通性
     """
     # 记录开始的毫秒数
     start_time = datetime.now()
+    headers = None
+    if "github" in url or "{GITHUB_PROXY}" in url:
+        # 这是github的连通性测试
+        url = url.replace(
+            "{GITHUB_PROXY}", UrlUtils.standardize_base_url(settings.GITHUB_PROXY or "")
+        )
+        headers = settings.GITHUB_HEADERS
     url = url.replace("{TMDBAPIKEY}", settings.TMDB_API_KEY)
-    result = RequestUtils(proxies=settings.PROXY if proxy else None,
-                          ua=settings.USER_AGENT).get_res(url)
+    url = url.replace(
+        "{PIP_PROXY}",
+        UrlUtils.standardize_base_url(settings.PIP_PROXY or "https://pypi.org/simple/"),
+    )
+    result = RequestUtils(
+        proxies=settings.PROXY if proxy else None,
+        headers=headers,
+        timeout=10,
+        ua=settings.USER_AGENT,
+    ).get_res(url)
     # 计时结束的毫秒数
     end_time = datetime.now()
+    time = round((end_time - start_time).total_seconds() * 1000)
     # 计算相关秒数
-    if result and result.status_code == 200:
-        return schemas.Response(success=True, data={
-            "time": round((end_time - start_time).microseconds / 1000)
-        })
-    elif result:
-        return schemas.Response(success=False, message=f"错误码：{result.status_code}", data={
-            "time": round((end_time - start_time).microseconds / 1000)
-        })
+    if result is None:
+        return schemas.Response(success=False, message="无法连接", data={"time": time})
+    elif result.status_code == 200:
+        if include and not re.search(r"%s" % include, result.text, re.IGNORECASE):
+            # 通常是被加速代理跳转到其它页面了
+            logger.error(f"{url} 的响应内容不匹配包含规则 {include}")
+            return schemas.Response(
+                success=False,
+                message=f"无效响应，不匹配 {include}",
+                data={"time": time},
+            )
+        return schemas.Response(success=True, data={"time": time})
     else:
-        return schemas.Response(success=False, message="网络连接失败！")
+        return schemas.Response(
+            success=False, message=f"错误码：{result.status_code}", data={"time": time}
+        )
 
 
 @router.get("/modulelist", summary="查询已加载的模块ID列表", response_model=schemas.Response)
