@@ -18,6 +18,7 @@ from app.core.event import Event, eventmanager
 from app.log import logger
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import EventType
+from app.utils.singleton import Singleton
 
 # 定义一个全局线程池执行器
 _executor = concurrent.futures.ThreadPoolExecutor()
@@ -67,13 +68,12 @@ def enable_doh(enable: bool):
     else:
         socket.getaddrinfo = _orig_getaddrinfo
 
-class DohHelper:
+class DohHelper(metaclass=Singleton):
     def __init__(self):
         enable_doh(settings.DOH_ENABLE)
 
     @eventmanager.register(EventType.ConfigChanged)
-    @staticmethod
-    def handle_config_changed(event: Event):
+    def handle_config_changed(self, event: Event):
         if not event:
             return
         event_data: ConfigChangeEventData = event.event_data
