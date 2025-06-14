@@ -19,6 +19,7 @@ except ImportError as e:
 from app.core.event import EventManager
 from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
+from app.helper.doh import DohHelper
 from app.helper.resource import ResourceHelper
 from app.helper.message import MessageHelper
 from app.schemas import Notification, NotificationType
@@ -132,6 +133,8 @@ def init_modules():
     """
     # 虚拟显示
     DisplayHelper()
+    # DoH
+    DohHelper()
     # 站点管理
     SitesHelper()
     # 资源包检测
