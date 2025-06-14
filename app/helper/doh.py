@@ -10,10 +10,14 @@ import socket
 import struct
 import urllib
 import urllib.request
+from threading import Lock
 from typing import Dict, Optional
 
 from app.core.config import settings
+from app.core.event import Event, eventmanager
 from app.log import logger
+from app.schemas import ConfigChangeEventData
+from app.schemas.types import EventType
 
 # 定义一个全局线程池执行器
 _executor = concurrent.futures.ThreadPoolExecutor()
@@ -21,11 +25,15 @@ _executor = concurrent.futures.ThreadPoolExecutor()
 # 定义默认的DoH配置
 _doh_timeout = 5
 _doh_cache: Dict[str, str] = {}
+_doh_lock = Lock()
+# 保存原始的 socket.getaddrinfo 方法
+_orig_getaddrinfo = socket.getaddrinfo
 
-# 对 socket.getaddrinfo 进行补丁
-if settings.DOH_ENABLE:
-    # 保存原始的 socket.getaddrinfo 方法
-    _orig_getaddrinfo = socket.getaddrinfo
+
+def enable_doh(enable: bool):
+    """
+    对 socket.getaddrinfo 进行补丁
+    """
 
     def _patched_getaddrinfo(host, *args, **kwargs):
         """
@@ -34,8 +42,9 @@ if settings.DOH_ENABLE:
         if host not in settings.DOH_DOMAINS.split(","):
             return _orig_getaddrinfo(host, *args, **kwargs)
         # 检查主机是否已解析
-        if host in _doh_cache:
-            ip = _doh_cache[host]
+        with _doh_lock:
+            ip = _doh_cache.get("host", None)
+        if ip is not None:
             logger.info("已解析 [%s] 为 [%s] (缓存)", host, ip)
             return _orig_getaddrinfo(ip, *args, **kwargs)
         # 使用DoH解析主机
@@ -46,13 +55,34 @@ if settings.DOH_ENABLE:
             ip = future.result()
             if ip is not None:
                 logger.info("已解析 [%s] 为 [%s]", host, ip)
-                _doh_cache[host] = ip
+                with _doh_lock:
+                    _doh_cache[host] = ip
                 host = ip
                 break
         return _orig_getaddrinfo(host, *args, **kwargs)
 
-    # 替换 socket.getaddrinfo 方法
-    socket.getaddrinfo = _patched_getaddrinfo
+    if enable:
+        # 替换 socket.getaddrinfo 方法
+        socket.getaddrinfo = _patched_getaddrinfo
+    else:
+        socket.getaddrinfo = _orig_getaddrinfo
+
+class DohHelper:
+    def __init__(self):
+        enable_doh(settings.DOH_ENABLE)
+
+    @eventmanager.register(EventType.ConfigChanged)
+    @staticmethod
+    def handle_config_changed(event: Event):
+        if not event:
+            return
+        event_data: ConfigChangeEventData = event.event_data
+        if event_data.key not in ["DOH_ENABLE", "DOH_DOMAINS", "DOH_RESOLVERS"]:
+            return
+        with _doh_lock:
+            # DOH配置有变动的情况下，清空缓存
+            _doh_cache.clear()
+        enable_doh(settings.DOH_ENABLE)
 
 
 def _doh_query(resolver: str, host: str) -> Optional[str]:
