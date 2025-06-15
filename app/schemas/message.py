@@ -285,7 +285,7 @@ class ChannelCapabilityManager:
         获取每行最大按钮数
         """
         channel_caps = cls.get_capabilities(channel)
-        return channel_caps.max_buttons_per_row if channel_caps else 1
+        return channel_caps.max_buttons_per_row if channel_caps else 4
 
     @classmethod
     def get_max_button_rows(cls, channel: MessageChannel) -> int:

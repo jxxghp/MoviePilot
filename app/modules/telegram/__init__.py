@@ -149,8 +149,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 return self._handle_callback_query(message, client_config)
 
             # 处理普通消息
-            elif "message" in message:
-                return self._handle_text_message(message, client_config, client)
+            return self._handle_text_message(message, client_config, client)
 
         return None
 
