@@ -101,7 +101,9 @@ class Slack:
         """
         return True if self._client else False
 
-    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None, userid: Optional[str] = None):
+    def send_msg(self, title: str, text: Optional[str] = None,
+                 image: Optional[str] = None, link: Optional[str] = None,
+                 userid: Optional[str] = None, buttons: Optional[List[List[dict]]] = None):
         """
         发送Telegram消息
         :param title: 消息标题
@@ -109,7 +111,7 @@ class Slack:
         :param image: 消息图片地址
         :param link: 点击消息转转的URL
         :param userid: 用户ID，如有则只发消息给该用户
-        :user_id: 发送消息的目标用户ID，为空则发给管理员
+        :param buttons: 消息按钮列表，格式为 [[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
         """
         if not self._client:
             return False, "消息客户端未就绪"
@@ -139,8 +141,42 @@ class Slack:
                         "image_url": f"{image}",
                         "alt_text": f"{title}"
                     }})
-                # 链接
-                if link:
+                # 自定义按钮
+                if buttons:
+                    for button_row in buttons:
+                        elements = []
+                        for button in button_row:
+                            if "url" in button:
+                                # URL按钮
+                                elements.append({
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": button["text"],
+                                        "emoji": True
+                                    },
+                                    "url": button["url"],
+                                    "action_id": f"actionId-url-{len(elements)}"
+                                })
+                            else:
+                                # 回调按钮
+                                elements.append({
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": button["text"],
+                                        "emoji": True
+                                    },
+                                    "value": button["callback_data"],
+                                    "action_id": f"actionId-{button['callback_data']}"
+                                })
+                        if elements:
+                            blocks.append({
+                                "type": "actions",
+                                "elements": elements
+                            })
+                elif link:
+                    # 默认链接按钮
                     blocks.append({
                         "type": "actions",
                         "elements": [
@@ -169,7 +205,8 @@ class Slack:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False, str(msg_e)
 
-    def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None,
+                        buttons: Optional[List[List[dict]]] = None) -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -223,23 +260,60 @@ class Slack:
                                 }
                             }
                         )
-                        blocks.append(
-                            {
-                                "type": "actions",
-                                "elements": [
-                                    {
-                                        "type": "button",
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "选择",
-                                            "emoji": True
-                                        },
-                                        "value": f"{index}",
-                                        "action_id": f"actionId-{index}"
-                                    }
-                                ]
-                            }
-                        )
+                        # 如果有自定义按钮，使用自定义按钮，否则使用默认选择按钮
+                        if buttons:
+                            # 使用自定义按钮（通常来自MessageChain的智能生成）
+                            for button_row in buttons:
+                                elements = []
+                                for button in button_row:
+                                    if "url" in button:
+                                        elements.append({
+                                            "type": "button",
+                                            "text": {
+                                                "type": "plain_text",
+                                                "text": button["text"],
+                                                "emoji": True
+                                            },
+                                            "url": button["url"],
+                                            "action_id": f"actionId-url-{len(elements)}"
+                                        })
+                                    else:
+                                        elements.append({
+                                            "type": "button",
+                                            "text": {
+                                                "type": "plain_text",
+                                                "text": button["text"],
+                                                "emoji": True
+                                            },
+                                            "value": button["callback_data"],
+                                            "action_id": f"actionId-{button['callback_data']}"
+                                        })
+                                if elements:
+                                    blocks.append({
+                                        "type": "actions",
+                                        "elements": elements
+                                    })
+                            # 只为第一个媒体项添加按钮，避免重复
+                            buttons = None
+                        else:
+                            # 使用默认选择按钮
+                            blocks.append(
+                                {
+                                    "type": "actions",
+                                    "elements": [
+                                        {
+                                            "type": "button",
+                                            "text": {
+                                                "type": "plain_text",
+                                                "text": "选择",
+                                                "emoji": True
+                                            },
+                                            "value": f"{index}",
+                                            "action_id": f"actionId-{index}"
+                                        }
+                                    ]
+                                }
+                            )
                         index += 1
             # 发送
             result = self._client.chat_postMessage(
@@ -252,8 +326,8 @@ class Slack:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
-                          userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
+    def send_torrents_msg(self, torrents: List[Context], userid: Optional[str] = None, title: Optional[str] = None,
+                          buttons: Optional[List[List[dict]]] = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -279,49 +353,113 @@ class Slack:
             }]
             # 列表
             index = 1
-            for context in torrents:
-                torrent = context.torrent_info
-                site_name = torrent.site_name
-                meta = MetaInfo(torrent.title, torrent.description)
-                link = torrent.page_url
-                title = f"{meta.season_episode} " \
-                        f"{meta.resource_term} " \
-                        f"{meta.video_term} " \
-                        f"{meta.release_group}"
-                title = re.sub(r"\s+", " ", title).strip()
-                free = torrent.volume_factor
-                seeder = f"{torrent.seeders}↑"
-                description = torrent.description
-                text = f"{index}. 【{site_name}】<{link}|{title}> " \
-                       f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
-                       f"{description}"
-                blocks.append(
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": text
+            
+            # 如果有自定义按钮，先添加种子列表，然后添加统一的按钮
+            if buttons:
+                # 添加种子列表（不带单独的选择按钮）
+                for context in torrents:
+                    torrent = context.torrent_info
+                    site_name = torrent.site_name
+                    meta = MetaInfo(torrent.title, torrent.description)
+                    link = torrent.page_url
+                    title = f"{meta.season_episode} " \
+                            f"{meta.resource_term} " \
+                            f"{meta.video_term} " \
+                            f"{meta.release_group}"
+                    title = re.sub(r"\s+", " ", title).strip()
+                    free = torrent.volume_factor
+                    seeder = f"{torrent.seeders}↑"
+                    description = torrent.description
+                    text = f"{index}. 【{site_name}】<{link}|{title}> " \
+                           f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
+                           f"{description}"
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": text
+                            }
                         }
-                    }
-                )
-                blocks.append(
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
+                    )
+                    index += 1
+                
+                # 添加统一的自定义按钮
+                for button_row in buttons:
+                    elements = []
+                    for button in button_row:
+                        if "url" in button:
+                            elements.append({
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": "选择",
+                                    "text": button["text"],
                                     "emoji": True
                                 },
-                                "value": f"{index}",
-                                "action_id": f"actionId-{index}"
+                                "url": button["url"],
+                                "action_id": f"actionId-url-{len(elements)}"
+                            })
+                        else:
+                            elements.append({
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": button["text"],
+                                    "emoji": True
+                                },
+                                "value": button["callback_data"],
+                                "action_id": f"actionId-{button['callback_data']}"
+                            })
+                    if elements:
+                        blocks.append({
+                            "type": "actions",
+                            "elements": elements
+                        })
+            else:
+                # 使用默认的每个种子单独按钮
+                for context in torrents:
+                    torrent = context.torrent_info
+                    site_name = torrent.site_name
+                    meta = MetaInfo(torrent.title, torrent.description)
+                    link = torrent.page_url
+                    title = f"{meta.season_episode} " \
+                            f"{meta.resource_term} " \
+                            f"{meta.video_term} " \
+                            f"{meta.release_group}"
+                    title = re.sub(r"\s+", " ", title).strip()
+                    free = torrent.volume_factor
+                    seeder = f"{torrent.seeders}↑"
+                    description = torrent.description
+                    text = f"{index}. 【{site_name}】<{link}|{title}> " \
+                           f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
+                           f"{description}"
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": text
                             }
-                        ]
-                    }
-                )
-                index += 1
+                        }
+                    )
+                    blocks.append(
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "选择",
+                                        "emoji": True
+                                    },
+                                    "value": f"{index}",
+                                    "action_id": f"actionId-{index}"
+                                }
+                            ]
+                        }
+                    )
+                    index += 1
             # 发送
             result = self._client.chat_postMessage(
                 channel=channel,
