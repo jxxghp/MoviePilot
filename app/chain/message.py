@@ -520,7 +520,9 @@ class MessageChain(ChainBase):
                     "text": callback_data,
                     "userid": userid,
                     "channel": channel,
-                    "source": source
+                    "source": source,
+                    "original_message_id": original_message_id,
+                    "original_chat_id": original_chat_id
                 }
             )
             return
