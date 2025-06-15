@@ -5,7 +5,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import requests
 from tqdm import tqdm
@@ -51,9 +51,6 @@ class AliPan(StorageBase, metaclass=Singleton):
 
     # 基础url
     base_url = "https://openapi.alipan.com"
-
-    # CID和路径缓存
-    _id_cache: Dict[str, Tuple[str, str]] = {}
 
     def __init__(self):
         super().__init__()
@@ -279,61 +276,6 @@ class AliPan(StorageBase, metaclass=Singleton):
             return ret_data.get(result_key)
         return ret_data
 
-    def _path_to_id(self, drive_id: str, path: str) -> Tuple[str, str]:
-        """
-        路径转drive_id, file_id（带缓存机制）
-        """
-        # 根目录
-        if path == "/":
-            return drive_id, "root"
-        if len(path) > 1 and path.endswith("/"):
-            path = path[:-1]
-        # 检查缓存
-        if path in self._id_cache:
-            return self._id_cache[path]
-        # 逐级查找缓存
-        file_id = "root"
-        file_path = "/"
-        for p in Path(path).parents:
-            if str(p) in self._id_cache:
-                file_path = str(p)
-                file_id = self._id_cache[file_path]
-                break
-        # 计算相对路径
-        rel_path = Path(path).relative_to(file_path)
-        for part in Path(rel_path).parts:
-            find_part = False
-            next_marker = None
-            while True:
-                resp = self._request_api(
-                    "POST",
-                    "/adrive/v1.0/openFile/list",
-                    json={
-                        "drive_id": drive_id,
-                        "limit": 100,
-                        "marker": next_marker,
-                        "parent_file_id": file_id,
-                    }
-                )
-                if not resp:
-                    break
-                for item in resp.get("items", []):
-                    if item["name"] == part:
-                        file_id = item["file_id"]
-                        find_part = True
-                        break
-                if find_part:
-                    break
-                if len(resp.get("items")) < 100:
-                    break
-            if not find_part:
-                raise FileNotFoundError(f"【阿里云盘】{path} 不存在")
-        if file_id == "root":
-            raise FileNotFoundError(f"【阿里云盘】{path} 不存在")
-        # 缓存路径
-        self._id_cache[path] = (drive_id, file_id)
-        return drive_id, file_id
-
     def __get_fileitem(self, fileinfo: dict, parent: str = "/") -> schemas.FileItem:
         """
         获取文件信息
@@ -427,9 +369,6 @@ class AliPan(StorageBase, metaclass=Singleton):
                 break
             next_marker = resp.get("next_marker")
             for item in resp.get("items", []):
-                # 更新缓存
-                path = f"{fileitem.path}{item.get('name')}"
-                self._id_cache[path] = (drive_id, item.get("file_id"))
                 items.append(self.__get_fileitem(item, parent=fileitem.path))
             if len(resp.get("items")) < 100:
                 break
@@ -467,7 +406,6 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         # 缓存新目录
         new_path = Path(parent_item.path) / name
-        self._id_cache[str(new_path)] = (resp.get("drive_id"), resp.get("file_id"))
         return self._delay_get_item(new_path)
 
     @staticmethod
@@ -837,15 +775,9 @@ class AliPan(StorageBase, metaclass=Singleton):
         if resp.get("code"):
             logger.warn(f"【阿里云盘】重命名失败: {resp.get('message')}")
             return False
-        if fileitem.path in self._id_cache:
-            del self._id_cache[fileitem.path]
-            for key in list(self._id_cache.keys()):
-                if key.startswith(fileitem.path):
-                    del self._id_cache[key]
-        self._id_cache[str(Path(fileitem.path).parent / name)] = (resp.get("drive_id"), resp.get("file_id"))
         return True
 
-    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path, drive_id: str = None) -> Optional[schemas.FileItem]:
         """
         获取指定路径的文件/目录项
         """
@@ -854,7 +786,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                 "POST",
                 "/adrive/v1.0/openFile/get_by_path",
                 json={
-                    "drive_id": self._default_drive_id,
+                    "drive_id": drive_id or self._default_drive_id,
                     "file_path": str(path)
                 }
             )
@@ -910,9 +842,15 @@ class AliPan(StorageBase, metaclass=Singleton):
 
     def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
-        企业级复制实现（支持目录递归复制）
+        复制文件到指定路径
+        :param fileitem: 要复制的文件项
+        :param path: 目标目录路径
+        :param new_name: 新文件名
         """
-        dest_cid = self._path_to_id(fileitem.drive_id, str(path))
+        dest_fileitem = self.get_item(path, drive_id=fileitem.drive_id)
+        if not dest_fileitem or dest_fileitem.type != "dir":
+            logger.warn(f"【阿里云盘】目标路径 {path} 不存在或不是目录！")
+            return False
         resp = self._request_api(
             "POST",
             "/adrive/v1.0/openFile/copy",
@@ -920,7 +858,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                 "drive_id": fileitem.drive_id,
                 "file_id": fileitem.fileid,
                 "to_drive_id": fileitem.drive_id,
-                "to_parent_file_id": dest_cid
+                "to_parent_file_id": dest_fileitem.fileid,
             }
         )
         if not resp:
@@ -932,18 +870,20 @@ class AliPan(StorageBase, metaclass=Singleton):
         new_path = Path(path) / fileitem.name
         new_file = self._delay_get_item(new_path)
         self.rename(new_file, new_name)
-        # 更新缓存
-        del self._id_cache[fileitem.path]
-        rename_new_path = Path(path) / new_name
-        self._id_cache[str(rename_new_path)] = (resp.get("drive_id"), resp.get("file_id"))
         return True
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
-        原子性移动操作实现
+        移动文件到指定路径
+        :param fileitem: 要移动的文件项
+        :param path: 目标目录路径
+        :param new_name: 新文件名
         """
         src_fid = fileitem.fileid
-        target_id = self._path_to_id(fileitem.drive_id, str(path))
+        target_fileitem = self.get_item(path, drive_id=fileitem.drive_id)
+        if not target_fileitem or target_fileitem.type != "dir":
+            logger.warn(f"【阿里云盘】目标路径 {path} 不存在或不是目录！")
+            return False
 
         resp = self._request_api(
             "POST",
@@ -951,7 +891,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             json={
                 "drive_id": fileitem.drive_id,
                 "file_id": src_fid,
-                "to_parent_file_id": target_id,
+                "to_parent_file_id": target_fileitem.fileid,
                 "new_name": new_name
             }
         )
@@ -960,10 +900,6 @@ class AliPan(StorageBase, metaclass=Singleton):
         if resp.get("code"):
             logger.warn(f"【阿里云盘】移动文件失败: {resp.get('message')}")
             return False
-        # 更新缓存
-        del self._id_cache[fileitem.path]
-        rename_new_path = Path(path) / new_name
-        self._id_cache[str(rename_new_path)] = (resp.get("drive_id"), resp.get("file_id"))
         return True
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
