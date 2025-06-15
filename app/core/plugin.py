@@ -122,6 +122,8 @@ class PluginManager(metaclass=Singleton):
                 return False
             return True
 
+        # 已安装插件
+        installed_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         # 扫描插件目录
         if pid:
             # 加载指定插件
@@ -130,13 +132,11 @@ class PluginManager(metaclass=Singleton):
                 filter_func=lambda name, obj: check_module(obj) and name == pid
             )
         else:
-            # 加载所有插件
+            # 加载已安装插件
             plugins = ModuleHelper.load(
                 "app.plugins",
-                filter_func=lambda _, obj: check_module(obj)
+                filter_func=lambda name, obj: check_module(obj) and name in installed_plugins
             )
-        # 已安装插件
-        installed_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         # 排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         for plugin in plugins:
@@ -152,11 +152,6 @@ class PluginManager(metaclass=Singleton):
                     continue
                 # 存储Class
                 self._plugins[plugin_id] = plugin
-                # 未安装的不加载
-                if plugin_id not in installed_plugins:
-                    # 设置事件状态为不可用
-                    eventmanager.disable_event_handler(plugin)
-                    continue
                 # 生成实例
                 plugin_obj = plugin()
                 # 生效插件配置
@@ -201,7 +196,7 @@ class PluginManager(metaclass=Singleton):
             logger.info(f"正在停止插件 {pid}...")
             plugin_obj = self._running_plugins.get(pid)
             if not plugin_obj:
-                logger.warning(f"插件 {pid} 不存在或未加载")
+                logger.debug(f"插件 {pid} 不存在或未加载")
                 return
             plugins = {pid: plugin_obj}
         else:
@@ -213,6 +208,7 @@ class PluginManager(metaclass=Singleton):
         # 清空对像
         if pid:
             # 清空指定插件
+            self._plugins.pop(pid, None)
             self._running_plugins.pop(pid, None)
         else:
             # 清空
