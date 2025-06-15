@@ -221,10 +221,13 @@ class SubscribeChain(ChainBase):
             # 订阅成功按规则发送消息
             self.post_message(
                 schemas.Notification(
+                    channel=channel,
+                    source=source,
                     mtype=NotificationType.Subscribe,
                     ctype=ContentType.SubscribeAdded,
                     image=mediainfo.get_message_image(),
                     link=link,
+                    userid=userid,
                     username=username
                 ),
                 meta=metainfo,

@@ -612,7 +612,8 @@ class ChainBase(metaclass=ABCMeta):
         # 发送消息事件
         self.eventmanager.send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
         # 按原消息发送
-        self.messagequeue.send_message("post_message", message=message)
+        self.messagequeue.send_message("post_message", message=message,
+                                       immediately=True if message.userid else False)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -624,7 +625,8 @@ class ChainBase(metaclass=ABCMeta):
         note_list = [media.to_dict() for media in medias]
         self.messagehelper.put(message, role="user", note=note_list, title=message.title)
         self.messageoper.add(**message.dict(), note=note_list)
-        return self.messagequeue.send_message("post_medias_message", message=message, medias=medias)
+        return self.messagequeue.send_message("post_medias_message", message=message, medias=medias,
+                                              immediately=True if message.userid else False)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
@@ -636,7 +638,8 @@ class ChainBase(metaclass=ABCMeta):
         note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
         self.messagehelper.put(message, role="user", note=note_list, title=message.title)
         self.messageoper.add(**message.dict(), note=note_list)
-        return self.messagequeue.send_message("post_torrents_message", message=message, torrents=torrents)
+        return self.messagequeue.send_message("post_torrents_message", message=message, torrents=torrents,
+                                              immediately=True if message.userid else False)
 
     def metadata_img(self, mediainfo: MediaInfo,
                      season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:

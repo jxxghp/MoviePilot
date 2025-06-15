@@ -63,6 +63,8 @@ class EventType(Enum):
     ModuleReload = "module.reload"
     # 配置项更新
     ConfigChanged = "config.updated"
+    # 消息交互动作
+    MessageAction = "message.action"
 
 
 # 同步链式事件

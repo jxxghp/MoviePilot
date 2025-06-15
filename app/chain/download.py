@@ -324,10 +324,12 @@ class DownloadChain(ChainBase):
             self.post_message(
                 Notification(
                     channel=channel,
+                    source=source if channel else None,
                     mtype=NotificationType.Download,
                     ctype=ContentType.DownloadAdded,
                     image=_media.get_message_image(),
                     link=settings.MP_DOMAIN('/#/downloading'),
+                    userid=userid,
                     username=username
                 ),
                 meta=_meta,

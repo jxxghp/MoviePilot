@@ -241,7 +241,7 @@ class TemplateContextBuilder:
             "total_size": StringUtils.str_filesize(transferinfo.total_size),
             "err_msg": transferinfo.message,
         }
-        self._context.update(ctx)
+        return self._context.update(ctx)
 
     def _add_file_info(self, file_extension: Optional[str]):
         """
@@ -363,7 +363,7 @@ class TemplateHelper(metaclass=SingletonClass):
                 self.set_cache_context(rendered, context)
                 # 返回渲染结果
                 return rendered
-
+            return None
         except Exception as e:
             logger.error(f"模板处理失败: {str(e)}")
             raise ValueError(f"模板处理失败: {str(e)}") from e
@@ -645,7 +645,8 @@ class MessageQueueManager(metaclass=SingletonClass):
         """
         发送消息（立即发送或加入队列）
         """
-        if self._is_in_scheduled_time(datetime.now()):
+        immediately = kwargs.pop("immediately", False)
+        if immediately or self._is_in_scheduled_time(datetime.now()):
             self._send(*args, **kwargs)
         else:
             self.queue.put({

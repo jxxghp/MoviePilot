@@ -517,10 +517,10 @@ class MessageChain(ChainBase):
             plugin_id, content = callback_data.split("|", 1)
             # 广播给插件处理
             self.eventmanager.send_event(
-                EventType.UserMessage,
+                EventType.MessageAction,
                 {
-                    "text": content,
                     "plugin_id": plugin_id.replace("[PLUGIN]", ""),
+                    "text": content,
                     "userid": userid,
                     "channel": channel,
                     "source": source,
