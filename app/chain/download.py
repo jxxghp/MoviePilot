@@ -328,6 +328,7 @@ class DownloadChain(ChainBase):
                     ctype=ContentType.DownloadAdded,
                     image=_media.get_message_image(),
                     link=settings.MP_DOMAIN('/#/downloading'),
+                    userid=userid,
                     username=username
                 ),
                 meta=_meta,

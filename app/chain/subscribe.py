@@ -225,6 +225,7 @@ class SubscribeChain(ChainBase):
                     ctype=ContentType.SubscribeAdded,
                     image=mediainfo.get_message_image(),
                     link=link,
+                    userid=userid,
                     username=username
                 ),
                 meta=metainfo,
