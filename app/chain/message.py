@@ -130,21 +130,22 @@ class MessageChain(ChainBase):
         # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
         # 保存消息
-        self.messagehelper.put(
-            CommingMessage(
-                userid=userid,
-                username=username,
+        if not text.startswith('CALLBACK:'):
+            self.messagehelper.put(
+                CommingMessage(
+                    userid=userid,
+                    username=username,
+                    channel=channel,
+                    source=source,
+                    text=text
+                ), role="user")
+            self.messageoper.add(
                 channel=channel,
                 source=source,
-                text=text
-            ), role="user")
-        self.messageoper.add(
-            channel=channel,
-            source=source,
-            userid=username or userid,
-            text=text,
-            action=0
-        )
+                userid=username or userid,
+                text=text,
+                action=0
+            )
         # 处理消息
         if text.startswith('CALLBACK:'):
             # 处理按钮回调（适配支持回调的渠道）
@@ -484,7 +485,21 @@ class MessageChain(ChainBase):
         callback_data = text[9:]  # 去掉 "CALLBACK:" 前缀
         logger.info(f"处理按钮回调：{callback_data}")
 
-        # 解析回调数据
+        # 插件消息的回调 [PLUGIN]#插件ID#内容
+        if callback_data.startswith('[PLUGIN]#'):
+            # 广播给插件处理
+            self.eventmanager.send_event(
+                EventType.UserMessage,
+                {
+                    "text": callback_data,
+                    "userid": userid,
+                    "channel": channel,
+                    "source": source
+                }
+            )
+            return
+
+        # 解析系统回调数据
         if callback_data.startswith("page_"):
             # 翻页操作（旧格式，保持兼容）
             self._handle_page_callback(callback_data, channel, source, userid)
@@ -506,54 +521,6 @@ class MessageChain(ChainBase):
         else:
             # 其他自定义回调
             logger.info(f"未知的回调数据：{callback_data}")
-
-    def handle_callback_message(self, coming_message: 'CommingMessage') -> None:
-        """
-        处理带有回调信息的消息（新的增强接口）
-        """
-        if not coming_message.is_callback or not coming_message.callback_data:
-            return
-
-        logger.info(f"处理回调消息：{coming_message.callback_data}，用户：{coming_message.userid}")
-
-        # 加载缓存
-        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
-
-        # 解析回调数据
-        callback_data = coming_message.callback_data
-
-        if callback_data.startswith("page_"):
-            # 翻页操作（旧格式，保持兼容）
-            self._handle_page_callback(callback_data, coming_message.channel,
-                                       coming_message.source, coming_message.userid)
-        elif callback_data.startswith("select_"):
-            # 选择操作或翻页操作
-            if callback_data in ["select_p", "select_n"]:
-                # 翻页操作：直接调用原来的文本处理逻辑
-                page_text = callback_data.split("_")[1]  # 提取 "p" 或 "n"
-                self.handle_message(coming_message.channel, coming_message.source,
-                                    coming_message.userid, coming_message.username, page_text)
-            else:
-                # 选择操作
-                self._handle_select_callback(callback_data, coming_message.channel,
-                                             coming_message.source, coming_message.userid,
-                                             coming_message.username)
-        elif callback_data.startswith("download_"):
-            # 下载操作
-            self._handle_download_callback(callback_data, coming_message.channel,
-                                           coming_message.source, coming_message.userid,
-                                           coming_message.username)
-        elif callback_data.startswith("subscribe_"):
-            # 订阅操作
-            self._handle_subscribe_callback(callback_data, coming_message.channel,
-                                            coming_message.source, coming_message.userid,
-                                            coming_message.username)
-        else:
-            # 其他自定义回调
-            logger.info(f"未知的回调数据：{callback_data}")
-
-        # 保存缓存
-        self.save_cache(user_cache, self._cache_file)
 
     def _handle_page_callback(self, callback_data: str, channel: MessageChannel, source: str,
                               userid: Union[str, int]) -> None:
