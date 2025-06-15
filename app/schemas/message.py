@@ -79,6 +79,10 @@ class Notification(BaseModel):
     targets: Optional[dict] = None
     # 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
     buttons: Optional[List[List[dict]]] = None
+    # 原消息ID，用于编辑消息
+    original_message_id: Optional[int] = None
+    # 原消息的聊天ID，用于编辑消息
+    original_chat_id: Optional[str] = None
 
     def to_dict(self):
         """
@@ -160,7 +164,7 @@ class ChannelCapabilities:
     """
     channel: MessageChannel
     capabilities: Set[ChannelCapability]
-    max_buttons_per_row: int = 2
+    max_buttons_per_row: int = 5
     max_button_rows: int = 10
     max_button_text_length: int = 30
     fallback_enabled: bool = True
@@ -184,7 +188,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.LINKS,
                 ChannelCapability.FILE_SENDING
             },
-            max_buttons_per_row=2,
+            max_buttons_per_row=4,
             max_button_rows=10,
             max_button_text_length=30
         ),
@@ -280,12 +284,19 @@ class ChannelCapabilityManager:
         return cls.supports_capability(channel, ChannelCapability.CALLBACK_QUERIES)
 
     @classmethod
+    def supports_editing(cls, channel: MessageChannel) -> bool:
+        """
+        检查渠道是否支持消息编辑
+        """
+        return cls.supports_capability(channel, ChannelCapability.MESSAGE_EDITING)
+
+    @classmethod
     def get_max_buttons_per_row(cls, channel: MessageChannel) -> int:
         """
         获取每行最大按钮数
         """
         channel_caps = cls.get_capabilities(channel)
-        return channel_caps.max_buttons_per_row if channel_caps else 1
+        return channel_caps.max_buttons_per_row if channel_caps else 2
 
     @classmethod
     def get_max_button_rows(cls, channel: MessageChannel) -> int:
