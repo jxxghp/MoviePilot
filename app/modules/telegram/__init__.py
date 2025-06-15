@@ -150,7 +150,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
 
             # 处理普通消息
             elif "message" in message:
-                return self._handle_text_message(message["message"], client_config, client)
+                return self._handle_text_message(message, client_config, client)
 
         return None
 
