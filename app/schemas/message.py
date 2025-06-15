@@ -160,7 +160,7 @@ class ChannelCapabilities:
     """
     channel: MessageChannel
     capabilities: Set[ChannelCapability]
-    max_buttons_per_row: int = 2
+    max_buttons_per_row: int = 5
     max_button_rows: int = 10
     max_button_text_length: int = 30
     fallback_enabled: bool = True
@@ -285,7 +285,7 @@ class ChannelCapabilityManager:
         获取每行最大按钮数
         """
         channel_caps = cls.get_capabilities(channel)
-        return channel_caps.max_buttons_per_row if channel_caps else 4
+        return channel_caps.max_buttons_per_row if channel_caps else 5
 
     @classmethod
     def get_max_button_rows(cls, channel: MessageChannel) -> int:
@@ -293,7 +293,7 @@ class ChannelCapabilityManager:
         获取最大按钮行数
         """
         channel_caps = cls.get_capabilities(channel)
-        return channel_caps.max_button_rows if channel_caps else 5
+        return channel_caps.max_button_rows if channel_caps else 10
 
     @classmethod
     def get_max_button_text_length(cls, channel: MessageChannel) -> int:
