@@ -222,6 +222,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 # 使用CALLBACK前缀标识按钮回调
                 text = f"CALLBACK:{callback_data}"
                 username = msg_json.get("user", {}).get("name")
+                
+                # 获取原消息信息用于编辑
+                message_info = msg_json.get("message", {})
+                # Slack消息的时间戳作为消息ID
+                message_ts = message_info.get("ts")
+                channel_id = msg_json.get("channel", {}).get("id") or msg_json.get("container", {}).get("channel_id")
+                
                 logger.info(f"收到来自 {client_config.name} 的Slack按钮回调："
                             f"userid={userid}, username={username}, callback_data={callback_data}")
 
@@ -233,7 +240,9 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                     username=username,
                     text=text,
                     is_callback=True,
-                    callback_data=callback_data
+                    callback_data=callback_data,
+                    message_id=message_ts,
+                    chat_id=channel_id
                 )
             elif msg_json.get("type") == "event_callback":
                 userid = msg_json.get('event', {}).get('user')
@@ -274,7 +283,9 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             if client:
                 client.send_msg(title=message.title, text=message.text,
                                 image=message.image, userid=userid, link=message.link,
-                                buttons=message.buttons)
+                                buttons=message.buttons,
+                                original_message_id=message.original_message_id,
+                                original_chat_id=message.original_chat_id)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -289,7 +300,9 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             client: Slack = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(title=message.title, medias=medias, userid=message.userid,
-                                       buttons=message.buttons)
+                                       buttons=message.buttons,
+                                       original_message_id=message.original_message_id,
+                                       original_chat_id=message.original_chat_id)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
@@ -304,4 +317,6 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             client: Slack = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
-                                         userid=message.userid, buttons=message.buttons)
+                                         userid=message.userid, buttons=message.buttons,
+                                         original_message_id=message.original_message_id,
+                                         original_chat_id=message.original_chat_id)

@@ -103,15 +103,19 @@ class Slack:
 
     def send_msg(self, title: str, text: Optional[str] = None,
                  image: Optional[str] = None, link: Optional[str] = None,
-                 userid: Optional[str] = None, buttons: Optional[List[List[dict]]] = None):
+                 userid: Optional[str] = None, buttons: Optional[List[List[dict]]] = None,
+                 original_message_id: Optional[str] = None,
+                 original_chat_id: Optional[str] = None):
         """
-        发送Telegram消息
+        发送Slack消息
         :param title: 消息标题
         :param text: 消息内容
         :param image: 消息图片地址
         :param link: 点击消息转转的URL
         :param userid: 用户ID，如有则只发消息给该用户
         :param buttons: 消息按钮列表，格式为 [[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
+        :param original_message_id: 原消息的时间戳，如果提供则编辑原消息
+        :param original_chat_id: 原消息的频道ID，编辑消息时需要
         """
         if not self._client:
             return False, "消息客户端未就绪"
@@ -193,22 +197,41 @@ class Slack:
                             }
                         ]
                     })
-            # 发送
-            result = self._client.chat_postMessage(
-                channel=channel,
-                text=message_text[:1000],
-                blocks=blocks,
-                mrkdwn=True
-            )
+            
+            # 判断是编辑消息还是发送新消息
+            if original_message_id and original_chat_id:
+                # 编辑消息
+                result = self._client.chat_update(
+                    channel=original_chat_id,
+                    ts=original_message_id,
+                    text=message_text[:1000],
+                    blocks=blocks or []
+                )
+            else:
+                # 发送新消息
+                result = self._client.chat_postMessage(
+                    channel=channel,
+                    text=message_text[:1000],
+                    blocks=blocks,
+                    mrkdwn=True
+                )
             return True, result
         except Exception as msg_e:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False, str(msg_e)
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None,
-                        buttons: Optional[List[List[dict]]] = None) -> Optional[bool]:
+                        buttons: Optional[List[List[dict]]] = None,
+                        original_message_id: Optional[str] = None,
+                        original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表类消息
+        发送媒体列表消息
+        :param medias: 媒体信息列表
+        :param userid: 用户ID，如有则只发消息给该用户
+        :param title: 消息标题
+        :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
+        :param original_message_id: 原消息的时间戳，如果提供则编辑原消息
+        :param original_chat_id: 原消息的频道ID，编辑消息时需要
         """
         if not self._client:
             return False
@@ -315,21 +338,40 @@ class Slack:
                                 }
                             )
                         index += 1
-            # 发送
-            result = self._client.chat_postMessage(
-                channel=channel,
-                text=title,
-                blocks=blocks
-            )
+            
+            # 判断是编辑消息还是发送新消息
+            if original_message_id and original_chat_id:
+                # 编辑消息
+                result = self._client.chat_update(
+                    channel=original_chat_id,
+                    ts=original_message_id,
+                    text=title,
+                    blocks=blocks or []
+                )
+            else:
+                # 发送新消息
+                result = self._client.chat_postMessage(
+                    channel=channel,
+                    text=title,
+                    blocks=blocks
+                )
             return True if result else False
         except Exception as msg_e:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False
 
     def send_torrents_msg(self, torrents: List[Context], userid: Optional[str] = None, title: Optional[str] = None,
-                          buttons: Optional[List[List[dict]]] = None) -> Optional[bool]:
+                          buttons: Optional[List[List[dict]]] = None,
+                          original_message_id: Optional[str] = None,
+                          original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表消息
+        发送种子列表消息
+        :param torrents: 种子信息列表
+        :param userid: 用户ID，如有则只发消息给该用户
+        :param title: 消息标题
+        :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
+        :param original_message_id: 原消息的时间戳，如果提供则编辑原消息
+        :param original_chat_id: 原消息的频道ID，编辑消息时需要
         """
         if not self._client:
             return None
@@ -362,15 +404,15 @@ class Slack:
                     site_name = torrent.site_name
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
-                    title = f"{meta.season_episode} " \
+                    title_text = f"{meta.season_episode} " \
                             f"{meta.resource_term} " \
                             f"{meta.video_term} " \
                             f"{meta.release_group}"
-                    title = re.sub(r"\s+", " ", title).strip()
+                    title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
                     description = torrent.description
-                    text = f"{index}. 【{site_name}】<{link}|{title}> " \
+                    text = f"{index}. 【{site_name}】<{link}|{title_text}> " \
                            f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
                            f"{description}"
                     blocks.append(
@@ -422,15 +464,15 @@ class Slack:
                     site_name = torrent.site_name
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
-                    title = f"{meta.season_episode} " \
+                    title_text = f"{meta.season_episode} " \
                             f"{meta.resource_term} " \
                             f"{meta.video_term} " \
                             f"{meta.release_group}"
-                    title = re.sub(r"\s+", " ", title).strip()
+                    title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
                     description = torrent.description
-                    text = f"{index}. 【{site_name}】<{link}|{title}> " \
+                    text = f"{index}. 【{site_name}】<{link}|{title_text}> " \
                            f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
                            f"{description}"
                     blocks.append(
@@ -460,12 +502,23 @@ class Slack:
                         }
                     )
                     index += 1
-            # 发送
-            result = self._client.chat_postMessage(
-                channel=channel,
-                text=title,
-                blocks=blocks
-            )
+            
+            # 判断是编辑消息还是发送新消息
+            if original_message_id and original_chat_id:
+                # 编辑消息
+                result = self._client.chat_update(
+                    channel=original_chat_id,
+                    ts=original_message_id,
+                    text=title,
+                    blocks=blocks or []
+                )
+            else:
+                # 发送新消息
+                result = self._client.chat_postMessage(
+                    channel=channel,
+                    text=title,
+                    blocks=blocks
+                )
             return True if result else False
         except Exception as msg_e:
             logger.error(f"Slack消息发送失败: {msg_e}")
