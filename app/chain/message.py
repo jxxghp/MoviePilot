@@ -511,13 +511,16 @@ class MessageChain(ChainBase):
         callback_data = text[9:]  # 去掉 "CALLBACK:" 前缀
         logger.info(f"处理按钮回调：{callback_data}")
 
-        # 插件消息的回调 [PLUGIN]#插件ID#内容
-        if callback_data.startswith('[PLUGIN]#'):
+        # 插件消息的事件回调 [PLUGIN]插件ID|内容
+        if callback_data.startswith('[PLUGIN]'):
+            # 提取插件ID和内容
+            plugin_id, content = callback_data.split("|", 1)
             # 广播给插件处理
             self.eventmanager.send_event(
                 EventType.UserMessage,
                 {
-                    "text": callback_data,
+                    "text": content,
+                    "plugin_id": plugin_id.replace("[PLUGIN]", ""),
                     "userid": userid,
                     "channel": channel,
                     "source": source,
