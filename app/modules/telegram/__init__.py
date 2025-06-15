@@ -246,7 +246,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             if client:
                 client.send_msg(title=message.title, text=message.text,
                                 image=message.image, userid=userid, link=message.link,
-                                buttons=message.buttons)
+                                buttons=message.buttons,
+                                original_message_id=message.original_message_id,
+                                original_chat_id=message.original_chat_id)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -262,7 +264,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             if client:
                 client.send_medias_msg(title=message.title, medias=medias,
                                        userid=message.userid, link=message.link,
-                                       buttons=message.buttons)
+                                       buttons=message.buttons,
+                                       original_message_id=message.original_message_id,
+                                       original_chat_id=message.original_chat_id)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
@@ -278,7 +282,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid, link=message.link,
-                                         buttons=message.buttons)
+                                         buttons=message.buttons,
+                                         original_message_id=message.original_message_id,
+                                         original_chat_id=message.original_chat_id)
 
     def register_commands(self, commands: Dict[str, dict]):
         """

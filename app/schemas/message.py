@@ -79,6 +79,10 @@ class Notification(BaseModel):
     targets: Optional[dict] = None
     # 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
     buttons: Optional[List[List[dict]]] = None
+    # 原消息ID，用于编辑消息
+    original_message_id: Optional[int] = None
+    # 原消息的聊天ID，用于编辑消息
+    original_chat_id: Optional[str] = None
 
     def to_dict(self):
         """
@@ -278,6 +282,13 @@ class ChannelCapabilityManager:
         检查渠道是否支持回调
         """
         return cls.supports_capability(channel, ChannelCapability.CALLBACK_QUERIES)
+
+    @classmethod
+    def supports_editing(cls, channel: MessageChannel) -> bool:
+        """
+        检查渠道是否支持消息编辑
+        """
+        return cls.supports_capability(channel, ChannelCapability.MESSAGE_EDITING)
 
     @classmethod
     def get_max_buttons_per_row(cls, channel: MessageChannel) -> int:

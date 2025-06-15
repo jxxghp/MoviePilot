@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 import telebot
 from telebot import apihelper
 from telebot.types import InputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InputMediaPhoto
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
@@ -119,7 +120,9 @@ class Telegram:
 
     def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None,
-                 buttons: Optional[List[List[dict]]] = None) -> Optional[bool]:
+                 buttons: Optional[List[List[dict]]] = None,
+                 original_message_id: Optional[int] = None,
+                 original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -128,6 +131,8 @@ class Telegram:
         :param userid: 用户ID，如有则只发消息给该用户
         :param link: 跳转链接
         :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
+        :param original_message_id: 原消息ID，如果提供则编辑原消息
+        :param original_chat_id: 原消息的聊天ID，编辑消息时需要
         :userid: 发送消息的目标用户ID，为空则发给管理员
         """
         if not self._telegram_token or not self._telegram_chat_id:
@@ -158,7 +163,13 @@ class Telegram:
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
 
-            return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
+            # 判断是编辑消息还是发送新消息
+            if original_message_id and original_chat_id:
+                # 编辑消息
+                return self.__edit_message(original_chat_id, original_message_id, caption, buttons, image)
+            else:
+                # 发送新消息
+                return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -166,7 +177,9 @@ class Telegram:
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None,
                         title: Optional[str] = None, link: Optional[str] = None,
-                        buttons: Optional[List[List[Dict]]] = None) -> Optional[bool]:
+                        buttons: Optional[List[List[Dict]]] = None,
+                        original_message_id: Optional[int] = None,
+                        original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
         发送媒体列表消息
         :param medias: 媒体信息列表
@@ -174,6 +187,8 @@ class Telegram:
         :param title: 消息标题
         :param link: 跳转链接
         :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
+        :param original_message_id: 原消息ID，如果提供则编辑原消息
+        :param original_chat_id: 原消息的聊天ID，编辑消息时需要
         """
         if not self._telegram_token or not self._telegram_chat_id:
             return None
@@ -211,7 +226,13 @@ class Telegram:
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
 
-            return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
+            # 判断是编辑消息还是发送新消息
+            if original_message_id and original_chat_id:
+                # 编辑消息
+                return self.__edit_message(original_chat_id, original_message_id, caption, buttons, image)
+            else:
+                # 发送新消息
+                return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -219,24 +240,25 @@ class Telegram:
 
     def send_torrents_msg(self, torrents: List[Context],
                           userid: Optional[str] = None, title: Optional[str] = None,
-                          link: Optional[str] = None, buttons: Optional[List[List[Dict]]] = None) -> Optional[bool]:
+                          link: Optional[str] = None, buttons: Optional[List[List[Dict]]] = None,
+                          original_message_id: Optional[int] = None,
+                          original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表消息
-        :param torrents: Torrent信息列表
+        发送种子列表消息
+        :param torrents: 种子信息列表
         :param userid: 用户ID，如有则只发消息给该用户
         :param title: 消息标题
         :param link: 跳转链接
         :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
+        :param original_message_id: 原消息ID，如果提供则编辑原消息
+        :param original_chat_id: 原消息的聊天ID，编辑消息时需要
         """
         if not self._telegram_token or not self._telegram_chat_id:
             return None
 
-        if not torrents:
-            return False
-
         try:
             index, caption = 1, "*%s*" % title
-            mediainfo = torrents[0].media_info
+            image = torrents[0].media_info.get_message_image()
             for context in torrents:
                 torrent = context.torrent_info
                 site_name = torrent.site_name
@@ -266,8 +288,13 @@ class Telegram:
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
 
-            return self.__send_request(userid=chat_id, caption=caption,
-                                       image=mediainfo.get_message_image(), reply_markup=reply_markup)
+            # 判断是编辑消息还是发送新消息
+            if original_message_id and original_chat_id:
+                # 编辑消息（种子消息通常没有图片）
+                return self.__edit_message(original_chat_id, original_message_id, caption, buttons, image)
+            else:
+                # 发送新消息
+                return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -298,16 +325,60 @@ class Telegram:
                               show_alert: bool = False) -> Optional[bool]:
         """
         回应回调查询
-        :param callback_query_id: 回调查询ID
-        :param text: 提示文本
-        :param show_alert: 是否显示弹窗提示
-        :return: 回应结果
         """
+        if not self._bot:
+            return None
+
         try:
-            self._bot.answer_callback_query(callback_query_id, text, show_alert)
+            self._bot.answer_callback_query(callback_query_id, text=text, show_alert=show_alert)
             return True
         except Exception as e:
             logger.error(f"回应回调查询失败：{str(e)}")
+            return False
+
+    def __edit_message(self, chat_id: str, message_id: int, text: str,
+                       buttons: Optional[List[List[dict]]] = None,
+                       image: Optional[str] = None) -> Optional[bool]:
+        """
+        编辑已发送的消息
+        :param chat_id: 聊天ID
+        :param message_id: 消息ID
+        :param text: 新的消息内容
+        :param buttons: 按钮列表
+        :param image: 图片URL或路径
+        :return: 编辑是否成功
+        """
+        if not self._bot:
+            return None
+
+        try:
+            
+            # 创建按钮键盘
+            reply_markup = None
+            if buttons:
+                reply_markup = self._create_inline_keyboard(buttons)
+
+            if image:
+                # 如果有图片，使用edit_message_media
+                media = InputMediaPhoto(media=image, caption=text, parse_mode="Markdown")
+                self._bot.edit_message_media(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    media=media,
+                    reply_markup=reply_markup
+                )
+            else:
+                # 如果没有图片，使用edit_message_text
+                self._bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+            return True
+        except Exception as e:
+            logger.error(f"编辑消息失败：{str(e)}")
             return False
 
     @retry(Exception, logger=logger)

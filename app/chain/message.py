@@ -115,11 +115,19 @@ class MessageChain(ChainBase):
         if not text:
             logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return
+            
+        # 获取原消息ID信息
+        original_message_id = info.message_id
+        original_chat_id = info.chat_id
+            
         # 处理消息
-        self.handle_message(channel=channel, source=source, userid=userid, username=username, text=text)
+        self.handle_message(channel=channel, source=source, userid=userid, username=username, text=text,
+                          original_message_id=original_message_id, original_chat_id=original_chat_id)
 
     def handle_message(self, channel: MessageChannel, source: str,
-                       userid: Union[str, int], username: str, text: str) -> None:
+                       userid: Union[str, int], username: str, text: str,
+                       original_message_id: Optional[int] = None,
+                       original_chat_id: Optional[str] = None) -> None:
         """
         识别消息内容，执行操作
         """
@@ -150,7 +158,7 @@ class MessageChain(ChainBase):
         if text.startswith('CALLBACK:'):
             # 处理按钮回调（适配支持回调的渠道）
             if ChannelCapabilityManager.supports_callbacks(channel):
-                self._handle_callback(text, channel, source, userid, username)
+                self._handle_callback(text, channel, source, userid, username, original_message_id, original_chat_id)
             else:
                 logger.warning(f"渠道 {channel.value} 不支持回调，但收到了回调消息：{text}")
         elif text.startswith('/'):
@@ -269,7 +277,9 @@ class MessageChain(ChainBase):
                                                  title=mediainfo.title,
                                                  items=contexts[:self._page_size],
                                                  userid=userid,
-                                                 total=len(contexts))
+                                                 total=len(contexts),
+                                                 original_message_id=original_message_id,
+                                                 original_chat_id=original_chat_id)
 
             elif cache_type in ["Subscribe", "ReSubscribe"]:
                 # 订阅或洗版媒体
@@ -350,7 +360,9 @@ class MessageChain(ChainBase):
                                              title=_current_media.title,
                                              items=cache_list[start:end],
                                              userid=userid,
-                                             total=len(cache_list))
+                                             total=len(cache_list),
+                                             original_message_id=original_message_id,
+                                             original_chat_id=original_chat_id)
             else:
                 # 发送媒体数据
                 self.__post_medias_message(channel=channel,
@@ -358,7 +370,9 @@ class MessageChain(ChainBase):
                                            title=_current_meta.name,
                                            items=cache_list[start:end],
                                            userid=userid,
-                                           total=len(cache_list))
+                                           total=len(cache_list),
+                                           original_message_id=original_message_id,
+                                           original_chat_id=original_chat_id)
 
         elif text.lower() == "n":
             # 下一页
@@ -390,7 +404,9 @@ class MessageChain(ChainBase):
                                                  title=_current_media.title,
                                                  items=cache_list,
                                                  userid=userid,
-                                                 total=total)
+                                                 total=total,
+                                                 original_message_id=original_message_id,
+                                                 original_chat_id=original_chat_id)
                 else:
                     # 发送媒体数据
                     self.__post_medias_message(channel=channel,
@@ -398,7 +414,9 @@ class MessageChain(ChainBase):
                                                title=_current_meta.name,
                                                items=cache_list,
                                                userid=userid,
-                                               total=total)
+                                               total=total,
+                                               original_message_id=original_message_id,
+                                               original_chat_id=original_chat_id)
 
         else:
             # 搜索或订阅
@@ -458,7 +476,9 @@ class MessageChain(ChainBase):
                                            source=source,
                                            title=meta.name,
                                            items=medias[:self._page_size],
-                                           userid=userid, total=len(medias))
+                                           userid=userid, total=len(medias),
+                                           original_message_id=original_message_id,
+                                           original_chat_id=original_chat_id)
             else:
                 # 广播事件
                 self.eventmanager.send_event(
@@ -481,7 +501,9 @@ class MessageChain(ChainBase):
         gc.collect()
 
     def _handle_callback(self, text: str, channel: MessageChannel, source: str,
-                         userid: Union[str, int], username: str) -> None:
+                         userid: Union[str, int], username: str,
+                         original_message_id: Optional[int] = None,
+                         original_chat_id: Optional[str] = None) -> None:
         """
         处理按钮回调
         """
@@ -505,14 +527,14 @@ class MessageChain(ChainBase):
 
         # 解析系统回调数据
         if callback_data.startswith("page_"):
-            # 翻页操作（旧格式，保持兼容）
-            self._handle_page_callback(callback_data, channel, source, userid)
+            # 翻页操作
+            self._handle_page_callback(callback_data, channel, source, userid, original_message_id, original_chat_id)
         elif callback_data.startswith("select_"):
             # 选择操作或翻页操作
             if callback_data in ["select_p", "select_n"]:
-                # 翻页操作：直接调用原来的文本处理逻辑
+                # 翻页操作
                 page_text = callback_data.split("_")[1]  # 提取 "p" 或 "n"
-                self.handle_message(channel, source, userid, username, page_text)
+                self.handle_message(channel, source, userid, username, page_text, original_message_id, original_chat_id)
             else:
                 # 选择操作
                 self._handle_select_callback(callback_data, channel, source, userid, username)
@@ -527,7 +549,8 @@ class MessageChain(ChainBase):
             logger.info(f"未知的回调数据：{callback_data}")
 
     def _handle_page_callback(self, callback_data: str, channel: MessageChannel, source: str,
-                              userid: Union[str, int]) -> None:
+                              userid: Union[str, int], original_message_id: Optional[int],
+                              original_chat_id: Optional[str]):
         """
         处理翻页回调
         """
@@ -540,10 +563,10 @@ class MessageChain(ChainBase):
             # 判断是上一页还是下一页
             if page < _current_page:
                 # 上一页，调用原来的 "p" 逻辑
-                self.handle_message(channel, source, userid, "", "p")
+                self.handle_message(channel, source, userid, "", "p", original_message_id, original_chat_id)
             elif page > _current_page:
                 # 下一页，调用原来的 "n" 逻辑  
-                self.handle_message(channel, source, userid, "", "n")
+                self.handle_message(channel, source, userid, "", "n", original_message_id, original_chat_id)
             # 如果 page == _current_page，说明是当前页，不需要处理
 
         except (ValueError, IndexError) as e:
@@ -640,7 +663,9 @@ class MessageChain(ChainBase):
                                  note=note)
 
     def __post_medias_message(self, channel: MessageChannel, source: str,
-                              title: str, items: list, userid: str, total: int):
+                              title: str, items: list, userid: str, total: int,
+                              original_message_id: Optional[int] = None,
+                              original_chat_id: Optional[str] = None):
         """
         发送媒体列表消息
         """
@@ -668,7 +693,9 @@ class MessageChain(ChainBase):
             source=source,
             title=title,
             userid=userid,
-            buttons=buttons
+            buttons=buttons,
+            original_message_id=original_message_id,
+            original_chat_id=original_chat_id
         )
 
         self.post_medias_message(notification, medias=items)
@@ -725,7 +752,9 @@ class MessageChain(ChainBase):
         return buttons
 
     def __post_torrents_message(self, channel: MessageChannel, source: str,
-                                title: str, items: list, userid: str, total: int):
+                                title: str, items: list, userid: str, total: int,
+                                original_message_id: Optional[int] = None,
+                                original_chat_id: Optional[str] = None):
         """
         发送种子列表消息
         """
@@ -754,7 +783,9 @@ class MessageChain(ChainBase):
             title=title,
             userid=userid,
             link=settings.MP_DOMAIN('#/resource'),
-            buttons=buttons
+            buttons=buttons,
+            original_message_id=original_message_id,
+            original_chat_id=original_chat_id
         )
 
         self.post_torrents_message(notification, torrents=items)
