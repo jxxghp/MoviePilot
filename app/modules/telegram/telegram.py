@@ -77,7 +77,12 @@ class Telegram:
                         "callback_query": {
                             "id": call.id,
                             "from": call.from_user.to_dict(),
-                            "message": call.message.to_dict(),
+                            "message": {
+                                "message_id": call.message.message_id,
+                                "chat": {
+                                    "id": call.message.chat.id,
+                                }
+                            },
                             "data": callback_data
                         }
                     }
@@ -313,7 +318,7 @@ class Telegram:
         :param reply_markup: 内联键盘
         """
         if image:
-            res = RequestUtils(proxies=settings.PROXY).get_res(image)
+            res = RequestUtils(proxies=settings.PROXY, ua=settings.USER_AGENT).get_res(image)
             if res is None:
                 raise Exception("获取图片失败")
             if res.content:

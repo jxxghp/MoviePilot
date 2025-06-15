@@ -388,13 +388,17 @@ class MessageChain(ChainBase):
                     self.__post_torrents_message(channel=channel,
                                                  source=source,
                                                  title=_current_media.title,
-                                                 items=cache_list, userid=userid, total=total)
+                                                 items=cache_list,
+                                                 userid=userid,
+                                                 total=total)
                 else:
                     # 发送媒体数据
                     self.__post_medias_message(channel=channel,
                                                source=source,
                                                title=_current_meta.name,
-                                               items=cache_list, userid=userid, total=total)
+                                               items=cache_list,
+                                               userid=userid,
+                                               total=total)
 
         else:
             # 搜索或订阅
@@ -636,7 +640,7 @@ class MessageChain(ChainBase):
                                  note=note)
 
     def __post_medias_message(self, channel: MessageChannel, source: str,
-                              title: str, items: list, userid: str, total: int, current_page: int = 0):
+                              title: str, items: list, userid: str, total: int):
         """
         发送媒体列表消息
         """
@@ -650,7 +654,7 @@ class MessageChain(ChainBase):
             else:
                 title = f"【{title}】共找到{total}条相关信息，请选择操作"
 
-            buttons = self._create_media_buttons(channel, items, current_page, total)
+            buttons = self._create_media_buttons(channel, items, total)
         else:
             # 不支持按钮的渠道，使用文本提示
             if total > self._page_size:
@@ -669,36 +673,51 @@ class MessageChain(ChainBase):
 
         self.post_medias_message(notification, medias=items)
 
-    def _create_media_buttons(self, channel: MessageChannel, items: list,
-                              current_page: int, total: int) -> List[List[Dict]]:
+    def _create_media_buttons(self, channel: MessageChannel, items: list, total: int) -> List[List[Dict]]:
         """
         创建媒体选择按钮
         """
+        global _current_page
+
         buttons = []
         max_text_length = ChannelCapabilityManager.get_max_button_text_length(channel)
         max_per_row = ChannelCapabilityManager.get_max_buttons_per_row(channel)
 
         # 为每个媒体项创建选择按钮
+        current_row = []
         for i in range(len(items)):
             media = items[i]
-            button_text = f"{i + 1}. {media.title_year}"
-            if len(button_text) > max_text_length:
-                button_text = button_text[:max_text_length - 3] + "..."
-
-            # 根据渠道配置决定按钮布局
+            
             if max_per_row == 1:
-                buttons.append([{"text": button_text, "callback_data": f"select_{current_page * self._page_size + i}"}])
+                # 每行一个按钮，使用完整文本
+                button_text = f"{i + 1}. {media.title_year}"
+                if len(button_text) > max_text_length:
+                    button_text = button_text[:max_text_length - 3] + "..."
+                
+                buttons.append([{
+                    "text": button_text,
+                    "callback_data": f"select_{_current_page * self._page_size + i}"
+                }])
             else:
-                # 多按钮一行的情况，简化按钮文本
-                short_text = f"{i + 1}"
-                buttons.append([{"text": short_text, "callback_data": f"select_{current_page * self._page_size + i}"}])
+                # 多按钮一行的情况，使用简化文本
+                button_text = f"{i + 1}"
+                
+                current_row.append({
+                    "text": button_text,
+                    "callback_data": f"select_{_current_page * self._page_size + i}"
+                })
+                
+                # 如果当前行已满或者是最后一个按钮，添加到按钮列表
+                if len(current_row) == max_per_row or i == len(items) - 1:
+                    buttons.append(current_row)
+                    current_row = []
 
         # 添加翻页按钮
         if total > self._page_size:
             page_buttons = []
-            if current_page > 0:
+            if _current_page > 0:
                 page_buttons.append({"text": "⬅️ 上一页", "callback_data": "select_p"})
-            if (current_page + 1) * self._page_size < total:
+            if (_current_page + 1) * self._page_size < total:
                 page_buttons.append({"text": "下一页 ➡️", "callback_data": "select_n"})
             if page_buttons:
                 buttons.append(page_buttons)
@@ -706,8 +725,7 @@ class MessageChain(ChainBase):
         return buttons
 
     def __post_torrents_message(self, channel: MessageChannel, source: str,
-                                title: str, items: list,
-                                userid: str, total: int, current_page: int = 0):
+                                title: str, items: list, userid: str, total: int):
         """
         发送种子列表消息
         """
@@ -721,7 +739,7 @@ class MessageChain(ChainBase):
             else:
                 title = f"【{title}】共找到{total}条相关资源，请选择下载"
 
-            buttons = self._create_torrent_buttons(channel, items, current_page, total)
+            buttons = self._create_torrent_buttons(channel, items, total)
         else:
             # 不支持按钮的渠道，使用文本提示
             if total > self._page_size:
@@ -741,11 +759,13 @@ class MessageChain(ChainBase):
 
         self.post_torrents_message(notification, torrents=items)
 
-    def _create_torrent_buttons(self, channel: MessageChannel, items: list,
-                                current_page: int, total: int) -> List[List[Dict]]:
+    def _create_torrent_buttons(self, channel: MessageChannel, items: list, total: int) -> List[List[Dict]]:
         """
         创建种子下载按钮
         """
+
+        global _current_page
+
         buttons = []
         max_text_length = ChannelCapabilityManager.get_max_button_text_length(channel)
         max_per_row = ChannelCapabilityManager.get_max_buttons_per_row(channel)
@@ -754,27 +774,41 @@ class MessageChain(ChainBase):
         buttons.append([{"text": "🤖 自动选择下载", "callback_data": "download_auto"}])
 
         # 为每个种子项创建下载按钮
+        current_row = []
         for i in range(len(items)):
             context = items[i]
             torrent = context.torrent_info
 
-            # 根据渠道配置调整按钮文本
             if max_per_row == 1:
+                # 每行一个按钮，使用完整文本
                 button_text = f"{i + 1}. {torrent.site_name} - {torrent.seeders}↑"
                 if len(button_text) > max_text_length:
                     button_text = button_text[:max_text_length - 3] + "..."
+                
+                buttons.append([{
+                    "text": button_text,
+                    "callback_data": f"download_{_current_page * self._page_size + i}"
+                }])
             else:
                 # 多按钮一行的情况，使用简化文本
                 button_text = f"{i + 1}"
-
-            buttons.append([{"text": button_text, "callback_data": f"download_{current_page * self._page_size + i}"}])
+                
+                current_row.append({
+                    "text": button_text,
+                    "callback_data": f"download_{_current_page * self._page_size + i}"
+                })
+                
+                # 如果当前行已满或者是最后一个按钮，添加到按钮列表
+                if len(current_row) == max_per_row or i == len(items) - 1:
+                    buttons.append(current_row)
+                    current_row = []
 
         # 添加翻页按钮
         if total > self._page_size:
             page_buttons = []
-            if current_page > 0:
+            if _current_page > 0:
                 page_buttons.append({"text": "⬅️ 上一页", "callback_data": "select_p"})
-            if (current_page + 1) * self._page_size < total:
+            if (_current_page + 1) * self._page_size < total:
                 page_buttons.append({"text": "下一页 ➡️", "callback_data": "select_n"})
             if page_buttons:
                 buttons.append(page_buttons)
