@@ -1,6 +1,6 @@
 import gc
 import re
-from typing import Any, Optional, Dict, Union
+from typing import Any, Optional, Dict, Union, List
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -14,6 +14,7 @@ from app.db.user_oper import UserOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification, NotExistMediaInfo, CommingMessage
+from app.schemas.message import ChannelCapabilityManager
 from app.schemas.types import EventType, MessageChannel, MediaType
 from app.utils.string import StringUtils
 
@@ -145,7 +146,13 @@ class MessageChain(ChainBase):
             action=0
         )
         # 处理消息
-        if text.startswith('/'):
+        if text.startswith('CALLBACK:'):
+            # 处理按钮回调（适配支持回调的渠道）
+            if ChannelCapabilityManager.supports_callbacks(channel):
+                self._handle_callback(text, channel, source, userid, username)
+            else:
+                logger.warning(f"渠道 {channel.value} 不支持回调，但收到了回调消息：{text}")
+        elif text.startswith('/'):
             # 执行命令
             self.eventmanager.send_event(
                 EventType.CommandExcute,
@@ -468,6 +475,147 @@ class MessageChain(ChainBase):
 
         gc.collect()
 
+    def _handle_callback(self, text: str, channel: MessageChannel, source: str,
+                         userid: Union[str, int], username: str) -> None:
+        """
+        处理按钮回调
+        """
+        # 提取回调数据
+        callback_data = text[9:]  # 去掉 "CALLBACK:" 前缀
+        logger.info(f"处理按钮回调：{callback_data}")
+
+        # 解析回调数据
+        if callback_data.startswith("page_"):
+            # 翻页操作（旧格式，保持兼容）
+            self._handle_page_callback(callback_data, channel, source, userid)
+        elif callback_data.startswith("select_"):
+            # 选择操作或翻页操作
+            if callback_data in ["select_p", "select_n"]:
+                # 翻页操作：直接调用原来的文本处理逻辑
+                page_text = callback_data.split("_")[1]  # 提取 "p" 或 "n"
+                self.handle_message(channel, source, userid, username, page_text)
+            else:
+                # 选择操作
+                self._handle_select_callback(callback_data, channel, source, userid, username)
+        elif callback_data.startswith("download_"):
+            # 下载操作
+            self._handle_download_callback(callback_data, channel, source, userid, username)
+        elif callback_data.startswith("subscribe_"):
+            # 订阅操作
+            self._handle_subscribe_callback(callback_data, channel, source, userid, username)
+        else:
+            # 其他自定义回调
+            logger.info(f"未知的回调数据：{callback_data}")
+
+    def handle_callback_message(self, coming_message: 'CommingMessage') -> None:
+        """
+        处理带有回调信息的消息（新的增强接口）
+        """
+        if not coming_message.is_callback or not coming_message.callback_data:
+            return
+
+        logger.info(f"处理回调消息：{coming_message.callback_data}，用户：{coming_message.userid}")
+
+        # 加载缓存
+        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
+
+        # 解析回调数据
+        callback_data = coming_message.callback_data
+
+        if callback_data.startswith("page_"):
+            # 翻页操作（旧格式，保持兼容）
+            self._handle_page_callback(callback_data, coming_message.channel,
+                                       coming_message.source, coming_message.userid)
+        elif callback_data.startswith("select_"):
+            # 选择操作或翻页操作
+            if callback_data in ["select_p", "select_n"]:
+                # 翻页操作：直接调用原来的文本处理逻辑
+                page_text = callback_data.split("_")[1]  # 提取 "p" 或 "n"
+                self.handle_message(coming_message.channel, coming_message.source,
+                                    coming_message.userid, coming_message.username, page_text)
+            else:
+                # 选择操作
+                self._handle_select_callback(callback_data, coming_message.channel,
+                                             coming_message.source, coming_message.userid,
+                                             coming_message.username)
+        elif callback_data.startswith("download_"):
+            # 下载操作
+            self._handle_download_callback(callback_data, coming_message.channel,
+                                           coming_message.source, coming_message.userid,
+                                           coming_message.username)
+        elif callback_data.startswith("subscribe_"):
+            # 订阅操作
+            self._handle_subscribe_callback(callback_data, coming_message.channel,
+                                            coming_message.source, coming_message.userid,
+                                            coming_message.username)
+        else:
+            # 其他自定义回调
+            logger.info(f"未知的回调数据：{callback_data}")
+
+        # 保存缓存
+        self.save_cache(user_cache, self._cache_file)
+
+    def _handle_page_callback(self, callback_data: str, channel: MessageChannel, source: str,
+                              userid: Union[str, int]) -> None:
+        """
+        处理翻页回调
+        """
+        try:
+            page = int(callback_data.split("_")[1])
+
+            # 获取当前页面
+            global _current_page
+
+            # 判断是上一页还是下一页
+            if page < _current_page:
+                # 上一页，调用原来的 "p" 逻辑
+                self.handle_message(channel, source, userid, "", "p")
+            elif page > _current_page:
+                # 下一页，调用原来的 "n" 逻辑  
+                self.handle_message(channel, source, userid, "", "n")
+            # 如果 page == _current_page，说明是当前页，不需要处理
+
+        except (ValueError, IndexError) as e:
+            logger.error(f"处理翻页回调失败：{e}")
+
+    def _handle_select_callback(self, callback_data: str, channel: MessageChannel, source: str,
+                                userid: Union[str, int], username: str) -> None:
+        """
+        处理选择回调
+        """
+        try:
+            index = int(callback_data.split("_")[1])
+            # 调用原有的数字选择逻辑
+            self.handle_message(channel, source, userid, username, str(index + 1))
+        except (ValueError, IndexError) as e:
+            logger.error(f"处理选择回调失败：{e}")
+
+    def _handle_download_callback(self, callback_data: str, channel: MessageChannel, source: str,
+                                  userid: Union[str, int], username: str) -> None:
+        """
+        处理下载回调
+        """
+        try:
+            if callback_data == "download_auto":
+                # 自动选择下载
+                self.handle_message(channel, source, userid, username, "0")
+            else:
+                index = int(callback_data.split("_")[1])
+                self.handle_message(channel, source, userid, username, str(index + 1))
+        except (ValueError, IndexError) as e:
+            logger.error(f"处理下载回调失败：{e}")
+
+    def _handle_subscribe_callback(self, callback_data: str, channel: MessageChannel, source: str,
+                                   userid: Union[str, int], username: str) -> None:
+        """
+        处理订阅回调
+        """
+        try:
+            index = int(callback_data.split("_")[1])
+            self.handle_message(channel, source, userid, username, str(index + 1))
+        except (ValueError, IndexError) as e:
+            logger.error(f"处理订阅回调失败：{e}")
+
     def __auto_download(self, channel: MessageChannel, source: str, cache_list: list[Context],
                         userid: Union[str, int], username: str,
                         no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]] = None):
@@ -521,35 +669,147 @@ class MessageChain(ChainBase):
                                  note=note)
 
     def __post_medias_message(self, channel: MessageChannel, source: str,
-                              title: str, items: list, userid: str, total: int):
+                              title: str, items: list, userid: str, total: int, current_page: int = 0):
         """
         发送媒体列表消息
         """
-        if total > self._page_size:
-            title = f"【{title}】共找到{total}条相关信息，请回复对应数字选择（p: 上一页 n: 下一页）"
-        else:
-            title = f"【{title}】共找到{total}条相关信息，请回复对应数字选择"
-        self.post_medias_message(Notification(
-            channel=channel,
-            source=source,
-            title=title,
-            userid=userid
-        ), medias=items)
+        # 检查渠道是否支持按钮
+        supports_buttons = ChannelCapabilityManager.supports_buttons(channel)
 
-    def __post_torrents_message(self, channel: MessageChannel, source: str,
-                                title: str, items: list,
-                                userid: str, total: int):
-        """
-        发送种子列表消息
-        """
-        if total > self._page_size:
-            title = f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）"
+        if supports_buttons:
+            # 支持按钮的渠道
+            if total > self._page_size:
+                title = f"【{title}】共找到{total}条相关信息，请选择操作"
+            else:
+                title = f"【{title}】共找到{total}条相关信息，请选择操作"
+
+            buttons = self._create_media_buttons(channel, items, current_page, total)
         else:
-            title = f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择）"
-        self.post_torrents_message(Notification(
+            # 不支持按钮的渠道，使用文本提示
+            if total > self._page_size:
+                title = f"【{title}】共找到{total}条相关信息，请回复对应数字选择（p: 上一页 n: 下一页）"
+            else:
+                title = f"【{title}】共找到{total}条相关信息，请回复对应数字选择"
+            buttons = None
+
+        notification = Notification(
             channel=channel,
             source=source,
             title=title,
             userid=userid,
-            link=settings.MP_DOMAIN('#/resource')
-        ), torrents=items)
+            buttons=buttons
+        )
+
+        self.post_medias_message(notification, medias=items)
+
+    def _create_media_buttons(self, channel: MessageChannel, items: list,
+                              current_page: int, total: int) -> List[List[Dict]]:
+        """
+        创建媒体选择按钮
+        """
+        buttons = []
+        max_text_length = ChannelCapabilityManager.get_max_button_text_length(channel)
+        max_per_row = ChannelCapabilityManager.get_max_buttons_per_row(channel)
+
+        # 为每个媒体项创建选择按钮
+        for i in range(len(items)):
+            media = items[i]
+            button_text = f"{i + 1}. {media.title_year}"
+            if len(button_text) > max_text_length:
+                button_text = button_text[:max_text_length - 3] + "..."
+
+            # 根据渠道配置决定按钮布局
+            if max_per_row == 1:
+                buttons.append([{"text": button_text, "callback_data": f"select_{current_page * self._page_size + i}"}])
+            else:
+                # 多按钮一行的情况，简化按钮文本
+                short_text = f"{i + 1}"
+                buttons.append([{"text": short_text, "callback_data": f"select_{current_page * self._page_size + i}"}])
+
+        # 添加翻页按钮
+        if total > self._page_size:
+            page_buttons = []
+            if current_page > 0:
+                page_buttons.append({"text": "⬅️ 上一页", "callback_data": "select_p"})
+            if (current_page + 1) * self._page_size < total:
+                page_buttons.append({"text": "下一页 ➡️", "callback_data": "select_n"})
+            if page_buttons:
+                buttons.append(page_buttons)
+
+        return buttons
+
+    def __post_torrents_message(self, channel: MessageChannel, source: str,
+                                title: str, items: list,
+                                userid: str, total: int, current_page: int = 0):
+        """
+        发送种子列表消息
+        """
+        # 检查渠道是否支持按钮
+        supports_buttons = ChannelCapabilityManager.supports_buttons(channel)
+
+        if supports_buttons:
+            # 支持按钮的渠道
+            if total > self._page_size:
+                title = f"【{title}】共找到{total}条相关资源，请选择下载"
+            else:
+                title = f"【{title}】共找到{total}条相关资源，请选择下载"
+
+            buttons = self._create_torrent_buttons(channel, items, current_page, total)
+        else:
+            # 不支持按钮的渠道，使用文本提示
+            if total > self._page_size:
+                title = f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）"
+            else:
+                title = f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择）"
+            buttons = None
+
+        notification = Notification(
+            channel=channel,
+            source=source,
+            title=title,
+            userid=userid,
+            link=settings.MP_DOMAIN('#/resource'),
+            buttons=buttons
+        )
+
+        self.post_torrents_message(notification, torrents=items)
+
+    def _create_torrent_buttons(self, channel: MessageChannel, items: list,
+                                current_page: int, total: int) -> List[List[Dict]]:
+        """
+        创建种子下载按钮
+        """
+        buttons = []
+        max_text_length = ChannelCapabilityManager.get_max_button_text_length(channel)
+        max_per_row = ChannelCapabilityManager.get_max_buttons_per_row(channel)
+
+        # 自动选择按钮
+        buttons.append([{"text": "🤖 自动选择下载", "callback_data": "download_auto"}])
+
+        # 为每个种子项创建下载按钮
+        for i in range(len(items)):
+            context = items[i]
+            torrent = context.torrent_info
+
+            # 根据渠道配置调整按钮文本
+            if max_per_row == 1:
+                button_text = f"{i + 1}. {torrent.site_name} - {torrent.seeders}↑"
+                if len(button_text) > max_text_length:
+                    button_text = button_text[:max_text_length - 3] + "..."
+            else:
+                # 多按钮一行的情况，使用简化文本
+                button_text = f"{i + 1}"
+
+            buttons.append([{"text": button_text, "callback_data": f"download_{current_page * self._page_size + i}"}])
+
+        # 添加翻页按钮
+        if total > self._page_size:
+            page_buttons = []
+            if current_page > 0:
+                page_buttons.append({"text": "⬅️ 上一页", "callback_data": "select_p"})
+            if (current_page + 1) * self._page_size < total:
+                page_buttons.append({"text": "下一页 ➡️", "callback_data": "select_n"})
+            if page_buttons:
+                buttons.append(page_buttons)
+
+        return buttons

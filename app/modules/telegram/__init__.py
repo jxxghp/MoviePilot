@@ -9,7 +9,8 @@ from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
-from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData, ConfigChangeEventData
+from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData, ConfigChangeEventData, \
+    NotificationConf
 from app.schemas.types import ModuleType, ChainEventType, SystemConfigKey, EventType
 from app.utils.structures import DictUtils
 
@@ -98,6 +99,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         :return: 渠道、消息体
         """
         """
+            普通消息格式：
             {
                 'update_id': ,
                 'message': {
@@ -119,6 +121,16 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                     'text': ''
                 }
             }
+            
+            按钮回调格式：
+            {
+                'callback_query': {
+                    'id': '',
+                    'from': {...},
+                    'message': {...},
+                    'data': 'callback_data'
+                }
+            }
         """
         # 获取服务配置
         client_config = self.get_config(source)
@@ -130,32 +142,89 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         except Exception as err:
             logger.debug(f"解析Telegram消息失败：{str(err)}")
             return None
+
         if message:
-            text = message.get("text")
-            user_id = message.get("from", {}).get("id")
-            # 获取用户名
-            user_name = message.get("from", {}).get("username")
-            if text:
-                logger.info(f"收到来自 {client_config.name} 的Telegram消息："
-                            f"userid={user_id}, username={user_name}, text={text}")
-                # 检查权限
-                admin_users = client_config.config.get("TELEGRAM_ADMINS")
-                user_list = client_config.config.get("TELEGRAM_USERS")
-                chat_id = client_config.config.get("TELEGRAM_CHAT_ID")
-                if text.startswith("/"):
-                    if admin_users \
-                            and str(user_id) not in admin_users.split(',') \
-                            and str(user_id) != chat_id:
-                        client.send_msg(title="只有管理员才有权限执行此命令", userid=user_id)
-                        return None
-                else:
-                    if user_list \
-                            and not str(user_id) in user_list.split(','):
-                        logger.info(f"用户{user_id}不在用户白名单中，无法使用此机器人")
-                        client.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
-                        return None
-                return CommingMessage(channel=MessageChannel.Telegram, source=client_config.name,
-                                      userid=user_id, username=user_name, text=text)
+            # 处理按钮回调
+            if "callback_query" in message:
+                return self._handle_callback_query(message, client_config)
+
+            # 处理普通消息
+            elif "message" in message:
+                return self._handle_text_message(message["message"], client_config, client)
+
+        return None
+
+    @staticmethod
+    def _handle_callback_query(message: dict, client_config: NotificationConf) -> Optional[CommingMessage]:
+        """
+        处理按钮回调查询
+        """
+        callback_query = message.get("callback_query", {})
+        user_info = callback_query.get("from", {})
+        callback_data = callback_query.get("data", "")
+        user_id = user_info.get("id")
+        user_name = user_info.get("username")
+
+        if callback_data and user_id:
+            logger.info(f"收到来自 {client_config.name} 的Telegram按钮回调："
+                        f"userid={user_id}, username={user_name}, callback_data={callback_data}")
+
+            # 将callback_data作为特殊格式的text返回，以便主程序识别这是按钮回调
+            callback_text = f"CALLBACK:{callback_data}"
+
+            # 创建包含完整回调信息的CommingMessage
+            return CommingMessage(
+                channel=MessageChannel.Telegram,
+                source=client_config.name,
+                userid=user_id,
+                username=user_name,
+                text=callback_text,
+                is_callback=True,
+                callback_data=callback_data,
+                message_id=callback_query.get("message", {}).get("message_id"),
+                chat_id=str(callback_query.get("message", {}).get("chat", {}).get("id", "")),
+                callback_query=callback_query
+            )
+        return None
+
+    @staticmethod
+    def _handle_text_message(msg: dict, client_config: NotificationConf, client: Telegram) -> Optional[CommingMessage]:
+        """
+        处理普通文本消息
+        """
+        text = msg.get("text")
+        user_id = msg.get("from", {}).get("id")
+        user_name = msg.get("from", {}).get("username")
+
+        if text and user_id:
+            logger.info(f"收到来自 {client_config.name} 的Telegram消息："
+                        f"userid={user_id}, username={user_name}, text={text}")
+
+            # 检查权限
+            admin_users = client_config.config.get("TELEGRAM_ADMINS")
+            user_list = client_config.config.get("TELEGRAM_USERS")
+            chat_id = client_config.config.get("TELEGRAM_CHAT_ID")
+
+            if text.startswith("/"):
+                if admin_users \
+                        and str(user_id) not in admin_users.split(',') \
+                        and str(user_id) != chat_id:
+                    client.send_msg(title="只有管理员才有权限执行此命令", userid=user_id)
+                    return None
+            else:
+                if user_list \
+                        and str(user_id) not in user_list.split(','):
+                    logger.info(f"用户{user_id}不在用户白名单中，无法使用此机器人")
+                    client.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
+                    return None
+
+            return CommingMessage(
+                channel=MessageChannel.Telegram,
+                source=client_config.name,
+                userid=user_id,
+                username=user_name,
+                text=text
+            )
         return None
 
     def post_message(self, message: Notification) -> None:
@@ -177,7 +246,8 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             client: Telegram = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
-                                image=message.image, userid=userid, link=message.link)
+                                image=message.image, userid=userid, link=message.link,
+                                buttons=message.buttons)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -192,7 +262,8 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             client: Telegram = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(title=message.title, medias=medias,
-                                       userid=message.userid, link=message.link)
+                                       userid=message.userid, link=message.link,
+                                       buttons=message.buttons)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
@@ -207,7 +278,8 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             client: Telegram = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
-                                         userid=message.userid, link=message.link)
+                                         userid=message.userid, link=message.link,
+                                         buttons=message.buttons)
 
     def register_commands(self, commands: Dict[str, dict]):
         """
