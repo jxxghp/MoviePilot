@@ -109,7 +109,6 @@ class SystemHelper:
         try:
             # 检查容器是否配置了自动重启策略
             has_restart_policy = SystemHelper._check_restart_policy()
-            
             if has_restart_policy:
                 # 有重启策略，使用优雅退出方式
                 logger.info("检测到容器配置了自动重启策略，使用优雅重启方式...")
@@ -120,7 +119,6 @@ class SystemHelper:
                 # 没有重启策略，使用Docker API强制重启
                 logger.info("容器未配置自动重启策略，使用Docker API重启...")
                 return SystemHelper._docker_api_restart()
-                
         except Exception as err:
             logger.error(f"重启失败: {str(err)}")
             # 降级为Docker API重启
@@ -141,7 +139,6 @@ class SystemHelper:
             # 重启容器
             client.containers.get(container_id).restart()
             return True, ""
-
         except Exception as docker_err:
             return False, f"重启时发生错误：{str(docker_err)}"
 

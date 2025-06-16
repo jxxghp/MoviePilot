@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Union, Optional
 
@@ -42,10 +43,116 @@ class SystemChain(ChainBase):
                 "channel": channel.value,
                 "userid": userid
             }, self._restart_file)
+        # 主动备份一次插件
+        self.backup_plugins()
         # 设置停止标志，通知所有模块准备停止
         global_vars.stop_system()
         # 重启
         SystemHelper.restart()
+
+    @staticmethod
+    def backup_plugins():
+        """
+        备份插件到用户配置目录（仅docker环境）
+        """
+
+        # 非docker环境不处理
+        if not SystemUtils.is_docker():
+            return
+
+        try:
+            # 使用绝对路径确保准确性
+            plugins_dir = settings.ROOT_PATH / "app" / "plugins"
+            backup_dir = settings.CONFIG_PATH / "plugins_backup"
+
+            if not plugins_dir.exists():
+                logger.info("插件目录不存在，跳过备份")
+                return
+
+            # 确保备份目录存在
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+            # 需要排除的文件和目录
+            exclude_items = {"__init__.py", "__pycache__", ".DS_Store"}
+
+            # 遍历插件目录，备份除排除项外的所有内容
+            for item in plugins_dir.iterdir():
+                if item.name in exclude_items:
+                    continue
+
+                target_path = backup_dir / item.name
+
+                # 如果是目录
+                if item.is_dir():
+                    if target_path.exists():
+                        continue
+                    shutil.copytree(item, target_path)
+                    logger.info(f"已备份插件目录: {item.name}")
+                # 如果是文件
+                elif item.is_file():
+                    if target_path.exists():
+                        continue
+                    shutil.copy2(item, target_path)
+                    logger.info(f"已备份插件文件: {item.name}")
+
+            logger.info(f"插件备份完成，备份位置: {backup_dir}")
+
+        except Exception as e:
+            logger.error(f"插件备份失败: {str(e)}")
+
+    @staticmethod
+    def restore_plugins():
+        """
+        从备份恢复插件到app/plugins目录，恢复完成后删除备份（仅docker环境）
+        """
+
+        # 非docker环境不处理
+        if not SystemUtils.is_docker():
+            return
+
+        # 使用绝对路径确保准确性
+        plugins_dir = settings.ROOT_PATH / "app" / "plugins"
+        backup_dir = settings.CONFIG_PATH / "plugins_backup"
+
+        if not backup_dir.exists():
+            logger.info("插件备份目录不存在，跳过恢复")
+            return
+
+        # 系统被重置才恢复插件
+        if SystemHelper().is_system_reset():
+
+            # 确保插件目录存在
+            plugins_dir.mkdir(parents=True, exist_ok=True)
+
+            # 遍历备份目录，恢复所有内容
+            restored_count = 0
+            for item in backup_dir.iterdir():
+                target_path = plugins_dir / item.name
+                try:
+                    # 如果是目录，且目录内有内容
+                    if item.is_dir() and any(item.iterdir()):
+                        if target_path.exists():
+                            shutil.rmtree(target_path)
+                        shutil.copytree(item, target_path)
+                        logger.info(f"已恢复插件目录: {item.name}")
+                        restored_count += 1
+                    # 如果是文件
+                    elif item.is_file():
+                        shutil.copy2(item, target_path)
+                        logger.info(f"已恢复插件文件: {item.name}")
+                        restored_count += 1
+                except Exception as e:
+                    logger.error(f"恢复插件 {item.name} 时发生错误: {str(e)}")
+                    continue
+
+            logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
+
+        # 删除备份目录
+        try:
+            shutil.rmtree(backup_dir)
+            logger.info(f"已删除插件备份目录: {backup_dir}")
+        except Exception as e:
+            logger.warning(f"删除备份目录失败: {str(e)}")
 
     def __get_version_message(self) -> str:
         """
