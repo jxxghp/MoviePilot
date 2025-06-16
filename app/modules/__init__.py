@@ -210,8 +210,8 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         # 检查消息来源
         if message.source and message.source != source:
             return False
-        # 检查消息类型开关
-        if message.mtype:
+        # 不是定向发送时，检查消息类型开关
+        if not message.userid and message.mtype:
             conf = self.get_config(source)
             if conf:
                 switchs = conf.switchs or []
