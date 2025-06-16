@@ -126,7 +126,7 @@ class MessageChain(ChainBase):
 
     def handle_message(self, channel: MessageChannel, source: str,
                        userid: Union[str, int], username: str, text: str,
-                       original_message_id: Optional[int] = None,
+                       original_message_id: Optional[Union[str, int]] = None,
                        original_chat_id: Optional[str] = None) -> None:
         """
         识别消息内容，执行操作
@@ -502,7 +502,7 @@ class MessageChain(ChainBase):
 
     def _handle_callback(self, text: str, channel: MessageChannel, source: str,
                          userid: Union[str, int], username: str,
-                         original_message_id: Optional[int] = None,
+                         original_message_id: Optional[Union[str, int]] = None,
                          original_chat_id: Optional[str] = None) -> None:
         """
         处理按钮回调
@@ -554,7 +554,7 @@ class MessageChain(ChainBase):
             logger.info(f"未知的回调数据：{callback_data}")
 
     def _handle_page_callback(self, callback_data: str, channel: MessageChannel, source: str,
-                              userid: Union[str, int], original_message_id: Optional[int],
+                              userid: Union[str, int], original_message_id: Optional[Union[str, int]],
                               original_chat_id: Optional[str]):
         """
         处理翻页回调
@@ -669,7 +669,7 @@ class MessageChain(ChainBase):
 
     def __post_medias_message(self, channel: MessageChannel, source: str,
                               title: str, items: list, userid: str, total: int,
-                              original_message_id: Optional[int] = None,
+                              original_message_id: Optional[Union[str, int]] = None,
                               original_chat_id: Optional[str] = None):
         """
         发送媒体列表消息
@@ -758,7 +758,7 @@ class MessageChain(ChainBase):
 
     def __post_torrents_message(self, channel: MessageChannel, source: str,
                                 title: str, items: list, userid: str, total: int,
-                                original_message_id: Optional[int] = None,
+                                original_message_id: Optional[Union[str, int]] = None,
                                 original_chat_id: Optional[str] = None):
         """
         发送种子列表消息

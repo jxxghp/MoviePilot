@@ -52,7 +52,7 @@ class Slack:
             with requests.post(self._ds_url, json=message, timeout=10) as local_res:
                 logger.debug("message: %s processed, response is: %s" % (message, local_res.text))
 
-        @slack_app.action(re.compile(r"actionId-\d+"))
+        @slack_app.action(re.compile(r"actionId-.*"))
         def slack_action(ack, body):
             ack()
             with requests.post(self._ds_url, json=body, timeout=60) as local_res:
@@ -258,67 +258,95 @@ class Slack:
                     "type": "divider"
                 })
                 index = 1
-                for media in medias:
-                    if media.get_poster_image():
-                        if media.vote_star:
-                            text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                   f"\n类型：{media.type.value}" \
-                                   f"\n{media.vote_star}" \
-                                   f"\n{media.get_overview_string(50)}"
-                        else:
-                            text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                   f"\n类型：{media.type.value}" \
-                                   f"\n{media.get_overview_string(50)}"
-                        blocks.append(
-                            {
-                                "type": "section",
-                                "text": {
-                                    "type": "mrkdwn",
-                                    "text": text
-                                },
-                                "accessory": {
-                                    "type": "image",
-                                    "image_url": f"{media.get_poster_image()}",
-                                    "alt_text": f"{media.title_year}"
+                
+                # 如果有自定义按钮，先添加所有媒体项，然后添加统一的按钮
+                if buttons:
+                    # 添加媒体列表（不带单独的选择按钮）
+                    for media in medias:
+                        if media.get_poster_image():
+                            if media.vote_star:
+                                text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
+                                       f"\n类型：{media.type.value}" \
+                                       f"\n{media.vote_star}" \
+                                       f"\n{media.get_overview_string(50)}"
+                            else:
+                                text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
+                                       f"\n类型：{media.type.value}" \
+                                       f"\n{media.get_overview_string(50)}"
+                            blocks.append(
+                                {
+                                    "type": "section",
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": text
+                                    },
+                                    "accessory": {
+                                        "type": "image",
+                                        "image_url": f"{media.get_poster_image()}",
+                                        "alt_text": f"{media.title_year}"
+                                    }
                                 }
-                            }
-                        )
-                        # 如果有自定义按钮，使用自定义按钮，否则使用默认选择按钮
-                        if buttons:
-                            # 使用自定义按钮（通常来自MessageChain的智能生成）
-                            for button_row in buttons:
-                                elements = []
-                                for button in button_row:
-                                    if "url" in button:
-                                        elements.append({
-                                            "type": "button",
-                                            "text": {
-                                                "type": "plain_text",
-                                                "text": button["text"],
-                                                "emoji": True
-                                            },
-                                            "url": button["url"],
-                                            "action_id": f"actionId-url-{len(elements)}"
-                                        })
-                                    else:
-                                        elements.append({
-                                            "type": "button",
-                                            "text": {
-                                                "type": "plain_text",
-                                                "text": button["text"],
-                                                "emoji": True
-                                            },
-                                            "value": button["callback_data"],
-                                            "action_id": f"actionId-{button['callback_data']}"
-                                        })
-                                if elements:
-                                    blocks.append({
-                                        "type": "actions",
-                                        "elements": elements
-                                    })
-                            # 只为第一个媒体项添加按钮，避免重复
-                            buttons = None
-                        else:
+                            )
+                            index += 1
+                    
+                    # 添加统一的自定义按钮（在所有媒体项之后）
+                    for button_row in buttons:
+                        elements = []
+                        for button in button_row:
+                            if "url" in button:
+                                elements.append({
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": button["text"],
+                                        "emoji": True
+                                    },
+                                    "url": button["url"],
+                                    "action_id": f"actionId-url-{len(elements)}"
+                                })
+                            else:
+                                elements.append({
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": button["text"],
+                                        "emoji": True
+                                    },
+                                    "value": button["callback_data"],
+                                    "action_id": f"actionId-{button['callback_data']}"
+                                })
+                        if elements:
+                            blocks.append({
+                                "type": "actions",
+                                "elements": elements
+                            })
+                else:
+                    # 使用默认的每个媒体项单独按钮
+                    for media in medias:
+                        if media.get_poster_image():
+                            if media.vote_star:
+                                text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
+                                       f"\n类型：{media.type.value}" \
+                                       f"\n{media.vote_star}" \
+                                       f"\n{media.get_overview_string(50)}"
+                            else:
+                                text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
+                                       f"\n类型：{media.type.value}" \
+                                       f"\n{media.get_overview_string(50)}"
+                            blocks.append(
+                                {
+                                    "type": "section",
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": text
+                                    },
+                                    "accessory": {
+                                        "type": "image",
+                                        "image_url": f"{media.get_poster_image()}",
+                                        "alt_text": f"{media.title_year}"
+                                    }
+                                }
+                            )
                             # 使用默认选择按钮
                             blocks.append(
                                 {
@@ -337,7 +365,7 @@ class Slack:
                                     ]
                                 }
                             )
-                        index += 1
+                            index += 1
             
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
