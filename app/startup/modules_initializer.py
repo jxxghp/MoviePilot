@@ -6,6 +6,7 @@ from app.core.module import ModuleManager
 from app.log import logger
 from app.utils.system import SystemUtils
 from app.command import CommandChain
+from app.db.site_oper import SiteOper
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -105,6 +106,28 @@ def check_auth():
         )
 
 
+def auto_merge_duplicate_sites():
+    """
+    自动合并重复站点
+    """
+    try:
+        logger.info("正在检测并自动合并重复站点...")
+        site_oper = SiteOper()
+        duplicates = site_oper.find_duplicate_sites()
+
+        if duplicates:
+            logger.info(f"发现 {len(duplicates)} 组重复站点，开始自动合并...")
+            success, message = site_oper.merge_duplicate_sites()
+            if success:
+                logger.info(f"自动合并重复站点成功: {message}")
+            else:
+                logger.error(f"自动合并重复站点失败: {message}")
+        else:
+            logger.info("未发现重复站点，无需合并")
+    except Exception as e:
+        logger.error(f"自动合并重复站点时发生错误: {str(e)}")
+
+
 def stop_modules():
     """
     服务关闭
@@ -149,3 +172,5 @@ def init_modules():
     start_frontend()
     # 检查认证状态
     check_auth()
+    # 自动合并重复站点
+    auto_merge_duplicate_sites()

@@ -22,6 +22,7 @@ from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.sites import SitesHelper
+from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
@@ -31,10 +32,23 @@ router = APIRouter()
 
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
 def read_sites(db: Session = Depends(get_db),
+               auto_merge: bool = True,
                _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> List[dict]:
     """
     获取站点列表
+    :param auto_merge: 是否自动合并重复站点（默认启用）
     """
+    # 默认启用自动合并，先检测并合并重复站点
+    if auto_merge:
+        try:
+            site_oper = SiteOper()
+            duplicates = site_oper.find_duplicate_sites()
+            if duplicates:
+                success, message = site_oper.merge_duplicate_sites()
+                logger.info(f"自动合并重复站点: {message}" if success else f"自动合并重复站点失败: {message}")
+        except Exception as e:
+            logger.error(f"自动合并重复站点时发生错误: {str(e)}")
+
     return Site.list_order_by_pri(db)
 
 
@@ -409,6 +423,35 @@ def site_mapping(_: User = Depends(get_current_active_superuser)):
         return schemas.Response(success=True, data=mapping)
     except Exception as e:
         return schemas.Response(success=False, message=f"获取映射失败：{str(e)}")
+
+
+@router.get("/duplicates", summary="检测重复站点", response_model=schemas.Response)
+def find_duplicate_sites(_: User = Depends(get_current_active_superuser)):
+    """
+    检测数据库中的重复站点（同一站点的不同域名）
+    """
+    try:
+        duplicates = SiteOper().find_duplicate_sites()
+        return schemas.Response(success=True, data=duplicates)
+    except Exception as e:
+        return schemas.Response(success=False, message=f"检测重复站点失败：{str(e)}")
+
+
+@router.post("/merge-duplicates", summary="合并重复站点", response_model=schemas.Response)
+def merge_duplicate_sites(
+    keep_domain: Optional[str] = None,
+    _: User = Depends(get_current_active_superuser)
+):
+    """
+    合并重复的站点
+
+    :param keep_domain: 要保留的域名，如果为None则保留最后更新的
+    """
+    try:
+        success, message = SiteOper().merge_duplicate_sites(keep_domain)
+        return schemas.Response(success=success, message=message)
+    except Exception as e:
+        return schemas.Response(success=False, message=f"合并重复站点失败：{str(e)}")
 
 
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
