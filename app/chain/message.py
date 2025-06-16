@@ -115,18 +115,18 @@ class MessageChain(ChainBase):
         if not text:
             logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return
-            
+
         # 获取原消息ID信息
         original_message_id = info.message_id
         original_chat_id = info.chat_id
-            
+
         # 处理消息
         self.handle_message(channel=channel, source=source, userid=userid, username=username, text=text,
-                          original_message_id=original_message_id, original_chat_id=original_chat_id)
+                            original_message_id=original_message_id, original_chat_id=original_chat_id)
 
     def handle_message(self, channel: MessageChannel, source: str,
                        userid: Union[str, int], username: str, text: str,
-                       original_message_id: Optional[int] = None,
+                       original_message_id: Optional[Union[str, int]] = None,
                        original_chat_id: Optional[str] = None) -> None:
         """
         识别消息内容，执行操作
@@ -158,7 +158,9 @@ class MessageChain(ChainBase):
         if text.startswith('CALLBACK:'):
             # 处理按钮回调（适配支持回调的渠道）
             if ChannelCapabilityManager.supports_callbacks(channel):
-                self._handle_callback(text, channel, source, userid, username, original_message_id, original_chat_id)
+                self._handle_callback(text=text, channel=channel, source=source,
+                                      userid=userid, username=username,
+                                      original_message_id=original_message_id, original_chat_id=original_chat_id)
             else:
                 logger.warning(f"渠道 {channel.value} 不支持回调，但收到了回调消息：{text}")
         elif text.startswith('/'):
@@ -502,7 +504,7 @@ class MessageChain(ChainBase):
 
     def _handle_callback(self, text: str, channel: MessageChannel, source: str,
                          userid: Union[str, int], username: str,
-                         original_message_id: Optional[int] = None,
+                         original_message_id: Optional[Union[str, int]] = None,
                          original_chat_id: Optional[str] = None) -> None:
         """
         处理按钮回调
@@ -533,28 +535,36 @@ class MessageChain(ChainBase):
         # 解析系统回调数据
         if callback_data.startswith("page_"):
             # 翻页操作
-            self._handle_page_callback(callback_data, channel, source, userid, original_message_id, original_chat_id)
+            self._handle_page_callback(callback_data=callback_data, channel=channel,
+                                       source=source, userid=userid,
+                                       original_message_id=original_message_id, original_chat_id=original_chat_id)
         elif callback_data.startswith("select_"):
             # 选择操作或翻页操作
             if callback_data in ["select_p", "select_n"]:
                 # 翻页操作
                 page_text = callback_data.split("_")[1]  # 提取 "p" 或 "n"
-                self.handle_message(channel, source, userid, username, page_text, original_message_id, original_chat_id)
+                self.handle_message(channel=channel, source=source,
+                                    userid=userid, username=username,
+                                    text=page_text,
+                                    original_message_id=original_message_id, original_chat_id=original_chat_id)
             else:
                 # 选择操作
-                self._handle_select_callback(callback_data, channel, source, userid, username)
+                self._handle_select_callback(callback_data=callback_data, channel=channel,
+                                             source=source, userid=userid, username=username)
         elif callback_data.startswith("download_"):
             # 下载操作
-            self._handle_download_callback(callback_data, channel, source, userid, username)
+            self._handle_download_callback(callback_data=callback_data, channel=channel,
+                                           source=source, userid=userid, username=username)
         elif callback_data.startswith("subscribe_"):
             # 订阅操作
-            self._handle_subscribe_callback(callback_data, channel, source, userid, username)
+            self._handle_subscribe_callback(callback_data=callback_data, channel=channel,
+                                            source=source, userid=userid, username=username)
         else:
             # 其他自定义回调
             logger.info(f"未知的回调数据：{callback_data}")
 
     def _handle_page_callback(self, callback_data: str, channel: MessageChannel, source: str,
-                              userid: Union[str, int], original_message_id: Optional[int],
+                              userid: Union[str, int], original_message_id: Optional[Union[str, int]],
                               original_chat_id: Optional[str]):
         """
         处理翻页回调
@@ -568,11 +578,14 @@ class MessageChain(ChainBase):
             # 判断是上一页还是下一页
             if page < _current_page:
                 # 上一页，调用原来的 "p" 逻辑
-                self.handle_message(channel, source, userid, "", "p", original_message_id, original_chat_id)
+                self.handle_message(channel=channel, source=source, userid=userid,
+                                    username="", text="p",
+                                    original_message_id=original_message_id, original_chat_id=original_chat_id)
             elif page > _current_page:
                 # 下一页，调用原来的 "n" 逻辑  
-                self.handle_message(channel, source, userid, "", "n", original_message_id, original_chat_id)
-            # 如果 page == _current_page，说明是当前页，不需要处理
+                self.handle_message(channel=channel, source=source, userid=userid,
+                                    username="", text="n",
+                                    original_message_id=original_message_id, original_chat_id=original_chat_id)
 
         except (ValueError, IndexError) as e:
             logger.error(f"处理翻页回调失败：{e}")
@@ -585,7 +598,7 @@ class MessageChain(ChainBase):
         try:
             index = int(callback_data.split("_")[1])
             # 调用原有的数字选择逻辑
-            self.handle_message(channel, source, userid, username, str(index + 1))
+            self.handle_message(channel=channel, source=source, userid=userid, username=username, text=str(index + 1))
         except (ValueError, IndexError) as e:
             logger.error(f"处理选择回调失败：{e}")
 
@@ -597,10 +610,11 @@ class MessageChain(ChainBase):
         try:
             if callback_data == "download_auto":
                 # 自动选择下载
-                self.handle_message(channel, source, userid, username, "0")
+                self.handle_message(channel=channel, source=source, userid=userid, username=username, text="0")
             else:
                 index = int(callback_data.split("_")[1])
-                self.handle_message(channel, source, userid, username, str(index + 1))
+                self.handle_message(channel=channel, source=source, userid=userid, username=username,
+                                    text=str(index + 1))
         except (ValueError, IndexError) as e:
             logger.error(f"处理下载回调失败：{e}")
 
@@ -611,7 +625,7 @@ class MessageChain(ChainBase):
         """
         try:
             index = int(callback_data.split("_")[1])
-            self.handle_message(channel, source, userid, username, str(index + 1))
+            self.handle_message(channel=channel, source=source, userid=userid, username=username, text=str(index + 1))
         except (ValueError, IndexError) as e:
             logger.error(f"处理订阅回调失败：{e}")
 
@@ -669,7 +683,7 @@ class MessageChain(ChainBase):
 
     def __post_medias_message(self, channel: MessageChannel, source: str,
                               title: str, items: list, userid: str, total: int,
-                              original_message_id: Optional[int] = None,
+                              original_message_id: Optional[Union[str, int]] = None,
                               original_chat_id: Optional[str] = None):
         """
         发送媒体列表消息
@@ -684,7 +698,7 @@ class MessageChain(ChainBase):
             else:
                 title = f"【{title}】共找到{total}条相关信息，请选择操作"
 
-            buttons = self._create_media_buttons(channel, items, total)
+            buttons = self._create_media_buttons(channel=channel, items=items, total=total)
         else:
             # 不支持按钮的渠道，使用文本提示
             if total > self._page_size:
@@ -719,13 +733,13 @@ class MessageChain(ChainBase):
         current_row = []
         for i in range(len(items)):
             media = items[i]
-            
+
             if max_per_row == 1:
                 # 每行一个按钮，使用完整文本
                 button_text = f"{i + 1}. {media.title_year}"
                 if len(button_text) > max_text_length:
                     button_text = button_text[:max_text_length - 3] + "..."
-                
+
                 buttons.append([{
                     "text": button_text,
                     "callback_data": f"select_{_current_page * self._page_size + i}"
@@ -733,12 +747,12 @@ class MessageChain(ChainBase):
             else:
                 # 多按钮一行的情况，使用简化文本
                 button_text = f"{i + 1}"
-                
+
                 current_row.append({
                     "text": button_text,
                     "callback_data": f"select_{_current_page * self._page_size + i}"
                 })
-                
+
                 # 如果当前行已满或者是最后一个按钮，添加到按钮列表
                 if len(current_row) == max_per_row or i == len(items) - 1:
                     buttons.append(current_row)
@@ -758,7 +772,7 @@ class MessageChain(ChainBase):
 
     def __post_torrents_message(self, channel: MessageChannel, source: str,
                                 title: str, items: list, userid: str, total: int,
-                                original_message_id: Optional[int] = None,
+                                original_message_id: Optional[Union[str, int]] = None,
                                 original_chat_id: Optional[str] = None):
         """
         发送种子列表消息
@@ -773,7 +787,7 @@ class MessageChain(ChainBase):
             else:
                 title = f"【{title}】共找到{total}条相关资源，请选择下载"
 
-            buttons = self._create_torrent_buttons(channel, items, total)
+            buttons = self._create_torrent_buttons(channel=channel, items=items, total=total)
         else:
             # 不支持按钮的渠道，使用文本提示
             if total > self._page_size:
@@ -820,7 +834,7 @@ class MessageChain(ChainBase):
                 button_text = f"{i + 1}. {torrent.site_name} - {torrent.seeders}↑"
                 if len(button_text) > max_text_length:
                     button_text = button_text[:max_text_length - 3] + "..."
-                
+
                 buttons.append([{
                     "text": button_text,
                     "callback_data": f"download_{_current_page * self._page_size + i}"
@@ -828,12 +842,12 @@ class MessageChain(ChainBase):
             else:
                 # 多按钮一行的情况，使用简化文本
                 button_text = f"{i + 1}"
-                
+
                 current_row.append({
                     "text": button_text,
                     "callback_data": f"download_{_current_page * self._page_size + i}"
                 })
-                
+
                 # 如果当前行已满或者是最后一个按钮，添加到按钮列表
                 if len(current_row) == max_per_row or i == len(items) - 1:
                     buttons.append(current_row)

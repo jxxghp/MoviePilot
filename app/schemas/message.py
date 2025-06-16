@@ -30,7 +30,7 @@ class CommingMessage(BaseModel):
     # 回调数据
     callback_data: Optional[str] = None
     # 消息ID（用于回调时定位原消息）
-    message_id: Optional[int] = None
+    message_id: Optional[Union[str, int]] = None
     # 聊天ID（用于回调时定位聊天）
     chat_id: Optional[str] = None
     # 完整的回调查询信息（原始数据）
@@ -80,7 +80,7 @@ class Notification(BaseModel):
     # 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
     buttons: Optional[List[List[dict]]] = None
     # 原消息ID，用于编辑消息
-    original_message_id: Optional[int] = None
+    original_message_id: Optional[Union[str, int]] = None
     # 原消息的聊天ID，用于编辑消息
     original_chat_id: Optional[str] = None
 
