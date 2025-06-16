@@ -124,6 +124,8 @@ class ConfigModel(BaseModel):
     ALIPAN_APP_ID: str = "ac1bf04dc9fd4d9aaabb65b4a668d403"
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
+    # 电视剧动漫的分类genre_ids
+    ANIME_GENREIDS: List[int] = Field(default=[16])
     # 用户认证站点
     AUTH_SITE: str = ""
     # 重启自动升级
