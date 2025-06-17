@@ -399,7 +399,6 @@ class SubscribeChain(ChainBase):
                     downloads, lefts = DownloadChain().batch_download(
                         contexts=matched_contexts,
                         no_exists=no_exists,
-                        userid=subscribe.username,
                         username=subscribe.username,
                         save_path=subscribe.save_path,
                         downloader=subscribe.downloader,
@@ -789,7 +788,6 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
                 downloads, lefts = DownloadChain().batch_download(contexts=_match_context,
                                                                   no_exists=no_exists,
-                                                                  userid=subscribe.username,
                                                                   username=subscribe.username,
                                                                   save_path=subscribe.save_path,
                                                                   downloader=subscribe.downloader,
