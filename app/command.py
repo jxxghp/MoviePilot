@@ -9,7 +9,6 @@ from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
-from app.core.config import settings
 from app.core.event import Event as ManagerEvent, eventmanager, Event
 from app.core.plugin import PluginManager
 from app.helper.message import MessageHelper
@@ -162,10 +161,6 @@ class Command(metaclass=Singleton):
         """
         初始化菜单命令
         """
-        if settings.DEV:
-            logger.debug("Development mode active. Skipping command initialization.")
-            return
-
         # 使用线程池提交后台任务，避免引起阻塞
         ThreadHelper().submit(self.__init_commands_background, pid)
 
