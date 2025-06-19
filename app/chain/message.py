@@ -742,7 +742,7 @@ class MessageChain(ChainBase):
 
                 buttons.append([{
                     "text": button_text,
-                    "callback_data": f"select_{_current_page * self._page_size + i}"
+                    "callback_data": f"select_{i}"
                 }])
             else:
                 # 多按钮一行的情况，使用简化文本
@@ -750,7 +750,7 @@ class MessageChain(ChainBase):
 
                 current_row.append({
                     "text": button_text,
-                    "callback_data": f"select_{_current_page * self._page_size + i}"
+                    "callback_data": f"select_{i}"
                 })
 
                 # 如果当前行已满或者是最后一个按钮，添加到按钮列表
@@ -837,7 +837,7 @@ class MessageChain(ChainBase):
 
                 buttons.append([{
                     "text": button_text,
-                    "callback_data": f"download_{_current_page * self._page_size + i}"
+                    "callback_data": f"download_{i}"
                 }])
             else:
                 # 多按钮一行的情况，使用简化文本
@@ -845,7 +845,7 @@ class MessageChain(ChainBase):
 
                 current_row.append({
                     "text": button_text,
-                    "callback_data": f"download_{_current_page * self._page_size + i}"
+                    "callback_data": f"download_{i}"
                 })
 
                 # 如果当前行已满或者是最后一个按钮，添加到按钮列表
