@@ -133,10 +133,10 @@ class MessageChain(ChainBase):
         """
         # 申明全局变量
         global _current_page, _current_meta, _current_media
-        # 加载缓存
-        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
         # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
+        # 加载缓存
+        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
         # 保存消息
         if not text.startswith('CALLBACK:'):
             self.messagehelper.put(
@@ -272,6 +272,8 @@ class MessageChain(ChainBase):
                         "type": "Torrent",
                         "items": contexts
                     }
+                    # 保存缓存
+                    self.save_cache(user_cache, self._cache_file)
                     # 发送种子数据
                     logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
                     self.__post_torrents_message(channel=channel,
@@ -467,10 +469,12 @@ class MessageChain(ChainBase):
                 logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
                 # 记录当前状态
                 _current_meta = meta
+                # 保存缓存
                 user_cache[userid] = {
                     'type': action,
                     'items': medias
                 }
+                self.save_cache(user_cache, self._cache_file)
                 _current_page = 0
                 _current_media = None
                 # 发送媒体列表
@@ -492,15 +496,6 @@ class MessageChain(ChainBase):
                         "source": source
                     }
                 )
-
-        # 保存缓存
-        self.save_cache(user_cache, self._cache_file)
-
-        # 清理内存
-        user_cache.clear()
-        del user_cache
-
-        gc.collect()
 
     def _handle_callback(self, text: str, channel: MessageChannel, source: str,
                          userid: Union[str, int], username: str,
