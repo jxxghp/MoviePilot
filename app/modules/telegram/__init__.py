@@ -286,6 +286,29 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                                          original_message_id=message.original_message_id,
                                          original_chat_id=message.original_chat_id)
 
+    def delete_message(self, channel: MessageChannel, source: str,
+                       message_id: int, chat_id: Optional[int] = None) -> bool:
+        """
+        删除消息
+        :param channel: 消息渠道
+        :param source: 指定的消息源
+        :param message_id: 消息ID
+        :param chat_id: 聊天ID
+        :return: 删除是否成功
+        """
+        success = False
+        for conf in self.get_configs().values():
+            if channel != self._channel:
+                break
+            if source != conf.name:
+                continue
+            client: Telegram = self.get_instance(conf.name)
+            if client:
+                result = client.delete_msg(message_id=message_id, chat_id=chat_id)
+                if result:
+                    success = True
+        return success
+
     def register_commands(self, commands: Dict[str, dict]):
         """
         注册命令，实现这个函数接收系统可用的命令菜单

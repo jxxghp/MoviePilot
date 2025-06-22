@@ -22,7 +22,7 @@ from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem, TransferDirectoryConf
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType, MessageChannel
 from app.utils.object import ObjectUtils
 
 
@@ -640,6 +640,19 @@ class ChainBase(metaclass=ABCMeta):
         self.messageoper.add(**message.dict(), note=note_list)
         return self.messagequeue.send_message("post_torrents_message", message=message, torrents=torrents,
                                               immediately=True if message.userid else False)
+
+    def delete_message(self, channel: MessageChannel, source: str,
+                       message_id: Union[str, int], chat_id: Optional[Union[str, int]] = None) -> bool:
+        """
+        删除消息
+        :param channel: 消息渠道
+        :param source: 消息源（指定特定的消息模块）
+        :param message_id: 消息ID
+        :param chat_id: 聊天ID（如群组ID）
+        :return: 删除是否成功
+        """
+        return self.run_module("delete_message", channel=channel, source=source,
+                               message_id=message_id, chat_id=chat_id)
 
     def metadata_img(self, mediainfo: MediaInfo,
                      season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:

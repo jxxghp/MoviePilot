@@ -13,18 +13,16 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.string import StringUtils
 
-
 lock = Lock()
 
 
 class Slack:
-
     _client: WebClient = None
     _service: SocketModeHandler = None
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _channel = ""
 
-    def __init__(self, SLACK_OAUTH_TOKEN: Optional[str] = None, SLACK_APP_TOKEN: Optional[str] = None, 
+    def __init__(self, SLACK_OAUTH_TOKEN: Optional[str] = None, SLACK_APP_TOKEN: Optional[str] = None,
                  SLACK_CHANNEL: Optional[str] = None, **kwargs):
 
         if not SLACK_OAUTH_TOKEN or not SLACK_APP_TOKEN:
@@ -160,7 +158,7 @@ class Slack:
                                         "emoji": True
                                     },
                                     "url": button["url"],
-                                    "action_id": f"actionId-url-{len(elements)}"
+                                    "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
                                 })
                             else:
                                 # 回调按钮
@@ -197,7 +195,7 @@ class Slack:
                             }
                         ]
                     })
-            
+
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
                 # 编辑消息
@@ -258,7 +256,7 @@ class Slack:
                     "type": "divider"
                 })
                 index = 1
-                
+
                 # 如果有自定义按钮，先添加所有媒体项，然后添加统一的按钮
                 if buttons:
                     # 添加媒体列表（不带单独的选择按钮）
@@ -288,7 +286,7 @@ class Slack:
                                 }
                             )
                             index += 1
-                    
+
                     # 添加统一的自定义按钮（在所有媒体项之后）
                     for button_row in buttons:
                         elements = []
@@ -302,7 +300,7 @@ class Slack:
                                         "emoji": True
                                     },
                                     "url": button["url"],
-                                    "action_id": f"actionId-url-{len(elements)}"
+                                    "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
                                 })
                             else:
                                 elements.append({
@@ -366,7 +364,7 @@ class Slack:
                                 }
                             )
                             index += 1
-            
+
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
                 # 编辑消息
@@ -423,7 +421,7 @@ class Slack:
             }]
             # 列表
             index = 1
-            
+
             # 如果有自定义按钮，先添加种子列表，然后添加统一的按钮
             if buttons:
                 # 添加种子列表（不带单独的选择按钮）
@@ -433,9 +431,9 @@ class Slack:
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
-                            f"{meta.resource_term} " \
-                            f"{meta.video_term} " \
-                            f"{meta.release_group}"
+                                 f"{meta.resource_term} " \
+                                 f"{meta.video_term} " \
+                                 f"{meta.release_group}"
                     title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
@@ -453,7 +451,7 @@ class Slack:
                         }
                     )
                     index += 1
-                
+
                 # 添加统一的自定义按钮
                 for button_row in buttons:
                     elements = []
@@ -467,7 +465,7 @@ class Slack:
                                     "emoji": True
                                 },
                                 "url": button["url"],
-                                "action_id": f"actionId-url-{len(elements)}"
+                                "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
                             })
                         else:
                             elements.append({
@@ -493,9 +491,9 @@ class Slack:
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
-                            f"{meta.resource_term} " \
-                            f"{meta.video_term} " \
-                            f"{meta.release_group}"
+                                 f"{meta.resource_term} " \
+                                 f"{meta.video_term} " \
+                                 f"{meta.release_group}"
                     title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
@@ -530,7 +528,7 @@ class Slack:
                         }
                     )
                     index += 1
-            
+
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
                 # 编辑消息
@@ -550,6 +548,43 @@ class Slack:
             return True if result else False
         except Exception as msg_e:
             logger.error(f"Slack消息发送失败: {msg_e}")
+            return False
+
+    def delete_msg(self, message_id: str, chat_id: Optional[str] = None) -> Optional[bool]:
+        """
+        删除Slack消息
+        :param message_id: 消息时间戳（Slack消息ID）
+        :param chat_id: 频道ID
+        :return: 删除是否成功
+        """
+        if not self._client:
+            return None
+
+        try:
+            # 确定要删除消息的频道ID
+            if chat_id:
+                target_channel = chat_id
+            else:
+                target_channel = self.__find_public_channel()
+
+            if not target_channel:
+                logger.error("无法确定要删除消息的Slack频道")
+                return False
+
+            # 删除消息
+            result = self._client.chat_delete(
+                channel=target_channel,
+                ts=message_id
+            )
+
+            if result.get("ok"):
+                logger.info(f"成功删除Slack消息: channel={target_channel}, ts={message_id}")
+                return True
+            else:
+                logger.error(f"删除Slack消息失败: {result.get('error', 'unknown error')}")
+                return False
+        except Exception as e:
+            logger.error(f"删除Slack消息异常: {str(e)}")
             return False
 
     def __find_public_channel(self):

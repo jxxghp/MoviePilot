@@ -222,13 +222,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 # 使用CALLBACK前缀标识按钮回调
                 text = f"CALLBACK:{callback_data}"
                 username = msg_json.get("user", {}).get("name")
-                
+
                 # 获取原消息信息用于编辑
                 message_info = msg_json.get("message", {})
                 # Slack消息的时间戳作为消息ID
                 message_ts = message_info.get("ts")
                 channel_id = msg_json.get("channel", {}).get("id") or msg_json.get("container", {}).get("channel_id")
-                
+
                 logger.info(f"收到来自 {client_config.name} 的Slack按钮回调："
                             f"userid={userid}, username={username}, callback_data={callback_data}")
 
@@ -320,3 +320,26 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                                          userid=message.userid, buttons=message.buttons,
                                          original_message_id=message.original_message_id,
                                          original_chat_id=message.original_chat_id)
+
+    def delete_message(self, channel: MessageChannel, source: str,
+                       message_id: str, chat_id: Optional[str] = None) -> bool:
+        """
+        删除消息
+        :param channel: 消息渠道
+        :param source: 指定的消息源
+        :param message_id: 消息ID（Slack中为时间戳）
+        :param chat_id: 聊天ID（频道ID）
+        :return: 删除是否成功
+        """
+        success = False
+        for conf in self.get_configs().values():
+            if channel != self._channel:
+                break
+            if source != conf.name:
+                continue
+            client: Slack = self.get_instance(conf.name)
+            if client:
+                result = client.delete_msg(message_id=message_id, chat_id=chat_id)
+                if result:
+                    success = True
+        return success

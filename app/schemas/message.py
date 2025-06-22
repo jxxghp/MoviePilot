@@ -145,6 +145,8 @@ class ChannelCapability(Enum):
     MENU_COMMANDS = "menu_commands"
     # 支持消息编辑
     MESSAGE_EDITING = "message_editing"
+    # 支持消息删除
+    MESSAGE_DELETION = "message_deletion"
     # 支持回调查询
     CALLBACK_QUERIES = "callback_queries"
     # 支持富文本
@@ -182,6 +184,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.INLINE_BUTTONS,
                 ChannelCapability.MENU_COMMANDS,
                 ChannelCapability.MESSAGE_EDITING,
+                ChannelCapability.MESSAGE_DELETION,
                 ChannelCapability.CALLBACK_QUERIES,
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
@@ -205,6 +208,8 @@ class ChannelCapabilityManager:
             channel=MessageChannel.Slack,
             capabilities={
                 ChannelCapability.INLINE_BUTTONS,
+                ChannelCapability.MESSAGE_EDITING,
+                ChannelCapability.MESSAGE_DELETION,
                 ChannelCapability.CALLBACK_QUERIES,
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
@@ -289,6 +294,13 @@ class ChannelCapabilityManager:
         检查渠道是否支持消息编辑
         """
         return cls.supports_capability(channel, ChannelCapability.MESSAGE_EDITING)
+
+    @classmethod
+    def supports_deletion(cls, channel: MessageChannel) -> bool:
+        """
+        检查渠道是否支持消息删除
+        """
+        return cls.supports_capability(channel, ChannelCapability.MESSAGE_DELETION)
 
     @classmethod
     def get_max_buttons_per_row(cls, channel: MessageChannel) -> int:

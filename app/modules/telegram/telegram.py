@@ -336,6 +336,35 @@ class Telegram:
             logger.error(f"回应回调查询失败：{str(e)}")
             return False
 
+    def delete_msg(self, message_id: int, chat_id: Optional[int] = None) -> Optional[bool]:
+        """
+        删除Telegram消息
+        :param message_id: 消息ID
+        :param chat_id: 聊天ID
+        :return: 删除是否成功
+        """
+        if not self._telegram_token or not self._telegram_chat_id:
+            return None
+
+        try:
+            # 确定要删除消息的聊天ID
+            if chat_id:
+                target_chat_id = chat_id
+            else:
+                target_chat_id = self._telegram_chat_id
+
+            # 删除消息
+            result = self._bot.delete_message(chat_id=target_chat_id, message_id=int(message_id))
+            if result:
+                logger.info(f"成功删除Telegram消息: chat_id={target_chat_id}, message_id={message_id}")
+                return True
+            else:
+                logger.error(f"删除Telegram消息失败: chat_id={target_chat_id}, message_id={message_id}")
+                return False
+        except Exception as e:
+            logger.error(f"删除Telegram消息异常: {str(e)}")
+            return False
+
     def __edit_message(self, chat_id: str, message_id: int, text: str,
                        buttons: Optional[List[List[dict]]] = None,
                        image: Optional[str] = None) -> Optional[bool]:
@@ -352,7 +381,7 @@ class Telegram:
             return None
 
         try:
-            
+
             # 创建按钮键盘
             reply_markup = None
             if buttons:

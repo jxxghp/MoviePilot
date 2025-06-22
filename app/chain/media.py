@@ -506,7 +506,9 @@ class MediaChain(ChainBase):
                             # 根据图片类型检查开关
                             if 'poster' in image_name.lower():
                                 should_scrape = scraping_switchs.get('movie_poster', True)
-                            elif 'backdrop' in image_name.lower() or 'fanart' in image_name.lower():
+                            elif ('backdrop' in image_name.lower()
+                                  or 'fanart' in image_name.lower()
+                                  or 'background' in image_name.lower()):
                                 should_scrape = scraping_switchs.get('movie_backdrop', True)
                             elif 'logo' in image_name.lower():
                                 should_scrape = scraping_switchs.get('movie_logo', True)
@@ -700,7 +702,9 @@ class MediaChain(ChainBase):
                                 # 根据电视剧图片类型检查开关
                                 if 'poster' in image_name.lower():
                                     should_scrape = scraping_switchs.get('tv_poster', True)
-                                elif 'backdrop' in image_name.lower() or 'fanart' in image_name.lower():
+                                elif ('backdrop' in image_name.lower()
+                                      or 'fanart' in image_name.lower()
+                                      or 'background' in image_name.lower()):
                                     should_scrape = scraping_switchs.get('tv_backdrop', True)
                                 elif 'banner' in image_name.lower():
                                     should_scrape = scraping_switchs.get('tv_banner', True)
