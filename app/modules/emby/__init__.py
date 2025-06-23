@@ -29,6 +29,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         event_data: schemas.ConfigChangeEventData = event.event_data
         if event_data.key not in [SystemConfigKey.MediaServers.value]:
             return
+        logger.info("配置变更，重新初始化Emby模块...")
         self.init_module()
 
     @staticmethod

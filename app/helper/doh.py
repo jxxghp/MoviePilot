@@ -68,6 +68,7 @@ def enable_doh(enable: bool):
     else:
         socket.getaddrinfo = _orig_getaddrinfo
 
+
 class DohHelper(metaclass=Singleton):
     def __init__(self):
         enable_doh(settings.DOH_ENABLE)

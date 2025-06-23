@@ -19,7 +19,6 @@ from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -124,19 +123,8 @@ class PluginManager(metaclass=Singleton):
 
         # 已安装插件
         installed_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
-        # 扫描插件目录
-        if pid:
-            # 加载指定插件
-            plugins = ModuleHelper.load_with_pre_filter(
-                "app.plugins",
-                filter_func=lambda name, obj: check_module(obj) and name == pid
-            )
-        else:
-            # 加载已安装插件
-            plugins = ModuleHelper.load(
-                "app.plugins",
-                filter_func=lambda name, obj: check_module(obj) and name in installed_plugins
-            )
+        # 扫描插件目录，只加载符合条件的插件
+        plugins = self._load_selective_plugins(pid, installed_plugins, check_module)
         # 排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         for plugin in plugins:
@@ -216,6 +204,80 @@ class PluginManager(metaclass=Singleton):
             self._running_plugins = {}
         logger.info("插件停止完成")
 
+    @staticmethod
+    def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
+                                check_module_func: Callable) -> List[Any]:
+        """
+        选择性加载插件，只import符合条件的插件
+        :param pid: 指定插件ID，为空则加载所有已安装插件
+        :param installed_plugins: 已安装插件列表
+        :param check_module_func: 模块检查函数
+        :return: 插件类列表
+        """
+        import importlib
+
+        plugins = []
+        plugins_dir = settings.ROOT_PATH / "app" / "plugins"
+
+        if not plugins_dir.exists():
+            logger.warning(f"插件目录不存在：{plugins_dir}")
+            return plugins
+
+        # 确定需要加载的插件目录名称列表
+        if pid:
+            # 加载指定插件
+            target_plugins = [pid.lower()]
+        else:
+            # 加载已安装插件
+            target_plugins = [plugin_id.lower() for plugin_id in installed_plugins]
+
+        if not target_plugins:
+            logger.debug("没有需要加载的插件")
+            return plugins
+
+        # 扫描plugins目录
+        _loaded_modules = set()
+        for plugin_dir in plugins_dir.iterdir():
+            if not plugin_dir.is_dir() or plugin_dir.name.startswith('_'):
+                continue
+
+            # 检查是否是需要加载的插件
+            if plugin_dir.name not in target_plugins:
+                logger.debug(f"跳过插件目录：{plugin_dir.name}（不在加载列表中）")
+                continue
+
+            # 检查__init__.py是否存在
+            init_file = plugin_dir / "__init__.py"
+            if not init_file.exists():
+                logger.debug(f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）")
+                continue
+
+            try:
+                # 构建模块名
+                module_name = f"app.plugins.{plugin_dir.name}"
+                logger.debug(f"正在导入插件模块：{module_name}")
+
+                # 导入模块
+                module = importlib.import_module(module_name)
+                importlib.reload(module)
+
+                # 检查模块中的类
+                for name, obj in module.__dict__.items():
+                    if name.startswith('_') or not isinstance(obj, type):
+                        continue
+                    if name in _loaded_modules:
+                        continue
+                    if check_module_func(obj):
+                        _loaded_modules.add(name)
+                        plugins.append(obj)
+                        logger.debug(f"找到符合条件的插件类：{name}")
+                        break
+
+            except Exception as err:
+                logger.error(f"加载插件 {plugin_dir.name} 失败：{str(err)} - {traceback.format_exc()}")
+
+        return plugins
+
     @property
     def running_plugins(self) -> Dict[str, Any]:
         """
@@ -243,6 +305,7 @@ class PluginManager(metaclass=Singleton):
         event_data: schemas.ConfigChangeEventData = event.event_data
         if event_data.key not in ['DEV', 'PLUGIN_AUTO_RELOAD']:
             return
+        logger.info("配置变更，重新加载插件文件修改监测...")
         self.reload_monitor()
 
     def reload_monitor(self):
@@ -350,8 +413,7 @@ class PluginManager(metaclass=Singleton):
         # 确定需要安装的插件
         plugins_to_install = [
             plugin for plugin in online_plugins
-            if plugin.id in install_plugins
-            and not self.is_plugin_exists(plugin.id, plugin.plugin_version)
+            if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id, plugin.plugin_version)
         ]
 
         if not plugins_to_install:

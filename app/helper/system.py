@@ -32,6 +32,7 @@ class SystemHelper:
         if event_data.key not in ['DEBUG', 'LOG_LEVEL', 'LOG_MAX_FILE_SIZE', 'LOG_BACKUP_COUNT',
                                   'LOG_FILE_FORMAT', 'LOG_CONSOLE_FORMAT']:
             return
+        logger.info("配置变更，更新日志设置...")
         logger.update_loggers()
 
     @staticmethod

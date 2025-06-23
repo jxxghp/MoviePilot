@@ -68,6 +68,7 @@ class Scheduler(metaclass=Singleton):
         if event_data.key not in ['DEV', 'COOKIECLOUD_INTERVAL', 'MEDIASERVER_SYNC_INTERVAL', 'SUBSCRIBE_SEARCH',
                                   'SUBSCRIBE_MODE', 'SUBSCRIBE_RSS_INTERVAL', 'SITEDATA_REFRESH_INTERVAL']:
             return
+        logger.info(f"配置项 {event_data.key} 变更，重新初始化定时服务...")
         self.init()
 
     def init(self):

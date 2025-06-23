@@ -30,6 +30,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         event_data: schemas.ConfigChangeEventData = event.event_data
         if event_data.key not in [SystemConfigKey.MediaServers.value]:
             return
+        logger.info("配置变更，重新初始化Plex模块...")
         self.init_module()
 
     @staticmethod

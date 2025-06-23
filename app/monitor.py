@@ -91,6 +91,7 @@ class Monitor(metaclass=Singleton):
         event_data: ConfigChangeEventData = event.event_data
         if event_data.key not in [SystemConfigKey.Directories.value]:
             return
+        logger.info("配置变更事件触发，重新初始化目录监控...")
         self.init()
 
     def init(self):

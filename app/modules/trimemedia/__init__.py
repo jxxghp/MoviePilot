@@ -34,6 +34,7 @@ class TrimeMediaModule(_ModuleBase, _MediaServerBase[TrimeMedia]):
         event_data: schemas.ConfigChangeEventData = event.event_data
         if event_data.key not in [SystemConfigKey.MediaServers.value]:
             return
+        logger.info("配置变更，重新加载飞牛影视模块...")
         self.init_module()
 
     @staticmethod

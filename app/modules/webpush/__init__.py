@@ -31,6 +31,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         event_data: ConfigChangeEventData = event.event_data
         if event_data.key not in [SystemConfigKey.Notifications.value]:
             return
+        logger.info("配置变更，重新加载WebPush模块...")
         self.init_module()
 
     @staticmethod
