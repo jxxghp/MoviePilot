@@ -153,7 +153,7 @@ meta_cases = [{
         "part": "",
         "season": "S01",
         "episode": "E02",
-        "restype": "WEB-DL",
+        "restype": "B-Global WEB-DL",
         "pix": "1080p",
         "video_codec": "x264",
         "audio_codec": "AAC"
@@ -569,7 +569,7 @@ meta_cases = [{
         "part": "",
         "season": "S02",
         "episode": "E05",
-        "restype": "WEB-DL",
+        "restype": "Crunchyroll WEB-DL",
         "pix": "1080p",
         "video_codec": "x264",
         "audio_codec": "AAC"
@@ -649,7 +649,7 @@ meta_cases = [{
         "part": "",
         "season": "",
         "episode": "",
-        "restype": "WEBRip",
+        "restype": "Netflix WEBRip",
         "pix": "1080p",
         "video_codec": "H264",
         "audio_codec": "DDP 5.1"
@@ -681,7 +681,7 @@ meta_cases = [{
         "part": "",
         "season": "S01",
         "episode": "E16",
-        "restype": "WEB-DL",
+        "restype": "KKTV WEB-DL",
         "pix": "1080p",
         "video_codec": "x264",
         "audio_codec": "AAC"
@@ -921,7 +921,7 @@ meta_cases = [{
         "part": "",
         "season": "S06",
         "episode": "E06",
-        "restype": "WEBRip",
+        "restype": "Max WEBRip",
         "pix": "1080p",
         "video_codec": "x264",
         "audio_codec": "DD 5.1"
@@ -937,7 +937,7 @@ meta_cases = [{
         "part": "",
         "season": "S06",
         "episode": "E05",
-        "restype": "WEBRip",
+        "restype": "Max WEBRip",
         "pix": "1080p",
         "video_codec": "x264",
         "audio_codec": "DD 5.1"
@@ -969,7 +969,7 @@ meta_cases = [{
         "part": "",
         "season": "S02",
         "episode": "",
-        "restype": "WEB-DL",
+        "restype": "Netflix WEB-DL",
         "pix": "2160p",
         "video_codec": "H265",
         "audio_codec": "DDP 5.1 Atmos"
