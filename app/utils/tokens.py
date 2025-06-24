@@ -36,3 +36,7 @@ class Tokens:
             return None
         else:
             return self._tokens[index]
+
+    @property
+    def tokens(self):
+        return self._tokens

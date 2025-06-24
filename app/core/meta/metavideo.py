@@ -598,8 +598,8 @@ class MetaVideo(MetaBase):
 
         prev_token = None
         prev_idx = self._index - 2
-        if prev_idx >= 0 and prev_idx < len(self.tokens._tokens):
-            prev_token = self.tokens._tokens[prev_idx]
+        if 0 <= prev_idx < len(self.tokens.tokens):
+            prev_token = self.tokens.tokens[prev_idx]
 
         next_token = self.tokens.peek()
 
@@ -630,8 +630,8 @@ class MetaVideo(MetaBase):
         match_start_idx = self._index - query_range
         match_end_idx = self._index - 1
         start_index = max(0, match_start_idx - query_range)
-        end_index = min(len(self.tokens._tokens), match_end_idx + 1 + query_range)
-        tokens_to_check = self.tokens._tokens[start_index:end_index]
+        end_index = min(len(self.tokens.tokens), match_end_idx + 1 + query_range)
+        tokens_to_check = self.tokens.tokens[start_index:end_index]
 
         if any(tok and tok.upper() in web_tokens for tok in tokens_to_check):
             self.web_source = platform_name
