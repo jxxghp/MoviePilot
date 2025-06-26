@@ -75,12 +75,11 @@ class SubscribeHistory(Base):
     @staticmethod
     @db_query
     def list_by_type(db: Session, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
-        result = db.query(SubscribeHistory).filter(
+        return db.query(SubscribeHistory).filter(
             SubscribeHistory.type == mtype
         ).order_by(
             SubscribeHistory.date.desc()
         ).offset((page - 1) * count).limit(count).all()
-        return list(result)
 
     @staticmethod
     @db_query

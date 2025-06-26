@@ -1,8 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
 
-from app.utils.singleton import Singleton
 from app.core.config import settings
+from app.utils.singleton import Singleton
 
 
 class ThreadHelper(metaclass=Singleton):
@@ -28,6 +27,3 @@ class ThreadHelper(metaclass=Singleton):
         :return:
         """
         self.pool.shutdown()
-
-    def __del__(self):
-        self.shutdown()

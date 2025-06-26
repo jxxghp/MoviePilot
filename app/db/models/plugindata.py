@@ -16,8 +16,7 @@ class PluginData(Base):
     @staticmethod
     @db_query
     def get_plugin_data(db: Session, plugin_id: str):
-        result = db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()
-        return list(result)
+        return db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()
 
     @staticmethod
     @db_query
@@ -37,5 +36,4 @@ class PluginData(Base):
     @staticmethod
     @db_query
     def get_plugin_data_by_plugin_id(db: Session, plugin_id: str):
-        result = db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()
-        return list(result)
+        return db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()

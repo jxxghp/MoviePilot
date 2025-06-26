@@ -78,7 +78,3 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         if conf:
             conf.delete(self._db, conf.id)
         return True
-
-    def __del__(self):
-        if self._db:
-            self._db.close()

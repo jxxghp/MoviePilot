@@ -63,35 +63,33 @@ class TransferHistory(Base):
     @db_query
     def list_by_title(db: Session, title: str, page: Optional[int] = 1, count: Optional[int] = 30, status: bool = None):
         if status is not None:
-            result = db.query(TransferHistory).filter(
+            return db.query(TransferHistory).filter(
                 TransferHistory.status == status
             ).order_by(
                 TransferHistory.date.desc()
             ).offset((page - 1) * count).limit(count).all()
         else:
-            result = db.query(TransferHistory).filter(or_(
+            return db.query(TransferHistory).filter(or_(
                 TransferHistory.title.like(f'%{title}%'),
                 TransferHistory.src.like(f'%{title}%'),
                 TransferHistory.dest.like(f'%{title}%'),
             )).order_by(
                 TransferHistory.date.desc()
             ).offset((page - 1) * count).limit(count).all()
-        return list(result)
 
     @staticmethod
     @db_query
     def list_by_page(db: Session, page: Optional[int] = 1, count: Optional[int] = 30, status: bool = None):
         if status is not None:
-            result = db.query(TransferHistory).filter(
+            return db.query(TransferHistory).filter(
                 TransferHistory.status == status
             ).order_by(
                 TransferHistory.date.desc()
             ).offset((page - 1) * count).limit(count).all()
         else:
-            result = db.query(TransferHistory).order_by(
+            return db.query(TransferHistory).order_by(
                 TransferHistory.date.desc()
             ).offset((page - 1) * count).limit(count).all()
-        return list(result)
 
     @staticmethod
     @db_query
@@ -115,8 +113,7 @@ class TransferHistory(Base):
     @staticmethod
     @db_query
     def list_by_hash(db: Session, download_hash: str):
-        result = db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).all()
-        return list(result)
+        return db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).all()
 
     @staticmethod
     @db_query
@@ -128,8 +125,7 @@ class TransferHistory(Base):
                              TransferHistory.id.label('id')).filter(
             TransferHistory.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                                   time.localtime(time.time() - 86400 * days))).subquery()
-        result = db.query(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date).all()
-        return list(result)
+        return db.query(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date).all()
 
     @staticmethod
     @db_query
@@ -153,70 +149,67 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def list_by(db: Session, mtype: Optional[str] = None, title: Optional[str] = None, year: Optional[str] = None, season: Optional[str] = None,
+    def list_by(db: Session, mtype: Optional[str] = None, title: Optional[str] = None, year: Optional[str] = None,
+                season: Optional[str] = None,
                 episode: Optional[str] = None, tmdbid: Optional[int] = None, dest: Optional[str] = None):
         """
         据tmdbid、season、season_episode查询转移记录
         tmdbid + mtype 或 title + year 必输
         """
-        result = None
         # TMDBID + 类型
         if tmdbid and mtype:
             # 电视剧某季某集
             if season and episode:
-                result = db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
-                                                          TransferHistory.type == mtype,
-                                                          TransferHistory.seasons == season,
-                                                          TransferHistory.episodes == episode,
-                                                          TransferHistory.dest == dest).all()
+                return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                        TransferHistory.type == mtype,
+                                                        TransferHistory.seasons == season,
+                                                        TransferHistory.episodes == episode,
+                                                        TransferHistory.dest == dest).all()
             # 电视剧某季
             elif season:
-                result = db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
-                                                          TransferHistory.type == mtype,
-                                                          TransferHistory.seasons == season).all()
+                return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                        TransferHistory.type == mtype,
+                                                        TransferHistory.seasons == season).all()
             else:
                 if dest:
                     # 电影
-                    result = db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
-                                                              TransferHistory.type == mtype,
-                                                              TransferHistory.dest == dest).all()
+                    return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                            TransferHistory.type == mtype,
+                                                            TransferHistory.dest == dest).all()
                 else:
                     # 电视剧所有季集
-                    result = db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
-                                                              TransferHistory.type == mtype).all()
+                    return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                            TransferHistory.type == mtype).all()
         # 标题 + 年份
         elif title and year:
             # 电视剧某季某集
             if season and episode:
-                result = db.query(TransferHistory).filter(TransferHistory.title == title,
-                                                          TransferHistory.year == year,
-                                                          TransferHistory.seasons == season,
-                                                          TransferHistory.episodes == episode,
-                                                          TransferHistory.dest == dest).all()
+                return db.query(TransferHistory).filter(TransferHistory.title == title,
+                                                        TransferHistory.year == year,
+                                                        TransferHistory.seasons == season,
+                                                        TransferHistory.episodes == episode,
+                                                        TransferHistory.dest == dest).all()
             # 电视剧某季
             elif season:
-                result = db.query(TransferHistory).filter(TransferHistory.title == title,
-                                                          TransferHistory.year == year,
-                                                          TransferHistory.seasons == season).all()
+                return db.query(TransferHistory).filter(TransferHistory.title == title,
+                                                        TransferHistory.year == year,
+                                                        TransferHistory.seasons == season).all()
             else:
                 if dest:
                     # 电影
-                    result = db.query(TransferHistory).filter(TransferHistory.title == title,
-                                                              TransferHistory.year == year,
-                                                              TransferHistory.dest == dest).all()
+                    return db.query(TransferHistory).filter(TransferHistory.title == title,
+                                                            TransferHistory.year == year,
+                                                            TransferHistory.dest == dest).all()
                 else:
                     # 电视剧所有季集
-                    result = db.query(TransferHistory).filter(TransferHistory.title == title,
-                                                              TransferHistory.year == year).all()
+                    return db.query(TransferHistory).filter(TransferHistory.title == title,
+                                                            TransferHistory.year == year).all()
         # 类型 + 转移路径（emby webhook season无tmdbid场景）
         elif mtype and season and dest:
             # 电视剧某季
-            result = db.query(TransferHistory).filter(TransferHistory.type == mtype,
-                                                      TransferHistory.seasons == season,
-                                                      TransferHistory.dest.like(f"{dest}%")).all()
-
-        if result:
-            return list(result)
+            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
+                                                    TransferHistory.seasons == season,
+                                                    TransferHistory.dest.like(f"{dest}%")).all()
         return []
 
     @staticmethod

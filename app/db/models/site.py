@@ -62,20 +62,17 @@ class Site(Base):
     @staticmethod
     @db_query
     def get_actives(db: Session):
-        result = db.query(Site).filter(Site.is_active == 1).all()
-        return list(result)
+        return db.query(Site).filter(Site.is_active == 1).all()
 
     @staticmethod
     @db_query
     def list_order_by_pri(db: Session):
-        result = db.query(Site).order_by(Site.pri).all()
-        return list(result)
+        return db.query(Site).order_by(Site.pri).all()
 
     @staticmethod
     @db_query
     def get_domains_by_ids(db: Session, ids: list):
-        result = db.query(Site.domain).filter(Site.id.in_(ids)).all()
-        return [r[0] for r in result]
+        return [r[0] for r in db.query(Site.domain).filter(Site.id.in_(ids)).all()]
 
     @staticmethod
     @db_update

@@ -50,10 +50,6 @@ class UserConfigOper(DbOper, metaclass=Singleton):
             return self.__get_config_caches(username=username)
         return self.__get_config_cache(username=username, key=key)
 
-    def __del__(self):
-        if self._db:
-            self._db.close()
-
     def __set_config_cache(self, username: str, key: str, value: Any):
         """
         设置配置缓存
