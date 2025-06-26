@@ -14,11 +14,6 @@ urllib3.disable_warnings(InsecureRequestWarning)
 
 
 class RequestUtils:
-    _headers: dict = None
-    _cookies: Union[str, dict] = None
-    _proxies: dict = None
-    _timeout: int = 20
-    _session: Session = None
 
     def __init__(self,
                  headers: dict = None,
@@ -30,6 +25,9 @@ class RequestUtils:
                  referer: str = None,
                  content_type: str = None,
                  accept_type: str = None):
+        self._proxies = proxies
+        self._session = session
+        self._timeout = timeout or 20
         if not content_type:
             content_type = "application/x-www-form-urlencoded; charset=UTF-8"
         if headers:
@@ -46,12 +44,8 @@ class RequestUtils:
                 self._cookies = self.cookie_parse(cookies)
             else:
                 self._cookies = cookies
-        if proxies:
-            self._proxies = proxies
-        if session:
-            self._session = session
-        if timeout:
-            self._timeout = timeout
+        else:
+            self._cookies = None
 
     def request(self, method: str, url: str, raise_exception: bool = False, **kwargs) -> Optional[Response]:
         """
