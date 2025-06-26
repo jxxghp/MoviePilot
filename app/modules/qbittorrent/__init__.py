@@ -182,6 +182,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
                 finally:
                     torrents.clear()
+                    del torrents
             return None, None, None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
@@ -211,6 +212,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                                 sucess_epidised = list(set(sucess_epidised).union(set(meta_info.episode_list)))
                     finally:
                         torrent_files.clear()
+                        del torrent_files
                     if sucess_epidised and file_ids:
                         # 选择文件
                         server.set_files(torrent_hash=torrent_hash, file_ids=file_ids, priority=0)
@@ -269,6 +271,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         ))
                 finally:
                     torrents.clear()
+                    del torrents
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
             for name, server in servers.items():
@@ -293,6 +296,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         ))
                 finally:
                     torrents.clear()
+                    del torrents
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
             for name, server in servers.items():
@@ -319,6 +323,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         ))
                 finally:
                     torrents.clear()
+                    del torrents
         else:
             return None
         return ret_torrents # noqa

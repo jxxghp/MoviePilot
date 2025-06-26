@@ -864,6 +864,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     self.transfer_completed(hashs=torrent.hash, downloader=torrent.downloader)
             finally:
                 torrents.clear()
+                del torrents
 
             # 结束
             logger.info("所有下载器中下载完成的文件已整理完成")
@@ -1144,6 +1145,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     transfer_tasks.append(transfer_task)
         finally:
             file_items.clear()
+            del file_items
 
         # 实时整理
         if transfer_tasks:
@@ -1187,6 +1189,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         processed_num += 1
             finally:
                 transfer_tasks.clear()
+                del transfer_tasks
 
             # 整理结束
             __end_msg = f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"

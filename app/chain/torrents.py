@@ -131,6 +131,7 @@ class TorrentsChain(ChainBase):
                 ret_torrents.append(torrentinfo)
         finally:
             rss_items.clear()
+            del rss_items
         return ret_torrents
 
     def refresh(self, stype: Optional[str] = None, sites: List[int] = None) -> Dict[str, List[Context]]:
@@ -220,6 +221,7 @@ class TorrentsChain(ChainBase):
                             torrents_cache[domain] = torrents_cache[domain][-settings.CONF["torrents"]:]
                 finally:
                     torrents.clear()
+                    del torrents
             else:
                 logger.info(f'{indexer.get("name")} 没有获取到种子')
 

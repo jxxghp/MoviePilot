@@ -184,6 +184,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
                 finally:
                     torrents.clear()
+                    del torrents
             return None, None, None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
@@ -215,6 +216,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                     server.start_torrents(torrent_hash)
                 finally:
                     torrent_files.clear()
+                    del torrent_files
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
             else:
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
@@ -255,6 +257,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                         ))
                 finally:
                     torrents.clear()
+                    del torrents
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
             for name, server in servers.items():
@@ -281,6 +284,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                         ))
                 finally:
                     torrents.clear()
+                    del torrents
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
             for name, server in servers.items():
@@ -306,6 +310,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                         ))
                 finally:
                     torrents.clear()
+                    del torrents
         else:
             return None
         return ret_torrents # noqa

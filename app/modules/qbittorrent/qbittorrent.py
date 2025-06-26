@@ -105,6 +105,7 @@ class Qbittorrent:
                             results.append(torrent)
                 finally:
                     torrents.clear()
+                    del torrents
                 return results, False
             return torrents or [], False
         except Exception as err:

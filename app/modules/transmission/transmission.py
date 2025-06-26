@@ -106,6 +106,7 @@ class Transmission:
                 ret_torrents.append(torrent)
         finally:
             torrents.clear()
+            del torrents
         return ret_torrents, False
 
     def get_completed_torrents(self, ids: Union[str, list] = None,

@@ -264,7 +264,9 @@ class SearchChain(ChainBase):
                                 meta_info=t[1]) for t in _match_torrents]
         finally:
             torrents.clear()
+            del torrents
             _match_torrents.clear()
+            del _match_torrents
 
         # 排序
         progress.update(value=99,
