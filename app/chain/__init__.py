@@ -94,9 +94,8 @@ class ChainBase(metaclass=ABCMeta):
                 return ret is None
 
         result = None
-        plugin_modules = self.pluginmanager.get_plugin_modules()
         # 插件模块
-        for plugin, module_dict in plugin_modules.items():
+        for plugin, module_dict in self.pluginmanager.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
             if method in module_dict:
                 func = module_dict[method]
@@ -138,10 +137,7 @@ class ChainBase(metaclass=ABCMeta):
 
         # 系统模块
         logger.debug(f"请求系统模块执行：{method} ...")
-        modules = self.modulemanager.get_running_modules(method)
-        # 按优先级排序
-        modules = sorted(modules, key=lambda x: x.get_priority())
-        for module in modules:
+        for module in sorted(self.modulemanager.get_running_modules(method), key=lambda x: x.get_priority()):
             module_id = module.__class__.__name__
             try:
                 module_name = module.get_name()

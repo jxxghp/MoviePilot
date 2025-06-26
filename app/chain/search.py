@@ -202,16 +202,15 @@ class SearchChain(ChainBase):
         # 过滤完成
         progress.update(value=50, text=f'过滤完成，剩余 {len(torrents)} 个资源', key=ProgressKey.Search)
 
-        # 开始匹配
-        _match_torrents = []
         # 总数
         _total = len(torrents)
         # 已处理数
         _count = 0
 
+        # 开始匹配
+        _match_torrents = []
         torrenthelper = TorrentHelper()
-
-        if mediainfo:
+        try:
             # 英文标题应该在别名/原标题中，不需要再匹配
             logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             progress.update(value=51, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
@@ -256,16 +255,16 @@ class SearchChain(ChainBase):
             progress.update(value=97,
                             text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
                             key=ProgressKey.Search)
-        else:
-            _match_torrents = [(t, MetaInfo(title=t.title, subtitle=t.description)) for t in torrents]
 
-        # 去掉mediainfo中多余的数据
-        mediainfo.clear()
-
-        # 组装上下文
-        contexts = [Context(torrent_info=t[0],
-                            media_info=mediainfo,
-                            meta_info=t[1]) for t in _match_torrents]
+            # 去掉mediainfo中多余的数据
+            mediainfo.clear()
+            # 组装上下文
+            contexts = [Context(torrent_info=t[0],
+                                media_info=mediainfo,
+                                meta_info=t[1]) for t in _match_torrents]
+        finally:
+            torrents.clear()
+            _match_torrents.clear()
 
         # 排序
         progress.update(value=99,

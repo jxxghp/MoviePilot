@@ -788,6 +788,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                        for dir_info in download_dirs):
                 return True
             logger.info("开始整理下载器中已经完成下载的文件 ...")
+
             # 从下载器获取种子列表
             torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
             if not torrents:
@@ -796,70 +797,73 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
 
-            for torrent in torrents:
-                if global_vars.is_system_stopped:
-                    break
-                # 文件路径
-                file_path = torrent.path
-                if not file_path.exists():
-                    logger.warn(f"文件不存在：{file_path}")
-                    continue
-                # 检查是否为下载器监控目录中的文件
-                is_downloader_monitor = False
-                for dir_info in download_dirs:
-                    if dir_info.monitor_type != "downloader":
-                        continue
-                    if not dir_info.download_path:
-                        continue
-                    if file_path.is_relative_to(Path(dir_info.download_path)):
-                        is_downloader_monitor = True
+            try:
+                for torrent in torrents:
+                    if global_vars.is_system_stopped:
                         break
-                if not is_downloader_monitor:
-                    logger.debug(f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理")
-                    continue
-                # 查询下载记录识别情况
-                downloadhis: DownloadHistory = DownloadHistoryOper().get_by_hash(torrent.hash)
-                if downloadhis:
-                    # 类型
-                    try:
-                        mtype = MediaType(downloadhis.type)
-                    except ValueError:
-                        mtype = MediaType.TV
-                    # 按TMDBID识别
-                    mediainfo = self.recognize_media(mtype=mtype,
-                                                     tmdbid=downloadhis.tmdbid,
-                                                     doubanid=downloadhis.doubanid,
-                                                     episode_group=downloadhis.episode_group)
-                    if mediainfo:
-                        # 补充图片
-                        self.obtain_images(mediainfo)
-                        # 更新自定义媒体类别
-                        if downloadhis.media_category:
-                            mediainfo.category = downloadhis.media_category
-                else:
-                    # 非MoviePilot下载的任务，按文件识别
-                    mediainfo = None
+                    # 文件路径
+                    file_path = torrent.path
+                    if not file_path.exists():
+                        logger.warn(f"文件不存在：{file_path}")
+                        continue
+                    # 检查是否为下载器监控目录中的文件
+                    is_downloader_monitor = False
+                    for dir_info in download_dirs:
+                        if dir_info.monitor_type != "downloader":
+                            continue
+                        if not dir_info.download_path:
+                            continue
+                        if file_path.is_relative_to(Path(dir_info.download_path)):
+                            is_downloader_monitor = True
+                            break
+                    if not is_downloader_monitor:
+                        logger.debug(f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理")
+                        continue
+                    # 查询下载记录识别情况
+                    downloadhis: DownloadHistory = DownloadHistoryOper().get_by_hash(torrent.hash)
+                    if downloadhis:
+                        # 类型
+                        try:
+                            mtype = MediaType(downloadhis.type)
+                        except ValueError:
+                            mtype = MediaType.TV
+                        # 按TMDBID识别
+                        mediainfo = self.recognize_media(mtype=mtype,
+                                                         tmdbid=downloadhis.tmdbid,
+                                                         doubanid=downloadhis.doubanid,
+                                                         episode_group=downloadhis.episode_group)
+                        if mediainfo:
+                            # 补充图片
+                            self.obtain_images(mediainfo)
+                            # 更新自定义媒体类别
+                            if downloadhis.media_category:
+                                mediainfo.category = downloadhis.media_category
+                    else:
+                        # 非MoviePilot下载的任务，按文件识别
+                        mediainfo = None
 
-                # 执行实时整理，匹配源目录
-                state, errmsg = self.do_transfer(
-                    fileitem=FileItem(
-                        storage="local",
-                        path=str(file_path).replace("\\", "/"),
-                        type="dir" if not file_path.is_file() else "file",
-                        name=file_path.name,
-                        size=file_path.stat().st_size,
-                        extension=file_path.suffix.lstrip('.'),
-                    ),
-                    mediainfo=mediainfo,
-                    downloader=torrent.downloader,
-                    download_hash=torrent.hash,
-                    background=False,
-                )
+                    # 执行实时整理，匹配源目录
+                    state, errmsg = self.do_transfer(
+                        fileitem=FileItem(
+                            storage="local",
+                            path=str(file_path).replace("\\", "/"),
+                            type="dir" if not file_path.is_file() else "file",
+                            name=file_path.name,
+                            size=file_path.stat().st_size,
+                            extension=file_path.suffix.lstrip('.'),
+                        ),
+                        mediainfo=mediainfo,
+                        downloader=torrent.downloader,
+                        download_hash=torrent.hash,
+                        background=False,
+                    )
 
-                # 设置下载任务状态
-                if not state:
-                    logger.warn(f"整理下载器任务失败：{torrent.hash} - {errmsg}")
-                self.transfer_completed(hashs=torrent.hash, downloader=torrent.downloader)
+                    # 设置下载任务状态
+                    if not state:
+                        logger.warn(f"整理下载器任务失败：{torrent.hash} - {errmsg}")
+                    self.transfer_completed(hashs=torrent.hash, downloader=torrent.downloader)
+            finally:
+                torrents.clear()
 
             # 结束
             logger.info("所有下载器中下载完成的文件已整理完成")
@@ -1032,111 +1036,114 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         # 整理所有文件
         transfer_tasks: List[TransferTask] = []
-        for file_item, bluray_dir in file_items:
-            if global_vars.is_system_stopped:
-                break
-            if continue_callback and not continue_callback():
-                break
-            file_path = Path(file_item.path)
-            # 回收站及隐藏的文件不处理
-            if file_item.path.find('/@Recycle/') != -1 \
-                    or file_item.path.find('/#recycle/') != -1 \
-                    or file_item.path.find('/.') != -1 \
-                    or file_item.path.find('/@eaDir') != -1:
-                logger.debug(f"{file_item.path} 是回收站或隐藏的文件")
-                continue
-
-            # 整理屏蔽词不处理
-            is_blocked = False
-            if transfer_exclude_words:
-                for keyword in transfer_exclude_words:
-                    if not keyword:
-                        continue
-                    if keyword and re.search(r"%s" % keyword, file_item.path, re.IGNORECASE):
-                        logger.info(f"{file_item.path} 命中整理屏蔽词 {keyword}，不处理")
-                        is_blocked = True
-                        break
-            if is_blocked:
-                continue
-
-            # 整理成功的不再处理
-            if not force:
-                transferd = TransferHistoryOper().get_by_src(file_item.path, storage=file_item.storage)
-                if transferd:
-                    if not transferd.status:
-                        all_success = False
-                    logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。")
-                    err_msgs.append(f"{file_item.name} 已整理过")
+        try:
+            for file_item, bluray_dir in file_items:
+                if global_vars.is_system_stopped:
+                    break
+                if continue_callback and not continue_callback():
+                    break
+                file_path = Path(file_item.path)
+                # 回收站及隐藏的文件不处理
+                if file_item.path.find('/@Recycle/') != -1 \
+                        or file_item.path.find('/#recycle/') != -1 \
+                        or file_item.path.find('/.') != -1 \
+                        or file_item.path.find('/@eaDir') != -1:
+                    logger.debug(f"{file_item.path} 是回收站或隐藏的文件")
                     continue
 
-            if not meta:
-                # 文件元数据
-                file_meta = MetaInfoPath(file_path)
-            else:
-                file_meta = meta
+                # 整理屏蔽词不处理
+                is_blocked = False
+                if transfer_exclude_words:
+                    for keyword in transfer_exclude_words:
+                        if not keyword:
+                            continue
+                        if keyword and re.search(r"%s" % keyword, file_item.path, re.IGNORECASE):
+                            logger.info(f"{file_item.path} 命中整理屏蔽词 {keyword}，不处理")
+                            is_blocked = True
+                            break
+                if is_blocked:
+                    continue
 
-            # 合并季
-            if season is not None:
-                file_meta.begin_season = season
+                # 整理成功的不再处理
+                if not force:
+                    transferd = TransferHistoryOper().get_by_src(file_item.path, storage=file_item.storage)
+                    if transferd:
+                        if not transferd.status:
+                            all_success = False
+                        logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。")
+                        err_msgs.append(f"{file_item.name} 已整理过")
+                        continue
 
-            if not file_meta:
-                all_success = False
-                logger.error(f"{file_path.name} 无法识别有效信息")
-                err_msgs.append(f"{file_path.name} 无法识别有效信息")
-                continue
+                if not meta:
+                    # 文件元数据
+                    file_meta = MetaInfoPath(file_path)
+                else:
+                    file_meta = meta
 
-            # 自定义识别
-            if formaterHandler:
-                # 开始集、结束集、PART
-                begin_ep, end_ep, part = formaterHandler.split_episode(file_name=file_path.name, file_meta=file_meta)
-                if begin_ep is not None:
-                    file_meta.begin_episode = begin_ep
-                    file_meta.part = part
-                if end_ep is not None:
-                    file_meta.end_episode = end_ep
+                # 合并季
+                if season is not None:
+                    file_meta.begin_season = season
 
-            # 根据父路径获取下载历史
-            download_history = None
-            downloadhis = DownloadHistoryOper()
-            if bluray_dir:
-                # 蓝光原盘，按目录名查询
-                download_history = downloadhis.get_by_path(str(file_path))
-            else:
-                # 按文件全路径查询
-                download_file = downloadhis.get_file_by_fullpath(str(file_path))
-                if download_file:
-                    download_history = downloadhis.get_by_hash(download_file.download_hash)
+                if not file_meta:
+                    all_success = False
+                    logger.error(f"{file_path.name} 无法识别有效信息")
+                    err_msgs.append(f"{file_path.name} 无法识别有效信息")
+                    continue
 
-            # 获取下载Hash
-            if download_history and (not downloader or not download_hash):
-                downloader = download_history.downloader
-                download_hash = download_history.download_hash
+                # 自定义识别
+                if formaterHandler:
+                    # 开始集、结束集、PART
+                    begin_ep, end_ep, part = formaterHandler.split_episode(file_name=file_path.name, file_meta=file_meta)
+                    if begin_ep is not None:
+                        file_meta.begin_episode = begin_ep
+                        file_meta.part = part
+                    if end_ep is not None:
+                        file_meta.end_episode = end_ep
 
-            # 后台整理
-            transfer_task = TransferTask(
-                fileitem=file_item,
-                meta=file_meta,
-                mediainfo=mediainfo,
-                target_directory=target_directory,
-                target_storage=target_storage,
-                target_path=target_path,
-                transfer_type=transfer_type,
-                scrape=scrape,
-                library_type_folder=library_type_folder,
-                library_category_folder=library_category_folder,
-                downloader=downloader,
-                download_hash=download_hash,
-                download_history=download_history,
-                manual=manual,
-                background=background
-            )
-            if background:
-                self.put_to_queue(task=transfer_task)
-                logger.info(f"{file_path.name} 已添加到整理队列")
-            else:
-                # 加入列表
-                self.__put_to_jobview(transfer_task)
-                transfer_tasks.append(transfer_task)
+                # 根据父路径获取下载历史
+                download_history = None
+                downloadhis = DownloadHistoryOper()
+                if bluray_dir:
+                    # 蓝光原盘，按目录名查询
+                    download_history = downloadhis.get_by_path(str(file_path))
+                else:
+                    # 按文件全路径查询
+                    download_file = downloadhis.get_file_by_fullpath(str(file_path))
+                    if download_file:
+                        download_history = downloadhis.get_by_hash(download_file.download_hash)
+
+                # 获取下载Hash
+                if download_history and (not downloader or not download_hash):
+                    downloader = download_history.downloader
+                    download_hash = download_history.download_hash
+
+                # 后台整理
+                transfer_task = TransferTask(
+                    fileitem=file_item,
+                    meta=file_meta,
+                    mediainfo=mediainfo,
+                    target_directory=target_directory,
+                    target_storage=target_storage,
+                    target_path=target_path,
+                    transfer_type=transfer_type,
+                    scrape=scrape,
+                    library_type_folder=library_type_folder,
+                    library_category_folder=library_category_folder,
+                    downloader=downloader,
+                    download_hash=download_hash,
+                    download_history=download_history,
+                    manual=manual,
+                    background=background
+                )
+                if background:
+                    self.put_to_queue(task=transfer_task)
+                    logger.info(f"{file_path.name} 已添加到整理队列")
+                else:
+                    # 加入列表
+                    self.__put_to_jobview(transfer_task)
+                    transfer_tasks.append(transfer_task)
+        finally:
+            file_items.clear()
 
         # 实时整理
         if transfer_tasks:
@@ -1155,29 +1162,31 @@ class TransferChain(ChainBase, metaclass=Singleton):
             progress.update(value=0,
                             text=__process_msg,
                             key=ProgressKey.FileTransfer)
-
-            for transfer_task in transfer_tasks:
-                if global_vars.is_system_stopped:
-                    break
-                if continue_callback and not continue_callback():
-                    break
-                # 更新进度
-                __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
-                logger.info(__process_msg)
-                progress.update(value=(processed_num + fail_num) / total_num * 100,
-                                text=__process_msg,
-                                key=ProgressKey.FileTransfer)
-                state, err_msg = self.__handle_transfer(
-                    task=transfer_task,
-                    callback=self.__default_callback
-                )
-                if not state:
-                    all_success = False
-                    logger.warn(f"{transfer_task.fileitem.name} {err_msg}")
-                    err_msgs.append(f"{transfer_task.fileitem.name} {err_msg}")
-                    fail_num += 1
-                else:
-                    processed_num += 1
+            try:
+                for transfer_task in transfer_tasks:
+                    if global_vars.is_system_stopped:
+                        break
+                    if continue_callback and not continue_callback():
+                        break
+                    # 更新进度
+                    __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
+                    logger.info(__process_msg)
+                    progress.update(value=(processed_num + fail_num) / total_num * 100,
+                                    text=__process_msg,
+                                    key=ProgressKey.FileTransfer)
+                    state, err_msg = self.__handle_transfer(
+                        task=transfer_task,
+                        callback=self.__default_callback
+                    )
+                    if not state:
+                        all_success = False
+                        logger.warn(f"{transfer_task.fileitem.name} {err_msg}")
+                        err_msgs.append(f"{transfer_task.fileitem.name} {err_msg}")
+                        fail_num += 1
+                    else:
+                        processed_num += 1
+            finally:
+                transfer_tasks.clear()
 
             # 整理结束
             __end_msg = f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"

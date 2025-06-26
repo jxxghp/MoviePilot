@@ -92,10 +92,9 @@ class SiteChain(ChainBase):
         """
         刷新所有站点的用户数据
         """
-        sites = SitesHelper().get_indexers()
         any_site_updated = False
         result = {}
-        for site in sites:
+        for site in SitesHelper().get_indexers():
             if global_vars.is_system_stopped:
                 return None
             if site.get("is_active"):

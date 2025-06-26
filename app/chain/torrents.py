@@ -98,6 +98,7 @@ class TorrentsChain(ChainBase):
         if not site.get("rss"):
             logger.error(f'站点 {domain} 未配置RSS地址！')
             return []
+        # 解析RSS
         rss_items = RssHelper().parse(site.get("rss"), True if site.get("proxy") else False,
                                       timeout=int(site.get("timeout") or 30))
         if rss_items is None:
@@ -109,25 +110,27 @@ class TorrentsChain(ChainBase):
             return []
         # 组装种子
         ret_torrents: List[TorrentInfo] = []
-        for item in rss_items:
-            if not item.get("title"):
-                continue
-            torrentinfo = TorrentInfo(
-                site=site.get("id"),
-                site_name=site.get("name"),
-                site_cookie=site.get("cookie"),
-                site_ua=site.get("ua") or settings.USER_AGENT,
-                site_proxy=site.get("proxy"),
-                site_order=site.get("pri"),
-                site_downloader=site.get("downloader"),
-                title=item.get("title"),
-                enclosure=item.get("enclosure"),
-                page_url=item.get("link"),
-                size=item.get("size"),
-                pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
-            )
-            ret_torrents.append(torrentinfo)
-
+        try:
+            for item in rss_items:
+                if not item.get("title"):
+                    continue
+                torrentinfo = TorrentInfo(
+                    site=site.get("id"),
+                    site_name=site.get("name"),
+                    site_cookie=site.get("cookie"),
+                    site_ua=site.get("ua") or settings.USER_AGENT,
+                    site_proxy=site.get("proxy"),
+                    site_order=site.get("pri"),
+                    site_downloader=site.get("downloader"),
+                    title=item.get("title"),
+                    enclosure=item.get("enclosure"),
+                    page_url=item.get("link"),
+                    size=item.get("size"),
+                    pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
+                )
+                ret_torrents.append(torrentinfo)
+        finally:
+            rss_items.clear()
         return ret_torrents
 
     def refresh(self, stype: Optional[str] = None, sites: List[int] = None) -> Dict[str, List[Context]]:
@@ -152,13 +155,10 @@ class TorrentsChain(ChainBase):
             torrents_cache[_domain] = [_torrent for _torrent in _torrents
                                        if not TorrentHelper().is_invalid(_torrent.torrent_info.enclosure)]
 
-        # 所有站点索引
-        indexers = SitesHelper().get_indexers()
         # 需要刷新的站点domain
         domains = []
-
         # 遍历站点缓存资源
-        for indexer in indexers:
+        for indexer in SitesHelper().get_indexers():
             if global_vars.is_system_stopped:
                 break
             # 未开启的站点不刷新
@@ -187,36 +187,39 @@ class TorrentsChain(ChainBase):
                 else:
                     logger.info(f'{indexer.get("name")} 没有新种子')
                     continue
-                for torrent in torrents:
-                    if global_vars.is_system_stopped:
-                        break
-                    logger.info(f'处理资源：{torrent.title} ...')
-                    # 识别
-                    meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-                    if torrent.title != meta.org_string:
-                        logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
-                    # 使用站点种子分类，校正类型识别
-                    if meta.type != MediaType.TV \
-                            and torrent.category == MediaType.TV.value:
-                        meta.type = MediaType.TV
-                    # 识别媒体信息
-                    mediainfo: MediaInfo = MediaChain().recognize_by_meta(meta)
-                    if not mediainfo:
-                        logger.warn(f'{torrent.title} 未识别到媒体信息')
-                        # 存储空的媒体信息
-                        mediainfo = MediaInfo()
-                    # 清理多余数据，减少内存占用
-                    mediainfo.clear()
-                    # 上下文
-                    context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
-                    # 添加到缓存
-                    if not torrents_cache.get(domain):
-                        torrents_cache[domain] = [context]
-                    else:
-                        torrents_cache[domain].append(context)
-                    # 如果超过了限制条数则移除掉前面的
-                    if len(torrents_cache[domain]) > settings.CONF["torrents"]:
-                        torrents_cache[domain] = torrents_cache[domain][-settings.CONF["torrents"]:]
+                try:
+                    for torrent in torrents:
+                        if global_vars.is_system_stopped:
+                            break
+                        logger.info(f'处理资源：{torrent.title} ...')
+                        # 识别
+                        meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+                        if torrent.title != meta.org_string:
+                            logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
+                        # 使用站点种子分类，校正类型识别
+                        if meta.type != MediaType.TV \
+                                and torrent.category == MediaType.TV.value:
+                            meta.type = MediaType.TV
+                        # 识别媒体信息
+                        mediainfo: MediaInfo = MediaChain().recognize_by_meta(meta)
+                        if not mediainfo:
+                            logger.warn(f'{torrent.title} 未识别到媒体信息')
+                            # 存储空的媒体信息
+                            mediainfo = MediaInfo()
+                        # 清理多余数据，减少内存占用
+                        mediainfo.clear()
+                        # 上下文
+                        context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
+                        # 添加到缓存
+                        if not torrents_cache.get(domain):
+                            torrents_cache[domain] = [context]
+                        else:
+                            torrents_cache[domain].append(context)
+                        # 如果超过了限制条数则移除掉前面的
+                        if len(torrents_cache[domain]) > settings.CONF["torrents"]:
+                            torrents_cache[domain] = torrents_cache[domain][-settings.CONF["torrents"]:]
+                finally:
+                    torrents.clear()
             else:
                 logger.info(f'{indexer.get("name")} 没有获取到种子')
 

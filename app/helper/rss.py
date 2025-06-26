@@ -306,6 +306,7 @@ class RssHelper:
                         return False
                 finally:
                     if parser is not None:
+                        parser.close()
                         del parser
 
                 if root is None:
@@ -319,70 +320,72 @@ class RssHelper:
                 items_count = min(len(items), self.MAX_RSS_ITEMS)
                 if len(items) > self.MAX_RSS_ITEMS:
                     logger.warning(f"RSS条目过多: {len(items)}，仅处理前{self.MAX_RSS_ITEMS}个")
+                try:
+                    for item in items[:items_count]:
+                        try:
+                            # 使用xpath提取信息，更高效
+                            title_nodes = item.xpath('.//title')
+                            title = title_nodes[0].text if title_nodes and title_nodes[0].text else ""
+                            if not title:
+                                continue
 
-                for item in items[:items_count]:
-                    try:
-                        # 使用xpath提取信息，更高效
-                        title_nodes = item.xpath('.//title')
-                        title = title_nodes[0].text if title_nodes and title_nodes[0].text else ""
-                        if not title:
+                            # 描述
+                            desc_nodes = item.xpath('.//description | .//summary')
+                            description = desc_nodes[0].text if desc_nodes and desc_nodes[0].text else ""
+
+                            # 种子页面
+                            link_nodes = item.xpath('.//link')
+                            if link_nodes:
+                                link = link_nodes[0].text if hasattr(link_nodes[0], 'text') and link_nodes[0].text else link_nodes[0].get('href', '')
+                            else:
+                                link = ""
+
+                            # 种子链接
+                            enclosure_nodes = item.xpath('.//enclosure')
+                            enclosure = enclosure_nodes[0].get('url', '') if enclosure_nodes else ""
+                            if not enclosure and not link:
+                                continue
+                            # 部分RSS只有link没有enclosure
+                            if not enclosure and link:
+                                enclosure = link
+
+                            # 大小
+                            size = 0
+                            if enclosure_nodes:
+                                size_attr = enclosure_nodes[0].get('length', '0')
+                                if size_attr and str(size_attr).isdigit():
+                                    size = int(size_attr)
+
+                            # 发布日期
+                            pubdate_nodes = item.xpath('.//pubDate | .//published | .//updated')
+                            pubdate = ""
+                            if pubdate_nodes and pubdate_nodes[0].text:
+                                pubdate = StringUtils.get_time(pubdate_nodes[0].text)
+
+                            # 获取豆瓣昵称
+                            nickname_nodes = item.xpath('.//*[local-name()="creator"]')
+                            nickname = nickname_nodes[0].text if nickname_nodes and nickname_nodes[0].text else ""
+
+                            # 返回对象
+                            tmp_dict = {
+                                'title': title,
+                                'enclosure': enclosure,
+                                'size': size,
+                                'description': description,
+                                'link': link,
+                                'pubdate': pubdate
+                            }
+                            # 如果豆瓣昵称不为空，返回数据增加豆瓣昵称，供doubansync插件获取
+                            if nickname:
+                                tmp_dict['nickname'] = nickname
+                            ret_array.append(tmp_dict)
+
+                        except Exception as e1:
+                            logger.debug(f"解析RSS条目失败：{str(e1)} - {traceback.format_exc()}")
                             continue
-
-                        # 描述
-                        desc_nodes = item.xpath('.//description | .//summary')
-                        description = desc_nodes[0].text if desc_nodes and desc_nodes[0].text else ""
-
-                        # 种子页面
-                        link_nodes = item.xpath('.//link')
-                        if link_nodes:
-                            link = link_nodes[0].text if hasattr(link_nodes[0], 'text') and link_nodes[0].text else \
-                            link_nodes[0].get('href', '')
-                        else:
-                            link = ""
-
-                        # 种子链接
-                        enclosure_nodes = item.xpath('.//enclosure')
-                        enclosure = enclosure_nodes[0].get('url', '') if enclosure_nodes else ""
-                        if not enclosure and not link:
-                            continue
-                        # 部分RSS只有link没有enclosure
-                        if not enclosure and link:
-                            enclosure = link
-
-                        # 大小
-                        size = 0
-                        if enclosure_nodes:
-                            size_attr = enclosure_nodes[0].get('length', '0')
-                            if size_attr and str(size_attr).isdigit():
-                                size = int(size_attr)
-
-                        # 发布日期
-                        pubdate_nodes = item.xpath('.//pubDate | .//published | .//updated')
-                        pubdate = ""
-                        if pubdate_nodes and pubdate_nodes[0].text:
-                            pubdate = StringUtils.get_time(pubdate_nodes[0].text)
-
-                        # 获取豆瓣昵称
-                        nickname_nodes = item.xpath('.//*[local-name()="creator"]')
-                        nickname = nickname_nodes[0].text if nickname_nodes and nickname_nodes[0].text else ""
-
-                        # 返回对象
-                        tmp_dict = {
-                            'title': title,
-                            'enclosure': enclosure,
-                            'size': size,
-                            'description': description,
-                            'link': link,
-                            'pubdate': pubdate
-                        }
-                        # 如果豆瓣昵称不为空，返回数据增加豆瓣昵称，供doubansync插件获取
-                        if nickname:
-                            tmp_dict['nickname'] = nickname
-                        ret_array.append(tmp_dict)
-
-                    except Exception as e1:
-                        logger.debug(f"解析RSS条目失败：{str(e1)} - {traceback.format_exc()}")
-                        continue
+                finally:
+                    items.clear()
+                    del items
 
             except Exception as e2:
                 logger.error(f"解析RSS失败：{str(e2)} - {traceback.format_exc()}")

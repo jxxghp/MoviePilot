@@ -221,8 +221,7 @@ class Base:
     @classmethod
     @db_query
     def list(cls, db: Session) -> List[Self]:
-        result = db.query(cls).all()
-        return list(result)
+        return db.query(cls).all()
 
     def to_dict(self):
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns} # noqa

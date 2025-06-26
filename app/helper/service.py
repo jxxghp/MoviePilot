@@ -107,8 +107,7 @@ class ServiceBaseHelper(Generic[TConf]):
         迭代所有模块的实例及其对应的配置，返回 ServiceInfo 实例
         """
         configs = self.get_configs()
-        modules = self.modulemanager.get_running_type_modules(self.module_type)
-        for module in modules:
+        for module in self.modulemanager.get_running_type_modules(self.module_type):
             if not module:
                 continue
             module_instances = module.get_instances()
