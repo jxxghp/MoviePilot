@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple, List, Literal
+from typing import Optional, Union, Tuple, List
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
@@ -9,14 +9,9 @@ from app.utils.url import UrlUtils
 
 
 class Transmission:
-    _protocol: Literal["http", "https"] = "http"
-    _host: Optional[str] = None
-    _port: Optional[int] = None
-    _username: Optional[str] = None
-    _password: Optional[str] = None
-
-    trc: Optional[Client] = None
-
+    """
+    Transmission下载器
+    """
     # 参考transmission web，仅查询需要的参数，加速种子搜索
     _trarg = ["id", "name", "status", "labels", "hashString", "totalSize", "percentDone", "addedDate", "trackerList",
               "trackerStats",
@@ -43,18 +38,19 @@ class Transmission:
             return
         self._username = username
         self._password = password
-        if self._host and self._port:
-            self.trc = self.__login_transmission()
+        self.trc = self.__login_transmission()
 
     def __login_transmission(self) -> Optional[Client]:
         """
         连接transmission
         :return: transmission对象
         """
+        if not self._host or not self._port:
+            return None
         try:
             # 登录
             logger.info(f"正在连接 transmission：{self._protocol}://{self._host}:{self._port}")
-            trt = transmission_rpc.Client(protocol=self._protocol,
+            trt = transmission_rpc.Client(protocol=self._protocol, # noqa
                                           host=self._host,
                                           port=self._port,
                                           username=self._username,
@@ -97,16 +93,19 @@ class Transmission:
         if tags and not isinstance(tags, list):
             tags = [tags]
         ret_torrents = []
-        for torrent in torrents:
-            # 状态过滤
-            if status and torrent.status not in status:
-                continue
-            # 种子标签
-            labels = [str(tag).strip()
-                      for tag in torrent.labels] if hasattr(torrent, "labels") else []
-            if tags and not set(tags).issubset(set(labels)):
-                continue
-            ret_torrents.append(torrent)
+        try:
+            for torrent in torrents:
+                # 状态过滤
+                if status and torrent.status not in status:
+                    continue
+                # 种子标签
+                labels = [str(tag).strip()
+                          for tag in torrent.labels] if hasattr(torrent, "labels") else []
+                if tags and not set(tags).issubset(set(labels)):
+                    continue
+                ret_torrents.append(torrent)
+        finally:
+            torrents.clear()
         return ret_torrents, False
 
     def get_completed_torrents(self, ids: Union[str, list] = None,

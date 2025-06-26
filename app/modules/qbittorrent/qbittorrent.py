@@ -12,16 +12,9 @@ from app.utils.string import StringUtils
 
 
 class Qbittorrent:
-    _host: Optional[str] = None
-    _port: int = None
-    _username: Optional[str] = None
-    _password: Optional[str] = None
-    _category: Optional[bool] = False
-    _sequentail: Optional[bool] = False
-    _force_resume: Optional[bool] = False
-
-    qbc: Client = None
-
+    """
+    qbittorrent下载器
+    """
     def __init__(self, host: Optional[str] = None, port: int = None,
                  username: Optional[str] = None, password: Optional[str] = None,
                  category: Optional[bool] = False, sequentail: Optional[bool] = False,
@@ -43,8 +36,7 @@ class Qbittorrent:
         self._sequentail = sequentail
         self._force_resume = force_resume
         self._first_last_piece = first_last_piece
-        if self._host and self._port:
-            self.qbc = self.__login_qbittorrent()
+        self.qbc = self.__login_qbittorrent()
 
     def is_inactive(self) -> bool:
         """
@@ -65,6 +57,8 @@ class Qbittorrent:
         连接qbittorrent
         :return: qbittorrent对象
         """
+        if not self._host or not self._port:
+            return None
         try:
             # 登录
             logger.info(f"正在连接 qbittorrent：{self._host}:{self._port}")
@@ -104,10 +98,13 @@ class Qbittorrent:
                 results = []
                 if not isinstance(tags, list):
                     tags = [tags]
-                for torrent in torrents:
-                    torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
-                    if set(tags).issubset(set(torrent_tags)):
-                        results.append(torrent)
+                try:
+                    for torrent in torrents:
+                        torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
+                        if set(tags).issubset(set(torrent_tags)):
+                            results.append(torrent)
+                finally:
+                    torrents.clear()
                 return results, False
             return torrents or [], False
         except Exception as err:
