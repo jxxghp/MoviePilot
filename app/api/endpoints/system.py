@@ -264,7 +264,11 @@ async def get_progress(request: Request, process_type: str, _: schemas.TokenPayl
                 if await request.is_disconnected():
                     break
                 detail = progress.get(process_type)
+                if detail is None:
+                    break
                 yield f"data: {json.dumps(detail)}\n\n"
+                if not detail.get("enable"):
+                    break
                 await asyncio.sleep(0.2)
         except asyncio.CancelledError:
             return
