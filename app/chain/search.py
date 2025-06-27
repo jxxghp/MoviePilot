@@ -365,6 +365,7 @@ class SearchChain(ChainBase):
         logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         # 结束进度
         progress.end(ProgressKey.Search)
+
         # 返回
         return results
 

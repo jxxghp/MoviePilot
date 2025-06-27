@@ -1,4 +1,5 @@
 import base64
+import gc
 import re
 from datetime import datetime
 from typing import Optional, Tuple, Union, Dict
@@ -106,6 +107,11 @@ class SiteChain(ChainBase):
             EventManager().send_event(EventType.SiteRefreshed, {
                 "site_id": "*"
             })
+
+        # 如果不是大内存模式，进行垃圾回收
+        if not settings.BIG_MEMORY_MODE:
+            gc.collect()
+
         return result
 
     def is_special_site(self, domain: str) -> bool:

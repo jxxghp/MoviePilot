@@ -1,5 +1,6 @@
 from typing import List, Any, Optional
 
+import jieba
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -57,6 +58,8 @@ def transfer_history(title: Optional[str] = None,
         status = True
 
     if title:
+        words = jieba.cut(title, HMM=False)
+        title = "%".join(words)
         total = TransferHistory.count_by_title(db, title=title, status=status)
         result = TransferHistory.list_by_title(db, title=title, page=page,
                                                count=count, status=status)

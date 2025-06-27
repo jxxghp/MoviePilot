@@ -13,6 +13,70 @@ from app.log import logger
 urllib3.disable_warnings(InsecureRequestWarning)
 
 
+class AutoCloseResponse:
+    """
+    自动关闭连接的Response包装器
+    在访问常用属性后自动关闭连接
+    """
+
+    def __init__(self, response: Response):
+        self._response = response
+        self._closed = False
+
+    def __getattr__(self, name):
+        """
+        对于其他属性，直接委托给原始response
+        """
+        return getattr(self._response, name)
+
+    def _auto_close(self):
+        """
+        自动关闭连接
+        """
+        if not self._closed and self._response:
+            try:
+                self._response.close()
+                self._closed = True
+            except Exception as e:
+                logger.debug(f"自动关闭响应失败: {e}")
+
+    def json(self, **kwargs):
+        """
+        获取JSON数据并自动关闭连接
+        """
+        try:
+            data = self._response.json(**kwargs)
+            return data
+        finally:
+            self._auto_close()
+
+    @property
+    def text(self):
+        """
+        获取文本内容并自动关闭连接
+        """
+        try:
+            return self._response.text
+        finally:
+            self._auto_close()
+
+    @property
+    def content(self):
+        """
+        获取二进制内容并自动关闭连接
+        """
+        try:
+            return self._response.content
+        finally:
+            self._auto_close()
+
+    def close(self):
+        """
+        手动关闭连接
+        """
+        self._auto_close()
+
+
 class RequestUtils:
 
     def __init__(self,
@@ -84,7 +148,16 @@ class RequestUtils:
         :return: 响应的内容，若发生RequestException则返回None
         """
         response = self.request(method="get", url=url, params=params, **kwargs)
-        return str(response.content, "utf-8") if response else None
+        if response:
+            try:
+                content = str(response.content, "utf-8")
+                return content
+            except Exception as e:
+                logger.debug(f"处理响应内容失败: {e}")
+                return None
+            finally:
+                response.close()  # 确保连接被关闭
+        return None
 
     def post(self, url: str, data: Any = None, json: dict = None, **kwargs) -> Optional[Response]:
         """
@@ -116,7 +189,8 @@ class RequestUtils:
                 json: dict = None,
                 allow_redirects: bool = True,
                 raise_exception: bool = False,
-                **kwargs) -> Optional[Response]:
+                auto_close: bool = True,
+                **kwargs) -> Optional[AutoCloseResponse]:
         """
         发送GET请求并返回响应对象
         :param url: 请求的URL
@@ -125,18 +199,22 @@ class RequestUtils:
         :param json: 请求的JSON数据
         :param allow_redirects: 是否允许重定向
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
+        :param auto_close: 是否自动关闭响应连接，None时使用全局配置
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
         :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
         """
-        return self.request(method="get",
-                            url=url,
-                            params=params,
-                            data=data,
-                            json=json,
-                            allow_redirects=allow_redirects,
-                            raise_exception=raise_exception,
-                            **kwargs)
+        response = self.request(method="get",
+                                url=url,
+                                params=params,
+                                data=data,
+                                json=json,
+                                allow_redirects=allow_redirects,
+                                raise_exception=raise_exception,
+                                **kwargs)
+        if response is not None and auto_close:
+            return AutoCloseResponse(response)
+        return response
 
     @contextmanager
     def get_stream(self, url: str, params: dict = None, **kwargs):
@@ -162,7 +240,8 @@ class RequestUtils:
                  files: Any = None,
                  json: dict = None,
                  raise_exception: bool = False,
-                 **kwargs) -> Optional[Response]:
+                 auto_close: bool = True,
+                 **kwargs) -> Optional[AutoCloseResponse]:
         """
         发送POST请求并返回响应对象
         :param url: 请求的URL
@@ -171,20 +250,24 @@ class RequestUtils:
         :param allow_redirects: 是否允许重定向
         :param files: 请求的文件
         :param json: 请求的JSON数据
-        :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
+        :param auto_close: 是否自动关闭响应连接，None时使用全局配置
+        :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
         :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
         """
-        return self.request(method="post",
-                            url=url,
-                            data=data,
-                            params=params,
-                            allow_redirects=allow_redirects,
-                            files=files,
-                            json=json,
-                            raise_exception=raise_exception,
-                            **kwargs)
+        response = self.request(method="post",
+                                url=url,
+                                data=data,
+                                params=params,
+                                allow_redirects=allow_redirects,
+                                files=files,
+                                json=json,
+                                raise_exception=raise_exception,
+                                **kwargs)
+        if response is not None and auto_close:
+            return AutoCloseResponse(response)
+        return response
 
     def put_res(self,
                 url: str,
@@ -194,7 +277,8 @@ class RequestUtils:
                 files: Any = None,
                 json: dict = None,
                 raise_exception: bool = False,
-                **kwargs) -> Optional[Response]:
+                auto_close: bool = True,
+                **kwargs) -> Optional[AutoCloseResponse]:
         """
         发送PUT请求并返回响应对象
         :param url: 请求的URL
@@ -204,19 +288,23 @@ class RequestUtils:
         :param files: 请求的文件
         :param json: 请求的JSON数据
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
+        :param auto_close: 是否自动关闭响应连接，None时使用全局配置
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
         :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
         """
-        return self.request(method="put",
-                            url=url,
-                            data=data,
-                            params=params,
-                            allow_redirects=allow_redirects,
-                            files=files,
-                            json=json,
-                            raise_exception=raise_exception,
-                            **kwargs)
+        response = self.request(method="put",
+                                url=url,
+                                data=data,
+                                params=params,
+                                allow_redirects=allow_redirects,
+                                files=files,
+                                json=json,
+                                raise_exception=raise_exception,
+                                **kwargs)
+        if response is not None and auto_close:
+            return AutoCloseResponse(response)
+        return response
 
     def delete_res(self,
                    url: str,
@@ -224,7 +312,8 @@ class RequestUtils:
                    params: dict = None,
                    allow_redirects: bool = True,
                    raise_exception: bool = False,
-                   **kwargs) -> Optional[Response]:
+                   auto_close: bool = True,
+                   **kwargs) -> Optional[AutoCloseResponse]:
         """
         发送DELETE请求并返回响应对象
         :param url: 请求的URL
@@ -232,17 +321,21 @@ class RequestUtils:
         :param params: 请求的参数
         :param allow_redirects: 是否允许重定向
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
+        :param auto_close: 是否自动关闭响应连接，None时使用全局配置
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
         :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
         """
-        return self.request(method="delete",
-                            url=url,
-                            data=data,
-                            params=params,
-                            allow_redirects=allow_redirects,
-                            raise_exception=raise_exception,
-                            **kwargs)
+        response = self.request(method="delete",
+                                url=url,
+                                data=data,
+                                params=params,
+                                allow_redirects=allow_redirects,
+                                raise_exception=raise_exception,
+                                **kwargs)
+        if response is not None and auto_close:
+            return AutoCloseResponse(response)
+        return response
 
     @staticmethod
     def cookie_parse(cookies_str: str, array: bool = False) -> Union[list, dict]:
@@ -407,3 +500,65 @@ class RequestUtils:
         except Exception as e:
             logger.debug(f"Error when getting decoded content: {str(e)}")
             return response.text
+
+    @contextmanager
+    def response_manager(self, method: str, url: str, **kwargs):
+        """
+        响应管理器上下文管理器，确保响应对象被正确关闭
+        :param method: HTTP方法
+        :param url: 请求的URL
+        :param kwargs: 其他请求参数
+        """
+        response = None
+        try:
+            response = self.request(method=method, url=url, **kwargs)
+            yield response
+        finally:
+            if response:
+                try:
+                    response.close()
+                except Exception as e:
+                    logger.debug(f"关闭响应失败: {e}")
+
+    def get_json(self, url: str, params: dict = None, **kwargs) -> Optional[dict]:
+        """
+        发送GET请求并返回JSON数据，自动关闭连接
+        :param url: 请求的URL  
+        :param params: 请求的参数
+        :param kwargs: 其他请求参数
+        :return: JSON数据，若发生异常则返回None
+        """
+        response = self.request(method="get", url=url, params=params, **kwargs)
+        if response:
+            try:
+                data = response.json()
+                return data
+            except Exception as e:
+                logger.debug(f"解析JSON失败: {e}")
+                return None
+            finally:
+                response.close()
+        return None
+
+    def post_json(self, url: str, data: Any = None, json: dict = None, **kwargs) -> Optional[dict]:
+        """
+        发送POST请求并返回JSON数据，自动关闭连接
+        :param url: 请求的URL
+        :param data: 请求的数据
+        :param json: 请求的JSON数据
+        :param kwargs: 其他请求参数
+        :return: JSON数据，若发生异常则返回None
+        """
+        if json is None:
+            json = {}
+        response = self.request(method="post", url=url, data=data, json=json, **kwargs)
+        if response:
+            try:
+                data = response.json()
+                return data
+            except Exception as e:
+                logger.debug(f"解析JSON失败: {e}")
+                return None
+            finally:
+                response.close()
+        return None

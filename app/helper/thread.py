@@ -9,7 +9,7 @@ class ThreadHelper(metaclass=Singleton):
     线程池管理
     """
     def __init__(self):
-        self.pool = ThreadPoolExecutor(max_workers=settings.CONF['threadpool'])
+        self.pool = ThreadPoolExecutor(max_workers=settings.CONF.threadpool)
 
     def submit(self, func, *args, **kwargs):
         """

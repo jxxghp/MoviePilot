@@ -15,6 +15,30 @@ from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
 
 
+class SystemConfModel(BaseModel):
+    """
+    系统关键资源大小配置
+    """
+    # 缓存种子数量
+    torrents: int = 0
+    # 订阅刷新处理数量
+    refresh: int = 0
+    # TMDB请求缓存数量
+    tmdb: int = 0
+    # 豆瓣请求缓存数量
+    douban: int = 0
+    # Bangumi请求缓存数量
+    bangumi: int = 0
+    # Fanart请求缓存数量
+    fanart: int = 0
+    # 元数据缓存过期时间（秒）
+    meta: int = 0
+    # 调度器数量
+    scheduler: int = 0
+    # 线程池大小
+    threadpool: int = 0
+
+
 class ConfigModel(BaseModel):
     """
     Pydantic 配置模型，描述所有配置项及其类型和默认值
@@ -525,43 +549,33 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return self.CONFIG_PATH / "cookies"
 
     @property
-    def CONF(self):
+    def CONF(self) -> SystemConfModel:
         """
-        {
-            "torrents": "缓存种子数量",
-            "refresh": "订阅刷新处理数量",
-            "tmdb": "TMDB请求缓存数量",
-            "douban": "豆瓣请求缓存数量",
-            "fanart": "Fanart请求缓存数量",
-            "meta": "元数据缓存过期时间（秒）",
-            "memory": "最大占用内存（MB）",
-            "scheduler": "调度器缓存数量"
-            "threadpool": "线程池数量"
-        }
+        根据内存模式返回系统配置
         """
         if self.BIG_MEMORY_MODE:
-            return {
-                "torrents": 200,
-                "refresh": 100,
-                "tmdb": 1024,
-                "douban": 512,
-                "bangumi": 512,
-                "fanart": 512,
-                "meta": (self.META_CACHE_EXPIRE or 24) * 3600,
-                "scheduler": 100,
-                "threadpool": 100
-            }
-        return {
-            "torrents": 100,
-            "refresh": 50,
-            "tmdb": 256,
-            "douban": 256,
-            "bangumi": 256,
-            "fanart": 128,
-            "meta": (self.META_CACHE_EXPIRE or 2) * 3600,
-            "scheduler": 50,
-            "threadpool": 50
-        }
+            return SystemConfModel(
+                torrents=200,
+                refresh=100,
+                tmdb=1024,
+                douban=512,
+                bangumi=512,
+                fanart=512,
+                meta=(self.META_CACHE_EXPIRE or 24) * 3600,
+                scheduler=100,
+                threadpool=100
+            )
+        return SystemConfModel(
+            torrents=100,
+            refresh=50,
+            tmdb=256,
+            douban=256,
+            bangumi=256,
+            fanart=128,
+            meta=(self.META_CACHE_EXPIRE or 2) * 3600,
+            scheduler=50,
+            threadpool=50
+        )
 
     @property
     def PROXY(self):

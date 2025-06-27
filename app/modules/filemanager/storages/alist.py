@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional, List, Dict
 
 import requests
-from requests import Response
 
 from app import schemas
 from app.core.cache import cached
@@ -77,7 +76,7 @@ class Alist(StorageBase, metaclass=Singleton):
         token = conf.get("token")
         if token:
             return str(token)
-        resp: Response = RequestUtils(headers={
+        resp = RequestUtils(headers={
             'Content-Type': 'application/json'
         }).post_res(
             self.__get_api_url("/api/auth/login"),
@@ -151,7 +150,7 @@ class Alist(StorageBase, metaclass=Singleton):
             if item:
                 return [item]
             return []
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/list"),
@@ -240,7 +239,7 @@ class Alist(StorageBase, metaclass=Singleton):
         :param name: 目录名
         """
         path = Path(fileitem.path) / name
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/mkdir"),
@@ -304,7 +303,7 @@ class Alist(StorageBase, metaclass=Singleton):
         :param per_page: 每页数量
         :param refresh: 是否刷新
         """
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/get"),
@@ -381,7 +380,7 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         删除文件
         """
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/remove"),
@@ -425,7 +424,7 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         重命名文件
         """
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/rename"),
@@ -476,7 +475,7 @@ class Alist(StorageBase, metaclass=Singleton):
         :param path: 文件保存路径
         :param password: 文件密码
         """
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/get"),
@@ -561,7 +560,7 @@ class Alist(StorageBase, metaclass=Singleton):
         headers.setdefault("As-Task", str(task).lower())
         headers.setdefault("File-Path", encoded_path)
         with open(path, "rb") as f:
-            resp: Response = RequestUtils(headers=headers).put_res(
+            resp = RequestUtils(headers=headers).put_res(
                 self.__get_api_url("/api/fs/put"),
                 data=f,
             )
@@ -590,7 +589,7 @@ class Alist(StorageBase, metaclass=Singleton):
         :param path: 目标目录
         :param new_name: 新文件名
         """
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/copy"),
@@ -649,7 +648,7 @@ class Alist(StorageBase, metaclass=Singleton):
         # 先重命名
         if fileitem.name != new_name:
             self.rename(fileitem, new_name)
-        resp: Response = RequestUtils(
+        resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/move"),
