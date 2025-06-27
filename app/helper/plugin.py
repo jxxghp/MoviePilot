@@ -1,15 +1,16 @@
-import sys
+import importlib
 import json
 import shutil
-import traceback
 import site
-import importlib
+import sys
+import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set
 
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version, InvalidVersion
 from pkg_resources import Requirement, working_set
+from requests import Response
 
 from app.core.cache import cached
 from app.core.config import settings
@@ -85,10 +86,12 @@ class PluginHelper(metaclass=Singleton):
         if res is None:
             return None
         if res:
+            content = res.text
             try:
-                return json.loads(res.text)
+                return json.loads(content)
             except json.JSONDecodeError:
-                logger.error(f"插件包数据解析失败：{res.text}")
+                if "404: Not Found" not in content:
+                    logger.warn(f"插件包数据解析失败：{content}")
                 return None
         return {}
 
@@ -317,7 +320,7 @@ class PluginHelper(metaclass=Singleton):
             else:
                 return None, "插件在仓库中不存在或返回数据格式不正确"
         except Exception as e:
-            logger.error(f"插件数据解析失败：{res.text}，{e}")
+            logger.error(f"插件数据解析失败：{e}")
             return None, "插件数据解析失败"
 
     def __download_files(self, pid: str, file_list: List[dict], user_repo: str,
@@ -520,7 +523,7 @@ class PluginHelper(metaclass=Singleton):
     def __request_with_fallback(url: str,
                                 headers: Optional[dict] = None,
                                 timeout: Optional[int] = 60,
-                                is_api: bool = False) -> Optional[Any]:
+                                is_api: bool = False) -> Optional[Response]:
         """
         使用自动降级策略，请求资源，优先级依次为镜像站、代理、直连
         :param url: 目标URL

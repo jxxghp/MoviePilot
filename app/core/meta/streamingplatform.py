@@ -241,7 +241,7 @@ class StreamingPlatforms(metaclass=Singleton):
         ("WTCH", "Watcha"),
         ("", "NowPlayer"),
         ("HuluJP", "Hulu Networks"),
-        ("", "GagaOOLala"),
+        ("Gaga", "GagaOOLala"),
         ("MyTVS", "MyTVSuper"),
         ("", "BBC"),
         ("CC", "Comedy Central"),

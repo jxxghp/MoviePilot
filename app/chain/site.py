@@ -356,9 +356,10 @@ class SiteChain(ChainBase):
                                    ua=settings.USER_AGENT
                                    ).get_res(url=domain_url)
                 if res and res.status_code in [200, 500, 403]:
-                    if not indexer.get("public") and not SiteUtils.is_logged_in(res.text):
+                    content = res.text
+                    if not indexer.get("public") and not SiteUtils.is_logged_in(content):
                         _fail_count += 1
-                        if under_challenge(res.text):
+                        if under_challenge(content):
                             logger.warn(f"站点 {indexer.get('name')} 被Cloudflare防护，无法登录，无法添加站点")
                             continue
                         logger.warn(
@@ -576,8 +577,9 @@ class SiteChain(ChainBase):
                                ).get_res(url=site_url)
             # 判断登录状态
             if res and res.status_code in [200, 500, 403]:
-                if not public and not SiteUtils.is_logged_in(res.text):
-                    if under_challenge(res.text):
+                content = res.text
+                if not public and not SiteUtils.is_logged_in(content):
+                    if under_challenge(content):
                         msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
                     elif res.status_code == 200:
                         msg = "Cookie已失效"

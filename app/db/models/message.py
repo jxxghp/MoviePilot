@@ -37,4 +37,4 @@ class Message(Base):
     @staticmethod
     @db_query
     def list_by_page(db: Session, page: Optional[int] = 1, count: Optional[int] = 30):
-        return db.query(Message).order_by(Message.reg_time.asc()).offset((page - 1) * count).limit(count).all()
+        return db.query(Message).order_by(Message.reg_time.desc()).offset((page - 1) * count).limit(count).all()
