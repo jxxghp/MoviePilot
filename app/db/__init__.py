@@ -24,9 +24,9 @@ db_kwargs = {
 # 当使用 QueuePool 时，添加 QueuePool 特有的参数
 if pool_class == QueuePool:
     db_kwargs.update({
-        "pool_size": settings.DB_POOL_SIZE,
+        "pool_size": settings.CONF.dbpool,
         "pool_timeout": settings.DB_POOL_TIMEOUT,
-        "max_overflow": settings.DB_MAX_OVERFLOW
+        "max_overflow": settings.CONF.dbpooloverflow
     })
 # 创建数据库引擎
 Engine = create_engine(**db_kwargs)

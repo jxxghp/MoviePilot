@@ -84,7 +84,7 @@ class Plex:
             logger.error(f"Authentication failed: {e}")
         return None
 
-    @cached(maxsize=100, ttl=86400)
+    @cached(maxsize=32, ttl=86400)
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
         """
         获取媒体服务器最近添加的媒体的图片列表

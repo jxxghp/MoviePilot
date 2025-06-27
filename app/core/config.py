@@ -37,6 +37,10 @@ class SystemConfModel(BaseModel):
     scheduler: int = 0
     # 线程池大小
     threadpool: int = 0
+    # 数据库连接池大小
+    dbpool: int = 0
+    # 数据库连接池溢出数量
+    dbpooloverflow: int = 0
 
 
 class ConfigModel(BaseModel):
@@ -81,16 +85,12 @@ class ConfigModel(BaseModel):
     DB_ECHO: bool = False
     # 数据库连接池类型，QueuePool, NullPool
     DB_POOL_TYPE: str = "QueuePool"
-    # 是否在获取连接时进行预先 ping 操作，默认关闭
-    DB_POOL_PRE_PING: bool = False
-    # 数据库连接池的大小，默认 100
-    DB_POOL_SIZE: int = 100
-    # 数据库连接的回收时间（秒），默认 1800 秒
-    DB_POOL_RECYCLE: int = 1800
-    # 数据库连接池获取连接的超时时间（秒），默认 60 秒
-    DB_POOL_TIMEOUT: int = 60
-    # 数据库连接池最大溢出连接数，默认 500
-    DB_MAX_OVERFLOW: int = 500
+    # 是否在获取连接时进行预先 ping 操作
+    DB_POOL_PRE_PING: bool = True
+    # 数据库连接的回收时间（秒）
+    DB_POOL_RECYCLE: int = 300
+    # 数据库连接池获取连接的超时时间（秒）
+    DB_POOL_TIMEOUT: int = 30
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
     # SQLite 是否启用 WAL 模式，默认开启
@@ -277,7 +277,7 @@ class ConfigModel(BaseModel):
     # 是否启用内存监控
     MEMORY_ANALYSIS: bool = False
     # 内存快照间隔（分钟）
-    MEMORY_SNAPSHOT_INTERVAL: int = 60
+    MEMORY_SNAPSHOT_INTERVAL: int = 30
     # 保留的内存快照文件数量
     MEMORY_SNAPSHOT_KEEP_COUNT: int = 20
     # 全局图片缓存，将媒体图片缓存到本地
@@ -563,7 +563,9 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 fanart=512,
                 meta=(self.META_CACHE_EXPIRE or 24) * 3600,
                 scheduler=100,
-                threadpool=100
+                threadpool=100,
+                dbpool=100,
+                dbpooloverflow=50
             )
         return SystemConfModel(
             torrents=100,
@@ -574,7 +576,9 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             fanart=128,
             meta=(self.META_CACHE_EXPIRE or 2) * 3600,
             scheduler=50,
-            threadpool=50
+            threadpool=50,
+            dbpool=50,
+            dbpooloverflow=20
         )
 
     @property

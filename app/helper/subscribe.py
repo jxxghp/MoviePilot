@@ -58,7 +58,7 @@ class SubscribeHelper(metaclass=Singleton):
         self.get_user_uuid()
         self.get_github_user()
 
-    @cached(maxsize=20, ttl=1800)
+    @cached(maxsize=5, ttl=1800)
     def get_statistic(self, stype: str, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         获取订阅统计数据

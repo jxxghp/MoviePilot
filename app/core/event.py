@@ -6,7 +6,6 @@ import threading
 import time
 import traceback
 import uuid
-from functools import lru_cache
 from queue import Empty, PriorityQueue
 from typing import Callable, Dict, List, Optional, Union
 
@@ -263,7 +262,6 @@ class EventManager(metaclass=Singleton):
         return handler_info
 
     @classmethod
-    @lru_cache(maxsize=1000)
     def __get_handler_identifier(cls, target: Union[Callable, type]) -> Optional[str]:
         """
         获取处理器或处理器类的唯一标识符，包括模块名和类名/方法名
@@ -279,7 +277,6 @@ class EventManager(metaclass=Singleton):
         return f"{module_name}.{qualname}"
 
     @classmethod
-    @lru_cache(maxsize=1000)
     def __get_class_from_callable(cls, handler: Callable) -> Optional[str]:
         """
         获取可调用对象所属类的唯一标识符

@@ -286,26 +286,29 @@ class IndexerModule(_ModuleBase):
             return None
 
         # 获取用户数据
-        logger.info(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析数据...")
-        site_obj.parse()
-        logger.debug(f"站点 {site.get('name')} 数据解析完成")
-        return SiteUserData(
-            domain=StringUtils.get_url_domain(site.get("url")),
-            userid=site_obj.userid,
-            username=site_obj.username,
-            user_level=site_obj.user_level,
-            join_at=site_obj.join_at,
-            upload=site_obj.upload,
-            download=site_obj.download,
-            ratio=site_obj.ratio,
-            bonus=site_obj.bonus,
-            seeding=site_obj.seeding,
-            seeding_size=site_obj.seeding_size,
-            seeding_info=site_obj.seeding_info or [],
-            leeching=site_obj.leeching,
-            leeching_size=site_obj.leeching_size,
-            message_unread=site_obj.message_unread,
-            message_unread_contents=site_obj.message_unread_contents or [],
-            updated_day=datetime.now().strftime('%Y-%m-%d'),
-            err_msg=site_obj.err_msg
-        )
+        try:
+            logger.info(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析数据...")
+            site_obj.parse()
+            logger.debug(f"站点 {site.get('name')} 数据解析完成")
+            return SiteUserData(
+                domain=StringUtils.get_url_domain(site.get("url")),
+                userid=site_obj.userid,
+                username=site_obj.username,
+                user_level=site_obj.user_level,
+                join_at=site_obj.join_at,
+                upload=site_obj.upload,
+                download=site_obj.download,
+                ratio=site_obj.ratio,
+                bonus=site_obj.bonus,
+                seeding=site_obj.seeding,
+                seeding_size=site_obj.seeding_size,
+                seeding_info=site_obj.seeding_info or [],
+                leeching=site_obj.leeching,
+                leeching_size=site_obj.leeching_size,
+                message_unread=site_obj.message_unread,
+                message_unread_contents=site_obj.message_unread_contents or [],
+                updated_day=datetime.now().strftime('%Y-%m-%d'),
+                err_msg=site_obj.err_msg
+            )
+        finally:
+            site_obj.clear()

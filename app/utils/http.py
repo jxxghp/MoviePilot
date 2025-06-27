@@ -468,7 +468,7 @@ class RequestUtils:
             return fallback_encoding or "utf-8"
 
     @staticmethod
-    def get_decoded_html_content(response: Response,
+    def get_decoded_html_content(response: Union[Response, AutoCloseResponse],
                                  performance_mode: bool = False, confidence_threshold: float = 0.8) -> str:
         """
         获取HTML响应的解码文本内容

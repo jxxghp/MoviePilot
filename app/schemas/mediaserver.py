@@ -160,7 +160,7 @@ class WebhookEventInfo(BaseModel):
     save_reason: Optional[str] = None
     item_isvirtual: Optional[bool] = None
     media_type: Optional[str] = None
-    json_object: Optional[dict] = {}
+    json_object: Optional[dict] = Field(default_factory=dict)
 
 
 class MediaServerPlayItem(BaseModel):

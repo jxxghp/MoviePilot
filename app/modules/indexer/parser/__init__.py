@@ -442,6 +442,14 @@ class SiteParserBase(metaclass=ABCMeta):
             self._session.close()
             self._session = None
 
+    def clear(self):
+        """
+        清除当前解析器的所有信息
+        """
+        self._index_html = ""
+        self.seeding_info.clear()
+        self.message_unread_contents.clear()
+
     def to_dict(self):
         """
         转化为字典
