@@ -92,7 +92,7 @@ class PluginHelper(metaclass=Singleton):
             except json.JSONDecodeError:
                 if "404: Not Found" not in content:
                     logger.warn(f"插件包数据解析失败：{content}")
-                return None
+                    return None
         return {}
 
     def get_plugin_package_version(self, pid: str, repo_url: str, package_version: Optional[str] = None) -> Optional[str]:
