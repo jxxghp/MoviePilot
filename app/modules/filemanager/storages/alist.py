@@ -19,7 +19,7 @@ from app.utils.url import UrlUtils
 class Alist(StorageBase, metaclass=Singleton):
     """
     Alist相关操作
-    api文档：https://alist.nn.ci/zh/guide/api
+    api文档：https://oplist.org/zh/
     """
 
     # 存储类型
@@ -101,20 +101,20 @@ class Alist(StorageBase, metaclass=Singleton):
         """
 
         if resp is None:
-            logger.warning("【alist】请求登录失败，无法连接alist服务")
+            logger.warning("【OpenList】请求登录失败，无法连接alist服务")
             return ""
 
         if resp.status_code != 200:
-            logger.warning(f"【alist】更新令牌请求发送失败，状态码：{resp.status_code}")
+            logger.warning(f"【OpenList】更新令牌请求发送失败，状态码：{resp.status_code}")
             return ""
 
         result = resp.json()
 
         if result["code"] != 200:
-            logger.critical(f'【alist】更新令牌，错误信息：{result["message"]}')
+            logger.critical(f'【OpenList】更新令牌，错误信息：{result["message"]}')
             return ""
 
-        logger.debug("【alist】AList获取令牌成功")
+        logger.debug("【OpenList】AList获取令牌成功")
         return result["data"]["token"]
 
     def __get_header_with_token(self) -> dict:
@@ -199,11 +199,11 @@ class Alist(StorageBase, metaclass=Singleton):
         """
 
         if resp is None:
-            logger.warn(f"【alist】请求获取目录 {fileitem.path} 的文件列表失败，无法连接alist服务")
+            logger.warn(f"【OpenList】请求获取目录 {fileitem.path} 的文件列表失败，无法连接alist服务")
             return []
         if resp.status_code != 200:
             logger.warn(
-                f"【alist】请求获取目录 {fileitem.path} 的文件列表失败，状态码：{resp.status_code}"
+                f"【OpenList】请求获取目录 {fileitem.path} 的文件列表失败，状态码：{resp.status_code}"
             )
             return []
 
@@ -211,7 +211,7 @@ class Alist(StorageBase, metaclass=Singleton):
 
         if result["code"] != 200:
             logger.warn(
-                f'【alist】获取目录 {fileitem.path} 的文件列表失败，错误信息：{result["message"]}'
+                f'【OpenList】获取目录 {fileitem.path} 的文件列表失败，错误信息：{result["message"]}'
             )
             return []
 
@@ -257,15 +257,15 @@ class Alist(StorageBase, metaclass=Singleton):
         }
         """
         if resp is None:
-            logger.warn(f"【alist】请求创建目录 {path} 失败，无法连接alist服务")
+            logger.warn(f"【OpenList】请求创建目录 {path} 失败，无法连接alist服务")
             return None
         if resp.status_code != 200:
-            logger.warn(f"【alist】请求创建目录 {path} 失败，状态码：{resp.status_code}")
+            logger.warn(f"【OpenList】请求创建目录 {path} 失败，状态码：{resp.status_code}")
             return None
 
         result = resp.json()
         if result["code"] != 200:
-            logger.warn(f'【alist】创建目录 {path} 失败，错误信息：{result["message"]}')
+            logger.warn(f'【OpenList】创建目录 {path} 失败，错误信息：{result["message"]}')
             return None
 
         return self.get_item(path)
@@ -347,15 +347,15 @@ class Alist(StorageBase, metaclass=Singleton):
         }
         """
         if resp is None:
-            logger.warn(f"【alist】请求获取文件 {path} 失败，无法连接alist服务")
+            logger.warn(f"【OpenList】请求获取文件 {path} 失败，无法连接alist服务")
             return None
         if resp.status_code != 200:
-            logger.warn(f"【alist】请求获取文件 {path} 失败，状态码：{resp.status_code}")
+            logger.warn(f"【OpenList】请求获取文件 {path} 失败，状态码：{resp.status_code}")
             return None
 
         result = resp.json()
         if result["code"] != 200:
-            logger.debug(f'【alist】获取文件 {path} 失败，错误信息：{result["message"]}')
+            logger.debug(f'【OpenList】获取文件 {path} 失败，错误信息：{result["message"]}')
             return None
 
         return schemas.FileItem(
@@ -404,18 +404,18 @@ class Alist(StorageBase, metaclass=Singleton):
         }
         """
         if resp is None:
-            logger.warn(f"【alist】请求删除文件 {fileitem.path} 失败，无法连接alist服务")
+            logger.warn(f"【OpenList】请求删除文件 {fileitem.path} 失败，无法连接alist服务")
             return False
         if resp.status_code != 200:
             logger.warn(
-                f"【alist】请求删除文件 {fileitem.path} 失败，状态码：{resp.status_code}"
+                f"【OpenList】请求删除文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
             return False
 
         result = resp.json()
         if result["code"] != 200:
             logger.warn(
-                f'【alist】删除文件 {fileitem.path} 失败，错误信息：{result["message"]}'
+                f'【OpenList】删除文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
         return True
@@ -446,18 +446,18 @@ class Alist(StorageBase, metaclass=Singleton):
         }
         """
         if not resp:
-            logger.warn(f"【alist】请求重命名文件 {fileitem.path} 失败，无法连接alist服务")
+            logger.warn(f"【OpenList】请求重命名文件 {fileitem.path} 失败，无法连接alist服务")
             return False
         if resp.status_code != 200:
             logger.warn(
-                f"【alist】请求重命名文件 {fileitem.path} 失败，状态码：{resp.status_code}"
+                f"【OpenList】请求重命名文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
             return False
 
         result = resp.json()
         if result["code"] != 200:
             logger.warn(
-                f'【alist】重命名文件 {fileitem.path} 失败，错误信息：{result["message"]}'
+                f'【OpenList】重命名文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
 
@@ -511,15 +511,15 @@ class Alist(StorageBase, metaclass=Singleton):
         }
         """
         if not resp:
-            logger.warn(f"【alist】请求获取文件 {path} 失败，无法连接alist服务")
+            logger.warn(f"【OpenList】请求获取文件 {path} 失败，无法连接alist服务")
             return None
         if resp.status_code != 200:
-            logger.warn(f"【alist】请求获取文件 {path} 失败，状态码：{resp.status_code}")
+            logger.warn(f"【OpenList】请求获取文件 {path} 失败，状态码：{resp.status_code}")
             return None
 
         result = resp.json()
         if result["code"] != 200:
-            logger.warn(f'【alist】获取文件 {path} 失败，错误信息：{result["message"]}')
+            logger.warn(f'【OpenList】获取文件 {path} 失败，错误信息：{result["message"]}')
             return None
 
         if result["data"]["raw_url"]:
@@ -566,7 +566,7 @@ class Alist(StorageBase, metaclass=Singleton):
             )
 
         if resp.status_code != 200:
-            logger.warn(f"【alist】请求上传文件 {path} 失败，状态码：{resp.status_code}")
+            logger.warn(f"【OpenList】请求上传文件 {path} 失败，状态码：{resp.status_code}")
             return None
 
         new_item = self.get_item(Path(fileitem.path) / path.name)
@@ -616,19 +616,19 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         if resp is None:
             logger.warn(
-                f"【alist】请求复制文件 {fileitem.path} 失败，无法连接alist服务"
+                f"【OpenList】请求复制文件 {fileitem.path} 失败，无法连接alist服务"
             )
             return False
         if resp.status_code != 200:
             logger.warn(
-                f"【alist】请求复制文件 {fileitem.path} 失败，状态码：{resp.status_code}"
+                f"【OpenList】请求复制文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
             return False
 
         result = resp.json()
         if result["code"] != 200:
             logger.warn(
-                f'【alist】复制文件 {fileitem.path} 失败，错误信息：{result["message"]}'
+                f'【OpenList】复制文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
         # 重命名
@@ -675,19 +675,19 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         if resp is None:
             logger.warn(
-                f"【alist】请求移动文件 {fileitem.path} 失败，无法连接alist服务"
+                f"【OpenList】请求移动文件 {fileitem.path} 失败，无法连接alist服务"
             )
             return False
         if resp.status_code != 200:
             logger.warn(
-                f"【alist】请求移动文件 {fileitem.path} 失败，状态码：{resp.status_code}"
+                f"【OpenList】请求移动文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
             return False
 
         result = resp.json()
         if result["code"] != 200:
             logger.warn(
-                f'【alist】移动文件 {fileitem.path} 失败，错误信息：{result["message"]}'
+                f'【OpenList】移动文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
         return True
