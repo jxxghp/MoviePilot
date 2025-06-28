@@ -126,7 +126,7 @@ function install_backend_and_download_resources() {
         return 1
     fi
     # 复制新站点资源
-    cp -a ${TMP_PATH}/Resources/resources/* /app/app/helper/
+    cp -a ${TMP_PATH}/Resources/resources.v2/* /app/app/helper/
     INFO "站点资源更新成功"
     # 清理临时目录
     rm -rf "${TMP_PATH}"

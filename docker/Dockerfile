@@ -88,7 +88,7 @@ RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
     && cat /tmp/MoviePilot-Plugins-main/package.json | jq -r 'to_entries[] | select(.value.v2 == true) | .key' | awk '{print tolower($0)}' | \
         while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
-    && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
+    && mv -f /tmp/MoviePilot-Resources-main/resources.v2/* /app/app/helper/ \
     && rm -rf /tmp/*
 EXPOSE 3000
 VOLUME [ "${CONFIG_DIR}" ]

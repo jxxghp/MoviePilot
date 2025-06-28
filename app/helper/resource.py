@@ -15,8 +15,8 @@ class ResourceHelper:
     检测和更新资源包
     """
     # 资源包的git仓库地址
-    _repo = f"{settings.GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/package.json"
-    _files_api = f"https://api.github.com/repos/jxxghp/MoviePilot-Resources/contents/resources"
+    _repo = f"{settings.GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/package.v2.json"
+    _files_api = f"https://api.github.com/repos/jxxghp/MoviePilot-Resources/contents/resources.v2"
     _base_dir: Path = settings.ROOT_PATH
 
     def __init__(self):
@@ -58,9 +58,15 @@ class ResourceHelper:
                         if rtype == "auth":
                             # 站点认证资源
                             local_version = SitesHelper().auth_version
+                            # 阻断v2.3.0以下的版本直接更新，避免无限重启
+                            if StringUtils.compare_version(local_version, "<", "2.3.0"):
+                                continue
                         elif rtype == "sites":
                             # 站点索引资源
                             local_version = SitesHelper().indexer_version
+                            # 阻断v2.0.0以下的版本直接更新，避免无限重启
+                            if StringUtils.compare_version(local_version, "<", "2.0.0"):
+                                continue
                         else:
                             continue
                         if StringUtils.compare_version(version, ">", local_version):
