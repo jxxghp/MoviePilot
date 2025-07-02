@@ -103,7 +103,7 @@ function install_backend_and_download_resources() {
     INFO "→ 正在备份站点资源目录..."
     rm -rf /resources_bakcup
     mkdir /resources_bakcup
-    cp -a /app/app/helper/user.sites.bin /resources_bakcup
+    cp -a /app/app/helper/user.sites.v2.bin /resources_bakcup
     cp -a /app/app/helper/sites.cp* /resources_bakcup
     # 清空程序目录
     rm -rf /app

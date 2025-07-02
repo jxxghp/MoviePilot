@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List
 
 import requests
 
@@ -709,30 +709,6 @@ class Alist(StorageBase, metaclass=Singleton):
         存储使用情况
         """
         pass
-
-    def snapshot(self, path: Path) -> Dict[str, float]:
-        """
-        快照文件系统，输出所有层级文件信息（不含目录）
-        """
-        files_info = {}
-
-        def __snapshot_file(_fileitm: schemas.FileItem):
-            """
-            递归获取文件信息
-            """
-            if _fileitm.type == "dir":
-                for sub_file in self.list(_fileitm):
-                    __snapshot_file(sub_file)
-            else:
-                files_info[_fileitm.path] = _fileitm.size
-
-        fileitem = self.get_item(path)
-        if not fileitem:
-            return {}
-
-        __snapshot_file(fileitem)
-
-        return files_info
 
     @staticmethod
     def __parse_timestamp(time_str: str) -> float:

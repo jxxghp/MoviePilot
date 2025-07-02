@@ -22,4 +22,6 @@ jobs:
          # 忽略所有的 Pull Request，只处理 Issue
          days-before-pr-stale: -1
          days-before-pr-close: -1
+         # 排除带有RFC标签的issue
+         exempt-issue-labels: "RFC"
          repo-token: ${{ secrets.GITHUB_TOKEN }}

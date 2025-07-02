@@ -880,7 +880,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
     ) -> List[Tuple[FileItem, bool]]:
         """
         获取整理目录或文件列表
-        
+
         :param fileitem: 文件项
         :param depth: 递归深度，默认为1
         """

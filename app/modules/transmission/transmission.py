@@ -19,7 +19,7 @@ class Transmission:
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
-    def __init__(self, host: Optional[str] = None, port: Optional[int] = None, 
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
                  username: Optional[str] = None, password: Optional[str] = None, **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器

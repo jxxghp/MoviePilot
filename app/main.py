@@ -87,7 +87,7 @@ if __name__ == '__main__':
     # 注册信号处理器
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     # 启动托盘
     start_tray()
     # 初始化数据库

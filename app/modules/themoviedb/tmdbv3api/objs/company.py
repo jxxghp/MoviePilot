@@ -3,7 +3,7 @@ from ..tmdb import TMDb
 
 class Company(TMDb):
     _urls = {
-        "details": "/company/%s", 
+        "details": "/company/%s",
         "alternative_names": "/company/%s/alternative_names",
         "images": "/company/%s/images",
         "movies": "/company/%s/movies"

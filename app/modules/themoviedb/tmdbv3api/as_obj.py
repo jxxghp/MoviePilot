@@ -59,7 +59,7 @@ class AsObj:
 
     def __setitem__(self, key, value):
         return setattr(self, key, value)
-    
+
     def __str__(self):
         return str(self._obj_list) if self._list_only else str(self._dict())
 
@@ -91,10 +91,10 @@ class AsObj:
 
     def pop(self, key, value=None):
         return self.__dict__.pop(key, value)
-    
+
     def popitem(self):
         return self.__dict__.popitem()
-    
+
     def setdefault(self, key, value=None):
         return self.__dict__.setdefault(key, value)
 

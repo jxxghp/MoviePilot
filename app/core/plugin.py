@@ -3,6 +3,7 @@ import concurrent.futures
 import importlib.util
 import inspect
 import os
+import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -198,10 +199,14 @@ class PluginManager(metaclass=Singleton):
             # 清空指定插件
             self._plugins.pop(pid, None)
             self._running_plugins.pop(pid, None)
+            # 清除插件模块缓存，包括所有子模块
+            self._clear_plugin_modules(pid)
         else:
             # 清空
             self._plugins = {}
             self._running_plugins = {}
+            # 清除所有插件模块缓存
+            self._clear_plugin_modules()
         logger.info("插件停止完成")
 
     @staticmethod
@@ -366,24 +371,50 @@ class PluginManager(metaclass=Singleton):
         """
         self.stop(plugin_id)
 
-        # 从模块列表中移除插件
-        from sys import modules
-        try:
-            del modules[f"app.plugins.{plugin_id.lower()}"]
-        except KeyError:
-            pass
-
     def reload_plugin(self, plugin_id: str):
         """
         将一个插件重新加载到内存
         :param plugin_id: 插件ID
         """
-        # 先移除
+        # 先移除插件实例
         self.stop(plugin_id)
         # 重新加载
         self.start(plugin_id)
         # 广播事件
         eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
+
+    @staticmethod
+    def _clear_plugin_modules(plugin_id: Optional[str] = None):
+        """
+        清除插件及其所有子模块的缓存
+        :param plugin_id: 插件ID
+        """
+
+        # 构建插件模块前缀
+        if plugin_id:
+            plugin_module_prefix = f"app.plugins.{plugin_id.lower()}"
+        else:
+            plugin_module_prefix = "app.plugins"
+
+        # 收集需要删除的模块名（创建模块名列表的副本以避免迭代时修改字典）
+        modules_to_remove = []
+        for module_name in list(sys.modules.keys()):
+            if module_name == plugin_module_prefix or module_name.startswith(plugin_module_prefix + "."):
+                modules_to_remove.append(module_name)
+
+        # 删除模块
+        for module_name in modules_to_remove:
+            try:
+                del sys.modules[module_name]
+                logger.debug(f"已清除插件模块缓存：{module_name}")
+            except KeyError:
+                # 模块可能已经被删除
+                pass
+        if plugin_id:
+            if modules_to_remove:
+                logger.info(f"插件 {plugin_id} 共清除 {len(modules_to_remove)} 个模块缓存：{modules_to_remove}")
+            else:
+                logger.debug(f"插件 {plugin_id} 没有找到需要清除的模块缓存")
 
     def sync(self) -> List[str]:
         """
@@ -1416,8 +1447,9 @@ class PluginManager(metaclass=Singleton):
                             content = f.read()
 
                         # 替换CSS中可能的类名引用
-                        content = content.replace(original_class_name.lower(), clone_class_name.lower())
-                        content = content.replace(original_class_name, clone_class_name)
+                        content = content.replace(original_class_name.lower(),
+                                                  clone_class_name.lower()).replace(original_class_name,
+                                                                                    clone_class_name)
 
                         with open(file_path, 'w', encoding='utf-8') as f:
                             f.write(content)

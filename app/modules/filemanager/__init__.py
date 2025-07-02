@@ -344,9 +344,14 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.get_parent(fileitem)
 
-    def snapshot_storage(self, storage: str, path: Path) -> Optional[Dict[str, float]]:
+    def snapshot_storage(self, storage: str, path: Path,
+                         last_snapshot_time: float = None, max_depth: int = 5) -> Optional[Dict[str, Dict]]:
         """
         快照存储
+        :param storage: 存储类型
+        :param path: 路径
+        :param last_snapshot_time: 上次快照时间，用于增量快照
+        :param max_depth: 最大递归深度，避免过深遍历
         """
         if storage not in self._support_storages:
             return None
@@ -354,7 +359,7 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {storage} 的快照处理")
             return None
-        return storage_oper.snapshot(path)
+        return storage_oper.snapshot(path, last_snapshot_time=last_snapshot_time, max_depth=max_depth)
 
     def storage_usage(self, storage: str) -> Optional[StorageUsage]:
         """

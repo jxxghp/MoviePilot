@@ -44,6 +44,8 @@ def download(
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.dict())
+    # 手动下载始终使用选择的下载器
+    torrentinfo.site_downloader = downloader
     # 上下文
     context = Context(
         meta_info=metainfo,
@@ -51,7 +53,7 @@ def download(
         torrent_info=torrentinfo
     )
     did = DownloadChain().download_single(context=context, username=current_user.name,
-                                          downloader=downloader, save_path=save_path, source="Manual")
+                                          save_path=save_path, source="Manual")
     if not did:
         return schemas.Response(success=False, message="任务添加失败")
     return schemas.Response(success=True, data={

@@ -788,7 +788,7 @@ class Plex:
 
             # 合并排序
             for hub in hubs:
-                for item in hub.items:
+                for item in hub.items():
                     sub_result.append(item)
             sub_result.sort(key=lambda x: x.addedAt, reverse=True)
 

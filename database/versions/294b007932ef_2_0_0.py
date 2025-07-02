@@ -1,7 +1,7 @@
 """2.0.0
 
 Revision ID: 294b007932ef
-Revises: 
+Revises:
 Create Date: 2024-07-20 08:43:40.741251
 
 """

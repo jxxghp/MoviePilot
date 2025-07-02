@@ -154,35 +154,35 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
             # 去除title中该部分
             if tmdbid or mtype or begin_season or end_season or begin_episode or end_episode:
                 title = title.replace(f"{{[{result}]}}", '')
-    
+
     # 支持Emby格式的ID标签
     # 1. [tmdbid=xxxx] 或 [tmdbid-xxxx] 格式
     tmdb_match = re.search(r'\[tmdbid[=\-](\d+)\]', title)
     if tmdb_match:
         metainfo['tmdbid'] = tmdb_match.group(1)
         title = re.sub(r'\[tmdbid[=\-](\d+)\]', '', title).strip()
-    
+
     # 2. [tmdb=xxxx] 或 [tmdb-xxxx] 格式
     if not metainfo['tmdbid']:
         tmdb_match = re.search(r'\[tmdb[=\-](\d+)\]', title)
         if tmdb_match:
             metainfo['tmdbid'] = tmdb_match.group(1)
             title = re.sub(r'\[tmdb[=\-](\d+)\]', '', title).strip()
-    
+
     # 3. {tmdbid=xxxx} 或 {tmdbid-xxxx} 格式
     if not metainfo['tmdbid']:
         tmdb_match = re.search(r'\{tmdbid[=\-](\d+)\}', title)
         if tmdb_match:
             metainfo['tmdbid'] = tmdb_match.group(1)
             title = re.sub(r'\{tmdbid[=\-](\d+)\}', '', title).strip()
-    
+
     # 4. {tmdb=xxxx} 或 {tmdb-xxxx} 格式
     if not metainfo['tmdbid']:
         tmdb_match = re.search(r'\{tmdb[=\-](\d+)\}', title)
         if tmdb_match:
             metainfo['tmdbid'] = tmdb_match.group(1)
             title = re.sub(r'\{tmdb[=\-](\d+)\}', '', title).strip()
-    
+
     # 计算季集总数
     if metainfo.get('begin_season') and metainfo.get('end_season'):
         if metainfo['begin_season'] > metainfo['end_season']:

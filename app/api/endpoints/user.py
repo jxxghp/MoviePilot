@@ -1,8 +1,8 @@
 import base64
 import re
-from typing import Any, List, Union
+from typing import Annotated, Any, List, Union
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app import schemas
@@ -164,8 +164,11 @@ def get_config(key: str,
 
 
 @router.post("/config/{key}", summary="更新用户配置", response_model=schemas.Response)
-def set_config(key: str, value: Union[list, dict, bool, int, str] = None,
-               current_user: User = Depends(get_current_active_user)):
+def set_config(
+    key: str,
+    value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
+    current_user: User = Depends(get_current_active_user),
+):
     """
     更新用户配置
     """

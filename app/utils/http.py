@@ -76,6 +76,9 @@ class AutoCloseResponse:
         """
         self._auto_close()
 
+    def __setstate__(self, state):
+        for name, value in state.items():
+            setattr(self, name, value)
 
 class RequestUtils:
 
@@ -523,7 +526,7 @@ class RequestUtils:
     def get_json(self, url: str, params: dict = None, **kwargs) -> Optional[dict]:
         """
         发送GET请求并返回JSON数据，自动关闭连接
-        :param url: 请求的URL  
+        :param url: 请求的URL
         :param params: 请求的参数
         :param kwargs: 其他请求参数
         :return: JSON数据，若发生异常则返回None

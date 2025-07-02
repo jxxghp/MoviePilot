@@ -361,7 +361,7 @@ class MemoryHelper(metaclass=Singleton):
 
                 # 对于较大的对象，使用 asizeof 进行深度计算
                 size_bytes = asizeof.asizeof(obj)
-                
+
                 # 只处理大于10KB的对象，提高分析效率
                 if size_bytes < 10240:
                     continue

@@ -4,7 +4,7 @@ from ..tmdb import TMDb
 class Collection(TMDb):
     _urls = {
         "details": "/collection/%s",
-        "images": "/collection/%s/images", 
+        "images": "/collection/%s/images",
         "translations": "/collection/%s/translations"
     }
 

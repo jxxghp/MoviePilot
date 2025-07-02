@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Tuple
 
 from app import schemas
 from app.helper.storage import StorageHelper
+from app.log import logger
 
 
 class StorageBase(metaclass=ABCMeta):
@@ -135,7 +136,8 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项
@@ -192,21 +194,44 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
-    def snapshot(self, path: Path) -> Dict[str, float]:
+    def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5) -> Dict[str, Dict]:
         """
         快照文件系统，输出所有层级文件信息（不含目录）
+        :param path: 路径
+        :param last_snapshot_time: 上次快照时间，用于增量快照
+        :param max_depth: 最大递归深度，避免过深遍历
         """
         files_info = {}
 
-        def __snapshot_file(_fileitm: schemas.FileItem):
+        def __snapshot_file(_fileitm: schemas.FileItem, current_depth: int = 0):
             """
             递归获取文件信息
             """
-            if _fileitm.type == "dir":
-                for sub_file in self.list(_fileitm):
-                    __snapshot_file(sub_file)
-            else:
-                files_info[_fileitm.path] = _fileitm.size
+            try:
+                if _fileitm.type == "dir":
+                    # 检查递归深度限制
+                    if current_depth >= max_depth:
+                        return
+
+                    # 增量检查：如果目录修改时间早于上次快照，跳过
+                    if (last_snapshot_time and
+                            _fileitm.modify_time and
+                            _fileitm.modify_time <= last_snapshot_time):
+                        return
+
+                    # 遍历子文件
+                    sub_files = self.list(_fileitm)
+                    for sub_file in sub_files:
+                        __snapshot_file(sub_file, current_depth + 1)
+                else:
+                    # 记录文件的完整信息用于比对
+                    files_info[_fileitm.path] = {
+                        'size': _fileitm.size or 0,
+                        'modify_time': getattr(_fileitm, 'modify_time', 0),
+                        'type': _fileitm.type
+                    }
+            except Exception as e:
+                logger.debug(f"Snapshot error for {_fileitm.path}: {e}")
 
         fileitem = self.get_item(path)
         if not fileitem:

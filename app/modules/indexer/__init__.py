@@ -302,11 +302,11 @@ class IndexerModule(_ModuleBase):
                 bonus=site_obj.bonus,
                 seeding=site_obj.seeding,
                 seeding_size=site_obj.seeding_size,
-                seeding_info=site_obj.seeding_info or [],
+                seeding_info=site_obj.seeding_info.copy() if site_obj.seeding_info else [],
                 leeching=site_obj.leeching,
                 leeching_size=site_obj.leeching_size,
                 message_unread=site_obj.message_unread,
-                message_unread_contents=site_obj.message_unread_contents or [],
+                message_unread_contents=site_obj.message_unread_contents.copy() if site_obj.message_unread_contents else [],
                 updated_day=datetime.now().strftime('%Y-%m-%d'),
                 err_msg=site_obj.err_msg
             )

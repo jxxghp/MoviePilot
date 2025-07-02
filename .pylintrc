@@ -12,7 +12,7 @@ jobs=0
 # 只关注错误级别的问题，禁用警告、约定和重构建议
 # E = Error (错误) - 会导致构建失败
 # W = Warning (警告) - 仅显示，不会失败
-# R = Refactor (重构建议) - 仅显示，不会失败  
+# R = Refactor (重构建议) - 仅显示，不会失败
 # C = Convention (约定) - 仅显示，不会失败
 # I = Information (信息) - 仅显示，不会失败
 
@@ -80,4 +80,4 @@ ignore-imports=yes
 
 [TYPECHECK]
 # 生成缺失成员提示的类列表
-generated-members=requests.packages.urllib3 
+generated-members=requests.packages.urllib3

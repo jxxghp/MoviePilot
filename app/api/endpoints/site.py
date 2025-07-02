@@ -1,5 +1,6 @@
 from typing import List, Any, Dict, Optional
 
+from app.helper.sites import SitesHelper
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
@@ -21,7 +22,6 @@ from app.db.models.siteuserdata import SiteUserData
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
-from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
@@ -333,8 +333,8 @@ def read_site_by_domain(
     return site
 
 
-@router.get("/statistic/{site_url}", summary="站点统计信息", response_model=schemas.SiteStatistic)
-def read_site_by_domain(
+@router.get("/statistic/{site_url}", summary="特定站点统计信息", response_model=schemas.SiteStatistic)
+def read_statistic_by_domain(
         site_url: str,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
@@ -347,6 +347,17 @@ def read_site_by_domain(
     if sitestatistic:
         return sitestatistic
     return schemas.SiteStatistic(domain=domain)
+
+
+@router.get("/statistic", summary="所有站点统计信息", response_model=List[schemas.SiteStatistic])
+def read_statistics(
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    获取所有站点统计信息
+    """
+    return SiteStatistic.list(db)
 
 
 @router.get("/rss", summary="所有订阅站点", response_model=List[schemas.Site])

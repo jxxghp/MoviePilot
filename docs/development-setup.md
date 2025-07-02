@@ -61,7 +61,7 @@ pip install pip-tools
    ```bash
    pip-compile --upgrade-package requests requirements.in
    ```
-   
+
 3. **全量更新依赖项**：
 
    如果你想更新 `requirements.in` 中的所有依赖包，运行以下命令生成或更新 `requirements.txt` 文件：

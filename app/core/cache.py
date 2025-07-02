@@ -150,7 +150,7 @@ class CacheToolsBackend(CacheBackend):
         region = self.get_region(region)
         return self._region_caches.get(region)
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None, 
+    def set(self, key: str, value: Any, ttl: Optional[int] = None,
             region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存值支持每个 key 独立配置 TTL 和 Maxsize
@@ -357,7 +357,7 @@ class RedisBackend(CacheBackend):
         region = self.get_region(quote(region))
         return f"{region}:key:{quote(key)}"
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None, 
+    def set(self, key: str, value: Any, ttl: Optional[int] = None,
             region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存

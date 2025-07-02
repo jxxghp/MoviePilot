@@ -11,7 +11,7 @@ from typing import Optional, Union, Annotated
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -289,8 +289,11 @@ def get_setting(key: str,
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
-def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
-                _: User = Depends(get_current_active_superuser)):
+def set_setting(
+    key: str,
+    value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
+    _: User = Depends(get_current_active_superuser),
+):
     """
     更新系统设置（仅管理员）
     """

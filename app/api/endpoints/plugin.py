@@ -147,7 +147,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
     if state == "installed":
         return installed_plugins
-        
+
     # 未安装的本地插件
     not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     # 在线插件
@@ -178,7 +178,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     if state == "market":
         # 返回未安装的插件
         return market_plugins
-        
+
     # 返回所有插件
     return installed_plugins + market_plugins
 
@@ -523,7 +523,7 @@ def clone_plugin(plugin_id: str,
             version=clone_data.get("version", ""),
             icon=clone_data.get("icon", "")
         )
-        
+
         if success:
             # 注册插件服务
             reload_plugin(message)
@@ -547,7 +547,7 @@ def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):
         config_oper = SystemConfigOper()
         # 获取插件文件夹配置
         folders = config_oper.get(SystemConfigKey.PluginFolders) or {}
-        
+
         # 查找原插件所在的文件夹
         target_folder = None
         for folder_name, folder_data in folders.items():
@@ -561,7 +561,7 @@ def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):
                 if original_plugin_id in folder_data:
                     target_folder = folder_name
                     break
-        
+
         # 如果找到了原插件所在的文件夹，则将分身插件也添加到该文件夹中
         if target_folder:
             folder_data = folders[target_folder]
@@ -575,12 +575,12 @@ def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):
                 if clone_plugin_id not in folder_data:
                     folder_data.append(clone_plugin_id)
                     logger.info(f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中")
-            
+
             # 保存更新后的文件夹配置
             config_oper.set(SystemConfigKey.PluginFolders, folders)
         else:
             logger.info(f"原插件 {original_plugin_id} 不在任何文件夹中，分身插件 {clone_plugin_id} 将保持独立")
-            
+
     except Exception as e:
         logger.error(f"处理插件文件夹时出错：{str(e)}")
         # 文件夹处理失败不影响插件分身创建的整体流程
@@ -595,10 +595,10 @@ def _remove_plugin_from_folders(plugin_id: str):
         config_oper = SystemConfigOper()
         # 获取插件文件夹配置
         folders = config_oper.get(SystemConfigKey.PluginFolders) or {}
-        
+
         # 标记是否有修改
         modified = False
-        
+
         # 遍历所有文件夹，移除指定插件
         for folder_name, folder_data in folders.items():
             if isinstance(folder_data, dict) and 'plugins' in folder_data:
@@ -613,13 +613,13 @@ def _remove_plugin_from_folders(plugin_id: str):
                     folder_data.remove(plugin_id)
                     logger.info(f"已从文件夹 '{folder_name}' 中移除插件 {plugin_id}")
                     modified = True
-        
+
         # 如果有修改，保存更新后的文件夹配置
         if modified:
             config_oper.set(SystemConfigKey.PluginFolders, folders)
         else:
             logger.debug(f"插件 {plugin_id} 不在任何文件夹中，无需移除")
-            
+
     except Exception as e:
         logger.error(f"从文件夹中移除插件时出错：{str(e)}")
         # 文件夹处理失败不影响插件卸载的整体流程

@@ -91,10 +91,10 @@ class SystemHelper:
             # 检查是否有有效的重启策略
             auto_restart_policies = ['always', 'unless-stopped', 'on-failure']
             has_restart_policy = policy_name in auto_restart_policies
-            
+
             logger.info(f"容器重启策略: {policy_name}, 支持自动重启: {has_restart_policy}")
             return has_restart_policy
-            
+
         except Exception as e:
             logger.warning(f"检查重启策略失败: {str(e)}")
             return False
@@ -106,7 +106,7 @@ class SystemHelper:
         """
         if not SystemUtils.is_docker():
             return False, "非Docker环境，无法重启！"
-        
+
         try:
             # 检查容器是否配置了自动重启策略
             has_restart_policy = SystemHelper._check_restart_policy()

@@ -46,7 +46,6 @@ psutil~=7.0.0
 python-dotenv~=1.1.1
 python-hosts~=1.1.2
 watchdog~=6.0.0
-openai~=1.92.2
 cacheout~=0.16.0
 click~=8.2.1
 requests-cache~=1.2.1

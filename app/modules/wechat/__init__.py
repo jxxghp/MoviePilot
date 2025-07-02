@@ -128,7 +128,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             1、消息格式：
             <xml>
                <ToUserName><![CDATA[toUser]]></ToUserName>
-               <FromUserName><![CDATA[fromUser]]></FromUserName> 
+               <FromUserName><![CDATA[fromUser]]></FromUserName>
                <CreateTime>1348831860</CreateTime>
                <MsgType><![CDATA[text]]></MsgType>
                <Content><![CDATA[this is a test]]></Content>
@@ -143,7 +143,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
                 <MsgType><![CDATA[event]]></MsgType>
                 <Event><![CDATA[subscribe]]></Event>
                 <AgentID>1</AgentID>
-            </xml>            
+            </xml>
             """
             dom_tree = xml.dom.minidom.parseString(sMsg.decode('UTF-8'))
             root_node = dom_tree.documentElement

@@ -55,6 +55,8 @@ class MetaBase(object):
     resource_team: Optional[str] = None
     # 识别的自定义占位符
     customization: Optional[str] = None
+    # 识别的流媒体平台
+    web_source: Optional[str] = None
     # 视频编码
     video_encode: Optional[str] = None
     # 音频编码

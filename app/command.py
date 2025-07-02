@@ -225,6 +225,9 @@ class Command(metaclass=Singleton):
             添加命令集合
             """
             for cmd, command in source.items():
+                if not command.get("show", True):
+                    continue
+
                 command_data = {
                     "type": command_type,
                     "description": command.get("description"),
@@ -261,6 +264,7 @@ class Command(metaclass=Singleton):
                     "func": self.send_plugin_event,
                     "description": command.get("desc"),
                     "category": command.get("category"),
+                    "show": command.get("show", True),
                     "data": {
                         "etype": command.get("event"),
                         "data": command.get("data")
@@ -335,7 +339,8 @@ class Command(metaclass=Singleton):
         return self._commands.get(cmd, {})
 
     def register(self, cmd: str, func: Any, data: Optional[dict] = None,
-                 desc: Optional[str] = None, category: Optional[str] = None) -> None:
+                 desc: Optional[str] = None, category: Optional[str] = None,
+                 show: bool = True) -> None:
         """
         注册单个命令
         """
@@ -344,7 +349,8 @@ class Command(metaclass=Singleton):
             "func": func,
             "description": desc,
             "category": category,
-            "data": data or {}
+            "data": data or {},
+            "show": show
         }
 
     def execute(self, cmd: str, data_str: Optional[str] = "",

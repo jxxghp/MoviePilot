@@ -246,12 +246,17 @@ class RssHelper:
             ret = RequestUtils(proxies=settings.PROXY if proxy else None,
                                timeout=timeout, headers=headers).get_res(url)
             if not ret:
+                logger.error(f"获取RSS失败：请求返回空值，URL: {url}")
                 return False
         except Exception as err:
             logger.error(f"获取RSS失败：{str(err)} - {traceback.format_exc()}")
             return False
 
         if ret:
+            # 检查HTTP状态码
+            if ret.status_code != 200:
+                logger.error(f"RSS请求失败，状态码: {ret.status_code}, URL: {url}")
+                return False
             ret_xml = None
             root = None
             try:
@@ -280,6 +285,17 @@ class RssHelper:
                 if not ret_xml:
                     ret_xml = ret.text
 
+                # 验证RSS内容是否有效
+                if not ret_xml or not ret_xml.strip():
+                    logger.error("RSS内容为空")
+                    return False
+
+                # 检查是否包含基本的RSS/XML结构
+                ret_xml_stripped = ret_xml.strip()
+                if not ret_xml_stripped.startswith('<'):
+                    logger.error("RSS内容不是有效的XML格式")
+                    return False
+
                 # 使用lxml.etree解析XML
                 parser = None
                 try:
@@ -292,7 +308,8 @@ class RssHelper:
                         huge_tree=False  # 禁用大文档解析，避免内存问题
                     )
                     root = etree.fromstring(ret_xml.encode('utf-8'), parser=parser)
-                except etree.XMLSyntaxError:
+                except etree.XMLSyntaxError as xml_error:
+                    logger.debug(f"XML解析失败：{str(xml_error)}，尝试HTML解析")
                     # 如果XML解析失败，尝试作为HTML解析
                     try:
                         root = etree.HTML(ret_xml)
@@ -304,9 +321,15 @@ class RssHelper:
                     except Exception as e:
                         logger.error(f"HTML解析也失败：{str(e)}")
                         return False
+                except Exception as general_error:
+                    logger.error(f"解析RSS时发生未预期错误：{str(general_error)}")
+                    return False
                 finally:
                     if parser is not None:
-                        parser.close()
+                        try:
+                            parser.close()
+                        except Exception as close_error:
+                            logger.debug(f"关闭解析器时出错：{str(close_error)}")
                         del parser
 
                 if root is None:

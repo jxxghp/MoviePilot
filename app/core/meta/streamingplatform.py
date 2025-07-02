@@ -48,7 +48,7 @@ class StreamingPlatforms(metaclass=Singleton):
         ("", "MyVideo"),
         ("Hami", "Hami Video"),
         ("HamiVideo", "Hami Video"),
-        ("", "meWATCH"),
+        ("MW", "meWATCH"),
         ("CATCHPLAY", "CATCHPLAY+"),
         ("CPP", "CATCHPLAY+"),
         ("LINETV", "LINE TV"),
@@ -265,13 +265,16 @@ class StreamingPlatforms(metaclass=Singleton):
         ("JONU", "Jonu Play"),
         ("PlutoTV", "Pluto TV"),
         ("AbemaTV", "Abema"),
-        ("dTV", ""),
-        ("MW", ""),
+        ("", "dTV"),
         ("NYMEY", "Nymey"),
-        ("SMNS", ""),
+        ("SMNS", "SAMANSA"),
         ("CTHP", "CATCHPLAY+"),
         ("HBOGO", "HBO GO"),
         ("HBO", "HBO"),
+        ("FPTP", "FPT Play"),
+        ("", "LOCIPO"),
+        ("DANT", "DANET"),
+        ("OV", "OceanVeil"),
     ]
 
     def __init__(self):

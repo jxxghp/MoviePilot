@@ -51,7 +51,7 @@ class BangumiModule(_ModuleBase):
         获取模块子类型
         """
         return MediaRecognizeType.Bangumi
-    
+
     @staticmethod
     def get_priority() -> int:
         """

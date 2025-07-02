@@ -122,7 +122,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                     'text': ''
                 }
             }
-            
+
             按钮回调格式：
             {
                 'callback_query': {

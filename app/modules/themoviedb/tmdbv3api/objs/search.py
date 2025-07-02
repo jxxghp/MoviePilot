@@ -55,7 +55,7 @@ class Search(TMDb):
             params="query=%s&page=%s" % (quote(term), page),
             key="results"
         )
-    
+
     def movies(self, term, adult=None, region=None, year=None, release_year=None, page=1):
         """
         Search for movies.

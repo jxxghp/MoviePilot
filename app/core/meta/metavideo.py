@@ -67,7 +67,6 @@ class MetaVideo(MetaBase):
         original_title = title
         self._source = ""
         self._effect = []
-        self.web_source = None
         self._index = 0
         # 判断是否纯数字命名
         if isfile \
@@ -140,9 +139,6 @@ class MetaVideo(MetaBase):
             self.resource_effect = " ".join(self._effect)
         if self._source:
             self.resource_type = self._source.strip()
-        # 添加流媒体平台
-        if self.web_source:
-            self.resource_type = f"{self.web_source} {self.resource_type}"
         # 提取原盘DIY
         if self.resource_type and "BluRay" in self.resource_type:
             if (self.subtitle and re.findall(r'D[Ii]Y', self.subtitle)) \

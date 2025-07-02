@@ -57,6 +57,8 @@ class MetaInfo(BaseModel):
     audio_encode: Optional[str] = None
     # 资源类型
     edition: Optional[str] = None
+    # 流媒体平台
+    web_source: Optional[str] = None
     # 应用的识别词信息
     apply_words: Optional[List[str]] = None
 

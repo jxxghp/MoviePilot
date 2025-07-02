@@ -131,9 +131,9 @@ function load_config_from_app_env() {
         # (例如 envsubst, mp_update.sh, cert.sh)
         if declare -gx "${var_name}=${final_value}"; then
             if [ -z "${final_value}" ]; then
-                 INFO "变量 ${var_name}, 值为空, 来源: ${value_source})。"
+                 INFO "变量 ${var_name}, 值为空 (来源: ${value_source})。"
             else
-                 INFO "变量 ${var_name}, 值: ${final_value} , (来源: ${value_source})。"
+                 INFO "变量 ${var_name}, 值: ${final_value} (来源: ${value_source})。"
             fi
 
             # 如果变量不是来自初始环境变量，则记录下来以便稍后 unset
@@ -151,7 +151,7 @@ function load_config_from_app_env() {
                 fi
             fi
         else
-            ERROR "导出变量 ${var_name} (值: '${final_value}', 来源: ${value_source}) 失败。"
+            ERROR "导出变量 ${var_name}, 值: '${final_value}'失败 (来源: ${value_source}) "
         fi
     done
 

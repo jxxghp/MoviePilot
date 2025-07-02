@@ -43,7 +43,7 @@ class MediaChain(ChainBase):
             'movie_banner': True,       # 电影横幅图
             'movie_thumb': True,        # 电影缩略图
             'tv_nfo': True,            # 电视剧NFO
-            'tv_poster': True,         # 电视剧海报  
+            'tv_poster': True,         # 电视剧海报
             'tv_backdrop': True,       # 电视剧背景图
             'tv_banner': True,         # 电视剧横幅图
             'tv_logo': True,           # 电视剧Logo
@@ -448,7 +448,7 @@ class MediaChain(ChainBase):
         if not mediainfo:
             logger.warn(f"{filepath} 无法识别文件媒体信息！")
             return
-        
+
         # 获取刮削开关配置
         scraping_switchs = self._get_scraping_switchs()
         logger.info(f"开始刮削：{filepath} ...")
@@ -520,7 +520,7 @@ class MediaChain(ChainBase):
                                 should_scrape = scraping_switchs.get('movie_thumb', True)
                             else:
                                 should_scrape = True  # 未知类型默认刮削
-                            
+
                             if should_scrape:
                                 image_path = filepath.with_name(image_name)
                                 if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
@@ -653,7 +653,7 @@ class MediaChain(ChainBase):
                                         should_scrape = scraping_switchs.get('season_thumb', True)
                                     else:
                                         should_scrape = True  # 未知类型默认刮削
-                                    
+
                                     if should_scrape:
                                         image_path = filepath.with_name(image_name)
                                         # 只下载当前刮削季的图片
@@ -714,7 +714,7 @@ class MediaChain(ChainBase):
                                     should_scrape = scraping_switchs.get('tv_thumb', True)
                                 else:
                                     should_scrape = True  # 未知类型默认刮削
-                                
+
                                 if should_scrape:
                                     image_path = filepath / image_name
                                     if overwrite or not storagechain.get_file_item(storage=fileitem.storage,

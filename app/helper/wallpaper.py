@@ -18,14 +18,14 @@ class WallpaperHelper(metaclass=Singleton):
         获取登录页面壁纸
         """
         if settings.WALLPAPER == "bing":
-            url = self.get_bing_wallpaper()
+            return self.get_bing_wallpaper()
         elif settings.WALLPAPER == "mediaserver":
-            url = self.get_mediaserver_wallpaper()
+            return self.get_mediaserver_wallpaper()
         elif settings.WALLPAPER == "customize":
-            url = self.get_customize_wallpaper()
-        else:
-            url = self.get_tmdb_wallpaper()
-        return url
+            return self.get_customize_wallpaper()
+        elif settings.WALLPAPER == "tmdb":
+            return self.get_tmdb_wallpaper()
+        return ''
 
     def get_wallpapers(self, num: int = 10) -> List[str]:
         """
@@ -37,8 +37,9 @@ class WallpaperHelper(metaclass=Singleton):
             return self.get_mediaserver_wallpapers(num)
         elif settings.WALLPAPER == "customize":
             return self.get_customize_wallpapers()
-        else:
+        elif settings.WALLPAPER == "tmdb":
             return self.get_tmdb_wallpapers(num)
+        return []
 
     @cached(maxsize=1, ttl=3600)
     def get_tmdb_wallpaper(self) -> Optional[str]:

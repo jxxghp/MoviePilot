@@ -183,6 +183,8 @@ class TemplateContextBuilder:
             "videoCodec": meta.video_encode,
             # 音频编码
             "audioCodec": meta.audio_encode,
+            # 流媒体平台
+            "webSource": meta.web_source,
         }
         self._context.update({**meta_info, **tech_metadata, **episode_data})
 
