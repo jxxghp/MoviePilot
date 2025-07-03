@@ -69,3 +69,4 @@ oss2~=2.19.1
 tqdm~=4.67.1
 setuptools~=78.1.0
 pympler~=1.1
+smbprotocol~=1.15.0

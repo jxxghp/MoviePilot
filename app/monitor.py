@@ -300,7 +300,7 @@ class Monitor(metaclass=Singleton):
         :param limits: 系统限制信息
         :return: (是否使用轮询, 原因)
         """
-        if monitor_mode == "compatible":
+        if monitor_mode == "compatibility":
             return True, "用户配置为兼容模式"
 
         # 检查网络文件系统

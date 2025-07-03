@@ -290,6 +290,7 @@ class StorageSchema(Enum):
     U115 = "u115"
     Rclone = "rclone"
     Alist = "alist"
+    SMB = "smb"
 
 
 # 模块类型

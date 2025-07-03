@@ -38,7 +38,7 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         初始化
         """
-        pass
+        self.__generate_token.clear_cache()
 
     @property
     def __get_base_url(self) -> str:
@@ -127,7 +127,7 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         检查存储是否可用
         """
-        pass
+        return True if self.__generate_token else False
 
     def list(
             self,
