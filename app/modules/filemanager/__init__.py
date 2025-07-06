@@ -512,17 +512,31 @@ class FileManagerModule(_ModuleBase):
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            # 元数据补上常用属性，尽可能确保重命名后的路径不出现空白
+            meta = MetaInfo(mediainfo.title)
+            if meta.type == MediaType.UNKNOWN and mediainfo.type is not None:
+                meta.type = mediainfo.type
+            if meta.year is None:
+                meta.year = mediainfo.year
+            if meta.begin_season is None:
+                meta.begin_season = 1
+            if meta.begin_episode is None:
+                meta.begin_episode = 1
             # 获取路径（重命名路径）
             target_path = handler.get_rename_path(
                 path=dir_path,
                 template_string=rename_format,
-                rename_dict=handler.get_naming_dict(meta=MetaInfo(mediainfo.title),
+                rename_dict=handler.get_naming_dict(meta=meta,
                                                     mediainfo=mediainfo)
             )
             # 计算重命名中的文件夹层数
             rename_format_level = len(rename_format.split("/")) - 1
             # 取相对路径的第1层目录
             media_path = target_path.parents[rename_format_level - 1]
+            if dir_path.is_relative_to(media_path):
+                # 兜底检查，避免不必要的扫盘
+                logger.warn(f"{media_path} 是媒体库目录 {dir_path} 的父目录，忽略获取媒体文件列表，请检查重命名格式！")
+                continue
             # 检索媒体文件
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:

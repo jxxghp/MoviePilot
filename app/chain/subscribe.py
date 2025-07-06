@@ -434,14 +434,15 @@ class SubscribeChain(ChainBase):
                     else:
                         self.messagehelper.put('没有找到订阅！', title="订阅搜索", role="system")
 
-                logger.debug(f"search Lock released at {datetime.now()}")
             finally:
                 subscribes.clear()
                 del subscribes
 
-            # 如果不是大内存模式，进行垃圾回收
-            if not settings.BIG_MEMORY_MODE:
-                gc.collect()
+            logger.debug(f"search Lock released at {datetime.now()}")
+
+        # 如果不是大内存模式，进行垃圾回收
+        if not settings.BIG_MEMORY_MODE:
+            gc.collect()
 
     def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaBase,
                                   mediainfo: MediaInfo, downloads: Optional[List[Context]]):

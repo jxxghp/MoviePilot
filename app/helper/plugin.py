@@ -308,7 +308,7 @@ class PluginHelper(metaclass=Singleton):
             return None, "连接仓库失败"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
-                         f"{'超出速率限制，请配置GITHUB_TOKEN环境变量或稍后重试' if res.status_code == 403 else res.reason}"
+                         f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.reason}"
 
         try:
             ret = res.json()

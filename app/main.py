@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import setproctitle
 import signal
 import sys
 # 获取当前工作目录的路径
@@ -22,6 +23,9 @@ if SystemUtils.is_frozen():
 
 from app.core.config import settings
 from app.db.init import init_db, update_db
+
+# 设置进程名
+setproctitle.setproctitle(settings.PROJECT_NAME)
 
 # uvicorn服务
 Server = uvicorn.Server(Config(app, host=settings.HOST, port=settings.PORT,

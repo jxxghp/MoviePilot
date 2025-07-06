@@ -166,3 +166,19 @@ def memory2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     获取当前内存使用率 API_TOKEN认证（?token=xxx）
     """
     return memory()
+
+
+@router.get("/network", summary="获取当前网络流量", response_model=List[int])
+def network(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取当前网络流量（上行和下行流量，单位：bytes/s）
+    """
+    return SystemUtils.network_usage()
+
+
+@router.get("/network2", summary="获取当前网络流量（API_TOKEN）", response_model=List[int])
+def network2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
+    """
+    获取当前网络流量 API_TOKEN认证（?token=xxx）
+    """
+    return network()

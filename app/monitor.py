@@ -120,6 +120,71 @@ class Monitor(metaclass=Singleton):
         except Exception as e:
             logger.error(f"保存快照失败: {e}")
 
+    def reset_snapshot(self, storage: str) -> bool:
+        """
+        重置快照，强制下次扫描时重新建立基准
+        :param storage: 存储名称
+        :return: 是否成功
+        """
+        try:
+            cache_file = self._snapshot_cache_dir / f"{storage}_snapshot.json"
+            if cache_file.exists():
+                cache_file.unlink()
+                logger.info(f"快照已重置: {storage}")
+                return True
+            logger.debug(f"快照文件不存在，无需重置: {storage}")
+            return True
+        except Exception as e:
+            logger.error(f"重置快照失败: {storage} - {e}")
+            return False
+
+    def force_full_scan(self, storage: str, mon_path: Path) -> bool:
+        """
+        强制全量扫描并处理所有文件（包括已存在的文件）
+        :param storage: 存储名称
+        :param mon_path: 监控路径
+        :return: 是否成功
+        """
+        try:
+            logger.info(f"开始强制全量扫描: {storage}:{mon_path}")
+
+            # 生成快照
+            new_snapshot = StorageChain().snapshot_storage(
+                storage=storage,
+                path=mon_path,
+                last_snapshot_time=0  # 全量扫描，不使用增量
+            )
+
+            if new_snapshot is None:
+                logger.warn(f"获取 {storage}:{mon_path} 快照失败")
+                return False
+
+            file_count = len(new_snapshot)
+            logger.info(f"{storage}:{mon_path} 全量扫描完成，发现 {file_count} 个文件")
+
+            # 处理所有文件
+            processed_count = 0
+            for file_path, file_info in new_snapshot.items():
+                try:
+                    logger.info(f"处理文件：{file_path}")
+                    file_size = file_info.get('size', 0) if isinstance(file_info, dict) else file_info
+                    self.__handle_file(storage=storage, event_path=Path(file_path), file_size=file_size)
+                    processed_count += 1
+                except Exception as e:
+                    logger.error(f"处理文件 {file_path} 失败: {e}")
+                    continue
+
+            logger.info(f"{storage}:{mon_path} 全量扫描完成，共处理 {processed_count}/{file_count} 个文件")
+
+            # 保存快照
+            self.save_snapshot(storage, new_snapshot, file_count)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"强制全量扫描失败: {storage}:{mon_path} - {e}")
+            return False
+
     def load_snapshot(self, storage: str) -> Optional[Dict]:
         """
         从文件加载快照
@@ -131,7 +196,9 @@ class Monitor(metaclass=Singleton):
             if cache_file.exists():
                 with open(cache_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
+                    logger.debug(f"成功加载快照: {cache_file}, 包含 {len(data.get('snapshot', {}))} 个文件")
                     return data
+            logger.debug(f"快照文件不存在: {cache_file}")
             return None
         except Exception as e:
             logger.error(f"加载快照失败: {e}")
@@ -553,6 +620,9 @@ class Monitor(metaclass=Singleton):
                 old_snapshot = old_snapshot_data.get('snapshot', {}) if old_snapshot_data else {}
                 last_snapshot_time = old_snapshot_data.get('timestamp', 0) if old_snapshot_data else 0
 
+                # 判断是否为首次快照：检查快照文件是否存在且有效
+                is_first_snapshot = old_snapshot_data is None
+
                 # 生成新快照（增量模式）
                 new_snapshot = StorageChain().snapshot_storage(
                     storage=storage,
@@ -567,7 +637,7 @@ class Monitor(metaclass=Singleton):
                 file_count = len(new_snapshot)
                 logger.info(f"{storage}:{mon_path} 快照完成，发现 {file_count} 个文件")
 
-                if old_snapshot:
+                if not is_first_snapshot:
                     # 比较快照找出变化
                     changes = self.compare_snapshots(old_snapshot, new_snapshot)
 

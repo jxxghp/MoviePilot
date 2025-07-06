@@ -1204,7 +1204,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                             key=ProgressKey.FileTransfer)
             progress.end(ProgressKey.FileTransfer)
 
-        return all_success, "，".join(err_msgs)
+        error_msg = "、".join(err_msgs[:2]) + (f"，等{len(err_msgs)}个文件错误！" if len(err_msgs) > 2 else "")
+        return all_success, error_msg
 
     def remote_transfer(self, arg_str: str, channel: MessageChannel,
                         userid: Union[str, int] = None, source: Optional[str] = None):

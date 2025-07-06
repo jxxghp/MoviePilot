@@ -80,6 +80,12 @@ class AutoCloseResponse:
         for name, value in state.items():
             setattr(self, name, value)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
 class RequestUtils:
 
     def __init__(self,

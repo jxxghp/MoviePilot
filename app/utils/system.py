@@ -474,6 +474,24 @@ class SystemUtils:
             return False, f"重启时发生错误：{str(err)}"
 
     @staticmethod
+    def network_usage() -> List[int]:
+        """
+        获取当前网络流量（上行和下行流量，单位：bytes/s）
+        """
+        import time
+        # 获取初始网络统计
+        net_io_1 = psutil.net_io_counters()
+        time.sleep(1)  # 等待1秒
+        # 获取1秒后的网络统计
+        net_io_2 = psutil.net_io_counters()
+
+        # 计算1秒内的流量变化
+        upload_speed = net_io_2.bytes_sent - net_io_1.bytes_sent
+        download_speed = net_io_2.bytes_recv - net_io_1.bytes_recv
+
+        return [upload_speed, download_speed]
+
+    @staticmethod
     def is_hardlink(src: Path, dest: Path) -> bool:
         """
         判断是否为硬链接（可能无法支持宿主机挂载smb盘符映射docker的场景）

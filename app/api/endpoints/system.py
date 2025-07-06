@@ -145,6 +145,7 @@ def fetch_image(
 def proxy_img(
         imgurl: str,
         proxy: bool = False,
+        cache: bool = False,
         if_none_match: Annotated[str | None, Header()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
 ) -> Response:
@@ -155,7 +156,7 @@ def proxy_img(
     hosts = [config.config.get("host") for config in MediaServerHelper().get_configs().values() if
              config and config.config and config.config.get("host")]
     allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS) | set(hosts)
-    return fetch_image(url=imgurl, proxy=proxy, use_disk_cache=False,
+    return fetch_image(url=imgurl, proxy=proxy, use_disk_cache=cache,
                        if_none_match=if_none_match, allowed_domains=allowed_domains)
 
 
