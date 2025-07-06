@@ -49,7 +49,7 @@ class SystemChain(ChainBase):
         # 设置停止标志，通知所有模块准备停止
         global_vars.stop_system()
         # 重启
-        SystemHelper.restart()
+        SystemUtils.restart()
 
     @staticmethod
     def backup_plugins():
