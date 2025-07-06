@@ -19,6 +19,7 @@ urllib3~=2.5.0
 lxml~=6.0.0
 pyquery~=2.0.1
 ruamel.yaml~=0.18.14
+PyYAML~=6.0.2
 APScheduler~=3.11.0
 cryptography~=45.0.4
 pytz~=2025.2
