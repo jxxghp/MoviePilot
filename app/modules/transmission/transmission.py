@@ -25,7 +25,7 @@ class Transmission:
         若不设置参数，则创建配置文件设置的下载器
         """
         if host and port:
-            self._protocol, self._host, self._port = kwargs.get("protocol", self._protocol), host, port
+            self._protocol, self._host, self._port = kwargs.get("protocol", "http"), host, port
         elif host:
             result = UrlUtils.parse_url_params(url=host)
             if result:
