@@ -111,7 +111,7 @@ class Api:
         "_api_path",
         "_request_utils",
         "_version",
-        "_session"
+        "_session",
     )
 
     @property
@@ -284,6 +284,18 @@ class Api:
             res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
         ) and res.success:
             if res.data:
+                return True
+        return False
+
+    def task_running(self):
+        """
+        当前正在运行的任务
+        """
+        if (
+            res := self.__request_api("/task/running")
+        ) and res.success:
+            if res.data:
+                # TODO 具体正在运行的任务
                 return True
         return False
 
