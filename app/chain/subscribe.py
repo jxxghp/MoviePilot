@@ -39,6 +39,8 @@ class SubscribeChain(ChainBase):
     """
 
     _rlock = threading.RLock()
+    # 避免莫名原因导致长时间持有锁
+    _LOCK_TIMOUT = 3600 * 2
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -279,8 +281,15 @@ class SubscribeChain(ChainBase):
         :param manual: 是否手动搜索
         :return: 更新订阅状态为R或删除订阅
         """
-        with self._rlock:
-            logger.debug(f"search lock acquired at {datetime.now()}")
+        lock_acquired = False
+        try:
+            if lock_acquired := self._rlock.acquire(
+                blocking=True, timeout=self._LOCK_TIMOUT
+            ):
+                logger.debug(f"search lock acquired at {datetime.now()}")
+            else:
+                logger.warn("search上锁超时")
+
             subscribeoper = SubscribeOper()
             if sid:
                 subscribe = subscribeoper.get(sid)
@@ -437,8 +446,10 @@ class SubscribeChain(ChainBase):
             finally:
                 subscribes.clear()
                 del subscribes
-
-            logger.debug(f"search Lock released at {datetime.now()}")
+        finally:
+            if lock_acquired:
+                self._rlock.release()
+                logger.debug(f"search Lock released at {datetime.now()}")
 
         # 如果不是大内存模式，进行垃圾回收
         if not settings.BIG_MEMORY_MODE:
@@ -565,8 +576,14 @@ class SubscribeChain(ChainBase):
             logger.warn('没有缓存资源，无法匹配订阅')
             return
 
-        with self._rlock:
-            logger.debug(f"match lock acquired at {datetime.now()}")
+        lock_acquired = False
+        try:
+            if lock_acquired := self._rlock.acquire(
+                blocking=True, timeout=self._LOCK_TIMOUT
+            ):
+                logger.debug(f"match lock acquired at {datetime.now()}")
+            else:
+                logger.warn("match上锁超时")
 
             # 预识别所有未识别的种子
             processed_torrents: Dict[str, List[Context]] = {}
@@ -822,8 +839,10 @@ class SubscribeChain(ChainBase):
                 del processed_torrents
                 subscribes.clear()
                 del subscribes
-
-            logger.debug(f"match Lock released at {datetime.now()}")
+        finally:
+            if lock_acquired:
+                self._rlock.release()
+                logger.debug(f"match Lock released at {datetime.now()}")
 
     def check(self):
         """

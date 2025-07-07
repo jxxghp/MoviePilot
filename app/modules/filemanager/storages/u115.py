@@ -219,8 +219,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
         # 处理速率限制
         if resp.status_code == 429:
-            reset_time = int(resp.headers.get("X-RateLimit-Reset", 60))
-            time.sleep(reset_time + 5)
+            reset_time = 5 + int(resp.headers.get("X-RateLimit-Reset", 60))
+            logger.debug(
+                f"【115】{method} 请求 {endpoint} 限流，等待{reset_time}秒后重试"
+            )
+            time.sleep(reset_time)
             return self._request_api(method, endpoint, result_key, **kwargs)
 
         # 处理请求错误

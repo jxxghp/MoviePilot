@@ -562,9 +562,12 @@ class FileManagerModule(_ModuleBase):
         if not settings.LOCAL_EXISTS_SEARCH:
             return None
 
+        logger.debug(f"正在本地媒体库中查找 {mediainfo.title_year}...")
+
         # 检查媒体库
         fileitems = self.media_files(mediainfo)
         if not fileitems:
+            logger.debug(f"{mediainfo.title_year} 不在本地媒体库中")
             return None
 
         if mediainfo.type == MediaType.MOVIE:
