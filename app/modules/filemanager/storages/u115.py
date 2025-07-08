@@ -18,7 +18,7 @@ from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.schemas.types import StorageSchema
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
 
 lock = threading.Lock()
@@ -28,7 +28,7 @@ class NoCheckInException(Exception):
     pass
 
 
-class U115Pan(StorageBase, metaclass=Singleton):
+class U115Pan(StorageBase, metaclass=WeakSingleton):
     """
     115相关操作
     """
@@ -41,18 +41,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
         "move": "移动",
         "copy": "复制"
     }
-
-    # 验证参数
-    _auth_state = {}
-
-    # 上传进度值
-    _last_progress = 0
-
     # 基础url
     base_url = "https://proapi.115.com"
 
     def __init__(self):
         super().__init__()
+        self._auth_state = {}
         self.session = requests.Session()
         self._init_session()
 
@@ -492,7 +486,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                         type="file" if info_resp["file_category"] == "1" else "dir",
                         name=info_resp["file_name"],
                         basename=Path(info_resp["file_name"]).stem,
-                        extension=Path(info_resp["file_name"]).suffix[1:] if info_resp["file_category"] == "1" else None,
+                        extension=Path(info_resp["file_name"]).suffix[1:] if info_resp[
+                                                                                 "file_category"] == "1" else None,
                         pickcode=info_resp["pick_code"],
                         size=StringUtils.num_filesize(info_resp['size']) if info_resp["file_category"] == "1" else None,
                         modify_time=info_resp["utime"]

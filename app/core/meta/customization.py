@@ -9,8 +9,6 @@ class CustomizationMatcher(metaclass=Singleton):
     """
     识别自定义占位符
     """
-    customization = None
-    custom_separator = None
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()

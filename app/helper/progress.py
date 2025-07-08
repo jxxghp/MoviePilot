@@ -1,12 +1,11 @@
 from enum import Enum
-from typing import Union, Dict, Optional
+from typing import Union, Optional
 
 from app.schemas.types import ProgressKey
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 
 
-class ProgressHelper(metaclass=Singleton):
-    _process_detail: Dict[str, dict] = {}
+class ProgressHelper(metaclass=WeakSingleton):
 
     def __init__(self):
         self._process_detail = {}

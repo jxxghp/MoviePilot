@@ -8,11 +8,11 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 from app.utils.system import SystemUtils
 
 
-class SubscribeHelper(metaclass=Singleton):
+class SubscribeHelper(metaclass=WeakSingleton):
     """
     订阅数据统计/订阅分享等
     """

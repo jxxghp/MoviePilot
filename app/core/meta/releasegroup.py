@@ -9,7 +9,6 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
     """
     识别制作组、字幕组
     """
-    __release_groups: str = None
     # 内置组
     RELEASE_GROUPS: dict = {
         "0ff": ['FF(?:(?:A|WE)B|CD|E(?:DU|B)|TV)'],

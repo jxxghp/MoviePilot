@@ -1,10 +1,9 @@
 import datetime
 import re
 from pathlib import Path
-from typing import Tuple, Optional, List, Union, Dict
+from typing import Tuple, Optional, List, Union, Dict, Any
 from urllib.parse import unquote
 
-from requests import Response
 from torrentool.api import Torrent
 
 from app.core.config import settings
@@ -16,17 +15,17 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
 
 
-class TorrentHelper(metaclass=Singleton):
+class TorrentHelper(metaclass=WeakSingleton):
     """
     种子帮助类
     """
 
-    # 失败的种子：站点链接
-    _invalid_torrents = []
+    def __init__(self):
+        self._invalid_torrents = []
 
     def download_torrent(self, url: str,
                          cookie: Optional[str] = None,
@@ -170,7 +169,7 @@ class TorrentHelper(metaclass=Singleton):
             return "", []
 
     @staticmethod
-    def get_url_filename(req: Response, url: str) -> str:
+    def get_url_filename(req: Any, url: str) -> str:
         """
         从下载请求中获取种子文件名
         """

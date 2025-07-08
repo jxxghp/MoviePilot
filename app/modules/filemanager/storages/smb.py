@@ -12,17 +12,19 @@ from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.schemas.types import StorageSchema
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 
 lock = threading.Lock()
 
 
 class SMBConnectionError(Exception):
-    """SMB 连接错误"""
+    """
+    SMB 连接错误
+    """
     pass
 
 
-class SMB(StorageBase, metaclass=Singleton):
+class SMB(StorageBase, metaclass=WeakSingleton):
     """
     SMB网络挂载存储相关操作 - 使用 smbclient 高级接口
     """

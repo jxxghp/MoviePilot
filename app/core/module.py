@@ -16,14 +16,14 @@ class ModuleManager(metaclass=Singleton):
     模块管理器
     """
 
-    # 模块列表
-    _modules: dict = {}
-    # 运行态模块列表
-    _running_modules: dict = {}
     # 子模块类型集合
     SubType = Union[DownloaderType, MediaServerType, MessageChannel, StorageSchema, OtherModulesType]
 
     def __init__(self):
+        # 模块列表
+        self._modules: dict = {}
+        # 运行态模块列表
+        self._running_modules: dict = {}
         self.load_modules()
 
     def load_modules(self):

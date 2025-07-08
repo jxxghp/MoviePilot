@@ -8,7 +8,6 @@ import os
 
 
 class DisplayHelper(metaclass=Singleton):
-    _display: Display = None
 
     def __init__(self):
         if not SystemUtils.is_docker():

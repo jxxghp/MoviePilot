@@ -12,11 +12,11 @@ from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 from app.utils.url import UrlUtils
 
 
-class Alist(StorageBase, metaclass=Singleton):
+class Alist(StorageBase, metaclass=WeakSingleton):
     """
     Alist相关操作
     api文档：https://oplist.org/zh/
@@ -38,7 +38,7 @@ class Alist(StorageBase, metaclass=Singleton):
         """
         初始化
         """
-        self.__generate_token.clear_cache()
+        self.__generate_token.clear_cache() # noqa
 
     @property
     def __get_base_url(self) -> str:

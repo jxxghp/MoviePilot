@@ -5,7 +5,6 @@ import threading
 import traceback
 from copy import deepcopy
 from pathlib import Path
-from queue import Queue
 from time import sleep
 from typing import List, Optional, Tuple, Union, Dict, Callable
 
@@ -16,9 +15,9 @@ from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
-from app.core.event import eventmanager
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
@@ -28,11 +27,11 @@ from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
+from app.schemas import StorageOperSelectionEventData
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
     TransferTask, TransferQueue, TransferJob, TransferJobTask
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey, ChainEventType, ContentType
-from app.schemas import StorageOperSelectionEventData
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
@@ -213,6 +212,7 @@ class JobManager:
                                 set(self._season_episodes[mediaid]) - set(task.meta.episode_list)
                             )
                         return task
+            return None
 
     def remove_job(self, task: TransferTask) -> Optional[TransferJob]:
         """
@@ -226,6 +226,7 @@ class JobManager:
                 if __mediaid__ in self._season_episodes:
                     self._season_episodes.pop(__mediaid__)
                 return self._job_view.pop(__mediaid__)
+            return None
 
     def is_done(self, task: TransferTask) -> bool:
         """
@@ -359,22 +360,18 @@ class TransferChain(ChainBase, metaclass=Singleton):
     文件整理处理链
     """
 
-    # 可处理的文件后缀
-    all_exts = settings.RMT_MEDIAEXT
-
-    # 待整理任务队列
-    _queue = Queue()
-
-    # 文件整理线程
-    _transfer_thread = None
-
-    # 队列间隔时间（秒）
-    _transfer_interval = 15
-
     def __init__(self):
         super().__init__()
+        # 可处理的文件后缀
+        self.all_exts = settings.RMT_MEDIAEXT
+        # 待整理任务队列
+        self._queue = queue.Queue()
+        # 文件整理线程
+        self._transfer_thread = None
+        # 队列间隔时间（秒）
+        self._transfer_interval = 15
+        # 事件管理器
         self.jobview = JobManager()
-
         # 启动整理任务
         self.__init()
 
@@ -1101,7 +1098,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 # 自定义识别
                 if formaterHandler:
                     # 开始集、结束集、PART
-                    begin_ep, end_ep, part = formaterHandler.split_episode(file_name=file_path.name, file_meta=file_meta)
+                    begin_ep, end_ep, part = formaterHandler.split_episode(file_name=file_path.name,
+                                                                           file_meta=file_meta)
                     if begin_ep is not None:
                         file_meta.begin_episode = begin_ep
                         file_meta.part = part

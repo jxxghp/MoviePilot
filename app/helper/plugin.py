@@ -18,14 +18,14 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
 
 PLUGIN_DIR = Path(settings.ROOT_PATH) / "app" / "plugins"
 
 
-class PluginHelper(metaclass=Singleton):
+class PluginHelper(metaclass=WeakSingleton):
     """
     插件市场管理，下载安装插件到本地
     """

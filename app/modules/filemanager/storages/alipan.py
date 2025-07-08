@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.schemas.types import StorageSchema
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
 
 lock = threading.Lock()
@@ -29,7 +29,7 @@ class SessionInvalidException(Exception):
     pass
 
 
-class AliPan(StorageBase, metaclass=Singleton):
+class AliPan(StorageBase, metaclass=WeakSingleton):
     """
     阿里云盘相关操作
     """
@@ -43,17 +43,12 @@ class AliPan(StorageBase, metaclass=Singleton):
         "copy": "复制"
     }
 
-    # 验证参数
-    _auth_state = {}
-
-    # 上传进度值
-    _last_progress = 0
-
     # 基础url
     base_url = "https://openapi.alipan.com"
 
     def __init__(self):
         super().__init__()
+        self._auth_state = {}
         self.session = requests.Session()
         self._init_session()
 
@@ -244,6 +239,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         conf = self.get_conf()
         conf.update(result)
         self.set_config(conf)
+        return None
 
     def _request_api(self, method: str, endpoint: str,
                      result_key: Optional[str] = None, **kwargs) -> Optional[Union[dict, list]]:
@@ -369,7 +365,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                 break
             next_marker = resp.get("next_marker")
             for item in resp.get("items", []):
-                items.append(self.__get_fileitem(item, parent=fileitem.path))
+                items.append(self.__get_fileitem(item, parent=str(fileitem.path)))
             if len(resp.get("items")) < 100:
                 break
         return items

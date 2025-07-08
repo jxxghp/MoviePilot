@@ -40,20 +40,20 @@ class Scheduler(metaclass=Singleton):
     """
     定时任务管理
     """
-    # 定时服务
-    _scheduler = None
-    # 退出事件
-    _event = threading.Event()
-    # 锁
-    _lock = threading.RLock()
-    # 各服务的运行状态
-    _jobs = {}
-    # 用户认证失败次数
-    _auth_count = 0
-    # 用户认证失败消息发送
-    _auth_message = False
 
     def __init__(self):
+        # 定时服务
+        self._scheduler = None
+        # 退出事件
+        self._event = threading.Event()
+        # 锁
+        self._lock = threading.RLock()
+        # 各服务的运行状态
+        self._jobs = {}
+        # 用户认证失败次数
+        self._auth_count = 0
+        # 用户认证失败消息发送
+        self._auth_message = False
         self.init()
 
     @eventmanager.register(EventType.ConfigChanged)
@@ -443,7 +443,7 @@ class Scheduler(metaclass=Singleton):
             return
         with self._lock:
             job_id = f"workflow-{workflow.id}"
-            service = self._jobs.pop(job_id, None)
+            service = self._jobs.pop(job_id, {})
             if not service:
                 return
             try:

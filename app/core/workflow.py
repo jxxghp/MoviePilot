@@ -13,10 +13,9 @@ class WorkFlowManager(metaclass=Singleton):
     工作流管理器
     """
 
-    # 所有动作定义
-    _actions: Dict[str, Any] = {}
-
     def __init__(self):
+        # 所有动作定义
+        self._actions: Dict[str, Any] = {}
         self.init()
 
     def init(self):

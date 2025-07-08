@@ -69,9 +69,6 @@ class EventManager(metaclass=Singleton):
     EventManager 负责管理和调度广播事件和链式事件，包括订阅、发送和处理事件
     """
 
-    # 退出事件
-    __event = threading.Event()
-
     def __init__(self):
         self.__executor = ThreadHelper()  # 动态线程池，用于消费事件
         self.__consumer_threads = []  # 用于保存启动的事件消费者线程
@@ -81,6 +78,7 @@ class EventManager(metaclass=Singleton):
         self.__disabled_handlers = set()  # 禁用的事件处理器集合
         self.__disabled_classes = set()  # 禁用的事件处理器类集合
         self.__lock = threading.Lock()  # 线程锁
+        self.__event = threading.Event()  # 退出事件
 
     def start(self):
         """

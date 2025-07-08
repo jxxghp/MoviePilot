@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
 
+from app.helper.sites import SitesHelper
 from fastapi import HTTPException
 from starlette import status
 from watchdog.events import FileSystemEventHandler
@@ -21,7 +22,6 @@ from app.core.event import eventmanager, Event
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.plugin import PluginHelper
-from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas.types import EventType, SystemConfigKey
 from app.utils.crypto import RSAUtils
@@ -88,16 +88,15 @@ class PluginManager(metaclass=Singleton):
     插件管理器
     """
 
-    # 插件列表
-    _plugins: dict = {}
-    # 运行态插件列表
-    _running_plugins: dict = {}
-    # 配置Key
-    _config_key: str = "plugin.%s"
-    # 监听器
-    _observer: Observer = None
-
     def __init__(self):
+        # 插件列表
+        self._plugins: dict = {}
+        # 运行态插件列表
+        self._running_plugins: dict = {}
+        # 配置Key
+        self._config_key: str = "plugin.%s"
+        # 监听器
+        self._observer: Observer = None
         # 开发者模式监测插件修改
         if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
             self.__start_monitor()

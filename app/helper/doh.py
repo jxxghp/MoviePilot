@@ -70,6 +70,9 @@ def enable_doh(enable: bool):
 
 
 class DohHelper(metaclass=Singleton):
+    """
+    DoH帮助类，用于处理DNS over HTTPS解析。
+    """
     def __init__(self):
         enable_doh(settings.DOH_ENABLE)
 

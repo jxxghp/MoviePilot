@@ -7,19 +7,19 @@ from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.log import logger
-from app.utils.singleton import Singleton
+from app.utils.singleton import WeakSingleton
 
 
-class CategoryHelper(metaclass=Singleton):
+class CategoryHelper(metaclass=WeakSingleton):
     """
     二级分类
     """
-    _categorys = {}
-    _movie_categorys = {}
-    _tv_categorys = {}
 
     def __init__(self):
         self._category_path: Path = settings.CONFIG_PATH / "category.yaml"
+        self._categorys = {}
+        self._movie_categorys = {}
+        self._tv_categorys = {}
         self.init()
 
     def init(self):
@@ -69,7 +69,7 @@ class CategoryHelper(metaclass=Singleton):
         """
         if not self._movie_categorys:
             return []
-        return self._movie_categorys.keys()
+        return list(self._movie_categorys.keys())
 
     @property
     def tv_categorys(self) -> list:
@@ -78,7 +78,7 @@ class CategoryHelper(metaclass=Singleton):
         """
         if not self._tv_categorys:
             return []
-        return self._tv_categorys.keys()
+        return list(self._tv_categorys.keys())
 
     def get_movie_category(self, tmdb_info) -> str:
         """
@@ -127,7 +127,7 @@ class CategoryHelper(metaclass=Singleton):
                     continue
                 elif attr == "production_countries":
                     # 制片国家
-                    info_values = [str(val.get("iso_3166_1")).upper() for val in info_value]
+                    info_values = [str(val.get("iso_3166_1")).upper() for val in info_value] # type: ignore
                 else:
                     if isinstance(info_value, list):
                         info_values = [str(val).upper() for val in info_value]
