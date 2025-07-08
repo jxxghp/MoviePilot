@@ -82,3 +82,25 @@ class ActionFlow(BaseModel):
     source: Optional[str] = Field(default=None, description="源动作")
     target: Optional[str] = Field(default=None, description="目标动作")
     animated: Optional[bool] = Field(default=True, description="是否动画流程")
+
+
+class WorkflowShare(BaseModel):
+    """
+    工作流分享信息
+    """
+    id: Optional[int] = Field(default=None, description="分享ID")
+    share_title: Optional[str] = Field(default=None, description="分享标题")
+    share_comment: Optional[str] = Field(default=None, description="分享说明")
+    share_user: Optional[str] = Field(default=None, description="分享人")
+    share_uid: Optional[str] = Field(default=None, description="分享人唯一ID")
+    name: Optional[str] = Field(default=None, description="工作流名称")
+    description: Optional[str] = Field(default=None, description="工作流描述")
+    timer: Optional[str] = Field(default=None, description="定时器")
+    actions: Optional[str] = Field(default=None, description="任务列表(JSON字符串)")
+    flows: Optional[str] = Field(default=None, description="任务流(JSON字符串)")
+    context: Optional[str] = Field(default=None, description="执行上下文(JSON字符串)")
+    date: Optional[str] = Field(default=None, description="分享时间")
+    count: Optional[int] = Field(default=0, description="复用人次")
+
+    class Config:
+        orm_mode = True

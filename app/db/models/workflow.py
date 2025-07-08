@@ -39,6 +39,11 @@ class Workflow(Base):
 
     @staticmethod
     @db_query
+    def list(db):
+        return db.query(Workflow).all()
+
+    @staticmethod
+    @db_query
     def get_enabled_workflows(db):
         return db.query(Workflow).filter(Workflow.state != 'P').all()
 

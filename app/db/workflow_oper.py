@@ -25,6 +25,12 @@ class WorkflowOper(DbOper):
         """
         return Workflow.get(self._db, wid)
 
+    def list(self) -> List[Workflow]:
+        """
+        获取所有工作流列表
+        """
+        return Workflow.list(self._db)
+
     def list_enabled(self) -> List[Workflow]:
         """
         获取启用的工作流列表
