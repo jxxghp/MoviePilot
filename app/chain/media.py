@@ -19,7 +19,6 @@ from app.utils.string import StringUtils
 
 recognize_lock = Lock()
 scraping_lock = Lock()
-scraping_files = []
 
 
 class MediaChain(ChainBase):
@@ -35,25 +34,25 @@ class MediaChain(ChainBase):
         switchs = SystemConfigOper().get(SystemConfigKey.ScrapingSwitchs) or {}
         # 默认配置
         default_switchs = {
-            'movie_nfo': True,          # 电影NFO
-            'movie_poster': True,       # 电影海报
-            'movie_backdrop': True,     # 电影背景图
-            'movie_logo': True,         # 电影Logo
-            'movie_disc': True,         # 电影光盘图
-            'movie_banner': True,       # 电影横幅图
-            'movie_thumb': True,        # 电影缩略图
-            'tv_nfo': True,            # 电视剧NFO
-            'tv_poster': True,         # 电视剧海报
-            'tv_backdrop': True,       # 电视剧背景图
-            'tv_banner': True,         # 电视剧横幅图
-            'tv_logo': True,           # 电视剧Logo
-            'tv_thumb': True,          # 电视剧缩略图
-            'season_nfo': True,        # 季NFO
-            'season_poster': True,     # 季海报
-            'season_banner': True,     # 季横幅图
-            'season_thumb': True,      # 季缩略图
-            'episode_nfo': True,       # 集NFO
-            'episode_thumb': True      # 集缩略图
+            'movie_nfo': True,  # 电影NFO
+            'movie_poster': True,  # 电影海报
+            'movie_backdrop': True,  # 电影背景图
+            'movie_logo': True,  # 电影Logo
+            'movie_disc': True,  # 电影光盘图
+            'movie_banner': True,  # 电影横幅图
+            'movie_thumb': True,  # 电影缩略图
+            'tv_nfo': True,  # 电视剧NFO
+            'tv_poster': True,  # 电视剧海报
+            'tv_backdrop': True,  # 电视剧背景图
+            'tv_banner': True,  # 电视剧横幅图
+            'tv_logo': True,  # 电视剧Logo
+            'tv_thumb': True,  # 电视剧缩略图
+            'season_nfo': True,  # 季NFO
+            'season_poster': True,  # 季海报
+            'season_banner': True,  # 季横幅图
+            'season_thumb': True,  # 季缩略图
+            'episode_nfo': True,  # 集NFO
+            'episode_thumb': True  # 集缩略图
         }
         # 合并用户配置和默认配置
         for key, default_value in default_switchs.items():
@@ -344,23 +343,45 @@ class MediaChain(ChainBase):
             return
         event_data = event.event_data or {}
         fileitem: FileItem = event_data.get("fileitem")
+        file_list: List[str] = event_data.get("file_list", [])
         meta: MetaBase = event_data.get("meta")
         mediainfo: MediaInfo = event_data.get("mediainfo")
         overwrite = event_data.get("overwrite", False)
         if not fileitem:
             return
+
         # 刮削锁
         with scraping_lock:
-            if fileitem.path in scraping_files:
+            # 检查文件项是否存在
+            storagechain = StorageChain()
+            if not storagechain.get_item(fileitem):
+                logger.warn(f"文件项不存在：{fileitem.path}")
                 return
-            scraping_files.append(fileitem.path)
-        try:
-            # 执行刮削
-            self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo, overwrite=overwrite)
-        finally:
-            # 释放锁
-            with scraping_lock:
-                scraping_files.remove(fileitem.path)
+            # 检查是否为目录
+            if fileitem.type == "file":
+                # 单个文件刮削
+                self.scrape_metadata(fileitem=fileitem,
+                                     mediainfo=mediainfo,
+                                     init_folder=False,
+                                     parent=storagechain.get_parent_item(fileitem),
+                                     overwrite=overwrite)
+            else:
+                # 检查目的目录下是否已经有nfo刮削文件
+                sub_files = storagechain.list_files(fileitem)
+                if any(f.name.endswith('.nfo') for f in sub_files):
+                    logger.info(f"目录 {fileitem.path} 已有NFO文件，开始增量刮削...")
+                    for file_path in file_list:
+                        self.scrape_metadata(fileitem=storagechain.get_file_item(storage=fileitem.storage,
+                                                                                 path=Path(file_path)),
+                                             mediainfo=mediainfo,
+                                             init_folder=False,
+                                             parent=fileitem,
+                                             overwrite=overwrite)
+                else:
+                    # 执行全量刮削
+                    logger.info(f"开始全量刮削目录 {fileitem.path} ...")
+                    self.scrape_metadata(fileitem=fileitem, meta=meta, init_folder=True,
+                                         mediainfo=mediainfo, overwrite=overwrite)
 
     def scrape_metadata(self, fileitem: schemas.FileItem,
                         meta: MetaBase = None, mediainfo: MediaInfo = None,
@@ -436,6 +457,9 @@ class MediaChain(ChainBase):
                 logger.error(f"{_url} 图片下载失败：{str(err)}！")
             return None
 
+        if not fileitem:
+            return
+
         # 当前文件路径
         filepath = Path(fileitem.path)
         if fileitem.type == "file" \
@@ -494,8 +518,9 @@ class MediaChain(ChainBase):
                     files = __list_files(_fileitem=fileitem)
                     for file in files:
                         self.scrape_metadata(fileitem=file,
-                                             meta=meta, mediainfo=mediainfo,
-                                             init_folder=False, parent=fileitem,
+                                             mediainfo=mediainfo,
+                                             init_folder=False,
+                                             parent=fileitem,
                                              overwrite=overwrite)
                 # 生成目录内图片文件
                 if init_folder:
@@ -587,11 +612,11 @@ class MediaChain(ChainBase):
                 else:
                     logger.info("集缩略图刮削已关闭，跳过")
             else:
-                # 当前为目录，处理目录内的文件
+                # 当前为电视剧目录，处理目录内的文件
                 files = __list_files(_fileitem=fileitem)
                 for file in files:
                     self.scrape_metadata(fileitem=file,
-                                         meta=meta, mediainfo=mediainfo,
+                                         mediainfo=mediainfo,
                                          parent=fileitem if file.type == "file" else None,
                                          init_folder=True if file.type == "dir" else False,
                                          overwrite=overwrite)
@@ -659,7 +684,8 @@ class MediaChain(ChainBase):
                                         # 只下载当前刮削季的图片
                                         image_season = "00" if "specials" in image_name else image_name[6:8]
                                         if image_season != str(season_meta.begin_season).rjust(2, '0'):
-                                            logger.info(f"当前刮削季为：{season_meta.begin_season}，跳过文件：{image_path}")
+                                            logger.info(
+                                                f"当前刮削季为：{season_meta.begin_season}，跳过文件：{image_path}")
                                             continue
                                         if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                        path=image_path):

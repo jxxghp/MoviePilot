@@ -8,6 +8,7 @@ from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
+from version import APP_VERSION
 
 
 class ResourceHelper:
@@ -58,15 +59,15 @@ class ResourceHelper:
                         if rtype == "auth":
                             # 站点认证资源
                             local_version = SitesHelper().auth_version
-                            # 阻断v2.3.0以下的版本直接更新，避免无限重启
+                            # 阻断站点认证资源v2.3.0以下的版本直接更新，避免无限重启
                             if StringUtils.compare_version(local_version, "<", "2.3.0"):
+                                continue
+                            # 阻断主程序版本v2.6.3以下的版本直接更新，避免搜索异常
+                            if StringUtils.compare_version(APP_VERSION, "<", "2.6.3"):
                                 continue
                         elif rtype == "sites":
                             # 站点索引资源
                             local_version = SitesHelper().indexer_version
-                            # 阻断v2.0.0以下的版本直接更新，避免无限重启
-                            if StringUtils.compare_version(local_version, "<", "2.0.0"):
-                                continue
                         else:
                             continue
                         if StringUtils.compare_version(version, ">", local_version):
@@ -84,6 +85,8 @@ class ResourceHelper:
                         elif not r:
                             return None, "连接仓库失败"
                         files_info = r.json()
+                        # 下载资源文件
+                        success = True
                         for item in files_info:
                             save_path = need_updates.get(item.get("name"))
                             if not save_path:
@@ -96,16 +99,23 @@ class ResourceHelper:
                                                    timeout=180).get_res(download_url)
                                 if not res:
                                     logger.error(f"文件 {item.get('name')} 下载失败！")
+                                    success = False
+                                    break
                                 elif res.status_code != 200:
                                     logger.error(f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}")
+                                    success = False
+                                    break
                                 # 创建插件文件夹
                                 file_path = self._base_dir / save_path / item.get("name")
                                 if not file_path.parent.exists():
                                     file_path.parent.mkdir(parents=True, exist_ok=True)
                                 # 写入文件
                                 file_path.write_bytes(res.content)
-                        logger.info("资源包更新完成，开始重启服务...")
-                        SystemHelper.restart()
+                        if success:
+                            logger.info("资源包更新完成，开始重启服务...")
+                            SystemHelper.restart()
+                        else:
+                            logger.warn("资源包更新失败，跳过升级！")
                     else:
                         logger.info("所有资源已最新，无需更新")
             except json.JSONDecodeError:

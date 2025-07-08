@@ -312,4 +312,3 @@ class StreamingPlatforms(metaclass=Singleton):
         if name is None:
             return False
         return name.upper() in self._lookup_cache
-

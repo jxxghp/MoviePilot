@@ -488,7 +488,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     self.eventmanager.send_event(EventType.MetadataScrape, {
                         'meta': task.meta,
                         'mediainfo': task.mediainfo,
-                        'fileitem': transferinfo.target_diritem
+                        'fileitem': transferinfo.target_diritem,
+                        'file_list': transferinfo.file_list_new,
+                        'overwrite': False
                     })
 
                 # 移除已完成的任务

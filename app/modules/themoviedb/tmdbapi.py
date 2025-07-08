@@ -563,6 +563,9 @@ class TmdbApi:
         except Exception as err:
             logger.error(f"从TheDbMovie网站查询出错：{str(err)}")
             return {}
+        finally:
+            if html is not None:
+                del html
         return {}
 
     def get_info(self,

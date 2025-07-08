@@ -23,12 +23,16 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         if not html_text:
             return
         html = etree.HTML(html_text)
-        if not StringUtils.is_valid_html_element(html):
-            return
-        total_row = html.xpath('//table[@class="table table-bordered"]//tr[td[1][normalize-space()="Total"]]')
-        if not total_row:
-            return
-        seeding_count = total_row[0].xpath('./td[2]/text()')
-        seeding_size = total_row[0].xpath('./td[3]/text()')
-        self.seeding = StringUtils.str_int(seeding_count[0]) if seeding_count else 0
-        self.seeding_size = StringUtils.num_filesize(seeding_size[0].strip()) if seeding_size else 0
+        try:
+            if not StringUtils.is_valid_html_element(html):
+                return
+            total_row = html.xpath('//table[@class="table table-bordered"]//tr[td[1][normalize-space()="Total"]]')
+            if not total_row:
+                return
+            seeding_count = total_row[0].xpath('./td[2]/text()')
+            seeding_size = total_row[0].xpath('./td[3]/text()')
+            self.seeding = StringUtils.str_int(seeding_count[0]) if seeding_count else 0
+            self.seeding_size = StringUtils.num_filesize(seeding_size[0].strip()) if seeding_size else 0
+        finally:
+            if html is not None:
+                del html

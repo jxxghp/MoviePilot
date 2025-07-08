@@ -104,20 +104,24 @@ class SubtitleModule(_ModuleBase):
                 logger.warn(f"读取页面代码失败：{torrent.page_url}")
                 return
             html = etree.HTML(res.text)
-            sublink_list = []
-            for xpath in self._SITE_SUBTITLE_XPATH:
-                sublinks = html.xpath(xpath)
-                if sublinks:
-                    for sublink in sublinks:
-                        if not sublink:
-                            continue
-                        if not sublink.startswith("http"):
-                            base_url = StringUtils.get_base_url(torrent.page_url)
-                            if sublink.startswith("/"):
-                                sublink = "%s%s" % (base_url, sublink)
-                            else:
-                                sublink = "%s/%s" % (base_url, sublink)
-                        sublink_list.append(sublink)
+            try:
+                sublink_list = []
+                for xpath in self._SITE_SUBTITLE_XPATH:
+                    sublinks = html.xpath(xpath)
+                    if sublinks:
+                        for sublink in sublinks:
+                            if not sublink:
+                                continue
+                            if not sublink.startswith("http"):
+                                base_url = StringUtils.get_base_url(torrent.page_url)
+                                if sublink.startswith("/"):
+                                    sublink = "%s%s" % (base_url, sublink)
+                                else:
+                                    sublink = "%s/%s" % (base_url, sublink)
+                            sublink_list.append(sublink)
+            finally:
+                if html is not None:
+                    del html
             # 下载所有字幕文件
             for sublink in sublink_list:
                 logger.info(f"找到字幕下载链接：{sublink}，开始下载...")

@@ -271,16 +271,20 @@ class SiteChain(ChainBase):
             logger.error(f"获取站点页面失败：{url}")
             return favicon_url, None
         html = etree.HTML(html_text)
-        if StringUtils.is_valid_html_element(html):
-            fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
-            if fav_link:
-                favicon_url = urljoin(url, fav_link[0])
+        try:
+            if StringUtils.is_valid_html_element(html):
+                fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
+                if fav_link:
+                    favicon_url = urljoin(url, fav_link[0])
 
-        res = RequestUtils(cookies=cookie, timeout=15, ua=ua).get_res(url=favicon_url)
-        if res:
-            return favicon_url, base64.b64encode(res.content).decode()
-        else:
-            logger.error(f"获取站点图标失败：{favicon_url}")
+            res = RequestUtils(cookies=cookie, timeout=15, ua=ua).get_res(url=favicon_url)
+            if res:
+                return favicon_url, base64.b64encode(res.content).decode()
+            else:
+                logger.error(f"获取站点图标失败：{favicon_url}")
+        finally:
+            if html is not None:
+                del html
         return favicon_url, None
 
     def sync_cookies(self, manual=False) -> Tuple[bool, str]:

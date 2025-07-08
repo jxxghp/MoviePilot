@@ -96,53 +96,58 @@ class CookieHelper:
                 return None, None, "获取源码失败"
             # 查找用户名输入框
             html = etree.HTML(html_text)
-            username_xpath = None
-            for xpath in self._SITE_LOGIN_XPATH.get("username"):
-                if html.xpath(xpath):
-                    username_xpath = xpath
-                    break
-            if not username_xpath:
-                return None, None, "未找到用户名输入框"
-            # 查找密码输入框
-            password_xpath = None
-            for xpath in self._SITE_LOGIN_XPATH.get("password"):
-                if html.xpath(xpath):
-                    password_xpath = xpath
-                    break
-            if not password_xpath:
-                return None, None, "未找到密码输入框"
-            # 处理二步验证码
-            otp_code = TwoFactorAuth(two_step_code).get_code()
-            # 查找二步验证码输入框
-            twostep_xpath = None
-            if otp_code:
-                for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
+            try:
+                username_xpath = None
+                for xpath in self._SITE_LOGIN_XPATH.get("username"):
                     if html.xpath(xpath):
-                        twostep_xpath = xpath
+                        username_xpath = xpath
                         break
-            # 查找验证码输入框
-            captcha_xpath = None
-            for xpath in self._SITE_LOGIN_XPATH.get("captcha"):
-                if html.xpath(xpath):
-                    captcha_xpath = xpath
-                    break
-            # 查找验证码图片
-            captcha_img_url = None
-            if captcha_xpath:
-                for xpath in self._SITE_LOGIN_XPATH.get("captcha_img"):
+                if not username_xpath:
+                    return None, None, "未找到用户名输入框"
+                # 查找密码输入框
+                password_xpath = None
+                for xpath in self._SITE_LOGIN_XPATH.get("password"):
                     if html.xpath(xpath):
-                        captcha_img_url = html.xpath(xpath)[0]
+                        password_xpath = xpath
                         break
-                if not captcha_img_url:
-                    return None, None, "未找到验证码图片"
-            # 查找登录按钮
-            submit_xpath = None
-            for xpath in self._SITE_LOGIN_XPATH.get("submit"):
-                if html.xpath(xpath):
-                    submit_xpath = xpath
-                    break
-            if not submit_xpath:
-                return None, None, "未找到登录按钮"
+                if not password_xpath:
+                    return None, None, "未找到密码输入框"
+                # 处理二步验证码
+                otp_code = TwoFactorAuth(two_step_code).get_code()
+                # 查找二步验证码输入框
+                twostep_xpath = None
+                if otp_code:
+                    for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
+                        if html.xpath(xpath):
+                            twostep_xpath = xpath
+                            break
+                # 查找验证码输入框
+                captcha_xpath = None
+                for xpath in self._SITE_LOGIN_XPATH.get("captcha"):
+                    if html.xpath(xpath):
+                        captcha_xpath = xpath
+                        break
+                # 查找验证码图片
+                captcha_img_url = None
+                if captcha_xpath:
+                    for xpath in self._SITE_LOGIN_XPATH.get("captcha_img"):
+                        if html.xpath(xpath):
+                            captcha_img_url = html.xpath(xpath)[0]
+                            break
+                    if not captcha_img_url:
+                        return None, None, "未找到验证码图片"
+                # 查找登录按钮
+                submit_xpath = None
+                for xpath in self._SITE_LOGIN_XPATH.get("submit"):
+                    if html.xpath(xpath):
+                        submit_xpath = xpath
+                        break
+                if not submit_xpath:
+                    return None, None, "未找到登录按钮"
+            finally:
+                if html is not None:
+                    del html
+
             # 点击登录按钮
             try:
                 # 等待登录按钮准备好
@@ -185,19 +190,23 @@ class CookieHelper:
                 if not otp_code:
                     return None, None, "需要二次验证码"
                 html = etree.HTML(page.content())
-                for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
-                    if html.xpath(xpath):
-                        try:
-                            # 刷新一下 2fa code
-                            otp_code = TwoFactorAuth(two_step_code).get_code()
-                            page.fill(xpath, otp_code)
-                            # 登录按钮 xpath 理论上相同，不再重复查找
-                            page.click(submit_xpath)
-                            page.wait_for_load_state("networkidle", timeout=30 * 1000)
-                        except Exception as e:
-                            logger.error(f"二次验证码输入失败：{str(e)}")
-                            return None, None, f"二次验证码输入失败：{str(e)}"
-                        break
+                try:
+                    for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
+                        if html.xpath(xpath):
+                            try:
+                                # 刷新一下 2fa code
+                                otp_code = TwoFactorAuth(two_step_code).get_code()
+                                page.fill(xpath, otp_code)
+                                # 登录按钮 xpath 理论上相同，不再重复查找
+                                page.click(submit_xpath)
+                                page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                            except Exception as e:
+                                logger.error(f"二次验证码输入失败：{str(e)}")
+                                return None, None, f"二次验证码输入失败：{str(e)}"
+                            break
+                finally:
+                    if html is not None:
+                        del html
             # 登录后的源码
             html_text = page.content()
             if not html_text:

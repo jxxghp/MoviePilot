@@ -114,48 +114,56 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
     def _parse_user_base_info(self, html_text: str):
         """只有奶糖余额才需要在 base 中获取，其它均可以在详情页拿到"""
         html = etree.HTML(html_text)
-        if not StringUtils.is_valid_html_element(html):
-            return
-        bonus = html.xpath(
-            '//div[contains(text(), "奶糖余额")]/following-sibling::div[1]/text()'
-        )
-        if bonus:
-            self.bonus = StringUtils.str_float(bonus[0].strip())
+        try:
+            if not StringUtils.is_valid_html_element(html):
+                return
+            bonus = html.xpath(
+                '//div[contains(text(), "奶糖余额")]/following-sibling::div[1]/text()'
+            )
+            if bonus:
+                self.bonus = StringUtils.str_float(bonus[0].strip())
+        finally:
+            if html is not None:
+                del html
 
     def _parse_user_detail_info(self, html_text: str):
         html = etree.HTML(html_text)
-        if not StringUtils.is_valid_html_element(html):
-            return
-        # 缩小一下查找范围，所有的信息都在这个 div 里
-        user_info = html.xpath('//div[contains(@class, "layui-hares-user-info-right")]')
-        if not user_info:
-            return
-        user_info = user_info[0]
-        # 用户名
-        if username := user_info.xpath(
-            './/span[contains(text(), "用户名")]/a/span/text()'
-        ):
-            self.username = username[0].strip()
-        # 等级
-        if user_level := user_info.xpath('.//span[contains(text(), "等级")]/b/text()'):
-            self.user_level = user_level[0].strip()
-        # 加入日期
-        if join_date := user_info.xpath('.//span[contains(text(), "注册日期")]/text()'):
-            join_date = join_date[0].strip().split("\r")[0].removeprefix("注册日期：")
-            self.join_at = StringUtils.unify_datetime_str(join_date)
-        # 上传量
-        if upload := user_info.xpath('.//span[contains(text(), "上传量")]/text()'):
-            self.upload = StringUtils.num_filesize(
-                upload[0].strip().removeprefix("上传量：")
-            )
-        # 下载量
-        if download := user_info.xpath('.//span[contains(text(), "下载量")]/text()'):
-            self.download = StringUtils.num_filesize(
-                download[0].strip().removeprefix("下载量：")
-            )
-        # 分享率
-        if ratio := user_info.xpath('.//span[contains(text(), "分享率")]/em/text()'):
-            self.ratio = StringUtils.str_float(ratio[0].strip())
+        try:
+            if not StringUtils.is_valid_html_element(html):
+                return
+            # 缩小一下查找范围，所有的信息都在这个 div 里
+            user_info = html.xpath('//div[contains(@class, "layui-hares-user-info-right")]')
+            if not user_info:
+                return
+            user_info = user_info[0]
+            # 用户名
+            if username := user_info.xpath(
+                './/span[contains(text(), "用户名")]/a/span/text()'
+            ):
+                self.username = username[0].strip()
+            # 等级
+            if user_level := user_info.xpath('.//span[contains(text(), "等级")]/b/text()'):
+                self.user_level = user_level[0].strip()
+            # 加入日期
+            if join_date := user_info.xpath('.//span[contains(text(), "注册日期")]/text()'):
+                join_date = join_date[0].strip().split("\r")[0].removeprefix("注册日期：")
+                self.join_at = StringUtils.unify_datetime_str(join_date)
+            # 上传量
+            if upload := user_info.xpath('.//span[contains(text(), "上传量")]/text()'):
+                self.upload = StringUtils.num_filesize(
+                    upload[0].strip().removeprefix("上传量：")
+                )
+            # 下载量
+            if download := user_info.xpath('.//span[contains(text(), "下载量")]/text()'):
+                self.download = StringUtils.num_filesize(
+                    download[0].strip().removeprefix("下载量：")
+                )
+            # 分享率
+            if ratio := user_info.xpath('.//span[contains(text(), "分享率")]/em/text()'):
+                self.ratio = StringUtils.str_float(ratio[0].strip())
+        finally:
+            if html is not None:
+                del html
 
     def _parse_message_content(self, html_text):
         """

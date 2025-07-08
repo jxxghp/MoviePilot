@@ -24,9 +24,13 @@ class SmallHorseSiteUserInfo(SiteParserBase):
     def _parse_user_base_info(self, html_text: str):
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
-        ret = html.xpath('//a[contains(@href, "user.php")]//text()')
-        if ret:
-            self.username = str(ret[0])
+        try:
+            ret = html.xpath('//a[contains(@href, "user.php")]//text()')
+            if ret:
+                self.username = str(ret[0])
+        finally:
+            if html is not None:
+                del html
 
     def _parse_user_traffic_info(self, html_text: str):
         """
@@ -36,21 +40,25 @@ class SmallHorseSiteUserInfo(SiteParserBase):
         """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
-        tmps = html.xpath('//ul[@class = "stats nobullet"]')
-        if tmps:
-            if tmps[1].xpath("li") and tmps[1].xpath("li")[0].xpath("span//text()"):
-                self.join_at = StringUtils.unify_datetime_str(tmps[1].xpath("li")[0].xpath("span//text()")[0])
-            self.upload = StringUtils.num_filesize(str(tmps[1].xpath("li")[2].xpath("text()")[0]).split(":")[1].strip())
-            self.download = StringUtils.num_filesize(
-                str(tmps[1].xpath("li")[3].xpath("text()")[0]).split(":")[1].strip())
-            if tmps[1].xpath("li")[4].xpath("span//text()"):
-                self.ratio = StringUtils.str_float(str(tmps[1].xpath("li")[4].xpath("span//text()")[0]).replace('∞', '0'))
-            else:
-                self.ratio = StringUtils.str_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
-            self.bonus = StringUtils.str_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
-            self.user_level = str(tmps[3].xpath("li")[0].xpath("text()")[0]).split(":")[1].strip()
-            self.leeching = StringUtils.str_int(
-                (tmps[4].xpath("li")[6].xpath("text()")[0]).split(":")[1].replace("[", ""))
+        try:
+            tmps = html.xpath('//ul[@class = "stats nobullet"]')
+            if tmps:
+                if tmps[1].xpath("li") and tmps[1].xpath("li")[0].xpath("span//text()"):
+                    self.join_at = StringUtils.unify_datetime_str(tmps[1].xpath("li")[0].xpath("span//text()")[0])
+                self.upload = StringUtils.num_filesize(str(tmps[1].xpath("li")[2].xpath("text()")[0]).split(":")[1].strip())
+                self.download = StringUtils.num_filesize(
+                    str(tmps[1].xpath("li")[3].xpath("text()")[0]).split(":")[1].strip())
+                if tmps[1].xpath("li")[4].xpath("span//text()"):
+                    self.ratio = StringUtils.str_float(str(tmps[1].xpath("li")[4].xpath("span//text()")[0]).replace('∞', '0'))
+                else:
+                    self.ratio = StringUtils.str_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
+                self.bonus = StringUtils.str_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
+                self.user_level = str(tmps[3].xpath("li")[0].xpath("text()")[0]).split(":")[1].strip()
+                self.leeching = StringUtils.str_int(
+                    (tmps[4].xpath("li")[6].xpath("text()")[0]).split(":")[1].replace("[", ""))
+        finally:
+            if html is not None:
+                del html
 
     def _parse_user_detail_info(self, html_text: str):
         pass
@@ -63,39 +71,42 @@ class SmallHorseSiteUserInfo(SiteParserBase):
          :return: 下页地址
          """
         html = etree.HTML(html_text)
-        if not StringUtils.is_valid_html_element(html):
-            return None
+        try:
+            if not StringUtils.is_valid_html_element(html):
+                return None
 
-        size_col = 6
-        seeders_col = 8
+            size_col = 6
+            seeders_col = 8
 
-        page_seeding = 0
-        page_seeding_size = 0
-        page_seeding_info = []
-        seeding_sizes = html.xpath(f'//table[@id="torrent_table"]//tr[position()>1]/td[{size_col}]')
-        seeding_seeders = html.xpath(f'//table[@id="torrent_table"]//tr[position()>1]/td[{seeders_col}]')
-        if seeding_sizes and seeding_seeders:
-            page_seeding = len(seeding_sizes)
+            page_seeding = 0
+            page_seeding_size = 0
+            page_seeding_info = []
+            seeding_sizes = html.xpath(f'//table[@id="torrent_table"]//tr[position()>1]/td[{size_col}]')
+            seeding_seeders = html.xpath(f'//table[@id="torrent_table"]//tr[position()>1]/td[{seeders_col}]')
+            if seeding_sizes and seeding_seeders:
+                page_seeding = len(seeding_sizes)
 
-            for i in range(0, len(seeding_sizes)):
-                size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                seeders = StringUtils.str_int(seeding_seeders[i].xpath("string(.)").strip())
+                for i in range(0, len(seeding_sizes)):
+                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
+                    seeders = StringUtils.str_int(seeding_seeders[i].xpath("string(.)").strip())
 
-                page_seeding_size += size
-                page_seeding_info.append([seeders, size])
+                    page_seeding_size += size
+                    page_seeding_info.append([seeders, size])
 
-        self.seeding += page_seeding
-        self.seeding_size += page_seeding_size
-        self.seeding_info.extend(page_seeding_info)
+            self.seeding += page_seeding
+            self.seeding_size += page_seeding_size
+            self.seeding_info.extend(page_seeding_info)
 
-        # 是否存在下页数据
-        next_page = None
-        next_pages = html.xpath('//ul[@class="pagination"]/li[contains(@class,"active")]/following-sibling::li')
-        if next_pages and len(next_pages) > 1:
-            page_num = next_pages[0].xpath("string(.)").strip()
-            if page_num.isdigit():
-                next_page = f"{self._torrent_seeding_page}&page={page_num}"
-
+            # 是否存在下页数据
+            next_page = None
+            next_pages = html.xpath('//ul[@class="pagination"]/li[contains(@class,"active")]/following-sibling::li')
+            if next_pages and len(next_pages) > 1:
+                page_num = next_pages[0].xpath("string(.)").strip()
+                if page_num.isdigit():
+                    next_page = f"{self._torrent_seeding_page}&page={page_num}"
+        finally:
+            if html is not None:
+                del html
         return next_page
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
