@@ -390,6 +390,34 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         整理完成后处理
         """
+        def on_finished():
+            # 发送通知，实时手动整理时不发
+            if transferinfo.need_notify and (task.background or not task.manual):
+                se_str = None
+                if task.mediainfo.type == MediaType.TV:
+                    season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)
+                    if season_episodes:
+                        se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
+                    else:
+                        se_str = f"{task.meta.season}"
+                # 更新文件数量
+                transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                # 更新文件大小
+                transferinfo.total_size = self.jobview.size(task.mediainfo,
+                                                            task.meta.begin_season) or task.fileitem.size
+                self.send_transfer_message(meta=task.meta,
+                                            mediainfo=task.mediainfo,
+                                            transferinfo=transferinfo,
+                                            season_episode=se_str,
+                                            username=task.username)
+            # 刮削事件
+            for event_data in self.scraper_events:
+                self.eventmanager.send_event(EventType.MetadataScrape, event_data)
+            self.scraper_events = []
+
+            # 移除已完成的任务
+            self.jobview.remove_job(task)
+
         transferhis = TransferHistoryOper()
         if not transferinfo.success:
             # 转移失败
@@ -415,6 +443,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
             ))
             # 整理失败
             self.jobview.fail_task(task)
+            # 整理完成且有成功的任务时
+            with task_lock:
+                if self.jobview.is_finished(task):
+                    on_finished()
             return False, transferinfo.message
 
         # 转移成功
@@ -474,32 +506,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                             storagechain.delete_media_file(t.fileitem, delete_self=False)
             # 整理完成且有成功的任务时
             if self.jobview.is_finished(task):
-                # 发送通知，实时手动整理时不发
-                if transferinfo.need_notify and (task.background or not task.manual):
-                    se_str = None
-                    if task.mediainfo.type == MediaType.TV:
-                        season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)
-                        if season_episodes:
-                            se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
-                        else:
-                            se_str = f"{task.meta.season}"
-                    # 更新文件数量
-                    transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
-                    # 更新文件大小
-                    transferinfo.total_size = self.jobview.size(task.mediainfo,
-                                                                task.meta.begin_season) or task.fileitem.size
-                    self.send_transfer_message(meta=task.meta,
-                                               mediainfo=task.mediainfo,
-                                               transferinfo=transferinfo,
-                                               season_episode=se_str,
-                                               username=task.username)
-                # 刮削事件
-                for event_data in self.scraper_events:
-                    self.eventmanager.send_event(EventType.MetadataScrape, event_data)
-                self.scraper_events = []
-
-                # 移除已完成的任务
-                self.jobview.remove_job(task)
+                on_finished()
 
         return True, ""
 
