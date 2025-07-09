@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional, List, Tuple, Union, Dict, Callable
 
+from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -141,11 +142,28 @@ class FileManagerModule(_ModuleBase):
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+        # 获取集信息
+        episodes_info: Optional[List[TmdbEpisode]] = None
+        if mediainfo.type == MediaType.TV:
+            # 判断注意season为0的情况
+            season_num = mediainfo.season
+            if season_num is None and meta.season_seq:
+                if meta.season_seq.isdigit():
+                    season_num = int(meta.season_seq)
+            # 默认值1
+            if season_num is None:
+                season_num = 1
+            episodes_info = TmdbChain().tmdb_episodes(
+                tmdbid=mediainfo.tmdb_id,
+                season=season_num,
+                episode_group=mediainfo.episode_group,
+            )
         # 获取重命名后的名称
         path = handler.get_rename_path(
             template_string=rename_format,
             rename_dict=handler.get_naming_dict(meta=meta,
                                                 mediainfo=mediainfo,
+                                                episodes_info=episodes_info,
                                                 file_ext=Path(meta.title).suffix)
         )
         return str(path)
@@ -529,17 +547,13 @@ class FileManagerModule(_ModuleBase):
                 rename_dict=handler.get_naming_dict(meta=meta,
                                                     mediainfo=mediainfo)
             )
-            # 计算重命名中的文件夹层数
-            rename_list = rename_format.split("/")
-            rename_format_level = len(rename_list) - 1
-            for level, name in enumerate(rename_list):
-                # 处理特例，有的人重命名第一层是年份、分辨率
-                if "{{title}}" in name:
-                    # 找出含标题的这一层作为扫描路径
-                    rename_format_level -= level
-                    break
-            # 取相对路径的第1层目录
-            media_path = target_path.parents[rename_format_level - 1]
+            # 获取重命名后的媒体文件根路径
+            media_path = DirectoryHelper.get_media_root_path(
+                rename_format, rename_path=target_path
+            )
+            if not media_path:
+                # 忽略
+                continue
             if dir_path.is_relative_to(media_path):
                 # 兜底检查，避免不必要的扫盘
                 logger.warn(f"{media_path} 是媒体库目录 {dir_path} 的父目录，忽略获取媒体文件列表，请检查重命名格式！")

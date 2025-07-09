@@ -10,6 +10,7 @@ from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
+from app.helper.directory import DirectoryHelper
 from app.helper.message import TemplateHelper
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
@@ -116,7 +117,19 @@ class TransHandler:
                     template_string=rename_format,
                     rename_dict=self.get_naming_dict(meta=in_meta,
                                                      mediainfo=mediainfo)
-                ).parent
+                )
+                new_path = DirectoryHelper.get_media_root_path(
+                    rename_format, rename_path=new_path
+                )
+                if not new_path:
+                    self.__set_result(
+                        success=False,
+                        message="重命名格式无效",
+                        fileitem=fileitem,
+                        transfer_type=transfer_type,
+                        need_notify=need_notify,
+                    )
+                    return self.result
             else:
                 new_path = target_path / fileitem.name
             # 整理目录
@@ -156,7 +169,7 @@ class TransHandler:
                 if in_meta.begin_episode is None:
                     logger.warn(f"文件 {fileitem.path} 整理失败：未识别到文件集数")
                     self.__set_result(success=False,
-                                      message=f"未识别到文件集数",
+                                      message="未识别到文件集数",
                                       fileitem=fileitem,
                                       fail_list=[fileitem.path],
                                       transfer_type=transfer_type,
@@ -185,14 +198,25 @@ class TransHandler:
                         file_ext=f".{fileitem.extension}"
                     )
                 )
+                folder_path = DirectoryHelper.get_media_root_path(
+                    rename_format, rename_path=new_file
+                )
+                if not folder_path:
+                    self.__set_result(
+                        success=False,
+                        message="重命名格式无效",
+                        fileitem=fileitem,
+                        fail_list=[fileitem.path],
+                        transfer_type=transfer_type,
+                        need_notify=need_notify,
+                    )
+                    return self.result
             else:
                 new_file = target_path / fileitem.name
+                folder_path = target_path
 
             # 判断是否要覆盖
             overflag = False
-            # 计算重命名中的文件夹层级
-            rename_format_level = len(rename_format.split("/")) - 1
-            folder_path = new_file.parents[rename_format_level - 1]
             # 目标目录
             target_diritem = target_oper.get_folder(folder_path)
             if not target_diritem:

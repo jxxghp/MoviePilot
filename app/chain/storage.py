@@ -180,13 +180,13 @@ class StorageChain(ChainBase):
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mtype == MediaType.TV else settings.MOVIE_RENAME_FORMAT
-            # 计算重命名中的文件夹层数
-            rename_format_level = len(rename_format.split("/")) - 1
-            if rename_format_level < 1:
+            media_path = DirectoryHelper.get_media_root_path(
+                rename_format, rename_path=Path(fileitem.path)
+            )
+            if not media_path:
                 return True
             # 处理媒体文件根目录
-            dir_item = self.get_file_item(storage=fileitem.storage,
-                                          path=Path(fileitem.path).parents[rename_format_level - 1])
+            dir_item = self.get_file_item(storage=fileitem.storage, path=media_path)
         else:
             # 处理上级目录
             dir_item = self.get_parent_item(fileitem)

@@ -4,6 +4,7 @@ from typing import List, Optional
 from app import schemas
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
+from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.system import SystemUtils
 
@@ -109,3 +110,36 @@ class DirectoryHelper:
                         return matched_dir
             return matched_dirs[0]
         return None
+
+    @staticmethod
+    def get_media_root_path(rename_format: str, rename_path: Path) -> Optional[Path]:
+        """
+        获取重命名后的媒体文件根路径
+
+        :param rename_format: 重命名格式
+        :param rename_path: 重命名后的路径
+        :return: 媒体文件根路径
+        """
+        # 计算重命名中的文件夹层数
+        rename_list = rename_format.split("/")
+        rename_format_level = len(rename_list) - 1
+        if rename_format_level <= 0:
+            # 无效重命名格式
+            logger.error(f"重命名格式 {rename_format} 不正确")
+            return None
+        for level, name in enumerate(rename_list):
+            # 处理特例，有的人重命名的第一层是年份、分辨率
+            if "{{title}}" in name:
+                # 找出含标题的这一层作为媒体根目录
+                rename_format_level -= level
+                break
+        else:
+            # 假定第一层目录是媒体根目录
+            logger.warn(f"重命名格式 {rename_format} 缺少 {{{{title}}}}")
+        if rename_format_level > len(rename_path.parents):
+            # 通常因为路径以/结尾，被Path规范化删除了
+            logger.error(f"路径 {rename_path} 不匹配重命名格式 {rename_format}")
+            return None
+        # 媒体根路径
+        media_root = rename_path.parents[rename_format_level - 1]
+        return media_root
