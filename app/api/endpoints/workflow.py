@@ -65,55 +65,6 @@ def list_actions(_: schemas.TokenPayload = Depends(get_current_active_user)) -> 
     return WorkFlowManager().list_actions()
 
 
-@router.get("/{workflow_id}", summary="工作流详情", response_model=schemas.Workflow)
-def get_workflow(workflow_id: int,
-                 db: Session = Depends(get_db),
-                 _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
-    """
-    获取工作流详情
-    """
-    from app.db.workflow_oper import WorkflowOper
-    return WorkflowOper(db).get(workflow_id)
-
-
-@router.put("/{workflow_id}", summary="更新工作流", response_model=schemas.Response)
-def update_workflow(workflow: schemas.Workflow,
-                    db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
-    """
-    更新工作流
-    """
-    from app.db.workflow_oper import WorkflowOper
-    if not workflow.id:
-        return schemas.Response(success=False, message="工作流ID不能为空")
-    wf = WorkflowOper(db).get(workflow.id)
-    if not wf:
-        return schemas.Response(success=False, message="工作流不存在")
-    wf.update(db, workflow.dict())
-    return schemas.Response(success=True, message="更新成功")
-
-
-@router.delete("/{workflow_id}", summary="删除工作流", response_model=schemas.Response)
-def delete_workflow(workflow_id: int,
-                    db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
-    """
-    删除工作流
-    """
-    from app.db.workflow_oper import WorkflowOper
-    workflow = WorkflowOper(db).get(workflow_id)
-    if not workflow:
-        return schemas.Response(success=False, message="工作流不存在")
-    # 删除定时任务
-    Scheduler().remove_workflow_job(workflow)
-    # 删除工作流
-    from app.db.models.workflow import Workflow as WorkflowModel
-    WorkflowModel.delete(db, workflow_id)
-    # 删除缓存
-    SystemConfigOper().delete(f"WorkflowCache-{workflow_id}")
-    return schemas.Response(success=True, message="删除成功")
-
-
 @router.post("/share", summary="分享工作流", response_model=schemas.Response)
 def workflow_share(
         workflow: schemas.WorkflowShare,
@@ -189,8 +140,8 @@ def workflow_fork(
     workflow.create(db)
 
     # 更新复用次数
-    if workflow_share.id:
-        WorkflowHelper().workflow_fork(share_id=workflow_share.id)
+    if workflow.id:
+        WorkflowHelper().workflow_fork(share_id=workflow.id)
 
     return schemas.Response(success=True, message="复用成功")
 
@@ -276,3 +227,52 @@ def reset_workflow(workflow_id: int,
     # 删除缓存
     SystemConfigOper().delete(f"WorkflowCache-{workflow_id}")
     return schemas.Response(success=True)
+
+
+@router.get("/{workflow_id}", summary="工作流详情", response_model=schemas.Workflow)
+def get_workflow(workflow_id: int,
+                 db: Session = Depends(get_db),
+                 _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    获取工作流详情
+    """
+    from app.db.workflow_oper import WorkflowOper
+    return WorkflowOper(db).get(workflow_id)
+
+
+@router.put("/{workflow_id}", summary="更新工作流", response_model=schemas.Response)
+def update_workflow(workflow: schemas.Workflow,
+                    db: Session = Depends(get_db),
+                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    更新工作流
+    """
+    from app.db.workflow_oper import WorkflowOper
+    if not workflow.id:
+        return schemas.Response(success=False, message="工作流ID不能为空")
+    wf = WorkflowOper(db).get(workflow.id)
+    if not wf:
+        return schemas.Response(success=False, message="工作流不存在")
+    wf.update(db, workflow.dict())
+    return schemas.Response(success=True, message="更新成功")
+
+
+@router.delete("/{workflow_id}", summary="删除工作流", response_model=schemas.Response)
+def delete_workflow(workflow_id: int,
+                    db: Session = Depends(get_db),
+                    _: schemas.TokenPayload = Depends(get_current_active_user)) -> Any:
+    """
+    删除工作流
+    """
+    from app.db.workflow_oper import WorkflowOper
+    workflow = WorkflowOper(db).get(workflow_id)
+    if not workflow:
+        return schemas.Response(success=False, message="工作流不存在")
+    # 删除定时任务
+    Scheduler().remove_workflow_job(workflow)
+    # 删除工作流
+    from app.db.models.workflow import Workflow as WorkflowModel
+    WorkflowModel.delete(db, workflow_id)
+    # 删除缓存
+    SystemConfigOper().delete(f"WorkflowCache-{workflow_id}")
+    return schemas.Response(success=True, message="删除成功")

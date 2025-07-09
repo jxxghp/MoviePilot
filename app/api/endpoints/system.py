@@ -11,6 +11,7 @@ from typing import Optional, Union, Annotated
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
+from app.helper.sites import SitesHelper
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -18,10 +19,10 @@ from app import schemas
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
 from app.core.config import global_vars, settings
+from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
 from app.core.module import ModuleManager
 from app.core.security import verify_apitoken, verify_resource_token, verify_token
-from app.core.event import eventmanager
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
@@ -29,7 +30,6 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
-from app.helper.sites import SitesHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
@@ -188,9 +188,11 @@ def get_global_setting(token: str):
                  "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
     )
     # 追加用户唯一ID和订阅分享管理权限
+    share_admin = SubscribeHelper().is_admin_user()
     info.update({
         "USER_UNIQUE_ID": SubscribeHelper().get_user_uuid(),
-        "SUBSCRIBE_SHARE_MANAGE": SubscribeHelper().is_admin_user(),
+        "SUBSCRIBE_SHARE_MANAGE": share_admin,
+        "WORKFLOW_SHARE_MANAGE": share_admin
     })
     return schemas.Response(success=True,
                             data=info)
@@ -291,9 +293,9 @@ def get_setting(key: str,
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
 def set_setting(
-    key: str,
-    value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
-    _: User = Depends(get_current_active_superuser),
+        key: str,
+        value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
+        _: User = Depends(get_current_active_superuser),
 ):
     """
     更新系统设置（仅管理员）
@@ -453,10 +455,10 @@ def ruletest(title: str,
 
 @router.get("/nettest", summary="测试网络连通性")
 def nettest(
-    url: str,
-    proxy: bool,
-    include: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+        url: str,
+        proxy: bool,
+        include: Optional[str] = None,
+        _: schemas.TokenPayload = Depends(verify_token),
 ):
     """
     测试网络连通性

@@ -1,3 +1,4 @@
+import json
 from typing import List, Tuple, Optional
 
 from app.core.cache import cached, cache_backend
@@ -40,12 +41,15 @@ class WorkflowHelper(metaclass=WeakSingleton):
         if not workflow:
             return False, "工作流不存在"
 
+        if not workflow.actions or not workflow.flows:
+            return False, "请分享有动作和流程的工作流"
+
         workflow_dict = workflow.to_dict()
-        workflow_dict.pop("id")
-        
-        # 清除缓存
-        cache_backend.clear(region=self._shares_cache_region)
-        
+        workflow_dict.pop("id", None)
+        workflow_dict.pop("context", None)
+        workflow_dict['actions'] = json.dumps(workflow_dict['actions'] or [])
+        workflow_dict['flows'] = json.dumps(workflow_dict['flows'] or [])
+
         # 发送分享请求
         res = RequestUtils(proxies=settings.PROXY or {}, content_type="application/json",
                            timeout=10).post(self._workflow_share,
