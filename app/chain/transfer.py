@@ -372,6 +372,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         self._transfer_interval = 15
         # 事件管理器
         self.jobview = JobManager()
+        # 刮削事件数据
+        self.scraper_events = []
         # 启动整理任务
         self.__init()
 
@@ -441,6 +443,17 @@ class TransferChain(ChainBase, metaclass=Singleton):
         })
 
         with task_lock:
+            if transferinfo.need_scrape:
+                # 记录当前任务的刮削数据，当全部整理完成后使用
+                self.scraper_events.append(
+                    {
+                        "meta": task.meta,
+                        "mediainfo": task.mediainfo,
+                        "fileitem": transferinfo.target_diritem,
+                        "file_list": transferinfo.file_list_new,
+                        "overwrite": False,
+                    }
+                )
             # 全部整理成功时
             if self.jobview.is_success(task):
                 # 移动模式删除空目录
@@ -481,14 +494,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                                season_episode=se_str,
                                                username=task.username)
                 # 刮削事件
-                if transferinfo.need_scrape:
-                    self.eventmanager.send_event(EventType.MetadataScrape, {
-                        'meta': task.meta,
-                        'mediainfo': task.mediainfo,
-                        'fileitem': transferinfo.target_diritem,
-                        'file_list': transferinfo.file_list_new,
-                        'overwrite': False
-                    })
+                for event_data in self.scraper_events:
+                    self.eventmanager.send_event(EventType.MetadataScrape, event_data)
+                self.scraper_events = []
 
                 # 移除已完成的任务
                 self.jobview.remove_job(task)
