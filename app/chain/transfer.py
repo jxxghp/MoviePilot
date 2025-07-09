@@ -373,7 +373,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 事件管理器
         self.jobview = JobManager()
         # 刮削事件数据
-        self.scraper_events = []
+        self._scraper_target_diritem = None
+        self._scraper_file_list = None
         # 启动整理任务
         self.__init()
 
@@ -411,9 +412,19 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                             season_episode=se_str,
                                             username=task.username)
             # 刮削事件
-            for event_data in self.scraper_events:
-                self.eventmanager.send_event(EventType.MetadataScrape, event_data)
-            self.scraper_events = []
+            if self._scraper_target_diritem:
+                self.eventmanager.send_event(
+                    EventType.MetadataScrape,
+                    {
+                        "meta": task.meta,
+                        "mediainfo": task.mediainfo,
+                        "fileitem": self._scraper_target_diritem,
+                        "file_list": self._scraper_file_list,
+                        "overwrite": False,
+                    },
+                )
+            self._scraper_target_diritem = None
+            self._scraper_file_list = None
 
             # 移除已完成的任务
             self.jobview.remove_job(task)
@@ -477,15 +488,12 @@ class TransferChain(ChainBase, metaclass=Singleton):
         with task_lock:
             if transferinfo.need_scrape:
                 # 记录当前任务的刮削数据，当全部整理完成后使用
-                self.scraper_events.append(
-                    {
-                        "meta": task.meta,
-                        "mediainfo": task.mediainfo,
-                        "fileitem": transferinfo.target_diritem,
-                        "file_list": transferinfo.file_list_new,
-                        "overwrite": False,
-                    }
-                )
+                self._scraper_target_diritem = transferinfo.target_diritem
+                if self._scraper_file_list is None:
+                    self._scraper_file_list = []
+                if transferinfo.file_list_new:
+                    self._scraper_file_list.extend(transferinfo.file_list_new)
+
             # 全部整理成功时
             if self.jobview.is_success(task):
                 # 移动模式删除空目录
