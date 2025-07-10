@@ -528,7 +528,7 @@ class TrimeMedia:
             ret_resume.append(self.__build_media_server_play_item(item))
         return ret_resume
 
-    def get_latest(self, num=20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num=22) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取最近更新列表
         """

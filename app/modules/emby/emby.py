@@ -1176,7 +1176,7 @@ class Emby:
             logger.error(f"连接Users/Items/Resume出错：" + str(e))
         return []
 
-    def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: Optional[int] = 22, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获得最近更新
         """

@@ -188,6 +188,9 @@ class DownloadChain(ChainBase):
                     f"Resource download canceled by event: {event_data.source},"
                     f"Reason: {event_data.reason}")
                 return None
+            # 如果事件修改了下载路径，使用新路径
+            if event_data.options and event_data.options.get("save_path"):
+                save_path = event_data.options.get("save_path")
 
         # 补充完整的media数据
         if not _media.genre_ids:
