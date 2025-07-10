@@ -27,11 +27,10 @@ class TransHandler:
     文件转移整理类
     """
 
-    result: Optional[TransferInfo] = None
     inner_lock: Lock = Lock()
 
     def __init__(self):
-        self.__reset_result()
+        self.result = None
 
     def __reset_result(self):
         """
@@ -104,208 +103,212 @@ class TransHandler:
         # 重置结果
         self.__reset_result()
 
-        # 重命名格式
-        rename_format = settings.TV_RENAME_FORMAT \
-            if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+        try:
 
-        # 判断是否为文件夹
-        if fileitem.type == "dir":
-            # 整理整个目录，一般为蓝光原盘
-            if need_rename:
-                new_path = self.get_rename_path(
-                    path=target_path,
-                    template_string=rename_format,
-                    rename_dict=self.get_naming_dict(meta=in_meta,
-                                                     mediainfo=mediainfo)
-                )
-                new_path = DirectoryHelper.get_media_root_path(
-                    rename_format, rename_path=new_path
-                )
-                if not new_path:
-                    self.__set_result(
-                        success=False,
-                        message="重命名格式无效",
-                        fileitem=fileitem,
-                        transfer_type=transfer_type,
-                        need_notify=need_notify,
+            # 重命名格式
+            rename_format = settings.TV_RENAME_FORMAT \
+                if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+
+            # 判断是否为文件夹
+            if fileitem.type == "dir":
+                # 整理整个目录，一般为蓝光原盘
+                if need_rename:
+                    new_path = self.get_rename_path(
+                        path=target_path,
+                        template_string=rename_format,
+                        rename_dict=self.get_naming_dict(meta=in_meta,
+                                                         mediainfo=mediainfo)
                     )
-                    return self.result
-            else:
-                new_path = target_path / fileitem.name
-            # 整理目录
-            new_diritem, errmsg = self.__transfer_dir(fileitem=fileitem,
-                                                      mediainfo=mediainfo,
-                                                      source_oper=source_oper,
-                                                      target_oper=target_oper,
-                                                      target_storage=target_storage,
-                                                      target_path=new_path,
-                                                      transfer_type=transfer_type)
-            if not new_diritem:
-                logger.error(f"文件夹 {fileitem.path} 整理失败：{errmsg}")
-                self.__set_result(success=False,
-                                  message=errmsg,
-                                  fileitem=fileitem,
-                                  transfer_type=transfer_type,
-                                  need_notify=need_notify)
-                return self.result
-
-            logger.info(f"文件夹 {fileitem.path} 整理成功")
-            # 计算目录下所有文件大小
-            total_size = sum(file.stat().st_size for file in Path(fileitem.path).rglob('*') if file.is_file())
-            # 返回整理后的路径
-            self.__set_result(success=True,
-                              fileitem=fileitem,
-                              target_item=new_diritem,
-                              target_diritem=new_diritem,
-                              total_size=total_size,
-                              need_scrape=need_scrape,
-                              need_notify=need_notify,
-                              transfer_type=transfer_type)
-            return self.result
-        else:
-            # 整理单个文件
-            if mediainfo.type == MediaType.TV:
-                # 电视剧
-                if in_meta.begin_episode is None:
-                    logger.warn(f"文件 {fileitem.path} 整理失败：未识别到文件集数")
+                    new_path = DirectoryHelper.get_media_root_path(
+                        rename_format, rename_path=new_path
+                    )
+                    if not new_path:
+                        self.__set_result(
+                            success=False,
+                            message="重命名格式无效",
+                            fileitem=fileitem,
+                            transfer_type=transfer_type,
+                            need_notify=need_notify,
+                        )
+                        return self.result.copy()
+                else:
+                    new_path = target_path / fileitem.name
+                # 整理目录
+                new_diritem, errmsg = self.__transfer_dir(fileitem=fileitem,
+                                                          mediainfo=mediainfo,
+                                                          source_oper=source_oper,
+                                                          target_oper=target_oper,
+                                                          target_storage=target_storage,
+                                                          target_path=new_path,
+                                                          transfer_type=transfer_type)
+                if not new_diritem:
+                    logger.error(f"文件夹 {fileitem.path} 整理失败：{errmsg}")
                     self.__set_result(success=False,
-                                      message="未识别到文件集数",
+                                      message=errmsg,
+                                      fileitem=fileitem,
+                                      transfer_type=transfer_type,
+                                      need_notify=need_notify)
+                    return self.result.copy()
+
+                logger.info(f"文件夹 {fileitem.path} 整理成功")
+                # 计算目录下所有文件大小
+                total_size = sum(file.stat().st_size for file in Path(fileitem.path).rglob('*') if file.is_file())
+                # 返回整理后的路径
+                self.__set_result(success=True,
+                                  fileitem=fileitem,
+                                  target_item=new_diritem,
+                                  target_diritem=new_diritem,
+                                  total_size=total_size,
+                                  need_scrape=need_scrape,
+                                  need_notify=need_notify,
+                                  transfer_type=transfer_type)
+                return self.result.copy()
+            else:
+                # 整理单个文件
+                if mediainfo.type == MediaType.TV:
+                    # 电视剧
+                    if in_meta.begin_episode is None:
+                        logger.warn(f"文件 {fileitem.path} 整理失败：未识别到文件集数")
+                        self.__set_result(success=False,
+                                          message="未识别到文件集数",
+                                          fileitem=fileitem,
+                                          fail_list=[fileitem.path],
+                                          transfer_type=transfer_type,
+                                          need_notify=need_notify)
+                        return self.result.copy()
+
+                    # 文件结束季为空
+                    in_meta.end_season = None
+                    # 文件总季数为1
+                    if in_meta.total_season:
+                        in_meta.total_season = 1
+                    # 文件不可能超过2集
+                    if in_meta.total_episode > 2:
+                        in_meta.total_episode = 1
+                        in_meta.end_episode = None
+
+                # 目的文件名
+                if need_rename:
+                    new_file = self.get_rename_path(
+                        path=target_path,
+                        template_string=rename_format,
+                        rename_dict=self.get_naming_dict(
+                            meta=in_meta,
+                            mediainfo=mediainfo,
+                            episodes_info=episodes_info,
+                            file_ext=f".{fileitem.extension}"
+                        )
+                    )
+                    folder_path = DirectoryHelper.get_media_root_path(
+                        rename_format, rename_path=new_file
+                    )
+                    if not folder_path:
+                        self.__set_result(
+                            success=False,
+                            message="重命名格式无效",
+                            fileitem=fileitem,
+                            fail_list=[fileitem.path],
+                            transfer_type=transfer_type,
+                            need_notify=need_notify,
+                        )
+                        return self.result.copy()
+                else:
+                    new_file = target_path / fileitem.name
+                    folder_path = target_path
+
+                # 判断是否要覆盖
+                overflag = False
+                # 目标目录
+                target_diritem = target_oper.get_folder(folder_path)
+                if not target_diritem:
+                    logger.error(f"目标目录 {folder_path} 获取失败")
+                    self.__set_result(success=False,
+                                      message=f"目标目录 {folder_path} 获取失败",
                                       fileitem=fileitem,
                                       fail_list=[fileitem.path],
                                       transfer_type=transfer_type,
                                       need_notify=need_notify)
-                    return self.result
-
-                # 文件结束季为空
-                in_meta.end_season = None
-                # 文件总季数为1
-                if in_meta.total_season:
-                    in_meta.total_season = 1
-                # 文件不可能超过2集
-                if in_meta.total_episode > 2:
-                    in_meta.total_episode = 1
-                    in_meta.end_episode = None
-
-            # 目的文件名
-            if need_rename:
-                new_file = self.get_rename_path(
-                    path=target_path,
-                    template_string=rename_format,
-                    rename_dict=self.get_naming_dict(
-                        meta=in_meta,
-                        mediainfo=mediainfo,
-                        episodes_info=episodes_info,
-                        file_ext=f".{fileitem.extension}"
-                    )
-                )
-                folder_path = DirectoryHelper.get_media_root_path(
-                    rename_format, rename_path=new_file
-                )
-                if not folder_path:
-                    self.__set_result(
-                        success=False,
-                        message="重命名格式无效",
-                        fileitem=fileitem,
-                        fail_list=[fileitem.path],
-                        transfer_type=transfer_type,
-                        need_notify=need_notify,
-                    )
-                    return self.result
-            else:
-                new_file = target_path / fileitem.name
-                folder_path = target_path
-
-            # 判断是否要覆盖
-            overflag = False
-            # 目标目录
-            target_diritem = target_oper.get_folder(folder_path)
-            if not target_diritem:
-                logger.error(f"目标目录 {folder_path} 获取失败")
-                self.__set_result(success=False,
-                                  message=f"目标目录 {folder_path} 获取失败",
-                                  fileitem=fileitem,
-                                  fail_list=[fileitem.path],
-                                  transfer_type=transfer_type,
-                                  need_notify=need_notify)
-                return self.result
-            # 目标文件
-            target_item = target_oper.get_item(new_file)
-            if target_item:
-                # 目标文件已存在
-                target_file = new_file
-                if target_storage == "local" and new_file.is_symlink():
-                    target_file = new_file.readlink()
-                    if not target_file.exists():
-                        overflag = True
-                if not overflag:
+                    return self.result.copy()
+                # 目标文件
+                target_item = target_oper.get_item(new_file)
+                if target_item:
                     # 目标文件已存在
-                    logger.info(f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}")
-                    if overwrite_mode == 'always':
-                        # 总是覆盖同名文件
-                        overflag = True
-                    elif overwrite_mode == 'size':
-                        # 存在时大覆盖小
-                        if target_item.size < fileitem.size:
-                            logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
+                    target_file = new_file
+                    if target_storage == "local" and new_file.is_symlink():
+                        target_file = new_file.readlink()
+                        if not target_file.exists():
                             overflag = True
-                        else:
+                    if not overflag:
+                        # 目标文件已存在
+                        logger.info(f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}")
+                        if overwrite_mode == 'always':
+                            # 总是覆盖同名文件
+                            overflag = True
+                        elif overwrite_mode == 'size':
+                            # 存在时大覆盖小
+                            if target_item.size < fileitem.size:
+                                logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
+                                overflag = True
+                            else:
+                                self.__set_result(success=False,
+                                                  message=f"媒体库存在同名文件，且质量更好",
+                                                  fileitem=fileitem,
+                                                  target_item=target_item,
+                                                  target_diritem=target_diritem,
+                                                  fail_list=[fileitem.path],
+                                                  transfer_type=transfer_type,
+                                                  need_notify=need_notify)
+                                return self.result.copy()
+                        elif overwrite_mode == 'never':
+                            # 存在不覆盖
                             self.__set_result(success=False,
-                                              message=f"媒体库存在同名文件，且质量更好",
+                                              message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
                                               fileitem=fileitem,
                                               target_item=target_item,
                                               target_diritem=target_diritem,
                                               fail_list=[fileitem.path],
                                               transfer_type=transfer_type,
                                               need_notify=need_notify)
-                            return self.result
-                    elif overwrite_mode == 'never':
-                        # 存在不覆盖
-                        self.__set_result(success=False,
-                                          message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
-                                          fileitem=fileitem,
-                                          target_item=target_item,
-                                          target_diritem=target_diritem,
-                                          fail_list=[fileitem.path],
-                                          transfer_type=transfer_type,
-                                          need_notify=need_notify)
-                        return self.result
-                    elif overwrite_mode == 'latest':
-                        # 仅保留最新版本
-                        logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
-                        overflag = True
-            else:
-                if overwrite_mode == 'latest':
-                    # 文件不存在，但仅保留最新版本
-                    logger.info(f"当前整理覆盖模式设置为 {overwrite_mode}，仅保留最新版本，正在删除已有版本文件 ...")
-                    self.__delete_version_files(target_oper, new_file)
-            # 整理文件
-            new_item, err_msg = self.__transfer_file(fileitem=fileitem,
-                                                     mediainfo=mediainfo,
-                                                     target_storage=target_storage,
-                                                     target_file=new_file,
-                                                     transfer_type=transfer_type,
-                                                     over_flag=overflag,
-                                                     source_oper=source_oper,
-                                                     target_oper=target_oper)
-            if not new_item:
-                logger.error(f"文件 {fileitem.path} 整理失败：{err_msg}")
-                self.__set_result(success=False,
-                                  message=err_msg,
+                            return self.result.copy()
+                        elif overwrite_mode == 'latest':
+                            # 仅保留最新版本
+                            logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
+                            overflag = True
+                else:
+                    if overwrite_mode == 'latest':
+                        # 文件不存在，但仅保留最新版本
+                        logger.info(f"当前整理覆盖模式设置为 {overwrite_mode}，仅保留最新版本，正在删除已有版本文件 ...")
+                        self.__delete_version_files(target_oper, new_file)
+                # 整理文件
+                new_item, err_msg = self.__transfer_file(fileitem=fileitem,
+                                                         mediainfo=mediainfo,
+                                                         target_storage=target_storage,
+                                                         target_file=new_file,
+                                                         transfer_type=transfer_type,
+                                                         over_flag=overflag,
+                                                         source_oper=source_oper,
+                                                         target_oper=target_oper)
+                if not new_item:
+                    logger.error(f"文件 {fileitem.path} 整理失败：{err_msg}")
+                    self.__set_result(success=False,
+                                      message=err_msg,
+                                      fileitem=fileitem,
+                                      fail_list=[fileitem.path],
+                                      transfer_type=transfer_type,
+                                      need_notify=need_notify)
+                    return self.result.copy()
+
+                logger.info(f"文件 {fileitem.path} 整理成功")
+                self.__set_result(success=True,
                                   fileitem=fileitem,
-                                  fail_list=[fileitem.path],
+                                  target_item=new_item,
+                                  target_diritem=target_diritem,
+                                  need_scrape=need_scrape,
                                   transfer_type=transfer_type,
                                   need_notify=need_notify)
-                return self.result
-
-            logger.info(f"文件 {fileitem.path} 整理成功")
-            self.__set_result(success=True,
-                              fileitem=fileitem,
-                              target_item=new_item,
-                              target_diritem=target_diritem,
-                              need_scrape=need_scrape,
-                              transfer_type=transfer_type,
-                              need_notify=need_notify)
-            return self.result
+                return self.result.copy()
+        finally:
+            self.result = None
 
     @staticmethod
     def __transfer_command(fileitem: FileItem, target_storage: str,

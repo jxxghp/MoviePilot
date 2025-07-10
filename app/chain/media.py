@@ -367,12 +367,12 @@ class MediaChain(ChainBase):
                                      overwrite=overwrite)
             else:
                 # 检查目的目录下是否已经有nfo刮削文件
-                sub_files = storagechain.list_files(fileitem)
-                if any(f.name.endswith('.nfo') for f in sub_files):
+                has_nfo_file = storagechain.any_files(fileitem, extensions=['.nfo'])
+                if has_nfo_file and file_list:
                     logger.info(f"目录 {fileitem.path} 已有NFO文件，开始增量刮削...")
                     for file_path in file_list:
                         file_item = storagechain.get_file_item(storage=fileitem.storage,
-                                                              path=Path(file_path))
+                                                               path=Path(file_path))
                         if file_item:
                             # 对于电视剧文件，应该保存到与视频文件相同的目录
                             # 而不是电视剧根目录
