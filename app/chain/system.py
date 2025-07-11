@@ -6,6 +6,7 @@ from typing import Union, Optional
 
 from app.chain import ChainBase
 from app.core.config import settings
+from app.core.plugin import PluginManager
 from app.log import logger
 from app.schemas import Notification, MessageChannel
 from app.utils.http import RequestUtils
@@ -136,13 +137,6 @@ class SystemChain(ChainBase):
                             shutil.rmtree(target_path)
                         shutil.copytree(item, target_path)
                         logger.info(f"已恢复插件目录: {item.name}")
-                        # 安装依赖
-                        requirements_file = target_path / "requirements.txt"
-                        if requirements_file.exists():
-                            logger.info(f"正在安装插件 {item.name} 的依赖...")
-                            success, message = PluginHelper.pip_install_with_fallback(requirements_file)
-                            if not success:
-                                logger.warn(f"插件 {item.name} 依赖安装失败: {message}")
                         restored_count += 1
                     # 如果是文件
                     elif item.is_file():
@@ -154,6 +148,9 @@ class SystemChain(ChainBase):
                     continue
 
             logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
+
+            # 安装缺少的依赖
+            PluginManager.install_plugin_missing_dependencies()
 
         # 删除备份目录
         try:

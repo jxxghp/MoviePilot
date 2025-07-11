@@ -429,6 +429,12 @@ class FileManagerModule(_ModuleBase):
                                 message=f"{target_path} 不是有效目录")
         # 获取目标路径
         if target_directory:
+            # 目标媒体库目录未设置
+            if not target_directory.library_path:
+                logger.error(f"目标媒体库目录未设置，无法整理文件，源路径：{fileitem.path}")
+                return TransferInfo(success=False,
+                                    fileitem=fileitem,
+                                    message="目标媒体库目录未设置")
             # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type

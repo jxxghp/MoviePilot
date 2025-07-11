@@ -649,10 +649,20 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         dependencies = {}
         try:
+            install_plugins = {
+                plugin_id.lower()  # 对应插件的小写目录名
+                for plugin_id in SystemConfigOper().get(
+                    SystemConfigKey.UserInstalledPlugins
+                ) or []
+            }
             for plugin_dir in PLUGIN_DIR.iterdir():
                 if plugin_dir.is_dir():
                     requirements_file = plugin_dir / "requirements.txt"
                     if requirements_file.exists():
+                        if plugin_dir.name not in install_plugins:
+                            # 这个插件不在安装列表中 忽略它的依赖
+                            logger.debug(f"忽略插件 {plugin_dir.name} 的依赖")
+                            continue
                         # 解析当前插件的 requirements.txt，获取依赖项
                         plugin_deps = self.__parse_requirements(requirements_file)
                         for pkg_name, version_specifiers in plugin_deps.items():
