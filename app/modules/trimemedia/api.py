@@ -320,7 +320,7 @@ class Api:
         types=None,
         exclude_grouped_video=True,
         page=1,
-        page_size=22,
+        page_size=20,
         sort_by="create_time",
         sort="DESC",
     ) -> Optional[list[Item]]:

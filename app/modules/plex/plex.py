@@ -756,7 +756,7 @@ class Plex:
             ))
         return ret_resume[:num]
 
-    def get_latest(self, num: Optional[int] = 22) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: Optional[int] = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取最近添加媒体
         """
