@@ -391,6 +391,14 @@ class Monitor(metaclass=Singleton):
                                         capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     output = result.stdout.lower()
+                    # 以下本地文件系统含有fuse关键字
+                    local_fs = [
+                        "fuse.shfs",  # Unraid
+                        "zfuse.zfsv",  # 极空间(zfuse.zfsv2、zfuse.zfsv3、...)
+                        # TBD
+                    ]
+                    if any(fs in output for fs in local_fs):
+                        return False
                     network_fs = ['nfs', 'cifs', 'smbfs', 'fuse', 'sshfs', 'ftpfs']
                     return any(fs in output for fs in network_fs)
             elif system == 'Darwin':
