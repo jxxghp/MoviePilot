@@ -166,7 +166,8 @@ class Emby:
                     type=library_type,
                     image=image,
                     link=f'{self._playhost or self._host}web/index.html'
-                         f'#!/videos?serverId={self.serverid}&parentId={library.get("Id")}'
+                         f'#!/videos?serverId={self.serverid}&parentId={library.get("Id")}',
+                    server_type= "emby"
                 )
             )
         return libraries
@@ -1167,7 +1168,8 @@ class Emby:
                         type=item_type,
                         image=image,
                         link=link,
-                        percent=item.get("UserData", {}).get("PlayedPercentage")
+                        percent=item.get("UserData", {}).get("PlayedPercentage"),
+                        server_type='emby'
                     ))
                 return ret_resume
             else:
@@ -1219,7 +1221,8 @@ class Emby:
                         type=item_type,
                         image=image,
                         link=link,
-                        BackdropImageTags=item.get("BackdropImageTags")
+                        BackdropImageTags=item.get("BackdropImageTags"),
+                        server_type='emby'
                     ))
                 return ret_latest
             else:

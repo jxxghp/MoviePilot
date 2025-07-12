@@ -72,6 +72,8 @@ class MediaServerLibrary(BaseModel):
     image_list: Optional[List[str]] = None
     # 跳转链接
     link: Optional[str] = None
+    # 服务器类型
+    server_type: Optional[str] = None
 
 
 class MediaServerItemUserState(BaseModel):
@@ -175,3 +177,4 @@ class MediaServerPlayItem(BaseModel):
     link: Optional[str] = None
     percent: Optional[float] = None
     BackdropImageTags: Optional[list] = Field(default_factory=list)
+    server_type: Optional[str] = None

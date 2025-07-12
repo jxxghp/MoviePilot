@@ -168,7 +168,8 @@ class Jellyfin:
                     path=library.get("Path"),
                     type=library_type,
                     image=image,
-                    link=link
+                    link=link,
+                    server_type="jellyfin"
                 ))
         return libraries
 
@@ -934,7 +935,8 @@ class Jellyfin:
                         type=item_type,
                         image=image,
                         link=link,
-                        percent=item.get("UserData", {}).get("PlayedPercentage")
+                        percent=item.get("UserData", {}).get("PlayedPercentage"),
+                        server_type='jellyfin',
                     ))
                 return ret_resume
             else:
@@ -986,7 +988,8 @@ class Jellyfin:
                         type=item_type,
                         image=image,
                         link=link,
-                        BackdropImageTags=item.get("BackdropImageTags")
+                        BackdropImageTags=item.get("BackdropImageTags"),
+                        server_type='jellyfin'
                     ))
                 return ret_latest
             else:

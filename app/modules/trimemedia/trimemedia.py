@@ -163,6 +163,7 @@ class TrimeMedia:
                         for img_path in library.posters or []
                     ],
                     link=f"{self._playhost or self._api.host}/library/{library.guid}",
+                    server_type='trimemedia'
                 )
             )
         return libraries
@@ -458,6 +459,7 @@ class TrimeMedia:
                 if item.duration and item.ts is not None
                 else 0
             ),
+            server_type='trimemedia',
         )
 
     def get_items(
