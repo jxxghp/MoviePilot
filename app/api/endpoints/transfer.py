@@ -38,11 +38,7 @@ def query_name(path: str, filetype: str,
         return schemas.Response(success=False, message="未识别到新名称")
     if filetype == "dir":
         media_path = DirectoryHelper.get_media_root_path(
-            rename_format=(
-                settings.TV_RENAME_FORMAT
-                if mediainfo.type == MediaType.TV
-                else settings.MOVIE_RENAME_FORMAT
-            ),
+            rename_format=settings.RENAME_FORMAT(mediainfo.type),
             rename_path=Path(new_path),
         )
         if media_path:

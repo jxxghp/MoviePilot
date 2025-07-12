@@ -140,8 +140,7 @@ class FileManagerModule(_ModuleBase):
         """
         handler = TransHandler()
         # 重命名格式
-        rename_format = settings.TV_RENAME_FORMAT \
-            if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+        rename_format = settings.RENAME_FORMAT(mediainfo.type)
         # 获取集信息
         episodes_info: Optional[List[TmdbEpisode]] = None
         if mediainfo.type == MediaType.TV:
@@ -534,8 +533,7 @@ class FileManagerModule(_ModuleBase):
             # 媒体分类路径
             dir_path = handler.get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
             # 重命名格式
-            rename_format = settings.TV_RENAME_FORMAT \
-                if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            rename_format = settings.RENAME_FORMAT(mediainfo.type)
             # 元数据补上常用属性，尽可能确保重命名后的路径不出现空白
             meta = MetaInfo(mediainfo.title)
             if meta.type == MediaType.UNKNOWN and mediainfo.type is not None:
@@ -560,7 +558,7 @@ class FileManagerModule(_ModuleBase):
             if not media_path:
                 # 忽略
                 continue
-            if dir_path.is_relative_to(media_path):
+            if dir_path != media_path and dir_path.is_relative_to(media_path):
                 # 兜底检查，避免不必要的扫盘
                 logger.warn(f"{media_path} 是媒体库目录 {dir_path} 的父目录，忽略获取媒体文件列表，请检查重命名格式！")
                 continue

@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -13,6 +14,7 @@ from pydantic import BaseModel, BaseSettings, validator, Field
 from app.log import logger, log_settings, LogConfigModel
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
+from app.schemas import MediaType
 
 
 class SystemConfModel(BaseModel):
@@ -650,6 +652,23 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         if not self.APP_DOMAIN:
             return None
         return UrlUtils.combine_url(host=self.APP_DOMAIN, path=url)
+
+    def RENAME_FORMAT(self, media_type: MediaType):
+        """
+        获取指定类型的重命名格式
+
+        :param media_type: MediaType.TV 或 MediaType.Movie
+        :return: 重命名格式
+        """
+        rename_format = (
+            self.TV_RENAME_FORMAT
+            if media_type == MediaType.TV
+            else self.MOVIE_RENAME_FORMAT
+        )
+        # 规范重命名格式
+        rename_format = rename_format.replace("\\", "/")
+        rename_format = re.sub(r'/+', '/', rename_format)
+        return rename_format.strip("/")
 
 
 # 实例化配置

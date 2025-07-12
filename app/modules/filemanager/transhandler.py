@@ -106,8 +106,7 @@ class TransHandler:
         try:
 
             # 重命名格式
-            rename_format = settings.TV_RENAME_FORMAT \
-                if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            rename_format = settings.RENAME_FORMAT(mediainfo.type)
 
             # 判断是否为文件夹
             if fileitem.type == "dir":

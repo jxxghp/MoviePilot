@@ -178,8 +178,7 @@ class StorageChain(ChainBase):
 
         if mtype:
             # 重命名格式
-            rename_format = settings.TV_RENAME_FORMAT \
-                if mtype == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            rename_format = settings.RENAME_FORMAT(mtype)
             media_path = DirectoryHelper.get_media_root_path(
                 rename_format, rename_path=Path(fileitem.path)
             )
