@@ -466,17 +466,27 @@ def nettest(
     # 记录开始的毫秒数
     start_time = datetime.now()
     headers = None
-    if "github" in url or "{GITHUB_PROXY}" in url:
+    # 当前使用的加速代理
+    proxy_name = ""
+    if "github" in url:
         # 这是github的连通性测试
+        headers = settings.GITHUB_HEADERS
+    if "{GITHUB_PROXY}" in url:
         url = url.replace(
             "{GITHUB_PROXY}", UrlUtils.standardize_base_url(settings.GITHUB_PROXY or "")
         )
-        headers = settings.GITHUB_HEADERS
+        if settings.GITHUB_PROXY:
+            proxy_name = "Github加速代理"
+    if "{PIP_PROXY}" in url:
+        url = url.replace(
+            "{PIP_PROXY}",
+            UrlUtils.standardize_base_url(
+                settings.PIP_PROXY or "https://pypi.org/simple/"
+            ),
+        )
+        if settings.PIP_PROXY:
+            proxy_name = "PIP加速代理"
     url = url.replace("{TMDBAPIKEY}", settings.TMDB_API_KEY)
-    url = url.replace(
-        "{PIP_PROXY}",
-        UrlUtils.standardize_base_url(settings.PIP_PROXY or "https://pypi.org/simple/"),
-    )
     result = RequestUtils(
         proxies=settings.PROXY if proxy else None,
         headers=headers,
@@ -488,21 +498,36 @@ def nettest(
     time = round((end_time - start_time).total_seconds() * 1000)
     # 计算相关秒数
     if result is None:
-        return schemas.Response(success=False, message="无法连接", data={"time": time})
+        return schemas.Response(
+            success=False, message=f"{proxy_name}无法连接", data={"time": time}
+        )
     elif result.status_code == 200:
         if include and not re.search(r"%s" % include, result.text, re.IGNORECASE):
             # 通常是被加速代理跳转到其它页面了
             logger.error(f"{url} 的响应内容不匹配包含规则 {include}")
+            if proxy_name:
+                message = f"{proxy_name}已失效，请检查配置"
+            else:
+                message = f"无效响应，不匹配 {include}"
             return schemas.Response(
                 success=False,
-                message=f"无效响应，不匹配 {include}",
+                message=message,
                 data={"time": time},
             )
         return schemas.Response(success=True, data={"time": time})
     else:
-        return schemas.Response(
-            success=False, message=f"错误码：{result.status_code}", data={"time": time}
-        )
+        if proxy_name:
+            # 加速代理失败
+            message = f"{proxy_name}已失效，错误码：{result.status_code}"
+        else:
+            message = f"错误码：{result.status_code}"
+            if "github" in url:
+                # 非加速代理访问github
+                if result.status_code == 401:
+                    message = "Github Token已失效，请检查配置"
+                elif result.status_code in {403, 429}:
+                    message = "触发限流，请配置Github Token"
+        return schemas.Response(success=False, message=message, data={"time": time})
 
 
 @router.get("/modulelist", summary="查询已加载的模块ID列表", response_model=schemas.Response)
