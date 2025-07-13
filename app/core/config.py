@@ -213,6 +213,8 @@ class ConfigModel(BaseModel):
     SITEDATA_REFRESH_INTERVAL: int = 6
     # 读取和发送站点消息
     SITE_MESSAGE: bool = True
+    # 不能缓存站点资源的站点域名，多个使用,分隔
+    NO_CACHE_SITE_KEY: str = "m-team"
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载站点字幕

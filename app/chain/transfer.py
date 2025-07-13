@@ -498,18 +498,33 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 if transferinfo.transfer_type in ["move"]:
                     # 所有成功的业务
                     tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
-                    # 记录已处理的种子hash
-                    processed_hashes = set()
                     storagechain = StorageChain()
+                    downloadhistoryoper = DownloadHistoryOper()
                     for t in tasks:
                         # 下载器hash
-                        if t.download_hash and t.download_hash not in processed_hashes:
-                            processed_hashes.add(t.download_hash)
-                            if self.remove_torrents(t.download_hash, downloader=t.downloader):
-                                logger.info(f"移动模式删除种子成功：{t.download_hash} ")
-                        # 删除残留目录
-                        if t.fileitem:
-                            storagechain.delete_media_file(t.fileitem, delete_self=False)
+                        if not t.download_hash:
+                            continue
+                        # 通过download_hash获取种子保存目录
+                        download_history = downloadhistoryoper.get_by_hash(t.download_hash)
+                        if download_history and download_history.path:
+                            # 检查种子目录下是否还有有效媒体文件
+                            seed_dir_item = storagechain.get_file_item(storage=t.fileitem.storage,
+                                                                       path=Path(download_history.path))
+                            if seed_dir_item and seed_dir_item.type == "dir":
+                                remain_files = storagechain.list_files(seed_dir_item, recursion=True)
+                                has_media = any(
+                                    f.extension and f.extension.lower() in [ext.lstrip('.') for ext in self.all_exts]
+                                    for f in remain_files if f.type == "file"
+                                )
+                                if not has_media:
+                                    if self.remove_torrents(t.download_hash, downloader=t.downloader):
+                                        logger.info(f"移动模式删除种子成功：{t.download_hash} ")
+                                    # 删除残留目录
+                                    if t.fileitem:
+                                        storagechain.delete_media_file(t.fileitem, delete_self=False)
+                                else:
+                                    logger.info(
+                                        f"种子目录 {download_history.path} 还有未整理的媒体文件，暂不删除种子和残留目录")
             # 整理完成且有成功的任务时
             if self.jobview.is_finished(task):
                 __do_finished()

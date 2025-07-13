@@ -193,7 +193,7 @@ class MediaInfo:
     # LOGO
     logo_path: str = None
     # 评分
-    vote_average: float = 0.0
+    vote_average: float = None
     # 描述
     overview: str = None
     # 风格ID
@@ -237,9 +237,9 @@ class MediaInfo:
     # 流媒体平台
     networks: list = field(default_factory=list)
     # 集数
-    number_of_episodes: int = 0
+    number_of_episodes: int = None
     # 季数
-    number_of_seasons: int = 0
+    number_of_seasons: int = None
     # 原产国
     origin_country: list = field(default_factory=list)
     # 原名
@@ -255,9 +255,9 @@ class MediaInfo:
     # 标签
     tagline: str = None
     # 评价数量
-    vote_count: int = 0
+    vote_count: int = None
     # 流行度
-    popularity: int = 0
+    popularity: int = None
     # 时长
     runtime: int = None
     # 下一集
@@ -474,7 +474,7 @@ class MediaInfo:
         self.names = info.get('names') or []
         # 剩余属性赋值
         for key, value in info.items():
-            if hasattr(self, key) and not getattr(self, key):
+            if hasattr(self, key) and getattr(self, key) is None:
                 setattr(self, key, value)
 
     def set_douban_info(self, info: dict):
@@ -606,7 +606,7 @@ class MediaInfo:
             self.production_countries = [{"id": country, "name": country} for country in info.get("countries") or []]
         # 剩余属性赋值
         for key, value in info.items():
-            if not hasattr(self, key):
+            if hasattr(self, key) and getattr(self, key) is None:
                 setattr(self, key, value)
 
     def set_bangumi_info(self, info: dict):

@@ -140,6 +140,16 @@ class TorrentsChain(ChainBase):
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         :param sites: 强制指定站点ID列表，为空则读取设置的订阅站点
         """
+
+        def __is_no_cache_site(_domain: str) -> bool:
+            """
+            判断站点是否不需要缓存
+            """
+            for url_key in settings.NO_CACHE_SITE_KEY.split(','):
+                if url_key in _domain:
+                    return True
+            return False
+
         # 刷新类型
         if not stype:
             stype = settings.SUBSCRIBE_MODE
@@ -178,11 +188,16 @@ class TorrentsChain(ChainBase):
             # 取前N条
             torrents = torrents[:settings.CONF.refresh]
             if torrents:
-                # 过滤出没有处理过的种子 - 优化：使用集合查找，避免重复创建字符串列表
-                cached_signatures = {f'{t.torrent_info.title}{t.torrent_info.description}'
-                                     for t in torrents_cache.get(domain) or []}
-                torrents = [torrent for torrent in torrents
-                            if f'{torrent.title}{torrent.description}' not in cached_signatures]
+                if __is_no_cache_site(domain):
+                    # 不需要缓存的站点，直接处理
+                    logger.info(f'{indexer.get("name")} 有 {len(torrents)} 个种子 (不缓存)')
+                    torrents_cache[domain] = []
+                else:
+                    # 过滤出没有处理过的种子 - 优化：使用集合查找，避免重复创建字符串列表
+                    cached_signatures = {f'{t.torrent_info.title}{t.torrent_info.description}'
+                                         for t in torrents_cache.get(domain) or []}
+                    torrents = [torrent for torrent in torrents
+                                if f'{torrent.title}{torrent.description}' not in cached_signatures]
                 if torrents:
                     logger.info(f'{indexer.get("name")} 有 {len(torrents)} 个新种子')
                 else:

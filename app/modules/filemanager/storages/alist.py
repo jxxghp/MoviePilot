@@ -38,7 +38,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         初始化
         """
-        self.__generate_token.clear_cache() # noqa
+        self.__generate_token.clear_cache()  # noqa
 
     @property
     def __get_base_url(self) -> str:
@@ -376,10 +376,46 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_folder(Path(fileitem.path).parent)
 
+    def __is_empty_dir(self, fileitem: schemas.FileItem) -> bool:
+        """
+        判断目录是否为空
+        """
+        if fileitem.type != "dir":
+            return False
+        # 获取目录内容
+        items = self.list(fileitem)
+        return len(items) == 0
+
     def delete(self, fileitem: schemas.FileItem) -> bool:
         """
-        删除文件
+        删除文件或目录，空目录用专用API
         """
+        # 如果是空目录，优先用 remove_empty_directory
+        if fileitem.type == "dir" and self.__is_empty_dir(fileitem):
+            resp = RequestUtils(
+                headers=self.__get_header_with_token()
+            ).post_res(
+                self.__get_api_url("/api/fs/remove_empty_directory"),
+                json={
+                    "src_dir": fileitem.path,
+                },
+            )
+            if resp is None:
+                logger.warn(f"【OpenList】请求删除空目录 {fileitem.path} 失败，无法连接alist服务")
+                return False
+            if resp.status_code != 200:
+                logger.warn(
+                    f"【OpenList】请求删除空目录 {fileitem.path} 失败，状态码：{resp.status_code}"
+                )
+                return False
+            result = resp.json()
+            if result["code"] != 200:
+                logger.warn(
+                    f'【OpenList】删除空目录 {fileitem.path} 失败，错误信息：{result["message"]}'
+                )
+                return False
+            return True
+        # 其它情况（文件或非空目录）
         resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
@@ -389,20 +425,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 "names": [fileitem.name],
             },
         )
-        """
-        {
-            "names": [
-                "string"
-            ],
-            "dir": "string"
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": null
-        }
-        """
         if resp is None:
             logger.warn(f"【OpenList】请求删除文件 {fileitem.path} 失败，无法连接alist服务")
             return False
@@ -411,7 +433,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 f"【OpenList】请求删除文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
             return False
-
         result = resp.json()
         if result["code"] != 200:
             logger.warn(
