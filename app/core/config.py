@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import platform
 import re
 import secrets
 import sys
@@ -15,6 +16,7 @@ from app.log import logger, log_settings, LogConfigModel
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
 from app.schemas import MediaType
+from version import APP_VERSION
 
 
 class SystemConfModel(BaseModel):
@@ -233,8 +235,6 @@ class ConfigModel(BaseModel):
     COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
     # CookieCloud同步黑名单，多个域名,分割
     COOKIECLOUD_BLACKLIST: Optional[str] = None
-    # CookieCloud对应的浏览器UA
-    USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
                                "/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}" \
@@ -509,6 +509,13 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         版本标识，用来区分重大版本，为空则为v1，不允许外部修改
         """
         return "v2"
+
+    @property
+    def USER_AGENT(self) -> str:
+        """
+        全局用户代理字符串
+        """
+        return f"{self.PROJECT_NAME}/{APP_VERSION[1:]} ({platform.system()}/{platform.release()})"
 
     @property
     def INNER_CONFIG_PATH(self):

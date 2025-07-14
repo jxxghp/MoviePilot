@@ -1,5 +1,7 @@
+import sys
 import re
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Optional, Union
 
 import chardet
@@ -8,6 +10,7 @@ import urllib3
 from requests import Response, Session
 from urllib3.exceptions import InsecureRequestWarning
 
+from app.core.config import settings
 from app.log import logger
 
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -86,6 +89,7 @@ class AutoCloseResponse:
     def __exit__(self, *args):
         self.close()
 
+
 class RequestUtils:
 
     def __init__(self,
@@ -106,6 +110,10 @@ class RequestUtils:
         if headers:
             self._headers = headers
         else:
+            if ua and ua == settings.USER_AGENT:
+                caller_name = self.__get_caller()
+                if caller_name:
+                    ua = f"{settings.USER_AGENT} Plugin/{caller_name}"
             self._headers = {
                 "User-Agent": ua,
                 "Content-Type": content_type,
@@ -119,6 +127,43 @@ class RequestUtils:
                 self._cookies = cookies
         else:
             self._cookies = None
+
+    @staticmethod
+    def __get_caller():
+        """
+        获取调用者的名称，识别是否为插件调用
+        """
+        # 调用者名称
+        caller_name = None
+
+        try:
+            frame = sys._getframe(3)  # noqa
+        except (AttributeError, ValueError):
+            return None
+
+        while frame:
+            filepath = Path(frame.f_code.co_filename)
+            parts = filepath.parts
+            if "app" in parts:
+                if not caller_name and "plugins" in parts:
+                    try:
+                        plugins_index = parts.index("plugins")
+                        if plugins_index + 1 < len(parts):
+                            plugin_candidate = parts[plugins_index + 1]
+                            if plugin_candidate != "__init__.py":
+                                caller_name = plugin_candidate
+                            break
+                    except ValueError:
+                        pass
+                if "main.py" in parts:
+                    break
+            elif len(parts) != 1:
+                break
+            try:
+                frame = frame.f_back
+            except AttributeError:
+                break
+        return caller_name
 
     def request(self, method: str, url: str, raise_exception: bool = False, **kwargs) -> Optional[Response]:
         """
