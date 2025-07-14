@@ -13,9 +13,9 @@ from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
 
 from app.log import logger, log_settings, LogConfigModel
+from app.schemas import MediaType
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
-from app.schemas import MediaType
 from version import APP_VERSION
 
 
@@ -515,7 +515,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         全局用户代理字符串
         """
-        return f"{self.PROJECT_NAME}/{APP_VERSION[1:]} ({platform.system()}/{platform.release()})"
+        return f"{self.PROJECT_NAME}/{APP_VERSION[1:]} ({platform.system()} {platform.release()}; {SystemUtils.cpu_arch()})"
 
     @property
     def INNER_CONFIG_PATH(self):
