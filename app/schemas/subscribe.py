@@ -138,6 +138,15 @@ class SubscribeShare(BaseModel):
     count: Optional[int] = 0
 
 
+class SubscribeShareStatistics(BaseModel):
+    # 分享人
+    share_user: Optional[str] = None
+    # 分享数量
+    share_count: Optional[int] = 0
+    # 总复用人次
+    total_reuse_count: Optional[int] = 0
+
+
 class SubscribeDownloadFileInfo(BaseModel):
     # 种子名称
     torrent_title: Optional[str] = None

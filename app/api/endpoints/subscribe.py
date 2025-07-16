@@ -560,6 +560,15 @@ def popular_subscribes(
     return SubscribeHelper().get_shares(name=name, page=page, count=count)
 
 
+@router.get("/share/statistics", summary="查询订阅分享统计", response_model=List[schemas.SubscribeShareStatistics])
+def subscribe_share_statistics(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询订阅分享统计
+    返回每个分享人分享的媒体数量以及总的复用人次
+    """
+    return SubscribeHelper().get_share_statistics()
+
+
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
 def read_subscribe(
         subscribe_id: int,
