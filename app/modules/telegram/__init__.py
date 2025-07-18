@@ -1,5 +1,6 @@
 import copy
 import json
+import re
 from typing import Dict
 from typing import Optional, Union, List, Tuple, Any
 
@@ -195,20 +196,25 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         text = msg.get("text")
         user_id = msg.get("from", {}).get("id")
         user_name = msg.get("from", {}).get("username")
+        # Extract chat_id to enable correct reply targeting
+        chat_id = msg.get("chat", {}).get("id")
 
         if text and user_id:
             logger.info(f"收到来自 {client_config.name} 的Telegram消息："
-                        f"userid={user_id}, username={user_name}, text={text}")
+                        f"userid={user_id}, username={user_name}, chat_id={chat_id}, text={text}")
+
+            # Clean bot mentions from text to ensure consistent processing
+            cleaned_text = TelegramModule._clean_bot_mention(text, client._bot_username if client else None)
 
             # 检查权限
             admin_users = client_config.config.get("TELEGRAM_ADMINS")
             user_list = client_config.config.get("TELEGRAM_USERS")
-            chat_id = client_config.config.get("TELEGRAM_CHAT_ID")
+            config_chat_id = client_config.config.get("TELEGRAM_CHAT_ID")
 
-            if text.startswith("/"):
+            if cleaned_text.startswith("/"):
                 if admin_users \
                         and str(user_id) not in admin_users.split(',') \
-                        and str(user_id) != chat_id:
+                        and str(user_id) != config_chat_id:
                     client.send_msg(title="只有管理员才有权限执行此命令", userid=user_id)
                     return None
             else:
@@ -223,9 +229,37 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 source=client_config.name,
                 userid=user_id,
                 username=user_name,
-                text=text
+                text=cleaned_text,  # Use cleaned text
+                chat_id=str(chat_id) if chat_id else None
             )
         return None
+
+    @staticmethod
+    def _clean_bot_mention(text: str, bot_username: Optional[str]) -> str:
+        """
+        清理消息中的@bot部分，确保文本处理一致性
+        :param text: 原始消息文本
+        :param bot_username: bot用户名
+        :return: 清理后的文本
+        """
+        if not text or not bot_username:
+            return text
+        
+        # Remove @bot_username from the beginning and any position in text
+        cleaned = text
+        mention_pattern = f"@{bot_username}"
+        
+        # Remove mention at the beginning with optional following space
+        if cleaned.startswith(mention_pattern):
+            cleaned = cleaned[len(mention_pattern):].lstrip()
+        
+        # Remove mention at any other position
+        cleaned = cleaned.replace(mention_pattern, "").strip()
+        
+        # Clean up multiple spaces
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        return cleaned
 
     def post_message(self, message: Notification) -> None:
         """
