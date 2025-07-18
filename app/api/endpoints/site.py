@@ -1,6 +1,5 @@
 from typing import List, Any, Dict, Optional
 
-from app.helper.sites import SitesHelper
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
@@ -22,6 +21,7 @@ from app.db.models.siteuserdata import SiteUserData
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
+from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
@@ -420,6 +420,14 @@ def site_mapping(_: User = Depends(get_current_active_superuser)):
         return schemas.Response(success=True, data=mapping)
     except Exception as e:
         return schemas.Response(success=False, message=f"获取映射失败：{str(e)}")
+
+
+@router.get("/supporting", summary="获取支持的站点列表", response_model=dict)
+def support_sites(_: User = Depends(get_current_active_superuser)):
+    """
+    获取支持的站点列表
+    """
+    return SitesHelper().get_indexsites()
 
 
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
