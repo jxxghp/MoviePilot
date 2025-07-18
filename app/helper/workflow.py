@@ -105,7 +105,7 @@ class WorkflowHelper(metaclass=WeakSingleton):
         else:
             return False, res.json().get("message")
 
-    @cached(region=_shares_cache_region)
+    @cached(region=_shares_cache_region, maxsize=1, skip_empty=True)
     def get_shares(self, name: Optional[str] = None, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         获取工作流分享数据

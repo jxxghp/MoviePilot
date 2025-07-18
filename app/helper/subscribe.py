@@ -201,7 +201,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
         else:
             return False, res.json().get("message")
 
-    @cached(region=_shares_cache_region)
+    @cached(region=_shares_cache_region, maxsize=1, ttl=1800, skip_empty=True)
     def get_shares(self, name: Optional[str] = None, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """
         获取订阅分享数据
@@ -217,7 +217,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
             return res.json()
         return []
 
-    @cached(maxsize=1, ttl=1800)
+    @cached(region=_shares_cache_region, maxsize=1, ttl=1800, skip_empty=True)
     def get_share_statistics(self) -> List[dict]:
         """
         获取订阅分享统计数据
