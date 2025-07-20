@@ -188,8 +188,8 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             )
         return None
 
-    @staticmethod
-    def _handle_text_message(msg: dict, client_config: NotificationConf, client: Telegram) -> Optional[CommingMessage]:
+    def _handle_text_message(self, msg: dict,
+                             client_config: NotificationConf, client: Telegram) -> Optional[CommingMessage]:
         """
         处理普通文本消息
         """
@@ -204,7 +204,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                         f"userid={user_id}, username={user_name}, chat_id={chat_id}, text={text}")
 
             # Clean bot mentions from text to ensure consistent processing
-            cleaned_text = TelegramModule._clean_bot_mention(text, client._bot_username if client else None)
+            cleaned_text = self._clean_bot_mention(text, client.bot_username if client else None)
 
             # 检查权限
             admin_users = client_config.config.get("TELEGRAM_ADMINS")
@@ -244,21 +244,21 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         """
         if not text or not bot_username:
             return text
-        
+
         # Remove @bot_username from the beginning and any position in text
         cleaned = text
         mention_pattern = f"@{bot_username}"
-        
+
         # Remove mention at the beginning with optional following space
         if cleaned.startswith(mention_pattern):
             cleaned = cleaned[len(mention_pattern):].lstrip()
-        
+
         # Remove mention at any other position
         cleaned = cleaned.replace(mention_pattern, "").strip()
-        
+
         # Clean up multiple spaces
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-        
+
         return cleaned
 
     def post_message(self, message: Notification) -> None:

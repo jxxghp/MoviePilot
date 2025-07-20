@@ -504,27 +504,35 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         # 下载器hash
                         if not t.download_hash:
                             continue
-                        # 通过download_hash获取种子保存目录
-                        download_history = downloadhistoryoper.get_by_hash(t.download_hash)
-                        if download_history and download_history.path:
-                            # 检查种子目录下是否还有有效媒体文件
-                            seed_dir_item = storagechain.get_file_item(storage=t.fileitem.storage,
-                                                                       path=Path(download_history.path))
-                            if seed_dir_item and seed_dir_item.type == "dir":
-                                remain_files = storagechain.list_files(seed_dir_item, recursion=True)
-                                has_media = any(
-                                    f.extension and f.extension.lower() in [ext.lstrip('.') for ext in self.all_exts]
-                                    for f in remain_files if f.type == "file"
-                                )
-                                if not has_media:
-                                    if self.remove_torrents(t.download_hash, downloader=t.downloader):
-                                        logger.info(f"移动模式删除种子成功：{t.download_hash} ")
-                                    # 删除残留目录
-                                    if t.fileitem:
-                                        storagechain.delete_media_file(t.fileitem, delete_self=False)
-                                else:
-                                    logger.info(
-                                        f"种子目录 {download_history.path} 还有未整理的媒体文件，暂不删除种子和残留目录")
+                        # 获取种子保存目录
+                        seed_dir_path = self.__get_torrent_save_path(download_hash=t.download_hash,
+                                                                     downloader=t.downloader)
+                        if not seed_dir_path:
+                            # 如果无法从下载器获取，则尝试从历史记录获取
+                            download_history = downloadhistoryoper.get_by_hash(t.download_hash)
+                            if download_history and download_history.path:
+                                seed_dir_path = download_history.path
+                            else:
+                                logger.warn(f"无法获取种子 {t.download_hash} 的保存路径")
+                                continue
+
+                        # 检查种子目录下是否还有有效媒体文件
+                        seed_dir_item = storagechain.get_file_item(storage=t.fileitem.storage,
+                                                                   path=Path(seed_dir_path))
+                        if seed_dir_item and seed_dir_item.type == "dir":
+                            remain_files = storagechain.list_files(seed_dir_item, recursion=True)
+                            has_media = any(
+                                f.extension and f.extension.lower() in [ext.lstrip('.') for ext in self.all_exts]
+                                for f in remain_files if f.type == "file"
+                            )
+                            if not has_media:
+                                if self.remove_torrents(t.download_hash, downloader=t.downloader):
+                                    logger.info(f"移动模式删除种子成功：{t.download_hash} ")
+                                # 删除残留目录
+                                storagechain.delete_media_file(seed_dir_item, delete_self=False)
+                            else:
+                                logger.info(
+                                    f"种子目录 {seed_dir_path} 还有未整理的媒体文件，暂不删除种子和残留目录")
             # 整理完成且有成功的任务时
             if self.jobview.is_finished(task):
                 __do_finished()
@@ -1448,3 +1456,20 @@ class TransferChain(ChainBase, metaclass=Singleton):
             season_episode=season_episode,
             username=username
         )
+
+    def __get_torrent_save_path(self, download_hash: str, downloader: str) -> Optional[str]:
+        """
+        从下载器获取种子的保存路径
+        :param download_hash: 种子Hash
+        :param downloader: 下载器名称
+        :return: 种子保存路径，如果获取失败返回None
+        """
+        try:
+            # 通过下载器获取种子信息
+            torrents = self.list_torrents(hashs=download_hash, downloader=downloader)
+            if not torrents:
+                return None
+            return torrents[0].path
+        except Exception as e:
+            logger.error(f"获取种子 {download_hash} 保存路径失败：{e}")
+            return None

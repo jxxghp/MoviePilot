@@ -179,7 +179,15 @@ class TorrentsChain(ChainBase):
             domains.append(domain)
             if stype == "spider":
                 # 刷新首页种子
-                torrents: List[TorrentInfo] = self.browse(domain=domain)
+                torrents: List[TorrentInfo] = []
+                # 读取第0页和第1页
+                for page in range(2):
+                    page_torrents = self.browse(domain=domain, page=page)
+                    if page_torrents:
+                        torrents.extend(page_torrents)
+                    else:
+                        # 如果某一页没有数据，说明已经到最后一页，停止获取
+                        break
             else:
                 # 刷新RSS种子
                 torrents: List[TorrentInfo] = self.rss(domain=domain)

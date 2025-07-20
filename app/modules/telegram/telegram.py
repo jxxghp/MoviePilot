@@ -59,7 +59,7 @@ class Telegram:
             except Exception as e:
                 logger.error(f"获取bot信息失败: {e}")
                 self._bot_username = None
-            
+
             # 标记渠道来源
             if kwargs.get("name"):
                 self._ds_url = f"{self._ds_url}&source={kwargs.get('name')}"
@@ -72,7 +72,7 @@ class Telegram:
             def echo_all(message):
                 # Update user-chat mapping when receiving messages
                 self._update_user_chat_mapping(message.from_user.id, message.chat.id)
-                
+
                 # Check if we should process this message
                 if self._should_process_message(message):
                     RequestUtils(timeout=15).post_res(self._ds_url, json=message.json)
@@ -85,7 +85,7 @@ class Telegram:
                 try:
                     # Update user-chat mapping for callbacks too
                     self._update_user_chat_mapping(call.from_user.id, call.message.chat.id)
-                    
+
                     # 解析回调数据
                     callback_data = call.data
                     user_id = str(call.from_user.id)
@@ -113,8 +113,8 @@ class Telegram:
                     # 发送给主程序处理
                     RequestUtils(timeout=15).post_res(self._ds_url, json=callback_json)
 
-                except Exception as e:
-                    logger.error(f"处理按钮回调失败：{str(e)}")
+                except Exception as err:
+                    logger.error(f"处理按钮回调失败：{str(err)}")
                     _bot.answer_callback_query(call.id, "处理失败，请重试")
 
             def run_polling():
@@ -130,6 +130,14 @@ class Telegram:
             self._polling_thread = threading.Thread(target=run_polling, daemon=True)
             self._polling_thread.start()
             logger.info("Telegram消息接收服务启动")
+
+    @property
+    def bot_username(self) -> Optional[str]:
+        """
+        获取Bot用户名
+        :return: Bot用户名或None
+        """
+        return self._bot_username
 
     def _update_user_chat_mapping(self, userid: int, chat_id: int) -> None:
         """
@@ -158,24 +166,24 @@ class Telegram:
         if message.chat.type == 'private':
             logger.debug(f"处理私聊消息：用户 {message.from_user.id}")
             return True
-        
+
         # 群聊中的命令消息总是处理（以/开头）
         if message.text and message.text.startswith('/'):
             logger.debug(f"处理群聊命令消息：{message.text[:20]}...")
             return True
-        
+
         # 群聊中检查是否@了机器人
         if message.chat.type in ['group', 'supergroup']:
             if not self._bot_username:
                 # 如果没有获取到bot用户名，为了安全起见处理所有消息
                 logger.debug("未获取到bot用户名，处理所有群聊消息")
                 return True
-            
+
             # 检查消息文本中是否包含@bot_username
             if message.text and f"@{self._bot_username}" in message.text:
                 logger.debug(f"检测到@{self._bot_username}，处理群聊消息")
                 return True
-            
+
             # 检查消息实体中是否有提及bot
             if message.entities:
                 for entity in message.entities:
@@ -184,11 +192,11 @@ class Telegram:
                         if mention_text == f"@{self._bot_username}":
                             logger.debug(f"通过实体检测到@{self._bot_username}，处理群聊消息")
                             return True
-            
+
             # 群聊中没有@机器人，不处理
             logger.debug(f"群聊消息未@机器人，跳过处理：{message.text[:30] if message.text else 'No text'}...")
             return False
-        
+
         # 其他类型的聊天默认处理
         logger.debug(f"处理其他类型聊天消息：{message.chat.type}")
         return True
@@ -254,7 +262,7 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def _determine_target_chat_id(self, userid: Optional[str] = None, 
+    def _determine_target_chat_id(self, userid: Optional[str] = None,
                                   original_chat_id: Optional[str] = None) -> str:
         """
         确定目标聊天ID，使用用户映射确保回复到正确的聊天
@@ -265,7 +273,7 @@ class Telegram:
         # 1. 优先使用原消息的聊天ID (编辑消息场景)
         if original_chat_id:
             return original_chat_id
-        
+
         # 2. 如果有userid，尝试从映射中获取用户的聊天ID
         if userid:
             mapped_chat_id = self._get_user_chat_id(userid)
@@ -273,7 +281,7 @@ class Telegram:
                 return mapped_chat_id
             # 如果映射中没有，回退到使用userid作为聊天ID (私聊场景)
             return userid
-        
+
         # 3. 最后使用默认聊天ID
         return self._telegram_chat_id
 
