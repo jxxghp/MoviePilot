@@ -96,7 +96,7 @@ def fetch_image(
     # 请求远程图片
     referer = "https://movie.douban.com/" if "doubanio.com" in url else None
     proxies = settings.PROXY if proxy else None
-    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer,
+    response = RequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=proxies, referer=referer,
                             accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
     if not response:
         raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
@@ -491,7 +491,7 @@ def nettest(
         proxies=settings.PROXY if proxy else None,
         headers=headers,
         timeout=10,
-        ua=settings.USER_AGENT,
+        ua=settings.NORMAL_USER_AGENT,
     ).get_res(url)
     # 计时结束的毫秒数
     end_time = datetime.now()

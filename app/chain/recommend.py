@@ -130,7 +130,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         # 请求远程图片
         referer = "https://movie.douban.com/" if "doubanio.com" in url else None
         proxies = settings.PROXY if not referer else None
-        response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=url)
+        response = RequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=proxies, referer=referer).get_res(url=url)
         if not response:
             logger.debug(f"Empty response for URL: {url}")
             return

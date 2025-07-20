@@ -432,8 +432,10 @@ class MediaChain(ChainBase):
             """
             if not _fileitem or not _content or not _path:
                 return
-            # 保存文件到临时目录，文件名随机
-            tmp_file = settings.TEMP_PATH / f"{_path.name}.{StringUtils.generate_random_str(10)}"
+            # 保存文件到临时目录
+            tmp_dir = settings.TEMP_PATH / StringUtils.generate_random_str(10)
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            tmp_file = tmp_dir / _path.name
             tmp_file.write_bytes(_content)
             # 获取文件的父目录
             try:
@@ -452,7 +454,7 @@ class MediaChain(ChainBase):
             """
             try:
                 logger.info(f"正在下载图片：{_url} ...")
-                r = RequestUtils(proxies=settings.PROXY, ua=settings.USER_AGENT).get_res(url=_url)
+                r = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT).get_res(url=_url)
                 if r:
                     return r.content
                 else:

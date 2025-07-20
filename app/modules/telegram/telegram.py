@@ -524,7 +524,7 @@ class Telegram:
         :param reply_markup: 内联键盘
         """
         if image:
-            res = RequestUtils(proxies=settings.PROXY, ua=settings.USER_AGENT).get_res(image)
+            res = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT).get_res(image)
             if res is None:
                 raise Exception("获取图片失败")
             if res.content:

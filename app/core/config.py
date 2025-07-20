@@ -518,6 +518,13 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return f"{self.PROJECT_NAME}/{APP_VERSION[1:]} ({platform.system()} {platform.release()}; {SystemUtils.cpu_arch()})"
 
     @property
+    def NORMAL_USER_AGENT(self) -> str:
+        """
+        默认浏览器用户代理字符串
+        """
+        return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+
+    @property
     def INNER_CONFIG_PATH(self):
         return self.ROOT_PATH / "config"
 
@@ -613,7 +620,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         if self.GITHUB_TOKEN:
             return {
                 "Authorization": f"Bearer {self.GITHUB_TOKEN}",
-                "User-Agent": self.USER_AGENT,
+                "User-Agent": self.NORMAL_USER_AGENT,
             }
         return {}
 
@@ -642,7 +649,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                     continue
                 headers[repo_info] = {
                     "Authorization": f"Bearer {token}",
-                    "User-Agent": self.USER_AGENT,
+                    "User-Agent": self.NORMAL_USER_AGENT,
                 }
             except Exception as e:
                 print(f"处理令牌对 '{token_pair}' 时出错: {e}")

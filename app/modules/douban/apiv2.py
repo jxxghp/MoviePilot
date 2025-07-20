@@ -234,7 +234,7 @@ class DoubanApi(metaclass=WeakSingleton):
         if '_ts' in params:
             params.pop('_ts')
         resp = RequestUtils(
-            ua=settings.USER_AGENT,
+            ua=settings.NORMAL_USER_AGENT,
             session=self._session,
         ).post_res(url=req_url, data=params)
         if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
