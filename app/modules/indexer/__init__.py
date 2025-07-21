@@ -1,3 +1,5 @@
+import random
+import time
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
@@ -114,6 +116,7 @@ class IndexerModule(_ModuleBase):
 
         # 搜索多个关键字
         error_flag = False
+        search_count = 0
         for search_word in keywords:
             # 可能为关键字或ttxxxx
             if search_word \
@@ -128,6 +131,11 @@ class IndexerModule(_ModuleBase):
             if state:
                 logger.warn(msg)
                 continue
+
+            if search_count > 0:
+                # 强制休眠 1-10 秒
+                logger.info(f"站点 {site.get('name')} 已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
+                time.sleep(random.randint(1, 10))
 
             # 去除搜索关键字中的特殊字符
             if search_word:
@@ -188,6 +196,8 @@ class IndexerModule(_ModuleBase):
                     break
             except Exception as err:
                 logger.error(f"{site.get('name')} 搜索出错：{str(err)}")
+            finally:
+                search_count += 1
 
         # 索引花费的时间
         seconds = (datetime.now() - start_time).seconds
@@ -201,10 +211,10 @@ class IndexerModule(_ModuleBase):
 
         # 返回结果
         if not result_array or len(result_array) == 0:
-            logger.warn(f"{site.get('name')} 未搜索到数据，耗时 {seconds} 秒")
+            logger.warn(f"{site.get('name')} 未搜索到数据，共搜索 {search_count} 次，耗时 {seconds} 秒")
             return []
         else:
-            logger.info(f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
+            logger.info(f"{site.get('name')} 搜索完成，共搜索 {search_count} 次，耗时 {seconds} 秒，返回数据：{len(result_array)}")
             # TorrentInfo
             torrents = [TorrentInfo(site=site.get("id"),
                                     site_name=site.get("name"),
