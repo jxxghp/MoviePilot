@@ -37,6 +37,12 @@ class WorkflowOper(DbOper):
         """
         return Workflow.get_enabled_workflows(self._db)
 
+    def get_event_triggered_workflows(self) -> List[Workflow]:
+        """
+        获取事件触发的工作流列表
+        """
+        return Workflow.get_event_triggered_workflows(self._db)
+
     def get_by_name(self, name: str) -> Workflow:
         """
         按名称获取工作流

@@ -10,11 +10,13 @@ from pydantic.fields import Callable
 
 from app.chain import ChainBase
 from app.core.config import global_vars
+from app.core.event import Event, eventmanager
 from app.core.workflow import WorkFlowManager
 from app.db.models import Workflow
 from app.db.workflow_oper import WorkflowOper
 from app.log import logger
 from app.schemas import ActionContext, ActionFlow, Action, ActionExecution
+from app.schemas.types import EventType
 
 
 class WorkflowExecutor:
@@ -188,6 +190,16 @@ class WorkflowChain(ChainBase):
     工作流链
     """
 
+    @eventmanager.register(EventType.WorkflowExecute)
+    def event_process(self, event: Event):
+        """
+        事件触发工作流执行
+        """
+        workflow_id = event.event_data.get('workflow_id')
+        if not workflow_id:
+            return
+        self.process(workflow_id, from_begin=False)
+
     @staticmethod
     def process(workflow_id: int, from_begin: Optional[bool] = True) -> Tuple[bool, str]:
         """
@@ -225,7 +237,7 @@ class WorkflowChain(ChainBase):
             logger.warn(f"工作流 {workflow.name} 无流程")
             return False, "工作流无流程"
 
-        logger.info(f"开始处理 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
+        logger.info(f"开始执行工作流 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
         workflowoper.start(workflow_id)
 
         # 执行工作流

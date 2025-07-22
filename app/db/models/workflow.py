@@ -18,6 +18,12 @@ class Workflow(Base):
     description = Column(String)
     # 定时器
     timer = Column(String)
+    # 触发类型：timer-定时触发 event-事件触发 manual-手动触发
+    trigger_type = Column(String, default='timer')
+    # 事件类型（当trigger_type为event时使用）
+    event_type = Column(String)
+    # 事件条件（JSON格式，用于过滤事件）
+    event_conditions = Column(JSON, default=dict)
     # 状态：W-等待 R-运行中 P-暂停 S-成功 F-失败
     state = Column(String, nullable=False, index=True, default='W')
     # 已执行动作（,分隔）
@@ -46,6 +52,17 @@ class Workflow(Base):
     @db_query
     def get_enabled_workflows(db):
         return db.query(Workflow).filter(Workflow.state != 'P').all()
+
+    @staticmethod
+    @db_query
+    def get_event_triggered_workflows(db):
+        """获取事件触发的工作流"""
+        return db.query(Workflow).filter(
+            and_(
+                Workflow.trigger_type == 'event',
+                Workflow.state != 'P'
+            )
+        ).all()
 
     @staticmethod
     @db_query

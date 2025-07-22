@@ -65,6 +65,8 @@ class EventType(Enum):
     ConfigChanged = "config.updated"
     # 消息交互动作
     MessageAction = "message.action"
+    # 执行工作流
+    WorkflowExecute = "workflow.execute"
 
 
 # 同步链式事件
