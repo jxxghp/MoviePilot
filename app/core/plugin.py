@@ -1032,6 +1032,8 @@ class PluginManager(metaclass=Singleton):
         ret_plugins = []
         add_time = len(online_plugins)
         for pid, plugin_info in online_plugins.items():
+            if not isinstance(plugin_info, dict):
+                continue
             # 如 package_version 为空，则需要判断插件是否兼容当前版本
             if not package_version:
                 if plugin_info.get(settings.VERSION_FLAG) is not True:
