@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, JSON, Sequence, String, and_
+from sqlalchemy import Column, Integer, JSON, Sequence, String, and_, or_
 
 from app.db import Base, db_query, db_update
 
@@ -52,6 +52,20 @@ class Workflow(Base):
     @db_query
     def get_enabled_workflows(db):
         return db.query(Workflow).filter(Workflow.state != 'P').all()
+
+    @staticmethod
+    @db_query
+    def get_timer_triggered_workflows(db):
+        """获取定时触发的工作流"""
+        return db.query(Workflow).filter(
+            and_(
+                or_(
+                    Workflow.trigger_type == 'timer',
+                    not Workflow.trigger_type
+                ),
+                Workflow.state != 'P'
+            )
+        ).all()
 
     @staticmethod
     @db_query

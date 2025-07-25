@@ -259,3 +259,17 @@ class WorkflowChain(ChainBase):
         获取工作流列表
         """
         return WorkflowOper().list_enabled()
+
+    @staticmethod
+    def get_timer_workflows() -> List[Workflow]:
+        """
+        获取定时触发的工作流列表
+        """
+        return WorkflowOper().get_timer_triggered_workflows()
+
+    @staticmethod
+    def get_event_workflows() -> List[Workflow]:
+        """
+        获取事件触发的工作流列表
+        """
+        return WorkflowOper().get_event_triggered_workflows()

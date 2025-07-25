@@ -432,7 +432,7 @@ class Scheduler(metaclass=Singleton):
         """
         初始化工作流定时服务
         """
-        for workflow in WorkflowChain().get_workflows() or []:
+        for workflow in WorkflowChain().get_timer_workflows() or []:
             self.update_workflow_job(workflow)
 
     def remove_workflow_job(self, workflow: Workflow):

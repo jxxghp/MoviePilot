@@ -69,6 +69,36 @@ class EventType(Enum):
     WorkflowExecute = "workflow.execute"
 
 
+# EventType中文名称翻译字典
+EVENT_TYPE_NAMES = {
+    EventType.PluginReload: "插件重载",
+    EventType.PluginAction: "触发插件动作",
+    EventType.PluginTriggered: "触发插件事件",
+    EventType.CommandExcute: "执行命令",
+    EventType.SiteDeleted: "站点已删除",
+    EventType.SiteUpdated: "站点已更新",
+    EventType.SiteRefreshed: "站点已刷新",
+    EventType.TransferComplete: "整理完成",
+    EventType.DownloadAdded: "添加下载",
+    EventType.HistoryDeleted: "删除历史记录",
+    EventType.DownloadFileDeleted: "删除下载源文件",
+    EventType.DownloadDeleted: "删除下载任务",
+    EventType.UserMessage: "收到用户消息",
+    EventType.WebhookMessage: "收到Webhook消息",
+    EventType.NoticeMessage: "发送消息通知",
+    EventType.SubscribeAdded: "添加订阅",
+    EventType.SubscribeModified: "订阅已调整",
+    EventType.SubscribeDeleted: "订阅已删除",
+    EventType.SubscribeComplete: "订阅已完成",
+    EventType.SystemError: "系统错误",
+    EventType.MetadataScrape: "刮削元数据",
+    EventType.ModuleReload: "模块重载",
+    EventType.ConfigChanged: "配置项更新",
+    EventType.MessageAction: "消息交互动作",
+    EventType.WorkflowExecute: "执行工作流",
+}
+
+
 # 同步链式事件
 class ChainEventType(Enum):
     # 名称识别

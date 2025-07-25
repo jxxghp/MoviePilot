@@ -156,8 +156,9 @@ class SiteSpider:
                         cats = self.category.get("movie") or []
                     else:
                         cats = (self.category.get("movie") or []) + (self.category.get("tv") or [])
+                    allowed_cats = set(self.cat.split(',')) if self.cat else None
                     for cat in cats:
-                        if self.cat and str(cat.get("id")) not in self.cat:
+                        if allowed_cats and str(cat.get('id')) not in allowed_cats:
                             continue
                         if self.category.get("field"):
                             value = params.get(self.category.get("field"), "")
