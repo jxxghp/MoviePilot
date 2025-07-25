@@ -108,10 +108,6 @@ class SiteChain(ChainBase):
                 "site_id": "*"
             })
 
-        # 如果不是大内存模式，进行垃圾回收
-        if not settings.BIG_MEMORY_MODE:
-            gc.collect()
-
         return result
 
     def is_special_site(self, domain: str) -> bool:

@@ -1,5 +1,4 @@
 import copy
-import gc
 import json
 import random
 import threading
@@ -284,7 +283,7 @@ class SubscribeChain(ChainBase):
         lock_acquired = False
         try:
             if lock_acquired := self._rlock.acquire(
-                blocking=True, timeout=self._LOCK_TIMOUT
+                    blocking=True, timeout=self._LOCK_TIMOUT
             ):
                 logger.debug(f"search lock acquired at {datetime.now()}")
             else:
@@ -451,10 +450,6 @@ class SubscribeChain(ChainBase):
                 self._rlock.release()
                 logger.debug(f"search Lock released at {datetime.now()}")
 
-            # 如果不是大内存模式，进行垃圾回收
-            if not settings.BIG_MEMORY_MODE:
-                gc.collect()
-
     def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaBase,
                                   mediainfo: MediaInfo, downloads: Optional[List[Context]]):
         """
@@ -526,9 +521,6 @@ class SubscribeChain(ChainBase):
         self.match(
             TorrentsChain().refresh(sites=sites)
         )
-        # 如果不是大内存模式，进行垃圾回收
-        if not settings.BIG_MEMORY_MODE:
-            gc.collect()
 
     @staticmethod
     def get_sub_sites(subscribe: Subscribe) -> List[int]:
@@ -584,7 +576,7 @@ class SubscribeChain(ChainBase):
         lock_acquired = False
         try:
             if lock_acquired := self._rlock.acquire(
-                blocking=True, timeout=self._LOCK_TIMOUT
+                    blocking=True, timeout=self._LOCK_TIMOUT
             ):
                 logger.debug(f"match lock acquired at {datetime.now()}")
             else:
@@ -829,7 +821,8 @@ class SubscribeChain(ChainBase):
                                                                       username=subscribe.username,
                                                                       save_path=subscribe.save_path,
                                                                       downloader=subscribe.downloader,
-                                                                      source=self.get_subscribe_source_keyword(subscribe)
+                                                                      source=self.get_subscribe_source_keyword(
+                                                                          subscribe)
                                                                       )
 
                     # 同步外部修改，更新订阅信息

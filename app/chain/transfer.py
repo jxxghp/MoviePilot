@@ -910,10 +910,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 torrents.clear()
                 del torrents
 
-            # 如果不是大内存模式，进行垃圾回收
-            if not settings.BIG_MEMORY_MODE:
-                gc.collect()
-
             # 结束
             logger.info("所有下载器中下载完成的文件已整理完成")
             return True
