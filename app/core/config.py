@@ -311,7 +311,8 @@ class ConfigModel(BaseModel):
     DOCKER_CLIENT_API: Optional[str] = "tcp://127.0.0.1:38379"
     # 工作流数据共享
     WORKFLOW_STATISTIC_SHARE: bool = True
-
+    # 对rclone进行快照对比时，是否检查文件夹的修改时间
+    RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME = True
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """
