@@ -737,7 +737,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         企业级复制实现（支持目录递归复制）
         """
-        src_fid = fileitem.fileid
+        if fileitem.fileid is None:
+            fileitem = self.get_item(Path(fileitem.path))
+            if not fileitem:
+                logger.warn(f"【115】获取文件 {fileitem.path} 失败！")
+                return False
         dest_fileitem = self.get_item(path)
         if not dest_fileitem or dest_fileitem.type != "dir":
             logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
@@ -747,7 +751,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             "POST",
             "/open/ufile/copy",
             data={
-                "file_id": int(src_fid),
+                "file_id": int(fileitem.fileid),
                 "pid": int(dest_fileitem.fileid),
             }
         )
@@ -764,7 +768,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         原子性移动操作实现
         """
-        src_fid = fileitem.fileid
+        if fileitem.fileid is None:
+            fileitem = self.get_item(Path(fileitem.path))
+            if not fileitem:
+                logger.warn(f"【115】获取文件 {fileitem.path} 失败！")
+                return False
         dest_fileitem = self.get_item(path)
         if not dest_fileitem or dest_fileitem.type != "dir":
             logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
@@ -773,7 +781,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             "POST",
             "/open/ufile/move",
             data={
-                "file_ids": int(src_fid),
+                "file_ids": int(fileitem.fileid),
                 "to_cid": int(dest_fileitem.fileid),
             }
         )
