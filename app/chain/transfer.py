@@ -1382,7 +1382,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
             mediainfo: MediaInfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid,
                                                                 mtype=mtype, episode_group=episode_group)
             if not mediainfo:
-                return False, f"媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {mtype.value}"
+                return (False,
+                        f"媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {mtype.value if mtype else None}")
             else:
                 # 更新媒体图片
                 self.obtain_images(mediainfo=mediainfo)

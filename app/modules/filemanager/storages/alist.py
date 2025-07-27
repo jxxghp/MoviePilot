@@ -31,6 +31,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         "move": "移动",
     }
 
+    snapshot_check_folder_modtime = settings.OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME
+
     def __init__(self):
         super().__init__()
 
@@ -586,6 +588,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 data=f,
             )
 
+        if resp is None:
+            logger.warn(f"【OpenList】请求上传文件 {path} 失败")
+            return None
         if resp.status_code != 200:
             logger.warn(f"【OpenList】请求上传文件 {path} 失败，状态码：{resp.status_code}")
             return None
