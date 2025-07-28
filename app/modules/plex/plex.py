@@ -379,7 +379,7 @@ class Plex:
             file_path = item.target_path
             lib_key, path = self.__find_librarie(file_path, self._libraries)
             # 如果存在同一剧集的多集,key(path)相同会合并
-            result_dict[path] = lib_key
+            result_dict[path.as_posix()] = lib_key
         if "" in result_dict:
             # 如果有匹配失败的,刷新整个库
             self._plex.library.update()
@@ -387,12 +387,12 @@ class Plex:
             # 否则一个一个刷新
             for path, lib_key in result_dict.items():
                 logger.info(f"刷新媒体库：{lib_key} - {path}")
-                self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(str(Path(path).parent))}')
+                self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(Path(path).parent.as_posix())}')
                 return None
         return None
 
     @staticmethod
-    def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, str]:
+    def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, Optional[Path]]:
         """
         判断这个path属于哪个媒体库
         多个媒体库配置的目录不应有重复和嵌套,
@@ -407,17 +407,17 @@ class Plex:
             return _path.parts[:len(_parent.parts)] == _parent.parts
 
         if path is None:
-            return "", ""
+            return "", None
 
         try:
             for lib in libraries:
                 if hasattr(lib, "locations") and lib.locations:
                     for location in lib.locations:
                         if is_subpath(path, Path(location)):
-                            return lib.key, str(path)
+                            return lib.key, path
         except Exception as err:
             logger.error(f"查找媒体库出错：{str(err)}")
-        return "", ""
+        return "", None
 
     def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
         """

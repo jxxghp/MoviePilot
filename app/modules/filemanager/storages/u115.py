@@ -672,7 +672,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 "/open/folder/get_info",
                 "data",
                 data={
-                    "path": str(path)
+                    "path": path.as_posix()
                 }
             )
             if not resp:
@@ -680,7 +680,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return schemas.FileItem(
                 storage=self.schema.value,
                 fileid=str(resp["file_id"]),
-                path=str(path) + ("/" if resp["file_category"] == "0" else ""),
+                path=path.as_posix() + ("/" if resp["file_category"] == "0" else ""),
                 type="file" if resp["file_category"] == "1" else "dir",
                 name=resp["file_name"],
                 basename=Path(resp["file_name"]).stem,

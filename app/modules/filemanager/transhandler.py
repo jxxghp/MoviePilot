@@ -330,7 +330,7 @@ class TransHandler:
             """
             return FileItem(
                 storage=target_storage,
-                path=str(_path).replace("\\", "/"),
+                path=_path.as_posix(),
                 name=_path.name,
                 basename=_path.stem,
                 type="file",

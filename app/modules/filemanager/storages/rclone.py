@@ -269,7 +269,7 @@ class Rclone(StorageBase):
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
-                    str(path),
+                    path.as_posix(),
                     f'MP:{new_path}'
                 ],
                 startupinfo=self.__get_hidden_shell()

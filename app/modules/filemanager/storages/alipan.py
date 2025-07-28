@@ -783,7 +783,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 "/adrive/v1.0/openFile/get_by_path",
                 json={
                     "drive_id": drive_id or self._default_drive_id,
-                    "file_path": str(path)
+                    "file_path": path.as_posix()
                 }
             )
             if not resp:

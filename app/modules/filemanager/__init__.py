@@ -165,7 +165,7 @@ class FileManagerModule(_ModuleBase):
                                                 episodes_info=episodes_info,
                                                 file_ext=Path(meta.title).suffix)
         )
-        return str(path)
+        return path.as_posix() if path else ""
 
     def save_config(self, storage: str, conf: Dict) -> None:
         """

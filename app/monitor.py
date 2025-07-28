@@ -724,7 +724,7 @@ class Monitor(metaclass=Singleton):
             """
             判断是否蓝光原盘目录内的子目录或文件
             """
-            return True if re.search(r"BDMV[/\\]STREAM", str(_path), re.IGNORECASE) else False
+            return True if re.search(r"BDMV/STREAM", _path.as_posix(), re.IGNORECASE) else False
 
         def __get_bluray_dir(_path: Path) -> Optional[Path]:
             """
@@ -755,7 +755,7 @@ class Monitor(metaclass=Singleton):
                 TransferChain().do_transfer(
                     fileitem=FileItem(
                         storage=storage,
-                        path=str(event_path).replace("\\", "/"),
+                        path=event_path.as_posix(),
                         type="file",
                         name=event_path.name,
                         basename=event_path.stem,

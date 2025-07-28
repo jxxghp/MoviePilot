@@ -44,7 +44,7 @@ class LocalStorage(StorageBase):
         return schemas.FileItem(
             storage=self.schema.value,
             type="file",
-            path=str(path).replace("\\", "/"),
+            path=path.as_posix(),
             name=path.name,
             basename=path.stem,
             extension=path.suffix[1:],
@@ -59,7 +59,7 @@ class LocalStorage(StorageBase):
         return schemas.FileItem(
             storage=self.schema.value,
             type="dir",
-            path=str(path).replace("\\", "/") + "/",
+            path=path.as_posix() + "/",
             name=path.name,
             basename=path.stem,
             modify_time=path.stat().st_mtime,
