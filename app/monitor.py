@@ -59,8 +59,6 @@ class Monitor(metaclass=Singleton):
     目录监控处理链，单例模式
     """
 
-
-
     def __init__(self):
         super().__init__()
         # 退出事件

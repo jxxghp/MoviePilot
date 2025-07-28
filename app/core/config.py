@@ -316,6 +316,7 @@ class ConfigModel(BaseModel):
     # 对OpenList进行快照对比时，是否检查文件夹的修改时间
     OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME = True
 
+
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """
     系统配置类
