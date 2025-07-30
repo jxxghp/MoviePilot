@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.chain.system import SystemChain
-from app.db.async_adapter import shutdown_db_executor
 from app.helper.system import SystemHelper
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.modules_initializer import init_modules, stop_modules
@@ -80,6 +79,4 @@ async def lifespan(app: FastAPI):
         # 停止插件
         stop_plugins()
         # 停止模块
-        stop_modules()
-        # 关闭数据库异步执行器
-        shutdown_db_executor()
+        await stop_modules()

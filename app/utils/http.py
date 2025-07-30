@@ -569,18 +569,22 @@ class AsyncRequestUtils:
         if not content_type:
             content_type = "application/x-www-form-urlencoded; charset=UTF-8"
         if headers:
-            self._headers = headers
+            # 过滤掉None值的headers
+            self._headers = {k: v for k, v in headers.items() if v is not None}
         else:
             if ua and ua == settings.USER_AGENT:
                 caller_name = get_caller()
                 if caller_name:
                     ua = f"{settings.USER_AGENT} Plugin/{caller_name}"
-            self._headers = {
-                "User-Agent": ua,
-                "Content-Type": content_type,
-                "Accept": accept_type,
-                "referer": referer
-            }
+            self._headers = {}
+            if ua:
+                self._headers["User-Agent"] = ua
+            if content_type:
+                self._headers["Content-Type"] = content_type
+            if accept_type:
+                self._headers["Accept"] = accept_type
+            if referer:
+                self._headers["referer"] = referer
         if cookies:
             if isinstance(cookies, str):
                 self._cookies = cookie_parse(cookies)

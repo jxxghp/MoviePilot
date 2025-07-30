@@ -1,10 +1,11 @@
 import time
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_, JSON
+from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_, JSON, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import db_query, db_update, Base, async_db_query
 
 
 class TransferHistory(Base):
@@ -77,6 +78,30 @@ class TransferHistory(Base):
                 TransferHistory.date.desc()
             ).offset((page - 1) * count).limit(count).all()
 
+    @classmethod
+    @async_db_query
+    async def async_list_by_title(cls, db: AsyncSession, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
+                                  status: bool = None):
+        if status is not None:
+            result = await db.execute(
+                select(cls).filter(
+                    cls.status == status
+                ).order_by(
+                    cls.date.desc()
+                ).offset((page - 1) * count).limit(count)
+            )
+        else:
+            result = await db.execute(
+                select(cls).filter(or_(
+                    cls.title.like(f'%{title}%'),
+                    cls.src.like(f'%{title}%'),
+                    cls.dest.like(f'%{title}%'),
+                )).order_by(
+                    cls.date.desc()
+                ).offset((page - 1) * count).limit(count)
+            )
+        return result.scalars().all()
+
     @staticmethod
     @db_query
     def list_by_page(db: Session, page: Optional[int] = 1, count: Optional[int] = 30, status: bool = None):
@@ -90,6 +115,26 @@ class TransferHistory(Base):
             return db.query(TransferHistory).order_by(
                 TransferHistory.date.desc()
             ).offset((page - 1) * count).limit(count).all()
+
+    @classmethod
+    @async_db_query
+    async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30,
+                                 status: bool = None):
+        if status is not None:
+            result = await db.execute(
+                select(cls).filter(
+                    cls.status == status
+                ).order_by(
+                    cls.date.desc()
+                ).offset((page - 1) * count).limit(count)
+            )
+        else:
+            result = await db.execute(
+                select(cls).order_by(
+                    cls.date.desc()
+                ).offset((page - 1) * count).limit(count)
+            )
+        return result.scalars().all()
 
     @staticmethod
     @db_query
@@ -135,6 +180,19 @@ class TransferHistory(Base):
         else:
             return db.query(func.count(TransferHistory.id)).first()[0]
 
+    @classmethod
+    @async_db_query
+    async def async_count(cls, db: AsyncSession, status: bool = None):
+        if status is not None:
+            result = await db.execute(
+                select(func.count(cls.id)).filter(cls.status == status)
+            )
+        else:
+            result = await db.execute(
+                select(func.count(cls.id))
+            )
+        return result.scalar()
+
     @staticmethod
     @db_query
     def count_by_title(db: Session, title: str, status: bool = None):
@@ -146,6 +204,23 @@ class TransferHistory(Base):
                 TransferHistory.src.like(f'%{title}%'),
                 TransferHistory.dest.like(f'%{title}%')
             )).first()[0]
+
+    @classmethod
+    @async_db_query
+    async def async_count_by_title(cls, db: AsyncSession, title: str, status: bool = None):
+        if status is not None:
+            result = await db.execute(
+                select(func.count(cls.id)).filter(cls.status == status)
+            )
+        else:
+            result = await db.execute(
+                select(func.count(cls.id)).filter(or_(
+                    cls.title.like(f'%{title}%'),
+                    cls.src.like(f'%{title}%'),
+                    cls.dest.like(f'%{title}%')
+                ))
+            )
+        return result.scalar()
 
     @staticmethod
     @db_query

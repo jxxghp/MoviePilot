@@ -1,11 +1,11 @@
 import sys
 
+from app.command import CommandChain
 from app.core.cache import close_cache
 from app.core.config import settings
 from app.core.module import ModuleManager
 from app.log import logger
 from app.utils.system import SystemUtils
-from app.command import CommandChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -105,7 +105,7 @@ def check_auth():
         )
 
 
-def stop_modules():
+async def stop_modules():
     """
     服务关闭
     """
@@ -120,7 +120,7 @@ def stop_modules():
     # 停止缓存连接
     close_cache()
     # 停止数据库连接
-    close_database()
+    await close_database()
     # 停止前端服务
     stop_frontend()
     # 清理临时文件

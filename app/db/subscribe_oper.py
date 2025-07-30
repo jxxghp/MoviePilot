@@ -2,7 +2,7 @@ import time
 from typing import Tuple, List, Optional
 
 from app.core.context import MediaInfo
-from app.db import DbOper
+from app.db import DbOper, AsyncDbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 
@@ -48,7 +48,8 @@ class SubscribeOper(DbOper):
         else:
             return subscribe.id, "订阅已存在"
 
-    def exists(self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None, season: Optional[int] = None) -> bool:
+    def exists(self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+               season: Optional[int] = None) -> bool:
         """
         判断是否存在
         """
@@ -96,7 +97,8 @@ class SubscribeOper(DbOper):
         """
         return Subscribe.get_by_tmdbid(self._db, tmdbid=tmdbid, season=season)
 
-    def list_by_username(self, username: str, state: Optional[str] = None, mtype: Optional[str] = None) -> List[Subscribe]:
+    def list_by_username(self, username: str, state: Optional[str] = None,
+                         mtype: Optional[str] = None) -> List[Subscribe]:
         """
         获取指定用户的订阅
         """
@@ -134,3 +136,15 @@ class SubscribeOper(DbOper):
         elif doubanid:
             return True if SubscribeHistory.exists(self._db, doubanid=doubanid) else False
         return False
+
+
+class AsyncSubscribeOper(AsyncDbOper):
+    """
+    异步订阅管理
+    """
+
+    async def get(self, sid: int) -> Subscribe:
+        """
+        获取订阅
+        """
+        return await Subscribe.async_get(self._db, id=sid)

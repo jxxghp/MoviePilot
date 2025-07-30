@@ -1,11 +1,12 @@
 from typing import Optional, List
 
 from fastapi import Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.core.security import verify_token
-from app.db import DbOper, get_db
+from app.db import DbOper, get_db, get_async_db
 from app.db.models.user import User
 
 
@@ -22,6 +23,19 @@ def get_current_user(
     return user
 
 
+async def get_current_user_async(
+        db: AsyncSession = Depends(get_async_db),
+        token_data: schemas.TokenPayload = Depends(verify_token)
+) -> User:
+    """
+    异步获取当前用户
+    """
+    user = await User.async_get(db, rid=token_data.sub)
+    if not user:
+        raise HTTPException(status_code=403, detail="用户不存在")
+    return user
+
+
 def get_current_active_user(
         current_user: User = Depends(get_current_user),
 ) -> User:
@@ -33,11 +47,35 @@ def get_current_active_user(
     return current_user
 
 
+async def get_current_active_user_async(
+        current_user: User = Depends(get_current_user_async),
+) -> User:
+    """
+    异步获取当前激活用户
+    """
+    if not current_user.is_active:
+        raise HTTPException(status_code=403, detail="用户未激活")
+    return current_user
+
+
 def get_current_active_superuser(
         current_user: User = Depends(get_current_user),
 ) -> User:
     """
     获取当前激活超级管理员
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=400, detail="用户权限不足"
+        )
+    return current_user
+
+
+async def get_current_active_superuser_async(
+        current_user: User = Depends(get_current_user_async),
+) -> User:
+    """
+    异步获取当前激活超级管理员
     """
     if not current_user.is_superuser:
         raise HTTPException(

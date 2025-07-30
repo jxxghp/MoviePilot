@@ -1,6 +1,7 @@
 from typing import List, Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
@@ -12,7 +13,7 @@ from app.command import Command
 from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.core.security import verify_token
-from app.db import get_db
+from app.db import get_db, get_async_db
 from app.db.models import User
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
@@ -242,19 +243,19 @@ def test_site(site_id: int,
 
 
 @router.get("/icon/{site_id}", summary="站点图标", response_model=schemas.Response)
-def site_icon(site_id: int,
-              db: Session = Depends(get_db),
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def site_icon(site_id: int,
+                    db: AsyncSession = Depends(get_async_db),
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取站点图标：base64或者url
     """
-    site = Site.get(db, site_id)
+    site = await Site.async_get(db, site_id)
     if not site:
         raise HTTPException(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    icon = SiteIcon.get_by_domain(db, site.domain)
+    icon = await SiteIcon.async_get_by_domain(db, site.domain)
     if not icon:
         return schemas.Response(success=False, message="站点图标不存在！")
     return schemas.Response(success=True, data={

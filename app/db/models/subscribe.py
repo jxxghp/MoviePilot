@@ -1,10 +1,11 @@
 import time
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import db_query, db_update, Base, async_db_query, async_db_update
 
 
 class Subscribe(Base):
@@ -99,6 +100,27 @@ class Subscribe(Base):
             return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
         return None
 
+    @classmethod
+    @async_db_query
+    async def async_exists(cls, db: AsyncSession, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+                           season: Optional[int] = None):
+        if tmdbid:
+            if season:
+                result = await db.execute(
+                    select(cls).filter(cls.tmdbid == tmdbid, cls.season == season)
+                )
+            else:
+                result = await db.execute(
+                    select(cls).filter(cls.tmdbid == tmdbid)
+                )
+        elif doubanid:
+            result = await db.execute(
+                select(cls).filter(cls.doubanid == doubanid)
+            )
+        else:
+            return None
+        return result.scalars().first()
+
     @staticmethod
     @db_query
     def get_by_state(db: Session, state: str):
@@ -109,6 +131,19 @@ class Subscribe(Base):
             # 如果传入的状态不为空，拆分成多个状态
             return db.query(Subscribe).filter(Subscribe.state.in_(state.split(','))).all()
 
+    @classmethod
+    @async_db_query
+    async def async_get_by_state(cls, db: AsyncSession, state: str):
+        # 如果 state 为空或 None，返回所有订阅
+        if not state:
+            result = await db.execute(select(cls))
+        else:
+            # 如果传入的状态不为空，拆分成多个状态
+            result = await db.execute(
+                select(cls).filter(cls.state.in_(state.split(',')))
+            )
+        return result.scalars().all()
+
     @staticmethod
     @db_query
     def get_by_title(db: Session, title: str, season: Optional[int] = None):
@@ -116,6 +151,19 @@ class Subscribe(Base):
             return db.query(Subscribe).filter(Subscribe.name == title,
                                               Subscribe.season == season).first()
         return db.query(Subscribe).filter(Subscribe.name == title).first()
+
+    @classmethod
+    @async_db_query
+    async def async_get_by_title(cls, db: AsyncSession, title: str, season: Optional[int] = None):
+        if season:
+            result = await db.execute(
+                select(cls).filter(cls.name == title, cls.season == season)
+            )
+        else:
+            result = await db.execute(
+                select(cls).filter(cls.name == title)
+            )
+        return result.scalars().first()
 
     @staticmethod
     @db_query
@@ -126,26 +174,70 @@ class Subscribe(Base):
         else:
             return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
 
+    @classmethod
+    @async_db_query
+    async def async_get_by_tmdbid(cls, db: AsyncSession, tmdbid: int, season: Optional[int] = None):
+        if season:
+            result = await db.execute(
+                select(cls).filter(cls.tmdbid == tmdbid, cls.season == season)
+            )
+        else:
+            result = await db.execute(
+                select(cls).filter(cls.tmdbid == tmdbid)
+            )
+        return result.scalars().all()
+
     @staticmethod
     @db_query
     def get_by_doubanid(db: Session, doubanid: str):
         return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
+
+    @classmethod
+    @async_db_query
+    async def async_get_by_doubanid(cls, db: AsyncSession, doubanid: str):
+        result = await db.execute(
+            select(cls).filter(cls.doubanid == doubanid)
+        )
+        return result.scalars().first()
 
     @staticmethod
     @db_query
     def get_by_bangumiid(db: Session, bangumiid: int):
         return db.query(Subscribe).filter(Subscribe.bangumiid == bangumiid).first()
 
+    @classmethod
+    @async_db_query
+    async def async_get_by_bangumiid(cls, db: AsyncSession, bangumiid: int):
+        result = await db.execute(
+            select(cls).filter(cls.bangumiid == bangumiid)
+        )
+        return result.scalars().first()
+
     @staticmethod
     @db_query
     def get_by_mediaid(db: Session, mediaid: str):
         return db.query(Subscribe).filter(Subscribe.mediaid == mediaid).first()
+
+    @classmethod
+    @async_db_query
+    async def async_get_by_mediaid(cls, db: AsyncSession, mediaid: str):
+        result = await db.execute(
+            select(cls).filter(cls.mediaid == mediaid)
+        )
+        return result.scalars().first()
 
     @db_update
     def delete_by_tmdbid(self, db: Session, tmdbid: int, season: int):
         subscrbies = self.get_by_tmdbid(db, tmdbid, season)
         for subscrbie in subscrbies:
             subscrbie.delete(db, subscrbie.id)
+        return True
+
+    @async_db_update
+    async def async_delete_by_tmdbid(self, db: AsyncSession, tmdbid: int, season: int):
+        subscrbies = await self.async_get_by_tmdbid(db, tmdbid, season)
+        for subscrbie in subscrbies:
+            await subscrbie.async_delete(db, subscrbie.id)
         return True
 
     @db_update
@@ -155,11 +247,25 @@ class Subscribe(Base):
             subscribe.delete(db, subscribe.id)
         return True
 
+    @async_db_update
+    async def async_delete_by_doubanid(self, db: AsyncSession, doubanid: str):
+        subscribe = await self.async_get_by_doubanid(db, doubanid)
+        if subscribe:
+            await subscribe.async_delete(db, subscribe.id)
+        return True
+
     @db_update
     def delete_by_mediaid(self, db: Session, mediaid: str):
         subscribe = self.get_by_mediaid(db, mediaid)
         if subscribe:
             subscribe.delete(db, subscribe.id)
+        return True
+
+    @async_db_update
+    async def async_delete_by_mediaid(self, db: AsyncSession, mediaid: str):
+        subscribe = await self.async_get_by_mediaid(db, mediaid)
+        if subscribe:
+            await subscribe.async_delete(db, subscribe.id)
         return True
 
     @staticmethod
@@ -180,6 +286,30 @@ class Subscribe(Base):
             else:
                 return db.query(Subscribe).filter(Subscribe.username == username).all()
 
+    @classmethod
+    @async_db_query
+    async def async_list_by_username(cls, db: AsyncSession, username: str, state: Optional[str] = None,
+                                     mtype: Optional[str] = None):
+        if mtype:
+            if state:
+                result = await db.execute(
+                    select(cls).filter(cls.state == state, cls.username == username, cls.type == mtype)
+                )
+            else:
+                result = await db.execute(
+                    select(cls).filter(cls.username == username, cls.type == mtype)
+                )
+        else:
+            if state:
+                result = await db.execute(
+                    select(cls).filter(cls.state == state, cls.username == username)
+                )
+            else:
+                result = await db.execute(
+                    select(cls).filter(cls.username == username)
+                )
+        return result.scalars().all()
+
     @staticmethod
     @db_query
     def list_by_type(db: Session, mtype: str, days: int):
@@ -188,3 +318,15 @@ class Subscribe(Base):
                     Subscribe.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                                     time.localtime(time.time() - 86400 * int(days)))
                     ).all()
+
+    @classmethod
+    @async_db_query
+    async def async_list_by_type(cls, db: AsyncSession, mtype: str, days: int):
+        result = await db.execute(
+            select(cls).filter(
+                cls.type == mtype,
+                cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                          time.localtime(time.time() - 86400 * int(days)))
+            )
+        )
+        return result.scalars().all()

@@ -1,9 +1,10 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base
+from app.db import db_query, Base, async_db_query
 
 
 class SubscribeHistory(Base):
@@ -81,6 +82,18 @@ class SubscribeHistory(Base):
             SubscribeHistory.date.desc()
         ).offset((page - 1) * count).limit(count).all()
 
+    @classmethod
+    @async_db_query
+    async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
+        result = await db.execute(
+            select(cls).filter(
+                cls.type == mtype
+            ).order_by(
+                cls.date.desc()
+            ).offset((page - 1) * count).limit(count)
+        )
+        return result.scalars().all()
+
     @staticmethod
     @db_query
     def exists(db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None, season: Optional[int] = None):
@@ -92,3 +105,24 @@ class SubscribeHistory(Base):
         elif doubanid:
             return db.query(SubscribeHistory).filter(SubscribeHistory.doubanid == doubanid).first()
         return None
+
+    @classmethod
+    @async_db_query
+    async def async_exists(cls, db: AsyncSession, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+                           season: Optional[int] = None):
+        if tmdbid:
+            if season:
+                result = await db.execute(
+                    select(cls).filter(cls.tmdbid == tmdbid, cls.season == season)
+                )
+            else:
+                result = await db.execute(
+                    select(cls).filter(cls.tmdbid == tmdbid)
+                )
+        elif doubanid:
+            result = await db.execute(
+                select(cls).filter(cls.doubanid == doubanid)
+            )
+        else:
+            return None
+        return result.scalars().first()
