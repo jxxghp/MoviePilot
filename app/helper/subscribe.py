@@ -3,7 +3,7 @@ from typing import List, Tuple, Optional
 
 from app.core.cache import cached, cache_backend
 from app.core.config import settings
-from app.db.subscribe_oper import SubscribeOper, AsyncSubscribeOper
+from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
@@ -190,7 +190,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False, "当前没有开启订阅数据共享功能"
-        subscribe = await AsyncSubscribeOper().get(subscribe_id)
+        subscribe = await SubscribeOper().async_get(subscribe_id)
         if not subscribe:
             return False, "订阅不存在"
         subscribe_dict = subscribe.to_dict()

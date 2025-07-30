@@ -2,7 +2,7 @@ import time
 from typing import Tuple, List, Optional
 
 from app.core.context import MediaInfo
-from app.db import DbOper, AsyncDbOper
+from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 
@@ -67,6 +67,12 @@ class SubscribeOper(DbOper):
         获取订阅
         """
         return Subscribe.get(self._db, rid=sid)
+
+    async def async_get(self, sid: int) -> Subscribe:
+        """
+        获取订阅
+        """
+        return await Subscribe.async_get(self._db, id=sid)
 
     def list(self, state: Optional[str] = None) -> List[Subscribe]:
         """
@@ -136,15 +142,3 @@ class SubscribeOper(DbOper):
         elif doubanid:
             return True if SubscribeHistory.exists(self._db, doubanid=doubanid) else False
         return False
-
-
-class AsyncSubscribeOper(AsyncDbOper):
-    """
-    异步订阅管理
-    """
-
-    async def get(self, sid: int) -> Subscribe:
-        """
-        获取订阅
-        """
-        return await Subscribe.async_get(self._db, id=sid)

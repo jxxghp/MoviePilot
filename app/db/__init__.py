@@ -1,7 +1,7 @@
 import asyncio
-from typing import Any, Generator, List, Optional, Self, Tuple, AsyncGenerator, Sequence
+from typing import Any, Generator, List, Optional, Self, Tuple, AsyncGenerator, Sequence, Union
 
-from sqlalchemy import NullPool, QueuePool, and_, create_engine, inspect, text
+from sqlalchemy import NullPool, QueuePool, and_, create_engine, inspect, text, select, delete
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
 
@@ -362,7 +362,6 @@ class Base:
     @classmethod
     @async_db_query
     async def async_get(cls, db: AsyncSession, rid: int) -> Self:
-        from sqlalchemy import select
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         return result.scalars().first()
 
@@ -390,7 +389,6 @@ class Base:
     @classmethod
     @async_db_update
     async def async_delete(cls, db: AsyncSession, rid):
-        from sqlalchemy import select
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         user = result.scalars().first()
         if user:
@@ -404,7 +402,6 @@ class Base:
     @classmethod
     @async_db_update
     async def async_truncate(cls, db: AsyncSession):
-        from sqlalchemy import delete
         await db.execute(delete(cls))
 
     @classmethod
@@ -415,7 +412,6 @@ class Base:
     @classmethod
     @async_db_query
     async def async_list(cls, db: AsyncSession) -> Sequence[Self]:
-        from sqlalchemy import select
         result = await db.execute(select(cls))
         return result.scalars().all()
 
@@ -432,14 +428,5 @@ class DbOper:
     数据库操作基类
     """
 
-    def __init__(self, db: Session = None):
-        self._db = db
-
-
-class AsyncDbOper:
-    """
-    异步数据库操作基类
-    """
-
-    def __init__(self, db: AsyncSession = None):
+    def __init__(self, db: Union[Session, AsyncSession] = None):
         self._db = db

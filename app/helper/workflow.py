@@ -5,7 +5,7 @@ from app.core.cache import cached, cache_backend
 from app.core.config import settings
 from app.db.workflow_oper import WorkflowOper
 from app.log import logger
-from app.utils.http import RequestUtils
+from app.utils.http import RequestUtils, AsyncRequestUtils
 from app.utils.singleton import WeakSingleton
 from app.utils.system import SystemUtils
 
@@ -35,7 +35,7 @@ class WorkflowHelper(metaclass=WeakSingleton):
         """
         if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
             return False, "当前没有开启工作流数据共享功能"
-        
+
         # 获取工作流信息
         workflow = WorkflowOper().get(workflow_id)
         if not workflow:
@@ -51,7 +51,8 @@ class WorkflowHelper(metaclass=WeakSingleton):
         workflow_dict['flows'] = json.dumps(workflow_dict['flows'] or [])
 
         # 发送分享请求
-        res = RequestUtils(proxies=settings.PROXY or {}, content_type="application/json",
+        res = RequestUtils(proxies=settings.PROXY or {},
+                           content_type="application/json",
                            timeout=10).post(self._workflow_share,
                                             json={
                                                 "share_title": share_title,
@@ -69,13 +70,55 @@ class WorkflowHelper(metaclass=WeakSingleton):
         else:
             return False, res.json().get("message")
 
+    async def async_workflow_share(self, workflow_id: int,
+                                   share_title: str, share_comment: str, share_user: str) -> Tuple[bool, str]:
+        """
+        异步分享工作流
+        """
+        if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
+            return False, "当前没有开启工作流数据共享功能"
+
+        # 获取工作流信息
+        workflow = await WorkflowOper().async_get(workflow_id)
+        if not workflow:
+            return False, "工作流不存在"
+
+        if not workflow.actions or not workflow.flows:
+            return False, "请分享有动作和流程的工作流"
+
+        workflow_dict = workflow.to_dict()
+        workflow_dict.pop("id", None)
+        workflow_dict.pop("context", None)
+        workflow_dict['actions'] = json.dumps(workflow_dict['actions'] or [])
+        workflow_dict['flows'] = json.dumps(workflow_dict['flows'] or [])
+
+        # 发送分享请求
+        res = await AsyncRequestUtils(proxies=settings.PROXY or {},
+                                      content_type="application/json",
+                                      timeout=10).post(self._workflow_share,
+                                                       json={
+                                                           "share_title": share_title,
+                                                           "share_comment": share_comment,
+                                                           "share_user": share_user,
+                                                           "share_uid": self._share_user_id,
+                                                           **workflow_dict
+                                                       })
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.status_code == 200:
+            # 清除 get_shares 的缓存，以便实时看到结果
+            cache_backend.clear(region=self._shares_cache_region)
+            return True, ""
+        else:
+            return False, res.json().get("message")
+
     def share_delete(self, share_id: int) -> Tuple[bool, str]:
         """
         删除分享
         """
         if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
             return False, "当前没有开启工作流数据共享功能"
-        
+
         res = RequestUtils(proxies=settings.PROXY or {},
                            timeout=5).delete_res(f"{self._workflow_share}/{share_id}",
                                                  params={"share_uid": self._share_user_id})
@@ -88,19 +131,57 @@ class WorkflowHelper(metaclass=WeakSingleton):
         else:
             return False, res.json().get("message")
 
+    async def async_share_delete(self, share_id: int) -> Tuple[bool, str]:
+        """
+        异步删除分享
+        """
+        if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
+            return False, "当前没有开启工作流数据共享功能"
+
+        res = await AsyncRequestUtils(proxies=settings.PROXY or {},
+                                      timeout=5).delete_res(f"{self._workflow_share}/{share_id}",
+                                                            params={"share_uid": self._share_user_id})
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.status_code == 200:
+            # 清除 get_shares 的缓存，以便实时看到结果
+            cache_backend.clear(region=self._shares_cache_region)
+            return True, ""
+        else:
+            return False, res.json().get("message")
+
     def workflow_fork(self, share_id: int) -> Tuple[bool, str]:
         """
         复用分享的工作流
         """
         if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
             return False, "当前没有开启工作流数据共享功能"
-        
+
         res = RequestUtils(proxies=settings.PROXY or {}, timeout=5, headers={
             "Content-Type": "application/json"
         }).get_res(self._workflow_fork % share_id)
         if res is None:
             return False, "连接MoviePilot服务器失败"
         if res.ok:
+            return True, ""
+        else:
+            return False, res.json().get("message")
+
+    async def async_workflow_fork(self, share_id: int) -> Tuple[bool, str]:
+        """
+        异步复用分享的工作流
+        """
+        if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
+            return False, "当前没有开启工作流数据共享功能"
+
+        res = await AsyncRequestUtils(proxies=settings.PROXY or {},
+                                      timeout=5,
+                                      headers={
+                                          "Content-Type": "application/json"
+                                      }).get_res(self._workflow_fork % share_id)
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.status_code == 200:
             return True, ""
         else:
             return False, res.json().get("message")
@@ -112,8 +193,26 @@ class WorkflowHelper(metaclass=WeakSingleton):
         """
         if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
             return []
-        
+
         res = RequestUtils(proxies=settings.PROXY or {}, timeout=15).get_res(self._workflow_shares, params={
+            "name": name,
+            "page": page,
+            "count": count
+        })
+        if res and res.status_code == 200:
+            return res.json()
+        return []
+
+    @cached(region=_shares_cache_region, maxsize=1, skip_empty=True)
+    async def async_get_shares(self, name: Optional[str] = None, page: Optional[int] = 1, count: Optional[int] = 30) -> \
+            List[dict]:
+        """
+        异步获取工作流分享数据
+        """
+        if not settings.WORKFLOW_STATISTIC_SHARE:  # 使用独立的工作流分享开关
+            return []
+
+        res = await AsyncRequestUtils(proxies=settings.PROXY or {}, timeout=15).get_res(self._workflow_shares, params={
             "name": name,
             "page": page,
             "count": count

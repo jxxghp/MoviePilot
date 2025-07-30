@@ -168,7 +168,9 @@ class RequestUtils:
         try:
             return req_method(method, url, **kwargs)
         except requests.exceptions.RequestException as e:
-            logger.debug(f"请求失败: {e}")
+            # 获取更详细的错误信息
+            error_msg = str(e) if str(e) else f"未知网络错误 (URL: {url}, Method: {method.upper()})"
+            logger.debug(f"请求失败: {error_msg}")
             if raise_exception:
                 raise
             return None
@@ -563,7 +565,7 @@ class AsyncRequestUtils:
         :param content_type: 请求的Content-Type，默认为 "application/x-www-form-urlencoded; charset=UTF-8"
         :param accept_type: Accept头部信息，默认为 "application/json"
         """
-        self._proxies = proxies
+        self._proxies = self._convert_proxies_for_httpx(proxies)
         self._client = client
         self._timeout = timeout or 20
         if not content_type:
@@ -592,6 +594,30 @@ class AsyncRequestUtils:
                 self._cookies = cookies
         else:
             self._cookies = None
+
+    @staticmethod
+    def _convert_proxies_for_httpx(proxies: dict) -> Optional[str]:
+        """
+        将requests格式的代理配置转换为httpx兼容的格式
+        
+        :param proxies: requests格式的代理配置 {"http": "http://proxy:port", "https": "http://proxy:port"}
+        :return: httpx兼容的代理字符串或None
+        """
+        if not proxies:
+            return None
+
+        # 如果已经是字符串格式，直接返回
+        if isinstance(proxies, str):
+            return proxies
+
+        # 如果是字典格式，提取http或https代理
+        if isinstance(proxies, dict):
+            # 优先使用https代理，如果没有则使用http代理
+            proxy_url = proxies.get("https") or proxies.get("http")
+            if proxy_url:
+                return proxy_url
+
+        return None
 
     @asynccontextmanager
     async def response_manager(self, method: str, url: str, **kwargs):
@@ -645,7 +671,9 @@ class AsyncRequestUtils:
         try:
             return await client.request(method, url, **kwargs)
         except httpx.RequestError as e:
-            logger.debug(f"异步请求失败: {e}")
+            # 获取更详细的错误信息
+            error_msg = str(e) if str(e) else f"未知网络错误 (URL: {url}, Method: {method.upper()})"
+            logger.debug(f"异步请求失败: {error_msg}")
             if raise_exception:
                 raise
             return None
