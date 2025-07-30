@@ -353,6 +353,8 @@ class Base:
     @async_db_update
     async def async_create(self, db: AsyncSession):
         db.add(self)
+        await db.flush()
+        return self
 
     @classmethod
     @db_query

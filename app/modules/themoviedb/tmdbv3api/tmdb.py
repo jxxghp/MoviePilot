@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import asyncio
 import logging
 import time
 from datetime import datetime
@@ -130,17 +131,11 @@ class TMDb(object):
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        """
-        缓存请求
-        """
         return self.request(method, url, data, json)
 
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
     async def async_cached_request(self, method, url, data, json,
                                    _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        """
-        缓存请求（异步版本）
-        """
         return await self.async_request(method, url, data, json)
 
     def request(self, method, url, data, json):
@@ -164,18 +159,67 @@ class TMDb(object):
     def cache_clear(self):
         return self.cached_request.cache_clear()
 
-    def _request_obj(self, action, params="", call_cached=True,
-                     method="GET", data=None, json=None, key=None):
+    def _validate_api_key(self):
         if self.api_key is None or self.api_key == "":
             raise TMDbException("TheMovieDb API Key 未设置！")
 
-        url = "https://%s/3%s?api_key=%s&%s&language=%s" % (
+    def _build_url(self, action, params=""):
+        return "https://%s/3%s?api_key=%s&%s&language=%s" % (
             self.domain,
             action,
             self.api_key,
             params,
             self.language,
         )
+
+    def _handle_headers(self, headers):
+        if "X-RateLimit-Remaining" in headers:
+            self._remaining = int(headers["X-RateLimit-Remaining"])
+
+        if "X-RateLimit-Reset" in headers:
+            self._reset = int(headers["X-RateLimit-Reset"])
+
+    def _handle_rate_limit(self):
+        if self._remaining < 1:
+            current_time = int(time.time())
+            sleep_time = self._reset - current_time
+
+            if self.wait_on_rate_limit:
+                logger.warning("达到请求频率限制，休眠：%d 秒..." % sleep_time)
+                return abs(sleep_time)
+            else:
+                raise TMDbException("达到请求频率限制，请稍后再试！")
+        return 0
+
+    def _process_json_response(self, json_data, is_async=False):
+        if "page" in json_data:
+            self._page = json_data["page"]
+
+        if "total_results" in json_data:
+            self._total_results = json_data["total_results"]
+
+        if "total_pages" in json_data:
+            self._total_pages = json_data["total_pages"]
+
+        if self.debug:
+            logger.info(json_data)
+            if is_async:
+                logger.info(self.async_cached_request.cache_info())
+            else:
+                logger.info(self.cached_request.cache_info())
+
+    @staticmethod
+    def _handle_errors(json_data):
+        if "errors" in json_data:
+            raise TMDbException(json_data["errors"])
+
+        if "success" in json_data and json_data["success"] is False:
+            raise TMDbException(json_data["status_message"])
+
+    def _request_obj(self, action, params="", call_cached=True,
+                     method="GET", data=None, json=None, key=None):
+        self._validate_api_key()
+        url = self._build_url(action, params)
 
         if self.cache and self.obj_cached and call_cached and method != "POST":
             req = self.cached_request(method, url, data, json)
@@ -185,45 +229,17 @@ class TMDb(object):
         if req is None:
             return None
 
-        headers = req.headers
+        self._handle_headers(req.headers)
 
-        if "X-RateLimit-Remaining" in headers:
-            self._remaining = int(headers["X-RateLimit-Remaining"])
-
-        if "X-RateLimit-Reset" in headers:
-            self._reset = int(headers["X-RateLimit-Reset"])
-
-        if self._remaining < 1:
-            current_time = int(time.time())
-            sleep_time = self._reset - current_time
-
-            if self.wait_on_rate_limit:
-                logger.warning("达到请求频率限制，休眠：%d 秒..." % sleep_time)
-                time.sleep(abs(sleep_time))
-                return self._request_obj(action, params, call_cached, method, data, json, key)
-            else:
-                raise TMDbException("达到请求频率限制，将在 %d 秒后重试..." % sleep_time)
+        rate_limit_result = self._handle_rate_limit()
+        if rate_limit_result:
+            logger.warning("达到请求频率限制，将在 %d 秒后重试..." % rate_limit_result)
+            time.sleep(rate_limit_result)
+            return self._request_obj(action, params, call_cached, method, data, json, key)
 
         json_data = req.json()
-
-        if "page" in json_data:
-            self._page = json_data["page"]
-
-        if "total_results" in json_data:
-            self._total_results = json_data["total_results"]
-
-        if "total_pages" in json_data:
-            self._total_pages = json_data["total_pages"]
-
-        if self.debug:
-            logger.info(json_data)
-            logger.info(self.cached_request.cache_info())
-
-        if "errors" in json_data:
-            raise TMDbException(json_data["errors"])
-
-        if "success" in json_data and json_data["success"] is False:
-            raise TMDbException(json_data["status_message"])
+        self._process_json_response(json_data, is_async=False)
+        self._handle_errors(json_data)
 
         if key:
             return json_data.get(key)
@@ -231,16 +247,8 @@ class TMDb(object):
 
     async def _async_request_obj(self, action, params="", call_cached=True,
                                  method="GET", data=None, json=None, key=None):
-        if self.api_key is None or self.api_key == "":
-            raise TMDbException("TheMovieDb API Key 未设置！")
-
-        url = "https://%s/3%s?api_key=%s&%s&language=%s" % (
-            self.domain,
-            action,
-            self.api_key,
-            params,
-            self.language,
-        )
+        self._validate_api_key()
+        url = self._build_url(action, params)
 
         if self.cache and self.obj_cached and call_cached and method != "POST":
             req = await self.async_cached_request(method, url, data, json)
@@ -250,45 +258,17 @@ class TMDb(object):
         if req is None:
             return None
 
-        headers = req.headers
+        self._handle_headers(req.headers)
 
-        if "X-RateLimit-Remaining" in headers:
-            self._remaining = int(headers["X-RateLimit-Remaining"])
-
-        if "X-RateLimit-Reset" in headers:
-            self._reset = int(headers["X-RateLimit-Reset"])
-
-        if self._remaining < 1:
-            current_time = int(time.time())
-            sleep_time = self._reset - current_time
-
-            if self.wait_on_rate_limit:
-                logger.warning("达到请求频率限制，休眠：%d 秒..." % sleep_time)
-                time.sleep(abs(sleep_time))
-                return await self._async_request_obj(action, params, call_cached, method, data, json, key)
-            else:
-                raise TMDbException("达到请求频率限制，将在 %d 秒后重试..." % sleep_time)
+        rate_limit_result = self._handle_rate_limit()
+        if rate_limit_result:
+            logger.warning("达到请求频率限制，将在 %d 秒后重试..." % rate_limit_result)
+            await asyncio.sleep(rate_limit_result)
+            return await self._async_request_obj(action, params, call_cached, method, data, json, key)
 
         json_data = req.json()
-
-        if "page" in json_data:
-            self._page = json_data["page"]
-
-        if "total_results" in json_data:
-            self._total_results = json_data["total_results"]
-
-        if "total_pages" in json_data:
-            self._total_pages = json_data["total_pages"]
-
-        if self.debug:
-            logger.info(json_data)
-            logger.info(self.async_cached_request.cache_info())
-
-        if "errors" in json_data:
-            raise TMDbException(json_data["errors"])
-
-        if "success" in json_data and json_data["success"] is False:
-            raise TMDbException(json_data["status_message"])
+        self._process_json_response(json_data, is_async=True)
+        self._handle_errors(json_data)
 
         if key:
             return json_data.get(key)

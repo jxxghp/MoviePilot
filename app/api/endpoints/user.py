@@ -45,9 +45,8 @@ async def create_user(
     if user_info.get("password"):
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
-    user = User(**user_info)
-    await user.async_create(db)
-    return schemas.Response(success=True)
+    user = await User(**user_info).async_create(db)
+    return schemas.Response(success=True if user else False)
 
 
 @router.put("/", summary="更新用户", response_model=schemas.Response)

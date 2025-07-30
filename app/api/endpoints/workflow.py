@@ -154,11 +154,7 @@ async def workflow_fork(
         return schemas.Response(success=False, message="已存在相同名称的工作流")
 
     # 创建新工作流
-    workflow_obj = Workflow(**workflow_dict)
-    await workflow_obj.async_create(db)
-
-    # 获取工作流ID（在数据库会话有效时）
-    workflow = await workflow_oper.async_get_by_name(workflow_dict["name"])
+    workflow = await Workflow(**workflow_dict).async_create(db)
 
     # 更新复用次数
     if workflow:
