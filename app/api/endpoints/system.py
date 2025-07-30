@@ -2,16 +2,13 @@ import asyncio
 import io
 import json
 import re
-import tempfile
 from collections import deque
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, Union, Annotated
 
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
-from app.helper.sites import SitesHelper
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -30,6 +27,7 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
+from app.helper.sites import SitesHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
@@ -37,7 +35,7 @@ from app.scheduler import Scheduler
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.crypto import HashUtils
-from app.utils.http import RequestUtils
+from app.utils.http import RequestUtils, AsyncRequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
@@ -46,7 +44,7 @@ from version import APP_VERSION
 router = APIRouter()
 
 
-def fetch_image(
+async def fetch_image(
         url: str,
         proxy: bool = False,
         use_disk_cache: bool = False,
@@ -83,7 +81,8 @@ def fetch_image(
         # 目前暂不考虑磁盘缓存文件是否过期，后续通过缓存清理机制处理
         if cache_path.exists():
             try:
-                content = cache_path.read_bytes()
+                async with aiofiles.open(cache_path, 'rb') as f:
+                    content = await f.read()
                 etag = HashUtils.md5(content)
                 headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
                 if if_none_match == etag:
@@ -96,19 +95,19 @@ def fetch_image(
     # 请求远程图片
     referer = "https://movie.douban.com/" if "doubanio.com" in url else None
     proxies = settings.PROXY if proxy else None
-    response = RequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=proxies, referer=referer,
-                            accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
+    response = await AsyncRequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=proxies, referer=referer,
+                                       accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
     if not response:
         raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
 
     # 验证下载的内容是否为有效图片
     try:
-        Image.open(io.BytesIO(response.content)).verify()
+        content = response.content
+        Image.open(io.BytesIO(content)).verify()
     except Exception as e:
         logger.debug(f"Invalid image format for URL {url}: {e}")
         raise HTTPException(status_code=502, detail="Invalid image format")
 
-    content = response.content
     response_headers = response.headers
 
     cache_control_header = response_headers.get("Cache-Control", "")
@@ -119,10 +118,9 @@ def fetch_image(
         try:
             if not cache_path.parent.exists():
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
-                tmp_file.write(content)
-                temp_path = Path(tmp_file.name)
-            temp_path.replace(cache_path)
+            # 使用异步文件操作写入缓存
+            async with aiofiles.open(cache_path, 'wb') as f:
+                await f.write(content)
         except Exception as e:
             logger.debug(f"Failed to write cache file {cache_path}: {e}")
 
@@ -142,7 +140,7 @@ def fetch_image(
 
 
 @router.get("/img/{proxy}", summary="图片代理")
-def proxy_img(
+async def proxy_img(
         imgurl: str,
         proxy: bool = False,
         cache: bool = False,
@@ -156,12 +154,12 @@ def proxy_img(
     hosts = [config.config.get("host") for config in MediaServerHelper().get_configs().values() if
              config and config.config and config.config.get("host")]
     allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS) | set(hosts)
-    return fetch_image(url=imgurl, proxy=proxy, use_disk_cache=cache,
-                       if_none_match=if_none_match, allowed_domains=allowed_domains)
+    return await fetch_image(url=imgurl, proxy=proxy, use_disk_cache=cache,
+                             if_none_match=if_none_match, allowed_domains=allowed_domains)
 
 
 @router.get("/cache/image", summary="图片缓存")
-def cache_img(
+async def cache_img(
         url: str,
         if_none_match: Annotated[str | None, Header()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
@@ -171,7 +169,8 @@ def cache_img(
     """
     # 如果没有启用全局图片缓存，则不使用磁盘缓存
     proxy = "doubanio.com" not in url
-    return fetch_image(url=url, proxy=proxy, use_disk_cache=settings.GLOBAL_IMAGE_CACHE, if_none_match=if_none_match)
+    return await fetch_image(url=url, proxy=proxy, use_disk_cache=settings.GLOBAL_IMAGE_CACHE,
+                             if_none_match=if_none_match)
 
 
 @router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
@@ -397,8 +396,9 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
         # 返回全部日志作为文本响应
         if not log_path.exists():
             return Response(content="日志文件不存在！", media_type="text/plain")
-        with open(log_path, "r", encoding='utf-8') as file:
-            text = file.read()
+        # 使用 aiofiles 异步读取文件
+        async with aiofiles.open(log_path, mode="r", encoding="utf-8") as file:
+            text = await file.read()
         # 倒序输出
         text = "\n".join(text.split("\n")[::-1])
         return Response(content=text, media_type="text/plain")

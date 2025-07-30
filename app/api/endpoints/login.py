@@ -44,7 +44,7 @@ def login_access_token(
         user_name=user_or_message.name,
         avatar=user_or_message.avatar,
         level=level,
-        permissions= user_or_message.permissions or {},
+        permissions=user_or_message.permissions or {},
     )
 
 

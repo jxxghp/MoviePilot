@@ -2,6 +2,7 @@ import gzip
 import json
 from typing import Annotated, Callable, Any, Dict, Optional
 
+import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRoute
@@ -19,7 +20,7 @@ class GzipRequest(Request):
             body = await super().body()
             if "gzip" in self.headers.getlist("Content-Encoding"):
                 body = gzip.decompress(body)
-            self._body = body # noqa
+            self._body = body  # noqa
         return self._body
 
 
@@ -66,17 +67,17 @@ async def update_cookie(req: schemas.CookieData):
     """
     file_path = settings.COOKIE_PATH / f"{req.uuid}.json"
     content = json.dumps({"encrypted": req.encrypted})
-    with open(file_path, encoding="utf-8", mode="w") as file:
-        file.write(content)
-    with open(file_path, encoding="utf-8", mode="r") as file:
-        read_content = file.read()
+    async with aiofiles.open(file_path, encoding="utf-8", mode="w") as file:
+        await file.write(content)
+    async with aiofiles.open(file_path, encoding="utf-8", mode="r") as file:
+        read_content = await file.read()
     if read_content == content:
         return {"action": "done"}
     else:
         return {"action": "error"}
 
 
-def load_encrypt_data(uuid: str) -> Dict[str, Any]:
+async def load_encrypt_data(uuid: str) -> Dict[str, Any]:
     """
     加载本地加密原始数据
     """
@@ -87,8 +88,8 @@ def load_encrypt_data(uuid: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Item not found")
 
     # 读取文件
-    with open(file_path, encoding="utf-8", mode="r") as file:
-        read_content = file.read()
+    async with aiofiles.open(file_path, encoding="utf-8", mode="r") as file:
+        read_content = await file.read()
     data = json.loads(read_content.encode("utf-8"))
     return data
 
@@ -120,7 +121,7 @@ async def get_cookie(
     """
     GET 下载加密数据
     """
-    return load_encrypt_data(uuid)
+    return await load_encrypt_data(uuid)
 
 
 @cookie_router.post("/get/{uuid}")
@@ -130,5 +131,5 @@ async def post_cookie(
     """
     POST 下载加密数据
     """
-    data = load_encrypt_data(uuid)
+    data = await load_encrypt_data(uuid)
     return get_decrypted_cookie_data(uuid, request.password, data["encrypted"])
