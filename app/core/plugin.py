@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
 
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper  # noqa
 from fastapi import HTTPException
 from starlette import status
 from watchdog.events import FileSystemEventHandler

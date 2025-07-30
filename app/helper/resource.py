@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from app.core.config import settings
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.helper.system import SystemHelper
 from app.log import logger
 from app.utils.http import RequestUtils

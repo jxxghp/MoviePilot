@@ -689,6 +689,99 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=tmdbinfo) for tmdbinfo in infos]
         return []
 
+    # 异步方法
+    async def async_search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+        """
+        搜索媒体信息（异步版本）
+        :param meta:  识别的元数据
+        :reutrn: 媒体信息列表
+        """
+        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+            return None
+        if not meta.name:
+            return []
+        if meta.type == MediaType.UNKNOWN and not meta.year:
+            results = await self.tmdb.async_search_multiis(meta.name)
+        else:
+            if meta.type == MediaType.UNKNOWN:
+                results = await self.tmdb.async_search_movies(meta.name, meta.year)
+                results.extend(await self.tmdb.async_search_tvs(meta.name, meta.year))
+                # 组合结果的情况下要排序
+                results = sorted(
+                    results,
+                    key=lambda x: x.get("release_date") or x.get("first_air_date") or "0000-00-00",
+                    reverse=True
+                )
+            elif meta.type == MediaType.MOVIE:
+                results = await self.tmdb.async_search_movies(meta.name, meta.year)
+            else:
+                results = await self.tmdb.async_search_tvs(meta.name, meta.year)
+        # 将搜索词中的季写入标题中
+        if results:
+            medias = [MediaInfo(tmdb_info=info) for info in results]
+            if meta.begin_season:
+                # 小写数据转大写
+                season_str = cn2an.an2cn(meta.begin_season, "low")
+                for media in medias:
+                    if media.type == MediaType.TV:
+                        media.title = f"{media.title} 第{season_str}季"
+                        media.season = meta.begin_season
+            return medias
+        return []
+
+    async def async_tmdb_discover(self, mtype: MediaType, sort_by: str,
+                                  with_genres: str,
+                                  with_original_language: str,
+                                  with_keywords: str,
+                                  with_watch_providers: str,
+                                  vote_average: float,
+                                  vote_count: int,
+                                  release_date: str,
+                                  page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
+        """
+        TMDB发现功能（异步版本）
+        :param mtype:  媒体类型
+        :param sort_by:  排序方式
+        :param with_genres:  类型
+        :param with_original_language:  语言
+        :param with_keywords:  关键字
+        :param with_watch_providers:  提供商
+        :param vote_average:  评分
+        :param vote_count:  评分人数
+        :param release_date:  发布日期
+        :param page:  页码
+        :return: 媒体信息列表
+        """
+        if mtype == MediaType.MOVIE:
+            infos = await self.tmdb.async_discover_movies({
+                "sort_by": sort_by,
+                "with_genres": with_genres,
+                "with_original_language": with_original_language,
+                "with_keywords": with_keywords,
+                "with_watch_providers": with_watch_providers,
+                "vote_average.gte": vote_average,
+                "vote_count.gte": vote_count,
+                "release_date.gte": release_date,
+                "page": page
+            })
+        elif mtype == MediaType.TV:
+            infos = await self.tmdb.async_discover_tvs({
+                "sort_by": sort_by,
+                "with_genres": with_genres,
+                "with_original_language": with_original_language,
+                "with_keywords": with_keywords,
+                "with_watch_providers": with_watch_providers,
+                "vote_average.gte": vote_average,
+                "vote_count.gte": vote_count,
+                "first_air_date.gte": release_date,
+                "page": page
+            })
+        else:
+            return []
+        if infos:
+            return [MediaInfo(tmdb_info=info) for info in infos]
+        return []
+
     def clear_cache(self):
         """
         清除缓存

@@ -521,6 +521,7 @@ class TmdbApi:
             raise APIRateLimitException("触发TheDbMovie网站限流，获取媒体信息失败")
         if res.status_code != 200:
             return {}
+        html = None
         html_text = res.text
         if not html_text:
             return {}
@@ -560,13 +561,13 @@ class TmdbApi:
                 logger.info("%s TMDB网站返回数据过多：%s" % (name, len(tmdb_links)))
             else:
                 logger.info("%s TMDB网站未查询到媒体信息！" % name)
+            return {}
         except Exception as err:
             logger.error(f"从TheDbMovie网站查询出错：{str(err)}")
             return {}
         finally:
             if html is not None:
                 del html
-        return {}
 
     def get_info(self,
                  mtype: MediaType,
@@ -639,6 +640,7 @@ class TmdbApi:
             return None
         # dict[地区:分级]
         ratings = {}
+        results = []
         if results := (tmdb_info.get("release_dates") or {}).get("results"):
             """
             [
@@ -1423,6 +1425,85 @@ class TmdbApi:
         清除缓存
         """
         self.tmdb.cache_clear()
+
+    # 异步方法
+    async def async_search_multiis(self, title: str) -> List[dict]:
+        """
+        同时查询模糊匹配的电影、电视剧TMDB信息（异步版本）
+        """
+        if not title:
+            return []
+        ret_infos = []
+        multis = await self.search.async_multi(term=title) or []
+        for multi in multis:
+            if multi.get("media_type") in ["movie", "tv"]:
+                multi['media_type'] = MediaType.MOVIE if multi.get("media_type") == "movie" else MediaType.TV
+                ret_infos.append(multi)
+        return ret_infos
+
+    async def async_search_movies(self, title: str, year: str) -> List[dict]:
+        """
+        查询模糊匹配的所有电影TMDB信息（异步版本）
+        """
+        if not title:
+            return []
+        ret_infos = []
+        if year:
+            movies = await self.search.async_movies(term=title, year=year) or []
+        else:
+            movies = await self.search.async_movies(term=title) or []
+        for movie in movies:
+            if title in movie.get("title"):
+                movie['media_type'] = MediaType.MOVIE
+                ret_infos.append(movie)
+        return ret_infos
+
+    async def async_search_tvs(self, title: str, year: str) -> List[dict]:
+        """
+        查询模糊匹配的所有电视剧TMDB信息（异步版本）
+        """
+        if not title:
+            return []
+        ret_infos = []
+        if year:
+            tvs = await self.search.async_tv_shows(term=title, release_year=year) or []
+        else:
+            tvs = await self.search.async_tv_shows(term=title) or []
+        for tv in tvs:
+            if title in tv.get("name"):
+                tv['media_type'] = MediaType.TV
+                ret_infos.append(tv)
+        return ret_infos
+
+    async def async_discover_movies(self, params: dict) -> List[dict]:
+        """
+        发现电影（异步版本）
+        """
+        if not params:
+            return []
+        try:
+            items = await self.discover.async_discover_movies(params_tuple=tuple(params.items())) or []
+            for item in items:
+                item['media_type'] = MediaType.MOVIE
+            return items
+        except Exception as e:
+            logger.error(f"获取电影发现失败：{str(e)}")
+            return []
+
+    async def async_discover_tvs(self, params: dict) -> List[dict]:
+        """
+        发现电视剧（异步版本）
+        """
+        if not params:
+            return []
+        try:
+            items = await self.discover.async_discover_tv_shows(params_tuple=tuple(params.items())) or []
+            for item in items:
+                item['media_type'] = MediaType.TV
+            return items
+        except Exception as e:
+            logger.error(f"获取电视剧发现失败：{str(e)}")
+            return []
 
     def close(self):
         """

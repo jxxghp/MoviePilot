@@ -22,7 +22,7 @@ from app.db.models.siteuserdata import SiteUserData
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils

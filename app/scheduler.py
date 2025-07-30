@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.core.event import EventManager, eventmanager, Event
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow, ConfigChangeEventData

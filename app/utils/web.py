@@ -43,7 +43,7 @@ class WebUtils:
                 return r.json().get("data", {}).get("location") or ''
         except Exception as err:
             print(str(err))
-            return ""
+        return ""
 
     @staticmethod
     def get_location2(ip: str):
@@ -68,4 +68,4 @@ class WebUtils:
                 return r.json().get("addr") or ''
         except Exception as err:
             print(str(err))
-            return ""
+        return ""

@@ -9,7 +9,7 @@ import requests.exceptions
 
 from app.core.cache import cached
 from app.core.config import settings
-from app.utils.http import RequestUtils
+from app.utils.http import RequestUtils, AsyncRequestUtils
 from .exceptions import TMDbException
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class TMDb(object):
     _req = None
+    _async_req = None
     _session = None
 
     def __init__(self, obj_cached=True, session=None, language=None):
@@ -37,6 +38,8 @@ class TMDb(object):
         else:
             self._session = requests.Session()
             self._req = RequestUtils(session=self._session, proxies=self.proxies)
+        # 初始化异步请求客户端
+        self._async_req = AsyncRequestUtils(proxies=self.proxies)
         self._remaining = 40
         self._reset = None
         self._timeout = 15
@@ -132,11 +135,28 @@ class TMDb(object):
         """
         return self.request(method, url, data, json)
 
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
+    async def async_cached_request(self, method, url, data, json,
+                                   _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        """
+        缓存请求（异步版本）
+        """
+        return await self.async_request(method, url, data, json)
+
     def request(self, method, url, data, json):
         if method == "GET":
             req = self._req.get_res(url, params=data, json=json)
         else:
             req = self._req.post_res(url, data=data, json=json)
+        if req is None:
+            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
+        return req
+
+    async def async_request(self, method, url, data, json):
+        if method == "GET":
+            req = await self._async_req.get_res(url, params=data, json=json)
+        else:
+            req = await self._async_req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
         return req
@@ -198,6 +218,71 @@ class TMDb(object):
         if self.debug:
             logger.info(json_data)
             logger.info(self.cached_request.cache_info())
+
+        if "errors" in json_data:
+            raise TMDbException(json_data["errors"])
+
+        if "success" in json_data and json_data["success"] is False:
+            raise TMDbException(json_data["status_message"])
+
+        if key:
+            return json_data.get(key)
+        return json_data
+
+    async def _async_request_obj(self, action, params="", call_cached=True,
+                                 method="GET", data=None, json=None, key=None):
+        if self.api_key is None or self.api_key == "":
+            raise TMDbException("TheMovieDb API Key 未设置！")
+
+        url = "https://%s/3%s?api_key=%s&%s&language=%s" % (
+            self.domain,
+            action,
+            self.api_key,
+            params,
+            self.language,
+        )
+
+        if self.cache and self.obj_cached and call_cached and method != "POST":
+            req = await self.async_cached_request(method, url, data, json)
+        else:
+            req = await self.async_request(method, url, data, json)
+
+        if req is None:
+            return None
+
+        headers = req.headers
+
+        if "X-RateLimit-Remaining" in headers:
+            self._remaining = int(headers["X-RateLimit-Remaining"])
+
+        if "X-RateLimit-Reset" in headers:
+            self._reset = int(headers["X-RateLimit-Reset"])
+
+        if self._remaining < 1:
+            current_time = int(time.time())
+            sleep_time = self._reset - current_time
+
+            if self.wait_on_rate_limit:
+                logger.warning("达到请求频率限制，休眠：%d 秒..." % sleep_time)
+                time.sleep(abs(sleep_time))
+                return await self._async_request_obj(action, params, call_cached, method, data, json, key)
+            else:
+                raise TMDbException("达到请求频率限制，将在 %d 秒后重试..." % sleep_time)
+
+        json_data = req.json()
+
+        if "page" in json_data:
+            self._page = json_data["page"]
+
+        if "total_results" in json_data:
+            self._total_results = json_data["total_results"]
+
+        if "total_pages" in json_data:
+            self._total_pages = json_data["total_pages"]
+
+        if self.debug:
+            logger.info(json_data)
+            logger.info(self.async_cached_request.cache_info())
 
         if "errors" in json_data:
             raise TMDbException(json_data["errors"])

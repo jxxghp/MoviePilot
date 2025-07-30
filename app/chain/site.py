@@ -1,10 +1,10 @@
 import base64
-import gc
 import re
 from datetime import datetime
 from typing import Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
+from app.helper.sites import SitesHelper  # noqa
 from lxml import etree
 
 from app.chain import ChainBase
@@ -18,7 +18,6 @@ from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.rss import RssHelper
-from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import MessageChannel, Notification, SiteUserData
 from app.schemas.types import EventType, NotificationType

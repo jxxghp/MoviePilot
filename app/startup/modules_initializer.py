@@ -9,7 +9,7 @@ from app.utils.system import SystemUtils
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.helper.sites import SitesHelper
+    from app.helper.sites import SitesHelper  # noqa
 except ImportError as e:
     SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"

@@ -10,6 +10,7 @@ from typing import Optional, Union, Annotated
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from aiopath import AsyncPath
+from app.helper.sites import SitesHelper  # noqa  # noqa
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -28,7 +29,6 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
-from app.helper.sites import SitesHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
@@ -85,7 +85,7 @@ async def fetch_image(
         # 目前暂不考虑磁盘缓存文件是否过期，后续通过缓存清理机制处理
         if cache_path and await cache_path.exists():
             try:
-                async with cache_path.open(cache_path, 'rb') as f:
+                async with cache_path.open('rb') as f:
                     content = await f.read()
                 etag = HashUtils.md5(content)
                 headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
@@ -363,9 +363,10 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
     length = -1 时, 返回text/plain
     否则 返回格式SSE
     """
-    log_path = AsyncPath(settings.LOG_PATH) / logfile
+    base_path = AsyncPath(settings.LOG_PATH)
+    log_path = base_path / logfile
 
-    if not SecurityUtils.is_safe_path(settings.LOG_PATH, log_path, allowed_suffixes={".log"}):
+    if not await SecurityUtils.async_is_safe_path(base_path=base_path, user_path=log_path, allowed_suffixes={".log"}):
         raise HTTPException(status_code=404, detail="Not Found")
 
     if not await log_path.exists() or not await log_path.is_file():
@@ -413,11 +414,11 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
 
 
 @router.get("/versions", summary="查询Github所有Release版本", response_model=schemas.Response)
-def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
+async def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
     """
     查询Github所有Release版本
     """
-    version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
+    version_res = await AsyncRequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
         f"https://api.github.com/repos/jxxghp/MoviePilot/releases")
     if version_res:
         ver_json = version_res.json()
@@ -459,7 +460,7 @@ def ruletest(title: str,
 
 
 @router.get("/nettest", summary="测试网络连通性")
-def nettest(
+async def nettest(
         url: str,
         proxy: bool,
         include: Optional[str] = None,
@@ -492,7 +493,7 @@ def nettest(
         if settings.PIP_PROXY:
             proxy_name = "PIP加速代理"
     url = url.replace("{TMDBAPIKEY}", settings.TMDB_API_KEY)
-    result = RequestUtils(
+    result = await AsyncRequestUtils(
         proxies=settings.PROXY if proxy else None,
         headers=headers,
         timeout=10,

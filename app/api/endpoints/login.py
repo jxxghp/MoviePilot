@@ -8,7 +8,7 @@ from app import schemas
 from app.chain.user import UserChain
 from app.core import security
 from app.core.config import settings
-from app.helper.sites import SitesHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.helper.wallpaper import WallpaperHelper
 
 router = APIRouter()

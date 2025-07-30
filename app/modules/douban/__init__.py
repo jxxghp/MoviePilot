@@ -485,6 +485,62 @@ class DoubanModule(_ModuleBase):
         else:
             return __douban_movie() or __douban_tv()
 
+    @rate_limit_exponential(source="douban_info")
+    async def async_douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[
+        dict]:
+        """
+        获取豆瓣信息（异步版本）
+        :param doubanid: 豆瓣ID
+        :param mtype:    媒体类型
+        :param raise_exception: 触发速率限制时是否抛出异常
+        :return: 豆瓣信息
+        """
+
+        async def __async_douban_tv():
+            """
+            获取豆瓣剧集信息（异步版本）
+            """
+            info = await self.doubanapi.async_tv_detail(doubanid)
+            if info:
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
+                    logger.warn(msg)
+                    raise APIRateLimitException(msg)
+                celebrities = await self.doubanapi.async_tv_celebrities(doubanid)
+                if celebrities:
+                    info["directors"] = celebrities.get("directors")
+                    info["actors"] = celebrities.get("actors")
+            return info
+
+        async def __async_douban_movie():
+            """
+            获取豆瓣电影信息（异步版本）
+            """
+            info = await self.doubanapi.async_movie_detail(doubanid)
+            if info:
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
+                    logger.warn(msg)
+                    raise APIRateLimitException(msg)
+                celebrities = await self.doubanapi.async_movie_celebrities(doubanid)
+                if celebrities:
+                    info["directors"] = celebrities.get("directors")
+                    info["actors"] = celebrities.get("actors")
+            return info
+
+        if not doubanid:
+            return None
+        logger.info(f"开始获取豆瓣信息：{doubanid} ...")
+        if mtype == MediaType.TV:
+            return await __async_douban_tv()
+        elif mtype == MediaType.MOVIE:
+            return await __async_douban_movie()
+        else:
+            movie_result = await __async_douban_movie()
+            if movie_result:
+                return movie_result
+            return await __async_douban_tv()
+
     def douban_discover(self, mtype: MediaType, sort: str, tags: str,
                         page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
         """
@@ -513,12 +569,50 @@ class DoubanModule(_ModuleBase):
                     and "tv_large.jpg" not in media.poster_path]
         return []
 
+    async def async_douban_discover(self, mtype: MediaType, sort: str, tags: str,
+                                    page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+        """
+        发现豆瓣电影、剧集（异步版本）
+        :param mtype:  媒体类型
+        :param sort:  排序方式
+        :param tags:  标签
+        :param page:  页码
+        :param count:  数量
+        :return: 媒体信息列表
+        """
+        logger.info(f"开始发现豆瓣 {mtype.value} ...")
+        if mtype == MediaType.MOVIE:
+            infos = await self.doubanapi.async_movie_recommend(start=(page - 1) * count, count=count,
+                                                               sort=sort, tags=tags)
+        else:
+            infos = await self.doubanapi.async_tv_recommend(start=(page - 1) * count, count=count,
+                                                            sort=sort, tags=tags)
+        if infos and infos.get("items"):
+            medias = [MediaInfo(douban_info=info) for info in infos.get("items")]
+            return [media for media in medias if media.poster_path
+                    and "movie_large.jpg" not in media.poster_path
+                    and "tv_normal.png" not in media.poster_path
+                    and "movie_large.jpg" not in media.poster_path
+                    and "tv_normal.jpg" not in media.poster_path
+                    and "tv_large.jpg" not in media.poster_path]
+        return []
+
     def movie_showing(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
         """
         获取正在上映的电影
         """
         infos = self.doubanapi.movie_showing(start=(page - 1) * count,
                                              count=count)
+        if infos and infos.get("subject_collection_items"):
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
+    async def async_movie_showing(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取正在上映的电影（异步版本）
+        """
+        infos = await self.doubanapi.async_movie_showing(start=(page - 1) * count,
+                                                         count=count)
         if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
@@ -533,12 +627,32 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
+    async def async_tv_weekly_chinese(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取豆瓣本周口碑国产剧（异步版本）
+        """
+        infos = await self.doubanapi.async_tv_chinese_best_weekly(start=(page - 1) * count,
+                                                                  count=count)
+        if infos:
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
     def tv_weekly_global(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
         """
         获取豆瓣本周口碑外国剧
         """
         infos = self.doubanapi.tv_global_best_weekly(start=(page - 1) * count,
                                                      count=count)
+        if infos and infos.get("subject_collection_items"):
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
+    async def async_tv_weekly_global(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取豆瓣本周口碑外国剧（异步版本）
+        """
+        infos = await self.doubanapi.async_tv_global_best_weekly(start=(page - 1) * count,
+                                                                 count=count)
         if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
@@ -553,6 +667,16 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
+    async def async_tv_animation(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取豆瓣动画剧（异步版本）
+        """
+        infos = await self.doubanapi.async_tv_animation(start=(page - 1) * count,
+                                                        count=count)
+        if infos and infos.get("subject_collection_items"):
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
     def movie_hot(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
         """
         获取豆瓣热门电影
@@ -563,12 +687,32 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
+    async def async_movie_hot(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取豆瓣热门电影（异步版本）
+        """
+        infos = await self.doubanapi.async_movie_hot_gaia(start=(page - 1) * count,
+                                                          count=count)
+        if infos and infos.get("subject_collection_items"):
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
     def tv_hot(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
         """
         获取豆瓣热门剧集
         """
         infos = self.doubanapi.tv_hot(start=(page - 1) * count,
                                       count=count)
+        if infos and infos.get("subject_collection_items"):
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
+    async def async_tv_hot(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取豆瓣热门剧集（异步版本）
+        """
+        infos = await self.doubanapi.async_tv_hot(start=(page - 1) * count,
+                                                  count=count)
         if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
@@ -606,6 +750,39 @@ class DoubanModule(_ModuleBase):
                     media.season = meta.begin_season
         return ret_medias
 
+    async def async_search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+        """
+        搜索媒体信息（异步版本）
+        :param meta:  识别的元数据
+        :reutrn: 媒体信息
+        """
+        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+            return None
+        if not meta.name:
+            return []
+        result = await self.doubanapi.async_search(meta.name)
+        if not result or not result.get("items"):
+            return []
+        # 返回数据
+        ret_medias = []
+        for item_obj in result.get("items"):
+            if meta.type and meta.type != MediaType.UNKNOWN and meta.type.value != item_obj.get("type_name"):
+                continue
+            if item_obj.get("type_name") not in (MediaType.TV.value, MediaType.MOVIE.value):
+                continue
+            if meta.name not in item_obj.get("target", {}).get("title"):
+                continue
+            ret_medias.append(MediaInfo(douban_info=item_obj.get("target")))
+        # 将搜索词中的季写入标题中
+        if ret_medias and meta.begin_season:
+            # 小写数据转大写
+            season_str = cn2an.an2cn(meta.begin_season, "low")
+            for media in ret_medias:
+                if media.type == MediaType.TV:
+                    media.title = f"{media.title} 第{season_str}季"
+                    media.season = meta.begin_season
+        return ret_medias
+
     def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息
@@ -613,6 +790,24 @@ class DoubanModule(_ModuleBase):
         if not name:
             return []
         result = self.doubanapi.person_search(keyword=name)
+        if result and result.get('items'):
+            return [MediaPerson(source='douban', **{
+                'id': item.get('target_id'),
+                'name': item.get('target', {}).get('title'),
+                'url': item.get('target', {}).get('url'),
+                'images': item.get('target', {}).get('cover', {}),
+                'avatar': (item.get('target', {}).get('cover_img', {}).get('url')
+                           or '').replace("/l/public/", "/s/public/"),
+            }) for item in result.get('items') if name in item.get('target', {}).get('title')]
+        return []
+
+    async def async_search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+        """
+        搜索人物信息（异步版本）
+        """
+        if not name:
+            return []
+        result = await self.doubanapi.async_person_search(keyword=name)
         if result and result.get('items'):
             return [MediaPerson(source='douban', **{
                 'id': item.get('target_id'),
@@ -692,6 +887,16 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.movie_top250(start=(page - 1) * count,
                                             count=count)
+        if infos and infos.get("subject_collection_items"):
+            return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
+        return []
+
+    async def async_movie_top250(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+        """
+        获取豆瓣电影TOP250（异步版本）
+        """
+        infos = await self.doubanapi.async_movie_top250(start=(page - 1) * count,
+                                                        count=count)
         if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
