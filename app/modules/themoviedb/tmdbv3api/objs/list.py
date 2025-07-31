@@ -94,3 +94,89 @@ class List(TMDb):
             params="session_id=%s" % self.session_id,
             method="DELETE"
         )
+
+    # 异步版本方法
+    async def async_details(self, list_id):
+        """
+        Get list details by id.（异步版本）
+        :param list_id: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["details"] % list_id, key="items")
+
+    async def async_check_item_status(self, list_id, movie_id):
+        """
+        You can use this method to check if a movie has already been added to the list.（异步版本）
+        :param list_id: int
+        :param movie_id: int
+        :return:
+        """
+        result = await self._async_request_obj(self._urls["check_status"] % list_id, params="movie_id=%s" % movie_id)
+        return result["item_present"]
+
+    async def async_create_list(self, name, description):
+        """
+        You can use this method to check if a movie has already been added to the list.（异步版本）
+        :param name: str
+        :param description: str
+        :return:
+        """
+        result = await self._async_request_obj(
+            self._urls["create"],
+            params="session_id=%s" % self.session_id,
+            method="POST",
+            json={
+                "name": name,
+                "description": description,
+                "language": self.language
+            }
+        )
+        return result.list_id
+
+    async def async_add_movie(self, list_id, movie_id):
+        """
+        Add a movie to a list.（异步版本）
+        :param list_id: int
+        :param movie_id: int
+        """
+        await self._async_request_obj(
+            self._urls["add_movie"] % list_id,
+            params="session_id=%s" % self.session_id,
+            method="POST",
+            json={"media_id": movie_id}
+        )
+
+    async def async_remove_movie(self, list_id, movie_id):
+        """
+        Remove a movie from a list.（异步版本）
+        :param list_id: int
+        :param movie_id: int
+        """
+        await self._async_request_obj(
+            self._urls["remove_movie"] % list_id,
+            params="session_id=%s" % self.session_id,
+            method="POST",
+            json={"media_id": movie_id}
+        )
+
+    async def async_clear_list(self, list_id):
+        """
+        Clear all of the items from a list.（异步版本）
+        :param list_id: int
+        """
+        await self._async_request_obj(
+            self._urls["clear_list"] % list_id,
+            params="session_id=%s&confirm=true" % self.session_id,
+            method="POST"
+        )
+
+    async def async_delete_list(self, list_id):
+        """
+        Delete a list.（异步版本）
+        :param list_id: int
+        """
+        await self._async_request_obj(
+            self._urls["delete_list"] % list_id,
+            params="session_id=%s" % self.session_id,
+            method="DELETE"
+        )

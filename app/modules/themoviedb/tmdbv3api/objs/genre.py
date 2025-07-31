@@ -20,3 +20,18 @@ class Genre(TMDb):
         :return:
         """
         return self._request_obj(self._urls["tv_list"], key="genres")
+
+    # 异步版本方法
+    async def async_movie_list(self):
+        """
+        Get the list of official genres for movies.（异步版本）
+        :return:
+        """
+        return await self._async_request_obj(self._urls["movie_list"], key="genres")
+
+    async def async_tv_list(self):
+        """
+        Get the list of official genres for TV shows.（异步版本）
+        :return:
+        """
+        return await self._async_request_obj(self._urls["tv_list"], key="genres")

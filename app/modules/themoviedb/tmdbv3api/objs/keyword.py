@@ -22,3 +22,20 @@ class Keyword(TMDb):
         :return:
         """
         return self._request_obj(self._urls["movies"] % keyword_id, key="results")
+
+    # 异步版本方法
+    async def async_details(self, keyword_id):
+        """
+        Get a keywords details by id.（异步版本）
+        :param keyword_id: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["details"] % keyword_id)
+
+    async def async_movies(self, keyword_id):
+        """
+        Get the movies of a keyword by id.（异步版本）
+        :param keyword_id: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["movies"] % keyword_id, key="results")

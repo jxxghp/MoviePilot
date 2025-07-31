@@ -131,3 +131,122 @@ class Season(TMDb):
             self._urls["videos"] % (tv_id, season_num),
             params=params
         )
+
+    # 异步版本方法
+    async def async_details(self, tv_id, season_num, append_to_response="videos,trailers,images,credits,translations"):
+        """
+        Get the TV season details by id.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :param append_to_response: str
+        :return:
+        """
+        return await self._async_request_obj(
+            self._urls["details"] % (tv_id, season_num),
+            params="append_to_response=%s" % append_to_response
+        )
+
+    async def async_account_states(self, tv_id, season_num):
+        """
+        Get all of the user ratings for the season's episodes.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :return:
+        """
+        return await self._async_request_obj(
+            self._urls["account_states"] % (tv_id, season_num),
+            params="session_id=%s" % self.session_id,
+            key="results"
+        )
+
+    async def async_aggregate_credits(self, tv_id, season_num):
+        """
+        Get the aggregate credits for TV season.
+        This call differs from the main credits call in that it does not only return the season credits,
+        but rather is a view of all the cast & crew for all of the episodes belonging to a season.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["aggregate_credits"] % (tv_id, season_num))
+
+    async def async_changes(self, season_id, start_date=None, end_date=None, page=1):
+        """
+        Get the changes for a TV season. By default only the last 24 hours are returned.
+        You can query up to 14 days in a single query by using the start_date and end_date query parameters.（异步版本）
+        :param season_id: int
+        :param start_date: str
+        :param end_date: str
+        :param page: int
+        :return:
+        """
+        params = "page=%s" % page
+        if start_date:
+            params += "&start_date=%s" % start_date
+        if end_date:
+            params += "&end_date=%s" % end_date
+        return await self._async_request_obj(
+            self._urls["changes"] % season_id,
+            params=params,
+            key="changes"
+        )
+
+    async def async_credits(self, tv_id, season_num):
+        """
+        Get the credits for TV season.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["credits"] % (tv_id, season_num))
+
+    async def async_external_ids(self, tv_id, season_num):
+        """
+        Get the external ids for a TV season.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["external_ids"] % (tv_id, season_num))
+
+    async def async_images(self, tv_id, season_num, include_image_language=None):
+        """
+        Get the images that belong to a TV season.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :param include_image_language: str
+        :return:
+        """
+        return await self._async_request_obj(
+            self._urls["images"] % (tv_id, season_num),
+            params="include_image_language=%s" % include_image_language if include_image_language else "",
+            key="posters"
+        )
+
+    async def async_translations(self, tv_id, season_num):
+        """
+        Get a list of the translations that exist for a TV show.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        """
+        return await self._async_request_obj(
+            self._urls["translations"] % (tv_id, season_num),
+            key="translations"
+        )
+
+    async def async_videos(self, tv_id, season_num, include_video_language=None, page=1):
+        """
+        Get the videos that have been added to a TV show.（异步版本）
+        :param tv_id: int
+        :param season_num: int
+        :param include_video_language: str
+        :param page: int
+        :return:
+        """
+        params = "page=%s" % page
+        if include_video_language:
+            params += "&include_video_language=%s" % include_video_language
+        return await self._async_request_obj(
+            self._urls["videos"] % (tv_id, season_num),
+            params=params
+        )

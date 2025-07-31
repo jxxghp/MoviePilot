@@ -2,15 +2,14 @@ import asyncio
 import io
 import json
 import re
-import tempfile
 from collections import deque
 from datetime import datetime
 from typing import Optional, Union, Annotated
 
+import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from aiopath import AsyncPath
-from app.helper.sites import SitesHelper  # noqa  # noqa
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -29,6 +28,7 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
+from app.helper.sites import SitesHelper  # noqa  # noqa
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
@@ -122,8 +122,8 @@ async def fetch_image(
         try:
             if not await cache_path.parent.exists():
                 await cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
-                tmp_file.write(content)
+            async with aiofiles.tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
+                await tmp_file.write(content)
                 temp_path = AsyncPath(tmp_file.name)
             await temp_path.replace(cache_path)
         except Exception as e:

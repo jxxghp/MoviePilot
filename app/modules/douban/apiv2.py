@@ -4,9 +4,10 @@ import hashlib
 import hmac
 from datetime import datetime
 from random import choice
-from typing import Optional
+from typing import Optional, Union
 from urllib import parse
 
+import httpx
 import requests
 
 from app.core.cache import cached
@@ -199,9 +200,9 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         return await self.__async_invoke(url, **kwargs)
 
-    def __invoke(self, url: str, **kwargs) -> dict:
+    def _prepare_get_request(self, url: str, **kwargs) -> tuple[str, dict]:
         """
-        GET请求
+        准备GET请求的URL和参数
         """
         req_url = self._base_url + url
 
@@ -219,39 +220,49 @@ class DoubanApi(metaclass=WeakSingleton):
             '_ts': ts,
             '_sig': self.__sign(url=req_url, ts=ts)
         })
+        return req_url, params
+
+    @staticmethod
+    def _handle_response(resp: Union[requests.Response, httpx.Response]) -> dict:
+        """
+        处理HTTP响应
+        """
+        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
+            return resp.json()
+        return resp.json() if resp else {}
+
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
+    def __invoke(self, url: str, **kwargs) -> dict:
+        """
+        GET请求
+        """
+        req_url, params = self._prepare_get_request(url, **kwargs)
         resp = RequestUtils(
             ua=choice(self._user_agents),
             session=self._session
         ).get_res(url=req_url, params=params)
-        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
-            return resp.json()
-        return resp.json() if resp else {}
+        return self._handle_response(resp)
 
     @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     async def __async_invoke(self, url: str, **kwargs) -> dict:
         """
         GET请求（异步版本）
         """
-        req_url = self._base_url + url
+        req_url, params = self._prepare_get_request(url, **kwargs)
+        resp = await self._async_req.get_res(url=req_url, params=params)
+        return self._handle_response(resp)
 
-        params: dict = {'apiKey': self._api_key}
+    def _prepare_post_request(self, url: str, **kwargs) -> tuple[str, dict]:
+        """
+        准备POST请求的URL和参数
+        """
+        req_url = self._api_url + url
+        params = {'apikey': self._api_key2}
         if kwargs:
             params.update(kwargs)
-
-        ts = params.pop(
-            '_ts',
-            datetime.strftime(datetime.now(), '%Y%m%d')
-        )
-        params.update({
-            'os_rom': 'android',
-            'apiKey': self._api_key,
-            '_ts': ts,
-            '_sig': self.__sign(url=req_url, ts=ts)
-        })
-        resp = await self._async_req.get_res(url=req_url, params=params)
-        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
-            return resp.json()
-        return resp.json() if resp else {}
+        if '_ts' in params:
+            params.pop('_ts')
+        return req_url, params
 
     @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     def __post(self, url: str, **kwargs) -> dict:
@@ -268,35 +279,21 @@ class DoubanApi(metaclass=WeakSingleton):
             }
         )
         """
-        req_url = self._api_url + url
-        params = {'apikey': self._api_key2}
-        if kwargs:
-            params.update(kwargs)
-        if '_ts' in params:
-            params.pop('_ts')
+        req_url, params = self._prepare_post_request(url, **kwargs)
         resp = RequestUtils(
             ua=settings.NORMAL_USER_AGENT,
             session=self._session,
         ).post_res(url=req_url, data=params)
-        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
-            return resp.json()
-        return resp.json() if resp else {}
+        return self._handle_response(resp)
 
     @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     async def __async_post(self, url: str, **kwargs) -> dict:
         """
         POST请求（异步版本）
         """
-        req_url = self._api_url + url
-        params = {'apikey': self._api_key2}
-        if kwargs:
-            params.update(kwargs)
-        if '_ts' in params:
-            params.pop('_ts')
+        req_url, params = self._prepare_post_request(url, **kwargs)
         resp = await self._async_req.post_res(url=req_url, data=params)
-        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
-            return resp.json()
-        return resp.json() if resp else {}
+        return self._handle_response(resp)
 
     def imdbid(self, imdbid: str,
                ts=datetime.strftime(datetime.now(), '%Y%m%d')):

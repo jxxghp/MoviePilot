@@ -486,8 +486,8 @@ class DoubanModule(_ModuleBase):
             return __douban_movie() or __douban_tv()
 
     @rate_limit_exponential(source="douban_info")
-    async def async_douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[
-        dict]:
+    async def async_douban_info(self, doubanid: str, mtype: MediaType = None,
+                                raise_exception: bool = True) -> Optional[dict]:
         """
         获取豆瓣信息（异步版本）
         :param doubanid: 豆瓣ID

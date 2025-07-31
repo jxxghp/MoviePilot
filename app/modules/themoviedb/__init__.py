@@ -782,6 +782,152 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in infos]
         return []
 
+    async def async_tmdb_trending(self, page: Optional[int] = 1) -> List[MediaInfo]:
+        """
+        TMDB流行趋势（异步版本）
+        :param page: 第几页
+        :return: TMDB信息列表
+        """
+        trending = await self.tmdb.async_discover_trending(page=page)
+        if trending:
+            return [MediaInfo(tmdb_info=info) for info in trending]
+        return []
+
+    async def async_tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
+        """
+        根据合集ID查询集合（异步版本）
+        :param collection_id:  合集ID
+        """
+        results = await self.tmdb.async_get_collection(collection_id)
+        if results:
+            return [MediaInfo(tmdb_info=info) for info in results]
+        return []
+
+    async def async_tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
+        """
+        根据TMDBID查询themoviedb所有季信息（异步版本）
+        :param tmdbid:  TMDBID
+        """
+        tmdb_info = await self.tmdb.async_get_info(tmdbid=tmdbid, mtype=MediaType.TV)
+        if not tmdb_info:
+            return []
+        return [schemas.TmdbSeason(**sea)
+                for sea in tmdb_info.get("seasons", []) if sea.get("season_number")]
+
+    async def async_tmdb_group_seasons(self, group_id: str) -> List[schemas.TmdbSeason]:
+        """
+        根据剧集组ID查询themoviedb所有季集信息（异步版本）
+        :param group_id: 剧集组ID
+        """
+        group_seasons = await self.tmdb.async_get_tv_group_seasons(group_id)
+        if not group_seasons:
+            return []
+        return [schemas.TmdbSeason(
+            season_number=sea.get("order"),
+            name=sea.get("name"),
+            episode_count=len(sea.get("episodes") or []),
+            air_date=sea.get("episodes")[0].get("air_date") if sea.get("episodes") else None,
+        ) for sea in group_seasons]
+
+    async def async_tmdb_episodes(self, tmdbid: int, season: int,
+                                  episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
+        """
+        根据TMDBID查询某季的所有集信息（异步版本）
+        :param tmdbid:  TMDBID
+        :param season:  季
+        :param episode_group:  剧集组
+        """
+        if episode_group:
+            season_info = await self.tmdb.async_get_tv_group_detail(episode_group, season=season)
+        else:
+            season_info = await self.tmdb.async_get_tv_season_detail(tmdbid=tmdbid, season=season)
+        if not season_info or not season_info.get("episodes"):
+            return []
+        return [schemas.TmdbEpisode(**episode) for episode in season_info.get("episodes")]
+
+    async def async_tmdb_movie_similar(self, tmdbid: int) -> List[MediaInfo]:
+        """
+        根据TMDBID查询类似电影（异步版本）
+        :param tmdbid:  TMDBID
+        """
+        similar = await self.tmdb.async_get_movie_similar(tmdbid=tmdbid)
+        if similar:
+            return [MediaInfo(tmdb_info=info) for info in similar]
+        return []
+
+    async def async_tmdb_tv_similar(self, tmdbid: int) -> List[MediaInfo]:
+        """
+        根据TMDBID查询类似电视剧（异步版本）
+        :param tmdbid:  TMDBID
+        """
+        similar = await self.tmdb.async_get_tv_similar(tmdbid=tmdbid)
+        if similar:
+            return [MediaInfo(tmdb_info=info) for info in similar]
+        return []
+
+    async def async_tmdb_movie_recommend(self, tmdbid: int) -> List[MediaInfo]:
+        """
+        根据TMDBID查询推荐电影（异步版本）
+        :param tmdbid:  TMDBID
+        """
+        recommend = await self.tmdb.async_get_movie_recommend(tmdbid=tmdbid)
+        if recommend:
+            return [MediaInfo(tmdb_info=info) for info in recommend]
+        return []
+
+    async def async_tmdb_tv_recommend(self, tmdbid: int) -> List[MediaInfo]:
+        """
+        根据TMDBID查询推荐电视剧（异步版本）
+        :param tmdbid:  TMDBID
+        """
+        recommend = await self.tmdb.async_get_tv_recommend(tmdbid=tmdbid)
+        if recommend:
+            return [MediaInfo(tmdb_info=info) for info in recommend]
+        return []
+
+    async def async_tmdb_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
+        """
+        根据TMDBID查询电影演职员表（异步版本）
+        :param tmdbid:  TMDBID
+        :param page:  页码
+        """
+        credit_infos = await self.tmdb.async_get_movie_credits(tmdbid=tmdbid, page=page)
+        if credit_infos:
+            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+        return []
+
+    async def async_tmdb_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
+        """
+        根据TMDBID查询电视剧演职员表（异步版本）
+        :param tmdbid:  TMDBID
+        :param page:  页码
+        """
+        credit_infos = await self.tmdb.async_get_tv_credits(tmdbid=tmdbid, page=page)
+        if credit_infos:
+            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+        return []
+
+    async def async_tmdb_person_detail(self, person_id: int) -> schemas.MediaPerson:
+        """
+        根据TMDBID查询人物详情（异步版本）
+        :param person_id:  人物ID
+        """
+        detail = await self.tmdb.async_get_person_detail(person_id=person_id)
+        if detail:
+            return schemas.MediaPerson(source="themoviedb", **detail)
+        return schemas.MediaPerson()
+
+    async def async_tmdb_person_credits(self, person_id: int, page: Optional[int] = 1) -> List[MediaInfo]:
+        """
+        根据TMDBID查询人物参演作品（异步版本）
+        :param person_id:  人物ID
+        :param page:  页码
+        """
+        infos = await self.tmdb.async_get_person_credits(person_id=person_id, page=page)
+        if infos:
+            return [MediaInfo(tmdb_info=tmdbinfo) for tmdbinfo in infos]
+        return []
+
     def clear_cache(self):
         """
         清除缓存

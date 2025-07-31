@@ -31,3 +31,28 @@ class Collection(TMDb):
         :return:
         """
         return self._request_obj(self._urls["translations"] % collection_id, key="translations")
+
+    # 异步版本方法
+    async def async_details(self, collection_id):
+        """
+        Get collection details by id.（异步版本）
+        :param collection_id: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["details"] % collection_id, key="parts")
+
+    async def async_images(self, collection_id):
+        """
+        Get the images for a collection by id.（异步版本）
+        :param collection_id: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["images"] % collection_id)
+
+    async def async_translations(self, collection_id):
+        """
+        Get the list translations for a collection by id.（异步版本）
+        :param collection_id: int
+        :return:
+        """
+        return await self._async_request_obj(self._urls["translations"] % collection_id, key="translations")

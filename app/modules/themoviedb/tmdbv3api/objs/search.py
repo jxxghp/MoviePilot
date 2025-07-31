@@ -143,6 +143,66 @@ class Search(TMDb):
             key="results"
         )
 
+    # 异步版本方法
+    async def async_companies(self, term, page=1):
+        """
+        Search for companies.（异步版本）
+        :param term: str
+        :param page: int
+        :return:
+        """
+        return await self._async_request_obj(
+            self._urls["companies"],
+            params="query=%s&page=%s" % (quote(term), page),
+            key="results"
+        )
+
+    async def async_collections(self, term, page=1):
+        """
+        Search for collections.（异步版本）
+        :param term: str
+        :param page: int
+        :return:
+        """
+        return await self._async_request_obj(
+            self._urls["collections"],
+            params="query=%s&page=%s" % (quote(term), page),
+            key="results"
+        )
+
+    async def async_keywords(self, term, page=1):
+        """
+        Search for keywords.（异步版本）
+        :param term: str
+        :param page: int
+        :return:
+        """
+        return await self._async_request_obj(
+            self._urls["keywords"],
+            params="query=%s&page=%s" % (quote(term), page),
+            key="results"
+        )
+
+    async def async_people(self, term, adult=None, region=None, page=1):
+        """
+        Search for people.（异步版本）
+        :param term: str
+        :param adult: bool
+        :param region: str
+        :param page: int
+        :return:
+        """
+        params = "query=%s&page=%s" % (quote(term), page)
+        if adult is not None:
+            params += "&include_adult=%s" % "true" if adult else "false"
+        if region is not None:
+            params += "&region=%s" % quote(region)
+        return await self._async_request_obj(
+            self._urls["people"],
+            params=params,
+            key="results"
+        )
+
     async def async_multi(self, term, adult=None, region=None, page=1):
         """
         Search multiple models in a single request.（异步版本）

@@ -6,6 +6,7 @@ fastapi~=0.115.14
 passlib~=1.7.4
 PyJWT~=2.10.1
 python-multipart~=0.0.9
+aiofiles~=24.1.0
 alembic~=1.16.2
 bcrypt~=4.0.1
 regex~=2024.11.6
