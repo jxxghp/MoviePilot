@@ -419,6 +419,14 @@ class LoggerManager:
         :param method: 日志方法
         :param msg: 日志信息
         """
+        # 获取当前日志级别
+        current_level = self.__get_log_level()
+        method_level = getattr(logging, method.upper(), logging.INFO)
+
+        # 如果当前方法的级别低于设定的日志级别，则不处理
+        if method_level < current_level:
+            return
+
         # 获取调用者文件名和插件名
         caller_name, plugin_name = self.__get_caller()
 

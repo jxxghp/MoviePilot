@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Dict, Tuple
 from typing import List, Optional
 
+from app.helper.sites import SitesHelper  # noqa
+from fastapi.concurrency import run_in_threadpool
+
 from app.chain import ChainBase
 from app.core.config import global_vars
 from app.core.context import Context
@@ -14,7 +17,6 @@ from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
-from app.helper.sites import SitesHelper  # noqa
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
@@ -444,15 +446,15 @@ class SearchChain(ChainBase):
             area=area
         )
         # 处理结果
-        return self.__parse_result(
-            torrents=torrents,
-            mediainfo=mediainfo,
-            keyword=keyword,
-            rule_groups=rule_groups,
-            season_episodes=season_episodes,
-            custom_words=custom_words,
-            filter_params=filter_params
-        )
+        return await run_in_threadpool(self.__parse_result,
+                                       torrents=torrents,
+                                       mediainfo=mediainfo,
+                                       keyword=keyword,
+                                       rule_groups=rule_groups,
+                                       season_episodes=season_episodes,
+                                       custom_words=custom_words,
+                                       filter_params=filter_params
+                                       )
 
     def __search_all_sites(self, keywords: List[str],
                            mediainfo: Optional[MediaInfo] = None,
