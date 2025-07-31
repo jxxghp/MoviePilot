@@ -9,4 +9,3 @@ from .transferhistory import TransferHistory
 from .user import User
 from .userconfig import UserConfig
 from .workflow import Workflow
-from .userrequest import UserRequest

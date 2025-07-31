@@ -54,27 +54,27 @@ class Site(Base):
     # 下载器
     downloader = Column(String)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_domain(db: Session, domain: str):
-        return db.query(Site).filter(Site.domain == domain).first()
+    def get_by_domain(cls, db: Session, domain: str):
+        return db.query(cls).filter(cls.domain == domain).first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_actives(db: Session):
-        return db.query(Site).filter(Site.is_active == 1).all()
+    def get_actives(cls, db: Session):
+        return db.query(cls).filter(cls.is_active == 1).all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def list_order_by_pri(db: Session):
-        return db.query(Site).order_by(Site.pri).all()
+    def list_order_by_pri(cls, db: Session):
+        return db.query(cls).order_by(cls.pri).all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_domains_by_ids(db: Session, ids: list):
-        return [r[0] for r in db.query(Site.domain).filter(Site.id.in_(ids)).all()]
+    def get_domains_by_ids(cls, db: Session, ids: list):
+        return [r[0] for r in db.query(cls.domain).filter(cls.id.in_(ids)).all()]
 
-    @staticmethod
+    @classmethod
     @db_update
-    def reset(db: Session):
-        db.query(Site).delete()
+    def reset(cls, db: Session):
+        db.query(cls).delete()

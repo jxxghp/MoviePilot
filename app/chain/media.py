@@ -794,7 +794,7 @@ class MediaChain(ChainBase):
         :param org_meta: 原始元数据
         """
         # 发送请求事件，等待结果
-        result: Event = eventmanager.send_event(
+        result: Event = await eventmanager.async_send_event(
             ChainEventType.NameRecognize,
             {
                 'title': title,

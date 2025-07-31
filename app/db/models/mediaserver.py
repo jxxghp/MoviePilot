@@ -41,28 +41,28 @@ class MediaServerItem(Base):
     # 同步时间
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_itemid(db: Session, item_id: str):
-        return db.query(MediaServerItem).filter(MediaServerItem.item_id == item_id).first()
+    def get_by_itemid(cls, db: Session, item_id: str):
+        return db.query(cls).filter(cls.item_id == item_id).first()
 
-    @staticmethod
+    @classmethod
     @db_update
-    def empty(db: Session, server: Optional[str] = None):
+    def empty(cls, db: Session, server: Optional[str] = None):
         if server is None:
-            db.query(MediaServerItem).delete()
+            db.query(cls).delete()
         else:
-            db.query(MediaServerItem).filter(MediaServerItem.server == server).delete()
+            db.query(cls).filter(cls.server == server).delete()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def exist_by_tmdbid(db: Session, tmdbid: int, mtype: str):
-        return db.query(MediaServerItem).filter(MediaServerItem.tmdbid == tmdbid,
-                                                MediaServerItem.item_type == mtype).first()
+    def exist_by_tmdbid(cls, db: Session, tmdbid: int, mtype: str):
+        return db.query(cls).filter(cls.tmdbid == tmdbid,
+                                    cls.item_type == mtype).first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def exists_by_title(db: Session, title: str, mtype: str, year: str):
-        return db.query(MediaServerItem).filter(MediaServerItem.title == title,
-                                                MediaServerItem.item_type == mtype,
-                                                MediaServerItem.year == str(year)).first()
+    def exists_by_title(cls, db: Session, title: str, mtype: str, year: str):
+        return db.query(cls).filter(cls.title == title,
+                                    cls.item_type == mtype,
+                                    cls.year == str(year)).first()

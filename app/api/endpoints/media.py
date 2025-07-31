@@ -86,14 +86,15 @@ async def search(title: str,
         return obj.source
 
     result = []
+    media_chain = MediaChain()
     if type == "media":
-        _, medias = await MediaChain().async_search(title=title)
+        _, medias = await media_chain.async_search(title=title)
         if medias:
             result = [media.to_dict() for media in medias]
     elif type == "collection":
-        result = await MediaChain().async_search_collections(name=title)
+        result = await media_chain.async_search_collections(name=title)
     else:
-        result = await MediaChain().async_search_persons(name=title)
+        result = await media_chain.async_search_persons(name=title)
     if result:
         # 按设置的顺序对结果进行排序
         setting_order = settings.SEARCH_SOURCE.split(',') or []

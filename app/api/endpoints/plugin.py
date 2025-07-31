@@ -2,9 +2,11 @@ import mimetypes
 import shutil
 from typing import Annotated, Any, List, Optional
 
+import aiofiles
+from aiopath import AsyncPath
 from fastapi import APIRouter, Depends, Header, HTTPException
 from starlette import status
-from starlette.responses import FileResponse
+from starlette.responses import StreamingResponse
 
 from app import schemas
 from app.command import Command
@@ -12,7 +14,7 @@ from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.core.security import verify_apikey, verify_token
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
 from app.factory import app
 from app.helper.plugin import PluginHelper
 from app.log import logger
@@ -136,13 +138,14 @@ def register_plugin(plugin_id: str):
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
-                state: Optional[str] = "all", force: bool = False) -> List[schemas.Plugin]:
+async def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser_async),
+                      state: Optional[str] = "all", force: bool = False) -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
     # 本地插件
-    local_plugins = PluginManager().get_local_plugins()
+    plugin_manager = PluginManager()
+    local_plugins = plugin_manager.get_local_plugins()
     # 已安装插件
     installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
     if state == "installed":
@@ -151,7 +154,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
     # 未安装的本地插件
     not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     # 在线插件
-    online_plugins = PluginManager().get_online_plugins(force)
+    online_plugins = await plugin_manager.async_get_online_plugins(force)
     if not online_plugins:
         # 没有获取在线插件
         if state == "market":
@@ -192,11 +195,11 @@ def installed(_: schemas.TokenPayload = Depends(get_current_active_superuser)) -
 
 
 @router.get("/statistic", summary="插件安装统计", response_model=dict)
-def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     插件安装统计
     """
-    return PluginHelper().get_statistic()
+    return await PluginHelper().async_get_statistic()
 
 
 @router.get("/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response)
@@ -222,12 +225,13 @@ def install(plugin_id: str,
     # 已安装插件
     install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
     # 首先检查插件是否已经存在，并且是否强制安装，否则只进行安装统计
+    plugin_helper = PluginHelper()
     if not force and plugin_id in PluginManager().get_plugin_ids():
-        PluginHelper().install_reg(pid=plugin_id)
+        plugin_helper.install_reg(pid=plugin_id)
     else:
         # 插件不存在或需要强制安装，下载安装并注册插件
         if repo_url:
-            state, msg = PluginHelper().install(pid=plugin_id, repo_url=repo_url)
+            state, msg = plugin_helper.install(pid=plugin_id, repo_url=repo_url)
             # 安装失败则直接响应
             if not state:
                 return schemas.Response(success=False, message=msg)
@@ -260,7 +264,8 @@ def plugin_form(plugin_id: str,
     """
     根据插件ID获取插件配置表单或Vue组件URL
     """
-    plugin_instance = PluginManager().running_plugins.get(plugin_id)
+    plugin_manager = PluginManager()
+    plugin_instance = plugin_manager.running_plugins.get(plugin_id)
     if not plugin_instance:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {plugin_id} 不存在或未加载")
 
@@ -271,7 +276,7 @@ def plugin_form(plugin_id: str,
         return {
             "render_mode": render_mode,
             "conf": conf,
-            "model": PluginManager().get_plugin_config(plugin_id) or model
+            "model": plugin_manager.get_plugin_config(plugin_id) or model
         }
     except Exception as e:
         logger.error(f"插件 {plugin_id} 调用方法 get_form 出错: {str(e)}")
@@ -343,7 +348,7 @@ def reset_plugin(plugin_id: str,
 
 
 @router.get("/file/{plugin_id}/{filepath:path}", summary="获取插件静态文件")
-def plugin_static_file(plugin_id: str, filepath: str):
+async def plugin_static_file(plugin_id: str, filepath: str):
     """
     获取插件静态文件
     """
@@ -352,11 +357,11 @@ def plugin_static_file(plugin_id: str, filepath: str):
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+    plugin_base_dir = AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / plugin_id.lower()
     plugin_file_path = plugin_base_dir / filepath
-    if not plugin_file_path.exists():
+    if not await plugin_file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{plugin_file_path} 不存在")
-    if not plugin_file_path.is_file():
+    if not await plugin_file_path.is_file():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{plugin_file_path} 不是文件")
 
     # 判断 MIME 类型
@@ -371,9 +376,20 @@ def plugin_static_file(plugin_id: str, filepath: str):
         response_type = 'application/octet-stream'
 
     try:
-        return FileResponse(plugin_file_path, media_type=response_type)
+        # 异步生成器函数，用于流式读取文件
+        async def file_generator():
+            async with aiofiles.open(plugin_file_path, mode='rb') as file:
+                # 8KB 块大小
+                while chunk := await file.read(8192):
+                    yield chunk
+
+        return StreamingResponse(
+            file_generator(),
+            media_type=response_type,
+            headers={"Content-Disposition": f"inline; filename={plugin_file_path.name}"}
+        )
     except Exception as e:
-        logger.error(f"Error creating/sending FileResponse for {plugin_file_path}: {e}", exc_info=True)
+        logger.error(f"Error creating/sending StreamingResponse for {plugin_file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -432,7 +448,8 @@ def delete_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get
 
 
 @router.put("/folders/{folder_name}/plugins", summary="更新文件夹中的插件", response_model=schemas.Response)
-def update_folder_plugins(folder_name: str, plugin_ids: List[str], _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+def update_folder_plugins(folder_name: str, plugin_ids: List[str],
+                          _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     更新指定文件夹中的插件列表
     """

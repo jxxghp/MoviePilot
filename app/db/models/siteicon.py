@@ -19,10 +19,10 @@ class SiteIcon(Base):
     # 图标Base64
     base64 = Column(String)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_domain(db: Session, domain: str):
-        return db.query(SiteIcon).filter(SiteIcon.domain == domain).first()
+    def get_by_domain(cls, db: Session, domain: str):
+        return db.query(cls).filter(cls.domain == domain).first()
 
     @classmethod
     @async_db_query

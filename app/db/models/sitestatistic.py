@@ -26,12 +26,12 @@ class SiteStatistic(Base):
     # 耗时记录 Json
     note = Column(JSON)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_domain(db: Session, domain: str):
-        return db.query(SiteStatistic).filter(SiteStatistic.domain == domain).first()
+    def get_by_domain(cls, db: Session, domain: str):
+        return db.query(cls).filter(cls.domain == domain).first()
 
-    @staticmethod
+    @classmethod
     @db_update
-    def reset(db: Session):
-        db.query(SiteStatistic).delete()
+    def reset(cls, db: Session):
+        db.query(cls).delete()

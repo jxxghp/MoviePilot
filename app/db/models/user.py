@@ -32,10 +32,10 @@ class User(Base):
     # 用户个性化设置 json
     settings = Column(JSON, default=dict)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_name(db: Session, name: str):
-        return db.query(User).filter(User.name == name).first()
+    def get_by_name(cls, db: Session, name: str):
+        return db.query(cls).filter(cls.name == name).first()
 
     @classmethod
     @async_db_query
@@ -45,10 +45,10 @@ class User(Base):
         )
         return result.scalars().first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_id(db: Session, user_id: int):
-        return db.query(User).filter(User.id == user_id).first()
+    def get_by_id(cls, db: Session, user_id: int):
+        return db.query(cls).filter(cls.id == user_id).first()
 
     @classmethod
     @async_db_query

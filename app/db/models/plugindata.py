@@ -13,27 +13,27 @@ class PluginData(Base):
     key = Column(String, index=True, nullable=False)
     value = Column(JSON)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_plugin_data(db: Session, plugin_id: str):
-        return db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()
+    def get_plugin_data(cls, db: Session, plugin_id: str):
+        return db.query(cls).filter(cls.plugin_id == plugin_id).all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_plugin_data_by_key(db: Session, plugin_id: str, key: str):
-        return db.query(PluginData).filter(PluginData.plugin_id == plugin_id, PluginData.key == key).first()
+    def get_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str):
+        return db.query(cls).filter(cls.plugin_id == plugin_id, cls.key == key).first()
 
-    @staticmethod
+    @classmethod
     @db_update
-    def del_plugin_data_by_key(db: Session, plugin_id: str, key: str):
-        db.query(PluginData).filter(PluginData.plugin_id == plugin_id, PluginData.key == key).delete()
+    def del_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str):
+        db.query(cls).filter(cls.plugin_id == plugin_id, cls.key == key).delete()
 
-    @staticmethod
+    @classmethod
     @db_update
-    def del_plugin_data(db: Session, plugin_id: str):
-        db.query(PluginData).filter(PluginData.plugin_id == plugin_id).delete()
+    def del_plugin_data(cls, db: Session, plugin_id: str):
+        db.query(cls).filter(cls.plugin_id == plugin_id).delete()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_plugin_data_by_plugin_id(db: Session, plugin_id: str):
-        return db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()
+    def get_plugin_data_by_plugin_id(cls, db: Session, plugin_id: str):
+        return db.query(cls).filter(cls.plugin_id == plugin_id).all()

@@ -88,16 +88,17 @@ class Subscribe(Base):
     # 选择的剧集组
     episode_group = Column(String)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def exists(db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None, season: Optional[int] = None):
+    def exists(cls, db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+               season: Optional[int] = None):
         if tmdbid:
             if season:
-                return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
-                                                  Subscribe.season == season).first()
-            return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).first()
+                return db.query(cls).filter(cls.tmdbid == tmdbid,
+                                            cls.season == season).first()
+            return db.query(cls).filter(cls.tmdbid == tmdbid).first()
         elif doubanid:
-            return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
+            return db.query(cls).filter(cls.doubanid == doubanid).first()
         return None
 
     @classmethod
@@ -121,15 +122,15 @@ class Subscribe(Base):
             return None
         return result.scalars().first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_state(db: Session, state: str):
+    def get_by_state(cls, db: Session, state: str):
         # 如果 state 为空或 None，返回所有订阅
         if not state:
-            return db.query(Subscribe).all()
+            return db.query(cls).all()
         else:
             # 如果传入的状态不为空，拆分成多个状态
-            return db.query(Subscribe).filter(Subscribe.state.in_(state.split(','))).all()
+            return db.query(cls).filter(cls.state.in_(state.split(','))).all()
 
     @classmethod
     @async_db_query
@@ -144,13 +145,13 @@ class Subscribe(Base):
             )
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_title(db: Session, title: str, season: Optional[int] = None):
+    def get_by_title(cls, db: Session, title: str, season: Optional[int] = None):
         if season:
-            return db.query(Subscribe).filter(Subscribe.name == title,
-                                              Subscribe.season == season).first()
-        return db.query(Subscribe).filter(Subscribe.name == title).first()
+            return db.query(cls).filter(cls.name == title,
+                                        cls.season == season).first()
+        return db.query(cls).filter(cls.name == title).first()
 
     @classmethod
     @async_db_query
@@ -165,14 +166,14 @@ class Subscribe(Base):
             )
         return result.scalars().first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_tmdbid(db: Session, tmdbid: int, season: Optional[int] = None):
+    def get_by_tmdbid(cls, db: Session, tmdbid: int, season: Optional[int] = None):
         if season:
-            return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
-                                              Subscribe.season == season).all()
+            return db.query(cls).filter(cls.tmdbid == tmdbid,
+                                        cls.season == season).all()
         else:
-            return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
+            return db.query(cls).filter(cls.tmdbid == tmdbid).all()
 
     @classmethod
     @async_db_query
@@ -187,10 +188,10 @@ class Subscribe(Base):
             )
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_doubanid(db: Session, doubanid: str):
-        return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
+    def get_by_doubanid(cls, db: Session, doubanid: str):
+        return db.query(cls).filter(cls.doubanid == doubanid).first()
 
     @classmethod
     @async_db_query
@@ -200,10 +201,10 @@ class Subscribe(Base):
         )
         return result.scalars().first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_bangumiid(db: Session, bangumiid: int):
-        return db.query(Subscribe).filter(Subscribe.bangumiid == bangumiid).first()
+    def get_by_bangumiid(cls, db: Session, bangumiid: int):
+        return db.query(cls).filter(cls.bangumiid == bangumiid).first()
 
     @classmethod
     @async_db_query
@@ -213,10 +214,10 @@ class Subscribe(Base):
         )
         return result.scalars().first()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_mediaid(db: Session, mediaid: str):
-        return db.query(Subscribe).filter(Subscribe.mediaid == mediaid).first()
+    def get_by_mediaid(cls, db: Session, mediaid: str):
+        return db.query(cls).filter(cls.mediaid == mediaid).first()
 
     @classmethod
     @async_db_query
@@ -268,23 +269,23 @@ class Subscribe(Base):
             await subscribe.async_delete(db, subscribe.id)
         return True
 
-    @staticmethod
+    @classmethod
     @db_query
-    def list_by_username(db: Session, username: str, state: Optional[str] = None, mtype: Optional[str] = None):
+    def list_by_username(cls, db: Session, username: str, state: Optional[str] = None, mtype: Optional[str] = None):
         if mtype:
             if state:
-                return db.query(Subscribe).filter(Subscribe.state == state,
-                                                  Subscribe.username == username,
-                                                  Subscribe.type == mtype).all()
+                return db.query(cls).filter(cls.state == state,
+                                            cls.username == username,
+                                            cls.type == mtype).all()
             else:
-                return db.query(Subscribe).filter(Subscribe.username == username,
-                                                  Subscribe.type == mtype).all()
+                return db.query(cls).filter(cls.username == username,
+                                            cls.type == mtype).all()
         else:
             if state:
-                return db.query(Subscribe).filter(Subscribe.state == state,
-                                                  Subscribe.username == username).all()
+                return db.query(cls).filter(cls.state == state,
+                                            cls.username == username).all()
             else:
-                return db.query(Subscribe).filter(Subscribe.username == username).all()
+                return db.query(cls).filter(cls.username == username).all()
 
     @classmethod
     @async_db_query
@@ -310,13 +311,13 @@ class Subscribe(Base):
                 )
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def list_by_type(db: Session, mtype: str, days: int):
-        return db.query(Subscribe) \
-            .filter(Subscribe.type == mtype,
-                    Subscribe.date >= time.strftime("%Y-%m-%d %H:%M:%S",
-                                                    time.localtime(time.time() - 86400 * int(days)))
+    def list_by_type(cls, db: Session, mtype: str, days: int):
+        return db.query(cls) \
+            .filter(cls.type == mtype,
+                    cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                              time.localtime(time.time() - 86400 * int(days)))
                     ).all()
 
     @classmethod

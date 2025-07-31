@@ -73,13 +73,13 @@ class SubscribeHistory(Base):
     # 剧集组
     episode_group = Column(String)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def list_by_type(db: Session, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
-        return db.query(SubscribeHistory).filter(
-            SubscribeHistory.type == mtype
+    def list_by_type(cls, db: Session, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
+        return db.query(cls).filter(
+            cls.type == mtype
         ).order_by(
-            SubscribeHistory.date.desc()
+            cls.date.desc()
         ).offset((page - 1) * count).limit(count).all()
 
     @classmethod
@@ -94,16 +94,17 @@ class SubscribeHistory(Base):
         )
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def exists(db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None, season: Optional[int] = None):
+    def exists(cls, db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+               season: Optional[int] = None):
         if tmdbid:
             if season:
-                return db.query(SubscribeHistory).filter(SubscribeHistory.tmdbid == tmdbid,
-                                                         SubscribeHistory.season == season).first()
-            return db.query(SubscribeHistory).filter(SubscribeHistory.tmdbid == tmdbid).first()
+                return db.query(cls).filter(cls.tmdbid == tmdbid,
+                                            cls.season == season).first()
+            return db.query(cls).filter(cls.tmdbid == tmdbid).first()
         elif doubanid:
-            return db.query(SubscribeHistory).filter(SubscribeHistory.doubanid == doubanid).first()
+            return db.query(cls).filter(cls.doubanid == doubanid).first()
         return None
 
     @classmethod

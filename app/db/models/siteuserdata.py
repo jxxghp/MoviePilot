@@ -53,42 +53,42 @@ class SiteUserData(Base):
     # 更新时间
     updated_time = Column(String, default=datetime.now().strftime('%H:%M:%S'))
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_domain(db: Session, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
+    def get_by_domain(cls, db: Session, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
         if workdate and worktime:
-            return db.query(SiteUserData).filter(SiteUserData.domain == domain,
-                                                 SiteUserData.updated_day == workdate,
-                                                 SiteUserData.updated_time == worktime).all()
+            return db.query(cls).filter(cls.domain == domain,
+                                        cls.updated_day == workdate,
+                                        cls.updated_time == worktime).all()
         elif workdate:
-            return db.query(SiteUserData).filter(SiteUserData.domain == domain,
-                                                 SiteUserData.updated_day == workdate).all()
-        return db.query(SiteUserData).filter(SiteUserData.domain == domain).all()
+            return db.query(cls).filter(cls.domain == domain,
+                                        cls.updated_day == workdate).all()
+        return db.query(cls).filter(cls.domain == domain).all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_date(db: Session, date: str):
-        return db.query(SiteUserData).filter(SiteUserData.updated_day == date).all()
+    def get_by_date(cls, db: Session, date: str):
+        return db.query(cls).filter(cls.updated_day == date).all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_latest(db: Session):
+    def get_latest(cls, db: Session):
         """
         获取各站点最新一天的数据
         """
         subquery = (
             db.query(
-                SiteUserData.domain,
-                func.max(SiteUserData.updated_day).label('latest_update_day')
+                cls.domain,
+                func.max(cls.updated_day).label('latest_update_day')
             )
-            .group_by(SiteUserData.domain)
-            .filter(or_(SiteUserData.err_msg.is_(None), SiteUserData.err_msg == ""))
+            .group_by(cls.domain)
+            .filter(or_(cls.err_msg.is_(None), cls.err_msg == ""))
             .subquery()
         )
 
         # 主查询：按 domain 和 updated_day 获取最新的记录
-        return db.query(SiteUserData).join(
+        return db.query(cls).join(
             subquery,
-            (SiteUserData.domain == subquery.c.domain) &
-            (SiteUserData.updated_day == subquery.c.latest_update_day)
-        ).order_by(SiteUserData.updated_time.desc()).all()
+            (cls.domain == subquery.c.domain) &
+            (cls.updated_day == subquery.c.latest_update_day)
+        ).order_by(cls.updated_time.desc()).all()

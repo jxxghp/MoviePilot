@@ -473,7 +473,7 @@ class ChainBase(metaclass=ABCMeta):
         :param raise_exception: 触发速率限制时是否抛出异常
         """
         return await self.async_run_module("async_douban_info", doubanid=doubanid, mtype=mtype,
-                                     raise_exception=raise_exception)
+                                           raise_exception=raise_exception)
 
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:
         """

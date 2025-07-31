@@ -1,3 +1,4 @@
+import asyncio
 import concurrent
 import concurrent.futures
 import importlib.util
@@ -10,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
 
-from app.helper.sites import SitesHelper  # noqa
 from fastapi import HTTPException
 from starlette import status
 from watchdog.events import FileSystemEventHandler
@@ -22,6 +22,7 @@ from app.core.event import eventmanager, Event
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.plugin import PluginHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.schemas.types import EventType, SystemConfigKey
 from app.utils.crypto import RSAUtils
@@ -831,6 +832,25 @@ class PluginManager(metaclass=Singleton):
             return None
         return getattr(plugin, method)(*args, **kwargs)
 
+    async def async_run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
+        """
+        异步运行插件方法
+        :param pid: 插件ID
+        :param method: 方法名
+        :param args: 参数
+        :param kwargs: 关键字参数
+        """
+        plugin = self._running_plugins.get(pid)
+        if not plugin:
+            return None
+        if not hasattr(plugin, method):
+            return None
+        method_func = getattr(plugin, method)
+        if asyncio.iscoroutinefunction(method_func):
+            return await method_func(*args, **kwargs)
+        else:
+            return method_func(*args, **kwargs)
+
     def get_plugin_ids(self) -> List[str]:
         """
         获取所有插件ID
@@ -850,8 +870,6 @@ class PluginManager(metaclass=Singleton):
         if not settings.PLUGIN_MARKET:
             return []
 
-        # 返回值
-        all_plugins = []
         # 用于存储高于 v1 版本的插件（如 v2, v3 等）
         higher_version_plugins = []
         # 用于存储 v1 版本插件
@@ -884,25 +902,7 @@ class PluginManager(metaclass=Singleton):
                     else:
                         base_version_plugins.extend(plugins)  # 收集 v1 版本插件
 
-        # 优先处理高版本插件
-        all_plugins.extend(higher_version_plugins)
-        # 将未出现在高版本插件列表中的 v1 插件加入 all_plugins
-        higher_plugin_ids = {f"{p.id}{p.plugin_version}" for p in higher_version_plugins}
-        all_plugins.extend([p for p in base_version_plugins if f"{p.id}{p.plugin_version}" not in higher_plugin_ids])
-        # 去重
-        all_plugins = list({f"{p.id}{p.plugin_version}": p for p in all_plugins}.values())
-        # 所有插件按 repo 在设置中的顺序排序
-        all_plugins.sort(
-            key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.repo_url) if x.repo_url else 0
-        )
-        # 相同 ID 的插件保留版本号最大的版本
-        max_versions = {}
-        for p in all_plugins:
-            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, ">", max_versions[p.id]):
-                max_versions[p.id] = p.plugin_version
-        result = [p for p in all_plugins if p.plugin_version == max_versions[p.id]]
-        logger.info(f"共获取到 {len(result)} 个线上插件")
-        return result
+        return self._process_plugins_list(higher_version_plugins, base_version_plugins)
 
     def get_local_plugins(self) -> List[schemas.Plugin]:
         """
@@ -1032,83 +1032,215 @@ class PluginManager(metaclass=Singleton):
         ret_plugins = []
         add_time = len(online_plugins)
         for pid, plugin_info in online_plugins.items():
-            if not isinstance(plugin_info, dict):
+            plugin = self._process_plugin_info(pid, plugin_info, market, installed_apps, add_time, package_version)
+            if plugin:
+                ret_plugins.append(plugin)
+            add_time -= 1
+
+        return ret_plugins
+
+    @staticmethod
+    def _process_plugins_list(higher_version_plugins: List[schemas.Plugin],
+                              base_version_plugins: List[schemas.Plugin]) -> List[schemas.Plugin]:
+        """
+        处理插件列表：合并、去重、排序、保留最高版本
+        :param higher_version_plugins: 高版本插件列表
+        :param base_version_plugins: 基础版本插件列表
+        :return: 处理后的插件列表
+        """
+        # 优先处理高版本插件
+        all_plugins = []
+        all_plugins.extend(higher_version_plugins)
+        # 将未出现在高版本插件列表中的 v1 插件加入 all_plugins
+        higher_plugin_ids = {f"{p.id}{p.plugin_version}" for p in higher_version_plugins}
+        all_plugins.extend([p for p in base_version_plugins if f"{p.id}{p.plugin_version}" not in higher_plugin_ids])
+        # 去重
+        all_plugins = list({f"{p.id}{p.plugin_version}": p for p in all_plugins}.values())
+        # 所有插件按 repo 在设置中的顺序排序
+        all_plugins.sort(
+            key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.repo_url) if x.repo_url else 0
+        )
+        # 相同 ID 的插件保留版本号最大的版本
+        max_versions = {}
+        for p in all_plugins:
+            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, ">", max_versions[p.id]):
+                max_versions[p.id] = p.plugin_version
+        result = [p for p in all_plugins if p.plugin_version == max_versions[p.id]]
+        logger.info(f"共获取到 {len(result)} 个线上插件")
+        return result
+
+    def _process_plugin_info(self, pid: str, plugin_info: dict, market: str,
+                             installed_apps: List[str], add_time: int,
+                             package_version: Optional[str] = None) -> Optional[schemas.Plugin]:
+        """
+        处理单个插件信息，创建 schemas.Plugin 对象
+        :param pid: 插件ID
+        :param plugin_info: 插件信息字典
+        :param market: 市场URL
+        :param installed_apps: 已安装插件列表
+        :param add_time: 添加顺序
+        :param package_version: 包版本
+        :return: 创建的插件对象，如果验证失败返回None
+        """
+        if not isinstance(plugin_info, dict):
+            return None
+
+        # 如 package_version 为空，则需要判断插件是否兼容当前版本
+        if not package_version:
+            if plugin_info.get(settings.VERSION_FLAG) is not True:
+                # 插件当前版本不兼容
+                return None
+
+        # 运行状插件
+        plugin_obj = self._running_plugins.get(pid)
+        # 非运行态插件
+        plugin_static = self._plugins.get(pid)
+        # 基本属性
+        plugin = schemas.Plugin()
+        # ID
+        plugin.id = pid
+        # 安装状态
+        if pid in installed_apps and plugin_static:
+            plugin.installed = True
+        else:
+            plugin.installed = False
+        # 是否有新版本
+        plugin.has_update = False
+        if plugin_static:
+            installed_version = getattr(plugin_static, "plugin_version")
+            if StringUtils.compare_version(installed_version, "<", plugin_info.get("version")):
+                # 需要更新
+                plugin.has_update = True
+        # 运行状态
+        if plugin_obj and hasattr(plugin_obj, "get_state"):
+            try:
+                state = plugin_obj.get_state()
+            except Exception as e:
+                logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
+                state = False
+            plugin.state = state
+        else:
+            plugin.state = False
+        # 是否有详情页面
+        plugin.has_page = False
+        if plugin_obj and hasattr(plugin_obj, "get_page"):
+            if ObjectUtils.check_method(plugin_obj.get_page):
+                plugin.has_page = True
+        # 公钥
+        if plugin_info.get("key"):
+            plugin.plugin_public_key = plugin_info.get("key")
+        # 权限
+        if not self.__set_and_check_auth_level(plugin=plugin, source=plugin_info):
+            return None
+        # 名称
+        if plugin_info.get("name"):
+            plugin.plugin_name = plugin_info.get("name")
+        # 描述
+        if plugin_info.get("description"):
+            plugin.plugin_desc = plugin_info.get("description")
+        # 版本
+        if plugin_info.get("version"):
+            plugin.plugin_version = plugin_info.get("version")
+        # 图标
+        if plugin_info.get("icon"):
+            plugin.plugin_icon = plugin_info.get("icon")
+        # 标签
+        if plugin_info.get("labels"):
+            plugin.plugin_label = plugin_info.get("labels")
+        # 作者
+        if plugin_info.get("author"):
+            plugin.plugin_author = plugin_info.get("author")
+        # 更新历史
+        if plugin_info.get("history"):
+            plugin.history = plugin_info.get("history")
+        # 仓库链接
+        plugin.repo_url = market
+        # 本地标志
+        plugin.is_local = False
+        # 添加顺序
+        plugin.add_time = add_time
+
+        return plugin
+
+    async def async_get_online_plugins(self, force: bool = False) -> List[schemas.Plugin]:
+        """
+        异步获取所有在线插件信息
+        """
+        if not settings.PLUGIN_MARKET:
+            return []
+
+        # 用于存储高于 v1 版本的插件（如 v2, v3 等）
+        higher_version_plugins = []
+        # 用于存储 v1 版本插件
+        base_version_plugins = []
+
+        # 使用异步并发获取线上插件
+        import asyncio
+        tasks = []
+        task_to_version = {}
+
+        for m in settings.PLUGIN_MARKET.split(","):
+            if not m:
                 continue
-            # 如 package_version 为空，则需要判断插件是否兼容当前版本
-            if not package_version:
-                if plugin_info.get(settings.VERSION_FLAG) is not True:
-                    # 插件当前版本不兼容
+            # 创建任务获取 v1 版本插件
+            base_task = asyncio.create_task(self.async_get_plugins_from_market(m, None, force))
+            tasks.append(base_task)
+            task_to_version[base_task] = "base_version"
+
+            # 创建任务获取高版本插件（如 v2、v3）
+            if settings.VERSION_FLAG:
+                higher_version_task = asyncio.create_task(
+                    self.async_get_plugins_from_market(m, settings.VERSION_FLAG, force))
+                tasks.append(higher_version_task)
+                task_to_version[higher_version_task] = "higher_version"
+
+        # 并发执行所有任务
+        if tasks:
+            completed_tasks = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(completed_tasks):
+                task = tasks[i]
+                version = task_to_version[task]
+
+                # 检查是否有异常
+                if isinstance(result, Exception):
+                    logger.error(f"获取插件市场数据失败：{str(result)}")
                     continue
-            # 运行状插件
-            plugin_obj = self._running_plugins.get(pid)
-            # 非运行态插件
-            plugin_static = self._plugins.get(pid)
-            # 基本属性
-            plugin = schemas.Plugin()
-            # ID
-            plugin.id = pid
-            # 安装状态
-            if pid in installed_apps and plugin_static:
-                plugin.installed = True
-            else:
-                plugin.installed = False
-            # 是否有新版本
-            plugin.has_update = False
-            if plugin_static:
-                installed_version = getattr(plugin_static, "plugin_version")
-                if StringUtils.compare_version(installed_version, "<", plugin_info.get("version")):
-                    # 需要更新
-                    plugin.has_update = True
-            # 运行状态
-            if plugin_obj and hasattr(plugin_obj, "get_state"):
-                try:
-                    state = plugin_obj.get_state()
-                except Exception as e:
-                    logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
-                    state = False
-                plugin.state = state
-            else:
-                plugin.state = False
-            # 是否有详情页面
-            plugin.has_page = False
-            if plugin_obj and hasattr(plugin_obj, "get_page"):
-                if ObjectUtils.check_method(plugin_obj.get_page):
-                    plugin.has_page = True
-            # 公钥
-            if plugin_info.get("key"):
-                plugin.plugin_public_key = plugin_info.get("key")
-            # 权限
-            if not self.__set_and_check_auth_level(plugin=plugin, source=plugin_info):
-                continue
-            # 名称
-            if plugin_info.get("name"):
-                plugin.plugin_name = plugin_info.get("name")
-            # 描述
-            if plugin_info.get("description"):
-                plugin.plugin_desc = plugin_info.get("description")
-            # 版本
-            if plugin_info.get("version"):
-                plugin.plugin_version = plugin_info.get("version")
-            # 图标
-            if plugin_info.get("icon"):
-                plugin.plugin_icon = plugin_info.get("icon")
-            # 标签
-            if plugin_info.get("labels"):
-                plugin.plugin_label = plugin_info.get("labels")
-            # 作者
-            if plugin_info.get("author"):
-                plugin.plugin_author = plugin_info.get("author")
-            # 更新历史
-            if plugin_info.get("history"):
-                plugin.history = plugin_info.get("history")
-            # 仓库链接
-            plugin.repo_url = market
-            # 本地标志
-            plugin.is_local = False
-            # 添加顺序
-            plugin.add_time = add_time
-            # 汇总
-            ret_plugins.append(plugin)
+
+                plugins = result
+                if plugins:
+                    if version == "higher_version":
+                        higher_version_plugins.extend(plugins)  # 收集高版本插件
+                    else:
+                        base_version_plugins.extend(plugins)  # 收集 v1 版本插件
+
+        return self._process_plugins_list(higher_version_plugins, base_version_plugins)
+
+    async def async_get_plugins_from_market(self, market: str,
+                                            package_version: Optional[str] = None,
+                                            force: bool = False) -> Optional[List[schemas.Plugin]]:
+        """
+        异步从指定的市场获取插件信息
+        :param market: 市场的 URL 或标识
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
+        :param force: 是否强制刷新（忽略缓存）
+        :return: 返回插件的列表，若获取失败返回 []
+        """
+        if not market:
+            return []
+        # 已安装插件
+        installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+        # 获取在线插件
+        online_plugins = await PluginHelper().async_get_plugins(market, package_version, force)
+        if online_plugins is None:
+            logger.warning(
+                f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
+            return []
+        ret_plugins = []
+        add_time = len(online_plugins)
+        for pid, plugin_info in online_plugins.items():
+            plugin = self._process_plugin_info(pid, plugin_info, market, installed_apps, add_time, package_version)
+            if plugin:
+                ret_plugins.append(plugin)
             add_time -= 1
 
         return ret_plugins

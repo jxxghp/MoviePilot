@@ -14,10 +14,10 @@ class SystemConfig(Base):
     # 值
     value = Column(JSON)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_key(db: Session, key: str):
-        return db.query(SystemConfig).filter(SystemConfig.key == key).first()
+    def get_by_key(cls, db: Session, key: str):
+        return db.query(cls).filter(cls.key == key).first()
 
     @db_update
     def delete_by_key(self, db: Session, key: str):

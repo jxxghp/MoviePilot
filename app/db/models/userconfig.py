@@ -22,12 +22,12 @@ class UserConfig(Base):
         Index('ix_userconfig_username_key', 'username', 'key'),
     )
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_key(db: Session, username: str, key: str):
-        return db.query(UserConfig) \
-                 .filter(UserConfig.username == username) \
-                 .filter(UserConfig.key == key) \
+    def get_by_key(cls, db: Session, username: str, key: str):
+        return db.query(cls) \
+                 .filter(cls.username == username) \
+                 .filter(cls.key == key) \
                  .first()
 
     @db_update

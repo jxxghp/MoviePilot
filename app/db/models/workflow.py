@@ -44,135 +44,135 @@ class Workflow(Base):
     # 最后执行时间
     last_time = Column(String)
 
-    @staticmethod
+    @classmethod
     @db_query
-    def list(db):
-        return db.query(Workflow).all()
+    def list(cls, db):
+        return db.query(cls).all()
 
-    @staticmethod
+    @classmethod
     @async_db_query
-    async def async_list(db: AsyncSession):
-        result = await db.execute(select(Workflow))
+    async def async_list(cls, db: AsyncSession):
+        result = await db.execute(select(cls))
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_enabled_workflows(db):
-        return db.query(Workflow).filter(Workflow.state != 'P').all()
+    def get_enabled_workflows(cls, db):
+        return db.query(cls).filter(cls.state != 'P').all()
 
-    @staticmethod
+    @classmethod
     @async_db_query
-    async def async_get_enabled_workflows(db: AsyncSession):
-        result = await db.execute(select(Workflow).where(Workflow.state != 'P'))
+    async def async_get_enabled_workflows(cls, db: AsyncSession):
+        result = await db.execute(select(cls).where(cls.state != 'P'))
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_timer_triggered_workflows(db):
+    def get_timer_triggered_workflows(cls, db):
         """获取定时触发的工作流"""
-        return db.query(Workflow).filter(
+        return db.query(cls).filter(
             and_(
                 or_(
-                    Workflow.trigger_type == 'timer',
-                    not Workflow.trigger_type
+                    cls.trigger_type == 'timer',
+                    not cls.trigger_type
                 ),
-                Workflow.state != 'P'
+                cls.state != 'P'
             )
         ).all()
 
-    @staticmethod
+    @classmethod
     @async_db_query
-    async def async_get_timer_triggered_workflows(db: AsyncSession):
+    async def async_get_timer_triggered_workflows(cls, db: AsyncSession):
         """异步获取定时触发的工作流"""
-        result = await db.execute(select(Workflow).where(
+        result = await db.execute(select(cls).where(
             and_(
                 or_(
-                    Workflow.trigger_type == 'timer',
-                    not Workflow.trigger_type
+                    cls.trigger_type == 'timer',
+                    not cls.trigger_type
                 ),
-                Workflow.state != 'P'
+                cls.state != 'P'
             )
         ))
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_event_triggered_workflows(db):
+    def get_event_triggered_workflows(cls, db):
         """获取事件触发的工作流"""
-        return db.query(Workflow).filter(
+        return db.query(cls).filter(
             and_(
-                Workflow.trigger_type == 'event',
-                Workflow.state != 'P'
+                cls.trigger_type == 'event',
+                cls.state != 'P'
             )
         ).all()
 
-    @staticmethod
+    @classmethod
     @async_db_query
-    async def async_get_event_triggered_workflows(db: AsyncSession):
+    async def async_get_event_triggered_workflows(cls, db: AsyncSession):
         """异步获取事件触发的工作流"""
-        result = await db.execute(select(Workflow).where(
+        result = await db.execute(select(cls).where(
             and_(
-                Workflow.trigger_type == 'event',
-                Workflow.state != 'P'
+                cls.trigger_type == 'event',
+                cls.state != 'P'
             )
         ))
         return result.scalars().all()
 
-    @staticmethod
+    @classmethod
     @db_query
-    def get_by_name(db, name: str):
-        return db.query(Workflow).filter(Workflow.name == name).first()
+    def get_by_name(cls, db, name: str):
+        return db.query(cls).filter(cls.name == name).first()
 
-    @staticmethod
+    @classmethod
     @async_db_query
-    async def async_get_by_name(db: AsyncSession, name: str):
-        result = await db.execute(select(Workflow).where(Workflow.name == name))
+    async def async_get_by_name(cls, db: AsyncSession, name: str):
+        result = await db.execute(select(cls).where(cls.name == name))
         return result.scalars().first()
 
-    @staticmethod
+    @classmethod
     @db_update
-    def update_state(db, wid: int, state: str):
-        db.query(Workflow).filter(Workflow.id == wid).update({"state": state})
+    def update_state(cls, db, wid: int, state: str):
+        db.query(cls).filter(cls.id == wid).update({"state": state})
         return True
 
-    @staticmethod
+    @classmethod
     @async_db_update
-    async def async_update_state(db: AsyncSession, wid: int, state: str):
+    async def async_update_state(cls, db: AsyncSession, wid: int, state: str):
         from sqlalchemy import update
-        await db.execute(update(Workflow).where(Workflow.id == wid).values(state=state))
+        await db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
 
-    @staticmethod
+    @classmethod
     @db_update
-    def start(db, wid: int):
-        db.query(Workflow).filter(Workflow.id == wid).update({
+    def start(cls, db, wid: int):
+        db.query(cls).filter(cls.id == wid).update({
             "state": 'R'
         })
         return True
 
-    @staticmethod
+    @classmethod
     @async_db_update
-    async def async_start(db: AsyncSession, wid: int):
+    async def async_start(cls, db: AsyncSession, wid: int):
         from sqlalchemy import update
-        await db.execute(update(Workflow).where(Workflow.id == wid).values(state='R'))
+        await db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
 
-    @staticmethod
+    @classmethod
     @db_update
-    def fail(db, wid: int, result: str):
-        db.query(Workflow).filter(and_(Workflow.id == wid, Workflow.state != "P")).update({
+    def fail(cls, db, wid: int, result: str):
+        db.query(cls).filter(and_(cls.id == wid, cls.state != "P")).update({
             "state": 'F',
             "result": result,
             "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         })
         return True
 
-    @staticmethod
+    @classmethod
     @async_db_update
-    async def async_fail(db: AsyncSession, wid: int, result: str):
+    async def async_fail(cls, db: AsyncSession, wid: int, result: str):
         from sqlalchemy import update
-        await db.execute(update(Workflow).where(
-            and_(Workflow.id == wid, Workflow.state != "P")
+        await db.execute(update(cls).where(
+            and_(cls.id == wid, cls.state != "P")
         ).values(
             state='F',
             result=result,
@@ -180,73 +180,73 @@ class Workflow(Base):
         ))
         return True
 
-    @staticmethod
+    @classmethod
     @db_update
-    def success(db, wid: int, result: Optional[str] = None):
-        db.query(Workflow).filter(and_(Workflow.id == wid, Workflow.state != "P")).update({
+    def success(cls, db, wid: int, result: Optional[str] = None):
+        db.query(cls).filter(and_(cls.id == wid, cls.state != "P")).update({
             "state": 'S',
             "result": result,
-            "run_count": Workflow.run_count + 1,
+            "run_count": cls.run_count + 1,
             "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         })
         return True
 
-    @staticmethod
+    @classmethod
     @async_db_update
-    async def async_success(db: AsyncSession, wid: int, result: Optional[str] = None):
+    async def async_success(cls, db: AsyncSession, wid: int, result: Optional[str] = None):
         from sqlalchemy import update
-        await db.execute(update(Workflow).where(
-            and_(Workflow.id == wid, Workflow.state != "P")
+        await db.execute(update(cls).where(
+            and_(cls.id == wid, cls.state != "P")
         ).values(
             state='S',
             result=result,
-            run_count=Workflow.run_count + 1,
+            run_count=cls.run_count + 1,
             last_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         ))
         return True
 
-    @staticmethod
+    @classmethod
     @db_update
-    def reset(db, wid: int, reset_count: Optional[bool] = False):
-        db.query(Workflow).filter(Workflow.id == wid).update({
+    def reset(cls, db, wid: int, reset_count: Optional[bool] = False):
+        db.query(cls).filter(cls.id == wid).update({
             "state": 'W',
             "result": None,
             "current_action": None,
-            "run_count": 0 if reset_count else Workflow.run_count,
+            "run_count": 0 if reset_count else cls.run_count,
         })
         return True
 
-    @staticmethod
+    @classmethod
     @async_db_update
-    async def async_reset(db: AsyncSession, wid: int, reset_count: Optional[bool] = False):
+    async def async_reset(cls, db: AsyncSession, wid: int, reset_count: Optional[bool] = False):
         from sqlalchemy import update
-        await db.execute(update(Workflow).where(Workflow.id == wid).values(
+        await db.execute(update(cls).where(cls.id == wid).values(
             state='W',
             result=None,
             current_action=None,
-            run_count=0 if reset_count else Workflow.run_count,
+            run_count=0 if reset_count else cls.run_count,
         ))
         return True
 
-    @staticmethod
+    @classmethod
     @db_update
-    def update_current_action(db, wid: int, action_id: str, context: dict):
-        db.query(Workflow).filter(Workflow.id == wid).update({
-            "current_action": Workflow.current_action + f",{action_id}" if Workflow.current_action else action_id,
+    def update_current_action(cls, db, wid: int, action_id: str, context: dict):
+        db.query(cls).filter(cls.id == wid).update({
+            "current_action": cls.current_action + f",{action_id}" if cls.current_action else action_id,
             "context": context
         })
         return True
 
-    @staticmethod
+    @classmethod
     @async_db_update
-    async def async_update_current_action(db: AsyncSession, wid: int, action_id: str, context: dict):
+    async def async_update_current_action(cls, db: AsyncSession, wid: int, action_id: str, context: dict):
         from sqlalchemy import update
         # 先获取当前current_action
-        result = await db.execute(select(Workflow.current_action).where(Workflow.id == wid))
+        result = await db.execute(select(cls.current_action).where(cls.id == wid))
         current_action = result.scalar()
         new_current_action = current_action + f",{action_id}" if current_action else action_id
-        
-        await db.execute(update(Workflow).where(Workflow.id == wid).values(
+
+        await db.execute(update(cls).where(cls.id == wid).values(
             current_action=new_current_action,
             context=context
         ))
