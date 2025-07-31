@@ -62,13 +62,13 @@ class BangumiChain(ChainBase):
         """
         获取Bangumi每日放送（异步版本）
         """
-        return await self.run_module("async_bangumi_calendar")
+        return await self.async_run_module("async_bangumi_calendar")
 
     async def async_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
         """
         发现Bangumi番剧（异步版本）
         """
-        return await self.run_module("async_bangumi_discover", **kwargs)
+        return await self.async_run_module("async_bangumi_discover", **kwargs)
 
     async def async_bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
@@ -76,32 +76,32 @@ class BangumiChain(ChainBase):
         :param bangumiid: BangumiID
         :return: Bangumi信息
         """
-        return await self.run_module("async_bangumi_info", bangumiid=bangumiid)
+        return await self.async_run_module("async_bangumi_info", bangumiid=bangumiid)
 
     async def async_bangumi_credits(self, bangumiid: int) -> List[schemas.MediaPerson]:
         """
         根据BangumiID查询电影演职员表（异步版本）
         :param bangumiid:  BangumiID
         """
-        return await self.run_module("async_bangumi_credits", bangumiid=bangumiid)
+        return await self.async_run_module("async_bangumi_credits", bangumiid=bangumiid)
 
     async def async_bangumi_recommend(self, bangumiid: int) -> Optional[List[MediaInfo]]:
         """
         根据BangumiID查询推荐电影（异步版本）
         :param bangumiid:  BangumiID
         """
-        return await self.run_module("async_bangumi_recommend", bangumiid=bangumiid)
+        return await self.async_run_module("async_bangumi_recommend", bangumiid=bangumiid)
 
     async def async_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
         """
         根据人物ID查询Bangumi人物详情（异步版本）
         :param person_id:  人物ID
         """
-        return await self.run_module("async_bangumi_person_detail", person_id=person_id)
+        return await self.async_run_module("async_bangumi_person_detail", person_id=person_id)
 
     async def async_person_credits(self, person_id: int) -> Optional[List[MediaInfo]]:
         """
         根据人物ID查询人物参演作品（异步版本）
         :param person_id:  人物ID
         """
-        return await self.run_module("async_bangumi_person_credits", person_id=person_id)
+        return await self.async_run_module("async_bangumi_person_credits", person_id=person_id)

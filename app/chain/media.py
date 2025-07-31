@@ -763,3 +763,129 @@ class MediaChain(ChainBase):
                                 else:
                                     logger.info(f"电视剧图片刮削已关闭，跳过：{image_name}")
         logger.info(f"{filepath.name} 刮削完成")
+
+    async def async_recognize_by_meta(self, metainfo: MetaBase,
+                                      episode_group: Optional[str] = None) -> Optional[MediaInfo]:
+        """
+        根据主副标题识别媒体信息（异步版本）
+        """
+        title = metainfo.title
+        # 识别媒体信息
+        mediainfo: MediaInfo = await self.async_recognize_media(meta=metainfo, episode_group=episode_group)
+        if not mediainfo:
+            # 尝试使用辅助识别，如果有注册响应事件的话
+            if eventmanager.check(ChainEventType.NameRecognize):
+                logger.info(f'请求辅助识别，标题：{title} ...')
+                mediainfo = await self.async_recognize_help(title=title, org_meta=metainfo)
+            if not mediainfo:
+                logger.warn(f'{title} 未识别到媒体信息')
+                return None
+        # 识别成功
+        logger.info(f'{title} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}')
+        # 更新媒体图片
+        await self.async_obtain_images(mediainfo=mediainfo)
+        # 返回上下文
+        return mediainfo
+
+    async def async_recognize_help(self, title: str, org_meta: MetaBase) -> Optional[MediaInfo]:
+        """
+        请求辅助识别，返回媒体信息（异步版本）
+        :param title: 标题
+        :param org_meta: 原始元数据
+        """
+        # 发送请求事件，等待结果
+        result: Event = eventmanager.send_event(
+            ChainEventType.NameRecognize,
+            {
+                'title': title,
+            }
+        )
+        if not result:
+            return None
+        # 获取返回事件数据
+        event_data = result.event_data or {}
+        logger.info(f'获取到辅助识别结果：{event_data}')
+        # 处理数据格式
+        title, year, season_number, episode_number = None, None, None, None
+        if event_data.get("name"):
+            title = str(event_data["name"]).split("/")[0].strip().replace(".", " ")
+        if event_data.get("year"):
+            year = str(event_data["year"]).split("/")[0].strip()
+        if event_data.get("season") and str(event_data["season"]).isdigit():
+            season_number = int(event_data["season"])
+        if event_data.get("episode") and str(event_data["episode"]).isdigit():
+            episode_number = int(event_data["episode"])
+        if not title:
+            return None
+        if title == 'Unknown':
+            return None
+        if not str(year).isdigit():
+            year = None
+        # 结果赋值
+        if title == org_meta.name and year == org_meta.year:
+            logger.info(f'辅助识别与原始识别结果一致，无需重新识别媒体信息')
+            return None
+        logger.info(f'辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...')
+        org_meta.name = title
+        org_meta.year = year
+        org_meta.begin_season = season_number
+        org_meta.begin_episode = episode_number
+        if org_meta.begin_season or org_meta.begin_episode:
+            org_meta.type = MediaType.TV
+        # 重新识别
+        return await self.async_recognize_media(meta=org_meta)
+
+    async def async_recognize_by_path(self, path: str, episode_group: Optional[str] = None) -> Optional[Context]:
+        """
+        根据文件路径识别媒体信息（异步版本）
+        """
+        logger.info(f'开始识别媒体信息，文件：{path} ...')
+        file_path = Path(path)
+        # 元数据
+        file_meta = MetaInfoPath(file_path)
+        # 识别媒体信息
+        mediainfo = await self.async_recognize_media(meta=file_meta, episode_group=episode_group)
+        if not mediainfo:
+            # 尝试使用辅助识别，如果有注册响应事件的话
+            if eventmanager.check(ChainEventType.NameRecognize):
+                logger.info(f'请求辅助识别，标题：{file_path.name} ...')
+                mediainfo = await self.async_recognize_help(title=path, org_meta=file_meta)
+            if not mediainfo:
+                logger.warn(f'{path} 未识别到媒体信息')
+                return Context(meta_info=file_meta)
+        logger.info(f'{path} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}')
+        # 更新媒体图片
+        await self.async_obtain_images(mediainfo=mediainfo)
+        # 返回上下文
+        return Context(meta_info=file_meta, media_info=mediainfo)
+
+    async def async_search(self, title: str) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
+        """
+        搜索媒体/人物信息（异步版本）
+        :param title: 搜索内容
+        :return: 识别元数据，媒体信息列表
+        """
+        # 提取要素
+        mtype, key_word, season_num, episode_num, year, content = StringUtils.get_keyword(title)
+        # 识别
+        meta = MetaInfo(content)
+        if not meta.name:
+            meta.cn_name = content
+        # 合并信息
+        if mtype:
+            meta.type = mtype
+        if season_num:
+            meta.begin_season = season_num
+        if episode_num:
+            meta.begin_episode = episode_num
+        if year:
+            meta.year = year
+        # 开始搜索
+        logger.info(f"开始搜索媒体信息：{meta.name}")
+        medias: Optional[List[MediaInfo]] = await self.async_search_medias(meta=meta)
+        if not medias:
+            logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
+            return meta, []
+        logger.info(f"{content} 搜索到 {len(medias)} 条相关媒体信息")
+        # 识别的元数据，媒体信息列表
+        return meta, medias

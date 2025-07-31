@@ -17,14 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 class TMDb(object):
-    _req = None
-    _async_req = None
-    _session = None
 
     def __init__(self, obj_cached=True, session=None, language=None):
         self._api_key = settings.TMDB_API_KEY
         self._language = language or settings.TMDB_LOCALE or "en-US"
         self._session_id = None
+        self._session = session
         self._wait_on_rate_limit = True
         self._debug_enabled = False
         self._cache_enabled = obj_cached
@@ -34,13 +32,12 @@ class TMDb(object):
         self._total_results = None
         self._total_pages = None
 
-        if session is not None:
-            self._req = RequestUtils(session=session, proxies=self.proxies)
-        else:
+        if not self._session:
             self._session = requests.Session()
-            self._req = RequestUtils(session=self._session, proxies=self.proxies)
-        # 初始化异步请求客户端
-        self._async_req = AsyncRequestUtils(proxies=self.proxies)
+        self._req = RequestUtils(ua=settings.NORMAL_USER_AGENT, session=self._session, proxies=self.proxies)
+
+        self._async_req = AsyncRequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=self.proxies)
+
         self._remaining = 40
         self._reset = None
         self._timeout = 15

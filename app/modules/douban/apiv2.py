@@ -155,7 +155,6 @@ class DoubanApi(metaclass=WeakSingleton):
 
     def __init__(self):
         self._session = requests.Session()
-        self._async_req = AsyncRequestUtils()
 
     @classmethod
     def __sign(cls, url: str, ts: str, method='GET') -> str:
@@ -249,7 +248,9 @@ class DoubanApi(metaclass=WeakSingleton):
         GET请求（异步版本）
         """
         req_url, params = self._prepare_get_request(url, **kwargs)
-        resp = await self._async_req.get_res(url=req_url, params=params)
+        resp = await AsyncRequestUtils(
+            ua=choice(self._user_agents)
+        ).get_res(url=req_url, params=params)
         return self._handle_response(resp)
 
     def _prepare_post_request(self, url: str, **kwargs) -> tuple[str, dict]:
@@ -292,7 +293,9 @@ class DoubanApi(metaclass=WeakSingleton):
         POST请求（异步版本）
         """
         req_url, params = self._prepare_post_request(url, **kwargs)
-        resp = await self._async_req.post_res(url=req_url, data=params)
+        resp = await AsyncRequestUtils(
+            ua=settings.NORMAL_USER_AGENT
+        ).post_res(url=req_url, data=params)
         return self._handle_response(resp)
 
     def imdbid(self, imdbid: str,

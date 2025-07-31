@@ -15,6 +15,7 @@ from app.core.cache import cache_backend, cached
 from app.core.config import settings, global_vars
 from app.log import logger
 from app.schemas import MediaType
+from app.utils.asyncio import AsyncUtils
 from app.utils.common import log_execution_time
 from app.utils.http import AsyncRequestUtils
 from app.utils.security import SecurityUtils
@@ -38,7 +39,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         刷新推荐数据 - 同步包装器
         """
         try:
-            asyncio.run(self.async_refresh_recommend())
+            AsyncUtils.run_async(self.async_refresh_recommend())
         except Exception as e:
             logger.error(f"刷新推荐数据失败：{str(e)}")
             raise

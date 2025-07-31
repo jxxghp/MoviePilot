@@ -28,8 +28,8 @@ class BangumiApi(object):
 
     def __init__(self):
         self._session = requests.Session()
-        self._req = RequestUtils(session=self._session)
-        self._async_req = AsyncRequestUtils()
+        self._req = RequestUtils(ua=settings.NORMAL_USER_AGENT, session=self._session)
+        self._async_req = AsyncRequestUtils(ua=settings.NORMAL_USER_AGENT)
 
     @cached(maxsize=settings.CONF.bangumi, ttl=settings.CONF.meta)
     def __invoke(self, url, key: Optional[str] = None, **kwargs):

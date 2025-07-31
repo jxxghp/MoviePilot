@@ -352,7 +352,11 @@ class SiteParserBase(metaclass=ABCMeta):
                                headers=req_headers).get_res(url=url)
         if res is not None and res.status_code in (200, 500, 403):
             if req_headers and "application/json" in str(req_headers.get("Accept")):
-                return json.dumps(res.json())
+                try:
+                    return json.dumps(res.json())
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"{self._site_name} API响应JSON解析失败: {e}")
+                    return ""
             else:
                 # 如果cloudflare 有防护，尝试使用浏览器仿真
                 if under_challenge(res.text):

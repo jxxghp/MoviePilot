@@ -92,7 +92,12 @@ class WorkflowHelper(metaclass=WeakSingleton):
                 cache_backend.clear(region=self._shares_cache_region)
             return True, ""
         else:
-            return False, res.json().get("message")
+            try:
+                error_msg = res.json().get("message", "未知错误")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"工作流响应JSON解析失败: {e}")
+                error_msg = f"响应解析失败: {res.text[:100]}..."
+            return False, error_msg
 
     @staticmethod
     def _handle_list_response(res) -> List[dict]:
@@ -100,7 +105,11 @@ class WorkflowHelper(metaclass=WeakSingleton):
         处理返回List的HTTP响应
         """
         if res and res.status_code == 200:
-            return res.json()
+            try:
+                return res.json()
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"工作流列表响应JSON解析失败: {e}")
+                return []
         return []
 
     def workflow_share(self, workflow_id: int,

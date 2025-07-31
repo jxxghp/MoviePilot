@@ -332,6 +332,39 @@ class ChainBase(metaclass=ABCMeta):
                                tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid,
                                episode_group=episode_group, cache=cache)
 
+    async def async_recognize_media(self, meta: MetaBase = None,
+                                    mtype: Optional[MediaType] = None,
+                                    tmdbid: Optional[int] = None,
+                                    doubanid: Optional[str] = None,
+                                    bangumiid: Optional[int] = None,
+                                    episode_group: Optional[str] = None,
+                                    cache: bool = True) -> Optional[MediaInfo]:
+        """
+        识别媒体信息，不含Fanart图片（异步版本）
+        :param meta:     识别的元数据
+        :param mtype:    识别的媒体类型，与tmdbid配套
+        :param tmdbid:   tmdbid
+        :param doubanid: 豆瓣ID
+        :param bangumiid: BangumiID
+        :param episode_group: 剧集组
+        :param cache:    是否使用缓存
+        :return: 识别的媒体信息，包括剧集信息
+        """
+        # 识别用名中含指定信息情形
+        if not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
+            mtype = meta.type
+        if not tmdbid and hasattr(meta, "tmdbid"):
+            tmdbid = meta.tmdbid
+        if not doubanid and hasattr(meta, "doubanid"):
+            doubanid = meta.doubanid
+        # 有tmdbid时不使用其它ID
+        if tmdbid:
+            doubanid = None
+            bangumiid = None
+        return await self.async_run_module("async_recognize_media", meta=meta, mtype=mtype,
+                                           tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid,
+                                           episode_group=episode_group, cache=cache)
+
     def match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
                          mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None,
                          raise_exception: bool = False) -> Optional[dict]:
@@ -347,6 +380,22 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("match_doubaninfo", name=name, imdbid=imdbid,
                                mtype=mtype, year=year, season=season, raise_exception=raise_exception)
 
+    async def async_match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
+                                     mtype: Optional[MediaType] = None, year: Optional[str] = None,
+                                     season: Optional[int] = None,
+                                     raise_exception: bool = False) -> Optional[dict]:
+        """
+        搜索和匹配豆瓣信息（异步版本）
+        :param name: 标题
+        :param imdbid: imdbid
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 季
+        :param raise_exception: 触发速率限制时是否抛出异常
+        """
+        return await self.async_run_module("async_match_doubaninfo", name=name, imdbid=imdbid,
+                                           mtype=mtype, year=year, season=season, raise_exception=raise_exception)
+
     def match_tmdbinfo(self, name: str, mtype: Optional[MediaType] = None,
                        year: Optional[str] = None, season: Optional[int] = None) -> Optional[dict]:
         """
@@ -359,6 +408,18 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("match_tmdbinfo", name=name,
                                mtype=mtype, year=year, season=season)
 
+    async def async_match_tmdbinfo(self, name: str, mtype: Optional[MediaType] = None,
+                                   year: Optional[str] = None, season: Optional[int] = None) -> Optional[dict]:
+        """
+        搜索和匹配TMDB信息（异步版本）
+        :param name: 标题
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 季
+        """
+        return await self.async_run_module("async_match_tmdbinfo", name=name,
+                                           mtype=mtype, year=year, season=season)
+
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
         补充抓取媒体信息图片
@@ -366,6 +427,14 @@ class ChainBase(metaclass=ABCMeta):
         :return: 更新后的媒体信息
         """
         return self.run_module("obtain_images", mediainfo=mediainfo)
+
+    async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        """
+        补充抓取媒体信息图片（异步版本）
+        :param mediainfo:  识别的媒体信息
+        :return: 更新后的媒体信息
+        """
+        return await self.async_run_module("async_obtain_images", mediainfo=mediainfo)
 
     def obtain_specific_image(self, mediaid: Union[str, int], mtype: MediaType,
                               image_type: MediaImageType, image_prefix: Optional[str] = None,
@@ -403,7 +472,7 @@ class ChainBase(metaclass=ABCMeta):
         :return: 豆瓣信息
         :param raise_exception: 触发速率限制时是否抛出异常
         """
-        return await self.run_module("async_douban_info", doubanid=doubanid, mtype=mtype,
+        return await self.async_run_module("async_douban_info", doubanid=doubanid, mtype=mtype,
                                      raise_exception=raise_exception)
 
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:
@@ -424,6 +493,16 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("tmdb_info", tmdbid=tmdbid, mtype=mtype, season=season)
 
+    async def async_tmdb_info(self, tmdbid: int, mtype: MediaType, season: Optional[int] = None) -> Optional[dict]:
+        """
+        获取TMDB信息（异步版本）
+        :param tmdbid: int
+        :param mtype:  媒体类型
+        :param season: 季
+        :return: TVDB信息
+        """
+        return await self.async_run_module("async_tmdb_info", tmdbid=tmdbid, mtype=mtype, season=season)
+
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
         获取Bangumi信息
@@ -431,6 +510,14 @@ class ChainBase(metaclass=ABCMeta):
         :return: Bangumi信息
         """
         return self.run_module("bangumi_info", bangumiid=bangumiid)
+
+    async def async_bangumi_info(self, bangumiid: int) -> Optional[dict]:
+        """
+        获取Bangumi信息（异步版本）
+        :param bangumiid: int
+        :return: Bangumi信息
+        """
+        return await self.async_run_module("async_bangumi_info", bangumiid=bangumiid)
 
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
@@ -465,6 +552,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_medias", meta=meta)
 
+    async def async_search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+        """
+        搜索媒体信息（异步版本）
+        :param meta:  识别的元数据
+        :reutrn: 媒体信息列表
+        """
+        return await self.async_run_module("async_search_medias", meta=meta)
+
     def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息
@@ -472,12 +567,26 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_persons", name=name)
 
+    async def async_search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+        """
+        搜索人物信息（异步版本）
+        :param name:  人物名称
+        """
+        return await self.async_run_module("async_search_persons", name=name)
+
     def search_collections(self, name: str) -> Optional[List[MediaInfo]]:
         """
         搜索集合信息
         :param name:  集合名称
         """
         return self.run_module("search_collections", name=name)
+
+    async def async_search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+        """
+        搜索集合信息（异步版本）
+        :param name:  集合名称
+        """
+        return await self.async_run_module("async_search_collections", name=name)
 
     def search_torrents(self, site: dict,
                         keywords: List[str],
