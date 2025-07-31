@@ -2,9 +2,11 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Column, Integer, String, Sequence, JSON
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import db_query, db_update, async_db_query, Base
 
 
 class MediaServerItem(Base):
@@ -66,3 +68,24 @@ class MediaServerItem(Base):
         return db.query(cls).filter(cls.title == title,
                                     cls.item_type == mtype,
                                     cls.year == str(year)).first()
+
+    @classmethod
+    @async_db_query
+    async def async_get_by_itemid(cls, db: AsyncSession, item_id: str):
+        result = await db.execute(select(cls).filter(cls.item_id == item_id))
+        return result.scalars().first()
+
+    @classmethod
+    @async_db_query
+    async def async_exist_by_tmdbid(cls, db: AsyncSession, tmdbid: int, mtype: str):
+        result = await db.execute(select(cls).filter(cls.tmdbid == tmdbid,
+                                                     cls.item_type == mtype))
+        return result.scalars().first()
+
+    @classmethod
+    @async_db_query
+    async def async_exists_by_title(cls, db: AsyncSession, title: str, mtype: str, year: str):
+        result = await db.execute(select(cls).filter(cls.title == title,
+                                                     cls.item_type == mtype,
+                                                     cls.year == str(year)))
+        return result.scalars().first()

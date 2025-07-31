@@ -47,6 +47,12 @@ class SiteOper(DbOper):
         """
         return Site.get_actives(self._db)
 
+    async def async_list_active(self) -> List[Site]:
+        """
+        异步按状态获取站点列表
+        """
+        return await Site.async_get_actives(self._db)
+
     def delete(self, sid: int):
         """
         删除站点
@@ -66,6 +72,12 @@ class SiteOper(DbOper):
         按域名获取站点
         """
         return Site.get_by_domain(self._db, domain)
+
+    async def async_get_by_domain(self, domain: str) -> Site:
+        """
+        异步按域名获取站点
+        """
+        return await Site.async_get_by_domain(self._db, domain)
 
     def get_domains_by_ids(self, ids: List[int]) -> List[str]:
         """

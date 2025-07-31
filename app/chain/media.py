@@ -230,17 +230,15 @@ class MediaChain(ChainBase):
             meta_names = list(dict.fromkeys([k for k in [meta_org.name,
                                                          meta.cn_name,
                                                          meta.en_name] if k]))
-            for name in meta_names:
-                tmdbinfo = self.match_tmdbinfo(
-                    name=name,
-                    year=meta.year,
-                    mtype=mtype or meta.type,
-                    season=meta.begin_season
-                )
-                if tmdbinfo:
-                    # 合季季后返回
-                    tmdbinfo['season'] = meta.begin_season
-                    break
+            tmdbinfo = self._match_tmdb_with_names(
+                meta_names=meta_names,
+                year=meta.year,
+                mtype=mtype or meta.type,
+                season=meta.begin_season
+            )
+            if tmdbinfo:
+                # 合季季后返回
+                tmdbinfo['season'] = meta.begin_season
         return tmdbinfo
 
     def get_tmdbinfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
@@ -256,23 +254,17 @@ class MediaChain(ChainBase):
             else:
                 meta_cn = meta = MetaInfo(title=bangumiinfo.get("name"))
             # 年份
-            release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
-            if release_date:
-                year = release_date[:4]
-            else:
-                year = None
+            year = self._extract_year_from_bangumi(bangumiinfo)
             # 识别TMDB媒体信息
             meta_names = list(dict.fromkeys([k for k in [meta_cn.name,
                                                          meta.name] if k]))
-            for name in meta_names:
-                tmdbinfo = self.match_tmdbinfo(
-                    name=name,
-                    year=year,
-                    mtype=MediaType.TV,
-                    season=meta.begin_season
-                )
-                if tmdbinfo:
-                    return tmdbinfo
+            tmdbinfo = self._match_tmdb_with_names(
+                meta_names=meta_names,
+                year=year,
+                mtype=MediaType.TV,
+                season=meta.begin_season
+            )
+            return tmdbinfo
         return None
 
     def get_doubaninfo_by_tmdbid(self, tmdbid: int,
@@ -285,19 +277,7 @@ class MediaChain(ChainBase):
             # 名称
             name = tmdbinfo.get("title") or tmdbinfo.get("name")
             # 年份
-            year = None
-            if tmdbinfo.get('release_date'):
-                year = tmdbinfo['release_date'][:4]
-            elif tmdbinfo.get('seasons') and season:
-                for seainfo in tmdbinfo['seasons']:
-                    # 季
-                    season_number = seainfo.get("season_number")
-                    if not season_number:
-                        continue
-                    air_date = seainfo.get("air_date")
-                    if air_date and season_number == season:
-                        year = air_date[:4]
-                        break
+            year = self._extract_year_from_tmdb(tmdbinfo, season)
             # IMDBID
             imdbid = tmdbinfo.get("external_ids", {}).get("imdb_id")
             return self.match_doubaninfo(
@@ -320,11 +300,7 @@ class MediaChain(ChainBase):
             else:
                 meta = MetaInfo(title=bangumiinfo.get("name"))
             # 年份
-            release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
-            if release_date:
-                year = release_date[:4]
-            else:
-                year = None
+            year = self._extract_year_from_bangumi(bangumiinfo)
             # 使用名称识别豆瓣媒体信息
             return self.match_doubaninfo(
                 name=meta.name,
@@ -889,3 +865,169 @@ class MediaChain(ChainBase):
         logger.info(f"{content} 搜索到 {len(medias)} 条相关媒体信息")
         # 识别的元数据，媒体信息列表
         return meta, medias
+
+    @staticmethod
+    def _extract_year_from_bangumi(bangumiinfo: dict) -> Optional[str]:
+        """
+        从Bangumi信息中提取年份
+        """
+        release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
+        if release_date:
+            return release_date[:4]
+        return None
+
+    @staticmethod
+    def _extract_year_from_tmdb(tmdbinfo: dict, season: Optional[int] = None) -> Optional[str]:
+        """
+        从TMDB信息中提取年份
+        """
+        year = None
+        if tmdbinfo.get('release_date'):
+            year = tmdbinfo['release_date'][:4]
+        elif tmdbinfo.get('seasons') and season:
+            for seainfo in tmdbinfo['seasons']:
+                season_number = seainfo.get("season_number")
+                if not season_number:
+                    continue
+                air_date = seainfo.get("air_date")
+                if air_date and season_number == season:
+                    year = air_date[:4]
+                    break
+        return year
+
+    def _match_tmdb_with_names(self, meta_names: list, year: Optional[str],
+                               mtype: MediaType, season: Optional[int] = None) -> Optional[dict]:
+        """
+        使用名称列表匹配TMDB信息
+        """
+        for name in meta_names:
+            tmdbinfo = self.match_tmdbinfo(
+                name=name,
+                year=year,
+                mtype=mtype,
+                season=season
+            )
+            if tmdbinfo:
+                return tmdbinfo
+        return None
+
+    async def _async_match_tmdb_with_names(self, meta_names: list, year: Optional[str],
+                                           mtype: MediaType, season: Optional[int] = None) -> Optional[dict]:
+        """
+        使用名称列表匹配TMDB信息（异步版本）
+        """
+        for name in meta_names:
+            tmdbinfo = await self.async_match_tmdbinfo(
+                name=name,
+                year=year,
+                mtype=mtype,
+                season=season
+            )
+            if tmdbinfo:
+                return tmdbinfo
+        return None
+
+    async def async_get_tmdbinfo_by_doubanid(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
+        """
+        根据豆瓣ID获取TMDB信息（异步版本）
+        """
+        tmdbinfo = None
+        doubaninfo = await self.async_douban_info(doubanid=doubanid, mtype=mtype)
+        if doubaninfo:
+            # 优先使用原标题匹配
+            if doubaninfo.get("original_title"):
+                meta = MetaInfo(title=doubaninfo.get("title"))
+                meta_org = MetaInfo(title=doubaninfo.get("original_title"))
+            else:
+                meta_org = meta = MetaInfo(title=doubaninfo.get("title"))
+            # 年份
+            if doubaninfo.get("year"):
+                meta.year = doubaninfo.get("year")
+            # 处理类型
+            if isinstance(doubaninfo.get('media_type'), MediaType):
+                meta.type = doubaninfo.get('media_type')
+            else:
+                meta.type = MediaType.MOVIE if doubaninfo.get("type") == "movie" else MediaType.TV
+            # 匹配TMDB信息
+            meta_names = list(dict.fromkeys([k for k in [meta_org.name,
+                                                         meta.cn_name,
+                                                         meta.en_name] if k]))
+            tmdbinfo = await self._async_match_tmdb_with_names(
+                meta_names=meta_names,
+                year=meta.year,
+                mtype=mtype or meta.type,
+                season=meta.begin_season
+            )
+            if tmdbinfo:
+                # 合季季后返回
+                tmdbinfo['season'] = meta.begin_season
+        return tmdbinfo
+
+    async def async_get_tmdbinfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
+        """
+        根据BangumiID获取TMDB信息（异步版本）
+        """
+        bangumiinfo = await self.async_bangumi_info(bangumiid=bangumiid)
+        if bangumiinfo:
+            # 优先使用原标题匹配
+            if bangumiinfo.get("name_cn"):
+                meta = MetaInfo(title=bangumiinfo.get("name"))
+                meta_cn = MetaInfo(title=bangumiinfo.get("name_cn"))
+            else:
+                meta_cn = meta = MetaInfo(title=bangumiinfo.get("name"))
+            # 年份
+            year = self._extract_year_from_bangumi(bangumiinfo)
+            # 识别TMDB媒体信息
+            meta_names = list(dict.fromkeys([k for k in [meta_cn.name,
+                                                         meta.name] if k]))
+            tmdbinfo = await self._async_match_tmdb_with_names(
+                meta_names=meta_names,
+                year=year,
+                mtype=MediaType.TV,
+                season=meta.begin_season
+            )
+            return tmdbinfo
+        return None
+
+    async def async_get_doubaninfo_by_tmdbid(self, tmdbid: int, mtype: MediaType = None,
+                                             season: Optional[int] = None) -> Optional[dict]:
+        """
+        根据TMDBID获取豆瓣信息（异步版本）
+        """
+        tmdbinfo = await self.async_tmdb_info(tmdbid=tmdbid, mtype=mtype)
+        if tmdbinfo:
+            # 名称
+            name = tmdbinfo.get("title") or tmdbinfo.get("name")
+            # 年份
+            year = self._extract_year_from_tmdb(tmdbinfo, season)
+            # IMDBID
+            imdbid = tmdbinfo.get("external_ids", {}).get("imdb_id")
+            return await self.async_match_doubaninfo(
+                name=name,
+                year=year,
+                mtype=mtype,
+                imdbid=imdbid
+            )
+        return None
+
+    async def async_get_doubaninfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
+        """
+        根据BangumiID获取豆瓣信息（异步版本）
+        """
+        bangumiinfo = await self.async_bangumi_info(bangumiid=bangumiid)
+        if bangumiinfo:
+            # 优先使用中文标题匹配
+            if bangumiinfo.get("name_cn"):
+                meta = MetaInfo(title=bangumiinfo.get("name_cn"))
+            else:
+                meta = MetaInfo(title=bangumiinfo.get("name"))
+            # 年份
+            year = self._extract_year_from_bangumi(bangumiinfo)
+            # 使用名称识别豆瓣媒体信息
+            return await self.async_match_doubaninfo(
+                name=meta.name,
+                year=year,
+                mtype=MediaType.TV,
+                season=meta.begin_season
+            )
+        return None

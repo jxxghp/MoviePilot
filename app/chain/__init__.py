@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
+import aiofiles
 from qbittorrentapi import TorrentFilesList
 from transmission_rpc import File
 
@@ -58,6 +59,32 @@ class ChainBase(metaclass=ABCMeta):
             except Exception as err:
                 logger.error(f"加载缓存 {filename} 出错：{str(err)}")
         return None
+
+    @staticmethod
+    async def async_load_cache(filename: str) -> Any:
+        """
+        异步从本地加载缓存
+        """
+        cache_path = settings.TEMP_PATH / filename
+        if cache_path.exists():
+            try:
+                async with aiofiles.open(cache_path, 'rb') as f:
+                    content = await f.read()
+                    return pickle.loads(content)
+            except Exception as err:
+                logger.error(f"加载缓存 {filename} 出错：{str(err)}")
+        return None
+
+    @staticmethod
+    async def async_save_cache(cache: Any, filename: str) -> None:
+        """
+        异步保存缓存到本地
+        """
+        try:
+            async with aiofiles.open(settings.TEMP_PATH / filename, 'wb') as f:
+                await f.write(pickle.dumps(cache))
+        except Exception as err:
+            logger.error(f"保存缓存 {filename} 出错：{str(err)}")
 
     @staticmethod
     def save_cache(cache: Any, filename: str) -> None:
@@ -602,6 +629,21 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_torrents", site=site, keywords=keywords,
                                mtype=mtype, page=page)
+
+    async def async_search_torrents(self, site: dict,
+                                    keywords: List[str],
+                                    mtype: Optional[MediaType] = None,
+                                    page: Optional[int] = 0) -> List[TorrentInfo]:
+        """
+        异步搜索一个站点的种子资源
+        :param site:  站点
+        :param keywords:  搜索关键词列表
+        :param mtype:  媒体类型
+        :param page:  页码
+        :reutrn: 资源列表
+        """
+        return await self.async_run_module("search_torrents", site=site, keywords=keywords,
+                                           mtype=mtype, page=page)
 
     def refresh_torrents(self, site: dict, keyword: Optional[str] = None,
                          cat: Optional[str] = None, page: Optional[int] = 0) -> List[TorrentInfo]:
