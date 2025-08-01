@@ -3,14 +3,14 @@ from typing import Union, Any, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pywebpush import WebPushException, webpush
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import PlainTextResponse
 
 from app import schemas
 from app.chain.message import MessageChain
 from app.core.config import settings, global_vars
 from app.core.security import verify_token, verify_apitoken
-from app.db import get_db
+from app.db import get_async_db
 from app.db.models import User
 from app.db.models.message import Message
 from app.db.user_oper import get_current_active_superuser
@@ -58,15 +58,15 @@ def web_message(text: str, current_user: User = Depends(get_current_active_super
 
 
 @router.get("/web", summary="获取WEB消息", response_model=List[dict])
-def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
-                    db: Session = Depends(get_db),
-                    page: Optional[int] = 1,
-                    count: Optional[int] = 20):
+async def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
+                          db: AsyncSession = Depends(get_async_db),
+                          page: Optional[int] = 1,
+                          count: Optional[int] = 20):
     """
     获取WEB消息列表
     """
     ret_messages = []
-    messages = Message.list_by_page(db, page=page, count=count)
+    messages = Message.async_list_by_page(db, page=page, count=count)
     for message in messages:
         try:
             ret_messages.append(message.to_dict())
@@ -106,7 +106,7 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
         return str(err)
 
 
-def vocechat_verify() -> Any:
+async def vocechat_verify() -> Any:
     """
     VoceChat验证响应
     """
@@ -128,7 +128,7 @@ def incoming_verify(token: Optional[str] = None, echostr: Optional[str] = None, 
 
 
 @router.post("/webpush/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)
-def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)):
+async def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)):
     """
     客户端webpush通知订阅
     """

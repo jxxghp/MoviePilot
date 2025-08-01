@@ -13,6 +13,7 @@ from app.command import Command
 from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.core.security import verify_apikey, verify_token
+from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
 from app.factory import app
@@ -138,7 +139,7 @@ def register_plugin(plugin_id: str):
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-async def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser_async),
+async def all_plugins(_: User = Depends(get_current_active_superuser_async),
                       state: Optional[str] = "all", force: bool = False) -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
@@ -187,7 +188,7 @@ async def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_super
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-def installed(_: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+async def installed(_: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -203,7 +204,7 @@ async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response)
-def reload_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+def reload_plugin(plugin_id: str, _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重新加载插件
     """
@@ -218,7 +219,7 @@ def reload_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_
 def install(plugin_id: str,
             repo_url: Optional[str] = "",
             force: Optional[bool] = False,
-            _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+            _: User = Depends(get_current_active_superuser)) -> Any:
     """
     安装插件
     """
@@ -260,7 +261,7 @@ def remotes(token: str) -> Any:
 
 @router.get("/form/{plugin_id}", summary="获取插件表单页面")
 def plugin_form(plugin_id: str,
-                _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
+                _: User = Depends(get_current_active_superuser)) -> dict:
     """
     根据插件ID获取插件配置表单或Vue组件URL
     """
@@ -284,7 +285,7 @@ def plugin_form(plugin_id: str,
 
 
 @router.get("/page/{plugin_id}", summary="获取插件数据页面")
-def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
+def plugin_page(plugin_id: str, _: User = Depends(get_current_active_superuser)) -> dict:
     """
     根据插件ID获取插件数据页面
     """
@@ -333,7 +334,7 @@ def plugin_dashboard(plugin_id: str, user_agent: Annotated[str | None, Header()]
 
 @router.get("/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response)
 def reset_plugin(plugin_id: str,
-                 _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                 _: User = Depends(get_current_active_superuser)) -> Any:
     """
     根据插件ID重置插件配置及数据
     """
@@ -394,7 +395,7 @@ async def plugin_static_file(plugin_id: str, filepath: str):
 
 
 @router.get("/folders", summary="获取插件文件夹配置", response_model=dict)
-def get_plugin_folders(_: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
+async def get_plugin_folders(_: User = Depends(get_current_active_superuser_async)) -> dict:
     """
     获取插件文件夹分组配置
     """
@@ -407,7 +408,7 @@ def get_plugin_folders(_: schemas.TokenPayload = Depends(get_current_active_supe
 
 
 @router.post("/folders", summary="保存插件文件夹配置", response_model=schemas.Response)
-def save_plugin_folders(folders: dict, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+async def save_plugin_folders(folders: dict, _: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     保存插件文件夹分组配置
     """
@@ -420,7 +421,8 @@ def save_plugin_folders(folders: dict, _: schemas.TokenPayload = Depends(get_cur
 
 
 @router.post("/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response)
-def create_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+async def create_plugin_folder(folder_name: str,
+                               _: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     创建新的插件文件夹
     """
@@ -434,34 +436,35 @@ def create_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get
 
 
 @router.delete("/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response)
-def delete_plugin_folder(folder_name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+async def delete_plugin_folder(folder_name: str,
+                               _: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     删除插件文件夹
     """
     folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
     if folder_name in folders:
         del folders[folder_name]
-        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        await SystemConfigOper().async_set(SystemConfigKey.PluginFolders, folders)
         return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 删除成功")
     else:
         return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 不存在")
 
 
 @router.put("/folders/{folder_name}/plugins", summary="更新文件夹中的插件", response_model=schemas.Response)
-def update_folder_plugins(folder_name: str, plugin_ids: List[str],
-                          _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+async def update_folder_plugins(folder_name: str, plugin_ids: List[str],
+                                _: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     更新指定文件夹中的插件列表
     """
     folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
     folders[folder_name] = plugin_ids
-    SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+    await SystemConfigOper().async_set(SystemConfigKey.PluginFolders, folders)
     return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 中的插件已更新")
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
-def plugin_config(plugin_id: str,
-                  _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
+async def plugin_config(plugin_id: str,
+                        _: User = Depends(get_current_active_superuser_async)) -> dict:
     """
     根据插件ID获取插件配置信息
     """
@@ -470,7 +473,7 @@ def plugin_config(plugin_id: str,
 
 @router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
 def set_plugin_config(plugin_id: str, conf: dict,
-                      _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                      _: User = Depends(get_current_active_superuser)) -> Any:
     """
     更新插件配置
     """
@@ -486,7 +489,7 @@ def set_plugin_config(plugin_id: str, conf: dict,
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
 def uninstall_plugin(plugin_id: str,
-                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                     _: User = Depends(get_current_active_superuser)) -> Any:
     """
     卸载插件
     """
@@ -527,7 +530,7 @@ def uninstall_plugin(plugin_id: str,
 @router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response)
 def clone_plugin(plugin_id: str,
                  clone_data: dict,
-                 _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                 _: User = Depends(get_current_active_superuser)) -> Any:
     """
     创建插件分身
     """

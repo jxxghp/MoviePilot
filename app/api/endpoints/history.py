@@ -80,7 +80,7 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
                             deletesrc: Optional[bool] = False,
                             deletedest: Optional[bool] = False,
                             db: Session = Depends(get_db),
-                            _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+                            _: User = Depends(get_current_active_superuser)) -> Any:
     """
     删除整理记录
     """

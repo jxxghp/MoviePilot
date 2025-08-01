@@ -1,7 +1,7 @@
 from typing import Any, List, Dict, Optional
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
 from app.chain.download import DownloadChain
@@ -48,7 +48,7 @@ async def exists_local(title: Optional[str] = None,
                        mtype: Optional[str] = None,
                        tmdbid: Optional[int] = None,
                        season: Optional[int] = None,
-                       db: Session = Depends(get_async_db),
+                       db: AsyncSession = Depends(get_async_db),
                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     判断本地是否存在
@@ -148,7 +148,7 @@ def library(server: str, hidden: Optional[bool] = False,
 
 
 @router.get("/clients", summary="查询可用媒体服务器", response_model=List[dict])
-def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用媒体服务器
     """

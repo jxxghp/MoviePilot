@@ -116,7 +116,7 @@ def stop(hashString: str, name: Optional[str] = None,
 
 
 @router.get("/clients", summary="查询可用下载器", response_model=List[dict])
-def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用下载器
     """

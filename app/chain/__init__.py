@@ -616,33 +616,33 @@ class ChainBase(metaclass=ABCMeta):
         return await self.async_run_module("async_search_collections", name=name)
 
     def search_torrents(self, site: dict,
-                        keywords: List[str],
+                        keyword: str,
                         mtype: Optional[MediaType] = None,
                         page: Optional[int] = 0) -> List[TorrentInfo]:
         """
         搜索一个站点的种子资源
         :param site:  站点
-        :param keywords:  搜索关键词列表
+        :param keyword:  搜索关键词
         :param mtype:  媒体类型
         :param page:  页码
         :reutrn: 资源列表
         """
-        return self.run_module("search_torrents", site=site, keywords=keywords,
+        return self.run_module("search_torrents", site=site, keyword=keyword,
                                mtype=mtype, page=page)
 
     async def async_search_torrents(self, site: dict,
-                                    keywords: List[str],
+                                    keyword: str,
                                     mtype: Optional[MediaType] = None,
                                     page: Optional[int] = 0) -> List[TorrentInfo]:
         """
         异步搜索一个站点的种子资源
         :param site:  站点
-        :param keywords:  搜索关键词列表
+        :param keyword:  搜索关键词
         :param mtype:  媒体类型
         :param page:  页码
         :reutrn: 资源列表
         """
-        return await self.async_run_module("async_search_torrents", site=site, keywords=keywords,
+        return await self.async_run_module("async_search_torrents", site=site, keyword=keyword,
                                            mtype=mtype, page=page)
 
     def refresh_torrents(self, site: dict, keyword: Optional[str] = None,
@@ -656,6 +656,19 @@ class ChainBase(metaclass=ABCMeta):
         :reutrn: 种子资源列表
         """
         return self.run_module("refresh_torrents", site=site, keyword=keyword, cat=cat, page=page)
+
+    async def async_refresh_torrents(self, site: dict, keyword: Optional[str] = None,
+                                     cat: Optional[str] = None, page: Optional[int] = 0) -> List[TorrentInfo]:
+        """
+        异步获取站点最新一页的种子，多个站点需要多线程处理
+        :param site:  站点
+        :param keyword:  标题
+        :param cat:  分类
+        :param page:  页码
+        :reutrn: 种子资源列表
+        """
+        return await self.async_run_module("async_refresh_torrents",
+                                           site=site, keyword=keyword, cat=cat, page=page)
 
     def filter_torrents(self, rule_groups: List[str],
                         torrent_list: List[TorrentInfo],

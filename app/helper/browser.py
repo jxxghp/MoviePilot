@@ -60,7 +60,6 @@ class PlaywrightHelper:
                 except Exception as e:
                     logger.error(f"网页操作失败: {str(e)}")
                 finally:
-                    # 确保资源被正确清理
                     if page:
                         page.close()
                     if context:

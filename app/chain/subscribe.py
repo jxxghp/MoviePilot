@@ -15,7 +15,7 @@ from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
-from app.core.event import eventmanager, Event, EventManager
+from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.meta.words import WordsMatcher
 from app.core.metainfo import MetaInfo
@@ -237,7 +237,7 @@ class SubscribeChain(ChainBase):
                 username=username
             )
         # 发送事件
-        EventManager().send_event(EventType.SubscribeAdded, {
+        eventmanager.send_event(EventType.SubscribeAdded, {
             "subscribe_id": sid,
             "username": username,
             "mediainfo": mediainfo.to_dict(),
@@ -1090,7 +1090,7 @@ class SubscribeChain(ChainBase):
             username=subscribe.username
         )
         # 发送事件
-        EventManager().send_event(EventType.SubscribeComplete, {
+        eventmanager.send_event(EventType.SubscribeComplete, {
             "subscribe_id": subscribe.id,
             "subscribe_info": subscribe.to_dict(),
             "mediainfo": mediainfo.to_dict(),

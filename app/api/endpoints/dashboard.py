@@ -111,7 +111,7 @@ def downloader2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 
 
 @router.get("/schedule", summary="后台服务", response_model=List[schemas.ScheduleInfo])
-def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询后台服务信息
     """
@@ -119,7 +119,7 @@ def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/schedule2", summary="后台服务（API_TOKEN）", response_model=List[schemas.ScheduleInfo])
-def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
+async def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
@@ -127,12 +127,13 @@ def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 
 
 @router.get("/transfer", summary="文件整理统计", response_model=List[int])
-def transfer(days: Optional[int] = 7, db: Session = Depends(get_db),
-             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def transfer(days: Optional[int] = 7,
+                   db: Session = Depends(get_db),
+                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询文件整理统计信息
     """
-    transfer_stat = TransferHistory.statistic(db, days)
+    transfer_stat = await TransferHistory.async_statistic(db, days)
     return [stat[1] for stat in transfer_stat]
 
 

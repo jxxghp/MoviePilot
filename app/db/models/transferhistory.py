@@ -174,6 +174,21 @@ class TransferHistory(Base):
         return db.query(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date).all()
 
     @classmethod
+    @async_db_query
+    async def async_statistic(cls, db: AsyncSession, days: Optional[int] = 7):
+        """
+        统计最近days天的下载历史数量，按日期分组返回每日数量
+        """
+        sub_query = select(func.substr(cls.date, 1, 10).label('date'),
+                           cls.id.label('id')).filter(
+            cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                      time.localtime(time.time() - 86400 * days))).subquery()
+        result = await db.execute(
+            select(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date)
+        )
+        return result.scalars().all()
+
+    @classmethod
     @db_query
     def count(cls, db: Session, status: bool = None):
         if status is not None:

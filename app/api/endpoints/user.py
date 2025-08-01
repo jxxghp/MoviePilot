@@ -25,7 +25,7 @@ async def list_users(
     """
     查询用户列表
     """
-    return await User.async_list(db)
+    return await current_user.async_list(db)
 
 
 @router.post("/", summary="新增用户", response_model=schemas.Response)
@@ -38,7 +38,7 @@ async def create_user(
     """
     新增用户
     """
-    user = await User.async_get_by_name(db, name=user_in.name)
+    user = await current_user.async_get_by_name(db, name=user_in.name)
     if user:
         return schemas.Response(success=False, message="用户已存在")
     user_info = user_in.dict()
@@ -68,12 +68,12 @@ async def update_user(
                                     message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
-    user = await User.async_get_by_id(db, user_id=user_info["id"])
+    user = await current_user.async_get_by_id(db, user_id=user_info["id"])
     user_name = user_info.get("name")
     if not user_name:
         return schemas.Response(success=False, message="用户名不能为空")
     # 新用户名去重
-    users = await User.async_list(db)
+    users = await current_user.async_list(db)
     for u in users:
         if u.name == user_name and u.id != user_info["id"]:
             return schemas.Response(success=False, message="用户名已被使用")
@@ -185,10 +185,10 @@ async def delete_user_by_id(
     """
     通过唯一ID删除用户
     """
-    user = await User.async_get_by_id(db, user_id=user_id)
+    user = await current_user.async_get_by_id(db, user_id=user_id)
     if not user:
         return schemas.Response(success=False, message="用户不存在")
-    await User.async_delete(db, user_id)
+    await current_user.async_delete(db, user_id)
     return schemas.Response(success=True)
 
 
@@ -202,10 +202,10 @@ async def delete_user_by_name(
     """
     通过用户名删除用户
     """
-    user = await User.async_get_by_name(db, name=user_name)
+    user = await current_user.async_get_by_name(db, name=user_name)
     if not user:
         return schemas.Response(success=False, message="用户不存在")
-    await User.async_delete(db, user.id)
+    await current_user.async_delete(db, user.id)
     return schemas.Response(success=True)
 
 
@@ -218,7 +218,7 @@ async def read_user_by_name(
     """
     查询用户详情
     """
-    user = await User.async_get_by_name(db, name=username)
+    user = await current_user.async_get_by_name(db, name=username)
     if not user:
         raise HTTPException(
             status_code=404,

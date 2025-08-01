@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token
 from app.db.models import User
-from app.db.user_oper import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
 from app.helper.progress import ProgressHelper
 from app.schemas.types import ProgressKey
 
@@ -222,7 +222,7 @@ def usage(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
 
 
 @router.get("/transtype/{name}", summary="支持的整理方式获取", response_model=schemas.StorageTransType)
-def transtype(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
+async def transtype(name: str, _: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     查询支持的整理方式
     """

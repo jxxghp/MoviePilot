@@ -1,12 +1,13 @@
 import asyncio
 import pickle
+import random
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, Tuple
 from typing import List, Optional
 
-from app.helper.sites import SitesHelper  # noqa
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
@@ -17,6 +18,7 @@ from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
@@ -74,7 +76,7 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = self.__search_all_sites(keywords=[title], sites=sites, page=page) or []
+        torrents = self.__search_all_sites(keywords=title, sites=sites, page=page) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
@@ -335,8 +337,21 @@ class SearchChain(ChainBase):
                         key=ProgressKey.Search)
         progress.end(ProgressKey.Search)
 
-        # 返回
-        return contexts
+        # 去重后返回
+        return self.__remove_duplicate(contexts)
+
+    @staticmethod
+    def __remove_duplicate(_torrents: List[Context]) -> List[Context]:
+        """
+        去除重复的种子
+        :param _torrents: 种子列表
+        :return: 去重后的种子列表
+        """
+        if not settings.SEARCH_MULTIPLE_NAME:
+            return _torrents
+        # 通过encosure去重
+        return list({f"{t.torrent_info.site_name}_{t.torrent_info.title}_{t.torrent_info.description}": t
+                     for t in _torrents}.values())
 
     def process(self, mediainfo: MediaInfo,
                 keyword: Optional[str] = None,
@@ -381,13 +396,28 @@ class SearchChain(ChainBase):
             no_exists=no_exists
         )
 
-        # 执行搜索
-        torrents: List[TorrentInfo] = self.__search_all_sites(
-            mediainfo=mediainfo,
-            keywords=keywords,
-            sites=sites,
-            area=area
-        )
+        # 站点搜索结果
+        torrents: List[TorrentInfo] = []
+        # 站点搜索次数
+        search_count = 0
+
+        # 多关键字执行搜索
+        for search_word in keywords:
+            # 强制休眠 1-10 秒
+            if search_count > 0:
+                logger.info(f"已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
+                time.sleep(random.randint(1, 10))
+            # 搜索站点
+            torrents.extend(
+                self.__search_all_sites(
+                    mediainfo=mediainfo,
+                    keyword=search_word,
+                    sites=sites,
+                    area=area
+                ) or []
+            )
+            search_count += 1
+
         # 处理结果
         return self.__parse_result(
             torrents=torrents,
@@ -442,13 +472,32 @@ class SearchChain(ChainBase):
             no_exists=no_exists
         )
 
-        # 执行搜索
-        torrents: List[TorrentInfo] = await self.__async_search_all_sites(
-            mediainfo=mediainfo,
-            keywords=keywords,
-            sites=sites,
-            area=area
-        )
+        # 站点搜索结果
+        torrents: List[TorrentInfo] = []
+        # 站点搜索次数
+        search_count = 0
+
+        # 多关键字执行搜索
+        for search_word in keywords:
+            # 强制休眠 1-10 秒
+            if search_count > 0:
+                logger.info(f"已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
+                await asyncio.sleep(random.randint(1, 10))
+            # 搜索站点
+            torrents.extend(
+                await self.__async_search_all_sites(
+                    mediainfo=mediainfo,
+                    keyword=search_word,
+                    sites=sites,
+                    area=area
+                ) or []
+            )
+            search_count += 1
+            # 有结果则停止
+            if torrents:
+                logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
+                break
+
         # 处理结果
         return await run_in_threadpool(self.__parse_result,
                                        torrents=torrents,
@@ -460,7 +509,7 @@ class SearchChain(ChainBase):
                                        filter_params=filter_params
                                        )
 
-    def __search_all_sites(self, keywords: List[str],
+    def __search_all_sites(self, keyword: str,
                            mediainfo: Optional[MediaInfo] = None,
                            sites: List[int] = None,
                            page: Optional[int] = 0,
@@ -468,7 +517,7 @@ class SearchChain(ChainBase):
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
-        :param keywords:  搜索关键词列表
+        :param keyword:  搜索关键词
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
         :param area:  搜索区域 title or imdbid
@@ -511,13 +560,13 @@ class SearchChain(ChainBase):
                 if area == "imdbid":
                     # 搜索IMDBID
                     task = executor.submit(self.search_torrents, site=site,
-                                           keywords=[mediainfo.imdb_id] if mediainfo else None,
+                                           keyword=mediainfo.imdb_id if mediainfo else None,
                                            mtype=mediainfo.type if mediainfo else None,
                                            page=page)
                 else:
                     # 搜索标题
                     task = executor.submit(self.search_torrents, site=site,
-                                           keywords=keywords,
+                                           keyword=keyword,
                                            mtype=mediainfo.type if mediainfo else None,
                                            page=page)
                 all_task.append(task)
@@ -530,7 +579,7 @@ class SearchChain(ChainBase):
                     results.extend(result)
                 logger.info(f"站点搜索进度：{finish_count} / {total_num}")
                 progress.update(value=finish_count / total_num * 100,
-                                text=f"正在搜索{keywords or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
+                                text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
                                 key=ProgressKey.Search)
         # 计算耗时
         end_time = datetime.now()
@@ -545,7 +594,7 @@ class SearchChain(ChainBase):
         # 返回
         return results
 
-    async def __async_search_all_sites(self, keywords: List[str],
+    async def __async_search_all_sites(self, keyword: str,
                                        mediainfo: Optional[MediaInfo] = None,
                                        sites: List[int] = None,
                                        page: Optional[int] = 0,
@@ -553,7 +602,7 @@ class SearchChain(ChainBase):
         """
         异步搜索多个站点
         :param mediainfo:  识别的媒体信息
-        :param keywords:  搜索关键词列表
+        :param keyword:  搜索关键词
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
         :param area:  搜索区域 title or imdbid
@@ -596,13 +645,13 @@ class SearchChain(ChainBase):
             if area == "imdbid":
                 # 搜索IMDBID
                 task = self.async_search_torrents(site=site,
-                                                  keywords=[mediainfo.imdb_id] if mediainfo else None,
+                                                  keyword=mediainfo.imdb_id if mediainfo else None,
                                                   mtype=mediainfo.type if mediainfo else None,
                                                   page=page)
             else:
                 # 搜索标题
                 task = self.async_search_torrents(site=site,
-                                                  keywords=keywords,
+                                                  keyword=keyword,
                                                   mtype=mediainfo.type if mediainfo else None,
                                                   page=page)
             tasks.append(task)
@@ -617,7 +666,7 @@ class SearchChain(ChainBase):
                 results.extend(result)
             logger.info(f"站点搜索进度：{finish_count} / {total_num}")
             progress.update(value=finish_count / total_num * 100,
-                            text=f"正在搜索{keywords or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
+                            text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
                             key=ProgressKey.Search)
 
         # 计算耗时

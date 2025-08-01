@@ -1,10 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON, select
+from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query
+from app.db import db_query, db_update, Base, async_db_query, async_db_update
 
 
 class Site(Base):
@@ -83,6 +83,12 @@ class Site(Base):
         return db.query(cls).order_by(cls.pri).all()
 
     @classmethod
+    @async_db_query
+    async def async_list_order_by_pri(cls, db: AsyncSession):
+        result = await db.execute(select(cls).order_by(cls.pri))
+        return result.scalars().all()
+
+    @classmethod
     @db_query
     def get_domains_by_ids(cls, db: Session, ids: list):
         return [r[0] for r in db.query(cls.domain).filter(cls.id.in_(ids)).all()]
@@ -91,3 +97,8 @@ class Site(Base):
     @db_update
     def reset(cls, db: Session):
         db.query(cls).delete()
+
+    @classmethod
+    @async_db_update
+    async def async_reset(cls, db: AsyncSession):
+        await db.execute(delete(cls))

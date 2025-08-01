@@ -23,7 +23,7 @@ from app.core.module import ModuleManager
 from app.core.security import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
 from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
@@ -203,7 +203,7 @@ def get_global_setting(token: str):
 
 
 @router.get("/env", summary="查询系统配置", response_model=schemas.Response)
-def get_env_setting(_: User = Depends(get_current_active_superuser)):
+async def get_env_setting(_: User = Depends(get_current_active_superuser_async)):
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
@@ -221,8 +221,8 @@ def get_env_setting(_: User = Depends(get_current_active_superuser)):
 
 
 @router.post("/env", summary="更新系统配置", response_model=schemas.Response)
-def set_env_setting(env: dict,
-                    _: User = Depends(get_current_active_superuser)):
+async def set_env_setting(env: dict,
+                          _: User = Depends(get_current_active_superuser_async)):
     """
     更新系统环境变量（仅管理员）
     """
@@ -244,7 +244,7 @@ def set_env_setting(env: dict,
     if success_updates:
         for key in success_updates.keys():
             # 发送配置变更事件
-            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+            await eventmanager.async_send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
                 key=key,
                 value=getattr(settings, key, None),
                 change_type="update"
@@ -281,8 +281,8 @@ async def get_progress(request: Request, process_type: str, _: schemas.TokenPayl
 
 
 @router.get("/setting/{key}", summary="查询系统设置", response_model=schemas.Response)
-def get_setting(key: str,
-                _: User = Depends(get_current_active_superuser)):
+async def get_setting(key: str,
+                      _: User = Depends(get_current_active_superuser_async)):
     """
     查询系统设置（仅管理员）
     """
@@ -296,10 +296,10 @@ def get_setting(key: str,
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
-def set_setting(
+async def set_setting(
         key: str,
         value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
-        _: User = Depends(get_current_active_superuser),
+        _: User = Depends(get_current_active_superuser_async),
 ):
     """
     更新系统设置（仅管理员）
@@ -308,7 +308,7 @@ def set_setting(
         success, message = settings.update_setting(key=key, value=value)
         if success:
             # 发送配置变更事件
-            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+            await eventmanager.async_send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
                 key=key,
                 value=value,
                 change_type="update"
@@ -320,10 +320,10 @@ def set_setting(
         if isinstance(value, list):
             value = list(filter(None, value))
             value = value if value else None
-        success = SystemConfigOper().set(key, value)
+        success = await SystemConfigOper().async_set(key, value)
         if success:
             # 发送配置变更事件
-            eventmanager.send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
+            await eventmanager.async_send_event(etype=EventType.ConfigChanged, data=ConfigChangeEventData(
                 key=key,
                 value=value,
                 change_type="update"

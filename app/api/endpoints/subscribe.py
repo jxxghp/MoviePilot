@@ -117,7 +117,7 @@ async def update_subscribe(
         subscribe_dict["manual_total_episode"] = 1
     # 发送订阅调整事件
     subscribe = await subscribe.async_get(db, subscribe_in.id)
-    eventmanager.send_event(EventType.SubscribeModified, {
+    await eventmanager.async_send_event(EventType.SubscribeModified, {
         "subscribe_id": subscribe_in.id,
         "old_subscribe_info": old_subscribe_dict,
         "subscribe_info": subscribe.to_dict(),
@@ -145,7 +145,7 @@ async def update_subscribe_status(
         "state": state
     })
     # 发送订阅调整事件
-    eventmanager.send_event(EventType.SubscribeModified, {
+    eventmanager.async_send_event(EventType.SubscribeModified, {
         "subscribe_id": subscribe.id,
         "old_subscribe_info": old_subscribe_dict,
         "subscribe_info": subscribe.to_dict(),
@@ -224,7 +224,7 @@ async def reset_subscribes(
             "state": "R"
         })
         # 发送订阅调整事件
-        eventmanager.send_event(EventType.SubscribeModified, {
+        eventmanager.async_send_event(EventType.SubscribeModified, {
             "subscribe_id": subscribe.id,
             "old_subscribe_info": old_subscribe_dict,
             "subscribe_info": subscribe.to_dict(),
@@ -313,7 +313,7 @@ async def delete_subscribe_by_mediaid(
     for subscribe in delete_subscribes:
         await Subscribe.async_delete(db, subscribe.id)
         # 发送事件
-        eventmanager.send_event(EventType.SubscribeDeleted, {
+        eventmanager.async_send_event(EventType.SubscribeDeleted, {
             "subscribe_id": subscribe.id,
             "subscribe_info": subscribe.to_dict()
         })
@@ -531,7 +531,7 @@ async def follow_subscriber(
     subscribers = SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
     if share_uid and share_uid not in subscribers:
         subscribers.append(share_uid)
-        SystemConfigOper().set(SystemConfigKey.FollowSubscribers, subscribers)
+        await SystemConfigOper().async_set(SystemConfigKey.FollowSubscribers, subscribers)
     return schemas.Response(success=True)
 
 
@@ -545,7 +545,7 @@ async def unfollow_subscriber(
     subscribers = SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
     if share_uid and share_uid in subscribers:
         subscribers.remove(share_uid)
-        SystemConfigOper().set(SystemConfigKey.FollowSubscribers, subscribers)
+        await SystemConfigOper().async_set(SystemConfigKey.FollowSubscribers, subscribers)
     return schemas.Response(success=True)
 
 
@@ -596,7 +596,7 @@ async def delete_subscribe(
     if subscribe:
         await Subscribe.async_delete(db, subscribe_id)
         # 发送事件
-        eventmanager.send_event(EventType.SubscribeDeleted, {
+        eventmanager.async_send_event(EventType.SubscribeDeleted, {
             "subscribe_id": subscribe_id,
             "subscribe_info": subscribe.to_dict()
         })

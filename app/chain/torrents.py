@@ -85,6 +85,22 @@ class TorrentsChain(ChainBase):
             return []
         return self.refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
+    async def async_browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
+                           page: Optional[int] = 0) -> List[TorrentInfo]:
+        """
+        异步浏览站点首页内容，返回种子清单，TTL缓存5分钟
+        :param domain: 站点域名
+        :param keyword: 搜索标题
+        :param cat: 搜索分类
+        :param page: 页码
+        """
+        logger.info(f'开始获取站点 {domain} 最新种子 ...')
+        site = await SitesHelper().async_get_indexer(domain)
+        if not site:
+            logger.error(f'站点 {domain} 不存在！')
+            return []
+        return await self.async_refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
+
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
         获取站点RSS内容，返回种子清单，TTL缓存3分钟

@@ -35,6 +35,12 @@ class SiteOper(DbOper):
         """
         return Site.list(self._db)
 
+    async def async_list(self) -> List[Site]:
+        """
+        异步获取站点列表
+        """
+        return await Site.async_list(self._db)
+
     def list_order_by_pri(self) -> List[Site]:
         """
         获取站点列表

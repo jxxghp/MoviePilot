@@ -47,6 +47,33 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             conf.create(self._db)
             return True
 
+    async def async_set(self, key: Union[str, SystemConfigKey], value: Any) -> Optional[bool]:
+        """
+        异步设置系统设置
+        :param key: 配置键
+        :param value: 配置值
+        :return: 是否设置成功（True 成功/False 失败/None 无需更新）
+        """
+        if isinstance(key, SystemConfigKey):
+            key = key.value
+        # 旧值
+        old_value = self.__SYSTEMCONF.get(key)
+        # 更新内存(deepcopy避免内存共享)
+        self.__SYSTEMCONF[key] = copy.deepcopy(value)
+        conf = await SystemConfig.async_get_by_key(self._db, key)
+        if conf:
+            if old_value != value:
+                if value:
+                    conf.update(self._db, {"value": value})
+                else:
+                    conf.delete(self._db, conf.id)
+                return True
+            return None
+        else:
+            conf = SystemConfig(key=key, value=value)
+            await conf.async_create(self._db)
+            return True
+
     def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
         """
         获取系统设置

@@ -144,53 +144,50 @@ class CookieHelper:
                         break
                 if not submit_xpath:
                     return None, None, "未找到登录按钮"
-            finally:
-                if html is not None:
-                    del html
 
-            # 点击登录按钮
-            try:
-                # 等待登录按钮准备好
-                page.wait_for_selector(submit_xpath)
-                # 输入用户名
-                page.fill(username_xpath, username)
-                # 输入密码
-                page.fill(password_xpath, password)
-                # 输入二步验证码
-                if twostep_xpath:
-                    page.fill(twostep_xpath, otp_code)
-                # 识别验证码
-                if captcha_xpath and captcha_img_url:
-                    captcha_element = page.query_selector(captcha_xpath)
-                    if captcha_element.is_visible():
-                        # 验证码图片地址
-                        code_url = self.__get_captcha_url(url, captcha_img_url)
-                        # 获取当前的cookie和ua
-                        cookie = self.parse_cookies(page.context.cookies())
-                        ua = page.evaluate("() => window.navigator.userAgent")
-                        # 自动OCR识别验证码
-                        captcha = self.__get_captcha_text(cookie=cookie, ua=ua, code_url=code_url)
-                        if captcha:
-                            logger.info("验证码地址为：%s，识别结果：%s" % (code_url, captcha))
-                        else:
-                            return None, None, "验证码识别失败"
-                        # 输入验证码
-                        captcha_element.fill(captcha)
-                    else:
-                        # 不可见元素不处理
-                        pass
                 # 点击登录按钮
-                page.click(submit_xpath)
-                page.wait_for_load_state("networkidle", timeout=30 * 1000)
-            except Exception as e:
-                logger.error(f"仿真登录失败：{str(e)}")
-                return None, None, f"仿真登录失败：{str(e)}"
-            # 对于某二次验证码为单页面的站点，输入二次验证码
-            if "verify" in page.url:
-                if not otp_code:
-                    return None, None, "需要二次验证码"
-                html = etree.HTML(page.content())
                 try:
+                    # 等待登录按钮准备好
+                    page.wait_for_selector(submit_xpath)
+                    # 输入用户名
+                    page.fill(username_xpath, username)
+                    # 输入密码
+                    page.fill(password_xpath, password)
+                    # 输入二步验证码
+                    if twostep_xpath:
+                        page.fill(twostep_xpath, otp_code)
+                    # 识别验证码
+                    if captcha_xpath and captcha_img_url:
+                        captcha_element = page.query_selector(captcha_xpath)
+                        if captcha_element.is_visible():
+                            # 验证码图片地址
+                            code_url = self.__get_captcha_url(url, captcha_img_url)
+                            # 获取当前的cookie和ua
+                            cookie = self.parse_cookies(page.context.cookies())
+                            ua = page.evaluate("() => window.navigator.userAgent")
+                            # 自动OCR识别验证码
+                            captcha = self.__get_captcha_text(cookie=cookie, ua=ua, code_url=code_url)
+                            if captcha:
+                                logger.info("验证码地址为：%s，识别结果：%s" % (code_url, captcha))
+                            else:
+                                return None, None, "验证码识别失败"
+                            # 输入验证码
+                            captcha_element.fill(captcha)
+                        else:
+                            # 不可见元素不处理
+                            pass
+                    # 点击登录按钮
+                    page.click(submit_xpath)
+                    page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                except Exception as e:
+                    logger.error(f"仿真登录失败：{str(e)}")
+                    return None, None, f"仿真登录失败：{str(e)}"
+
+                # 对于某二次验证码为单页面的站点，输入二次验证码
+                if "verify" in page.url:
+                    if not otp_code:
+                        return None, None, "需要二次验证码"
+                    html = etree.HTML(page.content())
                     for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
                         if html.xpath(xpath):
                             try:
@@ -204,28 +201,29 @@ class CookieHelper:
                                 logger.error(f"二次验证码输入失败：{str(e)}")
                                 return None, None, f"二次验证码输入失败：{str(e)}"
                             break
-                finally:
-                    if html is not None:
-                        del html
-            # 登录后的源码
-            html_text = page.content()
-            if not html_text:
-                return None, None, "获取网页源码失败"
-            if SiteUtils.is_logged_in(html_text):
-                return self.parse_cookies(page.context.cookies()), \
-                    page.evaluate("() => window.navigator.userAgent"), ""
-            else:
-                # 读取错误信息
-                error_xpath = None
-                for xpath in self._SITE_LOGIN_XPATH.get("error"):
-                    if html.xpath(xpath):
-                        error_xpath = xpath
-                        break
-                if not error_xpath:
-                    return None, None, "登录失败"
+
+                # 登录后的源码
+                html_text = page.content()
+                if not html_text:
+                    return None, None, "获取网页源码失败"
+                if SiteUtils.is_logged_in(html_text):
+                    return self.parse_cookies(page.context.cookies()), \
+                        page.evaluate("() => window.navigator.userAgent"), ""
                 else:
-                    error_msg = html.xpath(error_xpath)[0]
-                    return None, None, error_msg
+                    # 读取错误信息
+                    error_xpath = None
+                    for xpath in self._SITE_LOGIN_XPATH.get("error"):
+                        if html.xpath(xpath):
+                            error_xpath = xpath
+                            break
+                    if not error_xpath:
+                        return None, None, "登录失败"
+                    else:
+                        error_msg = html.xpath(error_xpath)[0]
+                        return None, None, error_msg
+            finally:
+                if html:
+                    del html
 
         if not url or not username or not password:
             return None, None, "参数错误"

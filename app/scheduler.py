@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.event import EventManager, eventmanager, Event
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper  # noqa
 from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
@@ -380,46 +381,60 @@ class Scheduler(metaclass=Singleton):
             # 启动定时服务
             self._scheduler.start()
 
+    def __prepare_job(self, job_id: str) -> Optional[dict]:
+        """
+        准备定时任务
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return None
+            if job.get("running"):
+                logger.warning(f"定时任务 {job_id} - {job.get("name")} 正在运行 ...")
+                return None
+            self._jobs[job_id]["running"] = True
+        return job
+
+    def __finish_job(self, job_id: str):
+        """
+        完成定时任务
+        """
+        with self._lock:
+            try:
+                self._jobs[job_id]["running"] = False
+            except KeyError:
+                pass
+
     def start(self, job_id: str, *args, **kwargs):
         """
         启动定时服务
         """
-        # 处理job_id格式
-        with self._lock:
-            job = self._jobs.get(job_id)
-            if not job:
-                return
-            job_name = job.get("name")
-            if job.get("running"):
-                logger.warning(f"定时任务 {job_id} - {job_name} 正在运行 ...")
-                return
-            self._jobs[job_id]["running"] = True
+        # 获取定时任务
+        job = self.__prepare_job(job_id)
+        if not job:
+            return
         # 开始运行
         try:
             if not kwargs:
                 kwargs = job.get("kwargs") or {}
             job["func"](*args, **kwargs)
         except Exception as e:
-            logger.error(f"定时任务 {job_name} 执行失败：{str(e)} - {traceback.format_exc()}")
-            SchedulerChain().messagehelper.put(title=f"{job_name} 执行失败",
-                                               message=str(e),
-                                               role="system")
-            EventManager().send_event(
+            logger.error(f"定时任务 {job.get('name')} 执行失败：{str(e)} - {traceback.format_exc()}")
+            MessageHelper().put(title=f"{job.get('name')} 执行失败",
+                                message=str(e),
+                                role="system")
+            eventmanager.send_event(
                 EventType.SystemError,
                 {
                     "type": "scheduler",
                     "scheduler_id": job_id,
-                    "scheduler_name": job_name,
+                    "scheduler_name": job.get('name'),
                     "error": str(e),
                     "traceback": traceback.format_exc()
                 }
             )
         # 运行结束
-        with self._lock:
-            try:
-                self._jobs[job_id]["running"] = False
-            except KeyError:
-                pass
+        self.__finish_job(job_id)
 
     def init_plugin_jobs(self):
         """
