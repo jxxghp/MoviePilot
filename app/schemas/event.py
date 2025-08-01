@@ -3,7 +3,8 @@ from typing import Optional, Dict, Any, List, Set, Callable
 
 from pydantic import BaseModel, Field, root_validator
 
-from app.schemas import MessageChannel, FileItem
+from app.schemas.message import MessageChannel
+from app.schemas.file import FileItem
 
 
 class Event(BaseModel):

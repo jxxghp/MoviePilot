@@ -280,6 +280,8 @@ class ConfigModel(BaseModel):
     REPO_GITHUB_TOKEN: Optional[str] = None
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
+    # FastApi性能监控
+    PERFORMANCE_MONITOR_ENABLE: bool = False
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 是否启用编码探测的性能模式

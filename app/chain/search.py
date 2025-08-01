@@ -76,7 +76,7 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = self.__search_all_sites(keywords=title, sites=sites, page=page) or []
+        torrents = self.__search_all_sites(keyword=title, sites=sites, page=page) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
@@ -160,7 +160,7 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = await self.__async_search_all_sites(keywords=[title], sites=sites, page=page) or []
+        torrents = await self.__async_search_all_sites(keyword=title, sites=sites, page=page) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []

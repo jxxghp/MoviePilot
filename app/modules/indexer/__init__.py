@@ -164,7 +164,7 @@ class IndexerModule(_ModuleBase):
         """
 
         # 索引结果
-        result_array = []
+        result = []
         # 开始计时
         start_time = datetime.now()
         # 错误标志
@@ -232,7 +232,7 @@ class IndexerModule(_ModuleBase):
         # 返回结果
         return self.__parse_result(
             site=site,
-            result_array=result_array,
+            result_array=result,
             seconds=seconds
         )
 
@@ -252,7 +252,7 @@ class IndexerModule(_ModuleBase):
         """
 
         # 索引结果
-        result_array = []
+        result = []
         # 开始计时
         start_time = datetime.now()
         # 错误标志
@@ -320,7 +320,7 @@ class IndexerModule(_ModuleBase):
         # 返回结果
         return self.__parse_result(
             site=site,
-            result_array=result_array,
+            result_array=result,
             seconds=seconds
         )
 
@@ -391,7 +391,7 @@ class IndexerModule(_ModuleBase):
         :param page:  页码
         :reutrn: 种子资源列表
         """
-        return self.search_torrents(site=site, keywords=[keyword], cat=cat, page=page)
+        return self.search_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
     async def async_refresh_torrents(self, site: dict,
                                      keyword: Optional[str] = None,
@@ -405,7 +405,7 @@ class IndexerModule(_ModuleBase):
         :param page:  页码
         :reutrn: 种子资源列表
         """
-        return await self.async_search_torrents(site=site, keywords=[keyword], cat=cat, page=page)
+        return await self.async_search_torrents(site=site, keyword=keyword, cat=cat, page=page)
 
     def refresh_userdata(self, site: dict) -> Optional[SiteUserData]:
         """

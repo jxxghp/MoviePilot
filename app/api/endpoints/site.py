@@ -36,7 +36,7 @@ async def read_sites(db: AsyncSession = Depends(get_async_db),
     """
     获取站点列表
     """
-    return Site.async_list_order_by_pri(db)
+    return await Site.async_list_order_by_pri(db)
 
 
 @router.post("/", summary="新增站点", response_model=schemas.Response)
