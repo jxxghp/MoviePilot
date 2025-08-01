@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas import MediaType
-from app.utils.http import RequestUtils
+from app.utils.http import RequestUtils, AsyncRequestUtils
 from app.utils.string import StringUtils
 
 
@@ -73,11 +73,10 @@ class HddolbySpider:
             self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
             self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
-    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict:
         """
-        搜索
+        获取请求参数
         """
-
         if mtype == MediaType.TV:
             categories = self._tv_category
         elif mtype == MediaType.MOVIE:
@@ -86,7 +85,7 @@ class HddolbySpider:
             categories = list(set(self._movie_category + self._tv_category))
 
         # 输入参数
-        params = {
+        return {
             "keyword": keyword,
             "page_number": page,
             "page_size": 100,
@@ -94,6 +93,84 @@ class HddolbySpider:
             "visible": 1,
         }
 
+    def __parse_result(self, results: List[dict]) -> List[dict]:
+        """
+        解析搜索结果
+        """
+        torrents = []
+        if not results:
+            return []
+
+        for result in results:
+            """
+            {
+                "id": 120202,
+                "promotion_time_type": 0,
+                "promotion_until": "0000-00-00 00:00:00",
+                "category": 402,
+                "medium": 6,
+                "codec": 1,
+                "standard": 2,
+                "team": 10,
+                "audiocodec": 14,
+                "leechers": 0,
+                "seeders": 1,
+                "name": "[DBY] Lost S06 2010 Complete 1080p Netflix WEB-DL AVC DDP5.1-DBTV",
+                "small_descr": "lost ",
+                "times_completed": 0,
+                "size": 33665425886,
+                "added": "2025-02-18 19:47:56",
+                "url": 0,
+                "hr": 0,
+                "tmdb_type": "tv",
+                "tmdb_id": 4607,
+                "imdb_id": null,
+                "tags": "gf"
+            }
+            """
+            # 类别
+            category_value = result.get('category')
+            if category_value in self._tv_category:
+                category = MediaType.TV.value
+            elif category_value in self._movie_category:
+                category = MediaType.MOVIE.value
+            else:
+                category = MediaType.UNKNOWN.value
+            # 标签
+            torrentLabelIds = result.get('tags', "").split(";") or []
+            torrentLabels = []
+            for labelId in torrentLabelIds:
+                if self._labels.get(labelId) is not None:
+                    torrentLabels.append(self._labels.get(labelId))
+            # 种子信息
+            torrent = {
+                'title': result.get('name'),
+                'description': result.get('small_descr'),
+                'enclosure': self.__get_download_url(result.get('id'), result.get('downhash')),
+                'pubdate': result.get('added'),
+                'size': result.get('size'),
+                'seeders': result.get('seeders'),
+                'peers': result.get('leechers'),
+                'grabs': result.get('times_completed'),
+                'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('promotion_time_type')),
+                'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('promotion_time_type')),
+                'freedate': result.get('promotion_until'),
+                'page_url': self._pageurl % result.get('id'),
+                'labels': torrentLabels,
+                'category': category
+            }
+            torrents.append(torrent)
+        return torrents
+
+    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+        """
+        搜索
+        """
+
+        # 准备参数
+        params = self.__get_params(keyword, mtype, page)
+
+        # 发送请求
         res = RequestUtils(
             headers={
                 "Content-Type": "application/json",
@@ -105,75 +182,44 @@ class HddolbySpider:
             referer=f"{self._domain}",
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
-        torrents = []
         if res and res.status_code == 200:
             results = res.json().get('data', []) or []
-            for result in results:
-                """
-                {
-                    "id": 120202,
-                    "promotion_time_type": 0,
-                    "promotion_until": "0000-00-00 00:00:00",
-                    "category": 402,
-                    "medium": 6,
-                    "codec": 1,
-                    "standard": 2,
-                    "team": 10,
-                    "audiocodec": 14,
-                    "leechers": 0,
-                    "seeders": 1,
-                    "name": "[DBY] Lost S06 2010 Complete 1080p Netflix WEB-DL AVC DDP5.1-DBTV",
-                    "small_descr": "lost ",
-                    "times_completed": 0,
-                    "size": 33665425886,
-                    "added": "2025-02-18 19:47:56",
-                    "url": 0,
-                    "hr": 0,
-                    "tmdb_type": "tv",
-                    "tmdb_id": 4607,
-                    "imdb_id": null,
-                    "tags": "gf"
-                }
-                """
-                # 类别
-                category_value = result.get('category')
-                if category_value in self._tv_category:
-                    category = MediaType.TV.value
-                elif category_value in self._movie_category:
-                    category = MediaType.MOVIE.value
-                else:
-                    category = MediaType.UNKNOWN.value
-                # 标签
-                torrentLabelIds = result.get('tags', "").split(";") or []
-                torrentLabels = []
-                for labelId in torrentLabelIds:
-                    if self._labels.get(labelId) is not None:
-                        torrentLabels.append(self._labels.get(labelId))
-                # 种子信息
-                torrent = {
-                    'title': result.get('name'),
-                    'description': result.get('small_descr'),
-                    'enclosure': self.__get_download_url(result.get('id'), result.get('downhash')),
-                    'pubdate': result.get('added'),
-                    'size': result.get('size'),
-                    'seeders': result.get('seeders'),
-                    'peers': result.get('leechers'),
-                    'grabs': result.get('times_completed'),
-                    'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('promotion_time_type')),
-                    'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('promotion_time_type')),
-                    'freedate': result.get('promotion_until'),
-                    'page_url': self._pageurl % result.get('id'),
-                    'labels': torrentLabels,
-                    'category': category
-                }
-                torrents.append(torrent)
+            return False, self.__parse_result(results)
         elif res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
             return True, []
         else:
             logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
             return True, []
-        return False, torrents
+
+    async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+        """
+        异步搜索
+        """
+        # 准备参数
+        params = self.__get_params(keyword, mtype, page)
+
+        # 发送请求
+        res = await AsyncRequestUtils(
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/plain, */*",
+                "x-api-key": self._apikey
+            },
+            cookies=self._cookie,
+            proxies=self._proxy,
+            referer=f"{self._domain}",
+            timeout=self._timeout
+        ).post_res(url=self._searchurl, json=params)
+        if res and res.status_code == 200:
+            results = res.json().get('data', []) or []
+            return False, self.__parse_result(results)
+        elif res is not None:
+            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
+            return True, []
+        else:
+            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
+            return True, []
 
     @staticmethod
     def __get_downloadvolumefactor(discount: int) -> float:

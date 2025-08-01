@@ -211,6 +211,8 @@ class ConfigModel(BaseModel):
     LOCAL_EXISTS_SEARCH: bool = False
     # 搜索多个名称
     SEARCH_MULTIPLE_NAME: bool = False
+    # 最大搜索名称数量
+    MAX_SEARCH_NAME_LIMIT: int = 2
     # 站点数据刷新间隔（小时）
     SITEDATA_REFRESH_INTERVAL: int = 6
     # 读取和发送站点消息

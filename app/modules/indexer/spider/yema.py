@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas import MediaType
-from app.utils.http import RequestUtils
+from app.utils.http import RequestUtils, AsyncRequestUtils
 from app.utils.string import StringUtils
 
 
@@ -57,9 +57,9 @@ class YemaSpider:
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
-    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def __get_params(self, keyword: str = None, page: Optional[int] = 0) -> dict:
         """
-        搜索
+        获取搜索参数
         """
         params = {
             "pageParam": {
@@ -69,16 +69,63 @@ class YemaSpider:
             },
             "sorter": {}
         }
-        # 新接口可不传 categoryId 参数
-        # if mtype == MediaType.MOVIE:
-        #     params.update({
-        #         "categoryId": self._movie_category,
-        #     })
-        #     pass
         if keyword:
             params.update({
                 "keyword": keyword,
             })
+        return params
+
+    def __parse_result(self, results: List[dict]) -> List[dict]:
+        """
+        解析搜索结果
+        """
+        torrents = []
+        if not results:
+            return torrents
+
+        for result in results:
+            category_value = result.get('categoryId')
+            if category_value in self._tv_category:
+                category = MediaType.TV.value
+            elif category_value in self._movie_category:
+                category = MediaType.MOVIE.value
+            else:
+                category = MediaType.UNKNOWN.value
+                pass
+
+            torrentLabelIds = result.get('tagList', []) or []
+            torrentLabels = []
+            for labelId in torrentLabelIds:
+                if self._labels.get(labelId) is not None:
+                    torrentLabels.append(self._labels.get(labelId))
+                    pass
+                pass
+            torrent = {
+                'title': result.get('showName'),
+                'description': result.get('shortDesc'),
+                'enclosure': self.__get_download_url(result.get('id')),
+                'pubdate': StringUtils.unify_datetime_str(result.get('listingTime')),
+                'size': result.get('fileSize'),
+                'seeders': result.get('seedNum'),
+                'peers': result.get('leechNum'),
+                'grabs': result.get('completedNum'),
+                'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('downloadPromotion')),
+                'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('uploadPromotion')),
+                'freedate': StringUtils.unify_datetime_str(result.get('downloadPromotionEndTime')),
+                'page_url': self._pageurl % (self._domain, result.get('id')),
+                'labels': torrentLabels,
+                'category': category
+            }
+            torrents.append(torrent)
+
+        return torrents
+
+    def search(self, keyword: str,
+               mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+        """
+        搜索
+        """
+
         res = RequestUtils(
             headers={
                 "Content-Type": "application/json",
@@ -89,52 +136,43 @@ class YemaSpider:
             proxies=self._proxy,
             referer=f"{self._domain}",
             timeout=self._timeout
-        ).post_res(url=self._searchurl, json=params)
-        torrents = []
+        ).post_res(url=self._searchurl, json=self.__get_params(keyword, page))
         if res and res.status_code == 200:
             results = res.json().get('data', []) or []
-            for result in results:
-                category_value = result.get('categoryId')
-                if category_value in self._tv_category:
-                    category = MediaType.TV.value
-                elif category_value in self._movie_category:
-                    category = MediaType.MOVIE.value
-                else:
-                    category = MediaType.UNKNOWN.value
-                    pass
-
-                torrentLabelIds = result.get('tagList', []) or []
-                torrentLabels = []
-                for labelId in torrentLabelIds:
-                    if self._labels.get(labelId) is not None:
-                        torrentLabels.append(self._labels.get(labelId))
-                        pass
-                    pass
-                torrent = {
-                    'title': result.get('showName'),
-                    'description': result.get('shortDesc'),
-                    'enclosure': self.__get_download_url(result.get('id')),
-                    # 使用上架时间，而不是用户发布时间，上架时间即其他用户可见时间
-                    'pubdate': StringUtils.unify_datetime_str(result.get('listingTime')),
-                    'size': result.get('fileSize'),
-                    'seeders': result.get('seedNum'),
-                    'peers': result.get('leechNum'),
-                    'grabs': result.get('completedNum'),
-                    'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('downloadPromotion')),
-                    'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('uploadPromotion')),
-                    'freedate': StringUtils.unify_datetime_str(result.get('downloadPromotionEndTime')),
-                    'page_url': self._pageurl % (self._domain, result.get('id')),
-                    'labels': torrentLabels,
-                    'category': category
-                }
-                torrents.append(torrent)
+            return False, self.__parse_result(results)
         elif res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
             return True, []
         else:
             logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
             return True, []
-        return False, torrents
+
+    async def async_search(self, keyword: str,
+                           mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+        """
+        异步搜索
+        """
+        res = await AsyncRequestUtils(
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": f"{self._ua}",
+                "Accept": "application/json, text/plain, */*"
+            },
+            cookies=self._cookie,
+            proxies=self._proxy,
+            referer=f"{self._domain}",
+            timeout=self._timeout
+        ).post_res(url=self._searchurl, json=self.__get_params(keyword, page))
+
+        if res and res.status_code == 200:
+            results = res.json().get('data', []) or []
+            return False, self.__parse_result(results)
+        elif res is not None:
+            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
+            return True, []
+        else:
+            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
+            return True, []
 
     @staticmethod
     def __get_downloadvolumefactor(discount: str) -> float:

@@ -1,3 +1,4 @@
+import inspect
 import time
 from functools import wraps
 from typing import Any, Callable
@@ -34,7 +35,29 @@ def retry(ExceptionToCheck: Any,
                     mdelay *= backoff
             return f(*args, **kwargs)
 
-        return f_retry
+        async def async_f_retry(*args, **kwargs):
+            mtries, mdelay = tries, delay
+            while mtries > 1:
+                try:
+                    return await f(*args, **kwargs)
+                except ImmediateException:
+                    raise
+                except ExceptionToCheck as e:
+                    msg = f"{str(e)}, {mdelay} 秒后重试 ..."
+                    if logger:
+                        logger.warn(msg)
+                    else:
+                        print(msg)
+                    time.sleep(mdelay)
+                    mtries -= 1
+                    mdelay *= backoff
+            return await f(*args, **kwargs)
+
+        # 根据函数类型返回相应的包装器
+        if inspect.iscoroutinefunction(f):
+            return async_f_retry
+        else:
+            return f_retry
 
     return deco_retry
 
@@ -58,6 +81,22 @@ def log_execution_time(logger: Any = None):
                 print(msg)
             return result
 
-        return wrapper
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            start_time = time.time()
+            result = await func(*args, **kwargs)
+            end_time = time.time()
+            msg = f"{func.__name__} execution time: {end_time - start_time:.2f} seconds"
+            if logger:
+                logger.debug(msg)
+            else:
+                print(msg)
+            return result
+
+        # 根据函数类型返回相应的包装器
+        if inspect.iscoroutinefunction(func):
+            return async_wrapper
+        else:
+            return wrapper
 
     return decorator

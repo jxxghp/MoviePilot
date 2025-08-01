@@ -5,13 +5,14 @@ from typing import Any, Optional
 from typing import List
 from urllib.parse import quote, urlencode, urlparse, parse_qs
 
+from fastapi.concurrency import run_in_threadpool
 from jinja2 import Template
 from pyquery import PyQuery
 
 from app.core.config import settings
 from app.log import logger
 from app.schemas.types import MediaType
-from app.utils.http import RequestUtils
+from app.utils.http import RequestUtils, AsyncRequestUtils
 from app.utils.string import StringUtils
 
 
@@ -80,13 +81,10 @@ class SiteSpider:
         self.torrents_info = {}
         self.torrents_info_array = []
 
-    def get_torrents(self) -> List[dict]:
+    def __get_search_url(self):
         """
-        开始请求
+        获取搜索URL
         """
-        if not self.search or not self.domain:
-            return []
-
         # 种子搜索相对路径
         paths = self.search.get('paths', [])
         torrentspath = ""
@@ -200,6 +198,18 @@ class SiteSpider:
             # 搜索Url
             searchurl = self.domain + str(torrentspath).format(**inputs_dict)
 
+        return searchurl
+
+    def get_torrents(self) -> List[dict]:
+        """
+        开始请求
+        """
+        if not self.search or not self.domain:
+            return []
+
+        # 获取搜索URL
+        searchurl = self.__get_search_url()
+
         logger.info(f"开始请求：{searchurl}")
 
         # requests请求
@@ -212,6 +222,36 @@ class SiteSpider:
         ).get_res(searchurl, allow_redirects=True)
         # 解析返回
         return self.parse(
+            RequestUtils.get_decoded_html_content(
+                ret,
+                performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
+                confidence_threshold=settings.ENCODING_DETECTION_MIN_CONFIDENCE
+            )
+        )
+
+    async def async_get_torrents(self) -> List[dict]:
+        """
+        异步请求
+        """
+        if not self.search or not self.domain:
+            return []
+
+        # 获取搜索URL
+        searchurl = self.__get_search_url()
+
+        logger.info(f"开始异步请求：{searchurl}")
+
+        # httpx请求
+        ret = await AsyncRequestUtils(
+            ua=self.ua,
+            cookies=self.cookie,
+            timeout=self._timeout,
+            referer=self.referer,
+            proxies=self.proxies
+        ).get_res(searchurl, allow_redirects=True)
+        # 解析返回
+        return await run_in_threadpool(
+            self.parse,
             RequestUtils.get_decoded_html_content(
                 ret,
                 performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,

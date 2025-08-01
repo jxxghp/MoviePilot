@@ -1,4 +1,5 @@
 import functools
+import inspect
 import threading
 import time
 from collections import deque
@@ -303,7 +304,41 @@ def rate_limit_handler(limiter: BaseRateLimiter, raise_on_limit: bool = False) -
                     raise e
                 return None
 
-        return wrapper
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs) -> Optional[Any]:
+            # 检查是否传入了 "raise_exception" 参数，优先使用该参数，否则使用默认的 raise_on_limit 值
+            raise_exception = kwargs.get("raise_exception", raise_on_limit)
+
+            # 检查是否可以进行调用，调用 limiter.can_call() 方法
+            can_call, message = limiter.can_call()
+            if not can_call:
+                # 如果调用受限，并且 raise_exception 为 True，则抛出限流异常
+                if raise_exception:
+                    raise RateLimitExceededException(message)
+                # 如果不抛出异常，则返回 None 表示跳过调用
+                return None
+
+            # 如果调用允许，执行目标函数，并记录一次调用
+            try:
+                result = await func(*args, **kwargs)
+                limiter.record_call()
+                if limiter.reset_on_success:
+                    limiter.reset()
+                return result
+            except LimitException as e:
+                # 如果目标函数触发了限流相关的异常，执行限流器的触发逻辑（如递增等待时间）
+                limiter.trigger_limit()
+                logger.error(limiter.format_log(f"触发限流：{str(e)}"))
+                # 如果 raise_exception 为 True，则抛出异常，否则返回 None
+                if raise_exception:
+                    raise e
+                return None
+
+        # 根据函数类型返回相应的包装器
+        if inspect.iscoroutinefunction(func):
+            return async_wrapper
+        else:
+            return wrapper
 
     return decorator
 

@@ -642,7 +642,7 @@ class ChainBase(metaclass=ABCMeta):
         :param page:  页码
         :reutrn: 资源列表
         """
-        return await self.async_run_module("search_torrents", site=site, keywords=keywords,
+        return await self.async_run_module("async_search_torrents", site=site, keywords=keywords,
                                            mtype=mtype, page=page)
 
     def refresh_torrents(self, site: dict, keyword: Optional[str] = None,

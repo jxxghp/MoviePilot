@@ -10,7 +10,7 @@ from app.helper.sites import SitesHelper  # noqa
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
-from app.core.config import global_vars
+from app.core.config import global_vars, settings
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import eventmanager, Event
@@ -201,6 +201,10 @@ class SearchChain(ChainBase):
                                                        mediainfo.hk_title,
                                                        mediainfo.tw_title,
                                                        mediainfo.sg_title] if k]))
+            # 限制搜索关键词数量
+            if settings.MAX_SEARCH_NAME_LIMIT:
+                keywords = keywords[:settings.MAX_SEARCH_NAME_LIMIT]
+
         return season_episodes, keywords
 
     def __parse_result(self, torrents: List[TorrentInfo],
