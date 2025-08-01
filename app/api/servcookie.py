@@ -51,12 +51,12 @@ cookie_router = APIRouter(route_class=GzipRoute,
 
 
 @cookie_router.get("/", response_class=PlainTextResponse)
-def get_root():
+async def get_root():
     return "Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud"
 
 
 @cookie_router.post("/", response_class=PlainTextResponse)
-def post_root():
+async def post_root():
     return "Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud"
 
 

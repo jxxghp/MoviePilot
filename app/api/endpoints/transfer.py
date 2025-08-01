@@ -59,7 +59,7 @@ def query_name(path: str, filetype: str,
 
 
 @router.get("/queue", summary="查询整理队列", response_model=List[schemas.TransferJob])
-def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询整理队列
     :param _: Token校验
@@ -68,7 +68,7 @@ def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.delete("/queue", summary="从整理队列中删除任务", response_model=schemas.Response)
-def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询整理队列
     :param fileitem: 文件项

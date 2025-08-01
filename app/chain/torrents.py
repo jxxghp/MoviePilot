@@ -60,6 +60,21 @@ class TorrentsChain(ChainBase):
         else:
             return self.load_cache(self._rss_file) or {}
 
+    async def async_get_torrents(self, stype: Optional[str] = None) -> Dict[str, List[Context]]:
+        """
+        异步获取当前缓存的种子
+        :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
+        """
+
+        if not stype:
+            stype = settings.SUBSCRIBE_MODE
+
+        # 异步读取缓存
+        if stype == 'spider':
+            return await self.async_load_cache(self._spider_file) or {}
+        else:
+            return await self.async_load_cache(self._rss_file) or {}
+
     def clear_torrents(self):
         """
         清理种子缓存数据
@@ -68,6 +83,15 @@ class TorrentsChain(ChainBase):
         self.remove_cache(self._spider_file)
         self.remove_cache(self._rss_file)
         logger.info(f'种子缓存数据清理完成')
+
+    async def async_clear_torrents(self):
+        """
+        异步清理种子缓存数据
+        """
+        logger.info(f'开始异步清理种子缓存数据 ...')
+        await self.async_remove_cache(self._spider_file)
+        await self.async_remove_cache(self._rss_file)
+        logger.info(f'异步种子缓存数据清理完成')
 
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
                page: Optional[int] = 0) -> List[TorrentInfo]:

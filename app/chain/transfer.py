@@ -1,4 +1,3 @@
-import gc
 import queue
 import re
 import threading

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 import aiofiles
+from aiopath import AsyncPath
 from qbittorrentapi import TorrentFilesList
 from transmission_rpc import File
 
@@ -105,6 +106,18 @@ class ChainBase(metaclass=ABCMeta):
         cache_path = settings.TEMP_PATH / filename
         if cache_path.exists():
             cache_path.unlink()
+
+    @staticmethod
+    async def async_remove_cache(filename: str) -> None:
+        """
+        异步删除本地缓存
+        """
+        cache_path = AsyncPath(settings.TEMP_PATH) / filename
+        if await cache_path.exists():
+            try:
+                await cache_path.unlink()
+            except Exception as err:
+                logger.error(f"异步删除缓存 {filename} 出错：{str(err)}")
 
     @staticmethod
     def __is_valid_empty(ret):
