@@ -115,6 +115,8 @@ async def update_subscribe(
     # 是否手动修改过总集数
     if subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
+    # 更新到数据库
+    await subscribe.async_update(db, subscribe_dict)
     # 发送订阅调整事件
     subscribe = await subscribe.async_get(db, subscribe_in.id)
     await eventmanager.async_send_event(EventType.SubscribeModified, {
