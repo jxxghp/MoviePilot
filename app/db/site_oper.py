@@ -198,9 +198,8 @@ class SiteOper(DbOper):
         lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sta = SiteStatistic.get_by_domain(self._db, domain)
         if sta:
-            avg_seconds, note = None, {}
+            avg_seconds, note = None, sta.note or {}
             if seconds is not None:
-                note: dict = sta.note or {}
                 note[lst_date] = seconds or 1
                 avg_times = len(note.keys())
                 if avg_times > 10:
@@ -211,7 +210,7 @@ class SiteOper(DbOper):
                 "seconds": avg_seconds or sta.seconds,
                 "lst_state": 0,
                 "lst_mod_date": lst_date,
-                "note": note or sta.note
+                "note": note
             })
         else:
             note = {}
@@ -257,9 +256,8 @@ class SiteOper(DbOper):
         lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sta = await SiteStatistic.async_get_by_domain(self._db, domain)
         if sta:
-            avg_seconds, note = None, {}
+            avg_seconds, note = None, sta.note or {}
             if seconds is not None:
-                note: dict = sta.note or {}
                 note[lst_date] = seconds or 1
                 avg_times = len(note.keys())
                 if avg_times > 10:
@@ -270,7 +268,7 @@ class SiteOper(DbOper):
                 "seconds": avg_seconds or sta.seconds,
                 "lst_state": 0,
                 "lst_mod_date": lst_date,
-                "note": note or sta.note
+                "note": note
             })
         else:
             note = {}
