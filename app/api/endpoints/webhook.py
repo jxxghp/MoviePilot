@@ -32,8 +32,8 @@ async def webhook_message(background_tasks: BackgroundTasks,
 
 
 @router.get("/", summary="Webhook消息响应", response_model=schemas.Response)
-def webhook_message(background_tasks: BackgroundTasks,
-                    request: Request, _: Annotated[str, Depends(verify_apitoken)]) -> Any:
+async def webhook_message(background_tasks: BackgroundTasks,
+                          request: Request, _: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     Webhook响应，配置请求中需要添加参数：token=API_TOKEN&source=媒体服务器名
     """
