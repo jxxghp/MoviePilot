@@ -10,6 +10,7 @@ import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from aiopath import AsyncPath
+from app.helper.sites import SitesHelper  # noqa  # noqa
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -28,7 +29,6 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
-from app.helper.sites import SitesHelper  # noqa  # noqa
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
@@ -376,38 +376,82 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
         try:
             # 使用固定大小的双向队列来限制内存使用
             lines_queue = deque(maxlen=max(length, 50))
-            # 使用 aiofiles 异步读取文件
-            async with log_path.open(mode="r", encoding="utf-8") as f:
-                # 逐行读取文件，将每一行存入队列
-                file_content = await f.read()
-                for line in file_content.splitlines():
+            # 获取文件大小
+            file_stat = await log_path.stat()
+            file_size = file_stat.st_size
+
+            # 读取历史日志
+            async with log_path.open(mode="r", encoding="utf-8", errors="ignore") as f:
+                # 优化大文件读取策略
+                if file_size > 100 * 1024:
+                    # 只读取最后100KB的内容
+                    bytes_to_read = min(file_size, 100 * 1024)
+                    position = file_size - bytes_to_read
+                    await f.seek(position)
+                    content = await f.read()
+                    # 找到第一个完整的行
+                    first_newline = content.find('\n')
+                    if first_newline != -1:
+                        content = content[first_newline + 1:]
+                else:
+                    # 小文件直接读取全部内容
+                    content = await f.read()
+
+                # 按行分割并添加到队列，只保留非空行
+                lines = [line.strip() for line in content.splitlines() if line.strip()]
+                # 只取最后N行
+                for line in lines[-max(length, 50):]:
                     lines_queue.append(line)
-                for line in lines_queue:
-                    yield f"data: {line}\n\n"
+
+            # 输出历史日志
+            for line in lines_queue:
+                yield f"data: {line}\n\n"
+
+            # 实时监听新日志
+            async with log_path.open(mode="r", encoding="utf-8", errors="ignore") as f:
                 # 移动文件指针到文件末尾，继续监听新增内容
                 await f.seek(0, 2)
+                # 记录初始文件大小
+                initial_stat = await log_path.stat()
+                initial_size = initial_stat.st_size
+                # 实时监听新日志，使用更短的轮询间隔
                 while not global_vars.is_system_stopped:
                     if await request.is_disconnected():
                         break
-                    line = await f.readline()
-                    if not line:
-                        await asyncio.sleep(1)
-                        continue
-                    yield f"data: {line}\n\n"
+                    # 检查文件是否有新内容
+                    current_stat = await log_path.stat()
+                    current_size = current_stat.st_size
+                    if current_size > initial_size:
+                        # 文件有新内容，读取新行
+                        line = await f.readline()
+                        if line:
+                            line = line.strip()
+                            if line:
+                                yield f"data: {line}\n\n"
+                        initial_size = current_size
+                    else:
+                        # 没有新内容，短暂等待
+                        await asyncio.sleep(0.5)
         except asyncio.CancelledError:
             return
+        except Exception as err:
+            logger.error(f"日志读取异常: {err}")
+            yield f"data: 日志读取异常: {err}\n\n"
 
     # 根据length参数返回不同的响应
     if length == -1:
         # 返回全部日志作为文本响应
         if not await log_path.exists():
             return Response(content="日志文件不存在！", media_type="text/plain")
-        # 使用 aiofiles 异步读取文件
-        async with log_path.open(mode="r", encoding="utf-8") as file:
-            text = await file.read()
-        # 倒序输出
-        text = "\n".join(text.split("\n")[::-1])
-        return Response(content=text, media_type="text/plain")
+        try:
+            # 使用 aiofiles 异步读取文件
+            async with log_path.open(mode="r", encoding="utf-8", errors="ignore") as file:
+                text = await file.read()
+            # 倒序输出
+            text = "\n".join(text.split("\n")[::-1])
+            return Response(content=text, media_type="text/plain")
+        except Exception as e:
+            return Response(content=f"读取日志文件失败: {e}", media_type="text/plain")
     else:
         # 返回SSE流响应
         return StreamingResponse(log_generator(), media_type="text/event-stream")

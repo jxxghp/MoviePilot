@@ -15,6 +15,10 @@ from app.utils.url import UrlUtils
 lock = threading.Lock()
 
 
+class RetryException(Exception):
+    pass
+
+
 class WeChat:
     # 企业微信Token
     _access_token = None
@@ -68,7 +72,7 @@ class WeChat:
         """
         return True if self.__get_access_token() else False
 
-    @retry(Exception, logger=logger)
+    @retry(RetryException, logger=logger)
     def __get_access_token(self, force=False):
         """
         获取微信Token
@@ -84,23 +88,19 @@ class WeChat:
         if not token_flag or force:
             if not self._corpid or not self._appsecret:
                 return None
-            try:
-                token_url = self._token_url.format(corpid=self._corpid, corpsecret=self._appsecret)
-                res = RequestUtils().get_res(token_url)
-                if res:
-                    ret_json = res.json()
-                    if ret_json.get("errcode") == 0:
-                        self._access_token = ret_json.get("access_token")
-                        self._expires_in = ret_json.get("expires_in")
-                        self._access_token_time = datetime.now()
-                elif res is not None:
-                    logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
-                else:
-                    logger.error(f"获取微信access_token失败，未获取到返回信息")
-                    raise Exception("获取微信access_token失败，网络连接失败")
-            except Exception as e:
-                logger.error(f"获取微信access_token失败，错误信息：{str(e)}")
-                return None
+            token_url = self._token_url.format(corpid=self._corpid, corpsecret=self._appsecret)
+            res = RequestUtils().get_res(token_url)
+            if res:
+                ret_json = res.json()
+                if ret_json.get("errcode") == 0:
+                    self._access_token = ret_json.get("access_token")
+                    self._expires_in = ret_json.get("expires_in")
+                    self._access_token_time = datetime.now()
+            elif res is not None:
+                logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
+            else:
+                logger.error(f"获取微信access_token失败，未获取到返回信息")
+                raise RetryException("获取微信access_token失败，重试中...")
         return self._access_token
 
     @staticmethod
@@ -307,7 +307,8 @@ class WeChat:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: Optional[str] = None, title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
+                          userid: Optional[str] = None, title: Optional[str] = None,
+                          link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -359,7 +360,7 @@ class WeChat:
             logger.error(f"发送消息失败：{e}")
             return False
 
-    @retry(Exception, logger=logger)
+    @retry(RetryException, logger=logger)
     def __post_request(self, url: str, req_json: dict) -> bool:
         """
         向微信发送请求
@@ -384,7 +385,7 @@ class WeChat:
                 self.__get_access_token(force=True)
                 error_msg = (f"access_token 已过期，尝试重新获取 access_token,"
                              f"errcode: {ret_json.get('errcode')}, errmsg: {ret_json.get('errmsg')}")
-                raise Exception(error_msg)
+                raise RetryException(error_msg)
             else:
                 logger.error(f"发送请求失败，错误信息：{ret_json.get('errmsg')}")
                 return False
@@ -464,7 +465,6 @@ class WeChat:
                 })
         except Exception as e:
             logger.error(f"创建菜单失败：{e}")
-            return False
 
     def delete_menus(self):
         """
@@ -477,4 +477,3 @@ class WeChat:
             RequestUtils().get(req_url)
         except Exception as e:
             logger.error(f"删除菜单失败：{e}")
-            return False

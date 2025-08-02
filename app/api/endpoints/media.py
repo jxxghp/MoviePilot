@@ -220,7 +220,7 @@ async def detail(mediaid: str, type_name: str, title: Optional[str] = None, year
             mediaid=mediaid,
             convert_type=settings.RECOGNIZE_SOURCE
         )
-        event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
+        event = await eventmanager.async_send_event(ChainEventType.MediaRecognizeConvert, event_data)
         # 使用事件返回的上下文数据
         if event and event.event_data and event.event_data.media_dict:
             event_data: MediaRecognizeConvertEventData = event.event_data

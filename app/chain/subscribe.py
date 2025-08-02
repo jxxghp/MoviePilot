@@ -41,6 +41,82 @@ class SubscribeChain(ChainBase):
     # 避免莫名原因导致长时间持有锁
     _LOCK_TIMOUT = 3600 * 2
 
+    @staticmethod
+    def __get_event_meida(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
+        """
+        广播事件解析媒体信息
+        """
+        event_data = MediaRecognizeConvertEventData(
+            mediaid=_mediaid,
+            convert_type=settings.RECOGNIZE_SOURCE
+        )
+        event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
+        # 使用事件返回的上下文数据
+        if event and event.event_data:
+            event_data: MediaRecognizeConvertEventData = event.event_data
+            if event_data.media_dict:
+                mediachain = MediaChain()
+                new_id = event_data.media_dict.get("id")
+                if event_data.convert_type == "themoviedb":
+                    return mediachain.recognize_media(meta=_meta, tmdbid=new_id)
+                elif event_data.convert_type == "douban":
+                    return mediachain.recognize_media(meta=_meta, doubanid=new_id)
+        return None
+
+    @staticmethod
+    async def __async_get_event_meida(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
+        """
+        广播事件解析媒体信息
+        """
+        event_data = MediaRecognizeConvertEventData(
+            mediaid=_mediaid,
+            convert_type=settings.RECOGNIZE_SOURCE
+        )
+        event = await eventmanager.async_send_event(ChainEventType.MediaRecognizeConvert, event_data)
+        # 使用事件返回的上下文数据
+        if event and event.event_data:
+            event_data: MediaRecognizeConvertEventData = event.event_data
+            if event_data.media_dict:
+                mediachain = MediaChain()
+                new_id = event_data.media_dict.get("id")
+                if event_data.convert_type == "themoviedb":
+                    return await mediachain.async_recognize_media(meta=_meta, tmdbid=new_id)
+                elif event_data.convert_type == "douban":
+                    return await mediachain.async_recognize_media(meta=_meta, doubanid=new_id)
+        return None
+
+    def __get_default_kwargs(self, mtype: MediaType, **kwargs) -> dict:
+        """
+        获取订阅默认配置
+        :param mtype: 媒体类型
+        :param key: 配置键
+        :return: 配置值
+        """
+        return {
+            'quality': self.__get_default_subscribe_config(mtype, "quality") if not kwargs.get(
+                "quality") else kwargs.get("quality"),
+            'resolution': self.__get_default_subscribe_config(mtype, "resolution") if not kwargs.get(
+                "resolution") else kwargs.get("resolution"),
+            'effect': self.__get_default_subscribe_config(mtype, "effect") if not kwargs.get(
+                "effect") else kwargs.get("effect"),
+            'include': self.__get_default_subscribe_config(mtype, "include") if not kwargs.get(
+                "include") else kwargs.get("include"),
+            'exclude': self.__get_default_subscribe_config(mtype, "exclude") if not kwargs.get(
+                "exclude") else kwargs.get("exclude"),
+            'best_version': self.__get_default_subscribe_config(mtype, "best_version") if not kwargs.get(
+                "best_version") else kwargs.get("best_version"),
+            'search_imdbid': self.__get_default_subscribe_config(mtype, "search_imdbid") if not kwargs.get(
+                "search_imdbid") else kwargs.get("search_imdbid"),
+            'sites': self.__get_default_subscribe_config(mtype, "sites") or None if not kwargs.get(
+                "sites") else kwargs.get("sites"),
+            'downloader': self.__get_default_subscribe_config(mtype, "downloader") if not kwargs.get(
+                "downloader") else kwargs.get("downloader"),
+            'save_path': self.__get_default_subscribe_config(mtype, "save_path") if not kwargs.get(
+                "save_path") else kwargs.get("save_path"),
+            'filter_groups': self.__get_default_subscribe_config(mtype, "filter_groups") if not kwargs.get(
+                "filter_groups") else kwargs.get("filter_groups")
+        }
+
     def add(self, title: str, year: str,
             mtype: MediaType = None,
             tmdbid: Optional[int] = None,
@@ -59,27 +135,6 @@ class SubscribeChain(ChainBase):
         """
         识别媒体信息并添加订阅
         """
-
-        def __get_event_meida(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
-            """
-            广播事件解析媒体信息
-            """
-            event_data = MediaRecognizeConvertEventData(
-                mediaid=_mediaid,
-                convert_type=settings.RECOGNIZE_SOURCE
-            )
-            event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
-            # 使用事件返回的上下文数据
-            if event and event.event_data:
-                event_data: MediaRecognizeConvertEventData = event.event_data
-                if event_data.media_dict:
-                    mediachain = MediaChain()
-                    new_id = event_data.media_dict.get("id")
-                    if event_data.convert_type == "themoviedb":
-                        return mediachain.recognize_media(meta=_meta, tmdbid=new_id)
-                    elif event_data.convert_type == "douban":
-                        return mediachain.recognize_media(meta=_meta, doubanid=new_id)
-            return None
 
         logger.info(f'开始添加订阅，标题：{title} ...')
 
@@ -103,7 +158,7 @@ class SubscribeChain(ChainBase):
                         mediainfo = MediaInfo(tmdb_info=tmdbinfo)
                 elif mediaid:
                     # 未知前缀，广播事件解析媒体信息
-                    mediainfo = __get_event_meida(mediaid, metainfo)
+                    mediainfo = self.__get_event_meida(mediaid, metainfo)
             else:
                 # 使用TMDBID识别
                 mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid,
@@ -114,7 +169,7 @@ class SubscribeChain(ChainBase):
                 mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid, cache=False)
             elif mediaid:
                 # 未知前缀，广播事件解析媒体信息
-                mediainfo = __get_event_meida(mediaid, metainfo)
+                mediainfo = self.__get_event_meida(mediaid, metainfo)
             if mediainfo:
                 # 豆瓣标题处理
                 meta = MetaInfo(mediainfo.title)
@@ -176,30 +231,8 @@ class SubscribeChain(ChainBase):
             mediainfo.bangumi_id = bangumiid
 
         # 添加订阅
-        kwargs.update({
-            'quality': self.__get_default_subscribe_config(mediainfo.type, "quality") if not kwargs.get(
-                "quality") else kwargs.get("quality"),
-            'resolution': self.__get_default_subscribe_config(mediainfo.type, "resolution") if not kwargs.get(
-                "resolution") else kwargs.get("resolution"),
-            'effect': self.__get_default_subscribe_config(mediainfo.type, "effect") if not kwargs.get(
-                "effect") else kwargs.get("effect"),
-            'include': self.__get_default_subscribe_config(mediainfo.type, "include") if not kwargs.get(
-                "include") else kwargs.get("include"),
-            'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude") if not kwargs.get(
-                "exclude") else kwargs.get("exclude"),
-            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version") if not kwargs.get(
-                "best_version") else kwargs.get("best_version"),
-            'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid") if not kwargs.get(
-                "search_imdbid") else kwargs.get("search_imdbid"),
-            'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None if not kwargs.get(
-                "sites") else kwargs.get("sites"),
-            'downloader': self.__get_default_subscribe_config(mediainfo.type, "downloader") if not kwargs.get(
-                "downloader") else kwargs.get("downloader"),
-            'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
-                "save_path") else kwargs.get("save_path"),
-            'filter_groups': self.__get_default_subscribe_config(mediainfo.type, "filter_groups") if not kwargs.get(
-                "filter_groups") else kwargs.get("filter_groups")
-        })
+        kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
+
         # 操作数据库
         sid, err_msg = SubscribeOper().add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
@@ -244,6 +277,183 @@ class SubscribeChain(ChainBase):
         })
         # 统计订阅
         SubscribeHelper().sub_reg_async({
+            "name": title,
+            "year": year,
+            "type": metainfo.type.value,
+            "tmdbid": mediainfo.tmdb_id,
+            "imdbid": mediainfo.imdb_id,
+            "tvdbid": mediainfo.tvdb_id,
+            "doubanid": mediainfo.douban_id,
+            "bangumiid": mediainfo.bangumi_id,
+            "season": metainfo.begin_season,
+            "poster": mediainfo.get_poster_image(),
+            "backdrop": mediainfo.get_backdrop_image(),
+            "vote": mediainfo.vote_average,
+            "description": mediainfo.overview
+        })
+        # 返回结果
+        return sid, ""
+
+    async def async_add(self, title: str, year: str,
+                        mtype: MediaType = None,
+                        tmdbid: Optional[int] = None,
+                        doubanid: Optional[str] = None,
+                        bangumiid: Optional[int] = None,
+                        mediaid: Optional[str] = None,
+                        episode_group: Optional[str] = None,
+                        season: Optional[int] = None,
+                        channel: MessageChannel = None,
+                        source: Optional[str] = None,
+                        userid: Optional[str] = None,
+                        username: Optional[str] = None,
+                        message: Optional[bool] = True,
+                        exist_ok: Optional[bool] = False,
+                        **kwargs) -> Tuple[Optional[int], str]:
+        """
+        异步识别媒体信息并添加订阅
+        """
+
+        logger.info(f'开始添加订阅，标题：{title} ...')
+
+        mediainfo = None
+        metainfo = MetaInfo(title)
+        if year:
+            metainfo.year = year
+        if mtype:
+            metainfo.type = mtype
+        if season:
+            metainfo.type = MediaType.TV
+            metainfo.begin_season = season
+        # 识别媒体信息
+        if settings.RECOGNIZE_SOURCE == "themoviedb":
+            # TMDB识别模式
+            if not tmdbid:
+                if doubanid:
+                    # 将豆瓣信息转换为TMDB信息
+                    tmdbinfo = await MediaChain().async_get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+                    if tmdbinfo:
+                        mediainfo = MediaInfo(tmdb_info=tmdbinfo)
+                elif mediaid:
+                    # 未知前缀，广播事件解析媒体信息
+                    mediainfo = await self.__async_get_event_meida(mediaid, metainfo)
+            else:
+                # 使用TMDBID识别
+                mediainfo = await self.async_recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid,
+                                                             episode_group=episode_group, cache=False)
+        else:
+            if doubanid:
+                # 豆瓣识别模式，不使用缓存
+                mediainfo = await self.async_recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid, cache=False)
+            elif mediaid:
+                # 未知前缀，广播事件解析媒体信息
+                mediainfo = await self.__async_get_event_meida(mediaid, metainfo)
+            if mediainfo:
+                # 豆瓣标题处理
+                meta = MetaInfo(mediainfo.title)
+                mediainfo.title = meta.name
+                if not season:
+                    season = meta.begin_season
+
+        # 使用名称识别兜底
+        if not mediainfo:
+            mediainfo = await self.async_recognize_media(meta=metainfo, episode_group=episode_group)
+
+        # 识别失败
+        if not mediainfo:
+            logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
+            return None, "未识别到媒体信息"
+
+        # 总集数
+        if mediainfo.type == MediaType.TV:
+            if not season:
+                season = 1
+            # 总集数
+            if not kwargs.get('total_episode'):
+                if not mediainfo.seasons or episode_group:
+                    # 补充媒体信息
+                    mediainfo = await self.async_recognize_media(mtype=mediainfo.type,
+                                                                 tmdbid=mediainfo.tmdb_id,
+                                                                 doubanid=mediainfo.douban_id,
+                                                                 bangumiid=mediainfo.bangumi_id,
+                                                                 episode_group=episode_group,
+                                                                 cache=False)
+                    if not mediainfo:
+                        logger.error(f"媒体信息识别失败！")
+                        return None, "媒体信息识别失败"
+                    if not mediainfo.seasons:
+                        logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
+                        return None, "媒体信息中没有季集信息"
+                total_episode = len(mediainfo.seasons.get(season) or [])
+                if not total_episode:
+                    logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}, doubanid：{doubanid}')
+                    return None, f"未获取到第 {season} 季的总集数"
+                kwargs.update({
+                    'total_episode': total_episode
+                })
+            # 缺失集
+            if not kwargs.get('lack_episode'):
+                kwargs.update({
+                    'lack_episode': kwargs.get('total_episode')
+                })
+        else:
+            # 避免season为0的问题
+            season = None
+
+        # 更新媒体图片
+        await self.async_obtain_images(mediainfo=mediainfo)
+        # 合并信息
+        if doubanid:
+            mediainfo.douban_id = doubanid
+        if bangumiid:
+            mediainfo.bangumi_id = bangumiid
+
+        # 列新默认参数
+        kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
+
+        # 操作数据库
+        sid, err_msg = await SubscribeOper().async_add(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        if not sid:
+            logger.error(f'{mediainfo.title_year} {err_msg}')
+            if not exist_ok and message:
+                # 失败发回原用户
+                await self.async_post_message(schemas.Notification(channel=channel,
+                                                                   source=source,
+                                                                   mtype=NotificationType.Subscribe,
+                                                                   title=f"{mediainfo.title_year} {metainfo.season} "
+                                                                         f"添加订阅失败！",
+                                                                   text=f"{err_msg}",
+                                                                   image=mediainfo.get_message_image(),
+                                                                   userid=userid))
+            return None, err_msg
+        elif message:
+            if mediainfo.type == MediaType.TV:
+                link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            else:
+                link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
+            # 订阅成功按规则发送消息
+            await self.async_post_message(
+                schemas.Notification(
+                    channel=channel,
+                    source=source,
+                    mtype=NotificationType.Subscribe,
+                    ctype=ContentType.SubscribeAdded,
+                    image=mediainfo.get_message_image(),
+                    link=link,
+                    userid=userid,
+                    username=username
+                ),
+                meta=metainfo,
+                mediainfo=mediainfo,
+                username=username
+            )
+        # 发送事件
+        await eventmanager.async_send_event(EventType.SubscribeAdded, {
+            "subscribe_id": sid,
+            "username": username,
+            "mediainfo": mediainfo.to_dict(),
+        })
+        # 统计订阅
+        await SubscribeHelper().async_sub_reg({
             "name": title,
             "year": year,
             "type": metainfo.type.value,

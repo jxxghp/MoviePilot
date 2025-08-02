@@ -657,6 +657,17 @@ class MessageQueueManager(metaclass=SingletonClass):
             })
             logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
 
+    async def async_send_message(self, *args, **kwargs) -> None:
+        """
+        异步发送消息（直接加入队列）
+        """
+        kwargs.pop("immediately", False)
+        self.queue.put({
+            "args": args,
+            "kwargs": kwargs
+        })
+        logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
+
     def _send(self, *args, **kwargs) -> None:
         """
         实际发送消息（可通过回调函数自定义）

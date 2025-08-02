@@ -533,6 +533,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 512, ttl: Opti
         is_async = inspect.iscoroutinefunction(func)
 
         if is_async:
+            # 异步函数的缓存装饰器
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 # 获取缓存键
@@ -554,13 +555,13 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 512, ttl: Opti
                 """
                 清理缓存区
                 """
-                # 清理缓存区
                 cache_backend.clear(region=cache_region)
 
             async_wrapper.cache_region = cache_region
             async_wrapper.cache_clear = cache_clear
             return async_wrapper
         else:
+            # 同步函数的缓存装饰器
             @wraps(func)
             def wrapper(*args, **kwargs):
                 # 获取缓存键
@@ -582,7 +583,6 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 512, ttl: Opti
                 """
                 清理缓存区
                 """
-                # 清理缓存区
                 cache_backend.clear(region=cache_region)
 
             wrapper.cache_region = cache_region

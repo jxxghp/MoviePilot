@@ -17,7 +17,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_user
+from app.db.user_oper import get_current_active_user_async
 from app.helper.subscribe import SubscribeHelper
 from app.scheduler import Scheduler
 from app.schemas.types import MediaType, EventType, SystemConfigKey
@@ -53,10 +53,10 @@ async def list_subscribes(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 
 
 @router.post("/", summary="新增订阅", response_model=schemas.Response)
-def create_subscribe(
+async def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
-        current_user: User = Depends(get_current_active_user),
+        current_user: User = Depends(get_current_active_user_async),
 ) -> schemas.Response:
     """
     新增订阅
@@ -78,10 +78,10 @@ def create_subscribe(
         title = None
     # 订阅用户
     subscribe_in.username = current_user.name
-    sid, message = SubscribeChain().add(mtype=mtype,
-                                        title=title,
-                                        exist_ok=True,
-                                        **subscribe_in.dict())
+    sid, message = await SubscribeChain().async_add(mtype=mtype,
+                                                   title=title,
+                                                   exist_ok=True,
+                                                   **subscribe_in.dict())
     return schemas.Response(
         success=bool(sid), message=message, data={"id": sid}
     )
@@ -145,7 +145,7 @@ async def update_subscribe_status(
         "state": state
     })
     # 发送订阅调整事件
-    eventmanager.async_send_event(EventType.SubscribeModified, {
+    await eventmanager.async_send_event(EventType.SubscribeModified, {
         "subscribe_id": subscribe.id,
         "old_subscribe_info": old_subscribe_dict,
         "subscribe_info": subscribe.to_dict(),
@@ -224,7 +224,7 @@ async def reset_subscribes(
             "state": "R"
         })
         # 发送订阅调整事件
-        eventmanager.async_send_event(EventType.SubscribeModified, {
+        await eventmanager.async_send_event(EventType.SubscribeModified, {
             "subscribe_id": subscribe.id,
             "old_subscribe_info": old_subscribe_dict,
             "subscribe_info": subscribe.to_dict(),
@@ -313,7 +313,7 @@ async def delete_subscribe_by_mediaid(
     for subscribe in delete_subscribes:
         await Subscribe.async_delete(db, subscribe.id)
         # 发送事件
-        eventmanager.async_send_event(EventType.SubscribeDeleted, {
+        await eventmanager.async_send_event(EventType.SubscribeDeleted, {
             "subscribe_id": subscribe.id,
             "subscribe_info": subscribe.to_dict()
         })
@@ -495,9 +495,9 @@ async def subscribe_share_delete(
 
 
 @router.post("/fork", summary="复用订阅", response_model=schemas.Response)
-def subscribe_fork(
+async def subscribe_fork(
         sub: schemas.SubscribeShare,
-        current_user: User = Depends(get_current_active_user)) -> Any:
+        current_user: User = Depends(get_current_active_user_async)) -> Any:
     """
     复用订阅
     """
@@ -506,10 +506,10 @@ def subscribe_fork(
     for key in list(sub_dict.keys()):
         if not hasattr(schemas.Subscribe(), key):
             sub_dict.pop(key)
-    result = create_subscribe(subscribe_in=schemas.Subscribe(**sub_dict),
-                              current_user=current_user)
+    result = await create_subscribe(subscribe_in=schemas.Subscribe(**sub_dict),
+                                    current_user=current_user)
     if result.success:
-        SubscribeHelper().sub_fork(share_id=sub.id)
+        await SubscribeHelper().async_sub_fork(share_id=sub.id)
     return result
 
 
@@ -596,7 +596,7 @@ async def delete_subscribe(
     if subscribe:
         await Subscribe.async_delete(db, subscribe_id)
         # 发送事件
-        eventmanager.async_send_event(EventType.SubscribeDeleted, {
+        await eventmanager.async_send_event(EventType.SubscribeDeleted, {
             "subscribe_id": subscribe_id,
             "subscribe_info": subscribe.to_dict()
         })

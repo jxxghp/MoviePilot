@@ -173,6 +173,20 @@ class SubscribeHelper(metaclass=WeakSingleton):
             return True
         return False
 
+    async def async_sub_reg(self, sub: dict) -> bool:
+        """
+        异步新增订阅统计
+        """
+        enabled, _ = self._check_subscribe_share_enabled()
+        if not enabled:
+            return False
+        res = await AsyncRequestUtils(proxies=settings.PROXY, timeout=5, headers={
+            "Content-Type": "application/json"
+        }).post_res(self._sub_reg, json=sub)
+        if res and res.status_code == 200:
+            return True
+        return False
+
     def sub_done(self, sub: dict) -> bool:
         """
         完成订阅统计

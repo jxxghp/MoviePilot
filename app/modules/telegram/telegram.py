@@ -20,6 +20,10 @@ from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
+class RetryException(Exception):
+    pass
+
+
 class Telegram:
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _event = Event()
@@ -516,7 +520,7 @@ class Telegram:
             logger.error(f"编辑消息失败：{str(e)}")
             return False
 
-    @retry(Exception, logger=logger)
+    @retry(RetryException, logger=logger)
     def __send_request(self, userid: Optional[str] = None, image="", caption="",
                        reply_markup: Optional[InlineKeyboardMarkup] = None) -> bool:
         """
@@ -541,7 +545,7 @@ class Telegram:
                                            parse_mode="Markdown",
                                            reply_markup=reply_markup)
                 if ret is None:
-                    raise Exception("发送图片消息失败")
+                    raise RetryException("发送图片消息失败")
                 return True
         # 按4096分段循环发送消息
         ret = None
@@ -557,7 +561,7 @@ class Telegram:
                                          parse_mode="Markdown",
                                          reply_markup=reply_markup)
         if ret is None:
-            raise Exception("发送文本消息失败")
+            raise RetryException("发送文本消息失败")
         return True if ret else False
 
     def register_commands(self, commands: Dict[str, dict]):
