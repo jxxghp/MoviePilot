@@ -97,7 +97,7 @@ class Qbittorrent:
             if tags:
                 results = []
                 if not isinstance(tags, list):
-                    tags = [tags]
+                    tags = tags.split(',')
                 try:
                     for torrent in torrents:
                         torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]

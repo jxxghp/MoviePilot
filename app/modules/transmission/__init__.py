@@ -139,7 +139,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         if label:
             labels = label.split(',')
         elif settings.TORRENT_TAG:
-            labels = [settings.TORRENT_TAG]
+            labels = settings.TORRENT_TAG.split(',')
         else:
             labels = None
         # 添加任务

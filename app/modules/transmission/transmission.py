@@ -91,7 +91,7 @@ class Transmission:
         if status and not isinstance(status, list):
             status = [status]
         if tags and not isinstance(tags, list):
-            tags = [tags]
+            tags = tags.split(',')
         ret_torrents = []
         try:
             for torrent in torrents:
