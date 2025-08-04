@@ -198,13 +198,17 @@ class SiteOper(DbOper):
         lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sta = SiteStatistic.get_by_domain(self._db, domain)
         if sta:
-            avg_seconds, note = None, sta.note or {}
+            # 使用深复制确保 note 是全新的字典对象
+            note = dict(sta.note) if sta.note else {}
+            avg_seconds = None
+
             if seconds is not None:
                 note[lst_date] = seconds or 1
                 avg_times = len(note.keys())
                 if avg_times > 10:
                     note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
                 avg_seconds = sum([v for v in note.values()]) // avg_times
+
             sta.update(self._db, {
                 "success": sta.success + 1,
                 "seconds": avg_seconds or sta.seconds,
@@ -256,13 +260,17 @@ class SiteOper(DbOper):
         lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sta = await SiteStatistic.async_get_by_domain(self._db, domain)
         if sta:
-            avg_seconds, note = None, sta.note or {}
+            # 使用深复制确保 note 是全新的字典对象
+            note = dict(sta.note) if sta.note else {}
+            avg_seconds = None
+
             if seconds is not None:
                 note[lst_date] = seconds or 1
                 avg_times = len(note.keys())
                 if avg_times > 10:
                     note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
                 avg_seconds = sum([v for v in note.values()]) // avg_times
+
             await sta.async_update(self._db, {
                 "success": sta.success + 1,
                 "seconds": avg_seconds or sta.seconds,

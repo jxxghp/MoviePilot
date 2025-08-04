@@ -66,7 +66,7 @@ async def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
     获取WEB消息列表
     """
     ret_messages = []
-    messages = Message.async_list_by_page(db, page=page, count=count)
+    messages = await Message.async_list_by_page(db, page=page, count=count)
     for message in messages:
         try:
             ret_messages.append(message.to_dict())
