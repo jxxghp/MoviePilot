@@ -186,7 +186,7 @@ class TransferHistory(Base):
         result = await db.execute(
             select(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date)
         )
-        return result.scalars().all()
+        return result.all()
 
     @classmethod
     @db_query
