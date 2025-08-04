@@ -102,7 +102,8 @@ async def search(title: str,
         for index, source in enumerate(setting_order):
             sort_order[source] = index
         result = sorted(result, key=lambda x: sort_order.get(__get_source(x), 4))
-    return result[(page - 1) * count:page * count]
+        return result[(page - 1) * count:page * count]
+    return []
 
 
 @router.post("/scrape/{storage}", summary="刮削媒体信息", response_model=schemas.Response)

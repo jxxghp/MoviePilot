@@ -657,6 +657,17 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in results]
         return []
 
+    async def async_search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+        """
+        异步搜索集合信息
+        """
+        if not name:
+            return []
+        results = await self.tmdb.async_search_collections(name)
+        if results:
+            return [MediaInfo(tmdb_info=info) for info in results]
+        return []
+
     def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
         """
         根据合集ID查询集合
