@@ -1450,6 +1450,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
             if not torrents:
                 return False
 
+            # 未下载完成
+            if torrents[0].progress < 100:
+                return False
+
             # 获取种子文件列表
             torrent_files = self.torrent_files(download_hash, downloader)
             if not torrent_files:

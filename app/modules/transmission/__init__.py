@@ -253,7 +253,8 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                             path=Path(torrent.download_dir) / torrent.name,
                             hash=torrent.hashString,
                             size=torrent.total_size,
-                            tags=",".join(torrent.labels or [])
+                            tags=",".join(torrent.labels or []),
+                            progress=torrent.progress
                         ))
                 finally:
                     torrents.clear()
