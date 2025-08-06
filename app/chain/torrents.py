@@ -56,9 +56,14 @@ class TorrentsChain(ChainBase):
 
         # 读取缓存
         if stype == 'spider':
-            return self.load_cache(self._spider_file) or {}
+            torrents_cache = self.load_cache(self._spider_file) or {}
         else:
-            return self.load_cache(self._rss_file) or {}
+            torrents_cache = self.load_cache(self._rss_file) or {}
+
+        # 兼容性处理：为旧版本的Context对象添加失败次数字段
+        self._ensure_context_compatibility(torrents_cache)
+
+        return torrents_cache
 
     async def async_get_torrents(self, stype: Optional[str] = None) -> Dict[str, List[Context]]:
         """
@@ -71,9 +76,14 @@ class TorrentsChain(ChainBase):
 
         # 异步读取缓存
         if stype == 'spider':
-            return await self.async_load_cache(self._spider_file) or {}
+            torrents_cache = await self.async_load_cache(self._spider_file) or {}
         else:
-            return await self.async_load_cache(self._rss_file) or {}
+            torrents_cache = await self.async_load_cache(self._rss_file) or {}
+
+        # 兼容性处理：为旧版本的Context对象添加失败次数字段
+        self._ensure_context_compatibility(torrents_cache)
+
+        return torrents_cache
 
     def clear_torrents(self):
         """
@@ -274,6 +284,9 @@ class TorrentsChain(ChainBase):
                         mediainfo.clear()
                         # 上下文
                         context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
+                        # 如果未识别到媒体信息，设置初始失败次数为1
+                        if not mediainfo or (not mediainfo.tmdb_id and not mediainfo.douban_id):
+                            context.media_recognize_fail_count = 1
                         # 添加到缓存
                         if not torrents_cache.get(domain):
                             torrents_cache[domain] = [context]
@@ -299,6 +312,21 @@ class TorrentsChain(ChainBase):
             torrents_cache = {k: v for k, v in torrents_cache.items() if k in domains}
 
         return torrents_cache
+
+    @staticmethod
+    def _ensure_context_compatibility(torrents_cache: Dict[str, List[Context]]):
+        """
+        确保Context对象的兼容性，为旧版本添加缺失的字段
+        """
+        for domain, contexts in torrents_cache.items():
+            for context in contexts:
+                # 如果Context对象没有media_recognize_fail_count字段，添加默认值
+                if not hasattr(context, 'media_recognize_fail_count'):
+                    context.media_recognize_fail_count = 0
+                    # 如果媒体信息未识别，设置初始失败次数
+                    if (not context.media_info or
+                            (not context.media_info.tmdb_id and not context.media_info.douban_id)):
+                        context.media_recognize_fail_count = 1
 
     def __renew_rss_url(self, domain: str, site: dict):
         """

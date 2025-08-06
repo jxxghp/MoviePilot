@@ -6,6 +6,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -117,10 +118,11 @@ class LogEntry:
 
 class NonBlockingFileHandler:
     """
-    非阻塞文件处理器 - 透明地处理协程环境中的文件写入
+    非阻塞文件处理器 - 使用RotatingFileHandler实现日志滚动
     """
     _instance = None
     _lock = threading.Lock()
+    _rotating_handlers = {}
 
     def __new__(cls):
         if cls._instance is None:
@@ -137,13 +139,35 @@ class NonBlockingFileHandler:
         self._write_queue = queue.Queue(maxsize=log_settings.ASYNC_FILE_QUEUE_SIZE)
         self._executor = ThreadPoolExecutor(max_workers=log_settings.ASYNC_FILE_WORKERS,
                                             thread_name_prefix="LogWriter")
-        self._batch_buffer = {}
-        self._last_flush = {}
         self._running = True
 
         # 启动后台写入线程
         self._write_thread = threading.Thread(target=self._batch_writer, daemon=True)
         self._write_thread.start()
+
+    def _get_rotating_handler(self, file_path: Path) -> RotatingFileHandler:
+        """
+        获取或创建RotatingFileHandler实例
+        """
+        if file_path not in self._rotating_handlers:
+            # 确保目录存在
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # 创建RotatingFileHandler
+            handler = RotatingFileHandler(
+                filename=str(file_path),
+                maxBytes=log_settings.LOG_MAX_FILE_SIZE_BYTES,
+                backupCount=log_settings.LOG_BACKUP_COUNT,
+                encoding='utf-8'
+            )
+
+            # 设置格式化器
+            formatter = logging.Formatter(log_settings.LOG_FILE_FORMAT)
+            handler.setFormatter(formatter)
+
+            self._rotating_handlers[file_path] = handler
+
+        return self._rotating_handlers[file_path]
 
     def write_log(self, level: str, message: str, file_path: Path):
         """
@@ -186,16 +210,20 @@ class NonBlockingFileHandler:
         同步写入日志
         """
         try:
-            # 确保目录存在
-            entry.file_path.parent.mkdir(parents=True, exist_ok=True)
+            # 获取RotatingFileHandler实例
+            handler = NonBlockingFileHandler()._get_rotating_handler(entry.file_path)
 
-            # 格式化时间戳
-            timestamp = entry.timestamp.strftime('%Y-%m-%d %H:%M:%S,') + f"{entry.timestamp.microsecond // 1000:03d}"
-            line = f"【{entry.level.upper()}】{timestamp} - {entry.message}\n"
-
-            # 写入文件
-            with open(entry.file_path, 'a', encoding='utf-8') as f:
-                f.write(line)
+            # 使用RotatingFileHandler的emit方法，只传递原始消息
+            handler.emit(logging.LogRecord(
+                name='',
+                level=getattr(logging, entry.level.upper(), logging.INFO),
+                pathname='',
+                lineno=0,
+                msg=entry.message,
+                args=(),
+                exc_info=None,
+                created=entry.timestamp.timestamp()
+            ))
         except Exception as e:
             # 如果文件写入失败，至少输出到控制台
             print(f"日志写入失败 {entry.file_path}: {e}")
@@ -240,16 +268,22 @@ class NonBlockingFileHandler:
         # 批量写入每个文件
         for file_path, entries in file_groups.items():
             try:
-                # 确保目录存在
-                file_path.parent.mkdir(parents=True, exist_ok=True)
+                # 获取RotatingFileHandler
+                handler = self._get_rotating_handler(file_path)
 
                 # 批量写入
-                with open(file_path, 'a', encoding='utf-8') as f:
-                    for entry in entries:
-                        timestamp = entry.timestamp.strftime(
-                            '%Y-%m-%d %H:%M:%S,') + f"{entry.timestamp.microsecond // 1000:03d}"
-                        line = f"【{entry.level.upper()}】{timestamp} - {entry.message}\n"
-                        f.write(line)
+                for entry in entries:
+                    # 使用RotatingFileHandler的emit方法，只传递原始消息
+                    handler.emit(logging.LogRecord(
+                        name='',
+                        level=getattr(logging, entry.level.upper(), logging.INFO),
+                        pathname='',
+                        lineno=0,
+                        msg=entry.message,
+                        args=(),
+                        exc_info=None,
+                        created=entry.timestamp.timestamp()
+                    ))
             except Exception as e:
                 print(f"批量写入失败 {file_path}: {e}")
                 # 回退到逐个写入
@@ -265,6 +299,9 @@ class NonBlockingFileHandler:
             self._write_thread.join(timeout=5)
         if self._executor:
             self._executor.shutdown(wait=True)
+
+        # 清理缓存
+        self._rotating_handlers.clear()
 
 
 class LoggerManager:

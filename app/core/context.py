@@ -814,6 +814,8 @@ class Context:
     media_info: MediaInfo = None
     # 种子信息
     torrent_info: TorrentInfo = None
+    # 媒体识别失败次数
+    media_recognize_fail_count: int = 0
 
     def to_dict(self):
         """
@@ -822,5 +824,6 @@ class Context:
         return {
             "meta_info": self.meta_info.to_dict() if self.meta_info else None,
             "torrent_info": self.torrent_info.to_dict() if self.torrent_info else None,
-            "media_info": self.media_info.to_dict() if self.media_info else None
+            "media_info": self.media_info.to_dict() if self.media_info else None,
+            "media_recognize_fail_count": self.media_recognize_fail_count
         }

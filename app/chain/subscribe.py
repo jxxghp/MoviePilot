@@ -801,15 +801,27 @@ class SubscribeChain(ChainBase):
                 for context in contexts:
                     if global_vars.is_system_stopped:
                         break
-                    # 如果种子未识别，尝试识别
-                    if not context.media_info or (not context.media_info.tmdb_id
-                                                  and not context.media_info.douban_id):
+                    # 如果种子未识别且失败次数未超过3次，尝试识别
+                    if (not context.media_info or (not context.media_info.tmdb_id
+                                                   and not context.media_info.douban_id)) and context.media_recognize_fail_count < 3:
+                        logger.debug(
+                            f'尝试重新识别种子：{context.torrent_info.title}，当前失败次数：{context.media_recognize_fail_count}/3')
                         re_mediainfo = self.recognize_media(meta=context.meta_info)
                         if re_mediainfo:
                             # 清理多余信息
                             re_mediainfo.clear()
                             # 更新种子缓存
                             context.media_info = re_mediainfo
+                            # 重置失败次数
+                            context.media_recognize_fail_count = 0
+                            logger.debug(f'种子 {context.torrent_info.title} 重新识别成功')
+                        else:
+                            # 识别失败，增加失败次数
+                            context.media_recognize_fail_count += 1
+                            logger.debug(
+                                f'种子 {context.torrent_info.title} 媒体识别失败，失败次数：{context.media_recognize_fail_count}/3')
+                    elif context.media_recognize_fail_count >= 3:
+                        logger.debug(f'种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别')
                     # 添加已预处理
                     processed_torrents[domain].append(context)
 
@@ -912,7 +924,7 @@ class SubscribeChain(ChainBase):
                             # 如果仍然没有识别到媒体信息，尝试标题匹配
                             if not torrent_mediainfo or (
                                     not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
-                                logger.info(
+                                logger.debug(
                                     f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
                                 if torrenthelper.match_torrent(mediainfo=mediainfo,
                                                                torrent_meta=torrent_meta,
