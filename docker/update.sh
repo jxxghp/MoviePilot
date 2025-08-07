@@ -117,24 +117,18 @@ function install_backend_and_download_resources() {
     INFO "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"
     # 恢复插件目录
     cp -a /plugins/* /app/app/plugins/
-    # 清理临时目录
-    rm -rf "${TMP_PATH}"
     return 0
 }
 
 # 更新站点资源
 function update_site_resources() {
     INFO "→ 检查站点资源..."
-
-    # 定义站点资源文件列表
-    local site_files=(
-        "sites.cp312-win_amd64.pyd"
-        "sites.cpython-312-aarch64-linux-gnu.so"
-        "sites.cpython-312-darwin.so"
-        "sites.cpython-312-x86_64-linux-gnu.so"
-        "user.sites.v2.bin"
-    )
-
+    local site_files
+    if ! mapfile -t site_files < <(curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/refs/heads/main/package.v2.json" ${CURL_HEADERS} | jq -r '.resources | keys[]' 2>/dev/null) && [ ${#site_files[@]} -gt 0 ]; then
+        ERROR "无法获取远程文件列表"
+        return 1
+    fi
+    
     # 检查文件是否存在
     local missing_files=()
     for file in "${site_files[@]}"; do
@@ -151,18 +145,17 @@ function update_site_resources() {
             ERROR "站点资源下载失败！"
             return 1
         fi
-        # 复制站点资源文件
         cp -a ${TMP_PATH}/Resources/resources.v2/* /app/app/helper/
         INFO "站点资源更新完成"
     else
         # 调用ResourceHelper检查版本并更新
         cd /app
-        python3 -c "
-from app.helper.resource import ResourceHelper
-updater = ResourceHelper()"
+        if python3 -c "from app.helper.resource import ResourceHelper; updater = ResourceHelper()" >/dev/null 2>&1; then
+            INFO "站点资源更新检查完成"
+        else
+            WARN "站点资源更新检查  失败"
+        fi
     fi
-    # 清理临时目录
-    rm -rf "${TMP_PATH}/Resources"
     return 0
 }
 
