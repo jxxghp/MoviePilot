@@ -137,8 +137,6 @@ def init_modules():
     DohHelper()
     # 站点管理
     SitesHelper()
-    # 资源包检测
-    ResourceHelper()
     # 用户认证
     user_auth()
     # 加载模块

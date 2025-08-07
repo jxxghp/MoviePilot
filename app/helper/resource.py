@@ -112,8 +112,7 @@ class ResourceHelper:
                                 # 写入文件
                                 file_path.write_bytes(res.content)
                         if success:
-                            logger.info("资源包更新完成，开始重启服务...")
-                            SystemHelper.restart()
+                            logger.info("资源包更新完成...")
                         else:
                             logger.warn("资源包更新失败，跳过升级！")
                     else:
