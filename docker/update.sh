@@ -128,7 +128,7 @@ function update_site_resources() {
         ERROR "无法获取远程文件列表"
         return 1
     fi
-    
+
     # 检查文件是否存在
     local missing_files=()
     for file in "${site_files[@]}"; do
@@ -153,7 +153,7 @@ function update_site_resources() {
         if python3 -c "from app.helper.resource import ResourceHelper; updater = ResourceHelper()" >/dev/null 2>&1; then
             INFO "站点资源更新检查完成"
         else
-            WARN "站点资源更新检查  失败"
+            WARN "站点资源更新检查失败"
         fi
     fi
     return 0
