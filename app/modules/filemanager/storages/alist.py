@@ -40,7 +40,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         初始化
         """
-        self.__generate_token.cache_clear()  # noqa
+        self.__class__._Alist__generate_token.fget.cache_clear()  # noqa
 
     @property
     def __get_base_url(self) -> str:
