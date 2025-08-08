@@ -200,7 +200,7 @@ class MetaVideo(MetaBase):
         name = re.sub(r'%s' % self._name_nostring_re, '', name,
                       flags=re.IGNORECASE).strip()
         name = re.sub(r'\s+', ' ', name)
-        if name.isdigit() \
+        if name.isdecimal() \
                 and int(name) < 1800 \
                 and not self.year \
                 and not self.begin_season \
