@@ -249,9 +249,9 @@ class MTorrentSpider:
             'header': {
                 'User-Agent': f'{self._ua}',
                 'Accept': 'application/json, text/plain, */*',
-                'x-api-key': self._apikey,
-                'proxies': self._proxy,
+                'x-api-key': self._apikey
             },
+            'proxy': True if self._proxy else False,
             'result': 'data'
         }
         # base64编码

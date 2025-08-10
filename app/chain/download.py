@@ -60,6 +60,8 @@ class DownloadChain(ChainBase):
                 # 是否使用cookie
                 if not req_params.get('cookie'):
                     cookie = None
+                # 代理
+                proxy = req_params.get('proxy')
                 # 请求头
                 if req_params.get('header'):
                     headers = req_params.get('header')
@@ -70,14 +72,16 @@ class DownloadChain(ChainBase):
                     res = RequestUtils(
                         ua=ua,
                         cookies=cookie,
-                        headers=headers
+                        headers=headers,
+                        proxies=settings.PROXY if proxy else None
                     ).get_res(url, params=req_params.get('params'))
                 else:
                     # POST请求
                     res = RequestUtils(
                         ua=ua,
                         cookies=cookie,
-                        headers=headers
+                        headers=headers,
+                        proxies=settings.PROXY if proxy else None
                     ).post_res(url, params=req_params.get('params'))
                 if not res:
                     return None
