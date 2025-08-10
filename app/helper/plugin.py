@@ -237,12 +237,21 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
 
         # 2. 决定安装方式（release 或 文件列表）并执行统一安装流程
-        release_tag = self.__get_release_tag(pid, repo_url, package_version)
-        if release_tag:
-            # 如果 release_tag 存在，说明插件有发布版本
+        meta = self.__get_plugin_meta(pid, repo_url, package_version)
+        # 是否release打包
+        is_release = meta.get("release")
+        # 插件版本号
+        plugin_version = meta.get("version")
+        if is_release:
+            # 使用 插件ID_插件版本号 作为 Release tag
+            if not plugin_version:
+                return False, f"未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装"
+            # 拼接 release_tag
+            release_tag = f"{pid}_v{plugin_version}"
+            # 使用 release 进行安装
             def prepare_release() -> Tuple[bool, str]:
                 return self.__install_from_release(
-                    pid.lower(), user_repo, package_version if package_version else None, release_tag
+                    pid.lower(), user_repo, release_tag
                 )
 
             return self.__install_flow_sync(pid.lower(), force_install, prepare_release)
@@ -523,20 +532,18 @@ class PluginHelper(metaclass=WeakSingleton):
         logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
 
-    def __get_release_tag(self, pid: str, repo_url: str, package_version: Optional[str]) -> Optional[str]:
-        """
-        解析插件在 package(.vX).json 中声明的 release 标签，若版本清单缺失则回退全局 package.json
-        """
+    def __get_plugin_meta(self, pid: str, repo_url: str,
+                           package_version: Optional[str]) -> dict:
         try:
-            meta = (
-                (self.get_plugins(repo_url) or {}).get(pid)
-                if not package_version
-                else (self.get_plugins(repo_url, package_version) or {}).get(pid)
-            )
-            return meta.get("release") if isinstance(meta, dict) else None
+            plugins = (
+                self.get_plugins(repo_url) if not package_version
+                else self.get_plugins(repo_url, package_version)
+            ) or {}
+            meta = plugins.get(pid)
+            return meta if isinstance(meta, dict) else {}
         except Exception as e:
-            logger.warn(f"获取插件 {pid} Release 标签失败：{e}")
-            return None
+            logger.error(f"获取插件 {pid} 元数据失败：{e}")
+            return {}
 
     def __install_flow_sync(self, pid_lower: str, force_install: bool,
                             prepare_content: Callable[[], Tuple[bool, str]]) -> Tuple[bool, str]:
@@ -575,45 +582,71 @@ class PluginHelper(metaclass=WeakSingleton):
         self.install_reg(pid_lower)
         return True, ""
 
-    def __install_from_release(self, pid: str, user_repo: str,
-                               package_version: Optional[str],
-                               release_tag: str) -> Tuple[bool, str]:
+    def __install_from_release(self, pid: str, user_repo: str, release_tag: str) -> Tuple[bool, str]:
         """
-        通过 GitHub Release 源码压缩包安装插件，仅提取 plugins(.vX)/{pid} 目录
-        :param pid: 插件 ID（小写）
-        :param user_repo: "user/repo"
-        :param package_version: 版本标识，如 "v2"，为空表示 v1
-        :param release_tag: Release 的 tag 名称
+        通过 GitHub Release 资产文件安装插件。
+        规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
+        将其全部解压到 app/plugins/{pid}
         """
-        zip_url = f"https://codeload.github.com/{user_repo}/zip/refs/tags/{release_tag}"
-        res = self.__request_with_fallback(zip_url, headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+        # 拼接资产文件名
+        asset_name = f"{release_tag.lower()}.zip"
+
+        release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
+        rel_res = self.__request_with_fallback(
+            release_api,
+            headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+            timeout=30,
+            is_api=True,
+        )
+        if rel_res is None or rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code if rel_res else '连接失败'}"
+
+        try:
+            rel_json = rel_res.json()
+            assets = rel_json.get("assets") or []
+            asset = next((a for a in assets if a.get("name") == asset_name), None)
+            if not asset:
+                return False, f"未找到资产文件：{asset_name}"
+            download_url = asset.get("browser_download_url")
+            if not download_url:
+                return False, "资产缺少下载地址"
+        except Exception as e:
+            logger.error(f"解析 Release 信息失败：{e}")
+            return False, f"解析 Release 信息失败：{e}"
+
+        res = self.__request_with_fallback(download_url, headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
         if res is None or res.status_code != 200:
-            return False, f"下载 Release 压缩包失败：{res.status_code if res else '连接失败'}"
+            return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 
         try:
             with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
                 namelist = zf.namelist()
                 if not namelist:
                     return False, "压缩包内容为空"
-                root_prefix = namelist[0].split('/')[0] + '/'
-                plugins_dir_name = "plugins" + (f".{package_version}" if package_version else "")
-                target_prefix = f"{root_prefix}{plugins_dir_name}/{pid.lower()}/"
-
-                if not any(name.startswith(target_prefix) for name in namelist):
-                    return False, f"压缩包中未找到 {plugins_dir_name}/{pid} 目录"
+                # 若所有条目均在同一顶层目录下（如 pid/），则剥离这一层，避免出现双层目录
+                names_with_slash = [n for n in namelist if '/' in n]
+                base_prefix = ''
+                if names_with_slash and len(names_with_slash) == len(namelist):
+                    first_seg = names_with_slash[0].split('/')[0]
+                    if all(n.startswith(first_seg + '/') for n in namelist):
+                        base_prefix = first_seg + '/'
 
                 dest_base = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                wrote_any = False
                 for name in namelist:
-                    if not name.startswith(target_prefix):
+                    rel_path = name[len(base_prefix):]
+                    if not rel_path:
                         continue
-                    rel_path = name[len(target_prefix):]
-                    if not rel_path or rel_path.endswith('/'):
-                        (dest_base / rel_path).mkdir(parents=True, exist_ok=True)
+                    if rel_path.endswith('/'):
+                        (dest_base / rel_path.rstrip('/')).mkdir(parents=True, exist_ok=True)
                         continue
                     dest_path = dest_base / rel_path
                     dest_path.parent.mkdir(parents=True, exist_ok=True)
                     with zf.open(name, 'r') as src, open(dest_path, 'wb') as dst:
                         dst.write(src.read())
+                    wrote_any = True
+                if not wrote_any:
+                    return False, "压缩包中无可写入文件"
             return True, ""
         except Exception as e:
             logger.error(f"解压 Release 压缩包失败：{e}")
@@ -1098,8 +1131,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return str(backup_dir) if await backup_dir.exists() else None
 
-    @staticmethod
-    async def __async_restore_plugin(pid: str, backup_dir: str):
+    async def __async_restore_plugin(self, pid: str, backup_dir: str):
         """
         异步还原旧插件目录
         :param pid: 插件 ID
@@ -1112,7 +1144,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
         backup_path = AsyncPath(backup_dir)
         if await backup_path.exists():
-            await PluginHelper._async_copytree(backup_path, plugin_dir)
+            await self._async_copytree(src=backup_path, dst=plugin_dir)
             logger.debug(f"{pid} 已还原插件目录 {plugin_dir}")
             await aioshutil.rmtree(backup_path, ignore_errors=True)
             logger.debug(f"{pid} 已删除备份目录 {backup_dir}")
@@ -1350,12 +1382,21 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
 
         # 2. 统一异步安装流程（release 或 文件列表）
-        release_tag = await self.__async_get_release_tag(pid, repo_url, package_version)
-        if release_tag:
-            # 如果获取到 release_tag，则使用 Release 安装方式
+        meta = await self.__async_get_plugin_meta(pid, repo_url, package_version)
+        # 是否release打包
+        is_release = meta.get("release")
+        # 插件版本号
+        plugin_version = meta.get("version")
+        if is_release:
+            # 使用 插件ID_插件版本号 作为 Release tag
+            if not plugin_version:
+                return False, f"未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装"
+            # 拼接 release_tag
+            release_tag = f"{pid}_v{plugin_version}"
+            # 使用 release 进行安装
             async def prepare_release() -> Tuple[bool, str]:
                 return await self.__async_install_from_release(
-                    pid.lower(), user_repo, package_version if package_version else None, release_tag
+                    pid.lower(), user_repo, release_tag
                 )
 
             return await self.__install_flow_async(pid.lower(), force_install, prepare_release)
@@ -1366,21 +1407,18 @@ class PluginHelper(metaclass=WeakSingleton):
 
             return await self.__install_flow_async(pid.lower(), force_install, prepare_filelist)
 
-    async def __async_get_release_tag(self, pid: str, repo_url: str,
-                                      package_version: Optional[str]) -> Optional[str]:
-        """
-        异步获取插件的 Release 标签
-        """
+    async def __async_get_plugin_meta(self, pid: str, repo_url: str,
+                                      package_version: Optional[str]) -> dict:
         try:
-            meta = (
-                (await self.async_get_plugins(repo_url) or {}).get(pid)
-                if package_version == ""
-                else (await self.async_get_plugins(repo_url, package_version) or {}).get(pid)
-            )
-            return meta.get("release") if isinstance(meta, dict) else None
+            plugins = (
+                await self.async_get_plugins(repo_url) if not package_version
+                else await self.async_get_plugins(repo_url, package_version)
+            ) or {}
+            meta = plugins.get(pid)
+            return meta if isinstance(meta, dict) else {}
         except Exception as e:
-            logger.warn(f"获取插件 {pid} Release 标签失败：{e}")
-            return None
+            logger.warn(f"获取插件 {pid} 元数据失败：{e}")
+            return {}
 
     async def __install_flow_async(self, pid_lower: str, force_install: bool,
                                    prepare_content: Callable[[], Awaitable[Tuple[bool, str]]]) -> Tuple[bool, str]:
@@ -1458,36 +1496,62 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, m
         return True, ""
 
-    async def __async_install_from_release(self, pid: str, user_repo: str,
-                                           package_version: Optional[str],
-                                           release_tag: str) -> Tuple[bool, str]:
+    async def __async_install_from_release(self, pid: str, user_repo: str, release_tag: str) -> Tuple[bool, str]:
         """
-        通过 GitHub Release 源码压缩包安装插件，仅提取 plugins(.vX)/{pid} 目录（异步）
+        通过 GitHub Release 资产文件安装插件（异步）。
+        规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
+        将其全部解压到 app/plugins/{pid}
         """
-        zip_url = f"https://codeload.github.com/{user_repo}/zip/refs/tags/{release_tag}"
-        res = await self.__async_request_with_fallback(zip_url, headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+        # 拼接资产文件名
+        asset_name = f"{release_tag.lower()}.zip"
+
+        release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
+        rel_res = await self.__async_request_with_fallback(
+            release_api,
+            headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+            timeout=30,
+            is_api=True,
+        )
+        if rel_res is None or rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code if rel_res else '连接失败'}"
+
+        try:
+            rel_json = rel_res.json()
+            assets = rel_json.get("assets") or []
+            asset = next((a for a in assets if a.get("name") == asset_name), None)
+            if not asset:
+                return False, f"未找到资产文件：{asset_name}"
+            download_url = asset.get("browser_download_url")
+            if not download_url:
+                return False, "资产缺少下载地址"
+        except Exception as e:
+            logger.error(f"解析 Release 信息失败：{e}")
+            return False, f"解析 Release 信息失败：{e}"
+
+        res = await self.__async_request_with_fallback(download_url, headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
         if res is None or res.status_code != 200:
-            return False, f"下载 Release 压缩包失败：{res.status_code if res else '连接失败'}"
+            return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 
         try:
             with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
                 namelist = zf.namelist()
                 if not namelist:
                     return False, "压缩包内容为空"
-                root_prefix = namelist[0].split('/')[0] + '/'
-                plugins_dir_name = "plugins" + (f".{package_version}" if package_version else "")
-                target_prefix = f"{root_prefix}{plugins_dir_name}/{pid.lower()}/"
-
-                if not any(name.startswith(target_prefix) for name in namelist):
-                    return False, f"压缩包中未找到 {plugins_dir_name}/{pid} 目录"
+                names_with_slash = [n for n in namelist if '/' in n]
+                base_prefix = ''
+                if names_with_slash and len(names_with_slash) == len(namelist):
+                    first_seg = names_with_slash[0].split('/')[0]
+                    if all(n.startswith(first_seg + '/') for n in namelist):
+                        base_prefix = first_seg + '/'
 
                 dest_base = AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                wrote_any = False
                 for name in namelist:
-                    if not name.startswith(target_prefix):
+                    rel_path = name[len(base_prefix):]
+                    if not rel_path:
                         continue
-                    rel_path = name[len(target_prefix):]
-                    if not rel_path or rel_path.endswith('/'):
-                        await (dest_base / rel_path).mkdir(parents=True, exist_ok=True)
+                    if rel_path.endswith('/'):
+                        await (dest_base / rel_path.rstrip('/')).mkdir(parents=True, exist_ok=True)
                         continue
                     dest_path = dest_base / rel_path
                     await dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1495,6 +1559,9 @@ class PluginHelper(metaclass=WeakSingleton):
                         data = src.read()
                     async with aiofiles.open(dest_path, 'wb') as dst:
                         await dst.write(data)
+                    wrote_any = True
+                if not wrote_any:
+                    return False, "压缩包中无可写入文件"
             return True, ""
         except Exception as e:
             logger.error(f"解压 Release 压缩包失败：{e}")

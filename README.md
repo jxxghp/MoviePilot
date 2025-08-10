@@ -18,7 +18,7 @@
 
 ## 主要特性
 
-- 前后端分离，基于FastApi + Vue3，前端项目地址：[MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)
+- 前后端分离，基于FastApi + Vue3。
 - 聚焦核心需求，简化功能和设置，部分设置项可直接使用默认值。
 - 重新设计了用户界面，更加美观易用。
 
@@ -26,11 +26,11 @@
 
 官方Wiki：https://wiki.movie-pilot.org
 
-API文档：https://api.movie-pilot.org
-
 ## 参与开发
 
-需要 `Python 3.12`、`Node JS v20.12.1`
+API文档：https://api.movie-pilot.org
+
+本地运行需要 `Python 3.12`、`Node JS v20.12.1`
 
 - 克隆主项目 [MoviePilot](https://github.com/jxxghp/MoviePilot) 
 ```shell
@@ -55,6 +55,20 @@ yarn
 yarn dev
 ```
 - 参考 [插件开发指引](https://wiki.movie-pilot.org/zh/plugindev) 在 `app/plugins` 目录下开发插件代码
+
+## 相关项目
+
+- [MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)
+- [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
+- [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
+- [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server)
+- [MoviePilot-Wiki](https://github.com/jxxghp/MoviePilot-Wiki)
+
+## 免责申明
+
+- 本软件仅供学习交流使用，任何人不得将本软件用于商业用途，任何人不得将本软件用于违法犯罪活动，软件对用户行为不知情，一切责任由使用者承担。
+- 本软件代码开源，基于开源代码进行修改，人为去除相关限制导致软件被分发、传播并造成责任事件的，需由代码修改发布者承担全部责任，不建议对用户认证机制进行规避或修改并公开发布。
+- 本项目不接受捐赠，没有在任何地方发布捐赠信息页面，软件本身不收费也不提供任何收费相关服务，请仔细辨别避免误导。
 
 ## 贡献者
 
