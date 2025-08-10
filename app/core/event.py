@@ -428,8 +428,17 @@ class EventManager(metaclass=Singleton):
         if not handlers:
             logger.debug(f"No handlers found for broadcast event: {event}")
             return
+        # 为每个处理器提供独立的事件实例，防止某个处理器对 event_data 的修改影响其他处理器
         for handler_id, handler in handlers.items():
-            self.__executor.submit(self.__safe_invoke_handler, handler, event)
+            # 仅浅拷贝顶层字典，避免不必要的深拷贝开销；这样可以隔离键级别的替换/赋值
+            if isinstance(event.event_data, dict):
+                event_data_copy = event.event_data.copy()
+            else:
+                event_data_copy = event.event_data
+            isolated_event = Event(event_type=event.event_type,
+                                   event_data=event_data_copy,
+                                   priority=event.priority)
+            self.__executor.submit(self.__safe_invoke_handler, handler, isolated_event)
 
     def __safe_invoke_handler(self, handler: Callable, event: Event):
         """

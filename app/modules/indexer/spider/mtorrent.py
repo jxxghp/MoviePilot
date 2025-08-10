@@ -249,7 +249,8 @@ class MTorrentSpider:
             'header': {
                 'User-Agent': f'{self._ua}',
                 'Accept': 'application/json, text/plain, */*',
-                'x-api-key': self._apikey
+                'x-api-key': self._apikey,
+                'proxies': self._proxy,
             },
             'result': 'data'
         }

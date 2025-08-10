@@ -5,6 +5,7 @@ from typing import Annotated, Any, List, Optional
 import aiofiles
 from aiopath import AsyncPath
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from starlette import status
 from starlette.responses import StreamingResponse
 
@@ -216,10 +217,10 @@ def reload_plugin(plugin_id: str, _: User = Depends(get_current_active_superuser
 
 
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
-def install(plugin_id: str,
-            repo_url: Optional[str] = "",
-            force: Optional[bool] = False,
-            _: User = Depends(get_current_active_superuser)) -> Any:
+async def install(plugin_id: str,
+                  repo_url: Optional[str] = "",
+                  force: Optional[bool] = False,
+                  _: User = Depends(get_current_active_superuser_async)) -> Any:
     """
     安装插件
     """
@@ -228,11 +229,11 @@ def install(plugin_id: str,
     # 首先检查插件是否已经存在，并且是否强制安装，否则只进行安装统计
     plugin_helper = PluginHelper()
     if not force and plugin_id in PluginManager().get_plugin_ids():
-        plugin_helper.install_reg(pid=plugin_id)
+        await plugin_helper.async_install_reg(pid=plugin_id)
     else:
         # 插件不存在或需要强制安装，下载安装并注册插件
         if repo_url:
-            state, msg = plugin_helper.install(pid=plugin_id, repo_url=repo_url)
+            state, msg = await plugin_helper.async_install(pid=plugin_id, repo_url=repo_url)
             # 安装失败则直接响应
             if not state:
                 return schemas.Response(success=False, message=msg)
@@ -243,14 +244,14 @@ def install(plugin_id: str,
     if plugin_id not in install_plugins:
         install_plugins.append(plugin_id)
         # 保存设置
-        SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+        await SystemConfigOper().async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重新加载插件
-    reload_plugin(plugin_id)
+    await run_in_threadpool(reload_plugin, plugin_id)
     return schemas.Response(success=True)
 
 
 @router.get("/remotes", summary="获取插件联邦组件列表", response_model=List[dict])
-def remotes(token: str) -> Any:
+async def remotes(token: str) -> Any:
     """
     获取插件联邦组件列表
     """
