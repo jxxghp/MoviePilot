@@ -453,7 +453,7 @@ class RssHelper:
                     url=rss_url,
                     cookies=cookie,
                     ua=ua,
-                    proxies=settings.PROXY if proxy else None
+                    proxies=settings.PROXY_SERVER if proxy else None
                 )
             else:
                 res = RequestUtils(
