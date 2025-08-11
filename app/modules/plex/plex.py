@@ -170,9 +170,9 @@ class Plex:
         sections = self._plex.library.sections()
         movie_count = tv_count = episode_count = 0
         # 媒体库白名单
-        allow_library = [lib.id for lib in self.get_librarys(hidden=True)]
+        allow_library = [str(lib.id) for lib in self.get_librarys(hidden=True)]
         for sec in sections:
-            if sec.key not in allow_library:
+            if str(sec.key) not in allow_library:
                 continue
             if sec.type == "movie":
                 movie_count += sec.totalSize
