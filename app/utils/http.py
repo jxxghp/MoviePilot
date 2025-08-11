@@ -2,7 +2,7 @@ import re
 import sys
 from contextlib import contextmanager, asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Tuple, Union
 
 import chardet
 import httpx
@@ -395,7 +395,7 @@ class RequestUtils:
         return None
 
     @staticmethod
-    def parse_cache_control(header: str) -> (str, int):
+    def parse_cache_control(header: str) -> Tuple[str, Optional[int]]:
         """
         解析 Cache-Control 头，返回 cache_directive 和 max_age
         :param header: Cache-Control 头部的字符串

@@ -183,8 +183,11 @@ class HddolbySpider:
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
         if res and res.status_code == 200:
-            results = res.json().get('data', []) or []
-            return False, self.__parse_result(results)
+            result = res.json()
+            if result.get("error"):
+                logger.warn(f"{self._name} 搜索失败，错误信息：{result.get('error').get('message')}")
+                return True, []
+            return False, self.__parse_result(result.get('data'))
         elif res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
             return True, []
@@ -212,8 +215,11 @@ class HddolbySpider:
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
         if res and res.status_code == 200:
-            results = res.json().get('data', []) or []
-            return False, self.__parse_result(results)
+            result = res.json()
+            if result.get("error"):
+                logger.warn(f"{self._name} 搜索失败，错误信息：{result.get('error').get('message')}")
+                return True, []
+            return False, self.__parse_result(result.get('data'))
         elif res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
             return True, []

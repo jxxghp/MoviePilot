@@ -697,7 +697,7 @@ class SiteChain(ChainBase):
             username=username,
             password=password,
             two_step_code=two_step_code,
-            proxies=settings.PROXY_HOST if site_info.proxy else None
+            proxies=settings.PROXY_SERVER if site_info.proxy else None
         )
         if result:
             cookie, ua, msg = result
