@@ -318,11 +318,17 @@ class MediaChain(ChainBase):
         if not event:
             return
         event_data = event.event_data or {}
+        # 媒体根目录
         fileitem: FileItem = event_data.get("fileitem")
+        # 媒体文件列表
         file_list: List[str] = event_data.get("file_list", [])
+        # 媒体元数据
         meta: MetaBase = event_data.get("meta")
+        # 媒体信息
         mediainfo: MediaInfo = event_data.get("mediainfo")
+        # 是否覆盖
         overwrite = event_data.get("overwrite", False)
+        # 检查媒体根目录
         if not fileitem:
             return
 
@@ -342,31 +348,62 @@ class MediaChain(ChainBase):
                                      parent=storagechain.get_parent_item(fileitem),
                                      overwrite=overwrite)
             else:
-                # 检查目的目录下是否已经有nfo刮削文件
-                has_nfo_file = storagechain.any_files(fileitem, extensions=['.nfo'])
-                if has_nfo_file and file_list:
-                    logger.info(f"目录 {fileitem.path} 已有NFO文件，开始增量刮削...")
-                    for file_path in file_list:
-                        file_item = storagechain.get_file_item(storage=fileitem.storage,
-                                                               path=Path(file_path))
-                        if file_item:
-                            # 对于电视剧文件，应该保存到与视频文件相同的目录
-                            # 而不是电视剧根目录
-                            self.scrape_metadata(fileitem=file_item,
+                if file_list:
+                    # 1. 收集fileitem和file_list中每个文件之间所有子目录
+                    all_dirs = set()
+                    root_path = Path(fileitem.path)
+
+                    logger.debug(f"开始收集目录，根目录：{root_path}")
+                    # 收集根目录
+                    all_dirs.add(root_path)
+
+                    # 收集所有目录（包括所有层级）
+                    for sub_file in file_list:
+                        sub_path = Path(sub_file)
+                        # 收集从根目录到文件的所有父目录
+                        current_path = sub_path.parent
+                        while current_path != root_path and current_path.is_relative_to(root_path):
+                            all_dirs.add(current_path)
+                            current_path = current_path.parent
+
+                    logger.debug(f"共收集到 {len(all_dirs)} 个目录")
+
+                    # 2. 初始化一遍子目录，但不处理文件
+                    for sub_dir in all_dirs:
+                        sub_dir_item = storagechain.get_file_item(storage=fileitem.storage, path=sub_dir)
+                        if sub_dir_item:
+                            logger.info(f"为目录生成海报和nfo：{sub_dir}")
+                            # 初始化目录元数据，但不处理文件
+                            self.scrape_metadata(fileitem=sub_dir_item,
+                                                 mediainfo=mediainfo,
+                                                 init_folder=True,
+                                                 recursive=False,
+                                                 overwrite=overwrite)
+                        else:
+                            logger.warn(f"无法获取目录项：{sub_dir}")
+
+                    # 3. 刮削每个文件
+                    logger.info(f"开始刮削 {len(file_list)} 个文件")
+                    for sub_file_path in file_list:
+                        sub_file_item = storagechain.get_file_item(storage=fileitem.storage,
+                                                                   path=Path(sub_file_path))
+                        if sub_file_item:
+                            self.scrape_metadata(fileitem=sub_file_item,
                                                  mediainfo=mediainfo,
                                                  init_folder=False,
-                                                 parent=None,  # 让函数内部自动获取正确的父目录
                                                  overwrite=overwrite)
+                        else:
+                            logger.warn(f"无法获取文件项：{sub_file_path}")
                 else:
                     # 执行全量刮削
-                    logger.info(f"开始全量刮削目录 {fileitem.path} ...")
+                    logger.info(f"开始刮削目录 {fileitem.path} ...")
                     self.scrape_metadata(fileitem=fileitem, meta=meta, init_folder=True,
                                          mediainfo=mediainfo, overwrite=overwrite)
 
     def scrape_metadata(self, fileitem: schemas.FileItem,
                         meta: MetaBase = None, mediainfo: MediaInfo = None,
                         init_folder: bool = True, parent: schemas.FileItem = None,
-                        overwrite: bool = False):
+                        overwrite: bool = False, recursive: bool = True):
         """
         手动刮削媒体信息
         :param fileitem: 刮削目录或文件
@@ -375,6 +412,7 @@ class MediaChain(ChainBase):
         :param init_folder: 是否刮削根目录
         :param parent: 上级目录
         :param overwrite: 是否覆盖已有文件
+        :param recursive: 是否递归处理目录内文件
         """
 
         storagechain = StorageChain()
@@ -481,31 +519,33 @@ class MediaChain(ChainBase):
                     logger.info("电影NFO刮削已关闭，跳过")
             else:
                 # 电影目录
-                if is_bluray_folder(fileitem):
-                    # 原盘目录
-                    if scraping_switchs.get('movie_nfo', True):
-                        nfo_path = filepath / (filepath.name + ".nfo")
-                        if overwrite or not storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
-                            # 生成原盘nfo
-                            movie_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
-                            if movie_nfo:
-                                # 保存或上传nfo文件到当前目录
-                                __save_file(_fileitem=fileitem, _path=nfo_path, _content=movie_nfo)
+                if recursive:
+                    # 处理文件
+                    if is_bluray_folder(fileitem):
+                        # 原盘目录
+                        if scraping_switchs.get('movie_nfo', True):
+                            nfo_path = filepath / (filepath.name + ".nfo")
+                            if overwrite or not storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
+                                # 生成原盘nfo
+                                movie_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
+                                if movie_nfo:
+                                    # 保存或上传nfo文件到当前目录
+                                    __save_file(_fileitem=fileitem, _path=nfo_path, _content=movie_nfo)
+                                else:
+                                    logger.warn(f"{filepath.name} nfo文件生成失败！")
                             else:
-                                logger.warn(f"{filepath.name} nfo文件生成失败！")
+                                logger.info(f"已存在nfo文件：{nfo_path}")
                         else:
-                            logger.info(f"已存在nfo文件：{nfo_path}")
+                            logger.info("电影NFO刮削已关闭，跳过")
                     else:
-                        logger.info("电影NFO刮削已关闭，跳过")
-                else:
-                    # 处理目录内的文件
-                    files = __list_files(_fileitem=fileitem)
-                    for file in files:
-                        self.scrape_metadata(fileitem=file,
-                                             mediainfo=mediainfo,
-                                             init_folder=False,
-                                             parent=fileitem,
-                                             overwrite=overwrite)
+                        # 处理目录内的文件
+                        files = __list_files(_fileitem=fileitem)
+                        for file in files:
+                            self.scrape_metadata(fileitem=file,
+                                                 mediainfo=mediainfo,
+                                                 init_folder=False,
+                                                 parent=fileitem,
+                                                 overwrite=overwrite)
                 # 生成目录内图片文件
                 if init_folder:
                     # 图片
@@ -597,13 +637,14 @@ class MediaChain(ChainBase):
                     logger.info("集缩略图刮削已关闭，跳过")
             else:
                 # 当前为电视剧目录，处理目录内的文件
-                files = __list_files(_fileitem=fileitem)
-                for file in files:
-                    self.scrape_metadata(fileitem=file,
-                                         mediainfo=mediainfo,
-                                         parent=fileitem if file.type == "file" else None,
-                                         init_folder=True if file.type == "dir" else False,
-                                         overwrite=overwrite)
+                if recursive:
+                    files = __list_files(_fileitem=fileitem)
+                    for file in files:
+                        self.scrape_metadata(fileitem=file,
+                                             mediainfo=mediainfo,
+                                             parent=fileitem if file.type == "file" else None,
+                                             init_folder=True if file.type == "dir" else False,
+                                             overwrite=overwrite)
                 # 生成目录的nfo和图片
                 if init_folder:
                     # 识别文件夹名称

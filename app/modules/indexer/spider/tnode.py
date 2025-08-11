@@ -5,13 +5,14 @@ from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils, AsyncRequestUtils
-from app.utils.singleton import Singleton
+from app.utils.singleton import SingletonClass
 from app.utils.string import StringUtils
 
 
-class TNodeSpider(metaclass=Singleton):
+class TNodeSpider(metaclass=SingletonClass):
     _size = 100
     _timeout = 15
+    _proxy = None
     _baseurl = "%sapi/torrent/advancedSearch"
     _downloadurl = "%sapi/torrent/download/%s"
     _pageurl = "%storrent/info/%s"
@@ -53,7 +54,7 @@ class TNodeSpider(metaclass=Singleton):
         if res and res.status_code == 200:
             csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
             if csrf_token:
-                _token = csrf_token.group(1)
+                return csrf_token.group(1)
         return None
 
     def __get_params(self, keyword: str = None, page: Optional[int] = 0) -> dict:
@@ -154,7 +155,7 @@ class TNodeSpider(metaclass=Singleton):
         # 发送请求
         res = await AsyncRequestUtils(
             headers={
-                'X-CSRF-TOKEN': _token,
+                'x-csrf-token': _token,
                 "Content-Type": "application/json; charset=utf-8",
                 "User-Agent": f"{self._ua}"
             },

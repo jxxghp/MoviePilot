@@ -78,10 +78,14 @@ async def create_subscribe(
         title = None
     # 订阅用户
     subscribe_in.username = current_user.name
+    # 转化为字典
+    subscribe_dict = subscribe_in.dict()
+    if subscribe_in.id:
+        subscribe_dict.pop("id", None)
     sid, message = await SubscribeChain().async_add(mtype=mtype,
                                                     title=title,
                                                     exist_ok=True,
-                                                    **subscribe_in.dict())
+                                                    **subscribe_dict)
     return schemas.Response(
         success=bool(sid), message=message, data={"id": sid}
     )
