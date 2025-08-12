@@ -1,3 +1,4 @@
+import uuid
 from typing import Callable, Any, Optional
 
 from cf_clearance import sync_cf_retry, sync_stealth
@@ -30,7 +31,7 @@ class PlaywrightHelper:
     @staticmethod
     def __flaresolverr_request(url: str,
                                cookies: Optional[str] = None,
-                               proxy_url: Optional[str] = None,
+                               proxy_config: Optional[dict] = None,
                                timeout: Optional[int] = 60) -> Optional[dict]:
         """
         调用 FlareSolverr 解决 Cloudflare 并返回 solution 结果
@@ -40,24 +41,70 @@ class PlaywrightHelper:
             logger.warn("未配置 FLARESOLVERR_URL，无法使用 FlareSolverr")
             return None
 
-        payload = {
-            "cmd": "request.get",
-            "url": url,
-            "maxTimeout": int(timeout or 60) * 1000,
-        }
-        # 将 cookies 以数组形式传递给 FlareSolverr
-        if cookies:
-            try:
-                payload["cookies"] = cookie_parse(cookies, array=True)
-            except Exception as e:
-                logger.debug(f"解析 cookies 失败，忽略: {str(e)}")
-        if proxy_url:
-            payload["proxy"] = {"url": proxy_url}
+        fs_api = settings.FLARESOLVERR_URL.rstrip("/") + "/v1"
+        session_id = None
 
         try:
-            fs_api = settings.FLARESOLVERR_URL.rstrip("/") + "/v1"
+            # 检查是否需要代理认证
+            need_proxy_auth = (proxy_config and proxy_config.get("server") and
+                               (proxy_config.get("username") or proxy_config.get("password")))
+
+            if need_proxy_auth:
+                # 使用 session 模式支持代理认证
+                logger.debug("检测到flaresolverr代理需要认证，使用 session 模式")
+
+                # 1. 创建会话
+                session_id = str(uuid.uuid4())
+                create_payload: dict = {
+                    "cmd": "sessions.create",
+                    "session": session_id
+                }
+
+                # 添加代理配置到会话创建请求
+                if proxy_config and proxy_config.get("server"):
+                    proxy_payload: dict = {"url": proxy_config["server"]}
+                    if proxy_config.get("username"):
+                        proxy_payload["username"] = proxy_config["username"]
+                    if proxy_config.get("password"):
+                        proxy_payload["password"] = proxy_config["password"]
+                    create_payload["proxy"] = proxy_payload
+
+                # 创建会话
+                create_result = RequestUtils(content_type="application/json",
+                                             timeout=timeout or 60).post_json(url=fs_api, json=create_payload)
+                if not create_result or create_result.get("status") != "ok":
+                    logger.error(
+                        f"创建 FlareSolverr 会话失败: {create_result.get('message') if create_result else '无响应'}")
+                    return None
+
+                # 2. 使用会话发送请求
+                request_payload = {
+                    "cmd": "request.get",
+                    "url": url,
+                    "session": session_id,
+                    "maxTimeout": int(timeout or 60) * 1000,
+                }
+            else:
+                # 使用普通模式（无代理认证）
+                request_payload = {
+                    "cmd": "request.get",
+                    "url": url,
+                    "maxTimeout": int(timeout or 60) * 1000,
+                }
+                # 添加代理配置（仅 URL，无认证）
+                if proxy_config and proxy_config.get("server"):
+                    request_payload["proxy"] = {"url": proxy_config["server"]}
+
+            # 将 cookies 以数组形式传递给 FlareSolverr
+            if cookies:
+                try:
+                    request_payload["cookies"] = cookie_parse(cookies, array=True)
+                except Exception as e:
+                    logger.debug(f"解析 cookies 失败，忽略: {str(e)}")
+
+            # 发送请求
             data = RequestUtils(content_type="application/json",
-                                timeout=timeout).post_json(url=fs_api, json=payload)
+                                timeout=timeout or 60).post_json(url=fs_api, json=request_payload)
             if not data:
                 logger.error("FlareSolverr 返回空响应")
                 return None
@@ -68,6 +115,19 @@ class PlaywrightHelper:
         except Exception as e:
             logger.error(f"调用 FlareSolverr 失败: {str(e)}")
             return None
+        finally:
+            # 清理会话
+            if session_id:
+                try:
+                    destroy_payload = {
+                        "cmd": "sessions.destroy",
+                        "session": session_id
+                    }
+                    RequestUtils(content_type="application/json",
+                                 timeout=10).post_json(url=fs_api, json=destroy_payload)
+                    logger.debug(f"已清理 FlareSolverr 会话: {session_id}")
+                except Exception as e:
+                    logger.warning(f"清理 FlareSolverr 会话失败: {str(e)}")
 
     def action(self, url: str,
                callback: Callable,
@@ -97,11 +157,8 @@ class PlaywrightHelper:
                     fs_cookie_header = None
                     fs_ua = None
                     if settings.BROWSER_EMULATION == "flaresolverr":
-                        proxy_url = None
-                        if proxies and isinstance(proxies, dict):
-                            proxy_url = proxies.get("server")
                         solution = self.__flaresolverr_request(url=url, cookies=cookies,
-                                                               proxy_url=proxy_url, timeout=timeout)
+                                                               proxy_config=proxies, timeout=timeout)
                         if solution:
                             fs_cookie_header = self.__fs_cookie_str(solution.get("cookies", []))
                             fs_ua = solution.get("userAgent")
@@ -158,11 +215,8 @@ class PlaywrightHelper:
         # 如果配置为 FlareSolverr，则直接调用获取页面源码
         if settings.BROWSER_EMULATION == "flaresolverr":
             try:
-                proxy_url = None
-                if proxies and isinstance(proxies, dict):
-                    proxy_url = proxies.get("server")
                 solution = self.__flaresolverr_request(url=url, cookies=cookies,
-                                                       proxy_url=proxy_url, timeout=timeout)
+                                                       proxy_config=proxies, timeout=timeout)
                 if solution:
                     return solution.get("response")
             except Exception as e:
