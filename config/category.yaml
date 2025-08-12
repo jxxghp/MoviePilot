@@ -13,8 +13,8 @@
 movie:
   # 分类名同时也是目录名
   动画电影:
-    # 匹配 genre_ids 内容类型，16是动漫
-    genre_ids: '16'
+    # 匹配 genre_ids 内容类型，16(动漫)，并且排除27(恐怖)
+    genre_ids: '16,!27'
   华语电影:
     # 匹配语种
     original_language: 'zh,cn,bo,za'
