@@ -701,7 +701,7 @@ class SiteChain(ChainBase):
             password=password,
             two_step_code=two_step_code,
             proxies=settings.PROXY_SERVER if site_info.proxy else None,
-            timeout=site_info.timeout or 60
+            timeout=site_info.timeout or 15
         )
         if result:
             cookie, ua, msg = result

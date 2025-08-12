@@ -31,7 +31,7 @@ class PlaywrightHelper:
     def __flaresolverr_request(url: str,
                                cookies: Optional[str] = None,
                                proxy_url: Optional[str] = None,
-                               timeout: Optional[int] = 60) -> Optional[dict]:
+                               timeout: Optional[int] = settings.FLARESOLVERR_TIMEOUT) -> Optional[dict]:
         """
         调用 FlareSolverr 解决 Cloudflare 并返回 solution 结果
         参考: https://github.com/FlareSolverr/FlareSolverr
@@ -40,10 +40,12 @@ class PlaywrightHelper:
             logger.warn("未配置 FLARESOLVERR_URL，无法使用 FlareSolverr")
             return None
 
+        logger.info(f"尝试使用 FlareSolverr 通过 Cloudflare ...")
+
         payload = {
             "cmd": "request.get",
             "url": url,
-            "maxTimeout": int(timeout or 60) * 1000,
+            "maxTimeout": max(10, int(timeout or 60)) * 1000,
         }
         # 将 cookies 以数组形式传递给 FlareSolverr
         if cookies:
@@ -56,8 +58,7 @@ class PlaywrightHelper:
 
         try:
             fs_api = settings.FLARESOLVERR_URL.rstrip("/") + "/v1"
-            data = RequestUtils(content_type="application/json",
-                                timeout=timeout).post_json(url=fs_api, json=payload)
+            data = RequestUtils(content_type="application/json", timeout=timeout).post_json(url=fs_api, json=payload)
             if not data:
                 logger.error("FlareSolverr 返回空响应")
                 return None
@@ -101,7 +102,7 @@ class PlaywrightHelper:
                         if proxies and isinstance(proxies, dict):
                             proxy_url = proxies.get("server")
                         solution = self.__flaresolverr_request(url=url, cookies=cookies,
-                                                               proxy_url=proxy_url, timeout=timeout)
+                                                               proxy_url=proxy_url)
                         if solution:
                             fs_cookie_header = self.__fs_cookie_str(solution.get("cookies", []))
                             fs_ua = solution.get("userAgent")
@@ -162,7 +163,7 @@ class PlaywrightHelper:
                 if proxies and isinstance(proxies, dict):
                     proxy_url = proxies.get("server")
                 solution = self.__flaresolverr_request(url=url, cookies=cookies,
-                                                       proxy_url=proxy_url, timeout=timeout)
+                                                       proxy_url=proxy_url)
                 if solution:
                     return solution.get("response")
             except Exception as e:
