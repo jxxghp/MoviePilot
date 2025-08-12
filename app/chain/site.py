@@ -330,7 +330,8 @@ class SiteChain(ChainBase):
                             url=site_info.url,
                             cookie=cookie,
                             ua=site_info.ua or settings.USER_AGENT,
-                            proxy=True if site_info.proxy else False
+                            proxy=True if site_info.proxy else False,
+                            timeout=site_info.timeout
                         )
                         if rss_url:
                             logger.info(f"更新站点 {domain} RSS地址 ...")
@@ -558,13 +559,15 @@ class SiteChain(ChainBase):
         public = site_info.public
         proxies = settings.PROXY if site_info.proxy else None
         proxy_server = settings.PROXY_SERVER if site_info.proxy else None
+        timeout = site_info.timeout or 60
 
         # 访问链接
         if render:
             page_source = PlaywrightHelper().get_page_source(url=site_url,
                                                              cookies=site_cookie,
                                                              ua=ua,
-                                                             proxies=proxy_server)
+                                                             proxies=proxy_server,
+                                                             timeout=timeout)
             if not public and not SiteUtils.is_logged_in(page_source):
                 if under_challenge(page_source):
                     return False, f"无法通过Cloudflare！"
@@ -697,7 +700,8 @@ class SiteChain(ChainBase):
             username=username,
             password=password,
             two_step_code=two_step_code,
-            proxies=settings.PROXY_SERVER if site_info.proxy else None
+            proxies=settings.PROXY_SERVER if site_info.proxy else None,
+            timeout=site_info.timeout or 60
         )
         if result:
             cookie, ua, msg = result

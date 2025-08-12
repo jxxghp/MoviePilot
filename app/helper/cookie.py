@@ -74,7 +74,8 @@ class CookieHelper:
                            username: str,
                            password: str,
                            two_step_code: Optional[str] = None,
-                           proxies: Optional[dict] = None) -> Tuple[Optional[str], Optional[str], str]:
+                           proxies: Optional[dict] = None,
+                           timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点cookie和ua
         :param url: 站点地址
@@ -82,6 +83,7 @@ class CookieHelper:
         :param password: 密码
         :param two_step_code: 二步验证码或密钥
         :param proxies: 代理
+        :param timeout: 超时时间
         :return: cookie、ua、message
         """
 
@@ -230,7 +232,8 @@ class CookieHelper:
 
         return PlaywrightHelper().action(url=url,
                                          callback=__page_handler,
-                                         proxies=proxies)
+                                         proxies=proxies,
+                                         timeout=timeout)
 
     @staticmethod
     def __get_captcha_text(cookie: str, ua: str, code_url: str) -> str:

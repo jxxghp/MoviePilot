@@ -31,7 +31,7 @@ class PlaywrightHelper:
     def __flaresolverr_request(url: str,
                                cookies: Optional[str] = None,
                                proxy_url: Optional[str] = None,
-                               timeout: Optional[int] = 30) -> Optional[dict]:
+                               timeout: Optional[int] = 60) -> Optional[dict]:
         """
         调用 FlareSolverr 解决 Cloudflare 并返回 solution 结果
         参考: https://github.com/FlareSolverr/FlareSolverr
@@ -43,7 +43,7 @@ class PlaywrightHelper:
         payload = {
             "cmd": "request.get",
             "url": url,
-            "maxTimeout": max(10, int(timeout or 30)) * 1000,
+            "maxTimeout": int(timeout or 60) * 1000,
         }
         # 将 cookies 以数组形式传递给 FlareSolverr
         if cookies:
@@ -56,7 +56,8 @@ class PlaywrightHelper:
 
         try:
             fs_api = settings.FLARESOLVERR_URL.rstrip("/") + "/v1"
-            data = RequestUtils(content_type="application/json").post_json(url=fs_api, json=payload)
+            data = RequestUtils(content_type="application/json",
+                                timeout=timeout).post_json(url=fs_api, json=payload)
             if not data:
                 logger.error("FlareSolverr 返回空响应")
                 return None
@@ -74,7 +75,7 @@ class PlaywrightHelper:
                ua: Optional[str] = None,
                proxies: Optional[dict] = None,
                headless: Optional[bool] = False,
-               timeout: Optional[int] = 30) -> Any:
+               timeout: Optional[int] = 60) -> Any:
         """
         访问网页，接收Page对象并执行操作
         :param url: 网页地址
@@ -143,7 +144,7 @@ class PlaywrightHelper:
                         ua: Optional[str] = None,
                         proxies: Optional[dict] = None,
                         headless: Optional[bool] = False,
-                        timeout: Optional[int] = 30) -> Optional[str]:
+                        timeout: Optional[int] = 60) -> Optional[str]:
         """
         获取网页源码
         :param url: 网页地址
@@ -200,13 +201,3 @@ class PlaywrightHelper:
             logger.error(f"Playwright初始化失败: {str(e)}")
 
         return source
-
-
-# 示例用法
-if __name__ == "__main__":
-    utils = PlaywrightHelper()
-    test_url = "https://piggo.me"
-    test_cookies = ""
-    test_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36"
-    source_code = utils.get_page_source(test_url, cookies=test_cookies, ua=test_user_agent)
-    print(source_code)

@@ -340,7 +340,8 @@ class TorrentsChain(ChainBase):
                 url=site.get("url"),
                 cookie=site.get("cookie"),
                 ua=site.get("ua") or settings.USER_AGENT,
-                proxy=True if site.get("proxy") else False
+                proxy=True if site.get("proxy") else False,
+                timeout=site.get("timeout"),
             )
             if rss_url:
                 # 获取新的日期的passkey
