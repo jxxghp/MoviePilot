@@ -108,7 +108,7 @@ class SubscribeOper(DbOper):
         """
         获取订阅
         """
-        return await Subscribe.async_get(self._db, id=sid)
+        return await Subscribe.async_get(self._db, rid=sid)
 
     def list(self, state: Optional[str] = None) -> List[Subscribe]:
         """
