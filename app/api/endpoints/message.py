@@ -106,7 +106,7 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
         return str(err)
 
 
-async def vocechat_verify() -> Any:
+def vocechat_verify() -> Any:
     """
     VoceChat验证响应
     """
