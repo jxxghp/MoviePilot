@@ -9,7 +9,7 @@ from typing import Optional, Union, Annotated
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
-from aiopath import AsyncPath
+from anyio import Path as AsyncPath
 from app.helper.sites import SitesHelper  # noqa  # noqa
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
@@ -24,7 +24,8 @@ from app.core.module import ModuleManager
 from app.core.security import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
+from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async, \
+    get_current_active_user_async
 from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
@@ -85,7 +86,7 @@ async def fetch_image(
         # 目前暂不考虑磁盘缓存文件是否过期，后续通过缓存清理机制处理
         if cache_path and await cache_path.exists():
             try:
-                async with cache_path.open('rb') as f:
+                async with aiofiles.open(cache_path, 'rb') as f:
                     content = await f.read()
                 etag = HashUtils.md5(content)
                 headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
@@ -204,7 +205,7 @@ def get_global_setting(token: str):
 
 
 @router.get("/env", summary="查询系统配置", response_model=schemas.Response)
-async def get_env_setting(_: User = Depends(get_current_active_superuser_async)):
+async def get_env_setting(_: User = Depends(get_current_active_user_async)):
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
@@ -283,7 +284,7 @@ async def get_progress(request: Request, process_type: str, _: schemas.TokenPayl
 
 @router.get("/setting/{key}", summary="查询系统设置", response_model=schemas.Response)
 async def get_setting(key: str,
-                      _: User = Depends(get_current_active_superuser_async)):
+                      _: User = Depends(get_current_active_user_async)):
     """
     查询系统设置（仅管理员）
     """
@@ -382,7 +383,7 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
             file_size = file_stat.st_size
 
             # 读取历史日志
-            async with log_path.open(mode="r", encoding="utf-8", errors="ignore") as f:
+            async with aiofiles.open(log_path, mode="r", encoding="utf-8", errors="ignore") as f:
                 # 优化大文件读取策略
                 if file_size > 100 * 1024:
                     # 只读取最后100KB的内容
@@ -409,7 +410,7 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
                 yield f"data: {line}\n\n"
 
             # 实时监听新日志
-            async with log_path.open(mode="r", encoding="utf-8", errors="ignore") as f:
+            async with aiofiles.open(log_path, mode="r", encoding="utf-8", errors="ignore") as f:
                 # 移动文件指针到文件末尾，继续监听新增内容
                 await f.seek(0, 2)
                 # 记录初始文件大小
@@ -446,7 +447,7 @@ async def get_logging(request: Request, length: Optional[int] = 50, logfile: Opt
             return Response(content="日志文件不存在！", media_type="text/plain")
         try:
             # 使用 aiofiles 异步读取文件
-            async with log_path.open(mode="r", encoding="utf-8", errors="ignore") as file:
+            async with aiofiles.open(log_path, mode="r", encoding="utf-8", errors="ignore") as file:
                 text = await file.read()
             # 倒序输出
             text = "\n".join(text.split("\n")[::-1])

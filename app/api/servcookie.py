@@ -2,7 +2,8 @@ import gzip
 import json
 from typing import Annotated, Callable, Any, Dict, Optional
 
-from aiopath import AsyncPath
+import aiofiles
+from anyio import Path as AsyncPath
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRoute
@@ -67,9 +68,9 @@ async def update_cookie(req: schemas.CookieData):
     """
     file_path = AsyncPath(settings.COOKIE_PATH) / f"{req.uuid}.json"
     content = json.dumps({"encrypted": req.encrypted})
-    async with file_path.open(encoding="utf-8", mode="w") as file:
+    async with aiofiles.open(file_path, encoding="utf-8", mode="w") as file:
         await file.write(content)
-    async with file_path.open(encoding="utf-8", mode="r") as file:
+    async with aiofiles.open(file_path, encoding="utf-8", mode="r") as file:
         read_content = await file.read()
     if read_content == content:
         return {"action": "done"}
@@ -88,7 +89,7 @@ async def load_encrypt_data(uuid: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Item not found")
 
     # 读取文件
-    async with file_path.open(encoding="utf-8", mode="r") as file:
+    async with aiofiles.open(file_path, encoding="utf-8", mode="r") as file:
         read_content = await file.read()
     data = json.loads(read_content.encode("utf-8"))
     return data

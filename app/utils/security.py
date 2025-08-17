@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Set, Union
 from urllib.parse import quote, urlparse
 
-from aiopath import AsyncPath
+from anyio import Path as AsyncPath
 
 from app.log import logger
 

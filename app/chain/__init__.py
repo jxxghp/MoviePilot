@@ -10,7 +10,7 @@ from typing import Optional, Any, Tuple, List, Set, Union, Dict
 from fastapi.concurrency import run_in_threadpool
 
 import aiofiles
-from aiopath import AsyncPath
+from anyio import Path as AsyncPath
 from qbittorrentapi import TorrentFilesList
 from transmission_rpc import File
 

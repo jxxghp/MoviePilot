@@ -12,7 +12,7 @@ import io
 import aiofiles
 import aioshutil
 import httpx
-from aiopath import AsyncPath
+from anyio import Path as AsyncPath
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version, InvalidVersion
 from pkg_resources import Requirement, working_set

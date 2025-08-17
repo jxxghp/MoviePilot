@@ -5,7 +5,7 @@ from typing import List, Optional
 import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
-from aiopath import AsyncPath
+from anyio import Path as AsyncPath
 
 from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain

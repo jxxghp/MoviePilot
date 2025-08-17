@@ -3,7 +3,7 @@ import shutil
 from typing import Annotated, Any, List, Optional
 
 import aiofiles
-from aiopath import AsyncPath
+from anyio import Path as AsyncPath
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from starlette import status
