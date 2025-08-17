@@ -390,7 +390,7 @@ class Scheduler(metaclass=Singleton):
             if not job:
                 return None
             if job.get("running"):
-                logger.warning(f"定时任务 {job_id} - {job.get("name")} 正在运行 ...")
+                logger.warning(f"定时任务 {job_id} - {job.get('name')} 正在运行 ...")
                 return None
             self._jobs[job_id]["running"] = True
         return job
