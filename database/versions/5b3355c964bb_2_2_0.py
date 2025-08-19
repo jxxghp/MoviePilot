@@ -93,19 +93,6 @@ def convert_to_identity(connection, table_name):
     将序列转换为Identity，保持原有约束不变
     """
     try:
-        # 再次检查是否已经是Identity类型（双重检查）
-        result = connection.execute(sa.text(f"""
-            SELECT is_identity
-            FROM information_schema.columns 
-            WHERE table_name = '{table_name}' 
-            AND column_name = 'id'
-        """))
-        
-        is_identity = result.fetchone()
-        if is_identity and is_identity[0] == 'YES':
-            print(f"表 {table_name} 的id列已经是Identity类型，跳过转换")
-            return
-
         # 获取当前序列的最大值
         result = connection.execute(sa.text(f"""
             SELECT COALESCE(MAX(id), 0) + 1 as next_value
