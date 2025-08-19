@@ -56,9 +56,11 @@ class TorrentsChain(ChainBase):
 
         # 读取缓存
         if stype == 'spider':
-            torrents_cache = self.load_cache(self._spider_file) or {}
+            from app.helper.cache_manager import torrents_spider_cache_manager
+            torrents_cache = torrents_spider_cache_manager.get_torrents() or {}
         else:
-            torrents_cache = self.load_cache(self._rss_file) or {}
+            from app.helper.cache_manager import torrents_rss_cache_manager
+            torrents_cache = torrents_rss_cache_manager.get_torrents() or {}
 
         # 兼容性处理：为旧版本的Context对象添加失败次数字段
         self._ensure_context_compatibility(torrents_cache)
@@ -74,11 +76,13 @@ class TorrentsChain(ChainBase):
         if not stype:
             stype = settings.SUBSCRIBE_MODE
 
-        # 异步读取缓存
+        # 异步读取缓存（使用同步方法，因为CacheManager是同步的）
         if stype == 'spider':
-            torrents_cache = await self.async_load_cache(self._spider_file) or {}
+            from app.helper.cache_manager import torrents_spider_cache_manager
+            torrents_cache = torrents_spider_cache_manager.get_torrents() or {}
         else:
-            torrents_cache = await self.async_load_cache(self._rss_file) or {}
+            from app.helper.cache_manager import torrents_rss_cache_manager
+            torrents_cache = torrents_rss_cache_manager.get_torrents() or {}
 
         # 兼容性处理：为旧版本的Context对象添加失败次数字段
         self._ensure_context_compatibility(torrents_cache)
@@ -90,8 +94,9 @@ class TorrentsChain(ChainBase):
         清理种子缓存数据
         """
         logger.info(f'开始清理种子缓存数据 ...')
-        self.remove_cache(self._spider_file)
-        self.remove_cache(self._rss_file)
+        from app.helper.cache_manager import torrents_spider_cache_manager, torrents_rss_cache_manager
+        torrents_spider_cache_manager.clear_torrents()
+        torrents_rss_cache_manager.clear_torrents()
         logger.info(f'种子缓存数据清理完成')
 
     async def async_clear_torrents(self):
@@ -99,8 +104,9 @@ class TorrentsChain(ChainBase):
         异步清理种子缓存数据
         """
         logger.info(f'开始异步清理种子缓存数据 ...')
-        await self.async_remove_cache(self._spider_file)
-        await self.async_remove_cache(self._rss_file)
+        from app.helper.cache_manager import torrents_spider_cache_manager, torrents_rss_cache_manager
+        torrents_spider_cache_manager.clear_torrents()
+        torrents_rss_cache_manager.clear_torrents()
         logger.info(f'异步种子缓存数据清理完成')
 
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
@@ -303,9 +309,11 @@ class TorrentsChain(ChainBase):
 
         # 保存缓存到本地
         if stype == "spider":
-            self.save_cache(torrents_cache, self._spider_file)
+            from app.helper.cache_manager import torrents_spider_cache_manager
+            torrents_spider_cache_manager.set_torrents(torrents_cache)
         else:
-            self.save_cache(torrents_cache, self._rss_file)
+            from app.helper.cache_manager import torrents_rss_cache_manager
+            torrents_rss_cache_manager.set_torrents(torrents_cache)
 
         # 去除不在站点范围内的缓存种子
         if sites and torrents_cache:
