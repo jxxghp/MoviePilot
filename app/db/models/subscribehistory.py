@@ -85,13 +85,22 @@ class SubscribeHistory(Base):
     @classmethod
     @async_db_query
     async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
-        result = await db.execute(
-            select(cls).filter(
+        if count == -1:
+            query = select(cls).filter(
                 cls.type == mtype
             ).order_by(
                 cls.date.desc()
-            ).offset((page - 1) * count).limit(count)
-        )
+            )
+        else:
+            query = select(cls).filter(
+                cls.type == mtype
+            ).order_by(
+                cls.date.desc()
+            ).offset((page - 1) * count)
+            # 当count为-1时，不添加limit限制，返回所有记录
+            if count != -1:
+                query = query.limit(count)
+        result = await db.execute(query)
         return result.scalars().all()
 
     @classmethod

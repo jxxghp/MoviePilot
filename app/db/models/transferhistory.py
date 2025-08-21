@@ -122,19 +122,35 @@ class TransferHistory(Base):
     async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30,
                                  status: bool = None):
         if status is not None:
-            result = await db.execute(
-                select(cls).filter(
+            if count == -1:
+                query = select(cls).filter(
                     cls.status == status
                 ).order_by(
                     cls.date.desc()
-                ).offset((page - 1) * count).limit(count)
-            )
-        else:
-            result = await db.execute(
-                select(cls).order_by(
+                )
+            else:
+                query = select(cls).filter(
+                    cls.status == status
+                ).order_by(
                     cls.date.desc()
-                ).offset((page - 1) * count).limit(count)
-            )
+                ).offset((page - 1) * count)
+                # 当count为-1时，不添加limit限制，返回所有记录
+                if count != -1:
+                    query = query.limit(count)
+            result = await db.execute(query)
+        else:
+            if count == -1:
+                query = select(cls).order_by(
+                    cls.date.desc()
+                )
+            else:
+                query = select(cls).order_by(
+                    cls.date.desc()
+                ).offset((page - 1) * count)
+                # 当count为-1时，不添加limit限制，返回所有记录
+                if count != -1:
+                    query = query.limit(count)
+            result = await db.execute(query)
         return result.scalars().all()
 
     @classmethod

@@ -43,7 +43,12 @@ class Message(Base):
     @classmethod
     @async_db_query
     async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30):
-        result = await db.execute(
-            select(cls).order_by(cls.reg_time.desc()).offset((page - 1) * count).limit(count)
-        )
+        if count == -1:
+            query = select(cls).order_by(cls.reg_time.desc())
+        else:
+            query = select(cls).order_by(cls.reg_time.desc()).offset((page - 1) * count)
+            # 当count为-1时，不添加limit限制，返回所有记录
+            if count != -1:
+                query = query.limit(count)
+        result = await db.execute(query)
         return result.scalars().all()

@@ -80,9 +80,15 @@ class DownloadHistory(Base):
     @classmethod
     @async_db_query
     async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30):
-        result = await db.execute(
-            select(cls).offset((page - 1) * count).limit(count)
-        )
+        # 当count为-1时，offset应该为0，因为我们要获取所有记录
+        if count == -1:
+            query = select(cls)
+        else:
+            query = select(cls).offset((page - 1) * count)
+            # 当count为-1时，不添加limit限制，返回所有记录
+            if count != -1:
+                query = query.limit(count)
+        result = await db.execute(query)
         return result.scalars().all()
 
     @classmethod
