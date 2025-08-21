@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -32,6 +33,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
     }
 
     snapshot_check_folder_modtime = settings.OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME
+    retry_count = settings.OPENLIST_RETRY_COUNT
+    retry_delay = settings.OPENLIST_RETRY_DELAY
 
     def __init__(self):
         super().__init__()
@@ -356,7 +359,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
         result = resp.json()
         if result["code"] != 200:
-            logger.debug(f'【OpenList】获取文件 {path} 失败，错误信息：{result["message"]}')
+            error_msg = result["message"]
+            if "object not found" in error_msg.lower():
+                logger.debug(f'【OpenList】获取文件 {path} 失败，文件不存在或尚未同步：{error_msg}')
+            else:
+                logger.debug(f'【OpenList】获取文件 {path} 失败，错误信息：{error_msg}')
             return None
 
         return schemas.FileItem(
@@ -594,10 +601,45 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             logger.warn(f"【OpenList】请求上传文件 {path} 失败，状态码：{resp.status_code}")
             return None
 
-        new_item = self.get_item(Path(fileitem.path) / path.name)
+        # 添加重试逻辑来处理 "object not found" 错误
+        max_retries = self.retry_count
+        retry_delay = self.retry_delay
+        
+        for attempt in range(max_retries):
+            new_item = self.get_item(Path(fileitem.path) / path.name)
+            if new_item:
+                break
+            else:
+                if attempt < max_retries - 1:
+                    logger.debug(f"【OpenList】上传后获取文件信息失败，第 {attempt + 1} 次重试，等待 {retry_delay} 秒...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                else:
+                    logger.warn(f"【OpenList】上传文件 {path} 后，多次尝试获取文件信息均失败")
+                    return None
+        
         if new_item and new_name and new_name != path.name:
-            if self.rename(new_item, new_name):
-                return self.get_item(Path(new_item.path).with_name(new_name))
+            # 重命名也需要重试逻辑
+            retry_delay = self.retry_delay
+            for attempt in range(max_retries):
+                if self.rename(new_item, new_name):
+                    renamed_item = self.get_item(Path(new_item.path).with_name(new_name))
+                    if renamed_item:
+                        return renamed_item
+                    elif attempt < max_retries - 1:
+                        logger.debug(f"【OpenList】重命名后获取文件信息失败，第 {attempt + 1} 次重试，等待 {retry_delay} 秒...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        logger.warn(f"【OpenList】重命名文件 {new_name} 后，多次尝试获取文件信息均失败")
+                        return new_item
+                elif attempt < max_retries - 1:
+                    logger.debug(f"【OpenList】重命名文件失败，第 {attempt + 1} 次重试，等待 {retry_delay} 秒...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.warn(f"【OpenList】重命名文件 {new_name} 失败")
+                    return new_item
 
         return new_item
 
@@ -656,11 +698,32 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 f'【OpenList】复制文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
-        # 重命名
+        
+        # 添加重试逻辑来处理重命名时的 "object not found" 错误
         if fileitem.name != new_name:
-            self.rename(
-                self.get_item(path / fileitem.name), new_name
-            )
+            max_retries = self.retry_count
+            retry_delay = self.retry_delay
+            
+            for attempt in range(max_retries):
+                copied_item = self.get_item(path / fileitem.name)
+                if copied_item:
+                    if self.rename(copied_item, new_name):
+                        return True
+                    elif attempt < max_retries - 1:
+                        logger.debug(f"【OpenList】复制后重命名文件失败，第 {attempt + 1} 次重试，等待 {retry_delay} 秒...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        logger.warn(f"【OpenList】复制后重命名文件 {new_name} 失败")
+                        return False
+                elif attempt < max_retries - 1:
+                    logger.debug(f"【OpenList】复制后获取文件信息失败，第 {attempt + 1} 次重试，等待 {retry_delay} 秒...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.warn(f"【OpenList】复制文件后，多次尝试获取文件信息均失败")
+                    return False
+        
         return True
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -715,6 +778,23 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 f'【OpenList】移动文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
+        
+        # 添加重试逻辑来验证移动操作是否成功
+        max_retries = self.retry_count
+        retry_delay = self.retry_delay
+        
+        for attempt in range(max_retries):
+            moved_item = self.get_item(path / new_name)
+            if moved_item:
+                return True
+            elif attempt < max_retries - 1:
+                logger.debug(f"【OpenList】移动后获取文件信息失败，第 {attempt + 1} 次重试，等待 {retry_delay} 秒...")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                logger.warn(f"【OpenList】移动文件后，多次尝试获取文件信息均失败")
+                return False
+        
         return True
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:

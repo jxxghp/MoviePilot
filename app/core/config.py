@@ -395,6 +395,10 @@ class ConfigModel(BaseModel):
     RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME = True
     # 对OpenList进行快照对比时，是否检查文件夹的修改时间
     OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME = True
+    # OpenList操作重试次数
+    OPENLIST_RETRY_COUNT = 3
+    # OpenList操作重试延迟（秒）
+    OPENLIST_RETRY_DELAY = 1
 
     # ==================== Docker配置 ====================
     # Docker Client API地址
