@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any, Optional, Dict, List
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from app.core.cache import TTLCache
+from app.core.cache import TTLCache, FileCache
 from watchdog.events import FileSystemEventHandler, FileSystemMovedEvent, FileSystemEvent
 from watchdog.observers.polling import PollingObserver
 
@@ -73,6 +73,8 @@ class Monitor(metaclass=Singleton):
         self._snapshot_interval = 5
         # TTL缓存，10秒钟有效
         self._cache = TTLCache(region="monitor", maxsize=1024, ttl=10)
+        # 快照文件缓存
+        self._snapshot_cache = FileCache(base=settings.TEMP_PATH / "snapshots", ttl=24*3600)  # 24小时TTL
         # 监控的文件扩展名
         self.all_exts = settings.RMT_MEDIAEXT
         # 初始化快照缓存目录
@@ -98,14 +100,13 @@ class Monitor(metaclass=Singleton):
     def save_snapshot(self, storage: str, snapshot: Dict, file_count: int = 0,
                       last_snapshot_time: Optional[float] = None):
         """
-        保存快照到文件
+        保存快照到文件缓存
         :param storage: 存储名称
         :param snapshot: 快照数据
         :param last_snapshot_time: 上次快照时间戳
         :param file_count: 文件数量，用于调整监控间隔
         """
         try:
-            cache_file = self._snapshot_cache_dir / f"{storage}_snapshot.json"
             snapshot_time = max((item.get('modify_time', 0) for item in snapshot.values()), default=None)
             if snapshot_time is None:
                 snapshot_time = last_snapshot_time or time.time()
@@ -114,9 +115,11 @@ class Monitor(metaclass=Singleton):
                 'file_count': file_count,
                 'snapshot': snapshot
             }
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump(snapshot_data, f, ensure_ascii=False, indent=2)  # noqa
-            logger.debug(f"快照已保存到 {cache_file}")
+            # 使用FileCache保存快照数据
+            cache_key = f"{storage}_snapshot"
+            snapshot_json = json.dumps(snapshot_data, ensure_ascii=False, indent=2)
+            self._snapshot_cache.set(cache_key, snapshot_json.encode('utf-8'), region="snapshots")
+            logger.debug(f"快照已保存到缓存: {storage}")
         except Exception as e:
             logger.error(f"保存快照失败: {e}")
 
@@ -127,9 +130,9 @@ class Monitor(metaclass=Singleton):
         :return: 是否成功
         """
         try:
-            cache_file = self._snapshot_cache_dir / f"{storage}_snapshot.json"
-            if cache_file.exists():
-                cache_file.unlink()
+            cache_key = f"{storage}_snapshot"
+            if self._snapshot_cache.exists(cache_key, region="snapshots"):
+                self._snapshot_cache.delete(cache_key, region="snapshots")
                 logger.info(f"快照已重置: {storage}")
                 return True
             logger.debug(f"快照文件不存在，无需重置: {storage}")
@@ -187,18 +190,18 @@ class Monitor(metaclass=Singleton):
 
     def load_snapshot(self, storage: str) -> Optional[Dict]:
         """
-        从文件加载快照
+        从文件缓存加载快照
         :param storage: 存储名称
         :return: 快照数据或None
         """
         try:
-            cache_file = self._snapshot_cache_dir / f"{storage}_snapshot.json"
-            if cache_file.exists():
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    logger.debug(f"成功加载快照: {cache_file}, 包含 {len(data.get('snapshot', {}))} 个文件")
-                    return data
-            logger.debug(f"快照文件不存在: {cache_file}")
+            cache_key = f"{storage}_snapshot"
+            snapshot_data = self._snapshot_cache.get(cache_key, region="snapshots")
+            if snapshot_data:
+                data = json.loads(snapshot_data.decode('utf-8'))
+                logger.debug(f"成功加载快照: {storage}, 包含 {len(data.get('snapshot', {}))} 个文件")
+                return data
+            logger.debug(f"快照文件不存在: {storage}")
             return None
         except Exception as e:
             logger.error(f"加载快照失败: {e}")
@@ -793,4 +796,6 @@ class Monitor(metaclass=Singleton):
             self._scheduler = None
         if self._cache:
             self._cache.close()
+        if self._snapshot_cache:
+            self._snapshot_cache.close()
         self._event.clear()
