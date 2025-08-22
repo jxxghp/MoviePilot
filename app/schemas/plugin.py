@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from pydantic import BaseModel, Field
 
@@ -67,3 +67,17 @@ class PluginDashboard(Plugin):
     cols: Optional[dict] = Field(default_factory=dict)
     # 页面元素
     elements: Optional[List[dict]] = Field(default_factory=list)
+
+
+class PluginMemoryInfo(BaseModel):
+    """插件内存信息"""
+    plugin_id: str = Field(description="插件ID")
+    plugin_name: str = Field(description="插件名称")
+    plugin_version: str = Field(description="插件版本")
+    total_memory_bytes: int = Field(description="总内存使用量(字节)")
+    total_memory_mb: float = Field(description="总内存使用量(MB)")
+    object_count: int = Field(description="对象数量")
+    calculation_time_ms: float = Field(description="计算耗时(毫秒)")
+    timestamp: float = Field(description="统计时间戳")
+    error: Optional[str] = Field(default=None, description="错误信息")
+    object_details: Optional[List[Dict[str, Any]]] = Field(default=None, description="大对象详情")

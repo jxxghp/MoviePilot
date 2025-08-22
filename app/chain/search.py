@@ -1,8 +1,6 @@
 import asyncio
-import pickle
 import random
 import time
-import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, Tuple
@@ -59,7 +57,7 @@ class SearchChain(ChainBase):
         results = self.process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
         # 保存到本地文件
         if cache_local:
-            self.save_cache(pickle.dumps(results), self.__result_temp_file)
+            self.save_cache(results, self.__result_temp_file)
         return results
 
     def search_by_title(self, title: str, page: Optional[int] = 0,
@@ -85,36 +83,20 @@ class SearchChain(ChainBase):
                             torrent_info=torrent) for torrent in torrents]
         # 保存到本地文件
         if cache_local:
-            self.save_cache(pickle.dumps(contexts), self.__result_temp_file)
+            self.save_cache(contexts, self.__result_temp_file)
         return contexts
 
     def last_search_results(self) -> List[Context]:
         """
         获取上次搜索结果
         """
-        # 读取本地文件缓存
-        content = self.load_cache(self.__result_temp_file)
-        if not content:
-            return []
-        try:
-            return pickle.loads(content)
-        except Exception as e:
-            logger.error(f'加载搜索结果失败：{str(e)} - {traceback.format_exc()}')
-            return []
+        return self.load_cache(self.__result_temp_file)
 
     async def async_last_search_results(self) -> List[Context]:
         """
         异步获取上次搜索结果
         """
-        # 读取本地文件缓存
-        content = await self.async_load_cache(self.__result_temp_file)
-        if not content:
-            return []
-        try:
-            return pickle.loads(content)
-        except Exception as e:
-            logger.error(f'加载搜索结果失败：{str(e)} - {traceback.format_exc()}')
-            return []
+        return await self.async_load_cache(self.__result_temp_file)
 
     async def async_search_by_id(self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
                                  mtype: MediaType = None, area: Optional[str] = "title", season: Optional[int] = None,
@@ -143,7 +125,7 @@ class SearchChain(ChainBase):
         results = await self.async_process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
         # 保存到本地文件
         if cache_local:
-            await self.async_save_cache(pickle.dumps(results), self.__result_temp_file)
+            await self.async_save_cache(results, self.__result_temp_file)
         return results
 
     async def async_search_by_title(self, title: str, page: Optional[int] = 0,
@@ -169,7 +151,7 @@ class SearchChain(ChainBase):
                             torrent_info=torrent) for torrent in torrents]
         # 保存到本地文件
         if cache_local:
-            await self.async_save_cache(pickle.dumps(contexts), self.__result_temp_file)
+            await self.async_save_cache(contexts, self.__result_temp_file)
         return contexts
 
     @staticmethod

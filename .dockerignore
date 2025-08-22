@@ -1,3 +1,84 @@
-# Ignore git
+# Git
 .github
 .git
+.gitignore
+
+# Documentation
+docs/
+README.md
+LICENSE
+
+# Development files
+.pylintrc
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+tests/
+test_*
+*_test.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Other
+app.ico
+frozen.spec

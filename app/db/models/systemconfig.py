@@ -1,15 +1,15 @@
-from sqlalchemy import Column, Integer, String, Sequence, JSON, select
+from sqlalchemy import Column, String, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query
+from app.db import db_query, db_update, Base, async_db_query, get_id_column
 
 
 class SystemConfig(Base):
     """
     配置表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 主键
     key = Column(String, index=True)
     # 值

@@ -501,7 +501,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     # 获取整理屏蔽词
                     transfer_exclude_words = SystemConfigOper().get(SystemConfigKey.TransferExcludeWords)
                     for t in tasks:
-                        if t.download_hash and self._can_delete_torrent(t.download_hash, t.downloader, transfer_exclude_words):
+                        if t.download_hash and self._can_delete_torrent(t.download_hash, t.downloader,
+                                                                        transfer_exclude_words):
                             if self.remove_torrents(t.download_hash, downloader=t.downloader):
                                 logger.info(f"移动模式删除种子成功：{t.download_hash}")
                         if t.fileitem:
@@ -1435,7 +1436,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 return True
         return False
 
-
     def _can_delete_torrent(self, download_hash: str, downloader: str, transfer_exclude_words) -> bool:
         """
         检查是否可以删除种子文件
@@ -1468,11 +1468,11 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 file_path = save_path / file.name
                 # 如果存在未被屏蔽的媒体文件，则不删除种子
                 if (
-                    file_path.suffix in self.all_exts
-                    and not self._is_blocked_by_exclude_words(
-                        str(file_path), transfer_exclude_words
-                    )
-                    and file_path.exists()
+                        file_path.suffix in self.all_exts
+                        and not self._is_blocked_by_exclude_words(
+                    str(file_path), transfer_exclude_words
+                )
+                        and file_path.exists()
                 ):
                     return False
 

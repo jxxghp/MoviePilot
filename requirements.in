@@ -61,11 +61,11 @@ pystray~=0.19.5
 pyotp~=2.9.0
 Pinyin2Hanzi~=0.1.1
 pywebpush~=2.0.3
-python-cookietools==0.0.4
-aiofiles~=24.1.0
 aiopathlib~=0.6.0
 asynctempfile~=0.5.0
 aiosqlite~=0.21.0
+psycopg2-binary~=2.9.10
+asyncpg~=0.30.0
 jieba~=0.42.1
 rsa~=4.9
 redis~=6.2.0

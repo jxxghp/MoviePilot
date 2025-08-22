@@ -483,7 +483,7 @@ class MediaInfo:
                 continue
             if current_value is None:
                 setattr(self, key, value)
-            elif type(current_value) == type(value):
+            elif type(current_value) is type(value):
                 setattr(self, key, value)
 
     def set_douban_info(self, info: dict):
@@ -624,7 +624,7 @@ class MediaInfo:
                 continue
             if current_value is None:
                 setattr(self, key, value)
-            elif type(current_value) == type(value):
+            elif type(current_value) is type(value):
                 setattr(self, key, value)
 
     def set_bangumi_info(self, info: dict):

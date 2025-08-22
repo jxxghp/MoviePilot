@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, JSON, Sequence, String, and_, or_, select
+from sqlalchemy import Column, Integer, JSON, String, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import Base, db_query, db_update, async_db_query, async_db_update
+from app.db import Base, db_query, get_id_column, db_update, async_db_query, async_db_update
 
 
 class Workflow(Base):
@@ -12,7 +12,7 @@ class Workflow(Base):
     工作流表
     """
     # ID
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 名称
     name = Column(String, index=True, nullable=False)
     # 描述

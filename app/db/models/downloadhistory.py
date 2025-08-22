@@ -1,18 +1,18 @@
 import time
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, JSON, select
+from sqlalchemy import Column, Integer, String, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query
+from app.db import db_query, db_update, get_id_column, Base, async_db_query
 
 
 class DownloadHistory(Base):
     """
     下载历史记录
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 保存路径
     path = Column(String, nullable=False, index=True)
     # 类型 电影/电视剧
@@ -188,7 +188,7 @@ class DownloadFiles(Base):
     """
     下载文件记录
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 下载器
     downloader = Column(String)
     # 下载任务Hash

@@ -1,18 +1,18 @@
 import time
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_, JSON, select
+from sqlalchemy import Column, Integer, String, Boolean, func, or_, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query
+from app.db import db_query, db_update, get_id_column, Base, async_db_query
 
 
 class TransferHistory(Base):
     """
     整理记录
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 源路径
     src = Column(String, index=True)
     # 源存储
@@ -65,76 +65,92 @@ class TransferHistory(Base):
     def list_by_title(cls, db: Session, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
                       status: bool = None):
         if status is not None:
-            return db.query(cls).filter(
+            query = db.query(cls).filter(
                 cls.status == status
             ).order_by(
                 cls.date.desc()
-            ).offset((page - 1) * count).limit(count).all()
+            )
         else:
-            return db.query(cls).filter(or_(
+            query = db.query(cls).filter(or_(
                 cls.title.like(f'%{title}%'),
                 cls.src.like(f'%{title}%'),
                 cls.dest.like(f'%{title}%'),
             )).order_by(
                 cls.date.desc()
-            ).offset((page - 1) * count).limit(count).all()
+            )
+        
+        # 当count为负数时，不限制页数查询所有
+        if count >= 0:
+            query = query.offset((page - 1) * count).limit(count)
+        
+        return query.all()
 
     @classmethod
     @async_db_query
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
                                   status: bool = None):
         if status is not None:
-            result = await db.execute(
-                select(cls).filter(
-                    cls.status == status
-                ).order_by(
-                    cls.date.desc()
-                ).offset((page - 1) * count).limit(count)
+            query = select(cls).filter(
+                cls.status == status
+            ).order_by(
+                cls.date.desc()
             )
         else:
-            result = await db.execute(
-                select(cls).filter(or_(
-                    cls.title.like(f'%{title}%'),
-                    cls.src.like(f'%{title}%'),
-                    cls.dest.like(f'%{title}%'),
-                )).order_by(
-                    cls.date.desc()
-                ).offset((page - 1) * count).limit(count)
+            query = select(cls).filter(or_(
+                cls.title.like(f'%{title}%'),
+                cls.src.like(f'%{title}%'),
+                cls.dest.like(f'%{title}%'),
+            )).order_by(
+                cls.date.desc()
             )
+        
+        # 当count为负数时，不限制页数查询所有
+        if count >= 0:
+            query = query.offset((page - 1) * count).limit(count)
+        
+        result = await db.execute(query)
         return result.scalars().all()
 
     @classmethod
     @db_query
     def list_by_page(cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30, status: bool = None):
         if status is not None:
-            return db.query(cls).filter(
+            query = db.query(cls).filter(
                 cls.status == status
             ).order_by(
                 cls.date.desc()
-            ).offset((page - 1) * count).limit(count).all()
+            )
         else:
-            return db.query(cls).order_by(
+            query = db.query(cls).order_by(
                 cls.date.desc()
-            ).offset((page - 1) * count).limit(count).all()
+            )
+        
+        # 当count为负数时，不限制页数查询所有
+        if count >= 0:
+            query = query.offset((page - 1) * count).limit(count)
+        
+        return query.all()
 
     @classmethod
     @async_db_query
     async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30,
                                  status: bool = None):
         if status is not None:
-            result = await db.execute(
-                select(cls).filter(
-                    cls.status == status
-                ).order_by(
-                    cls.date.desc()
-                ).offset((page - 1) * count).limit(count)
+            query = select(cls).filter(
+                cls.status == status
+            ).order_by(
+                cls.date.desc()
             )
         else:
-            result = await db.execute(
-                select(cls).order_by(
-                    cls.date.desc()
-                ).offset((page - 1) * count).limit(count)
+            query = select(cls).order_by(
+                cls.date.desc()
             )
+        
+        # 当count为负数时，不限制页数查询所有
+        if count >= 0:
+            query = query.offset((page - 1) * count).limit(count)
+        
+        result = await db.execute(query)
         return result.scalars().all()
 
     @classmethod

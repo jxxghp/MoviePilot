@@ -1,18 +1,18 @@
 import time
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, select
+from sqlalchemy import Column, Integer, String, Float, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query, async_db_update
+from app.db import db_query, db_update, get_id_column, Base, async_db_query, async_db_update
 
 
 class Subscribe(Base):
     """
     订阅表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 标题
     name = Column(String, nullable=False, index=True)
     # 年份

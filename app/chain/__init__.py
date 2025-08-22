@@ -8,12 +8,10 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from fastapi.concurrency import run_in_threadpool
-
-import aiofiles
-from anyio import Path as AsyncPath
 from qbittorrentapi import TorrentFilesList
 from transmission_rpc import File
 
+from app.core.cache import FileCache, AsyncFileCache
 from app.core.config import settings
 from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.event import EventManager
@@ -48,78 +46,66 @@ class ChainBase(metaclass=ABCMeta):
             send_callback=self.run_module
         )
         self.pluginmanager = PluginManager()
+        self.filecache = FileCache()
+        self.async_filecache = AsyncFileCache()
 
-    @staticmethod
-    def load_cache(filename: str) -> Any:
+    def load_cache(self, filename: str) -> Any:
         """
-        从本地加载缓存
+        加载缓存
         """
-        cache_path = settings.TEMP_PATH / filename
-        if cache_path.exists():
-            try:
-                with open(cache_path, 'rb') as f:
-                    return pickle.load(f)
-            except Exception as err:
-                logger.error(f"加载缓存 {filename} 出错：{str(err)}")
-        return None
+        content = self.filecache.get(filename)
+        if not content:
+            return None
+        try:
+            return pickle.loads(content)
+        except Exception as err:
+            logger.error(f"加载缓存 {filename} 出错：{str(err)}")
+            return None
 
-    @staticmethod
-    async def async_load_cache(filename: str) -> Any:
+    async def async_load_cache(self, filename: str) -> Any:
         """
-        异步从本地加载缓存
+        异步加载缓存
         """
-        cache_path = settings.TEMP_PATH / filename
-        if cache_path.exists():
-            try:
-                async with aiofiles.open(cache_path, 'rb') as f:
-                    content = await f.read()
-                    return pickle.loads(content)
-            except Exception as err:
-                logger.error(f"加载缓存 {filename} 出错：{str(err)}")
-        return None
+        content = await self.async_filecache.get(filename)
+        if not content:
+            return None
+        try:
+            return pickle.loads(content)
+        except Exception as err:
+            logger.error(f"异步加载缓存 {filename} 出错：{str(err)}")
+            return None
 
-    @staticmethod
-    async def async_save_cache(cache: Any, filename: str) -> None:
+    async def async_save_cache(self, cache: Any, filename: str) -> None:
         """
-        异步保存缓存到本地
+        异步保存缓存
         """
         try:
-            async with aiofiles.open(settings.TEMP_PATH / filename, 'wb') as f:
-                await f.write(pickle.dumps(cache))
+            await self.async_filecache.set(filename, pickle.dumps(cache))
         except Exception as err:
-            logger.error(f"保存缓存 {filename} 出错：{str(err)}")
+            logger.error(f"异步保存缓存 {filename} 出错：{str(err)}")
+            return
 
-    @staticmethod
-    def save_cache(cache: Any, filename: str) -> None:
+    def save_cache(self, cache: Any, filename: str) -> None:
         """
-        保存缓存到本地
+        保存缓存
         """
         try:
-            with open(settings.TEMP_PATH / filename, 'wb') as f:
-                pickle.dump(cache, f)  # noqa
+            self.filecache.set(filename, pickle.dumps(cache))
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{str(err)}")
+            return
 
-    @staticmethod
-    def remove_cache(filename: str) -> None:
+    def remove_cache(self, filename: str) -> None:
         """
-        删除本地缓存
+        删除缓存，同时删除Redis和本地缓存
         """
-        cache_path = settings.TEMP_PATH / filename
-        if cache_path.exists():
-            cache_path.unlink()
+        self.filecache.delete(filename)
 
-    @staticmethod
-    async def async_remove_cache(filename: str) -> None:
+    async def async_remove_cache(self, filename: str) -> None:
         """
-        异步删除本地缓存
+        异步删除缓存，同时删除Redis和本地缓存
         """
-        cache_path = AsyncPath(settings.TEMP_PATH) / filename
-        if await cache_path.exists():
-            try:
-                await cache_path.unlink()
-            except Exception as err:
-                logger.error(f"异步删除缓存 {filename} 出错：{str(err)}")
+        pass
 
     @staticmethod
     def __is_valid_empty(ret):
@@ -700,13 +686,13 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("filter_torrents", rule_groups=rule_groups,
                                torrent_list=torrent_list, mediainfo=mediainfo)
 
-    def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
+    def download(self, content: Union[Path, str, bytes], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: Optional[str] = None, label: Optional[str] = None,
                  downloader: Optional[str] = None
                  ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
-        :param content:  种子文件地址或者磁力链接
+        :param content:  种子文件地址或者磁力链接或者种子内容
         :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
@@ -719,15 +705,16 @@ class ChainBase(metaclass=ABCMeta):
                                cookie=cookie, episodes=episodes, category=category, label=label,
                                downloader=downloader)
 
-    def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:
+    def download_added(self, context: Context, download_dir: Path, torrent_content: Union[str, bytes] = None) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param download_dir:  下载目录
-        :param torrent_path:  种子文件地址
+        :param torrent_content:  种子内容，如果有则直接使用该内容，否则从context中获取种子文件路径
         :return: None，该方法可被多个模块同时处理
         """
-        return self.run_module("download_added", context=context, torrent_path=torrent_path,
+        return self.run_module("download_added", context=context,
+                               torrent_content=torrent_content,
                                download_dir=download_dir)
 
     def list_torrents(self, status: TorrentStatus = None,
@@ -923,12 +910,12 @@ class ChainBase(metaclass=ABCMeta):
                                        immediately=True if message.userid else False)
 
     async def async_post_message(self,
-                     message: Optional[Notification] = None,
-                     meta: Optional[MetaBase] = None,
-                     mediainfo: Optional[MediaInfo] = None,
-                     torrentinfo: Optional[TorrentInfo] = None,
-                     transferinfo: Optional[TransferInfo] = None,
-                     **kwargs) -> None:
+                                 message: Optional[Notification] = None,
+                                 meta: Optional[MetaBase] = None,
+                                 mediainfo: Optional[MediaInfo] = None,
+                                 torrentinfo: Optional[TorrentInfo] = None,
+                                 transferinfo: Optional[TransferInfo] = None,
+                                 **kwargs) -> None:
         """
         异步发送消息
         :param message:  Notification实例
@@ -991,15 +978,16 @@ class ChainBase(metaclass=ABCMeta):
                         break
                     # 按设定发送
                     await self.eventmanager.async_send_event(etype=EventType.NoticeMessage,
-                                                 data={**send_message.dict(), "type": send_message.mtype})
+                                                             data={**send_message.dict(), "type": send_message.mtype})
                     await self.messagequeue.async_send_message("post_message", message=send_message)
                 if not send_orignal:
                     return
         # 发送消息事件
-        await self.eventmanager.async_send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
+        await self.eventmanager.async_send_event(etype=EventType.NoticeMessage,
+                                                 data={**message.dict(), "type": message.mtype})
         # 按原消息发送
         await self.messagequeue.async_send_message("post_message", message=message,
-                                       immediately=True if message.userid else False)
+                                                   immediately=True if message.userid else False)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """

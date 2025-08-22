@@ -1,15 +1,15 @@
-from sqlalchemy import Column, Integer, String, Sequence, select
+from sqlalchemy import Column, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base, async_db_query
+from app.db import db_query, Base, get_id_column, async_db_query
 
 
 class SiteIcon(Base):
     """
     站点图标表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 站点名称
     name = Column(String, nullable=False)
     # 域名Key

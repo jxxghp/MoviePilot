@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple, Set, Dict, Union
 
 from app import schemas
 from app.chain import ChainBase
+from app.core.cache import FileCache
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.event import eventmanager, Event
@@ -35,10 +36,10 @@ class DownloadChain(ChainBase):
                          channel: MessageChannel = None,
                          source: Optional[str] = None,
                          userid: Union[str, int] = None
-                         ) -> Tuple[Optional[Union[Path, str]], str, list]:
+                         ) -> Tuple[Optional[Union[str, bytes]], str, list]:
         """
         下载种子文件，如果是磁力链，会返回磁力链接本身
-        :return: 种子路径，种子目录名，种子文件清单
+        :return: 种子内容，种子目录名，种子文件清单
         """
 
         def __get_redict_url(url: str, ua: Optional[str] = None, cookie: Optional[str] = None) -> Optional[str]:
@@ -117,7 +118,7 @@ class DownloadChain(ChainBase):
             logger.error(f"{torrent.title} 无法获取下载地址：{torrent.enclosure}！")
             return None, "", []
         # 下载种子文件
-        torrent_file, content, download_folder, files, error_msg = TorrentHelper().download_torrent(
+        _, content, download_folder, files, error_msg = TorrentHelper().download_torrent(
             url=torrent_url,
             cookie=site_cookie,
             ua=torrent.site_ua or settings.USER_AGENT,
@@ -127,7 +128,7 @@ class DownloadChain(ChainBase):
             # 磁力链
             return content, "", []
 
-        if not torrent_file:
+        if not content:
             logger.error(f"下载种子文件失败：{torrent.title} - {torrent_url}")
             self.post_message(Notification(
                 channel=channel,
@@ -139,9 +140,11 @@ class DownloadChain(ChainBase):
             return None, "", []
 
         # 返回 种子文件路径，种子目录名，种子文件清单
-        return torrent_file, download_folder, files
+        return content, download_folder, files
 
-    def download_single(self, context: Context, torrent_file: Path = None,
+    def download_single(self, context: Context,
+                        torrent_file: Path = None,
+                        torrent_content: Optional[Union[str, bytes]] = None,
                         episodes: Set[int] = None,
                         channel: MessageChannel = None,
                         source: Optional[str] = None,
@@ -154,6 +157,7 @@ class DownloadChain(ChainBase):
         下载及发送通知
         :param context: 资源上下文
         :param torrent_file: 种子文件路径
+        :param torrent_content: 种子内容（磁力链或种子文件内容）
         :param episodes: 需要下载的集数
         :param channel: 通知渠道
         :param source: 来源（消息通知、Subscribe、Manual等）
@@ -207,18 +211,26 @@ class DownloadChain(ChainBase):
         # 实际下载的集数
         download_episodes = StringUtils.format_ep(list(episodes)) if episodes else None
         _folder_name = ""
-        if not torrent_file:
+        if not torrent_file and not torrent_content:
             # 下载种子文件，得到的可能是文件也可能是磁力链
-            content, _folder_name, _file_list = self.download_torrent(_torrent,
-                                                                      channel=channel,
-                                                                      source=source,
-                                                                      userid=userid)
-            if not content:
-                return None
-        else:
-            content = torrent_file
-            # 获取种子文件的文件夹名和文件清单
-            _folder_name, _file_list = TorrentHelper().get_torrent_info(torrent_file)
+            torrent_content, _folder_name, _file_list = self.download_torrent(_torrent,
+                                                                              channel=channel,
+                                                                              source=source,
+                                                                              userid=userid)
+        elif torrent_file:
+            if torrent_file.exists():
+                torrent_content = torrent_file.read_bytes()
+            else:
+                # 缓存处理器
+                cache_backend = FileCache()
+                # 读取缓存的种子文件
+                torrent_content = cache_backend.get(torrent_file.as_posix(), region="torrents")
+
+        if not torrent_content:
+            return None
+
+        # 获取种子文件的文件夹名和文件清单
+        _folder_name, _file_list = TorrentHelper().get_fileinfo_from_torrent_content(torrent_content)
 
         # 下载目录
         if save_path:
@@ -249,7 +261,7 @@ class DownloadChain(ChainBase):
                 return None
 
         # 添加下载
-        result: Optional[tuple] = self.download(content=content,
+        result: Optional[tuple] = self.download(content=torrent_content,
                                                 cookie=_torrent.site_cookie,
                                                 episodes=episodes,
                                                 download_dir=download_dir,
@@ -346,7 +358,7 @@ class DownloadChain(ChainBase):
                 username=username,
             )
             # 下载成功后处理
-            self.download_added(context=context, download_dir=download_dir, torrent_path=torrent_file)
+            self.download_added(context=context, download_dir=download_dir, torrent_content=torrent_content)
             # 广播事件
             self.eventmanager.send_event(EventType.DownloadAdded, {
                 "hash": _hash,
@@ -560,7 +572,7 @@ class DownloadChain(ChainBase):
                                     logger.info(f"开始下载 {torrent.title} ...")
                                     download_id = self.download_single(
                                         context=context,
-                                        torrent_file=content if isinstance(content, Path) else None,
+                                        torrent_content=content,
                                         save_path=save_path,
                                         channel=channel,
                                         source=source,
@@ -727,7 +739,7 @@ class DownloadChain(ChainBase):
                             logger.info(f"开始下载 {torrent.title} ...")
                             download_id = self.download_single(
                                 context=context,
-                                torrent_file=content if isinstance(content, Path) else None,
+                                torrent_content=content,
                                 episodes=selected_episodes,
                                 save_path=save_path,
                                 channel=channel,

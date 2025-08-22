@@ -1,21 +1,16 @@
 import pickle
-import random
-import time
 import traceback
 from pathlib import Path
 from threading import RLock
-from typing import Optional
 
+from app.core.cache import TTLCache
 from app.core.config import settings
 from app.core.meta import MetaBase
 from app.log import logger
-from app.utils.singleton import WeakSingleton
 from app.schemas.types import MediaType
+from app.utils.singleton import WeakSingleton
 
 lock = RLock()
-
-CACHE_EXPIRE_TIMESTAMP_STR = "cache_expire_timestamp"
-EXPIRE_TIMESTAMP = settings.CONF.meta
 
 
 class TmdbCache(metaclass=WeakSingleton):
@@ -32,15 +27,23 @@ class TmdbCache(metaclass=WeakSingleton):
     _tmdb_cache_expire: bool = True
 
     def __init__(self):
-        self._meta_path = settings.TEMP_PATH / "__tmdb_cache__"
-        self._meta_data = self.__load(self._meta_path)
+        self.maxsize = settings.CONF.douban
+        self.ttl = settings.CONF.meta
+        self.region = "__tmdb_cache__"
+        self._meta_filepath = settings.TEMP_PATH / self.region
+        # 初始化缓存
+        self._cache = TTLCache(region=self.region, maxsize=self.maxsize, ttl=self.ttl)
+        # 非Redis加载本地缓存数据
+        if not self._cache.is_redis():
+            for key, value in self.__load(self._meta_filepath).items():
+                self._cache.set(key, value)
 
     def clear(self):
         """
         清空所有TMDB缓存
         """
         with lock:
-            self._meta_data = {}
+            self._cache.clear()
 
     @staticmethod
     def __get_key(meta: MetaBase) -> str:
@@ -54,16 +57,9 @@ class TmdbCache(metaclass=WeakSingleton):
         根据KEY值获取缓存值
         """
         key = self.__get_key(meta)
+
         with lock:
-            info: dict = self._meta_data.get(key)
-            if info:
-                expire = info.get(CACHE_EXPIRE_TIMESTAMP_STR)
-                if not expire or int(time.time()) < expire:
-                    info[CACHE_EXPIRE_TIMESTAMP_STR] = int(time.time()) + EXPIRE_TIMESTAMP
-                    self._meta_data[key] = info
-                elif expire and self._tmdb_cache_expire:
-                    self.delete(key)
-            return info or {}
+            return self._cache.get(key) or {}
 
     def delete(self, key: str) -> dict:
         """
@@ -72,38 +68,26 @@ class TmdbCache(metaclass=WeakSingleton):
         @return: 被删除的缓存内容
         """
         with lock:
-            return self._meta_data.pop(key, {})
-
-    def delete_by_tmdbid(self, tmdbid: int) -> None:
-        """
-        清空对应TMDBID的所有缓存记录，以强制更新TMDB中最新的数据
-        """
-        for key in list(self._meta_data):
-            if self._meta_data.get(key, {}).get("id") == tmdbid:
-                with lock:
-                    self._meta_data.pop(key)
-
-    def delete_unknown(self) -> None:
-        """
-        清除未识别的缓存记录，以便重新搜索TMDB
-        """
-        for key in list(self._meta_data):
-            if self._meta_data.get(key, {}).get("id") == 0:
-                with lock:
-                    self._meta_data.pop(key)
+            redis_data = self._cache.get(key)
+            if redis_data:
+                self._cache.delete(key)
+                return redis_data
+            return {}
 
     def modify(self, key: str, title: str) -> dict:
         """
-        删除缓存信息
+        修改缓存信息
         @param key: 缓存key
         @param title: 标题
         @return: 被修改后缓存内容
         """
         with lock:
-            if self._meta_data.get(key):
-                self._meta_data[key]['title'] = title
-                self._meta_data[key][CACHE_EXPIRE_TIMESTAMP_STR] = int(time.time()) + EXPIRE_TIMESTAMP
-            return self._meta_data.get(key)
+            redis_data = self._cache.get(key)
+            if redis_data:
+                redis_data['title'] = title
+                self._cache.set(key, redis_data)
+                return redis_data
+            return {}
 
     @staticmethod
     def __load(path: Path) -> dict:
@@ -115,106 +99,61 @@ class TmdbCache(metaclass=WeakSingleton):
                 with open(path, 'rb') as f:
                     data = pickle.load(f)
                 return data
-            return {}
         except Exception as e:
             logger.error(f'加载缓存失败：{str(e)} - {traceback.format_exc()}')
-            return {}
+        return {}
 
     def update(self, meta: MetaBase, info: dict) -> None:
         """
         新增或更新缓存条目
         """
-        with lock:
-            if info:
-                # 缓存标题
-                cache_title = info.get("title") \
-                    if info.get("media_type") == MediaType.MOVIE else info.get("name")
-                # 缓存年份
-                cache_year = info.get('release_date') \
-                    if info.get("media_type") == MediaType.MOVIE else info.get('first_air_date')
-                if cache_year:
-                    cache_year = cache_year[:4]
-                self._meta_data[self.__get_key(meta)] = {
+        key = self.__get_key(meta)
+        if info:
+            # 缓存标题
+            cache_title = info.get("title") \
+                if info.get("media_type") == MediaType.MOVIE else info.get("name")
+            # 缓存年份
+            cache_year = info.get('release_date') \
+                if info.get("media_type") == MediaType.MOVIE else info.get('first_air_date')
+            if cache_year:
+                cache_year = cache_year[:4]
+
+            with lock:
+                # 缓存数据
+                cache_data = {
                     "id": info.get("id"),
                     "type": info.get("media_type"),
                     "year": cache_year,
                     "title": cache_title,
                     "poster_path": info.get("poster_path"),
-                    "backdrop_path": info.get("backdrop_path"),
-                    CACHE_EXPIRE_TIMESTAMP_STR: int(time.time()) + EXPIRE_TIMESTAMP
+                    "backdrop_path": info.get("backdrop_path")
                 }
-            elif info is not None:
-                # None时不缓存，此时代表网络错误，允许重复请求
-                self._meta_data[self.__get_key(meta)] = {'id': 0}
+                self._cache.set(key, cache_data)
+
+        elif info is not None:
+            # None时不缓存，此时代表网络错误，允许重复请求
+            with lock:
+                self._cache.set(key, {"id": 0})
 
     def save(self, force: bool = False) -> None:
         """
         保存缓存数据到文件
         """
+        # Redis不需要保存到本地文件
+        if self._cache.is_redis():
+            return
 
-        meta_data = self.__load(self._meta_path)
-        new_meta_data = {k: v for k, v in self._meta_data.items() if v.get("id")}
+        # Redis不可用时，保存到本地文件
+        meta_data = self.__load(self._meta_filepath)
+        # 当前缓存，去除无法识别
+        new_meta_data = {k: v for k, v in self._cache.items() if v.get("id")}
 
         if not force \
-                and not self._random_sample(new_meta_data) \
                 and meta_data.keys() == new_meta_data.keys():
             return
 
-        with open(self._meta_path, 'wb') as f:
+        with open(self._meta_filepath, 'wb') as f:
             pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL)  # type: ignore
-
-    def _random_sample(self, new_meta_data: dict) -> bool:
-        """
-        采样分析是否需要保存
-        """
-        ret = False
-        if len(new_meta_data) < 25:
-            keys = list(new_meta_data.keys())
-            for k in keys:
-                info = new_meta_data.get(k)
-                expire = info.get(CACHE_EXPIRE_TIMESTAMP_STR)
-                if not expire:
-                    ret = True
-                    info[CACHE_EXPIRE_TIMESTAMP_STR] = int(time.time()) + EXPIRE_TIMESTAMP
-                elif int(time.time()) >= expire:
-                    ret = True
-                    if self._tmdb_cache_expire:
-                        new_meta_data.pop(k)
-        else:
-            count = 0
-            keys = random.sample(sorted(new_meta_data.keys()), 25)
-            for k in keys:
-                info = new_meta_data.get(k)
-                expire = info.get(CACHE_EXPIRE_TIMESTAMP_STR)
-                if not expire:
-                    ret = True
-                    info[CACHE_EXPIRE_TIMESTAMP_STR] = int(time.time()) + EXPIRE_TIMESTAMP
-                elif int(time.time()) >= expire:
-                    ret = True
-                    if self._tmdb_cache_expire:
-                        new_meta_data.pop(k)
-                        count += 1
-            if count >= 5:
-                ret |= self._random_sample(new_meta_data)
-        return ret
-
-    def get_title(self, key: str) -> Optional[str]:
-        """
-        获取缓存的标题
-        """
-        cache_media_info = self._meta_data.get(key)
-        if not cache_media_info or not cache_media_info.get("id"):
-            return None
-        return cache_media_info.get("title")
-
-    def set_title(self, key: str, cn_title: str) -> None:
-        """
-        重新设置缓存标题
-        """
-        cache_media_info = self._meta_data.get(key)
-        if not cache_media_info:
-            return
-        self._meta_data[key]['title'] = cn_title
 
     def __del__(self):
         self.save()

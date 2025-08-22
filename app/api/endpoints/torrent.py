@@ -135,8 +135,8 @@ def refresh_cache(_: User = Depends(get_current_active_superuser)):
 
 @router.post("/cache/reidentify/{domain}/{torrent_hash}", summary="重新识别种子", response_model=schemas.Response)
 async def reidentify_cache(domain: str, torrent_hash: str,
-                     tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-                     _: User = Depends(get_current_active_superuser_async)):
+                           tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
+                           _: User = Depends(get_current_active_superuser_async)):
     """
     重新识别指定的种子
     :param domain: 站点域名

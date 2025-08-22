@@ -13,7 +13,7 @@ from app import schemas
 from app.command import Command
 from app.core.config import settings
 from app.core.plugin import PluginManager
-from app.core.security import verify_apikey, verify_token
+from app.core.security import verify_apikey, verify_token, verify_apitoken
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
@@ -21,6 +21,7 @@ from app.factory import app
 from app.helper.plugin import PluginHelper
 from app.log import logger
 from app.scheduler import Scheduler
+from app.schemas.plugin import PluginMemoryInfo
 from app.schemas.types import SystemConfigKey
 
 PROTECTED_ROUTES = {"/api/v1/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
@@ -463,6 +464,87 @@ async def update_folder_plugins(folder_name: str, plugin_ids: List[str],
     return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 中的插件已更新")
 
 
+@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response)
+def clone_plugin(plugin_id: str,
+                 clone_data: dict,
+                 _: User = Depends(get_current_active_superuser)) -> Any:
+    """
+    创建插件分身
+    """
+    try:
+        success, message = PluginManager().clone_plugin(
+            plugin_id=plugin_id,
+            suffix=clone_data.get("suffix", ""),
+            name=clone_data.get("name", ""),
+            description=clone_data.get("description", ""),
+            version=clone_data.get("version", ""),
+            icon=clone_data.get("icon", "")
+        )
+
+        if success:
+            # 注册插件服务
+            reload_plugin(message)
+            # 将分身插件添加到原插件所在的文件夹中
+            _add_clone_to_plugin_folder(plugin_id, message)
+            return schemas.Response(success=True, message="插件分身创建成功")
+        else:
+            return schemas.Response(success=False, message=message)
+    except Exception as e:
+        logger.error(f"创建插件分身失败：{str(e)}")
+        return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")
+
+
+@router.get("/memory", summary="插件内存使用统计", response_model=List[PluginMemoryInfo])
+def plugin_memory_stats(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
+    """
+    获取所有插件的内存使用统计信息
+    """
+    try:
+        plugin_manager = PluginManager()
+        memory_stats = plugin_manager.get_plugin_memory_stats()
+        return memory_stats
+    except Exception as e:
+        logger.error(f"获取插件内存统计失败：{str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"获取插件内存统计失败：{str(e)}")
+
+
+@router.get("/memory/{plugin_id}", summary="单个插件内存使用统计", response_model=PluginMemoryInfo)
+def plugin_memory_stat(plugin_id: str, _: Annotated[str, Depends(verify_apitoken)]) -> Any:
+    """
+    获取指定插件的内存使用统计信息
+    """
+    try:
+        plugin_manager = PluginManager()
+        memory_stats = plugin_manager.get_plugin_memory_stats(plugin_id)
+        if not memory_stats:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"插件 {plugin_id} 不存在或未运行")
+        return memory_stats[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取插件 {plugin_id} 内存统计失败：{str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"获取插件内存统计失败：{str(e)}")
+
+
+@router.delete("/memory/cache", summary="清除插件内存统计缓存")
+def clear_plugin_memory_cache(_: Annotated[str, Depends(verify_apitoken)],
+                              plugin_id: Optional[str] = None) -> Any:
+    """
+    清除插件内存统计缓存
+    """
+    try:
+        plugin_manager = PluginManager()
+        plugin_manager.clear_plugin_memory_cache(plugin_id)
+        message = f"已清除插件 {plugin_id} 的内存统计缓存" if plugin_id else "已清除所有插件的内存统计缓存"
+        return schemas.Response(success=True, message=message)
+    except Exception as e:
+        logger.error(f"清除插件内存统计缓存失败：{str(e)}")
+        return schemas.Response(success=False, message=f"清除缓存失败：{str(e)}")
+
+
 @router.get("/{plugin_id}", summary="获取插件配置")
 async def plugin_config(plugin_id: str,
                         _: User = Depends(get_current_active_superuser_async)) -> dict:
@@ -526,36 +608,6 @@ def uninstall_plugin(plugin_id: str,
     # 移除插件
     plugin_manager.remove_plugin(plugin_id)
     return schemas.Response(success=True)
-
-
-@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response)
-def clone_plugin(plugin_id: str,
-                 clone_data: dict,
-                 _: User = Depends(get_current_active_superuser)) -> Any:
-    """
-    创建插件分身
-    """
-    try:
-        success, message = PluginManager().clone_plugin(
-            plugin_id=plugin_id,
-            suffix=clone_data.get("suffix", ""),
-            name=clone_data.get("name", ""),
-            description=clone_data.get("description", ""),
-            version=clone_data.get("version", ""),
-            icon=clone_data.get("icon", "")
-        )
-
-        if success:
-            # 注册插件服务
-            reload_plugin(message)
-            # 将分身插件添加到原插件所在的文件夹中
-            _add_clone_to_plugin_folder(plugin_id, message)
-            return schemas.Response(success=True, message="插件分身创建成功")
-        else:
-            return schemas.Response(success=False, message=message)
-    except Exception as e:
-        logger.error(f"创建插件分身失败：{str(e)}")
-        return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")
 
 
 def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):

@@ -6,7 +6,6 @@ from app.chain import ChainBase
 from app.core.config import settings
 from app.helper.directory import DirectoryHelper
 from app.log import logger
-from app.schemas import MediaType
 
 
 class StorageChain(ChainBase):
@@ -134,8 +133,7 @@ class StorageChain(ChainBase):
         """
         return self.run_module("support_transtype", storage=storage)
 
-    def delete_media_file(self, fileitem: schemas.FileItem,
-                          mtype: MediaType = None, delete_self: bool = True) -> bool:
+    def delete_media_file(self, fileitem: schemas.FileItem, delete_self: bool = True) -> bool:
         """
         删除媒体文件，以及不含媒体文件的目录
         """
@@ -152,7 +150,8 @@ class StorageChain(ChainBase):
             return False
 
         media_exts = settings.RMT_MEDIAEXT + settings.DOWNLOAD_TMPEXT
-        if fileitem.path == "/" or len(Path(fileitem.path).parts) <= 2:
+        fileitem_path = Path(fileitem.path) if fileitem.path else Path("")
+        if len(fileitem_path.parts) <= 2:
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 根目录或一级目录不允许删除")
             return False
         if fileitem.type == "dir":
@@ -162,13 +161,7 @@ class StorageChain(ChainBase):
                 if not self.delete_file(fileitem):
                     logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
                     return False
-            elif self.any_files(fileitem, extensions=media_exts) is False:
-                logger.warn(f"【{fileitem.storage}】{fileitem.path} 不存在其它媒体文件，正在删除空目录")
-                if not self.delete_file(fileitem):
-                    logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
-                    return False
-            # 不处理父目录
-            return True
+
         elif delete_self:
             # 本身是文件，需要删除文件
             logger.warn(f"正在删除文件【{fileitem.storage}】{fileitem.path}")
@@ -176,35 +169,43 @@ class StorageChain(ChainBase):
                 logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
                 return False
 
-        if mtype:
-            # 重命名格式
-            rename_format = settings.RENAME_FORMAT(mtype)
-            media_path = DirectoryHelper.get_media_root_path(
-                rename_format, rename_path=Path(fileitem.path)
-            )
-            if not media_path:
-                return True
-            # 处理媒体文件根目录
-            dir_item = self.get_file_item(storage=fileitem.storage, path=media_path)
-        else:
-            # 处理上级目录
-            dir_item = self.get_parent_item(fileitem)
+        # 检查和删除上级空目录
+        dir_item = fileitem if fileitem.type == "dir" else self.get_parent_item(fileitem)
+        if not dir_item:
+            logger.warn(f"【{fileitem.storage}】{fileitem.path} 上级目录不存在")
+            return False
 
-        # 检查和删除上级目录
-        if dir_item and len(Path(dir_item.path).parts) > 2:
-            # 如何目录是所有下载目录、媒体库目录的上级，则不处理
-            for d in DirectoryHelper().get_dirs():
-                if d.download_path and Path(d.download_path).is_relative_to(Path(dir_item.path)):
-                    logger.debug(f"【{dir_item.storage}】{dir_item.path} 是下载目录本级或上级目录，不删除")
-                    return True
-                if d.library_path and Path(d.library_path).is_relative_to(Path(dir_item.path)):
-                    logger.debug(f"【{dir_item.storage}】{dir_item.path} 是媒体库目录本级或上级目录，不删除")
-                    return True
-            # 不存在其他媒体文件，删除空目录
-            if self.any_files(dir_item, extensions=media_exts) is False:
-                logger.warn(f"【{dir_item.storage}】{dir_item.path} 不存在其它媒体文件，正在删除空目录")
-                if not self.delete_file(dir_item):
-                    logger.warn(f"【{dir_item.storage}】{dir_item.path} 删除失败")
-                    return False
+        # 查找操作文件项匹配的配置目录(资源目录、媒体库目录)
+        associated_dir = max(
+            (
+                Path(p)
+                for d in DirectoryHelper().get_dirs()
+                for p in (d.download_path, d.library_path)
+                if p and fileitem_path.is_relative_to(p)
+            ),
+            key=lambda path: len(path.parts),
+            default=None,
+        )
+
+        while dir_item and len(Path(dir_item.path).parts) > 2:
+            # 目录是资源目录、媒体库目录的上级，则不处理
+            if associated_dir and associated_dir.is_relative_to(Path(dir_item.path)):
+                logger.debug(f"【{dir_item.storage}】{dir_item.path} 位于资源或媒体库目录结构中，不删除")
+                break
+
+            elif not associated_dir and self.list_files(dir_item, recursion=False):
+                logger.debug(f"【{dir_item.storage}】{dir_item.path} 不是空目录，不删除")
+                break
+
+            if self.any_files(dir_item, extensions=media_exts) is not False:
+                logger.debug(f"【{dir_item.storage}】{dir_item.path} 存在媒体文件，不删除")
+                break
+
+            # 删除空目录并继续处理父目录
+            logger.warn(f"【{dir_item.storage}】{dir_item.path} 不存在其它媒体文件，正在删除空目录")
+            if not self.delete_file(dir_item):
+                logger.warn(f"【{dir_item.storage}】{dir_item.path} 删除失败")
+                return False
+            dir_item = self.get_parent_item(dir_item)
 
         return True

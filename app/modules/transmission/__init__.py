@@ -5,9 +5,10 @@ from torrentool.torrent import Torrent
 from transmission_rpc import File
 
 from app import schemas
+from app.core.cache import FileCache
 from app.core.config import settings
-from app.core.metainfo import MetaInfo
 from app.core.event import eventmanager, Event
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.transmission.transmission import Transmission
@@ -93,12 +94,12 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 logger.info(f"Transmission下载器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
 
-    def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
+    def download(self, content: Union[Path, str, bytes], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: Optional[str] = None, label: Optional[str] = None,
                  downloader: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
-        :param content:  种子文件地址或者磁力链接
+        :param content:  种子文件地址或者磁力链接或种子内容
         :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
@@ -108,24 +109,38 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
 
-        def __get_torrent_info() -> Tuple[str, int]:
+        def __get_torrent_info() -> Tuple[Optional[Torrent], Optional[bytes]]:
             """
             获取种子名称
             """
+            torrent_info, torrent_content = None, None
             try:
                 if isinstance(content, Path):
-                    torrentinfo = Torrent.from_file(content)
+                    if content.exists():
+                        torrent_content = content.read_bytes()
+                    else:
+                        # 缓存处理器
+                        cache_backend = FileCache()
+                        # 读取缓存的种子文件
+                        torrent_content = cache_backend.get(content.as_posix(), region="torrents")
                 else:
-                    torrentinfo = Torrent.from_string(content)
-                return torrentinfo.name, torrentinfo.total_size
+                    torrent_content = content
+
+                if torrent_content:
+                    torrent_info = Torrent.from_string(torrent_content)
+
+                return torrent_info, torrent_content
             except Exception as e:
                 logger.error(f"获取种子名称失败：{e}")
-                return "", 0
+                return None, None
 
         if not content:
             return None, None, None, "下载内容为空"
-        if isinstance(content, Path) and not content.exists():
-            return None, None,  None, f"种子文件不存在：{content}"
+
+        # 读取种子的名称
+        torrent, content = __get_torrent_info()
+        if not torrent:
+            return None, None, None, f"添加种子任务失败：无法读取种子文件"
 
         # 获取下载器
         server: Transmission = self.get_instance(downloader)
@@ -144,7 +159,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
             labels = None
         # 添加任务
         torrent = server.add_torrent(
-            content=content.read_bytes() if isinstance(content, Path) else content,
+            content=content,
             download_dir=str(download_dir),
             is_paused=is_paused,
             labels=labels,
@@ -154,10 +169,6 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         torrent_layout = "Original"
 
         if not torrent:
-            # 读取种子的名称
-            torrent_name, torrent_size = __get_torrent_info()
-            if not torrent_name:
-                return None, None, None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = server.get_torrents()
             if error:
@@ -166,7 +177,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 try:
                     for torrent in torrents:
                         # 名称与大小相等则认为是同一个种子
-                        if torrent.name == torrent_name and torrent.total_size == torrent_size:
+                        if torrent.name == torrent.name and torrent.total_size == torrent.total_size:
                             torrent_hash = torrent.hashString
                             logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.name}")
                             # 给种子打上标签
@@ -314,7 +325,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                     del torrents
         else:
             return None
-        return ret_torrents # noqa
+        return ret_torrents  # noqa
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """

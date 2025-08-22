@@ -63,19 +63,19 @@ class SubtitleModule(_ModuleBase):
     def test(self):
         pass
 
-    def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:
+    def download_added(self, context: Context, download_dir: Path, torrent_content: Union[str, bytes] = None):
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param download_dir:  下载目录
-        :param torrent_path:  种子文件地址
+        :param torrent_content: 种子内容，如果是种子文件，则为文件内容，否则为种子字符串
         :return: None，该方法可被多个模块同时处理
         """
         if not settings.DOWNLOAD_SUBTITLE:
-            return None
+            return
 
         # 没有种子文件不处理
-        if not torrent_path:
+        if not torrent_content:
             return
 
         # 没有详情页不处理
@@ -85,7 +85,7 @@ class SubtitleModule(_ModuleBase):
         # 字幕下载目录
         logger.info("开始从站点下载字幕：%s" % torrent.page_url)
         # 获取种子信息
-        folder_name, _ = TorrentHelper.get_torrent_info(torrent_path)
+        folder_name, _ = TorrentHelper().get_fileinfo_from_torrent_content(torrent_content)
         # 文件保存目录，如果是单文件种子，则folder_name是空，此时文件保存目录就是下载目录
         download_dir = download_dir / folder_name
         # 等待目录存在

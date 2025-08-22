@@ -1,7 +1,7 @@
 from threading import Thread
 from typing import List, Tuple, Optional
 
-from app.core.cache import cached, cache_backend
+from app.core.cache import cached
 from app.core.config import settings
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -111,7 +111,12 @@ class SubscribeHelper(metaclass=WeakSingleton):
         if res and res.status_code == 200:
             # 清除缓存
             if clear_cache:
-                cache_backend.clear(region=self._shares_cache_region)
+                self.get_shares.cache_clear()
+                self.get_statistic.cache_clear()
+                self.get_share_statistics.cache_clear()
+                self.async_get_shares.cache_clear()
+                self.async_get_statistic.cache_clear()
+                self.async_get_share_statistics.cache_clear()
             return True, ""
         else:
             return False, res.json().get("message")

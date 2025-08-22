@@ -71,7 +71,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
-                return False, f"VoceChat {name} 未就续"
+                return False, f"VoceChat {name} 未就绪"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:

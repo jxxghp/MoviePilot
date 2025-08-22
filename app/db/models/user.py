@@ -1,8 +1,8 @@
-from sqlalchemy import Boolean, Column, Integer, JSON, Sequence, String, select
+from sqlalchemy import Boolean, Column, JSON, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import Base, db_query, db_update, async_db_query, async_db_update
+from app.db import Base, db_query, db_update, async_db_query, async_db_update, get_id_column
 
 
 class User(Base):
@@ -10,7 +10,7 @@ class User(Base):
     用户表
     """
     # ID
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 用户名，唯一值
     name = Column(String, index=True, nullable=False)
     # 邮箱

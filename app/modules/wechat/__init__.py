@@ -75,7 +75,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
-                return False, f"企业微信 {name} 未就续"
+                return False, f"企业微信 {name} 未就绪"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:

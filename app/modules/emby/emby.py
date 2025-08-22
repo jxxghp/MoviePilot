@@ -167,7 +167,7 @@ class Emby:
                     image=image,
                     link=f'{self._playhost or self._host}web/index.html'
                          f'#!/videos?serverId={self.serverid}&parentId={library.get("Id")}',
-                    server_type= "emby"
+                    server_type="emby"
                 )
             )
         return libraries
@@ -497,7 +497,7 @@ class Emby:
                 logger.info(f"影片图片链接:{res.url}")
                 return res.url
             else:
-                logger.error("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
+                logger.info("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
                 return None
         except Exception as e:
             logger.error(f"连接Items/Id/Images出错：" + str(e))

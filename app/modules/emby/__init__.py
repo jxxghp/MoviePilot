@@ -282,9 +282,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, server: str,
-                            count: Optional[int] = 20, username: Optional[str] = None) -> List[
-        schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, server: str, count: Optional[int] = 20,
+                            username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
@@ -302,9 +301,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             return None
         return server_obj.get_play_url(item_id)
 
-    def mediaserver_latest(self, server: Optional[str] = None,
-                           count: Optional[int] = 20, username: Optional[str] = None) -> List[
-        schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
+                           username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """

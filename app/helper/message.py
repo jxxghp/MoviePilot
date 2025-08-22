@@ -10,9 +10,9 @@ from datetime import datetime
 from typing import Any, Literal, Optional, List, Dict, Union
 from typing import Callable
 
-from cachetools import TTLCache
 from jinja2 import Template
 
+from app.core.cache import TTLCache
 from app.core.config import global_vars
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
@@ -307,7 +307,7 @@ class TemplateHelper(metaclass=SingletonClass):
 
     def __init__(self):
         self.builder = TemplateContextBuilder()
-        self.cache = TTLCache(maxsize=100, ttl=600)
+        self.cache = TTLCache(region="notification", maxsize=100, ttl=600)
 
     @staticmethod
     def _generate_cache_key(cuntent: Union[str, dict]) -> str:
@@ -470,6 +470,13 @@ class TemplateHelper(metaclass=SingletonClass):
             return restore_chars(rendered_dict)
         except json.JSONDecodeError:
             return rendered
+
+    def close(self):
+        """
+        清理资源
+        """
+        if self.cache:
+            self.cache.close()
 
 
 class MessageTemplateHelper:
@@ -704,6 +711,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         停止队列管理器
         """
         self._running = False
+        logger.info("正在停止消息队列...")
         self.thread.join()
 
 
@@ -765,3 +773,13 @@ class MessageHelper(metaclass=Singleton):
             if not self.user_queue.empty():
                 return self.user_queue.get(block=False)
         return None
+
+
+def stop_message():
+    """
+    停止消息服务
+    """
+    # 停止消息队列
+    MessageQueueManager().stop()
+    # 关闭消息演染器
+    TemplateHelper().close()

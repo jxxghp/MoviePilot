@@ -1,19 +1,19 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, JSON
+from sqlalchemy import Column, Integer, String, JSON
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, async_db_query, Base
+from app.db import db_query, db_update, get_id_column, async_db_query, Base
 
 
 class MediaServerItem(Base):
     """
     媒体服务器媒体条目表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 服务器类型
     server = Column(String)
     # 媒体库ID

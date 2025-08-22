@@ -1,4 +1,4 @@
-name: MoviePilot Builder v2
+name: MoviePilot Builder Beta
 on:
   workflow_dispatch:
 
@@ -9,8 +9,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: v2
 
       - name: Release version
         id: release_version
@@ -24,11 +22,9 @@ jobs:
         with:
           images: |
             ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot
             ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ env.app_version }}
-            type=raw,value=latest
+            type=raw,value=beta
 
       - name: Set Up QEMU
         uses: docker/setup-qemu-action@v3
@@ -47,7 +43,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Image
         uses: docker/build-push-action@v5
@@ -56,19 +52,9 @@ jobs:
           file: docker/Dockerfile
           platforms: |
             linux/amd64
+            linux/arm64/v8
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha, scope=${{ github.workflow }}-docker
           cache-to: type=gha, scope=${{ github.workflow }}-docker
-
-      - name: Generate Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.app_version }}
-          name: v${{ env.app_version }}
-          draft: false
-          prerelease: false
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

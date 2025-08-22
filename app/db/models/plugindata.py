@@ -1,14 +1,14 @@
-from sqlalchemy import Column, Integer, String, Sequence, JSON
+from sqlalchemy import Column, String, JSON
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import db_query, db_update, get_id_column, Base
 
 
 class PluginData(Base):
     """
     插件数据表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     plugin_id = Column(String, nullable=False, index=True)
     key = Column(String, index=True, nullable=False)
     value = Column(JSON)

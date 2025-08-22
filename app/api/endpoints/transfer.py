@@ -109,7 +109,7 @@ def manual_transfer(transer_item: ManualTransferItem,
             if history.dest_fileitem:
                 # 删除旧的已整理文件
                 dest_fileitem = FileItem(**history.dest_fileitem)
-                state = StorageChain().delete_media_file(dest_fileitem, mtype=MediaType(history.type))
+                state = StorageChain().delete_media_file(dest_fileitem)
                 if not state:
                     return schemas.Response(success=False, message=f"{dest_fileitem.path} 删除失败")
 

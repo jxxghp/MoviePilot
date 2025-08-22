@@ -294,20 +294,6 @@ class MediaRecognizeType(Enum):
     Bangumi = "Bangumi"
 
 
-# 其他杂项模块类型
-class OtherModulesType(Enum):
-    # 字幕
-    Subtitle = "站点字幕"
-    # Fanart
-    Fanart = "Fanart"
-    # 文件整理
-    FileManager = "文件整理"
-    # 过滤器
-    Filter = "过滤器"
-    # 站点索引
-    Indexer = "站点索引"
-
-
 # 用户配置Key字典
 class UserConfigKey(Enum):
     # 监控面板
@@ -339,3 +325,21 @@ class ModuleType(Enum):
     Indexer = "indexer"
     # 其它
     Other = "other"
+
+
+# 其他杂项模块类型
+class OtherModulesType(Enum):
+    # 字幕
+    Subtitle = "站点字幕"
+    # Fanart
+    Fanart = "Fanart"
+    # 文件整理
+    FileManager = "文件整理"
+    # 过滤器
+    Filter = "过滤器"
+    # 站点索引
+    Indexer = "站点索引"
+    # PostgreSQL
+    PostgreSQL = "PostgreSQL"
+    # Redis
+    Redis = "Redis"

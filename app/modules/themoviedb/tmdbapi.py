@@ -402,7 +402,8 @@ class TmdbApi:
         if match:
             try:
                 return int(match.group(1))
-            except Exception:
+            except Exception as err:
+                logger.debug(f"解析TMDBID失败：{str(err)} - {traceback.format_exc()}")
                 return None
         return None
 
@@ -832,7 +833,6 @@ class TmdbApi:
             return None
         # dict[地区:分级]
         ratings = {}
-        results = []
         if results := (tmdb_info.get("release_dates") or {}).get("results"):
             """
             [

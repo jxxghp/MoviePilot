@@ -1,7 +1,7 @@
 import json
 from typing import List, Tuple, Optional
 
-from app.core.cache import cached, cache_backend
+from app.core.cache import cached
 from app.core.config import settings
 from app.db.models import Workflow
 from app.db.workflow_oper import WorkflowOper
@@ -89,7 +89,8 @@ class WorkflowHelper(metaclass=WeakSingleton):
         if success:
             # 清除缓存
             if clear_cache:
-                cache_backend.clear(region=self._shares_cache_region)
+                self.get_shares.cache_clear()
+                self.async_get_shares.cache_clear()
             return True, ""
         else:
             try:

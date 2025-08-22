@@ -1,17 +1,17 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Sequence, JSON, select
+from sqlalchemy import Column, Integer, String, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query
+from app.db import db_query, db_update, get_id_column, Base, async_db_query
 
 
 class SiteStatistic(Base):
     """
     站点统计表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 域名Key
     domain = Column(String, index=True)
     # 成功次数

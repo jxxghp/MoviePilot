@@ -20,6 +20,10 @@ function WARN() {
     echo -e "${WARN} ${1}"
 }
 
+# 设置虚拟环境路径（兼容群晖等系统必须这样配置）
+VENV_PATH="${VENV_PATH:-/opt/venv}"
+export PATH="${VENV_PATH}/bin:$PATH"
+
 # 下载及解压
 function download_and_unzip() {
     local retries=0
@@ -54,16 +58,36 @@ function install_backend_and_download_resources() {
         return 1
     fi
     INFO "后端程序下载成功"
-    INFO "→ 正在安装依赖..."
-    if ! pip install ${PIP_OPTIONS} --upgrade --root-user-action=ignore pip > /dev/null; then
-        ERROR "pip 更新失败，请重新拉取镜像"
-        return 1
+    
+    # 检查依赖是否有变化
+    INFO "→ 检查依赖变化..."
+    if [ -f "${TMP_PATH}/App/requirements.in" ]; then
+        if ! cmp -s /app/requirements.in "${TMP_PATH}/App/requirements.in"; then
+            INFO "检测到依赖变化，正在更新虚拟环境..."
+            # 备份当前requirements.txt
+            cp /app/requirements.txt /tmp/requirements.txt.backup
+            # 复制新的requirements.in
+            cp "${TMP_PATH}/App/requirements.in" /app/requirements.in
+            # 重新编译依赖
+            if ! ${VENV_PATH}/bin/pip-compile /app/requirements.in; then
+                ERROR "依赖编译失败，恢复原依赖"
+                cp /tmp/requirements.txt.backup /app/requirements.txt
+                return 1
+            fi
+            # 安装新依赖
+            if ! ${VENV_PATH}/bin/pip install ${PIP_OPTIONS} --root-user-action=ignore -r /app/requirements.txt; then
+                ERROR "依赖安装失败，恢复原依赖"
+                cp /tmp/requirements.txt.backup /app/requirements.txt
+                return 1
+            fi
+            INFO "依赖更新成功"
+        else
+            INFO "依赖无变化，跳过依赖更新"
+        fi
+    else
+        WARN "未找到requirements.in文件，跳过依赖检查"
     fi
-    if ! pip install ${PIP_OPTIONS} --root-user-action=ignore -r ${TMP_PATH}/App/requirements.txt > /dev/null; then
-        ERROR "依赖安装失败，请重新拉取镜像"
-        return 1
-    fi
-    INFO "依赖安装成功"
+    
     # 如果是"heads/v2.zip"，则查找v2开头的最新版本号
     if [[ "${1}" == "heads/v2.zip" ]]; then
         INFO "→ 正在获取前端最新版本号..."
@@ -134,11 +158,11 @@ function install_backend_and_download_resources() {
 }
 
 function test_connectivity_pip() {
-    pip uninstall -y pip-hello-world > /dev/null 2>&1
+    ${VENV_PATH}/bin/pip uninstall -y pip-hello-world > /dev/null 2>&1
     case "$1" in
     0)
         if [[ -n "${PIP_PROXY}" ]]; then
-            if pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1; then
+            if ${VENV_PATH}/bin/pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1; then
                 PIP_OPTIONS="-i ${PIP_PROXY}"
                 PIP_LOG="镜像代理模式"
                 return 0
@@ -148,7 +172,7 @@ function test_connectivity_pip() {
         ;;
     1)
         if [[ -n "${PROXY_HOST}" ]]; then
-            if pip install --proxy=${PROXY_HOST} pip-hello-world > /dev/null 2>&1; then
+            if ${VENV_PATH}/bin/pip install --proxy=${PROXY_HOST} pip-hello-world > /dev/null 2>&1; then
                 PIP_OPTIONS="--proxy=${PROXY_HOST}"
                 PIP_LOG="全局代理模式"
                 return 0

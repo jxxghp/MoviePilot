@@ -1,18 +1,18 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, func, or_, select
+from sqlalchemy import Column, Integer, String, Float, JSON, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base, async_db_query
+from app.db import db_query, Base, get_id_column, async_db_query
 
 
 class SiteUserData(Base):
     """
     站点数据表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 站点域名
     domain = Column(String, index=True)
     # 站点名称

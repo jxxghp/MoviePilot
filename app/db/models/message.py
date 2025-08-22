@@ -1,17 +1,17 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence, JSON, select
+from sqlalchemy import Column, Integer, String, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base, async_db_query
+from app.db import db_query, Base, get_id_column, async_db_query
 
 
 class Message(Base):
     """
     消息表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 消息渠道
     channel = Column(String)
     # 消息来源

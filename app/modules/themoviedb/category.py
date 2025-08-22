@@ -127,7 +127,7 @@ class CategoryHelper(metaclass=WeakSingleton):
                     continue
                 elif attr == "production_countries":
                     # 制片国家
-                    info_values = [str(val.get("iso_3166_1")).upper() for val in info_value] # type: ignore
+                    info_values = [str(val.get("iso_3166_1")).upper() for val in info_value]  # type: ignore
                 else:
                     if isinstance(info_value, list):
                         info_values = [str(val).upper() for val in info_value]

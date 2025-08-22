@@ -1,17 +1,17 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON, select, delete
+from sqlalchemy import Boolean, Column, Integer, String, JSON, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base, async_db_query, async_db_update
+from app.db import db_query, db_update, Base, async_db_query, async_db_update, get_id_column
 
 
 class Site(Base):
     """
     站点表
     """
-    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    id = get_id_column()
     # 站点名
     name = Column(String, nullable=False)
     # 域名Key
@@ -69,12 +69,12 @@ class Site(Base):
     @classmethod
     @db_query
     def get_actives(cls, db: Session):
-        return db.query(cls).filter(cls.is_active == 1).all()
+        return db.query(cls).filter(cls.is_active).all()
 
     @classmethod
     @async_db_query
     async def async_get_actives(cls, db: AsyncSession):
-        result = await db.execute(select(cls).where(cls.is_active == 1))
+        result = await db.execute(select(cls).where(cls.is_active))
         return result.scalars().all()
 
     @classmethod

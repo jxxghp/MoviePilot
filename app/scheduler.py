@@ -18,7 +18,7 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
 from app.core.config import settings
-from app.core.event import EventManager, eventmanager, Event
+from app.core.event import eventmanager, Event
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper

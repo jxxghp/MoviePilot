@@ -252,19 +252,19 @@ def __verify_key(key: str, expected_key: str, key_type: str) -> str:
 def verify_apitoken(token: Annotated[str, Security(__get_api_token)]) -> str:
     """
     使用 API Token 进行身份认证
-    :param token: API Token，从 URL 查询参数中获取
+    :param token: API Token，从 URL 查询参数中获取 token=xxx
     :return: 返回校验通过的 API Token
     """
-    return __verify_key(token, settings.API_TOKEN, "API_TOKEN")
+    return __verify_key(token, settings.API_TOKEN, "token")
 
 
 def verify_apikey(apikey: Annotated[str, Security(__get_api_key)]) -> str:
     """
     使用 API Key 进行身份认证
-    :param apikey: API Key，从 URL 查询参数或请求头中获取
+    :param apikey: API Key，从 URL 查询参数中获取 apikey=xxx
     :return: 返回校验通过的 API Key
     """
-    return __verify_key(apikey, settings.API_TOKEN, "API_KEY")
+    return __verify_key(apikey, settings.API_TOKEN, "apikey")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

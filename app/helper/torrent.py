@@ -6,6 +6,7 @@ from urllib.parse import unquote
 
 from torrentool.api import Torrent
 
+from app.core.cache import FileCache
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
 from app.core.meta import MetaBase
@@ -35,27 +36,29 @@ class TorrentHelper(metaclass=WeakSingleton):
             -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
         """
         把种子下载到本地
-        :return: 种子保存路径、种子内容、种子主目录、种子文件清单、错误信息
+        :return: 种子缓存相对路径【用于索引缓存】, 种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
             return None, url, "", [], f"磁力链接"
-        # 构建 torrent 种子文件的存储路径
-        file_path = (Path(settings.TEMP_PATH) / StringUtils.md5_hash(url)).with_suffix(".torrent")
-        if file_path.exists():
+        # 构建 torrent 种子文件的缓存路径
+        cache_path = Path(StringUtils.md5_hash(url)).with_suffix(".torrent")
+        # 缓存处理器
+        cache_backend = FileCache()
+        # 读取缓存的种子文件
+        torrent_content = cache_backend.get(cache_path.as_posix(), region="torrents")
+        if torrent_content:
+            # 缓存已存在
             try:
                 # 获取种子目录和文件清单
-                folder_name, file_list = self.get_torrent_info(file_path)
+                folder_name, file_list = self.get_fileinfo_from_torrent_content(torrent_content)
                 # 无法获取信息，则认为缓存文件无效
                 if not folder_name and not file_list:
                     raise ValueError("无效的缓存种子文件")
-                # 获取种子数据
-                content = file_path.read_bytes()
                 # 成功拿到种子数据
-                return file_path, content, folder_name, file_list, ""
+                return cache_path, torrent_content, folder_name, file_list, ""
             except Exception as err:
-                logger.error(f"处理缓存的种子文件 {file_path} 时出错: {err}，将重新下载")
-                file_path.unlink(missing_ok=True)
-        # 请求种子文件
+                logger.error(f"处理缓存的种子文件 {cache_path} 时出错: {err}，将重新下载")
+        # 下载种子文件
         req = RequestUtils(
             ua=ua,
             cookies=cookie,
@@ -74,11 +77,11 @@ class TorrentHelper(metaclass=WeakSingleton):
             ).get_res(url=url, allow_redirects=False)
         if req and req.status_code == 200:
             if not req.content:
-                return None, None, "", [], "未下载到种子数据"
+                return cache_path, None, "", [], "未下载到种子数据"
             # 解析内容格式
             if req.content.startswith(b"magnet:"):
                 # 磁力链接
-                return None, req.text, "", [], f"获取到磁力链接"
+                return cache_path, req.text, "", [], f"获取到磁力链接"
             if "下载种子文件".encode("utf-8") in req.content:
                 # 首次下载提示页面
                 skip_flag = False
@@ -116,34 +119,34 @@ class TorrentHelper(metaclass=WeakSingleton):
                 except Exception as err:
                     logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}，链接：{url}")
                 if not skip_flag:
-                    return None, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
+                    return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
             # 种子内容
             if req.content:
                 # 检查是不是种子文件，如果不是仍然抛出异常
                 try:
-                    # 保存到文件
-                    file_path.write_bytes(req.content)
                     # 获取种子目录和文件清单
-                    folder_name, file_list = self.get_torrent_info(file_path)
+                    folder_name, file_list = self.get_fileinfo_from_torrent_content(req.content)
+                    if file_list:
+                        # 保存到缓存
+                        cache_backend.set(cache_path.as_posix(), req.content, region="torrents")
                     # 成功拿到种子数据
-                    return file_path, req.content, folder_name, file_list, ""
+                    return cache_path, req.content, folder_name, file_list, ""
                 except Exception as err:
                     logger.error(f"种子文件解析失败：{str(err)}")
                 # 种子数据仍然错误
-                return None, None, "", [], "种子数据有误，请确认链接是否正确"
+                return cache_path, None, "", [], "种子数据有误，请确认链接是否正确"
             # 返回失败
-            return None, None, "", [], ""
+            return cache_path, None, "", [], ""
         elif req is None:
-            return None, None, "", [], "无法打开链接"
+            return cache_path, None, "", [], "无法打开链接"
         elif req.status_code == 429:
-            return None, None, "", [], "触发站点流控，请稍后重试"
+            return cache_path, None, "", [], "触发站点流控，请稍后重试"
         else:
             # 把错误的种子记下来，避免重复使用
             self.add_invalid(url)
-            return None, None, "", [], f"下载种子出错，状态码：{req.status_code}"
+            return cache_path, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
-    @staticmethod
-    def get_torrent_info(torrent_path: Path) -> Tuple[str, List[str]]:
+    def get_torrent_info(self, torrent_path: Path) -> Tuple[str, List[str]]:
         """
         获取种子文件的文件夹名和文件清单
         :param torrent_path: 种子文件路径
@@ -154,30 +157,57 @@ class TorrentHelper(metaclass=WeakSingleton):
         try:
             torrentinfo = Torrent.from_file(torrent_path)
             # 获取文件清单
-            if (not torrentinfo.files
-                    or (len(torrentinfo.files) == 1
-                        and torrentinfo.files[0].name == torrentinfo.name)):
-                # 单文件种子目录名返回空
-                folder_name = ""
-                # 单文件种子
-                file_list = [torrentinfo.name]
-            else:
-                # 目录名
-                folder_name = torrentinfo.name
-                # 文件清单，如果一级目录与种子名相同则去掉
-                file_list = []
-                for fileinfo in torrentinfo.files:
-                    file_path = Path(fileinfo.name)
-                    # 根路径
-                    root_path = file_path.parts[0]
-                    if root_path == folder_name:
-                        file_list.append(str(file_path.relative_to(root_path)))
-                    else:
-                        file_list.append(fileinfo.name)
-            logger.debug(f"解析种子：{torrent_path.name} => 目录：{folder_name}，文件清单：{file_list}")
-            return folder_name, file_list
+            return self.get_fileinfo_from_torrent(torrentinfo)
         except Exception as err:
             logger.error(f"种子文件解析失败：{str(err)}")
+            return "", []
+
+    @staticmethod
+    def get_fileinfo_from_torrent(torrent: Torrent) -> Tuple[str, List[str]]:
+        """
+        从种子文件中获取文件清单
+        :param torrent: 种子文件对象
+        :return: 文件夹名、文件清单，单文件种子返回空文件夹名
+        """
+        if not torrent or not torrent.files:
+            return "", []
+        # 获取文件清单
+        if len(torrent.files) == 1 and torrent.files[0].name == torrent.name:
+            # 单文件种子目录名返回空
+            folder_name = ""
+            # 单文件种子
+            file_list = [torrent.name]
+        else:
+            # 目录名
+            folder_name = torrent.name
+            # 文件清单，如果一级目录与种子名相同则去掉
+            file_list = []
+            for fileinfo in torrent.files:
+                file_path = Path(fileinfo.name)
+                # 根路径
+                root_path = file_path.parts[0]
+                if root_path == folder_name:
+                    file_list.append(str(file_path.relative_to(root_path)))
+                else:
+                    file_list.append(fileinfo.name)
+        logger.debug(f"解析种子：{torrent.name} => 目录：{folder_name}，文件清单：{file_list}")
+        return folder_name, file_list
+
+    def get_fileinfo_from_torrent_content(self, torrent_content: Union[str, bytes]) -> Tuple[str, List[str]]:
+        """
+        从种子内容中获取文件夹名和文件清单
+        :param torrent_content: 种子内容
+        :return: 文件夹名、文件清单，单文件种子返回空文件夹名
+        """
+        if not torrent_content:
+            return "", []
+        try:
+            # 解析种子内容
+            torrentinfo = Torrent.from_string(torrent_content)
+            # 获取文件清单
+            return self.get_fileinfo_from_torrent(torrentinfo)
+        except Exception as err:
+            logger.error(f"种子内容解析失败：{str(err)}")
             return "", []
 
     @staticmethod
