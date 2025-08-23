@@ -55,6 +55,7 @@ parse~=1.20.2
 docker~=7.1.0
 pywin32==310; platform_system == "Windows"
 cachetools~=6.1.0
+diskcache~=6.1.0
 fast-bencode~=1.1.7
 pystray~=0.19.5
 pyotp~=2.9.0

@@ -12,6 +12,7 @@ import aioshutil
 from anyio import Path as AsyncPath
 from cachetools import TTLCache as MemoryTTLCache
 from cachetools.keys import hashkey
+from diskcache import Cache as DiskCache
 
 from app.core.config import settings
 from app.helper.redis import RedisHelper, AsyncRedisHelper
@@ -537,34 +538,58 @@ class AsyncRedisBackend(AsyncCacheBackend):
 
 class FileBackend(CacheBackend):
     """
-    基于 文件系统 实现的缓存后端
+    基于 diskcache 实现的缓存后端
     """
 
-    def __init__(self, base: Path):
+    def __init__(self, base: Path, size_limit: Optional[int] = None, eviction_policy: str = 'least-recently-used'):
         """
         初始化文件缓存实例
+        
+        :param base: 缓存目录路径
+        :param size_limit: 缓存大小限制（字节），None表示无限制
+        :param eviction_policy: 缓存淘汰策略，支持 'least-recently-used', 'least-frequently-used'
         """
         self.base = base
+        self.size_limit = size_limit
+        self.eviction_policy = eviction_policy
+        # 存储各个 region 的缓存实例，region -> DiskCache
+        self._region_caches: Dict[str, DiskCache] = {}
+        
         if not self.base.exists():
             self.base.mkdir(parents=True, exist_ok=True)
 
-    def set(self, key: str, value: Any, region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
+    def __get_region_cache(self, region: str) -> DiskCache:
+        """
+        获取指定区域的缓存实例，如果不存在则创建一个新的
+        """
+        region = self.get_region(region)
+        if region not in self._region_caches:
+            cache_dir = self.base / region
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            self._region_caches[region] = DiskCache(
+                directory=str(cache_dir),
+                size_limit=self.size_limit,
+                eviction_policy=self.eviction_policy
+            )
+        return self._region_caches[region]
+
+    def set(self, key: str, value: Any, ttl: Optional[int] = None,
+            region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存
 
         :param key: 缓存的键
         :param value: 缓存的值
+        :param ttl: 缓存的存活时间，单位秒
         :param region: 缓存的区
         :param kwargs: kwargs
         """
-        cache_path = self.base / region / key
-        # 确保缓存目录存在
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        # 将值序列化为字符串存储
-        with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
-            tmp_file.write(value)
-            temp_path = Path(tmp_file.name)
-        temp_path.replace(cache_path)
+        region_cache = self.__get_region_cache(region)
+        if ttl:
+            # 如果设置了TTL，使用expire参数
+            region_cache.set(key, value, expire=ttl)
+        else:
+            region_cache.set(key, value)
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -574,8 +599,8 @@ class FileBackend(CacheBackend):
         :param region: 缓存的区
         :return: 存在返回 True，否则返回 False
         """
-        cache_path = self.base / region / key
-        return cache_path.exists()
+        region_cache = self.__get_region_cache(region)
+        return key in region_cache
 
     def get(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> Optional[Any]:
         """
@@ -585,11 +610,8 @@ class FileBackend(CacheBackend):
         :param region: 缓存的区
         :return: 返回缓存的值，如果缓存不存在返回 None
         """
-        cache_path = self.base / region / key
-        if not cache_path.exists():
-            return None
-        with open(cache_path, 'rb') as f:
-            return f.read()
+        region_cache = self.__get_region_cache(region)
+        return region_cache.get(key)
 
     def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -598,9 +620,8 @@ class FileBackend(CacheBackend):
         :param key: 缓存的键
         :param region: 缓存的区
         """
-        cache_path = self.base / region / key
-        if cache_path.exists():
-            cache_path.unlink()
+        region_cache = self.__get_region_cache(region)
+        region_cache.delete(key)
 
     def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -610,20 +631,14 @@ class FileBackend(CacheBackend):
         """
         if region:
             # 清理指定缓存区
-            cache_path = self.base / region
-            if cache_path.exists():
-                for item in cache_path.iterdir():
-                    if item.is_file():
-                        item.unlink()
-                    else:
-                        shutil.rmtree(item, ignore_errors=True)
+            region_cache = self.__get_region_cache(region)
+            region_cache.clear()
+            logger.info(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
-            for item in self.base.iterdir():
-                if item.is_file():
-                    item.unlink()
-                else:
-                    shutil.rmtree(item, ignore_errors=True)
+            for region_cache in self._region_caches.values():
+                region_cache.clear()
+            logger.info("Cleared all cache")
 
     def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> Generator[Tuple[str, Any], None, None]:
         """
@@ -632,52 +647,74 @@ class FileBackend(CacheBackend):
         :param region: 缓存的区
         :return: 返回一个字典，包含所有缓存键值对
         """
-        cache_path = self.base / region
-        if not cache_path.exists():
-            yield from ()
-            return
-        for item in cache_path.iterdir():
-            if item.is_file():
-                with open(item, 'r') as f:
-                    yield item.name, f.read()
+        region_cache = self.__get_region_cache(region)
+        for key in region_cache:
+            value = region_cache.get(key)
+            if value is not None:
+                yield key, value
 
     def close(self) -> None:
         """
-        关闭 Redis 客户端的连接池
+        关闭缓存连接
         """
-        pass
+        for region_cache in self._region_caches.values():
+            region_cache.close()
 
 
 class AsyncFileBackend(AsyncCacheBackend):
     """
-    基于 文件系统 实现的缓存后端（异步模式）
+    基于 diskcache 实现的缓存后端（异步模式）
     """
 
-    def __init__(self, base: Path):
+    def __init__(self, base: Path, size_limit: Optional[int] = None, eviction_policy: str = 'least-recently-used'):
         """
         初始化文件缓存实例
+        
+        :param base: 缓存目录路径
+        :param size_limit: 缓存大小限制（字节），None表示无限制
+        :param eviction_policy: 缓存淘汰策略，支持 'least-recently-used', 'least-frequently-used'
         """
         self.base = base
+        self.size_limit = size_limit
+        self.eviction_policy = eviction_policy
+        # 存储各个 region 的缓存实例，region -> DiskCache
+        self._region_caches: Dict[str, DiskCache] = {}
+        
         if not self.base.exists():
             self.base.mkdir(parents=True, exist_ok=True)
 
-    async def set(self, key: str, value: Any, region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
+    def __get_region_cache(self, region: str) -> DiskCache:
+        """
+        获取指定区域的缓存实例，如果不存在则创建一个新的
+        """
+        region = self.get_region(region)
+        if region not in self._region_caches:
+            cache_dir = self.base / region
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            self._region_caches[region] = DiskCache(
+                directory=str(cache_dir),
+                size_limit=self.size_limit,
+                eviction_policy=self.eviction_policy
+            )
+        return self._region_caches[region]
+
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None,
+                  region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存
 
         :param key: 缓存的键
         :param value: 缓存的值
+        :param ttl: 缓存的存活时间，单位秒
         :param region: 缓存的区
         :param kwargs: kwargs
         """
-        cache_path = AsyncPath(self.base) / region / key
-        # 确保缓存目录存在
-        await cache_path.parent.mkdir(parents=True, exist_ok=True)
-        # 保存文件
-        async with aiofiles.tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
-            await tmp_file.write(value)
-            temp_path = AsyncPath(tmp_file.name)
-        await temp_path.replace(cache_path)
+        region_cache = self.__get_region_cache(region)
+        if ttl:
+            # 如果设置了TTL，使用expire参数
+            region_cache.set(key, value, expire=ttl)
+        else:
+            region_cache.set(key, value)
 
     async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -687,8 +724,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 缓存的区
         :return: 存在返回 True，否则返回 False
         """
-        cache_path = AsyncPath(self.base) / region / key
-        return await cache_path.exists()
+        region_cache = self.__get_region_cache(region)
+        return key in region_cache
 
     async def get(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> Optional[Any]:
         """
@@ -698,11 +735,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 缓存的区
         :return: 返回缓存的值，如果缓存不存在返回 None
         """
-        cache_path = AsyncPath(self.base) / region / key
-        if not await cache_path.exists():
-            return None
-        async with aiofiles.open(cache_path, 'rb') as f:
-            return await f.read()
+        region_cache = self.__get_region_cache(region)
+        return region_cache.get(key)
 
     async def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -711,9 +745,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param key: 缓存的键
         :param region: 缓存的区
         """
-        cache_path = AsyncPath(self.base) / region / key
-        if await cache_path.exists():
-            await cache_path.unlink()
+        region_cache = self.__get_region_cache(region)
+        region_cache.delete(key)
 
     async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -723,20 +756,14 @@ class AsyncFileBackend(AsyncCacheBackend):
         """
         if region:
             # 清理指定缓存区
-            cache_path = AsyncPath(self.base) / region
-            if await cache_path.exists():
-                async for item in cache_path.iterdir():
-                    if await item.is_file():
-                        await item.unlink()
-                    else:
-                        await aioshutil.rmtree(item, ignore_errors=True)
+            region_cache = self.__get_region_cache(region)
+            region_cache.clear()
+            logger.info(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
-            async for item in AsyncPath(self.base).iterdir():
-                if await item.is_file():
-                    await item.unlink()
-                else:
-                    await aioshutil.rmtree(item, ignore_errors=True)
+            for region_cache in self._region_caches.values():
+                region_cache.clear()
+            logger.info("Cleared all cache")
 
     async def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:
         """
@@ -745,44 +772,54 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 缓存的区
         :return: 返回一个字典，包含所有缓存键值对
         """
-        cache_path = AsyncPath(self.base) / region
-        if not await cache_path.exists():
-            yield "", None
-            return
-        async for item in cache_path.iterdir():
-            if await item.is_file():
-                async with aiofiles.open(item, 'r') as f:
-                    yield item.name, await f.read()
+        region_cache = self.__get_region_cache(region)
+        for key in region_cache:
+            value = region_cache.get(key)
+            if value is not None:
+                yield key, value
 
     async def close(self) -> None:
         """
-        关闭 Redis 客户端的连接池
+        关闭缓存连接
         """
-        pass
+        for region_cache in self._region_caches.values():
+            region_cache.close()
 
 
-def FileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -> CacheBackend:
+def FileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None, 
+              size_limit: Optional[int] = None, eviction_policy: str = 'least-recently-used') -> CacheBackend:
     """
-    获取文件缓存后端实例（Redis或文件系统），ttl仅在Redis环境中有效
+    获取文件缓存后端实例（Redis或diskcache），ttl仅在Redis环境中有效
+    
+    :param base: 缓存目录路径
+    :param ttl: 缓存存活时间，单位秒
+    :param size_limit: 缓存大小限制（字节），None表示无限制
+    :param eviction_policy: 缓存淘汰策略，支持 'least-recently-used', 'least-frequently-used'
     """
     if settings.CACHE_BACKEND_TYPE == "redis":
         # 如果使用 Redis，则设置缓存的存活时间为配置的天数转换为秒
         return RedisBackend(ttl=ttl or settings.TEMP_FILE_DAYS * 24 * 3600)
     else:
-        # 如果使用文件系统，在停止服务时会自动清理过期文件
-        return FileBackend(base=base)
+        # 如果使用diskcache，支持TTL、大小限制和淘汰策略
+        return FileBackend(base=base, size_limit=size_limit, eviction_policy=eviction_policy)
 
 
-def AsyncFileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -> AsyncCacheBackend:
+def AsyncFileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None,
+                   size_limit: Optional[int] = None, eviction_policy: str = 'least-recently-used') -> AsyncCacheBackend:
     """
-    获取文件异步缓存后端实例（Redis或文件系统），ttl仅在Redis环境中有效
+    获取文件异步缓存后端实例（Redis或diskcache），ttl仅在Redis环境中有效
+    
+    :param base: 缓存目录路径
+    :param ttl: 缓存存活时间，单位秒
+    :param size_limit: 缓存大小限制（字节），None表示无限制
+    :param eviction_policy: 缓存淘汰策略，支持 'least-recently-used', 'least-frequently-used'
     """
     if settings.CACHE_BACKEND_TYPE == "redis":
         # 如果使用 Redis，则设置缓存的存活时间为配置的天数转换为秒
         return AsyncRedisBackend(ttl=ttl or settings.TEMP_FILE_DAYS * 24 * 3600)
     else:
-        # 如果使用文件系统，在停止服务时会自动清理过期文件
-        return AsyncFileBackend(base=base)
+        # 如果使用diskcache，支持TTL、大小限制和淘汰策略
+        return AsyncFileBackend(base=base, size_limit=size_limit, eviction_policy=eviction_policy)
 
 
 def Cache(maxsize: Optional[int] = None, ttl: Optional[int] = None) -> CacheBackend:
