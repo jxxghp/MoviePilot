@@ -5,7 +5,7 @@ import threading
 from abc import ABC, abstractmethod
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional, Generator, AsyncGenerator, Tuple
+from typing import Any, Dict, Optional, Generator, AsyncGenerator, Tuple, List
 
 import aiofiles
 import aioshutil
@@ -313,8 +313,100 @@ class AsyncCacheBackend(ABC):
         """
         pass
 
-    # Async dict-like operations
-    async def __getitem__(self, key: str) -> Any:
+    # Dict-like operations (synchronous wrappers around async methods)
+    def __getitem__(self, key: str) -> Any:
+        """
+        获取缓存项，类似 dict[key]（同步包装器）
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # 如果没有事件循环，创建一个新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        value = loop.run_until_complete(self.get(key))
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        """
+        设置缓存项，类似 dict[key] = value（同步包装器）
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        loop.run_until_complete(self.set(key, value))
+
+    def __delitem__(self, key: str) -> None:
+        """
+        删除缓存项，类似 del dict[key]（同步包装器）
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        exists = loop.run_until_complete(self.exists(key))
+        if not exists:
+            raise KeyError(key)
+        loop.run_until_complete(self.delete(key))
+
+    def __contains__(self, key: str) -> bool:
+        """
+        检查键是否存在，类似 key in dict（同步包装器）
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        return loop.run_until_complete(self.exists(key))
+
+    def __iter__(self):
+        """
+        返回缓存的同步迭代器，类似 iter(dict)
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        items = loop.run_until_complete(self._get_all_items())
+        for key, _ in items:
+            yield key
+
+    def __len__(self) -> int:
+        """
+        返回缓存项的数量，类似 len(dict)（同步包装器）
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        count = 0
+        items = loop.run_until_complete(self._get_all_items())
+        for _ in items:
+            count += 1
+        return count
+
+    # Async dict-like operations (for explicit async usage)
+    async def async_getitem(self, key: str) -> Any:
         """
         获取缓存项，类似 dict[key]（异步）
         """
@@ -323,13 +415,13 @@ class AsyncCacheBackend(ABC):
             raise KeyError(key)
         return value
 
-    async def __setitem__(self, key: str, value: Any) -> None:
+    async def async_setitem(self, key: str, value: Any) -> None:
         """
         设置缓存项，类似 dict[key] = value（异步）
         """
         await self.set(key, value)
 
-    async def __delitem__(self, key: str) -> None:
+    async def async_delitem(self, key: str) -> None:
         """
         删除缓存项，类似 del dict[key]（异步）
         """
@@ -337,7 +429,7 @@ class AsyncCacheBackend(ABC):
             raise KeyError(key)
         await self.delete(key)
 
-    async def __contains__(self, key: str) -> bool:
+    async def async_contains(self, key: str) -> bool:
         """
         检查键是否存在，类似 key in dict（异步）
         """
@@ -350,7 +442,7 @@ class AsyncCacheBackend(ABC):
         async for key, _ in self.items():
             yield key
 
-    async def __len__(self) -> int:
+    async def async_len(self) -> int:
         """
         返回缓存项的数量，类似 len(dict)（异步）
         """
@@ -358,6 +450,15 @@ class AsyncCacheBackend(ABC):
         async for _ in self.items():
             count += 1
         return count
+
+    async def _get_all_items(self) -> List[Tuple[str, Any]]:
+        """
+        获取所有缓存项（内部方法）
+        """
+        items = []
+        async for item in self.items():
+            items.append(item)
+        return items
 
     async def keys(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[str, None]:
         """
