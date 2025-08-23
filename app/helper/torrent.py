@@ -201,6 +201,15 @@ class TorrentHelper(metaclass=WeakSingleton):
         """
         if not torrent_content:
             return "", []
+        
+        # 检查是否为磁力链接
+        if isinstance(torrent_content, str) and torrent_content.startswith("magnet:"):
+            # 磁力链接无法预先获取文件信息，返回空
+            return "", []
+        elif isinstance(torrent_content, bytes) and torrent_content.startswith(b"magnet:"):
+            # 磁力链接无法预先获取文件信息，返回空
+            return "", []
+        
         try:
             # 解析种子内容
             torrentinfo = Torrent.from_string(torrent_content)

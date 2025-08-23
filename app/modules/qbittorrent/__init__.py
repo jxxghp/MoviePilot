@@ -125,6 +125,14 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                 else:
                     torrent_content = content
 
+                # 检查是否为磁力链接
+                if isinstance(torrent_content, str) and torrent_content.startswith("magnet:"):
+                    # 磁力链接不需要解析种子文件
+                    return None, torrent_content
+                elif isinstance(torrent_content, bytes) and torrent_content.startswith(b"magnet:"):
+                    # 磁力链接不需要解析种子文件
+                    return None, torrent_content
+
                 if torrent_content:
                     torrent_info = Torrent.from_string(torrent_content)
 
@@ -138,7 +146,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
         # 读取种子的名称
         torrent, content = __get_torrent_info()
-        if not torrent:
+        # 检查是否为磁力链接
+        is_magnet = isinstance(content, str) and content.startswith("magnet:") or isinstance(content, bytes) and content.startswith(b"magnet:")
+        if not torrent and not is_magnet:
             return None, None, None, f"添加种子任务失败：无法读取种子文件"
 
         # 获取下载器
