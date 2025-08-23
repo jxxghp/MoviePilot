@@ -18,7 +18,7 @@
 
 #### AsyncFileBackend 类  
 - **原实现**: 基于异步文件操作
-- **新实现**: 基于 `diskcache.Cache`，保持异步接口兼容性
+- **新实现**: 基于 `diskcache.Cache`，使用 asyncio 线程池包装同步操作，保持异步接口兼容性
 
 ### 3. 新增功能
 
@@ -63,6 +63,7 @@ def AsyncFileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None,
 - **diskcache** 使用 SQLite 数据库存储，比文件系统操作更高效
 - 支持内存缓存和磁盘缓存的混合模式
 - 更好的并发性能
+- **异步实现**: 使用 asyncio 线程池包装同步操作，避免阻塞事件循环
 
 ### 2. 功能增强
 - **自动过期**: 支持 TTL (Time To Live) 自动过期
@@ -149,6 +150,7 @@ python test_diskcache.py
 2. **权限要求**: 确保应用有权限在指定目录创建和写入文件
 3. **磁盘空间**: 注意监控缓存目录的磁盘使用情况
 4. **性能调优**: 根据实际使用情况调整 `size_limit` 和 `eviction_policy`
+5. **异步实现**: AsyncFileBackend 使用 asyncio 线程池包装同步的 diskcache 操作，确保不会阻塞事件循环
 
 ## 迁移指南
 

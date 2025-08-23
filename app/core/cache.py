@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import shutil
 import tempfile
@@ -664,6 +665,7 @@ class FileBackend(CacheBackend):
 class AsyncFileBackend(AsyncCacheBackend):
     """
     基于 diskcache 实现的缓存后端（异步模式）
+    使用 asyncio 线程池包装同步的 diskcache 操作
     """
 
     def __init__(self, base: Path, size_limit: Optional[int] = None, eviction_policy: str = 'least-recently-used'):
@@ -679,6 +681,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         self.eviction_policy = eviction_policy
         # 存储各个 region 的缓存实例，region -> DiskCache
         self._region_caches: Dict[str, DiskCache] = {}
+        # 线程池用于执行同步操作
+        self._executor = None
         
         if not self.base.exists():
             self.base.mkdir(parents=True, exist_ok=True)
@@ -698,6 +702,14 @@ class AsyncFileBackend(AsyncCacheBackend):
             )
         return self._region_caches[region]
 
+    def __get_executor(self):
+        """
+        获取线程池执行器
+        """
+        if self._executor is None:
+            self._executor = asyncio.get_event_loop().run_in_executor
+        return self._executor
+
     async def set(self, key: str, value: Any, ttl: Optional[int] = None,
                   region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
@@ -710,11 +722,13 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param kwargs: kwargs
         """
         region_cache = self.__get_region_cache(region)
+        executor = self.__get_executor()
+        
         if ttl:
             # 如果设置了TTL，使用expire参数
-            region_cache.set(key, value, expire=ttl)
+            await executor(None, lambda: region_cache.set(key, value, expire=ttl))
         else:
-            region_cache.set(key, value)
+            await executor(None, lambda: region_cache.set(key, value))
 
     async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -725,7 +739,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :return: 存在返回 True，否则返回 False
         """
         region_cache = self.__get_region_cache(region)
-        return key in region_cache
+        executor = self.__get_executor()
+        return await executor(None, lambda: key in region_cache)
 
     async def get(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> Optional[Any]:
         """
@@ -736,7 +751,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :return: 返回缓存的值，如果缓存不存在返回 None
         """
         region_cache = self.__get_region_cache(region)
-        return region_cache.get(key)
+        executor = self.__get_executor()
+        return await executor(None, lambda: region_cache.get(key))
 
     async def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -746,7 +762,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 缓存的区
         """
         region_cache = self.__get_region_cache(region)
-        region_cache.delete(key)
+        executor = self.__get_executor()
+        await executor(None, lambda: region_cache.delete(key))
 
     async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -754,15 +771,17 @@ class AsyncFileBackend(AsyncCacheBackend):
 
         :param region: 缓存的区，为None时清空所有区缓存
         """
+        executor = self.__get_executor()
+        
         if region:
             # 清理指定缓存区
             region_cache = self.__get_region_cache(region)
-            region_cache.clear()
+            await executor(None, lambda: region_cache.clear())
             logger.info(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
             for region_cache in self._region_caches.values():
-                region_cache.clear()
+                await executor(None, lambda: region_cache.clear())
             logger.info("Cleared all cache")
 
     async def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:
@@ -773,8 +792,14 @@ class AsyncFileBackend(AsyncCacheBackend):
         :return: 返回一个字典，包含所有缓存键值对
         """
         region_cache = self.__get_region_cache(region)
-        for key in region_cache:
-            value = region_cache.get(key)
+        executor = self.__get_executor()
+        
+        # 获取所有键
+        keys = await executor(None, lambda: list(region_cache.keys()))
+        
+        # 异步获取每个键值对
+        for key in keys:
+            value = await executor(None, lambda: region_cache.get(key))
             if value is not None:
                 yield key, value
 
@@ -782,8 +807,9 @@ class AsyncFileBackend(AsyncCacheBackend):
         """
         关闭缓存连接
         """
+        executor = self.__get_executor()
         for region_cache in self._region_caches.values():
-            region_cache.close()
+            await executor(None, lambda: region_cache.close())
 
 
 def FileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None, 
