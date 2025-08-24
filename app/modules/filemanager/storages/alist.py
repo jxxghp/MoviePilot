@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -7,7 +8,7 @@ import requests
 
 from app import schemas
 from app.core.cache import cached
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.types import StorageSchema
@@ -31,9 +32,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         "move": "移动",
     }
 
-    # 文件块大小，默认1MB
-    chunk_size = 1024 * 1024
-
+    # 快照检查目录修改时间
     snapshot_check_folder_modtime = settings.OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME
 
     def __init__(self):
@@ -44,6 +43,17 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         初始化
         """
         self.__generate_token.cache_clear()  # noqa
+
+    def _delay_get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        自动延迟重试 get_item 模块
+        """
+        for _ in range(2):
+            time.sleep(2)
+            fileitem = self.get_item(path)
+            if fileitem:
+                return fileitem
+        return None
 
     @property
     def __get_base_url(self) -> str:
@@ -272,7 +282,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             logger.warn(f'【OpenList】创建目录 {path} 失败，错误信息：{result["message"]}')
             return None
 
-        return self.get_item(path)
+        return self._delay_get_item(path)
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
@@ -563,6 +573,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             r.raise_for_status()
             with open(local_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
+                    if global_vars.is_transfer_stopped(fileitem.path):
+                        logger.info(f"【OpenList】{fileitem.path} 下载已取消！")
+                        return None
                     f.write(chunk)
 
         if local_path.exists():
@@ -603,11 +616,14 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                     self.file_size = file_path.stat().st_size
 
                 def read(self, size=-1):
+                    if global_vars.is_transfer_stopped(path.as_posix()):
+                        logger.info(f"【OpenList】{path} 上传已取消！")
+                        return None
                     chunk = self.file.read(size)
                     if chunk:
                         self.uploaded_size += len(chunk)
                         if self.callback:
-                            percent = (self.uploaded_size* 100) / self.file_size
+                            percent = (self.uploaded_size * 100) / self.file_size
                             self.callback(percent)
                     return chunk
 
@@ -635,10 +651,10 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             progress_callback(100)
 
             # 获取上传后的文件项
-            new_item = self.get_item(target_path)
+            new_item = self._delay_get_item(target_path)
             if new_item and new_name and new_name != path.name:
                 if self.rename(new_item, new_name):
-                    return self.get_item(Path(new_item.path).with_name(new_name))
+                    return self._delay_get_item(Path(new_item.path).with_name(new_name))
 
             return new_item
 
@@ -703,9 +719,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             return False
         # 重命名
         if fileitem.name != new_name:
-            self.rename(
-                self.get_item(path / fileitem.name), new_name
-            )
+            new_item = self._delay_get_item(path / fileitem.name)
+            if new_item:
+                self.rename(new_item, new_name)
         return True
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:

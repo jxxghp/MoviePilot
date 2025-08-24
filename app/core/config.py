@@ -798,6 +798,8 @@ class GlobalVar(object):
     SUBSCRIPTIONS: List[dict] = []
     # 需应急停止的工作流
     EMERGENCY_STOP_WORKFLOWS: List[int] = []
+    # 需应急停止文件整理
+    EMERGENCY_STOP_TRANSFER: List[str] = []
 
     def stop_system(self):
         """
@@ -838,11 +840,29 @@ class GlobalVar(object):
         if workflow_id in self.EMERGENCY_STOP_WORKFLOWS:
             self.EMERGENCY_STOP_WORKFLOWS.remove(workflow_id)
 
-    def is_workflow_stopped(self, workflow_id: int):
+    def is_workflow_stopped(self, workflow_id: int) -> bool:
         """
         是否停止工作流
         """
         return self.is_system_stopped or workflow_id in self.EMERGENCY_STOP_WORKFLOWS
+
+    def stop_transfer(self, path: str):
+        """
+        停止文件整理
+        """
+        if path not in self.EMERGENCY_STOP_TRANSFER:
+            self.EMERGENCY_STOP_TRANSFER.append(path)
+
+    def is_transfer_stopped(self, path: str) -> bool:
+        """
+        是否停止文件整理
+        """
+        if self.is_system_stopped:
+            return True
+        if path in self.EMERGENCY_STOP_TRANSFER:
+            self.EMERGENCY_STOP_TRANSFER.remove(path)
+            return True
+        return False
 
 
 # 全局标识

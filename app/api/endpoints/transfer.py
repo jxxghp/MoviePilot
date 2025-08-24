@@ -8,7 +8,7 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
@@ -75,6 +75,8 @@ async def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Dep
     :param _: Token校验
     """
     TransferChain().remove_from_queue(fileitem)
+    # 取消整理
+    global_vars.stop_transfer(fileitem.path)
     return schemas.Response(success=True)
 
 

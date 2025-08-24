@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
+from app.core.config import global_vars
 from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -25,8 +26,8 @@ class LocalStorage(StorageBase):
         "softlink": "软链接"
     }
 
-    # 文件块大小，默认1MB
-    chunk_size = 1024 * 1024
+    # 文件块大小，默认100MB
+    chunk_size = 100 * 1024 * 1024
 
     def init_storage(self):
         """
@@ -98,7 +99,7 @@ class LocalStorage(StorageBase):
         # 遍历目录
         path_obj = Path(path)
         if not path_obj.exists():
-            logger.warn(f"【local】目录不存在：{path}")
+            logger.warn(f"【本地】目录不存在：{path}")
             return []
 
         # 如果是文件
@@ -170,7 +171,7 @@ class LocalStorage(StorageBase):
             else:
                 shutil.rmtree(path_obj, ignore_errors=True)
         except Exception as e:
-            logger.error(f"【local】删除文件失败：{e}")
+            logger.error(f"【本地】删除文件失败：{e}")
             return False
         return True
 
@@ -184,7 +185,7 @@ class LocalStorage(StorageBase):
         try:
             path_obj.rename(path_obj.parent / name)
         except Exception as e:
-            logger.error(f"【local】重命名文件失败：{e}")
+            logger.error(f"【本地】重命名文件失败：{e}")
             return False
         return True
 
@@ -204,6 +205,9 @@ class LocalStorage(StorageBase):
         try:
             with open(src, "rb") as fsrc, open(dest, "wb") as fdst:
                 while True:
+                    if global_vars.is_transfer_stopped(src.as_posix()):
+                        logger.info(f"【本地】{src} 复制已取消！")
+                        return False
                     buf = fsrc.read(self.chunk_size)
                     if not buf:
                         break
@@ -217,7 +221,7 @@ class LocalStorage(StorageBase):
             shutil.copystat(src, dest)
             return True
         except Exception as e:
-            logger.error(f"【local】复制文件 {src} 失败：{e}")
+            logger.error(f"【本地】复制文件 {src} 失败：{e}")
             return False
         finally:
             progress_callback(100)
@@ -239,7 +243,7 @@ class LocalStorage(StorageBase):
                 path.unlink()
                 return self.get_item(target_path)
         except Exception as err:
-            logger.error(f"【local】移动文件失败：{err}")
+            logger.error(f"【本地】移动文件失败：{err}")
         return None
 
     def copy(
@@ -257,7 +261,7 @@ class LocalStorage(StorageBase):
             if self._copy_with_progress(src, dest):
                 return True
         except Exception as err:
-            logger.error(f"【local】复制文件失败：{err}")
+            logger.error(f"【本地】复制文件失败：{err}")
         return False
 
     def move(
@@ -277,7 +281,7 @@ class LocalStorage(StorageBase):
                 src.unlink()
                 return True
         except Exception as err:
-            logger.error(f"【local】移动文件失败：{err}")
+            logger.error(f"【本地】移动文件失败：{err}")
         return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
@@ -287,7 +291,7 @@ class LocalStorage(StorageBase):
         file_path = Path(fileitem.path)
         code, message = SystemUtils.link(file_path, target_file)
         if code != 0:
-            logger.error(f"【local】硬链接文件失败：{message}")
+            logger.error(f"【本地】硬链接文件失败：{message}")
             return False
         return True
 
@@ -298,7 +302,7 @@ class LocalStorage(StorageBase):
         file_path = Path(fileitem.path)
         code, message = SystemUtils.softlink(file_path, target_file)
         if code != 0:
-            logger.error(f"【local】软链接文件失败：{message}")
+            logger.error(f"【本地】软链接文件失败：{message}")
             return False
         return True
 

@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple, Union
 import requests
 
 from app import schemas
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process
@@ -44,6 +44,9 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
 
     # 基础url
     base_url = "https://openapi.alipan.com"
+
+    # 文件块大小，默认10MB
+    chunk_size = 10 * 1024 * 1024
 
     def __init__(self):
         super().__init__()
@@ -625,9 +628,12 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         uploaded_size = 0
         with open(local_path, 'rb') as f:
             for part_info in part_info_list:
-                part_num = part_info['part_number']
+                if global_vars.is_transfer_stopped(local_path.as_posix()):
+                    logger.info(f"【阿里云盘】{target_name} 上传已取消！")
+                    return None
 
                 # 计算分片参数
+                part_num = part_info['part_number']
                 start = (part_num - 1) * chunk_size
                 end = min(start + chunk_size, file_size)
                 current_chunk_size = end - start
@@ -653,7 +659,6 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                             upload_url = new_urls[0]['upload_url']
                         else:
                             upload_url = part_info['upload_url']
-
                         # 执行上传
                         logger.info(
                             f"【阿里云盘】开始 第{attempt + 1}次 上传 {target_name} 分片 {part_num} ...")
@@ -722,14 +727,15 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             with requests.get(download_url, stream=True) as r:
                 r.raise_for_status()
                 downloaded_size = 0
-
                 with open(local_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
+                    for chunk in r.iter_content(chunk_size=self.chunk_size):
+                        if global_vars.is_transfer_stopped(fileitem.path):
+                            logger.info(f"【阿里云盘】{fileitem.path} 下载已取消！")
+                            return None
                         if chunk:
                             f.write(chunk)
-                            downloaded_size += len(chunk)
-
                             # 更新进度
+                            downloaded_size += len(chunk)
                             if file_size:
                                 progress = (downloaded_size * 100) / file_size
                                 progress_callback(progress)

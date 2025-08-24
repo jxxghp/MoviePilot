@@ -8,6 +8,7 @@ from app import schemas
 from app.helper.progress import ProgressHelper
 from app.helper.storage import StorageHelper
 from app.log import logger
+from app.utils.crypto import HashUtils
 
 
 def transfer_process(path: str) -> Callable[[int | float], None]:
@@ -15,7 +16,7 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
     传输进度回调
     """
     pbar = tqdm(total=100, desc="整理进度", unit="%")
-    progress = ProgressHelper(path)
+    progress = ProgressHelper(HashUtils.md5(path))
     progress.start()
 
     def update_progress(percent: Union[int, float]) -> None:

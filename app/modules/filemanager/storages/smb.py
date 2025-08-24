@@ -8,7 +8,7 @@ from smbclient import ClientConfig, register_session, reset_connection_cache
 from smbprotocol.exceptions import SMBException, SMBResponseException, SMBAuthenticationError
 
 from app import schemas
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process
@@ -38,6 +38,9 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         "move": "移动",
         "copy": "复制",
     }
+
+    # 文件块大小，默认100MB
+    chunk_size = 100 * 1024 * 1024
 
     def __init__(self):
         super().__init__()
@@ -433,17 +436,16 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 使用更高效的文件传输方式
             with smbclient.open_file(smb_path, mode="rb") as src_file:
                 with open(local_path, "wb") as dst_file:
-                    # 使用更大的缓冲区提高性能
-                    buffer_size = 1024 * 1024  # 1MB
                     downloaded_size = 0
-
                     while True:
-                        chunk = src_file.read(buffer_size)
+                        if global_vars.is_transfer_stopped(fileitem.path):
+                            logger.info(f"【SMB】{fileitem.path} 下载已取消！")
+                            return None
+                        chunk = src_file.read(self.chunk_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
                         downloaded_size += len(chunk)
-
                         # 更新进度
                         if file_size:
                             progress = (downloaded_size * 100) / file_size
@@ -483,17 +485,16 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 使用更高效的文件传输方式
             with open(path, "rb") as src_file:
                 with smbclient.open_file(smb_path, mode="wb") as dst_file:
-                    # 使用更大的缓冲区提高性能
-                    buffer_size = 1024 * 1024  # 1MB
                     uploaded_size = 0
-
                     while True:
-                        chunk = src_file.read(buffer_size)
+                        if global_vars.is_transfer_stopped(path.as_posix()):
+                            logger.info(f"【SMB】{path} 上传已取消！")
+                            return None
+                        chunk = src_file.read(self.chunk_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
                         uploaded_size += len(chunk)
-
                         # 更新进度
                         if file_size:
                             progress = (uploaded_size * 100) / file_size

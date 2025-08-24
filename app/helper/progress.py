@@ -15,9 +15,12 @@ class ProgressHelper(metaclass=WeakSingleton):
         if isinstance(key, Enum):
             key = key.value
         self._key = key
-        self._progress = TTLCache(maxsize=1024, ttl=24 * 60 * 60)
+        self._progress = TTLCache(region="progress", maxsize=1024, ttl=24 * 60 * 60)
 
     def __reset(self):
+        """
+        重置进度
+        """
         self._progress[self._key] = {
             "enable": False,
             "value": 0,
@@ -26,31 +29,48 @@ class ProgressHelper(metaclass=WeakSingleton):
         }
 
     def start(self):
+        """
+        开始进度
+        """
         self.__reset()
-        self._progress[self._key]['enable'] = True
+        current = self._progress.get(self._key)
+        if not current:
+            return
+        current['enable'] = True
+        self._progress[self._key] = current
 
     def end(self):
-        if not self._progress.get(self._key):
+        """
+        结束进度
+        """
+        current = self._progress.get(self._key)
+        if not current:
             return
-        self._progress[self._key].update(
+        current.update(
             {
                 "enable": False,
                 "value": 100,
                 "text": ""
             }
         )
+        self._progress[self._key] = current
 
     def update(self, value: Union[float, int] = None, text: Optional[str] = None, data: dict = None):
-        if not self._progress.get(self._key).get('enable'):
+        """
+        更新进度
+        """
+        current = self._progress.get(self._key)
+        if not current or not current.get('enable'):
             return
         if value:
-            self._progress[self._key]['value'] = value
+            current['value'] = value
         if text:
-            self._progress[self._key]['text'] = text
+            current['text'] = text
         if data:
-            if not self._progress[self._key].get('data'):
-                self._progress[self._key]['data'] = {}
-            self._progress[self._key]['data'].update(data)
+            if not current.get('data'):
+                current['data'] = {}
+            current['data'].update(data)
+        self._progress[self._key] = current
 
     def get(self) -> dict:
         return self._progress.get(self._key)

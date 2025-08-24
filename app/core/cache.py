@@ -5,11 +5,12 @@ import threading
 from abc import ABC, abstractmethod
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional, Generator, AsyncGenerator, Tuple
+from typing import Any, Dict, Optional, Generator, AsyncGenerator, Tuple, Literal, Union
 
 import aiofiles
 import aioshutil
 from anyio import Path as AsyncPath
+from cachetools import LRUCache as MemoryLRUCache
 from cachetools import TTLCache as MemoryTTLCache
 from cachetools.keys import hashkey
 
@@ -19,6 +20,10 @@ from app.log import logger
 
 # 默认缓存区
 DEFAULT_CACHE_REGION = "DEFAULT"
+# 默认缓存大小
+DEFAULT_CACHE_SIZE = 1024
+# 默认缓存有效期
+DEFAULT_CACHE_TTL = 365 * 24 * 60 * 60
 
 lock = threading.Lock()
 
@@ -354,19 +359,22 @@ class MemoryBackend(CacheBackend):
     基于 `cachetools.TTLCache` 实现的缓存后端
     """
 
-    def __init__(self, maxsize: Optional[int] = None, ttl: Optional[int] = None):
+    def __init__(self, cache_type: Literal['ttl', 'lru'] = 'ttl',
+                 maxsize: Optional[int] = None, ttl: Optional[int] = None):
         """
         初始化缓存实例
 
+        :param cache_type: 缓存类型，支持 'ttl'（默认）和 'lru'
         :param maxsize: 缓存的最大条目数
         :param ttl: 默认缓存存活时间，单位秒
         """
-        self.maxsize = maxsize or 1024  # 未设置时默认最大条目数为 1024
-        self.ttl = ttl
+        self.cache_type = cache_type
+        self.maxsize = maxsize or DEFAULT_CACHE_SIZE
+        self.ttl = ttl or DEFAULT_CACHE_TTL
         # 存储各个 region 的缓存实例，region -> TTLCache
-        self._region_caches: Dict[str, MemoryTTLCache] = {}
+        self._region_caches: Dict[str, Union[MemoryTTLCache, MemoryLRUCache]] = {}
 
-    def __get_region_cache(self, region: str) -> Optional[MemoryTTLCache]:
+    def __get_region_cache(self, region: str) -> Optional[Union[MemoryTTLCache, MemoryLRUCache]]:
         """
         获取指定区域的缓存实例，如果不存在则返回 None
         """
@@ -389,7 +397,11 @@ class MemoryBackend(CacheBackend):
         # 设置缓存值
         with lock:
             # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
-            region_cache = self._region_caches.setdefault(region, MemoryTTLCache(maxsize=maxsize, ttl=ttl))
+            region_cache = self._region_caches.setdefault(
+                region,
+                MemoryTTLCache(maxsize=maxsize, ttl=ttl) if self.cache_type == 'ttl'
+                else MemoryLRUCache(maxsize=maxsize)
+            )
             region_cache[key] = value
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
@@ -477,19 +489,22 @@ class AsyncMemoryBackend(AsyncCacheBackend):
     基于 `cachetools.TTLCache` 实现的异步缓存后端
     """
 
-    def __init__(self, maxsize: Optional[int] = None, ttl: Optional[int] = None):
+    def __init__(self, cache_type: Literal['ttl', 'lru'] = 'ttl',
+                 maxsize: Optional[int] = None, ttl: Optional[int] = None):
         """
         初始化缓存实例
 
+        :param cache_type: 缓存类型，支持 'ttl'（默认）和 'lru'
         :param maxsize: 缓存的最大条目数
         :param ttl: 默认缓存存活时间，单位秒
         """
-        self.maxsize = maxsize or 1024  # 未设置时默认最大条目数为 1024
-        self.ttl = ttl
+        self.cache_type = cache_type
+        self.maxsize = maxsize or DEFAULT_CACHE_SIZE
+        self.ttl = ttl or DEFAULT_CACHE_TTL
         # 存储各个 region 的缓存实例，region -> TTLCache
-        self._region_caches: Dict[str, MemoryTTLCache] = {}
+        self._region_caches: Dict[str, Union[MemoryTTLCache, MemoryLRUCache]] = {}
 
-    def __get_region_cache(self, region: str) -> Optional[MemoryTTLCache]:
+    def __get_region_cache(self, region: str) -> Optional[Union[MemoryTTLCache, MemoryLRUCache]]:
         """
         获取指定区域的缓存实例，如果不存在则返回 None
         """
@@ -509,10 +524,14 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         ttl = ttl or self.ttl
         maxsize = kwargs.get("maxsize", self.maxsize)
         region = self.get_region(region)
-        # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
-        region_cache = self._region_caches.setdefault(region, MemoryTTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
         with lock:
+            # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
+            region_cache = self._region_caches.setdefault(
+                region,
+                MemoryTTLCache(maxsize=maxsize, ttl=ttl) if self.cache_type == 'ttl'
+                else MemoryLRUCache(maxsize=maxsize)
+            )
             region_cache[key] = value
 
     async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
@@ -1007,10 +1026,13 @@ def AsyncFileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -
         return AsyncFileBackend(base=base)
 
 
-def Cache(maxsize: Optional[int] = None, ttl: Optional[int] = None) -> CacheBackend:
+def Cache(cache_type: Literal['ttl', 'lru'] = 'ttl',
+          maxsize: Optional[int] = None,
+          ttl: Optional[int] = None) -> CacheBackend:
     """
     根据配置获取缓存后端实例（内存或Redis），maxsize仅在未启用Redis时生效
 
+    :param cache_type: 缓存类型，仅使用内存缓存时生效，支持 'ttl'（默认）和 'lru'
     :param maxsize: 缓存的最大条目数，仅使用cachetools时生效
     :param ttl: 缓存的默认存活时间，单位秒
     :return: 返回缓存后端实例
@@ -1019,13 +1041,16 @@ def Cache(maxsize: Optional[int] = None, ttl: Optional[int] = None) -> CacheBack
         return RedisBackend(ttl=ttl)
     else:
         # 使用内存缓存，maxsize需要有值
-        return MemoryBackend(maxsize=maxsize, ttl=ttl)
+        return MemoryBackend(cache_type=cache_type, maxsize=maxsize, ttl=ttl)
 
 
-def AsyncCache(maxsize: Optional[int] = None, ttl: Optional[int] = None) -> AsyncCacheBackend:
+def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
+               maxsize: Optional[int] = None,
+               ttl: Optional[int] = None) -> AsyncCacheBackend:
     """
     根据配置获取异步缓存后端实例（内存或Redis），maxsize仅在未启用Redis时生效
 
+    :param cache_type: 缓存类型，仅使用内存缓存时生效，支持 'ttl'（默认）和 'lru'
     :param maxsize: 缓存的最大条目数，仅使用cachetools时生效
     :param ttl: 缓存的默认存活时间，单位秒
     :return: 返回异步缓存后端实例
@@ -1034,7 +1059,7 @@ def AsyncCache(maxsize: Optional[int] = None, ttl: Optional[int] = None) -> Asyn
         return AsyncRedisBackend(ttl=ttl)
     else:
         # 使用异步内存缓存，maxsize需要有值
-        return AsyncMemoryBackend(maxsize=maxsize, ttl=ttl)
+        return AsyncMemoryBackend(cache_type=cache_type, maxsize=maxsize, ttl=ttl)
 
 
 def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Optional[int] = None,
@@ -1054,13 +1079,13 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
         # 检查是否为异步函数
         is_async = inspect.iscoroutinefunction(func)
 
-        # 根据函数类型选择对应的缓存后端
+        # 根据函数类型选择对应的缓存后端，没有ttl时默认是 LRU 缓存，否则是 TTL 缓存
         if is_async:
             # 异步函数使用异步缓存后端
-            cache_backend = AsyncCache(maxsize=maxsize, ttl=ttl)
+            cache_backend = AsyncCache(cache_type="ttl" if ttl else "lru", maxsize=maxsize, ttl=ttl)
         else:
             # 同步函数使用同步缓存后端
-            cache_backend = Cache(maxsize=maxsize, ttl=ttl)
+            cache_backend = Cache(cache_type="ttl" if ttl else "lru", maxsize=maxsize, ttl=ttl)
 
         def should_cache(value: Any) -> bool:
             """
@@ -1201,17 +1226,15 @@ class CacheProxy:
     缓存代理类，将缓存后端的方法直接代理到实例上
     """
 
-    def __init__(self, cache_backend: CacheBackend, region: str, ttl: Optional[int] = None):
+    def __init__(self, cache_backend: CacheBackend, region: str):
         """
         初始化缓存代理
 
         :param cache_backend: 缓存后端实例
         :param region: 缓存区域
-        :param ttl: TTL 时间（仅用于 TTL 缓存）
         """
         self._cache_backend = cache_backend
         self._region = region
-        self._ttl = ttl
 
     def __getitem__(self, key):
         """
@@ -1227,8 +1250,6 @@ class CacheProxy:
         设置缓存项
         """
         kwargs = {'region': self._region}
-        if self._ttl is not None:
-            kwargs['ttl'] = self._ttl  # noqa
         self._cache_backend.set(key, value, **kwargs)
 
     def __delitem__(self, key):
@@ -1276,8 +1297,6 @@ class CacheProxy:
         设置缓存值
         """
         kwargs.setdefault('region', self._region)
-        if self._ttl is not None and 'ttl' not in kwargs:
-            kwargs['ttl'] = self._ttl
         self._cache_backend.set(key, value, **kwargs)
 
     def delete(self, key: str, **kwargs) -> None:
@@ -1327,8 +1346,6 @@ class CacheProxy:
         更新缓存
         """
         kwargs.setdefault('region', self._region)
-        if self._ttl is not None and 'ttl' not in kwargs:
-            kwargs['ttl'] = self._ttl
         self._cache_backend.update(other, **kwargs)
 
     def pop(self, key: str, default: Any = None, **kwargs) -> Any:
@@ -1350,8 +1367,6 @@ class CacheProxy:
         设置默认值
         """
         kwargs.setdefault('region', self._region)
-        if self._ttl is not None and 'ttl' not in kwargs:
-            kwargs['ttl'] = self._ttl
         return self._cache_backend.setdefault(key, default, **kwargs)
 
     def close(self) -> None:
@@ -1367,7 +1382,10 @@ class TTLCache(CacheProxy):
     使用项目的缓存后端实现，支持 Redis 和内存缓存
     """
 
-    def __init__(self, maxsize: int = 1024, ttl: int = None, region: Optional[str] = None):
+    def __init__(self,
+                 region: Optional[str] = DEFAULT_CACHE_REGION,
+                 maxsize: Optional[int] = DEFAULT_CACHE_SIZE,
+                 ttl: Optional[int]= DEFAULT_CACHE_TTL):
         """
         初始化 TTL 缓存
 
@@ -1375,7 +1393,7 @@ class TTLCache(CacheProxy):
         :param ttl: 缓存的存活时间，单位秒
         :param region: 缓存的区，为 None 时使用默认区
         """
-        super().__init__(Cache(maxsize=maxsize, ttl=ttl), region or DEFAULT_CACHE_REGION, ttl)
+        super().__init__(Cache(cache_type='ttl', maxsize=maxsize, ttl=ttl), region)
 
 
 class LRUCache(CacheProxy):
@@ -1384,11 +1402,14 @@ class LRUCache(CacheProxy):
     使用项目的缓存后端实现，支持 Redis 和内存缓存
     """
 
-    def __init__(self, maxsize: int = 1024, region: Optional[str] = None):
+    def __init__(self,
+                 region: Optional[str] = DEFAULT_CACHE_REGION,
+                 maxsize: Optional[int]= DEFAULT_CACHE_SIZE
+                 ):
         """
         初始化 LRU 缓存
 
         :param maxsize: 缓存的最大条目数
         :param region: 缓存的区，为 None 时使用默认区
         """
-        super().__init__(Cache(maxsize=maxsize), region or DEFAULT_CACHE_REGION)
+        super().__init__(Cache(cache_type='lru', maxsize=maxsize), region)

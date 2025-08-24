@@ -603,7 +603,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     finished_files.append(Path(fileitem.path).as_posix())
                     __process_msg = f"{fileitem.name} 整理完成"
                     logger.info(__process_msg)
-                    progress.update(value=processed_num / total_num * 100,
+                    progress.update(value=(processed_num / total_num) * 100,
                                     text=__process_msg,
                                     data={})
             except queue.Empty:
