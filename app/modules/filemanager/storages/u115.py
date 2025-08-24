@@ -1,6 +1,5 @@
 import base64
 import hashlib
-import io
 import secrets
 import threading
 import time
@@ -11,12 +10,12 @@ import oss2
 import requests
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
-from tqdm import tqdm
 
 from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
+from app.modules.filemanager.storages import transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
@@ -352,29 +351,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             modify_time=int(time.time())
         )
 
-    @staticmethod
-    def _log_progress(desc: str, total: int) -> tqdm:
-        """
-        创建一个可以输出到日志的进度条
-        """
-
-        class TqdmToLogger(io.StringIO):
-            def write(s, buf):  # noqa
-                buf = buf.strip('\r\n\t ')
-                if buf:
-                    logger.info(buf)
-
-        return tqdm(
-            total=total,
-            unit='B',
-            unit_scale=True,
-            desc=desc,
-            file=TqdmToLogger(),
-            mininterval=1.0,
-            maxinterval=5.0,
-            miniters=1
-        )
-
     def upload(self, target_dir: schemas.FileItem, local_path: Path,
                new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
@@ -539,13 +515,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 初始化进度条
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
-        progress_bar = tqdm(
-            total=file_size,
-            unit='B',
-            unit_scale=True,
-            desc="上传进度",
-            ascii=True
-        )
+        progress_callback = transfer_process(local_path.as_posix())
 
         # 初始化分片
         upload_id = bucket.init_multipart_upload(object_name,
@@ -569,11 +539,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 offset += num_to_upload
                 part_number += 1
                 # 更新进度
-                progress_bar.update(num_to_upload)
+                progress = (offset * 100) / file_size
+                progress_callback(progress)
 
-        # 关闭进度条
-        if progress_bar:
-            progress_bar.close()
+        # 完成上传
+        progress_callback(100)
 
         # 请求头
         headers = {
@@ -601,11 +571,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
-        带限速处理的下载
+        带实时进度显示的下载
         """
         detail = self.get_item(Path(fileitem.path))
         if not detail:
+            logger.error(f"【115】获取文件详情失败: {fileitem.name}")
             return None
+
         download_info = self._request_api(
             "POST",
             "/open/ufile/downurl",
@@ -615,14 +587,56 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             }
         )
         if not download_info:
+            logger.error(f"【115】获取下载链接失败: {fileitem.name}")
             return None
+
         download_url = list(download_info.values())[0].get("url", {}).get("url")
+        if not download_url:
+            logger.error(f"【115】下载链接为空: {fileitem.name}")
+            return None
+
         local_path = path or settings.TEMP_PATH / fileitem.name
-        with self.session.get(download_url, stream=True) as r:
-            r.raise_for_status()
-            with open(local_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+
+        # 获取文件大小
+        file_size = detail.size
+
+        # 初始化进度条
+        logger.info(f"【115】开始下载: {fileitem.name} -> {local_path}")
+        progress_callback = transfer_process(Path(fileitem.path).as_posix())
+
+        try:
+            with self.session.get(download_url, stream=True) as r:
+                r.raise_for_status()
+                downloaded_size = 0
+
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded_size += len(chunk)
+
+                            # 更新进度
+                            if file_size:
+                                progress = (downloaded_size * 100) / file_size
+                                progress_callback(progress)
+
+                # 完成下载
+                progress_callback(100)
+                logger.info(f"【115】下载完成: {fileitem.name}")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"【115】下载网络错误: {fileitem.name} - {str(e)}")
+            # 删除可能部分下载的文件
+            if local_path.exists():
+                local_path.unlink()
+            return None
+        except Exception as e:
+            logger.error(f"【115】下载失败: {fileitem.name} - {str(e)}")
+            # 删除可能部分下载的文件
+            if local_path.exists():
+                local_path.unlink()
+            return None
+
         return local_path
 
     def check(self) -> bool:

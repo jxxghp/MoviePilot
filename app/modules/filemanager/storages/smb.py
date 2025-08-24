@@ -11,6 +11,7 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
+from app.modules.filemanager.storages import transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 
@@ -412,63 +413,101 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
-        下载文件
+        带实时进度显示的下载
         """
+        local_path = path or settings.TEMP_PATH / fileitem.name
+        smb_path = self._normalize_path(fileitem.path)
         try:
             self._check_connection()
 
-            smb_path = self._normalize_path(fileitem.path)
-            local_path = path or settings.TEMP_PATH / fileitem.name
-
             # 确保本地目录存在
             local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # 获取文件大小
+            file_size = fileitem.size
+
+            # 初始化进度条
+            logger.info(f"【SMB】开始下载: {fileitem.name} -> {local_path}")
+            progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
             # 使用更高效的文件传输方式
             with smbclient.open_file(smb_path, mode="rb") as src_file:
                 with open(local_path, "wb") as dst_file:
                     # 使用更大的缓冲区提高性能
                     buffer_size = 1024 * 1024  # 1MB
+                    downloaded_size = 0
+
                     while True:
                         chunk = src_file.read(buffer_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
+                        downloaded_size += len(chunk)
 
-            logger.info(f"【SMB】下载成功: {fileitem.path} -> {local_path}")
+                        # 更新进度
+                        if file_size:
+                            progress = (downloaded_size * 100) / file_size
+                            progress_callback(progress)
+
+            # 完成下载
+            progress_callback(100)
+            logger.info(f"【SMB】下载完成: {fileitem.name}")
             return local_path
+
         except Exception as e:
-            logger.error(f"【SMB】下载失败: {e}")
+            logger.error(f"【SMB】下载失败: {fileitem.name} - {e}")
+            # 删除可能部分下载的文件
+            if local_path.exists():
+                local_path.unlink()
             return None
 
     def upload(self, fileitem: schemas.FileItem, path: Path,
                new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
         """
-        上传文件
+        带实时进度显示的上传
         """
+        target_name = new_name or path.name
+        target_path = Path(fileitem.path) / target_name
+        smb_path = self._normalize_path(str(target_path))
+
         try:
             self._check_connection()
 
-            target_name = new_name or path.name
-            target_path = Path(fileitem.path) / target_name
-            smb_path = self._normalize_path(str(target_path))
+            # 获取文件大小
+            file_size = path.stat().st_size
+
+            # 初始化进度条
+            logger.info(f"【SMB】开始上传: {path} -> {target_path}")
+            progress_callback = transfer_process(path.as_posix())
 
             # 使用更高效的文件传输方式
             with open(path, "rb") as src_file:
                 with smbclient.open_file(smb_path, mode="wb") as dst_file:
                     # 使用更大的缓冲区提高性能
                     buffer_size = 1024 * 1024  # 1MB
+                    uploaded_size = 0
+
                     while True:
                         chunk = src_file.read(buffer_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
+                        uploaded_size += len(chunk)
 
-            logger.info(f"【SMB】上传成功: {path} -> {target_path}")
+                        # 更新进度
+                        if file_size:
+                            progress = (uploaded_size * 100) / file_size
+                            progress_callback(progress)
+
+            # 完成上传
+            progress_callback(100)
+            logger.info(f"【SMB】上传完成: {target_name}")
 
             # 返回上传后的文件信息
             return self.get_item(target_path)
+
         except Exception as e:
-            logger.error(f"【SMB】上传失败: {e}")
+            logger.error(f"【SMB】上传失败: {target_name} - {e}")
             return None
 
     def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:

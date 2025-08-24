@@ -45,59 +45,6 @@ DB_POSTGRESQL_MAX_OVERFLOW=30
 
 ## Docker 部署
 
-### 使用内置 PostgreSQL
-
-如果您使用 Docker 部署，MoviePilot 容器内置了 PostgreSQL 服务：
-
-#### 使用 Docker Compose（推荐）
-
-1. 创建 `docker-compose.yml` 文件：
-```yaml
-version: '3.8'
-
-services:
-  moviepilot:
-    image: jxxghp/moviepilot:latest
-    container_name: moviepilot
-    restart: unless-stopped
-    ports:
-      - "3000:3000"  # 前端端口
-      - "3001:3001"  # API端口
-    environment:
-      - DB_TYPE=postgresql
-      - DB_POSTGRESQL_HOST=localhost
-      - DB_POSTGRESQL_PORT=5432
-      - DB_POSTGRESQL_DATABASE=moviepilot
-      - DB_POSTGRESQL_USERNAME=moviepilot
-      - DB_POSTGRESQL_PASSWORD=moviepilot
-    volumes:
-      - ./config:/config
-```
-
-2. 启动服务：
-```bash
-docker-compose up -d
-```
-
-#### 使用 Docker 命令
-
-1. 设置环境变量：
-```bash
-DB_TYPE=postgresql
-```
-
-2. 启动容器时，PostgreSQL 服务会自动：
-   - 在配置目录下创建 `postgresql/` 子目录作为数据目录
-   - 初始化 PostgreSQL 数据目录
-   - 启动 PostgreSQL 服务
-   - 创建数据库和用户
-   - 配置连接权限
-
-3. 数据持久化：
-   - PostgreSQL 数据存储在 `${CONFIG_DIR}/postgresql/` 目录中
-   - 日志文件存储在 `${CONFIG_DIR}/postgresql/logs/` 目录中
-   - 这些目录会通过 Docker 卷映射持久化保存
-
 ### 使用外部 PostgreSQL
 
 如果您想使用外部的 PostgreSQL 服务：
@@ -121,6 +68,36 @@ DB_POSTGRESQL_PASSWORD=your-password
 2. 修改配置为 PostgreSQL
 3. 启动应用，数据库表会自动创建
 4. 使用数据库迁移工具或手动导入数据
+
+#### 注意事项
+完成数据迁移后需要对postgresql中的表进行索引初始值进行更新，否则会出现唯一索引已存在的异常
+例如：
+```json
+【EventType.SiteUpdated 事件处理出错】
+
+SiteChain.cache_site_userdata
+(psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "siteuserdata_pkey"
+DETAIL:  Key (id)=(18) already exists.
+
+[SQL: INSERT INTO siteuserdata (domain, name, username, userid, user_level, join_at, bonus, upload, download, ratio, seeding, leeching, seeding_size, leeching_size, seeding_info, message_unread, message_unread_contents, err_msg, updated_day, updated_time) VALUES (%(domain)s, %(name)s, %(username)s, %(userid)s, %(user_level)s, %(join_at)s, %(bonus)s, %(upload)s, %(download)s, %(ratio)s, %(seeding)s, %(leeching)s, %(seeding_size)s, %(leeching_size)s, %(seeding_info)s::JSON, %(message_unread)s, %(message_unread_contents)s::JSON, %(err_msg)s, %(updated_day)s, %(updated_time)s) RETURNING siteuserdata.id]
+[parameters: {'domain': 'btschool.club', 'name': '学校', 'username': None, 'userid': None, 'user_level': None, 'join_at': None, 'bonus': 0.0, 'upload': 0, 'download': 0, 'ratio': 0.0, 'seeding': 0, 'leeching': 0, 'seeding_size': 0, 'leeching_size': 0, 'seeding_info': '[]', 'message_unread': 0, 'message_unread_contents': '[]', 'err_msg': '未检测到已登陆，请检查cookies是否过期', 'updated_day': '2025-08-22', 'updated_time': '09:52:01'}]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+```
+
+需要对每一个表分别执行下面的语句(下面的SQL以`workflowc`数据表为例，每张表请自行修改，其中`user`表因为关键字原因，应该写成`public.user`的方式)：
+
+```sql
+DO $$
+DECLARE
+    max_id INTEGER;
+BEGIN
+    -- 查询最大 ID 值
+    SELECT COALESCE(MAX(id), 0) INTO max_id FROM workflow;
+
+    -- 调整序列
+    EXECUTE format('ALTER SEQUENCE workflow_id_seq RESTART WITH %s', max_id + 1);
+END $$;
+```
 
 ### 从 PostgreSQL 迁移到 SQLite
 

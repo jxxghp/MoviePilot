@@ -938,6 +938,8 @@ class DoubanModule(_ModuleBase):
         """
         搜索人物信息
         """
+        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+            return None
         if not name:
             return []
         result = self.doubanapi.person_search(keyword=name)
@@ -956,6 +958,8 @@ class DoubanModule(_ModuleBase):
         """
         搜索人物信息（异步版本）
         """
+        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+            return None
         if not name:
             return []
         result = await self.doubanapi.async_person_search(keyword=name)

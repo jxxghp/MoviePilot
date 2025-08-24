@@ -1,10 +1,38 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Callable, Union
+
+from tqdm import tqdm
 
 from app import schemas
+from app.helper.progress import ProgressHelper
 from app.helper.storage import StorageHelper
 from app.log import logger
+
+
+def transfer_process(path: str) -> Callable[[int | float], None]:
+    """
+    传输进度回调
+    """
+    pbar = tqdm(total=100, desc="整理进度", unit="%")
+    progress = ProgressHelper(path)
+    progress.start()
+
+    def update_progress(percent: Union[int, float]) -> None:
+        """
+        更新进度百分比
+        """
+        percent_value = int(percent)
+        pbar.n = percent_value
+        # 更新进度
+        pbar.refresh()
+        progress.update(value=percent_value, text=f"{path} 进度：{percent_value}%")
+        # 完成时结束
+        if percent_value >= 100:
+            progress.end()
+            pbar.close()
+
+    return update_progress
 
 
 class StorageBase(metaclass=ABCMeta):

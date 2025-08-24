@@ -255,14 +255,14 @@ async def get_progress(request: Request, process_type: str, _: schemas.TokenPayl
     """
     实时获取处理进度，返回格式为SSE
     """
-    progress = ProgressHelper()
+    progress = ProgressHelper(process_type)
 
     async def event_generator():
         try:
             while not global_vars.is_system_stopped:
                 if await request.is_disconnected():
                     break
-                detail = progress.get(process_type)
+                detail = progress.get()
                 yield f"data: {json.dumps(detail)}\n\n"
                 await asyncio.sleep(0.5)
         except asyncio.CancelledError:

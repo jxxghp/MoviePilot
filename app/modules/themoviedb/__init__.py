@@ -639,9 +639,24 @@ class TheMovieDbModule(_ModuleBase):
         """
         搜索人物信息
         """
+        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+            return None
         if not name:
             return []
         results = self.tmdb.search_persons(name)
+        if results:
+            return [MediaPerson(source='themoviedb', **person) for person in results]
+        return []
+
+    async def async_search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+        """
+        异步搜索人物信息
+        """
+        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+            return None
+        if not name:
+            return []
+        results = await self.tmdb.async_search_persons(name)
         if results:
             return [MediaPerson(source='themoviedb', **person) for person in results]
         return []

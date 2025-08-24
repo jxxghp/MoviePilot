@@ -9,7 +9,7 @@ from app import schemas
 from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
-from app.modules.filemanager.storages import StorageBase
+from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.singleton import WeakSingleton
@@ -30,6 +30,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         "copy": "复制",
         "move": "移动",
     }
+
+    # 文件块大小，默认1MB
+    chunk_size = 1024 * 1024
 
     snapshot_check_folder_modtime = settings.OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME
 
@@ -570,36 +573,78 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             self, fileitem: schemas.FileItem, path: Path, new_name: Optional[str] = None, task: bool = False
     ) -> Optional[schemas.FileItem]:
         """
-        上传文件
+        上传文件（带进度）
         :param fileitem: 上传目录项
         :param path: 本地文件路径
         :param new_name: 上传后文件名
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = UrlUtils.quote((Path(fileitem.path) / path.name).as_posix())
-        headers = self.__get_header_with_token()
-        headers.setdefault("Content-Type", "application/octet-stream")
-        headers.setdefault("As-Task", str(task).lower())
-        headers.setdefault("File-Path", encoded_path)
-        with open(path, "rb") as f:
-            resp = RequestUtils(headers=headers).put_res(
-                self.__get_api_url("/api/fs/put"),
-                data=f,
-            )
+        try:
+            # 获取文件大小
+            target_name = new_name or path.name
+            target_path = Path(fileitem.path) / target_name
 
-        if resp is None:
-            logger.warn(f"【OpenList】请求上传文件 {path} 失败")
+            # 初始化进度回调
+            progress_callback = transfer_process(path.as_posix())
+
+            # 准备上传请求
+            encoded_path = UrlUtils.quote(target_path.as_posix())
+            headers = self.__get_header_with_token()
+            headers.setdefault("Content-Type", "application/octet-stream")
+            headers.setdefault("As-Task", str(task).lower())
+            headers.setdefault("File-Path", encoded_path)
+
+            # 创建自定义的文件流，支持进度回调
+            class ProgressFileReader:
+                def __init__(self, file_path: Path, callback):
+                    self.file = open(file_path, 'rb')
+                    self.callback = callback
+                    self.uploaded_size = 0
+                    self.file_size = file_path.stat().st_size
+
+                def read(self, size=-1):
+                    chunk = self.file.read(size)
+                    if chunk:
+                        self.uploaded_size += len(chunk)
+                        if self.callback:
+                            percent = (self.uploaded_size* 100) / self.file_size
+                            self.callback(percent)
+                    return chunk
+
+                def close(self):
+                    self.file.close()
+
+            # 使用自定义文件流上传
+            progress_reader = ProgressFileReader(path, progress_callback)
+            try:
+                resp = RequestUtils(headers=headers).put_res(
+                    self.__get_api_url("/api/fs/put"),
+                    data=progress_reader,
+                )
+            finally:
+                progress_reader.close()
+
+            if resp is None:
+                logger.warn(f"【OpenList】请求上传文件 {path} 失败")
+                return None
+            if resp.status_code != 200:
+                logger.warn(f"【OpenList】请求上传文件 {path} 失败，状态码：{resp.status_code}")
+                return None
+
+            # 完成上传
+            progress_callback(100)
+
+            # 获取上传后的文件项
+            new_item = self.get_item(target_path)
+            if new_item and new_name and new_name != path.name:
+                if self.rename(new_item, new_name):
+                    return self.get_item(Path(new_item.path).with_name(new_name))
+
+            return new_item
+
+        except Exception as e:
+            logger.error(f"【OpenList】上传文件 {path} 失败：{e}")
             return None
-        if resp.status_code != 200:
-            logger.warn(f"【OpenList】请求上传文件 {path} 失败，状态码：{resp.status_code}")
-            return None
-
-        new_item = self.get_item(Path(fileitem.path) / path.name)
-        if new_item and new_name and new_name != path.name:
-            if self.rename(new_item, new_name):
-                return self.get_item(Path(new_item.path).with_name(new_name))
-
-        return new_item
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

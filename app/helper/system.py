@@ -1,5 +1,7 @@
 import os
 import signal
+import threading
+import time
 from pathlib import Path
 from typing import Tuple
 
@@ -41,8 +43,8 @@ class SystemHelper:
         判断是否可以内部重启
         """
         return (
-            Path("/var/run/docker.sock").exists()
-            or settings.DOCKER_CLIENT_API != "tcp://127.0.0.1:38379"
+                Path("/var/run/docker.sock").exists()
+                or settings.DOCKER_CLIENT_API != "tcp://127.0.0.1:38379"
         )
 
     @staticmethod
@@ -64,7 +66,7 @@ class SystemHelper:
                         if index_resolv_conf != -1:
                             index_second_slash = data.rfind(" ", 0, index_resolv_conf)
                             index_first_slash = (
-                                data.rfind("/", 0, index_second_slash) + 1
+                                    data.rfind("/", 0, index_second_slash) + 1
                             )
                             container_id = data[index_first_slash:index_second_slash]
         except Exception as e:
@@ -113,6 +115,8 @@ class SystemHelper:
             if has_restart_policy:
                 # 有重启策略，使用优雅退出方式
                 logger.info("检测到容器配置了自动重启策略，使用优雅重启方式...")
+                # 启动优雅退出超时监控
+                SystemHelper._start_graceful_shutdown_monitor()
                 # 发送SIGTERM信号给当前进程，触发优雅停止
                 os.kill(os.getpid(), signal.SIGTERM)
                 return True, ""
@@ -125,6 +129,25 @@ class SystemHelper:
             # 降级为Docker API重启
             logger.warning("降级为Docker API重启...")
             return SystemHelper._docker_api_restart()
+
+    @staticmethod
+    def _start_graceful_shutdown_monitor():
+        """
+        启动优雅退出超时监控
+        如果30秒内进程没有退出，则使用Docker API强制重启
+        """
+
+        def monitor_thread():
+            time.sleep(30)  # 等待30秒
+            logger.warning("优雅退出超时30秒，使用Docker API强制重启...")
+            try:
+                SystemHelper._docker_api_restart()
+            except Exception as e:
+                logger.error(f"强制重启失败: {str(e)}")
+
+        # 在后台线程中启动监控
+        thread = threading.Thread(target=monitor_thread, daemon=True)
+        thread.start()
 
     @staticmethod
     def _docker_api_restart() -> Tuple[bool, str]:

@@ -215,12 +215,11 @@ class SearchChain(ChainBase):
             return []
 
         # 开始新进度
-        progress = ProgressHelper()
-        progress.start(ProgressKey.Search)
+        progress = ProgressHelper(ProgressKey.Search)
+        progress.start()
 
         # 开始过滤
-        progress.update(value=0, text=f'开始过滤，总 {len(torrents)} 个资源，请稍候...',
-                        key=ProgressKey.Search)
+        progress.update(value=0, text=f'开始过滤，总 {len(torrents)} 个资源，请稍候...')
         # 匹配订阅附加参数
         if filter_params:
             logger.info(f'开始附加参数过滤，附加参数：{filter_params} ...')
@@ -238,7 +237,7 @@ class SearchChain(ChainBase):
             logger.info(f"过滤规则/剧集过滤完成，剩余 {len(torrents)} 个资源")
 
         # 过滤完成
-        progress.update(value=50, text=f'过滤完成，剩余 {len(torrents)} 个资源', key=ProgressKey.Search)
+        progress.update(value=50, text=f'过滤完成，剩余 {len(torrents)} 个资源')
 
         # 总数
         _total = len(torrents)
@@ -251,14 +250,13 @@ class SearchChain(ChainBase):
         try:
             # 英文标题应该在别名/原标题中，不需要再匹配
             logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
-            progress.update(value=51, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
+            progress.update(value=51, text=f'开始匹配，总 {_total} 个资源 ...')
             for torrent in torrents:
                 if global_vars.is_system_stopped:
                     break
                 _count += 1
                 progress.update(value=(_count / _total) * 96,
-                                text=f'正在匹配 {torrent.site_name}，已完成 {_count} / {_total} ...',
-                                key=ProgressKey.Search)
+                                text=f'正在匹配 {torrent.site_name}，已完成 {_count} / {_total} ...')
                 if not torrent.title:
                     continue
 
@@ -291,8 +289,7 @@ class SearchChain(ChainBase):
             # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
             progress.update(value=97,
-                            text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
-                            key=ProgressKey.Search)
+                            text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源')
 
             # 去掉mediainfo中多余的数据
             mediainfo.clear()
@@ -308,16 +305,14 @@ class SearchChain(ChainBase):
 
         # 排序
         progress.update(value=99,
-                        text=f'正在对 {len(contexts)} 个资源进行排序，请稍候...',
-                        key=ProgressKey.Search)
+                        text=f'正在对 {len(contexts)} 个资源进行排序，请稍候...')
         contexts = torrenthelper.sort_torrents(contexts)
 
         # 结束进度
         logger.info(f'搜索完成，共 {len(contexts)} 个资源')
         progress.update(value=100,
-                        text=f'搜索完成，共 {len(contexts)} 个资源',
-                        key=ProgressKey.Search)
-        progress.end(ProgressKey.Search)
+                        text=f'搜索完成，共 {len(contexts)} 个资源')
+        progress.end()
 
         # 去重后返回
         return self.__remove_duplicate(contexts)
@@ -521,8 +516,8 @@ class SearchChain(ChainBase):
             return []
 
         # 开始进度
-        progress = ProgressHelper()
-        progress.start(ProgressKey.Search)
+        progress = ProgressHelper(ProgressKey.Search)
+        progress.start()
         # 开始计时
         start_time = datetime.now()
         # 总数
@@ -531,8 +526,7 @@ class SearchChain(ChainBase):
         finish_count = 0
         # 更新进度
         progress.update(value=0,
-                        text=f"开始搜索，共 {total_num} 个站点 ...",
-                        key=ProgressKey.Search)
+                        text=f"开始搜索，共 {total_num} 个站点 ...")
         # 结果集
         results = []
         # 多线程
@@ -561,17 +555,15 @@ class SearchChain(ChainBase):
                     results.extend(result)
                 logger.info(f"站点搜索进度：{finish_count} / {total_num}")
                 progress.update(value=finish_count / total_num * 100,
-                                text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
-                                key=ProgressKey.Search)
+                                text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...")
         # 计算耗时
         end_time = datetime.now()
         # 更新进度
         progress.update(value=100,
-                        text=f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒",
-                        key=ProgressKey.Search)
+                        text=f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         # 结束进度
-        progress.end(ProgressKey.Search)
+        progress.end()
 
         # 返回
         return results
@@ -606,8 +598,8 @@ class SearchChain(ChainBase):
             return []
 
         # 开始进度
-        progress = ProgressHelper()
-        progress.start(ProgressKey.Search)
+        progress = ProgressHelper(ProgressKey.Search)
+        progress.start()
         # 开始计时
         start_time = datetime.now()
         # 总数
@@ -616,8 +608,7 @@ class SearchChain(ChainBase):
         finish_count = 0
         # 更新进度
         progress.update(value=0,
-                        text=f"开始搜索，共 {total_num} 个站点 ...",
-                        key=ProgressKey.Search)
+                        text=f"开始搜索，共 {total_num} 个站点 ...")
         # 结果集
         results = []
 
@@ -648,18 +639,16 @@ class SearchChain(ChainBase):
                 results.extend(result)
             logger.info(f"站点搜索进度：{finish_count} / {total_num}")
             progress.update(value=finish_count / total_num * 100,
-                            text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
-                            key=ProgressKey.Search)
+                            text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...")
 
         # 计算耗时
         end_time = datetime.now()
         # 更新进度
         progress.update(value=100,
-                        text=f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒",
-                        key=ProgressKey.Search)
+                        text=f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         # 结束进度
-        progress.end(ProgressKey.Search)
+        progress.end()
 
         # 返回
         return results

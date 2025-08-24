@@ -1,6 +1,6 @@
 import json
 import pickle
-from typing import Any, Optional, Generator, Tuple, AsyncGenerator
+from typing import Any, Optional, Generator, Tuple, AsyncGenerator, Union
 from urllib.parse import quote
 
 import redis
@@ -140,19 +140,33 @@ class RedisHelper(metaclass=Singleton):
             logger.error(f"Failed to set Redis maxmemory or policy: {e}")
 
     @staticmethod
-    def get_region(region: Optional[str] = "DEFAULT"):
+    def __get_region(region: Optional[str] = None):
         """
         获取缓存的区
         """
-        return f"region:{region}" if region else "region:default"
+        return f"region:{quote(region)}" if region else "region:DEFAULT"
 
-    def get_redis_key(self, region: str, key: str) -> str:
+    def __make_redis_key(self, region: str, key: str) -> str:
         """
         获取缓存Key
         """
         # 使用region作为缓存键的一部分
-        region = self.get_region(quote(region))
+        region = self.__get_region(region)
         return f"{region}:key:{quote(key)}"
+
+    @staticmethod
+    def __get_original_key(redis_key: Union[str, bytes]) -> str:
+        """
+        从Redis键中提取原始key
+        """
+        try:
+            if isinstance(redis_key, bytes):
+                redis_key = redis_key.decode("utf-8")
+            parts = redis_key.split(":key:")
+            return parts[-1]
+        except Exception as e:
+            logger.warn(f"Failed to parse redis key: {redis_key}, error: {e}")
+            return redis_key
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None,
             region: Optional[str] = "DEFAULT", **kwargs) -> None:
@@ -167,7 +181,7 @@ class RedisHelper(metaclass=Singleton):
         """
         try:
             self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             # 对值进行序列化
             serialized_value = serialize(value)
             kwargs.pop("maxsize", None)
@@ -185,7 +199,7 @@ class RedisHelper(metaclass=Singleton):
         """
         try:
             self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             return self.client.exists(redis_key) == 1
         except Exception as e:
             logger.error(f"Failed to exists key: {key} region: {region}, error: {e}")
@@ -201,7 +215,7 @@ class RedisHelper(metaclass=Singleton):
         """
         try:
             self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             value = self.client.get(redis_key)
             if value is not None:
                 return deserialize(value)
@@ -219,7 +233,7 @@ class RedisHelper(metaclass=Singleton):
         """
         try:
             self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             self.client.delete(redis_key)
         except Exception as e:
             logger.error(f"Failed to delete key: {key} in region: {region}, error: {e}")
@@ -233,7 +247,7 @@ class RedisHelper(metaclass=Singleton):
         try:
             self._connect()
             if region:
-                cache_region = self.get_region(quote(region))
+                cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
                 with self.client.pipeline() as pipe:
                     for key in self.client.scan_iter(redis_key):
@@ -256,17 +270,17 @@ class RedisHelper(metaclass=Singleton):
         try:
             self._connect()
             if region:
-                cache_region = self.get_region(quote(region))
+                cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
                 for key in self.client.scan_iter(redis_key):
                     value = self.client.get(key)
                     if value is not None:
-                        yield key, deserialize(value)
+                        yield self.__get_original_key(key), deserialize(value)
             else:
                 for key in self.client.scan_iter("*"):
                     value = self.client.get(key)
                     if value is not None:
-                        yield key, deserialize(value)
+                        yield self.__get_original_key(key), deserialize(value)
         except Exception as e:
             logger.error(f"Failed to get items from Redis, region: {region}, error: {e}")
 
@@ -367,19 +381,33 @@ class AsyncRedisHelper(metaclass=Singleton):
             logger.error(f"Failed to set Redis maxmemory or policy (async): {e}")
 
     @staticmethod
-    def get_region(region: Optional[str] = "DEFAULT"):
+    def __get_region(region: Optional[str] = "DEFAULT"):
         """
         获取缓存的区
         """
         return f"region:{region}" if region else "region:default"
 
-    def get_redis_key(self, region: str, key: str) -> str:
+    def __make_redis_key(self, region: str, key: str) -> str:
         """
         获取缓存Key
         """
         # 使用region作为缓存键的一部分
-        region = self.get_region(quote(region))
+        region = self.__get_region(region)
         return f"{region}:key:{quote(key)}"
+
+    @staticmethod
+    def __get_original_key(redis_key: Union[str, bytes]) -> str:
+        """
+        从Redis键中提取原始key
+        """
+        try:
+            if isinstance(redis_key, bytes):
+                redis_key = redis_key.decode("utf-8")
+            parts = redis_key.split(":key:")
+            return parts[-1]
+        except Exception as e:
+            logger.warn(f"Failed to parse redis key: {redis_key}, error: {e}")
+            return redis_key
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None,
                   region: Optional[str] = "DEFAULT", **kwargs) -> None:
@@ -394,7 +422,7 @@ class AsyncRedisHelper(metaclass=Singleton):
         """
         try:
             await self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             # 对值进行序列化
             serialized_value = serialize(value)
             kwargs.pop("maxsize", None)
@@ -412,7 +440,7 @@ class AsyncRedisHelper(metaclass=Singleton):
         """
         try:
             await self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             result = await self.client.exists(redis_key)
             return result == 1
         except Exception as e:
@@ -429,7 +457,7 @@ class AsyncRedisHelper(metaclass=Singleton):
         """
         try:
             await self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             value = await self.client.get(redis_key)
             if value is not None:
                 return deserialize(value)
@@ -447,7 +475,7 @@ class AsyncRedisHelper(metaclass=Singleton):
         """
         try:
             await self._connect()
-            redis_key = self.get_redis_key(region, key)
+            redis_key = self.__make_redis_key(region, key)
             await self.client.delete(redis_key)
         except Exception as e:
             logger.error(f"Failed to delete key (async): {key} in region: {region}, error: {e}")
@@ -461,7 +489,7 @@ class AsyncRedisHelper(metaclass=Singleton):
         try:
             await self._connect()
             if region:
-                cache_region = self.get_region(quote(region))
+                cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
                 async with self.client.pipeline() as pipe:
                     async for key in self.client.scan_iter(redis_key):
@@ -484,17 +512,17 @@ class AsyncRedisHelper(metaclass=Singleton):
         try:
             await self._connect()
             if region:
-                cache_region = self.get_region(quote(region))
+                cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
                 async for key in self.client.scan_iter(redis_key):
                     value = await self.client.get(key)
                     if value is not None:
-                        yield key, deserialize(value)
+                        yield self.__get_original_key(key), deserialize(value)
             else:
                 async for key in self.client.scan_iter("*"):
                     value = await self.client.get(key)
                     if value is not None:
-                        yield key, deserialize(value)
+                        yield self.__get_original_key(key), deserialize(value)
         except Exception as e:
             logger.error(f"Failed to get items from Redis, region: {region}, error: {e}")
 

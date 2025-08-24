@@ -67,19 +67,14 @@ class Monitor(metaclass=Singleton):
         self._observers = []
         # 定时服务
         self._scheduler = None
-        # 存储快照缓存目录
-        self._snapshot_cache_dir = None
         # 存储过照间隔（分钟）
         self._snapshot_interval = 5
         # TTL缓存，10秒钟有效
         self._cache = TTLCache(region="monitor", maxsize=1024, ttl=10)
         # 快照文件缓存
-        self._snapshot_cache = FileCache(base=settings.TEMP_PATH / "snapshots", ttl=24*3600)  # 24小时TTL
+        self._snapshot_cache = FileCache(base=settings.CACHE_PATH / "snapshots")
         # 监控的文件扩展名
         self.all_exts = settings.RMT_MEDIAEXT
-        # 初始化快照缓存目录
-        self._snapshot_cache_dir = settings.TEMP_PATH / "snapshots"
-        self._snapshot_cache_dir.mkdir(exist_ok=True)
         # 启动目录监控和文件整理
         self.init()
 

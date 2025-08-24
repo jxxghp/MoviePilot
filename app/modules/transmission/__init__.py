@@ -119,15 +119,17 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                     if content.exists():
                         torrent_content = content.read_bytes()
                     else:
-                        # 缓存处理器
-                        cache_backend = FileCache()
                         # 读取缓存的种子文件
-                        torrent_content = cache_backend.get(content.as_posix(), region="torrents")
+                        torrent_content = FileCache().get(content.as_posix(), region="torrents")
                 else:
                     torrent_content = content
 
                 if torrent_content:
-                    torrent_info = Torrent.from_string(torrent_content)
+                    # 检查是否为磁力链接
+                    if StringUtils.is_magnet_link(torrent_content):
+                        return None, torrent_content
+                    else:
+                        torrent_info = Torrent.from_string(torrent_content)
 
                 return torrent_info, torrent_content
             except Exception as e:
@@ -139,7 +141,11 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
         # 读取种子的名称
         torrent, content = __get_torrent_info()
-        if not torrent:
+        # 检查是否为磁力链接
+        is_magnet = isinstance(content, str) and content.startswith("magnet:") or isinstance(content,
+                                                                                             bytes) and content.startswith(
+            b"magnet:")
+        if not torrent and not is_magnet:
             return None, None, None, f"添加种子任务失败：无法读取种子文件"
 
         # 获取下载器

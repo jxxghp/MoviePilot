@@ -7,6 +7,7 @@ from urllib.parse import unquote
 from torrentool.api import Torrent
 
 from app.core.cache import FileCache
+from app.core.cache import TTLCache
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
 from app.core.meta import MetaBase
@@ -16,17 +17,16 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.utils.http import RequestUtils
-from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
 
 
-class TorrentHelper(metaclass=WeakSingleton):
+class TorrentHelper:
     """
     种子帮助类
     """
 
     def __init__(self):
-        self._invalid_torrents = []
+        self._invalid_torrents = TTLCache(maxsize=128, ttl=3600 * 24)
 
     def download_torrent(self, url: str,
                          cookie: Optional[str] = None,
@@ -199,8 +199,14 @@ class TorrentHelper(metaclass=WeakSingleton):
         :param torrent_content: 种子内容
         :return: 文件夹名、文件清单，单文件种子返回空文件夹名
         """
+
         if not torrent_content:
             return "", []
+
+        # 检查是否为磁力链接
+        if StringUtils.is_magnet_link(torrent_content):
+            return "", []
+
         try:
             # 解析种子内容
             torrentinfo = Torrent.from_string(torrent_content)
@@ -346,7 +352,7 @@ class TorrentHelper(metaclass=WeakSingleton):
         添加无效种子
         """
         if url not in self._invalid_torrents:
-            self._invalid_torrents.append(url)
+            self._invalid_torrents[url] = True
 
     @staticmethod
     def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaBase, torrent: TorrentInfo) -> bool:
