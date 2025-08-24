@@ -390,7 +390,17 @@ class MemoryBackend(CacheBackend):
         region_cache = self._region_caches.setdefault(region, MemoryTTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
         with lock:
-            region_cache[key] = value
+            try:
+                region_cache[key] = value
+            except AttributeError as e:
+                # Handle cachetools AttributeError with _Link.next
+                if "'_Link' object has no attribute 'next'" in str(e):
+                    logger.warning(f"Cachetools AttributeError encountered, clearing cache for region {region}")
+                    # Clear the problematic cache and retry
+                    region_cache.clear()
+                    region_cache[key] = value
+                else:
+                    raise
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -429,7 +439,16 @@ class MemoryBackend(CacheBackend):
         if region_cache is None:
             return
         with lock:
-            del region_cache[key]
+            try:
+                del region_cache[key]
+            except AttributeError as e:
+                # Handle cachetools AttributeError with _Link.next
+                if "'_Link' object has no attribute 'next'" in str(e):
+                    logger.warning(f"Cachetools AttributeError encountered during delete, clearing cache for region {region}")
+                    # Clear the problematic cache
+                    region_cache.clear()
+                else:
+                    raise
 
     def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
@@ -513,7 +532,17 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         region_cache = self._region_caches.setdefault(region, MemoryTTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
         with lock:
-            region_cache[key] = value
+            try:
+                region_cache[key] = value
+            except AttributeError as e:
+                # Handle cachetools AttributeError with _Link.next
+                if "'_Link' object has no attribute 'next'" in str(e):
+                    logger.warning(f"Cachetools AttributeError encountered, clearing cache for region {region}")
+                    # Clear the problematic cache and retry
+                    region_cache.clear()
+                    region_cache[key] = value
+                else:
+                    raise
 
     async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -552,7 +581,16 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         if region_cache is None:
             return
         with lock:
-            del region_cache[key]
+            try:
+                del region_cache[key]
+            except AttributeError as e:
+                # Handle cachetools AttributeError with _Link.next
+                if "'_Link' object has no attribute 'next'" in str(e):
+                    logger.warning(f"Cachetools AttributeError encountered during delete, clearing cache for region {region}")
+                    # Clear the problematic cache
+                    region_cache.clear()
+                else:
+                    raise
 
     async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
         """
