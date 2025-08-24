@@ -386,10 +386,10 @@ class MemoryBackend(CacheBackend):
         ttl = ttl or self.ttl
         maxsize = kwargs.get("maxsize", self.maxsize)
         region = self.get_region(region)
-        # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
-        region_cache = self._region_caches.setdefault(region, MemoryTTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
         with lock:
+            # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
+            region_cache = self._region_caches.setdefault(region, MemoryTTLCache(maxsize=maxsize, ttl=ttl))
             region_cache[key] = value
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
