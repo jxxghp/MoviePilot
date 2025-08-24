@@ -68,13 +68,7 @@ RUN python3 -m venv ${VENV_PATH} \
     && pip install --upgrade pip \
     && pip install Cython pip-tools \
     && pip-compile requirements.in \
-    && pip install -r requirements.txt \
-RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-archive-keyring.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-archive-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
-RUN apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && pip install -r requirements.txt
 
 # 下载准备代码
 FROM prepare_package AS prepare_code
@@ -90,7 +84,8 @@ RUN FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/
     && cat /tmp/MoviePilot-Plugins-main/package.json | jq -r 'to_entries[] | select(.value.v2 == true) | .key' | awk '{print tolower($0)}' | \
     while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
-    && mv -f /tmp/MoviePilot-Resources-main/resources.v2/* /app/app/helper/
+    && mv -f /tmp/MoviePilot-Resources-main/resources.v2/* /app/app/helper/ \
+    && find /app/app/plugins -name requirements.txt -type f -exec pip install -r {} \;
 
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
