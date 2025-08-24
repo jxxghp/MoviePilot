@@ -6,7 +6,7 @@ from typing import Optional, List
 from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.modules.filemanager.storages import StorageBase
+from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -241,6 +241,10 @@ class Rclone(StorageBase):
         下载文件
         """
         path = (path or settings.TEMP_PATH) / fileitem.name
+        
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+        
         try:
             retcode = subprocess.run(
                 [
@@ -251,9 +255,18 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
+                # 下载完成，回调100%进度
+                if progress_callback:
+                    progress_callback(100)
                 return path
+            else:
+                # 下载失败，回调0进度
+                if progress_callback:
+                    progress_callback(0)
         except Exception as err:
             logger.error(f"【rclone】复制文件失败：{err}")
+            if progress_callback:
+                progress_callback(0)
         return None
 
     def upload(self, fileitem: schemas.FileItem, path: Path,
@@ -266,6 +279,10 @@ class Rclone(StorageBase):
         """
         try:
             new_path = Path(fileitem.path) / (new_name or path.name)
+            
+            # 添加进度回调
+            progress_callback = transfer_process(str(path))
+            
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
@@ -275,9 +292,18 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
+                # 上传完成，回调100%进度
+                if progress_callback:
+                    progress_callback(100)
                 return self.get_item(new_path)
+            else:
+                # 上传失败，回调0进度
+                if progress_callback:
+                    progress_callback(0)
         except Exception as err:
             logger.error(f"【rclone】上传文件失败：{err}")
+            if progress_callback:
+                progress_callback(0)
         return None
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
@@ -308,6 +334,9 @@ class Rclone(StorageBase):
         :param new_name: 新文件名
         """
         try:
+            # 添加进度回调
+            progress_callback = transfer_process(fileitem.path)
+            
             retcode = subprocess.run(
                 [
                     'rclone', 'moveto',
@@ -317,9 +346,18 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
+                # 移动完成，回调100%进度
+                if progress_callback:
+                    progress_callback(100)
                 return True
+            else:
+                # 移动失败，回调0进度
+                if progress_callback:
+                    progress_callback(0)
         except Exception as err:
             logger.error(f"【rclone】移动文件失败：{err}")
+            if progress_callback:
+                progress_callback(0)
         return False
 
     def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -330,6 +368,9 @@ class Rclone(StorageBase):
         :param new_name: 新文件名
         """
         try:
+            # 添加进度回调
+            progress_callback = transfer_process(fileitem.path)
+            
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
@@ -339,9 +380,18 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
+                # 复制完成，回调100%进度
+                if progress_callback:
+                    progress_callback(100)
                 return True
+            else:
+                # 复制失败，回调0进度
+                if progress_callback:
+                    progress_callback(0)
         except Exception as err:
             logger.error(f"【rclone】复制文件失败：{err}")
+            if progress_callback:
+                progress_callback(0)
         return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:

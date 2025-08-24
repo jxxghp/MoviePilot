@@ -17,6 +17,7 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
+from app.modules.filemanager.storages import transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
@@ -539,13 +540,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 初始化进度条
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
-        progress_bar = tqdm(
-            total=file_size,
-            unit='B',
-            unit_scale=True,
-            desc="上传进度",
-            ascii=True
-        )
+        progress_callback = transfer_process(str(local_path))
 
         # 初始化分片
         upload_id = bucket.init_multipart_upload(object_name,
@@ -569,11 +564,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 offset += num_to_upload
                 part_number += 1
                 # 更新进度
-                progress_bar.update(num_to_upload)
-
-        # 关闭进度条
-        if progress_bar:
-            progress_bar.close()
+                if progress_callback:
+                    percent = (offset / file_size) * 100
+                    progress_callback(percent)
 
         # 请求头
         headers = {
@@ -618,11 +611,30 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return None
         download_url = list(download_info.values())[0].get("url", {}).get("url")
         local_path = path or settings.TEMP_PATH / fileitem.name
-        with self.session.get(download_url, stream=True) as r:
-            r.raise_for_status()
-            with open(local_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        
+        # 获取文件大小用于进度显示
+        file_size = detail.size or 0
+        progress_callback = None
+        if file_size > 0:
+            progress_callback = transfer_process(fileitem.path)
+            
+        try:
+            with self.session.get(download_url, stream=True) as r:
+                r.raise_for_status()
+                downloaded_size = 0
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        # 更新进度
+                        if progress_callback and file_size > 0:
+                            percent = (downloaded_size / file_size) * 100
+                            progress_callback(percent)
+        except Exception as e:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
+            raise e
+            
         return local_path
 
     def check(self) -> bool:
@@ -747,6 +759,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
             return False
 
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+
         resp = self._request_api(
             "POST",
             "/open/ufile/copy",
@@ -756,12 +771,20 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             }
         )
         if not resp:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
         if resp["state"]:
+            # 复制完成，回调100%进度
+            if progress_callback:
+                progress_callback(100)
             new_path = Path(path) / fileitem.name
             new_item = self._delay_get_item(new_path)
             self.rename(new_item, new_name)
             return True
+        else:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
         return False
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -777,6 +800,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if not dest_fileitem or dest_fileitem.type != "dir":
             logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
             return False
+            
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+        
         resp = self._request_api(
             "POST",
             "/open/ufile/move",
@@ -786,12 +813,20 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             }
         )
         if not resp:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
         if resp["state"]:
+            # 移动完成，回调100%进度
+            if progress_callback:
+                progress_callback(100)
             new_path = Path(path) / fileitem.name
             new_file = self._delay_get_item(new_path)
             self.rename(new_file, new_name)
             return True
+        else:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
         return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:

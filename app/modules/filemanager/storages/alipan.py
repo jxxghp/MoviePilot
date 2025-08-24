@@ -14,6 +14,7 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
+from app.modules.filemanager.storages import transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
@@ -726,11 +727,29 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             return None
         download_url = download_info.get("url")
         local_path = path or settings.TEMP_PATH / fileitem.name
-        with requests.get(download_url, stream=True) as r:
-            r.raise_for_status()
-            with open(local_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        
+        # 获取文件大小用于进度显示
+        file_size = fileitem.size or 0
+        if file_size > 0:
+            progress_bar = self._log_progress(f"【阿里云盘】{fileitem.name} 下载进度", file_size)
+        else:
+            progress_bar = None
+            
+        try:
+            with requests.get(download_url, stream=True) as r:
+                r.raise_for_status()
+                downloaded_size = 0
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        # 更新进度
+                        if progress_bar and file_size > 0:
+                            progress_bar.update(len(chunk))
+        finally:
+            if progress_bar:
+                progress_bar.close()
+                
         return local_path
 
     def check(self) -> bool:
@@ -847,6 +866,10 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         if not dest_fileitem or dest_fileitem.type != "dir":
             logger.warn(f"【阿里云盘】目标路径 {path} 不存在或不是目录！")
             return False
+            
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+        
         resp = self._request_api(
             "POST",
             "/adrive/v1.0/openFile/copy",
@@ -858,10 +881,19 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             }
         )
         if not resp:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
         if resp.get("code"):
             logger.warn(f"【阿里云盘】复制文件失败: {resp.get('message')}")
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
+            
+        # 复制完成，回调100%进度
+        if progress_callback:
+            progress_callback(100)
+            
         # 重命名
         new_path = Path(path) / fileitem.name
         new_file = self._delay_get_item(new_path)
@@ -881,6 +913,9 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             logger.warn(f"【阿里云盘】目标路径 {path} 不存在或不是目录！")
             return False
 
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+
         resp = self._request_api(
             "POST",
             "/adrive/v1.0/openFile/move",
@@ -892,10 +927,19 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             }
         )
         if not resp:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
         if resp.get("code"):
             logger.warn(f"【阿里云盘】移动文件失败: {resp.get('message')}")
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
+            
+        # 移动完成，回调100%进度
+        if progress_callback:
+            progress_callback(100)
+            
         return True
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:

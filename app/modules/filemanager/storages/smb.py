@@ -11,6 +11,7 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager import StorageBase
+from app.modules.filemanager.storages import transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 
@@ -423,16 +424,28 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 确保本地目录存在
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
+            # 获取文件大小用于进度显示
+            file_size = fileitem.size or 0
+            progress_callback = None
+            if file_size > 0:
+                progress_callback = transfer_process(fileitem.path)
+                
             # 使用更高效的文件传输方式
             with smbclient.open_file(smb_path, mode="rb") as src_file:
                 with open(local_path, "wb") as dst_file:
                     # 使用更大的缓冲区提高性能
                     buffer_size = 1024 * 1024  # 1MB
+                    downloaded_size = 0
                     while True:
                         chunk = src_file.read(buffer_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
+                        downloaded_size += len(chunk)
+                        # 更新进度
+                        if progress_callback and file_size > 0:
+                            percent = (downloaded_size / file_size) * 100
+                            progress_callback(percent)
 
             logger.info(f"【SMB】下载成功: {fileitem.path} -> {local_path}")
             return local_path
@@ -452,16 +465,26 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             target_path = Path(fileitem.path) / target_name
             smb_path = self._normalize_path(str(target_path))
 
+            # 获取文件大小用于进度显示
+            file_size = path.stat().st_size
+            progress_callback = transfer_process(str(path))
+            
             # 使用更高效的文件传输方式
             with open(path, "rb") as src_file:
                 with smbclient.open_file(smb_path, mode="wb") as dst_file:
                     # 使用更大的缓冲区提高性能
                     buffer_size = 1024 * 1024  # 1MB
+                    uploaded_size = 0
                     while True:
                         chunk = src_file.read(buffer_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
+                        uploaded_size += len(chunk)
+                        # 更新进度
+                        if progress_callback:
+                            percent = (uploaded_size / file_size) * 100
+                            progress_callback(percent)
 
             logger.info(f"【SMB】上传成功: {path} -> {target_path}")
 
@@ -476,14 +499,21 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         复制文件
         """
         try:
+            # 添加进度回调
+            progress_callback = transfer_process(fileitem.path)
+            
             # 下载到临时文件
             temp_file = self.download(fileitem)
             if not temp_file:
+                if progress_callback:
+                    progress_callback(0)  # 失败时回调0进度
                 return False
 
             # 获取目标目录
             target_folder = self.get_item(path)
             if not target_folder:
+                if progress_callback:
+                    progress_callback(0)  # 失败时回调0进度
                 return False
 
             # 上传到目标位置
@@ -493,9 +523,19 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             if temp_file.exists():
                 temp_file.unlink()
 
-            return result is not None
+            if result is not None:
+                # 复制完成，回调100%进度
+                if progress_callback:
+                    progress_callback(100)
+                return True
+            else:
+                if progress_callback:
+                    progress_callback(0)  # 失败时回调0进度
+                return False
         except Exception as e:
             logger.error(f"【SMB】复制失败: {e}")
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -503,18 +543,30 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         移动文件
         """
         try:
+            # 添加进度回调
+            progress_callback = transfer_process(fileitem.path)
+            
             # 先复制
             if not self.copy(fileitem, path, new_name):
+                if progress_callback:
+                    progress_callback(0)  # 失败时回调0进度
                 return False
 
             # 再删除原文件
             if not self.delete(fileitem):
                 logger.warn(f"【SMB】删除原文件失败: {fileitem.path}")
+                if progress_callback:
+                    progress_callback(0)  # 失败时回调0进度
                 return False
 
+            # 移动完成，回调100%进度
+            if progress_callback:
+                progress_callback(100)
             return True
         except Exception as e:
             logger.error(f"【SMB】移动失败: {e}")
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:

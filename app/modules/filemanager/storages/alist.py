@@ -9,7 +9,7 @@ from app import schemas
 from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
-from app.modules.filemanager.storages import StorageBase
+from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.singleton import WeakSingleton
@@ -556,11 +556,26 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         else:
             local_path = path / fileitem.name
 
-        with requests.get(download_url, headers=self.__get_header_with_token(), stream=True) as r:
-            r.raise_for_status()
-            with open(local_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+        
+        try:
+            with requests.get(download_url, headers=self.__get_header_with_token(), stream=True) as r:
+                r.raise_for_status()
+                downloaded_size = 0
+                file_size = fileitem.size or 0
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        # 更新进度
+                        if progress_callback and file_size > 0:
+                            percent = (downloaded_size / file_size) * 100
+                            progress_callback(percent)
+        except Exception as e:
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
+            raise e
 
         if local_path.exists():
             return local_path
@@ -581,18 +596,31 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         headers.setdefault("Content-Type", "application/octet-stream")
         headers.setdefault("As-Task", str(task).lower())
         headers.setdefault("File-Path", encoded_path)
-        with open(path, "rb") as f:
-            resp = RequestUtils(headers=headers).put_res(
-                self.__get_api_url("/api/fs/put"),
+        
+        # 添加进度回调
+        progress_callback = transfer_process(str(path))
+        
+        try:
+            with open(path, "rb") as f:
+                resp = RequestUtils(headers=headers).put_res(
+                    self.__get_api_url("/api/fs/put"),
                 data=f,
             )
 
         if resp is None:
             logger.warn(f"【OpenList】请求上传文件 {path} 失败")
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return None
         if resp.status_code != 200:
             logger.warn(f"【OpenList】请求上传文件 {path} 失败，状态码：{resp.status_code}")
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return None
+
+        # 上传完成，回调100%进度
+        if progress_callback:
+            progress_callback(100)
 
         new_item = self.get_item(Path(fileitem.path) / path.name)
         if new_item and new_name and new_name != path.name:
@@ -614,6 +642,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param path: 目标目录
         :param new_name: 新文件名
         """
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+        
         resp = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
@@ -643,11 +674,15 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             logger.warn(
                 f"【OpenList】请求复制文件 {fileitem.path} 失败，无法连接alist服务"
             )
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
         if resp.status_code != 200:
             logger.warn(
                 f"【OpenList】请求复制文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
 
         result = resp.json()
@@ -655,7 +690,13 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             logger.warn(
                 f'【OpenList】复制文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
+        # 复制完成，回调100%进度
+        if progress_callback:
+            progress_callback(100)
+            
         # 重命名
         if fileitem.name != new_name:
             self.rename(
@@ -670,6 +711,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param path: 目标目录
         :param new_name: 新文件名
         """
+        # 添加进度回调
+        progress_callback = transfer_process(fileitem.path)
+        
         # 先重命名
         if fileitem.name != new_name:
             self.rename(fileitem, new_name)
@@ -702,11 +746,15 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             logger.warn(
                 f"【OpenList】请求移动文件 {fileitem.path} 失败，无法连接alist服务"
             )
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
         if resp.status_code != 200:
             logger.warn(
                 f"【OpenList】请求移动文件 {fileitem.path} 失败，状态码：{resp.status_code}"
             )
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
 
         result = resp.json()
@@ -714,7 +762,14 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             logger.warn(
                 f'【OpenList】移动文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
+            if progress_callback:
+                progress_callback(0)  # 失败时回调0进度
             return False
+            
+        # 移动完成，回调100%进度
+        if progress_callback:
+            progress_callback(100)
+            
         return True
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
