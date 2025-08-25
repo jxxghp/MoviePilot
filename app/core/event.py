@@ -609,7 +609,11 @@ class EventManager(metaclass=Singleton):
                 module_name = f"app.chain.{class_name[:-5].lower()}"
                 module = importlib.import_module(module_name)
             elif class_name.endswith("Helper"):
-                module_name = f"app.helper.{class_name[:-6].lower()}"
+                # 特殊处理 Async 类
+                if class_name.startswith("Async"):
+                    module_name = f"app.helper.{class_name[5:-6].lower()}"
+                else:
+                    module_name = f"app.helper.{class_name[:-6].lower()}"
                 module = importlib.import_module(module_name)
             else:
                 module_name = f"app.{class_name.lower()}"
