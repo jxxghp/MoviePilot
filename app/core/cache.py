@@ -1174,18 +1174,38 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
             async def async_wrapper(*args, **kwargs):
                 # 获取缓存键
                 cache_key = __get_cache_key(args, kwargs)
-                # 尝试获取缓存
-                cached_value = await cache_backend.get(cache_key, region=cache_region)
-                if should_cache(cached_value) and await async_is_valid_cache_value(cache_key, cached_value,
-                                                                                   cache_region):
-                    return cached_value
-                # 执行异步函数并缓存结果
+                
+                # 尝试获取缓存，如果失败则跳过缓存
+                cached_value = None
+                try:
+                    cached_value = await cache_backend.get(cache_key, region=cache_region)
+                    if should_cache(cached_value) and await async_is_valid_cache_value(cache_key, cached_value,
+                                                                                       cache_region):
+                        return cached_value
+                except Exception as e:
+                    # 如果缓存操作失败（比如Redis连接问题），记录警告但继续执行
+                    if "Event loop is closed" in str(e) or "Failed to get key" in str(e):
+                        logger.warning(f"Cache get operation failed, skipping cache for {func.__name__}: {e}")
+                    else:
+                        logger.error(f"Cache get operation failed for {func.__name__}: {e}")
+                
+                # 执行异步函数
                 result = await func(*args, **kwargs)
+                
                 # 判断是否需要缓存
                 if not should_cache(result):
                     return result
-                # 设置缓存（如果有传入的 maxsize 和 ttl，则覆盖默认值）
-                await cache_backend.set(cache_key, result, ttl=ttl, maxsize=maxsize, region=cache_region)
+                
+                # 尝试设置缓存，如果失败则忽略
+                try:
+                    await cache_backend.set(cache_key, result, ttl=ttl, maxsize=maxsize, region=cache_region)
+                except Exception as e:
+                    # 如果缓存操作失败（比如Redis连接问题），记录警告但不影响函数执行
+                    if "Event loop is closed" in str(e) or "Failed to get key" in str(e):
+                        logger.warning(f"Cache set operation failed, skipping cache for {func.__name__}: {e}")
+                    else:
+                        logger.error(f"Cache set operation failed for {func.__name__}: {e}")
+                
                 return result
 
             async def cache_clear():

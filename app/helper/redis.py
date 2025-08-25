@@ -18,6 +18,34 @@ _complex_serializable_types = set()
 _simple_serializable_types = set()
 
 
+async def safe_async_operation(operation, *args, **kwargs):
+    """
+    安全执行异步操作的辅助函数，处理事件循环关闭等异常情况
+    
+    :param operation: 要执行的异步操作函数
+    :param args: 位置参数
+    :param kwargs: 关键字参数
+    :return: 操作结果或None（如果操作失败）
+    """
+    try:
+        import asyncio
+        # 检查事件循环是否运行
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning("Event loop is not running, skipping async operation")
+            return None
+        
+        return await operation(*args, **kwargs)
+    except Exception as e:
+        if "Event loop is closed" in str(e) or "Failed to get key" in str(e):
+            logger.warning(f"Async operation failed due to event loop issues: {e}")
+            return None
+        else:
+            logger.error(f"Async operation failed: {e}")
+            return None
+
+
 def serialize(value: Any) -> bytes:
     """
     将值序列化为二进制数据，根据序列化方式标识格式
@@ -420,13 +448,16 @@ class AsyncRedisHelper(metaclass=Singleton):
         :param region: 缓存的区
         :param kwargs: 其他参数
         """
-        try:
+        async def _set_operation():
             await self._connect()
             redis_key = self.__make_redis_key(region, key)
             # 对值进行序列化
             serialized_value = serialize(value)
             kwargs.pop("maxsize", None)
             await self.client.set(redis_key, serialized_value, ex=ttl, **kwargs)
+        
+        try:
+            await safe_async_operation(_set_operation)
         except Exception as e:
             logger.error(f"Failed to set key (async): {key} in region: {region}, error: {e}")
 
@@ -438,11 +469,14 @@ class AsyncRedisHelper(metaclass=Singleton):
         :param region: 缓存的区
         :return: 存在返回True，否则返回False
         """
-        try:
+        async def _exists_operation():
             await self._connect()
             redis_key = self.__make_redis_key(region, key)
-            result = await self.client.exists(redis_key)
-            return result == 1
+            return await self.client.exists(redis_key) == 1
+        
+        try:
+            result = await safe_async_operation(_exists_operation)
+            return result if result is not None else False
         except Exception as e:
             logger.error(f"Failed to exists key (async): {key} region: {region}, error: {e}")
             return False
@@ -455,13 +489,17 @@ class AsyncRedisHelper(metaclass=Singleton):
         :param region: 缓存的区
         :return: 返回缓存的值，如果缓存不存在返回None
         """
-        try:
+        async def _get_operation():
             await self._connect()
             redis_key = self.__make_redis_key(region, key)
             value = await self.client.get(redis_key)
             if value is not None:
                 return deserialize(value)
             return None
+        
+        try:
+            result = await safe_async_operation(_get_operation)
+            return result
         except Exception as e:
             logger.error(f"Failed to get key (async): {key} in region: {region}, error: {e}")
             return None

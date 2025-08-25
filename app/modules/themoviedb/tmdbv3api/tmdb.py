@@ -133,7 +133,16 @@ class TMDb(object):
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
     async def async_cached_request(self, method, url, data, json,
                                    _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return await self.async_request(method, url, data, json)
+        try:
+            return await self.async_request(method, url, data, json)
+        except Exception as e:
+            # 如果缓存操作失败（比如Redis连接问题），直接执行请求而不使用缓存
+            if "Event loop is closed" in str(e) or "Failed to get key" in str(e):
+                logger.warning(f"Redis cache operation failed, falling back to direct request: {e}")
+                return await self.async_request(method, url, data, json)
+            else:
+                # 重新抛出其他类型的异常
+                raise
 
     def request(self, method, url, data, json):
         if method == "GET":

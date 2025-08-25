@@ -1198,25 +1198,35 @@ class SubscribeChain(ChainBase):
             except ValueError:
                 logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                 continue
+            
             # 识别媒体信息
-            if mtype == MediaType.MOVIE:
-                mediainfo: MediaInfo = await self.async_recognize_media(mtype=mtype,
-                                                                        tmdbid=subscribe.tmdbid,
-                                                                        doubanid=subscribe.doubanid,
-                                                                        bangumiid=subscribe.bangumiid,
-                                                                        episode_group=subscribe.episode_group,
-                                                                        cache=False)
-                if not mediainfo:
-                    logger.warn(
-                        f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+            try:
+                if mtype == MediaType.MOVIE:
+                    mediainfo: MediaInfo = await self.async_recognize_media(mtype=mtype,
+                                                                            tmdbid=subscribe.tmdbid,
+                                                                            doubanid=subscribe.doubanid,
+                                                                            bangumiid=subscribe.bangumiid,
+                                                                            episode_group=subscribe.episode_group,
+                                                                            cache=False)
+                    if not mediainfo:
+                        logger.warn(
+                            f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                        continue
+                else:
+                    episodes = await TmdbChain().async_tmdb_episodes(tmdbid=subscribe.tmdbid,
+                                                                     season=subscribe.season,
+                                                                     episode_group=subscribe.episode_group)
+                    if not episodes:
+                        logger.warn(
+                            f'未识别到季集信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，豆瓣ID：{subscribe.doubanid}，季：{subscribe.season}')
+                        continue
+            except Exception as e:
+                # 捕获Redis连接错误或其他异步操作错误
+                if "Event loop is closed" in str(e) or "Failed to get key" in str(e):
+                    logger.warning(f'订阅日历预缓存时遇到Redis连接问题，跳过订阅 {subscribe.name}: {e}')
                     continue
-            else:
-                episodes = await TmdbChain().async_tmdb_episodes(tmdbid=subscribe.tmdbid,
-                                                                 season=subscribe.season,
-                                                                 episode_group=subscribe.episode_group)
-                if not episodes:
-                    logger.warn(
-                        f'未识别到季集信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，豆瓣ID：{subscribe.doubanid}，季：{subscribe.season}')
+                else:
+                    logger.error(f'订阅日历预缓存时处理订阅 {subscribe.name} 时出错: {e}')
                     continue
         logger.info(f'订阅日历预缓存完成')
 
