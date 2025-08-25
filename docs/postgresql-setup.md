@@ -70,21 +70,28 @@ DB_POSTGRESQL_PASSWORD=your-password
 4. 使用数据库迁移工具或手动导入数据
 
 #### 注意事项
-完成数据迁移后需要对postgresql中的表进行索引初始值进行更新，否则会出现唯一索引已存在的异常
-例如：
+**自动序列修复（推荐）**：
+从 v2.7.6 开始，应用程序会在启动时自动检查并修复 PostgreSQL 的 Identity 序列问题。如果您遇到类似下面的错误，只需重启应用程序，自动修复功能会处理：
+
 ```json
 【EventType.SiteUpdated 事件处理出错】
 
 SiteChain.cache_site_userdata
 (psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "siteuserdata_pkey"
 DETAIL:  Key (id)=(18) already exists.
-
-[SQL: INSERT INTO siteuserdata (domain, name, username, userid, user_level, join_at, bonus, upload, download, ratio, seeding, leeching, seeding_size, leeching_size, seeding_info, message_unread, message_unread_contents, err_msg, updated_day, updated_time) VALUES (%(domain)s, %(name)s, %(username)s, %(userid)s, %(user_level)s, %(join_at)s, %(bonus)s, %(upload)s, %(download)s, %(ratio)s, %(seeding)s, %(leeching)s, %(seeding_size)s, %(leeching_size)s, %(seeding_info)s::JSON, %(message_unread)s, %(message_unread_contents)s::JSON, %(err_msg)s, %(updated_day)s, %(updated_time)s) RETURNING siteuserdata.id]
-[parameters: {'domain': 'btschool.club', 'name': '学校', 'username': None, 'userid': None, 'user_level': None, 'join_at': None, 'bonus': 0.0, 'upload': 0, 'download': 0, 'ratio': 0.0, 'seeding': 0, 'leeching': 0, 'seeding_size': 0, 'leeching_size': 0, 'seeding_info': '[]', 'message_unread': 0, 'message_unread_contents': '[]', 'err_msg': '未检测到已登陆，请检查cookies是否过期', 'updated_day': '2025-08-22', 'updated_time': '09:52:01'}]
-(Background on this error at: https://sqlalche.me/e/20/gkpj)
 ```
 
-需要对每一个表分别执行下面的语句(下面的SQL以`workflowc`数据表为例，每张表请自行修改，其中`user`表因为关键字原因，应该写成`public.user`的方式)：
+或者：
+
+```json
+【EventType.SystemError 事件处理出错】
+
+SystemNotification.notification
+(psycopg2.errors.NotNullViolation) null value in column "id" of relation "message" violates not-null constraint
+```
+
+**手动修复（可选）**：
+如果自动修复未能解决问题，您也可以手动执行以下 SQL 语句。需要对每一个表分别执行下面的语句(下面的SQL以`workflow`数据表为例，每张表请自行修改，其中`user`表因为关键字原因，应该写成`public.user`的方式)：
 
 ```sql
 DO $$
