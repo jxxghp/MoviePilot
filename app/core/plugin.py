@@ -1189,6 +1189,7 @@ class PluginManager(metaclass=Singleton):
     async def async_get_online_plugins(self, force: bool = False) -> List[schemas.Plugin]:
         """
         异步获取所有在线插件信息
+        :param force: 是否强制刷新（忽略缓存）
         """
         if not settings.PLUGIN_MARKET:
             return []

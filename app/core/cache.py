@@ -1393,7 +1393,7 @@ class TTLCache(CacheProxy):
     def __init__(self,
                  region: Optional[str] = DEFAULT_CACHE_REGION,
                  maxsize: Optional[int] = DEFAULT_CACHE_SIZE,
-                 ttl: Optional[int]= DEFAULT_CACHE_TTL):
+                 ttl: Optional[int] = DEFAULT_CACHE_TTL):
         """
         初始化 TTL 缓存
 
@@ -1412,7 +1412,7 @@ class LRUCache(CacheProxy):
 
     def __init__(self,
                  region: Optional[str] = DEFAULT_CACHE_REGION,
-                 maxsize: Optional[int]= DEFAULT_CACHE_SIZE
+                 maxsize: Optional[int] = DEFAULT_CACHE_SIZE
                  ):
         """
         初始化 LRU 缓存

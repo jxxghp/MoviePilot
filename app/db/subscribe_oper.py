@@ -119,6 +119,14 @@ class SubscribeOper(DbOper):
             return Subscribe.get_by_state(self._db, state)
         return Subscribe.list(self._db)
 
+    async def async_list(self, state: Optional[str] = None) -> List[Subscribe]:
+        """
+        异步获取订阅列表
+        """
+        if state:
+            return await Subscribe.async_get_by_state(self._db, state)
+        return await Subscribe.async_list(self._db)
+
     def delete(self, sid: int):
         """
         删除订阅

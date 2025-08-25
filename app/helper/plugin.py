@@ -911,10 +911,10 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         # 异步版本直接调用不带缓存的版本（缓存在异步环境下可能有并发问题）
         if force:
-            return await self._async_get_plugins_uncached(repo_url, package_version)
+            await self._async_get_plugins_cached.cache_clear()
         return await self._async_get_plugins_cached(repo_url, package_version)
 
-    @cached(maxsize=64, ttl=1800)
+    @cached(maxsize=128, ttl=1800)
     async def _async_get_plugins_cached(self, repo_url: str,
                                         package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """

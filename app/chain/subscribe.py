@@ -1184,6 +1184,42 @@ class SubscribeChain(ChainBase):
                     logger.error(f'follow用户分享订阅 {title} 添加失败：{message}')
         logger.info(f'follow用户分享订阅刷新完成，共添加 {success_count} 个订阅')
 
+    async def cache_calendar(self):
+        """
+        预缓存订阅日历，实际上就是查询一遍所有订阅的媒体信息
+        前端请示是异常的，所以需要使用异步缓存方法
+        """
+        logger.info(f'开始预缓存订阅日历 ...')
+        for subscribe in await SubscribeOper().async_list():
+            if global_vars.is_system_stopped:
+                break
+            try:
+                mtype = MediaType(subscribe.type)
+            except ValueError:
+                logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
+                continue
+            # 识别媒体信息
+            if mtype == MediaType.MOVIE:
+                mediainfo: MediaInfo = await self.async_recognize_media(mtype=mtype,
+                                                                        tmdbid=subscribe.tmdbid,
+                                                                        doubanid=subscribe.doubanid,
+                                                                        bangumiid=subscribe.bangumiid,
+                                                                        episode_group=subscribe.episode_group,
+                                                                        cache=False)
+                if not mediainfo:
+                    logger.warn(
+                        f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                    continue
+            else:
+                episodes = await TmdbChain().async_tmdb_episodes(tmdbid=subscribe.tmdbid,
+                                                                 season=subscribe.season,
+                                                                 episode_group=subscribe.episode_group)
+                if not episodes:
+                    logger.warn(
+                        f'未识别到季集信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，豆瓣ID：{subscribe.doubanid}，季：{subscribe.season}')
+                    continue
+        logger.info(f'订阅日历预缓存完成')
+
     @staticmethod
     def __update_subscribe_note(subscribe: Subscribe, downloads: Optional[List[Context]]):
         """

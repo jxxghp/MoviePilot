@@ -1,3 +1,4 @@
+import inspect
 import threading
 import traceback
 from datetime import datetime, timedelta
@@ -27,6 +28,7 @@ from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow, ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey
+from app.utils.asyncio import AsyncUtils
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
 
@@ -162,6 +164,19 @@ class Scheduler(metaclass=Singleton):
                     "name": "推荐缓存",
                     "func": RecommendChain().refresh_recommend,
                     "running": False,
+                },
+                "plugin_market_refresh": {
+                    "name": "插件市场缓存",
+                    "func": PluginManager().async_get_online_plugins,
+                    "running": False,
+                    "kwargs": {
+                        "force": True
+                    }
+                },
+                "subscribe_calendar_cache": {
+                    "name": "订阅日历缓存",
+                    "func": SubscribeChain().cache_calendar,
+                    "running": False
                 }
             }
 
@@ -180,7 +195,7 @@ class Scheduler(metaclass=Singleton):
                     id="cookiecloud",
                     name="同步CookieCloud站点",
                     minutes=int(settings.COOKIECLOUD_INTERVAL),
-                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1),
+                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
                     kwargs={
                         'job_id': 'cookiecloud'
                     }
@@ -195,7 +210,7 @@ class Scheduler(metaclass=Singleton):
                     id="mediaserver_sync",
                     name="同步媒体服务器",
                     hours=int(settings.MEDIASERVER_SYNC_INTERVAL),
-                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
+                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=10),
                     kwargs={
                         'job_id': 'mediaserver_sync'
                     }
@@ -301,7 +316,7 @@ class Scheduler(metaclass=Singleton):
                 id="random_wallpager",
                 name="壁纸缓存",
                 minutes=30,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=1),
                 kwargs={
                     'job_id': 'random_wallpager'
                 }
@@ -363,9 +378,34 @@ class Scheduler(metaclass=Singleton):
                 id="recommend_refresh",
                 name="推荐缓存",
                 hours=24,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=5),
                 kwargs={
                     'job_id': 'recommend_refresh'
+                }
+            )
+
+            # 插件市场缓存
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="plugin_market_refresh",
+                name="插件市场缓存",
+                minutes=30,
+                kwargs={
+                    'job_id': 'plugin_market_refresh'
+                }
+            )
+
+            # 订阅日历缓存
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="subscribe_calendar_cache",
+                name="订阅日历缓存",
+                hours=6,
+                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=2),
+                kwargs={
+                    'job_id': 'subscribe_calendar_cache'
                 }
             )
 
@@ -417,7 +457,13 @@ class Scheduler(metaclass=Singleton):
         try:
             if not kwargs:
                 kwargs = job.get("kwargs") or {}
-            job["func"](*args, **kwargs)
+            func = job.get("func")
+            if not func:
+                return
+            if inspect.iscoroutinefunction(func):
+                AsyncUtils.run_async(func(*args, **kwargs))
+            else:
+                job["func"](*args, **kwargs)
         except Exception as e:
             logger.error(f"定时任务 {job.get('name')} 执行失败：{str(e)} - {traceback.format_exc()}")
             MessageHelper().put(title=f"{job.get('name')} 执行失败",
