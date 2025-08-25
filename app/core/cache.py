@@ -474,7 +474,11 @@ class MemoryBackend(CacheBackend):
         if region_cache is None:
             yield from ()
             return
-        for item in region_cache.items():
+        # 使用锁保护迭代过程，避免在迭代时缓存被修改
+        with lock:
+            # 创建快照避免并发修改问题
+            items_snapshot = list(region_cache.items())
+        for item in items_snapshot:
             yield item
 
     def close(self) -> None:
@@ -603,7 +607,11 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         region_cache = self.__get_region_cache(region)
         if region_cache is None:
             return
-        for item in region_cache.items():
+        # 使用锁保护迭代过程，避免在迭代时缓存被修改
+        with lock:
+            # 创建快照避免并发修改问题
+            items_snapshot = list(region_cache.items())
+        for item in items_snapshot:
             yield item
 
     async def close(self) -> None:
