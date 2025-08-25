@@ -25,7 +25,7 @@ from app.log import logger
 from app.schemas import ConfigChangeEventData
 from app.schemas import FileItem
 from app.schemas.types import SystemConfigKey, EventType
-from app.utils.singleton import Singleton
+from app.utils.singleton import SingletonClass
 
 lock = Lock()
 snapshot_lock = Lock()
@@ -54,7 +54,7 @@ class FileMonitorHandler(FileSystemEventHandler):
                                     file_size=Path(event.dest_path).stat().st_size)
 
 
-class Monitor(metaclass=Singleton):
+class Monitor(metaclass=SingletonClass):
     """
     目录监控处理链，单例模式
     """

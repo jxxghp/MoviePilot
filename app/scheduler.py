@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import threading
 import traceback
@@ -22,14 +23,13 @@ from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper  # noqa
+from app.helper.message import MessageHelper
 from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow, ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey
-from app.utils.asyncio import AsyncUtils
-from app.utils.singleton import Singleton
+from app.utils.singleton import SingletonClass
 from app.utils.timer import TimerUtils
 
 lock = threading.Lock()
@@ -39,7 +39,7 @@ class SchedulerChain(ChainBase):
     pass
 
 
-class Scheduler(metaclass=Singleton):
+class Scheduler(metaclass=SingletonClass):
     """
     定时任务管理
     """
@@ -57,6 +57,8 @@ class Scheduler(metaclass=Singleton):
         self._auth_count = 0
         # 用户认证失败消息发送
         self._auth_message = False
+        # 当前事件循环
+        self.loop = asyncio.get_event_loop()
         self.init()
 
     @eventmanager.register(EventType.ConfigChanged)
@@ -449,6 +451,13 @@ class Scheduler(metaclass=Singleton):
         """
         启动定时服务
         """
+
+        def __start_coro(coro):
+            """
+            启动协程
+            """
+            return asyncio.run_coroutine_threadsafe(coro, self.loop)
+
         # 获取定时任务
         job = self.__prepare_job(job_id)
         if not job:
@@ -461,7 +470,7 @@ class Scheduler(metaclass=Singleton):
             if not func:
                 return
             if inspect.iscoroutinefunction(func):
-                AsyncUtils.run_async(func(*args, **kwargs))
+                __start_coro(func(*args, **kwargs))
             else:
                 job["func"](*args, **kwargs)
         except Exception as e:
@@ -565,7 +574,7 @@ class Scheduler(metaclass=Singleton):
                             except JobLookupError:
                                 pass
                     if job_removed:
-                        logger.info(f"移除插件服务({plugin_name})：{service.get('name')}")
+                        logger.info(f"移除插件服务({plugin_name})：{service.get('name')}")  # noqa
                 except Exception as e:
                     logger.error(f"移除插件服务失败：{str(e)} - {job_id}: {service}")
                     SchedulerChain().messagehelper.put(title=f"插件 {plugin_name} 服务移除失败",

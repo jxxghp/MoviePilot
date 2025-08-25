@@ -78,7 +78,7 @@ class FastAPIMonitor:
         # 告警状态
         self.alerts: List[str] = []
 
-        logger.info("FastAPI性能监控器已初始化")
+        logger.debug("FastAPI性能监控器已初始化")
 
     def record_request(self, request: Request, response: Response, response_time: float):
         """
@@ -172,7 +172,7 @@ class FastAPIMonitor:
                 'count': 0,
                 'total_time': 0,
                 'errors': 0,
-                'avg_time': 0
+                'avg_time': 0.0
             })
 
             for req in self.request_history:

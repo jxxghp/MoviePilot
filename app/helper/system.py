@@ -1,7 +1,3 @@
-import os
-import signal
-import threading
-import time
 from pathlib import Path
 from typing import Tuple
 
@@ -74,34 +70,6 @@ class SystemHelper:
         return container_id.strip() if container_id else None
 
     @staticmethod
-    def _check_restart_policy() -> bool:
-        """
-        检查当前容器是否配置了自动重启策略
-        """
-        try:
-            # 获取当前容器ID
-            container_id = SystemHelper._get_container_id()
-            if not container_id:
-                return False
-
-            # 创建 Docker 客户端
-            client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
-            # 获取容器信息
-            container = client.containers.get(container_id)
-            restart_policy = container.attrs.get('HostConfig', {}).get('RestartPolicy', {})
-            policy_name = restart_policy.get('Name', 'no')
-            # 检查是否有有效的重启策略
-            auto_restart_policies = ['always', 'unless-stopped', 'on-failure']
-            has_restart_policy = policy_name in auto_restart_policies
-
-            logger.info(f"容器重启策略: {policy_name}, 支持自动重启: {has_restart_policy}")
-            return has_restart_policy
-
-        except Exception as e:
-            logger.warning(f"检查重启策略失败: {str(e)}")
-            return False
-
-    @staticmethod
     def restart() -> Tuple[bool, str]:
         """
         执行Docker重启操作
@@ -109,45 +77,8 @@ class SystemHelper:
         if not SystemUtils.is_docker():
             return False, "非Docker环境，无法重启！"
 
-        try:
-            # 检查容器是否配置了自动重启策略
-            has_restart_policy = SystemHelper._check_restart_policy()
-            if has_restart_policy:
-                # 有重启策略，使用优雅退出方式
-                logger.info("检测到容器配置了自动重启策略，使用优雅重启方式...")
-                # 启动优雅退出超时监控
-                SystemHelper._start_graceful_shutdown_monitor()
-                # 发送SIGTERM信号给当前进程，触发优雅停止
-                os.kill(os.getpid(), signal.SIGTERM)
-                return True, ""
-            else:
-                # 没有重启策略，使用Docker API强制重启
-                logger.info("容器未配置自动重启策略，使用Docker API重启...")
-                return SystemHelper._docker_api_restart()
-        except Exception as err:
-            logger.error(f"重启失败: {str(err)}")
-            # 降级为Docker API重启
-            logger.warning("降级为Docker API重启...")
-            return SystemHelper._docker_api_restart()
-
-    @staticmethod
-    def _start_graceful_shutdown_monitor():
-        """
-        启动优雅退出超时监控
-        如果30秒内进程没有退出，则使用Docker API强制重启
-        """
-
-        def monitor_thread():
-            time.sleep(30)  # 等待30秒
-            logger.warning("优雅退出超时30秒，使用Docker API强制重启...")
-            try:
-                SystemHelper._docker_api_restart()
-            except Exception as e:
-                logger.error(f"强制重启失败: {str(e)}")
-
-        # 在后台线程中启动监控
-        thread = threading.Thread(target=monitor_thread, daemon=True)
-        thread.start()
+        logger.info("正在重启容器...")
+        return SystemHelper._docker_api_restart()
 
     @staticmethod
     def _docker_api_restart() -> Tuple[bool, str]:

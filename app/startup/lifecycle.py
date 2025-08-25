@@ -35,10 +35,10 @@ async def lifespan(app: FastAPI):
     定义应用的生命周期事件
     """
     print("Starting up...")
-    # 初始化模块
-    init_modules()
     # 初始化路由
     init_routers(app)
+    # 初始化模块
+    init_modules()
     # 恢复插件备份
     SystemChain().restore_plugins()
     # 初始化插件

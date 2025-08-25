@@ -20,7 +20,7 @@ class SiteUserData(Base):
     # 用户名
     username = Column(String)
     # 用户ID
-    userid = Column(Integer)
+    userid = Column(String)
     # 用户等级
     user_level = Column(String)
     # 加入时间
