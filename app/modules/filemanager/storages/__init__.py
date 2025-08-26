@@ -15,6 +15,15 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
     """
     传输进度回调
     """
+    from app.core.config import settings
+    
+    # 检查是否启用进度显示
+    if not settings.ENABLE_TRANSFER_PROGRESS:
+        # 禁用进度显示时，返回空函数
+        def no_progress(percent: Union[int, float]) -> None:
+            pass
+        return no_progress
+    
     pbar = tqdm(total=100, desc="整理进度", unit="%")
     progress = ProgressHelper(HashUtils.md5(path))
     progress.start()

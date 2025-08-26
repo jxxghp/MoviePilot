@@ -339,13 +339,34 @@ class TransHandler:
                 modify_time=_path.stat().st_mtime
             )
 
-        if (fileitem.storage != target_storage
-                and fileitem.storage != "local" and target_storage != "local"):
-            return None, f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理"
-
         # 加锁
         with lock:
-            if fileitem.storage == "local" and target_storage == "local":
+            # 优先处理同类型网盘之间的传输，避免先下载再上传
+            if fileitem.storage == target_storage and fileitem.storage != "local":
+                # 同一网盘 - 直接使用网盘API，避免先下载再上传
+                if transfer_type == "copy":
+                    # 复制文件到新目录
+                    target_fileitem = target_oper.get_folder(target_file.parent)
+                    if target_fileitem:
+                        if source_oper.copy(fileitem, Path(target_fileitem.path), target_file.name):
+                            return target_oper.get_item(target_file), ""
+                        else:
+                            return None, f"【{target_storage}】{fileitem.path} 复制文件失败"
+                    else:
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
+                elif transfer_type == "move":
+                    # 移动文件到新目录
+                    target_fileitem = target_oper.get_folder(target_file.parent)
+                    if target_fileitem:
+                        if source_oper.move(fileitem, Path(target_fileitem.path), target_file.name):
+                            return target_oper.get_item(target_file), ""
+                        else:
+                            return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
+                    else:
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
+                else:
+                    return None, f"不支持的整理方式：{transfer_type}"
+            elif fileitem.storage == "local" and target_storage == "local":
                 # 创建目录
                 if not target_file.parent.exists():
                     target_file.parent.mkdir(parents=True)
@@ -418,30 +439,9 @@ class TransHandler:
                         return __get_targetitem(target_file), ""
                     else:
                         return None, f"{fileitem.path} {fileitem.storage} 下载失败"
-            elif fileitem.storage == target_storage:
-                # 同一网盘
-                if transfer_type == "copy":
-                    # 复制文件到新目录
-                    target_fileitem = target_oper.get_folder(target_file.parent)
-                    if target_fileitem:
-                        if source_oper.move(fileitem, Path(target_fileitem.path), target_file.name):
-                            return target_oper.get_item(target_file), ""
-                        else:
-                            return None, f"【{target_storage}】{fileitem.path} 复制文件失败"
-                    else:
-                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
-                elif transfer_type == "move":
-                    # 移动文件到新目录
-                    target_fileitem = target_oper.get_folder(target_file.parent)
-                    if target_fileitem:
-                        if source_oper.move(fileitem, Path(target_fileitem.path), target_file.name):
-                            return target_oper.get_item(target_file), ""
-                        else:
-                            return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
-                    else:
-                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
-                else:
-                    return None, f"不支持的整理方式：{transfer_type}"
+            elif (fileitem.storage != target_storage
+                    and fileitem.storage != "local" and target_storage != "local"):
+                return None, f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理"
 
         return None, "未知错误"
 

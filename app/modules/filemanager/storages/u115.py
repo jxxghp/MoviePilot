@@ -519,6 +519,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 初始化进度条
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
         progress_callback = transfer_process(local_path.as_posix())
+        
+        # 检查是否启用进度显示和中止功能
+        from app.core.config import settings
+        enable_progress = settings.ENABLE_TRANSFER_PROGRESS
 
         # 初始化分片
         upload_id = bucket.init_multipart_upload(object_name,
@@ -532,7 +536,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             part_number = 1
             offset = 0
             while offset < file_size:
-                if global_vars.is_transfer_stopped(local_path.as_posix()):
+                if enable_progress and global_vars.is_transfer_stopped(local_path.as_posix()):
                     logger.info(f"【115】{local_path} 上传已取消！")
                     return None
                 num_to_upload = min(part_size, file_size - offset)
@@ -609,6 +613,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 初始化进度条
         logger.info(f"【115】开始下载: {fileitem.name} -> {local_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
+        
+        # 检查是否启用进度显示和中止功能
+        from app.core.config import settings
+        enable_progress = settings.ENABLE_TRANSFER_PROGRESS
 
         try:
             with self.session.get(download_url, stream=True) as r:
@@ -617,7 +625,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=self.chunk_size):
-                        if global_vars.is_transfer_stopped(fileitem.path):
+                        if enable_progress and global_vars.is_transfer_stopped(fileitem.path):
                             logger.info(f"【115】{fileitem.path} 下载已取消！")
                             return None
                         if chunk:

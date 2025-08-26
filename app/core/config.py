@@ -312,6 +312,8 @@ class ConfigModel(BaseModel):
     DEFAULT_SUB: Optional[str] = "zh-cn"
     # 新增已入库媒体是否跟随TMDB信息变化
     SCRAP_FOLLOW_TMDB: bool = True
+    # 是否启用文件传输进度显示（禁用可避免跨存储传输时的重复下载上传）
+    ENABLE_TRANSFER_PROGRESS: bool = True
 
     # ==================== 服务地址配置 ====================
     # 服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目
