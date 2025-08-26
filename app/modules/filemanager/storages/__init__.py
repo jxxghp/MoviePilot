@@ -11,11 +11,15 @@ from app.log import logger
 from app.utils.crypto import HashUtils
 
 
-def transfer_process(path: str) -> Callable[[int | float], None]:
+def transfer_process(path: str, src_path: str = None, dest_path: str = None) -> Callable[[int | float], None]:
     """
     传输进度回调
+    :param path: 文件路径
+    :param src_path: 源路径（可选）
+    :param dest_path: 目标路径（可选）
     """
     from app.core.config import settings
+    from app.utils.system import SystemUtils
     
     # 检查是否启用进度显示
     if not settings.ENABLE_TRANSFER_PROGRESS:
@@ -23,6 +27,21 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
         def no_progress(percent: Union[int, float]) -> None:
             pass
         return no_progress
+    
+    # 智能检测：如果源路径和目标路径都是挂载的同一网盘，则禁用进度显示
+    if src_path and dest_path:
+        src_path_obj = Path(src_path)
+        dest_path_obj = Path(dest_path)
+        
+        # 检查是否都是网络挂载且是同一设备
+        if (SystemUtils.is_network_mount(src_path_obj) and 
+            SystemUtils.is_network_mount(dest_path_obj) and 
+            SystemUtils.is_same_mount(src_path_obj, dest_path_obj)):
+            
+            logger.debug(f"检测到同网盘挂载传输，禁用进度显示: {src_path} -> {dest_path}")
+            def no_progress(percent: Union[int, float]) -> None:
+                pass
+            return no_progress
     
     pbar = tqdm(total=100, desc="整理进度", unit="%")
     progress = ProgressHelper(HashUtils.md5(path))
@@ -166,22 +185,28 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Path:
+    def download(self, fileitem: schemas.FileItem, path: Path = None, 
+                 src_path: str = None, dest_path: str = None) -> Path:
         """
         下载文件，保存到本地，返回本地临时文件地址
         :param fileitem: 文件项
         :param path: 文件保存路径
+        :param src_path: 源路径（用于进度显示优化）
+        :param dest_path: 目标路径（用于进度显示优化）
         """
         pass
 
     @abstractmethod
     def upload(self, fileitem: schemas.FileItem, path: Path,
-               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
+               new_name: Optional[str] = None, 
+               src_path: str = None, dest_path: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项
         :param path: 本地文件路径
         :param new_name: 上传后文件名
+        :param src_path: 源路径（用于进度显示优化）
+        :param dest_path: 目标路径（用于进度显示优化）
         """
         pass
 

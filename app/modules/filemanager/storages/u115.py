@@ -355,7 +355,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         )
 
     def upload(self, target_dir: schemas.FileItem, local_path: Path,
-               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
+               new_name: Optional[str] = None,
+               src_path: str = None, dest_path: str = None) -> Optional[schemas.FileItem]:
         """
         实现带秒传、断点续传和二次认证的文件上传
         """
@@ -518,7 +519,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 初始化进度条
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")
-        progress_callback = transfer_process(local_path.as_posix())
+        progress_callback = transfer_process(local_path.as_posix(), src_path, dest_path)
         
         # 检查是否启用进度显示和中止功能
         from app.core.config import settings
@@ -579,7 +580,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 返回结果
         return self._delay_get_item(target_path)
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: schemas.FileItem, path: Path = None,
+                 src_path: str = None, dest_path: str = None) -> Optional[Path]:
         """
         带实时进度显示的下载
         """
@@ -612,7 +614,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 初始化进度条
         logger.info(f"【115】开始下载: {fileitem.name} -> {local_path}")
-        progress_callback = transfer_process(Path(fileitem.path).as_posix())
+        progress_callback = transfer_process(Path(fileitem.path).as_posix(), src_path, dest_path)
         
         # 检查是否启用进度显示和中止功能
         from app.core.config import settings

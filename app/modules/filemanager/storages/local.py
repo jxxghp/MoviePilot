@@ -189,19 +189,20 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: schemas.FileItem, path: Path = None,
+                 src_path: str = None, dest_path: str = None) -> Optional[Path]:
         """
         下载文件
         """
         return Path(fileitem.path)
 
-    def _copy_with_progress(self, src: Path, dest: Path):
+    def _copy_with_progress(self, src: Path, dest: Path, src_path: str = None, dest_path: str = None):
         """
         分块复制文件并回调进度
         """
         total_size = src.stat().st_size
         copied_size = 0
-        progress_callback = transfer_process(src.as_posix())
+        progress_callback = transfer_process(src.as_posix(), src_path, dest_path)
         try:
             with open(src, "rb") as fsrc, open(dest, "wb") as fdst:
                 while True:
@@ -230,7 +231,8 @@ class LocalStorage(StorageBase):
             self,
             fileitem: schemas.FileItem,
             path: Path,
-            new_name: Optional[str] = None
+            new_name: Optional[str] = None,
+            src_path: str = None, dest_path: str = None
     ) -> Optional[schemas.FileItem]:
         """
         上传文件（带进度）
@@ -238,7 +240,7 @@ class LocalStorage(StorageBase):
         try:
             dir_path = Path(fileitem.path)
             target_path = dir_path / (new_name or path.name)
-            if self._copy_with_progress(path, target_path):
+            if self._copy_with_progress(path, target_path, src_path, dest_path):
                 # 上传删除源文件
                 path.unlink()
                 return self.get_item(target_path)

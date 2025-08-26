@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple, Union
 import psutil
 
 from app import schemas
+from app.log import logger
 
 
 class SystemUtils:
@@ -105,6 +106,110 @@ class SystemUtils:
         """
         arch_name = platform.machine().lower()
         return arch_name.startswith(('arm', 'aarch')) and arch_name not in ('aarch64', 'arm64')
+
+    @staticmethod
+    def get_mount_info(path: Path) -> Optional[dict]:
+        """
+        获取路径的挂载信息
+        :param path: 要检查的路径
+        :return: 挂载信息字典，包含设备、文件系统类型等，如果不是挂载点则返回None
+        """
+        try:
+            if SystemUtils.is_windows():
+                return None
+            
+            # 获取路径的绝对路径
+            abs_path = path.resolve()
+            
+            # 读取 /proc/mounts 或 /etc/mtab
+            mounts_file = "/proc/mounts" if Path("/proc/mounts").exists() else "/etc/mtab"
+            
+            with open(mounts_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 3:
+                        device, mount_point, fs_type = parts[0], parts[1], parts[2]
+                        
+                        # 检查路径是否匹配挂载点
+                        mount_path = Path(mount_point)
+                        if abs_path == mount_path or abs_path.is_relative_to(mount_path):
+                            return {
+                                'device': device,
+                                'mount_point': mount_point,
+                                'fs_type': fs_type,
+                                'options': parts[3] if len(parts) > 3 else ''
+                            }
+            return None
+        except Exception as e:
+            # logger.debug(f"获取挂载信息失败: {str(e)}") # Original code had this line commented out
+            return None
+
+    @staticmethod
+    def is_network_mount(path: Path) -> bool:
+        """
+        判断路径是否为网络挂载（网盘）
+        :param path: 要检查的路径
+        :return: 如果是网络挂载返回True，否则返回False
+        """
+        try:
+            mount_info = SystemUtils.get_mount_info(path)
+            if not mount_info:
+                return False
+            
+            # 常见的网络文件系统类型
+            network_fs_types = [
+                'nfs', 'nfs4', 'cifs', 'smb', 'smb2', 'smb3',  # NFS和SMB
+                'fuse', 'fuse.rclone', 'fuse.mergerfs', 'fuse.unionfs',  # FUSE
+                'sshfs', 'webdav', 'davfs2',  # 其他网络文件系统
+                'gvfs', 'gvfsd-fuse',  # GNOME虚拟文件系统
+                'kio', 'kio-fuse'  # KDE IO系统
+            ]
+            
+            fs_type = mount_info['fs_type'].lower()
+            
+            # 检查文件系统类型
+            if any(net_fs in fs_type for net_fs in network_fs_types):
+                return True
+            
+            # 检查设备名称是否包含网络相关标识
+            device = mount_info['device'].lower()
+            if any(net_id in device for net_id in ['//', ':', '@', 'rclone', 'mergerfs']):
+                return True
+            
+            return False
+        except Exception as e:
+            # logger.debug(f"检查网络挂载失败: {str(e)}") # Original code had this line commented out
+            return False
+
+    @staticmethod
+    def get_mount_device(path: Path) -> Optional[str]:
+        """
+        获取路径挂载的设备标识
+        :param path: 要检查的路径
+        :return: 设备标识，如果不是挂载点则返回None
+        """
+        mount_info = SystemUtils.get_mount_info(path)
+        return mount_info['device'] if mount_info else None
+
+    @staticmethod
+    def is_same_mount(src_path: Path, dest_path: Path) -> bool:
+        """
+        判断两个路径是否挂载在同一个设备上
+        :param src_path: 源路径
+        :param dest_path: 目标路径
+        :return: 如果是同一个挂载设备返回True，否则返回False
+        """
+        try:
+            src_device = SystemUtils.get_mount_device(src_path)
+            dest_device = SystemUtils.get_mount_device(dest_path)
+            
+            if not src_device or not dest_device:
+                return False
+            
+            return src_device == dest_device
+        except Exception as e:
+            # logger.debug(f"检查挂载设备失败: {str(e)}") # Original code had this line commented out
+            return False
 
     @staticmethod
     def is_x86_64() -> bool:

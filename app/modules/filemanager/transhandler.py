@@ -395,8 +395,9 @@ class TransHandler:
                     # 根据目的路径创建文件夹
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
-                        # 上传文件
-                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name)
+                        # 上传文件，传递源路径和目标路径信息
+                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name, 
+                                                     src_path=str(filepath), dest_path=str(target_file))
                         if new_item:
                             return new_item, ""
                         else:
@@ -408,8 +409,9 @@ class TransHandler:
                     # 根据目的路径获取文件夹
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
-                        # 上传文件
-                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name)
+                        # 上传文件，传递源路径和目标路径信息
+                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name,
+                                                     src_path=str(filepath), dest_path=str(target_file))
                         if new_item:
                             # 删除源文件
                             source_oper.delete(fileitem)
@@ -425,8 +427,9 @@ class TransHandler:
                     return __get_targetitem(target_file), ""
                 # 网盘到本地
                 if transfer_type in ["copy", "move"]:
-                    # 下载
-                    tmp_file = source_oper.download(fileitem=fileitem, path=target_file.parent)
+                    # 下载，传递源路径和目标路径信息
+                    tmp_file = source_oper.download(fileitem=fileitem, path=target_file.parent,
+                                                   src_path=fileitem.path, dest_path=str(target_file))
                     if tmp_file:
                         # 创建目录
                         if not target_file.parent.exists():
