@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Tuple
+import os
+import signal
 
 import docker
 
@@ -70,6 +72,28 @@ class SystemHelper:
         return container_id.strip() if container_id else None
 
     @staticmethod
+    def _get_docker_client():
+        """
+        获取Docker客户端，优先使用Unix socket
+        """
+        # 优先使用Unix socket
+        if Path("/var/run/docker.sock").exists():
+            return docker.DockerClient(base_url="unix://var/run/docker.sock")
+        # 回退到配置的API地址
+        return docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
+
+    @staticmethod
+    def _test_docker_connection(client) -> bool:
+        """
+        测试Docker连接是否可用
+        """
+        try:
+            client.ping()
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
     def restart() -> Tuple[bool, str]:
         """
         执行Docker重启操作
@@ -87,15 +111,51 @@ class SystemHelper:
         """
         try:
             # 创建 Docker 客户端
-            client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
+            client = SystemHelper._get_docker_client()
+            
+            # 测试Docker连接
+            if not SystemHelper._test_docker_connection(client):
+                # 如果Docker API不可用，尝试优雅退出
+                logger.warning("Docker API不可用，尝试优雅退出...")
+                return SystemHelper._graceful_exit()
+            
             container_id = SystemHelper._get_container_id()
             if not container_id:
                 return False, "获取容器ID失败！"
+            
+            # 获取容器对象
+            container = client.containers.get(container_id)
+            
+            # 检查容器状态
+            container.reload()
+            if container.status != 'running':
+                return False, f"容器状态异常：{container.status}"
+            
             # 重启容器
-            client.containers.get(container_id).restart()
+            logger.info(f"正在重启容器 {container_id}...")
+            container.restart()
             return True, ""
+        except docker.errors.NotFound:
+            return False, "容器不存在或无法访问！"
+        except docker.errors.APIError as e:
+            logger.warning(f"Docker API错误，尝试优雅退出: {str(e)}")
+            return SystemHelper._graceful_exit()
         except Exception as docker_err:
-            return False, f"重启时发生错误：{str(docker_err)}"
+            logger.warning(f"重启时发生错误，尝试优雅退出: {str(docker_err)}")
+            return SystemHelper._graceful_exit()
+
+    @staticmethod
+    def _graceful_exit() -> Tuple[bool, str]:
+        """
+        优雅退出，依赖容器的重启策略
+        """
+        try:
+            logger.info("执行优雅退出，依赖容器重启策略...")
+            # 发送SIGTERM信号给当前进程
+            os.kill(os.getpid(), signal.SIGTERM)
+            return True, ""
+        except Exception as e:
+            return False, f"优雅退出失败: {str(e)}"
 
     def set_system_modified(self):
         """
