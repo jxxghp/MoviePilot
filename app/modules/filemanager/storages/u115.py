@@ -205,10 +205,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 检查会话
         self._check_session()
 
-        resp = self.session.request(
-            method, f"{self.base_url}{endpoint}",
-            **kwargs
-        )
+        try:
+            resp = self.session.request(
+                method, f"{self.base_url}{endpoint}",
+                **kwargs
+            )
+        except requests.exceptions.RequestException as e:
+            logger.error(f"【115】{method} 请求 {endpoint} 网络错误: {str(e)}")
+            return None
+
         if resp is None:
             logger.warn(f"【115】{method} 请求 {endpoint} 失败！")
             return None
