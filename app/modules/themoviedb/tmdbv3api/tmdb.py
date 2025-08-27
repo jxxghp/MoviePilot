@@ -125,12 +125,12 @@ class TMDb(object):
     def cache(self, cache):
         self._cache_enabled = bool(cache)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         return self.request(method, url, data, json)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     async def async_cached_request(self, method, url, data, json,
                                    _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         return await self.async_request(method, url, data, json)

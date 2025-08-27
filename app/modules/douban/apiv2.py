@@ -226,11 +226,9 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         处理HTTP响应
         """
-        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
-            return resp.json()
-        return resp.json() if resp else {}
+        return resp.json() if resp is not None else None
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta, skip_none=True)
     def __invoke(self, url: str, **kwargs) -> dict:
         """
         GET请求
@@ -242,7 +240,7 @@ class DoubanApi(metaclass=WeakSingleton):
         ).get_res(url=req_url, params=params)
         return self._handle_response(resp)
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta, skip_none=True)
     async def __async_invoke(self, url: str, **kwargs) -> dict:
         """
         GET请求（异步版本）
@@ -265,7 +263,7 @@ class DoubanApi(metaclass=WeakSingleton):
             params.pop('_ts')
         return req_url, params
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta, skip_none=True)
     def __post(self, url: str, **kwargs) -> dict:
         """
         POST请求
@@ -287,7 +285,7 @@ class DoubanApi(metaclass=WeakSingleton):
         ).post_res(url=req_url, data=params)
         return self._handle_response(resp)
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta, skip_none=True)
     async def __async_post(self, url: str, **kwargs) -> dict:
         """
         POST请求（异步版本）

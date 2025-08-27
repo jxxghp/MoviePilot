@@ -610,14 +610,19 @@ class PluginHelper(metaclass=WeakSingleton):
             asset = next((a for a in assets if a.get("name") == asset_name), None)
             if not asset:
                 return False, f"未找到资产文件：{asset_name}"
-            download_url = asset.get("browser_download_url")
-            if not download_url:
-                return False, "资产缺少下载地址"
+            asset_id = asset.get("id")
+            if not asset_id:
+                return False, "资产缺少ID信息"
+            # 构建资产的API下载URL
+            download_url = f"https://api.github.com/repos/{user_repo}/releases/assets/{asset_id}"
         except Exception as e:
             logger.error(f"解析 Release 信息失败：{e}")
             return False, f"解析 Release 信息失败：{e}"
 
-        res = self.__request_with_fallback(download_url, headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+        # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
+        headers = settings.REPO_GITHUB_HEADERS(repo=user_repo).copy()
+        headers["Accept"] = "application/octet-stream"
+        res = self.__request_with_fallback(download_url, headers=headers, is_api=True)
         if res is None or res.status_code != 200:
             return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 
@@ -1525,15 +1530,21 @@ class PluginHelper(metaclass=WeakSingleton):
             asset = next((a for a in assets if a.get("name") == asset_name), None)
             if not asset:
                 return False, f"未找到资产文件：{asset_name}"
-            download_url = asset.get("browser_download_url")
-            if not download_url:
-                return False, "资产缺少下载地址"
+            asset_id = asset.get("id")
+            if not asset_id:
+                return False, "资产缺少ID信息"
+            # 构建资产的API下载URL
+            download_url = f"https://api.github.com/repos/{user_repo}/releases/assets/{asset_id}"
         except Exception as e:
             logger.error(f"解析 Release 信息失败：{e}")
             return False, f"解析 Release 信息失败：{e}"
 
+        # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
+        headers = settings.REPO_GITHUB_HEADERS(repo=user_repo).copy()
+        headers["Accept"] = "application/octet-stream"
         res = await self.__async_request_with_fallback(download_url,
-                                                       headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+                                                       headers=headers,
+                                                       is_api=True)
         if res is None or res.status_code != 200:
             return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 

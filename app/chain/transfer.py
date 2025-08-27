@@ -591,7 +591,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                     text=__process_msg,
                                     data={
                                         "current": Path(fileitem.path).as_posix(),
-                                        "finished":finished_files
+                                        "finished": finished_files
                                     })
                     # 整理
                     state, err_msg = self.__handle_transfer(task=task, callback=item.callback)
@@ -1471,13 +1471,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
             for file in torrent_files:
                 file_path = save_path / file.name
                 # 如果存在未被屏蔽的媒体文件，则不删除种子
-                if (
-                        file_path.suffix in self.all_exts
-                        and not self._is_blocked_by_exclude_words(
-                    str(file_path), transfer_exclude_words
-                )
-                        and file_path.exists()
-                ):
+                if (file_path.suffix in self.all_exts
+                        and not self._is_blocked_by_exclude_words(str(file_path), transfer_exclude_words)
+                        and file_path.exists()):
                     return False
 
             # 所有媒体文件都被屏蔽或不存在，可以删除种子
