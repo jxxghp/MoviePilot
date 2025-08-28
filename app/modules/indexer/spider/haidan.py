@@ -85,7 +85,7 @@ class HaiDanSpider:
             categories = self._movie_category
 
         # 搜索类型
-        if keyword.startswith('tt'):
+        if keyword and keyword.startswith('tt'):
             search_area = '4'
         else:
             search_area = '0'

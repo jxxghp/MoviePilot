@@ -7,6 +7,8 @@ import json
 import urllib.parse
 from http import HTTPStatus
 
+from app.core.cache import cached
+from app.core.config import settings
 from app.utils.http import RequestUtils
 
 
@@ -15,7 +17,7 @@ class Auth:
     TVDB认证类
     """
 
-    def __init__(self, url, apikey, pin="", proxy=None, timeout: int = 15):
+    def __init__(self, url: str, apikey: str, pin: str = "", proxy: dict = None, timeout: int = 15):
         login_info = {"apikey": apikey}
         if pin != "":
             login_info["pin"] = pin
@@ -35,13 +37,14 @@ class Auth:
                 result = response.json()
                 self.token = result["data"]["token"]
             else:
-                error_msg = f"登录失败，状态码: {response.status_code if response else 'None'}"
-                if response:
+                if response is not None:
                     try:
                         error_data = response.json()
                         error_msg = f"Code: {response.status_code}, {error_data.get('message', '未知错误')}"
                     except Exception as err:
                         error_msg = f"Code: {response.status_code}, 响应解析失败：{err}"
+                else:
+                    error_msg = "网络连接失败，未收到响应"
                 raise Exception(error_msg)
         except Exception as e:
             raise Exception(f"TVDB认证失败: {str(e)}")
@@ -58,13 +61,14 @@ class Request:
     请求处理类
     """
 
-    def __init__(self, auth_token, proxy=None, timeout=15):
+    def __init__(self, auth_token: str, proxy: dict = None, timeout: int = 15):
         self.auth_token = auth_token
         self.links = None
         self.proxy = proxy
         self.timeout = timeout
 
-    def make_request(self, url, if_modified_since=None):
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
+    def make_request(self, url: str, if_modified_since: bool = None):
         """
         向指定的 URL 发起请求并返回数据
         """
@@ -118,7 +122,8 @@ class Url:
     def __init__(self):
         self.base_url = "https://api4.thetvdb.com/v4/"
 
-    def construct(self, url_sect, url_id=None, url_subsect=None, url_lang=None, **kwargs):
+    def construct(self, url_sect: str, url_id: int = None,
+                  url_subsect: str = None, url_lang: str = None, **kwargs):
         """
         构建API URL
         """
@@ -141,7 +146,7 @@ class TVDB:
     TVDB API主类
     """
 
-    def __init__(self, apikey: str, pin="", proxy=None, timeout: int = 15):
+    def __init__(self, apikey: str, pin: str = "", proxy: dict = None, timeout: int = 15):
         self.url = Url()
         login_url = self.url.construct("login")
         self.auth = Auth(login_url, apikey, pin, proxy, timeout)
@@ -154,126 +159,126 @@ class TVDB:
         """
         return self.request.links
 
-    def get_artwork_statuses(self, meta=None, if_modified_since=None) -> list:
+    def get_artwork_statuses(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回艺术图状态列表
         """
         url = self.url.construct("artwork/statuses", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_artwork_types(self, meta=None, if_modified_since=None) -> list:
+    def get_artwork_types(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回艺术图类型列表
         """
         url = self.url.construct("artwork/types", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_artwork(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_artwork(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个艺术图信息的字典
         """
         url = self.url.construct("artwork", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_artwork_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_artwork_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个艺术图的扩展信息字典
         """
         url = self.url.construct("artwork", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_awards(self, meta=None, if_modified_since=None) -> list:
+    def get_all_awards(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回奖项列表
         """
         url = self.url.construct("awards", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_award(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_award(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个奖项信息的字典
         """
         url = self.url.construct("awards", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_award_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_award_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个奖项的扩展信息字典
         """
         url = self.url.construct("awards", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_award_categories(self, meta=None, if_modified_since=None) -> list:
+    def get_all_award_categories(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回奖项类别列表
         """
         url = self.url.construct("awards/categories", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_award_category(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_award_category(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个奖项类别信息的字典
         """
         url = self.url.construct("awards/categories", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_award_category_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_award_category_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个奖项类别的扩展信息字典
         """
         url = self.url.construct("awards/categories", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_content_ratings(self, meta=None, if_modified_since=None) -> list:
+    def get_content_ratings(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回内容分级列表
         """
         url = self.url.construct("content/ratings", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_countries(self, meta=None, if_modified_since=None) -> list:
+    def get_countries(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回国家列表
         """
         url = self.url.construct("countries", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_companies(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_companies(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回公司列表 (可分页)
         """
         url = self.url.construct("companies", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_company_types(self, meta=None, if_modified_since=None) -> list:
+    def get_company_types(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回公司类型列表
         """
         url = self.url.construct("companies/types", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_company(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_company(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个公司信息的字典
         """
         url = self.url.construct("companies", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_series(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_series(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回剧集列表 (可分页)
         """
         url = self.url.construct("series", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_series(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个剧集信息的字典
         """
         url = self.url.construct("series", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
+    def get_series_by_slug(self, slug: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         通过 slug (别名) 返回单个剧集信息的字典
         """
@@ -288,7 +293,7 @@ class TVDB:
         return self.request.make_request(url, if_modified_since)
 
     def get_series_episodes(self, id: int, season_type: str = "default", page: int = 0,
-                            lang: str = None, meta=None, if_modified_since=None, **kwargs) -> dict:
+                            lang: str = None, meta: str = None, if_modified_since: bool = None, **kwargs) -> dict:
         """
         返回指定剧集和季类型的各集信息字典 (可分页，可指定语言)
         """
@@ -297,7 +302,7 @@ class TVDB:
         )
         return self.request.make_request(url, if_modified_since)
 
-    def get_series_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+    def get_series_translation(self, id: int, lang: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回剧集的指定语言翻译信息字典
         """
@@ -318,21 +323,21 @@ class TVDB:
         url = self.url.construct("series", id, "nextAired")
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_movies(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_movies(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回电影列表 (可分页)
         """
         url = self.url.construct("movies", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_movie(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_movie(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个电影信息的字典
         """
         url = self.url.construct("movies", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_movie_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
+    def get_movie_by_slug(self, slug: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         通过 slug (别名) 返回单个电影信息的字典
         """
@@ -346,70 +351,70 @@ class TVDB:
         url = self.url.construct("movies", id, "extended", meta=meta, short=short)
         return self.request.make_request(url, if_modified_since)
 
-    def get_movie_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+    def get_movie_translation(self, id: int, lang: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回电影的指定语言翻译信息字典
         """
         url = self.url.construct("movies", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_seasons(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_seasons(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回季列表 (可分页)
         """
         url = self.url.construct("seasons", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_season(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_season(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单季信息的字典
         """
         url = self.url.construct("seasons", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_season_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_season_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单季的扩展信息字典
         """
         url = self.url.construct("seasons", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_season_types(self, meta=None, if_modified_since=None) -> list:
+    def get_season_types(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回季类型列表
         """
         url = self.url.construct("seasons/types", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_season_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+    def get_season_translation(self, id: int, lang: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回季的指定语言翻译信息字典
         """
         url = self.url.construct("seasons", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_episodes(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_episodes(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回集列表 (可分页)
         """
         url = self.url.construct("episodes", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_episode(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_episode(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单集信息的字典
         """
         url = self.url.construct("episodes", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_episode_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_episode_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单集的扩展信息字典
         """
         url = self.url.construct("episodes", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_episode_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+    def get_episode_translation(self, id: int, lang: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单集的指定语言翻译信息字典
         """
@@ -419,70 +424,70 @@ class TVDB:
     # 兼容旧函数名。
     get_episodes_translation = get_episode_translation
 
-    def get_all_genders(self, meta=None, if_modified_since=None) -> list:
+    def get_all_genders(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回性别列表
         """
         url = self.url.construct("genders", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_genres(self, meta=None, if_modified_since=None) -> list:
+    def get_all_genres(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回类型（流派）列表
         """
         url = self.url.construct("genres", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_genre(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_genre(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个类型（流派）信息的字典
         """
         url = self.url.construct("genres", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_languages(self, meta=None, if_modified_since=None) -> list:
+    def get_all_languages(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回语言列表
         """
         url = self.url.construct("languages", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_people(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_people(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回人物列表 (可分页)
         """
         url = self.url.construct("people", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_person(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_person(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个人物信息的字典
         """
         url = self.url.construct("people", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_person_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_person_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个人物的扩展信息字典
         """
         url = self.url.construct("people", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_person_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+    def get_person_translation(self, id: int, lang: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回人物的指定语言翻译信息字典
         """
         url = self.url.construct("people", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_character(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_character(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回角色信息的字典
         """
         url = self.url.construct("characters", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_people_types(self, meta=None, if_modified_since=None) -> list:
+    def get_people_types(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回人物类型列表
         """
@@ -492,7 +497,7 @@ class TVDB:
     # 兼容旧函数名
     get_all_people_types = get_people_types
 
-    def get_source_types(self, meta=None, if_modified_since=None) -> list:
+    def get_source_types(self, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回来源类型列表
         """
@@ -509,56 +514,56 @@ class TVDB:
         url = self.url.construct("updates", since=since, **kwargs)
         return self.request.make_request(url)
 
-    def get_all_tag_options(self, page=None, meta=None, if_modified_since=None) -> list:
+    def get_all_tag_options(self, page: int = None, meta: str = None, if_modified_since: bool = None) -> list:
         """
         返回标签选项列表 (可分页)
         """
         url = self.url.construct("tags/options", page=page, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_tag_option(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_tag_option(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个标签选项信息的字典
         """
         url = self.url.construct("tags/options", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_all_lists(self, page=None, meta=None) -> dict:
+    def get_all_lists(self, page: int = None, meta=None) -> dict:
         """
         返回所有公开的列表信息 (可分页)
         """
         url = self.url.construct("lists", page=page, meta=meta)
         return self.request.make_request(url)
 
-    def get_list(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_list(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个列表信息的字典
         """
         url = self.url.construct("lists", id, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_list_by_slug(self, slug: str, meta=None, if_modified_since=None) -> dict:
+    def get_list_by_slug(self, slug: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         通过 slug (别名) 返回单个列表信息的字典
         """
         url = self.url.construct("lists/slug", slug, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_list_extended(self, id: int, meta=None, if_modified_since=None) -> dict:
+    def get_list_extended(self, id: int, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回单个列表的扩展信息字典
         """
         url = self.url.construct("lists", id, "extended", meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_list_translation(self, id: int, lang: str, meta=None, if_modified_since=None) -> dict:
+    def get_list_translation(self, id: int, lang: str, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回列表的指定语言翻译信息字典
         """
         url = self.url.construct("lists", id, "translations", lang, meta=meta)
         return self.request.make_request(url, if_modified_since)
 
-    def get_inspiration_types(self, meta=None, if_modified_since=None) -> dict:
+    def get_inspiration_types(self, meta: str = None, if_modified_since: bool = None) -> dict:
         """
         返回灵感类型列表
         """
