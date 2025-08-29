@@ -127,6 +127,8 @@ class MTorrentSpider:
                 'labels': labels,
                 'category': category
             }
+            if discount_end_time := (result.get('status') or {}).get('discountEndTime'):
+                torrent['freedate'] = StringUtils.format_timestamp(discount_end_time)
             torrents.append(torrent)
         return torrents
 
