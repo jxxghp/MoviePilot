@@ -938,3 +938,19 @@ class StringUtils:
         if isinstance(content, bytes) and content.startswith(b"magnet:"):
             return True
         return False
+
+    @staticmethod
+    def natural_sort_key(text: str) -> List[Union[int, str]]:
+        """
+        自然排序
+        将字符串拆分为数字和非数字部分，数字部分转换为整数，非数字部分转换为小写字母
+        :param text: 要处理的字符串
+        :return 用于排序的数字和字符串列表
+        """
+        if text is None:
+            return []
+
+        if not isinstance(text, str):
+            text = str(text)
+
+        return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', text)]

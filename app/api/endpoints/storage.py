@@ -15,6 +15,7 @@ from app.db.models import User
 from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
 from app.helper.progress import ProgressHelper
 from app.schemas.types import ProgressKey
+from app.utils.string import StringUtils
 
 router = APIRouter()
 
@@ -80,7 +81,7 @@ def list_files(fileitem: schemas.FileItem,
     file_list = StorageChain().list_files(fileitem)
     if file_list:
         if sort == "name":
-            file_list.sort(key=lambda x: x.name or "")
+            file_list.sort(key=lambda x: StringUtils.natural_sort_key(x.name or ""))
         else:
             file_list.sort(key=lambda x: x.modify_time or datetime.min, reverse=True)
     return file_list
