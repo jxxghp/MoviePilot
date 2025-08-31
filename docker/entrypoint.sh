@@ -183,8 +183,8 @@ if [ "${ENABLE_SSL}" = "true" ]; then
         include /etc/nginx/mime.types;
         default_type application/octet-stream;
 
-        listen 443 ssl;
-        listen [::]:443 ssl;
+        listen ${SSL_NGINX_PORT:-443} ssl;
+        listen [::]:${SSL_NGINX_PORT:-443} ssl;
         server_name ${SSL_DOMAIN:-moviepilot};
 
         # SSL证书路径
