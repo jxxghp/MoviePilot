@@ -310,6 +310,21 @@ class MediaChain(ChainBase):
             )
         return None
 
+    @staticmethod
+    def is_bluray_folder(fileitem: schemas.FileItem) -> bool:
+        """
+        判断是否为原盘目录
+        """
+        if not fileitem or fileitem.type != "dir":
+            return False
+        # 蓝光原盘目录必备的文件或文件夹
+        required_files = ['BDMV', 'CERTIFICATE']
+        # 检查目录下是否存在所需文件或文件夹
+        for item in StorageChain().list_files(fileitem):
+            if item.name in required_files:
+                return True
+        return False
+
     @eventmanager.register(EventType.MetadataScrape)
     def scrape_metadata_event(self, event: Event):
         """
@@ -349,51 +364,60 @@ class MediaChain(ChainBase):
                                      overwrite=overwrite)
             else:
                 if file_list:
-                    # 1. 收集fileitem和file_list中每个文件之间所有子目录
-                    all_dirs = set()
-                    root_path = Path(fileitem.path)
+                    # 如果是BDMV原盘目录，只对根目录进行刮削，不处理子目录
+                    if self.is_bluray_folder(fileitem):
+                        logger.info(f"检测到BDMV原盘目录，只对根目录进行刮削：{fileitem.path}")
+                        self.scrape_metadata(fileitem=fileitem,
+                                             mediainfo=mediainfo,
+                                             init_folder=True,
+                                             recursive=False,
+                                             overwrite=overwrite)
+                    else:
+                        # 1. 收集fileitem和file_list中每个文件之间所有子目录
+                        all_dirs = set()
+                        root_path = Path(fileitem.path)
 
-                    logger.debug(f"开始收集目录，根目录：{root_path}")
-                    # 收集根目录
-                    all_dirs.add(root_path)
+                        logger.debug(f"开始收集目录，根目录：{root_path}")
+                        # 收集根目录
+                        all_dirs.add(root_path)
 
-                    # 收集所有目录（包括所有层级）
-                    for sub_file in file_list:
-                        sub_path = Path(sub_file)
-                        # 收集从根目录到文件的所有父目录
-                        current_path = sub_path.parent
-                        while current_path != root_path and current_path.is_relative_to(root_path):
-                            all_dirs.add(current_path)
-                            current_path = current_path.parent
+                        # 收集所有目录（包括所有层级）
+                        for sub_file in file_list:
+                            sub_path = Path(sub_file)
+                            # 收集从根目录到文件的所有父目录
+                            current_path = sub_path.parent
+                            while current_path != root_path and current_path.is_relative_to(root_path):
+                                all_dirs.add(current_path)
+                                current_path = current_path.parent
 
-                    logger.debug(f"共收集到 {len(all_dirs)} 个目录")
+                        logger.debug(f"共收集到 {len(all_dirs)} 个目录")
 
-                    # 2. 初始化一遍子目录，但不处理文件
-                    for sub_dir in all_dirs:
-                        sub_dir_item = storagechain.get_file_item(storage=fileitem.storage, path=sub_dir)
-                        if sub_dir_item:
-                            logger.info(f"为目录生成海报和nfo：{sub_dir}")
-                            # 初始化目录元数据，但不处理文件
-                            self.scrape_metadata(fileitem=sub_dir_item,
-                                                 mediainfo=mediainfo,
-                                                 init_folder=True,
-                                                 recursive=False,
-                                                 overwrite=overwrite)
-                        else:
-                            logger.warn(f"无法获取目录项：{sub_dir}")
+                        # 2. 初始化一遍子目录，但不处理文件
+                        for sub_dir in all_dirs:
+                            sub_dir_item = storagechain.get_file_item(storage=fileitem.storage, path=sub_dir)
+                            if sub_dir_item:
+                                logger.info(f"为目录生成海报和nfo：{sub_dir}")
+                                # 初始化目录元数据，但不处理文件
+                                self.scrape_metadata(fileitem=sub_dir_item,
+                                                     mediainfo=mediainfo,
+                                                     init_folder=True,
+                                                     recursive=False,
+                                                     overwrite=overwrite)
+                            else:
+                                logger.warn(f"无法获取目录项：{sub_dir}")
 
-                    # 3. 刮削每个文件
-                    logger.info(f"开始刮削 {len(file_list)} 个文件")
-                    for sub_file_path in file_list:
-                        sub_file_item = storagechain.get_file_item(storage=fileitem.storage,
-                                                                   path=Path(sub_file_path))
-                        if sub_file_item:
-                            self.scrape_metadata(fileitem=sub_file_item,
-                                                 mediainfo=mediainfo,
-                                                 init_folder=False,
-                                                 overwrite=overwrite)
-                        else:
-                            logger.warn(f"无法获取文件项：{sub_file_path}")
+                        # 3. 刮削每个文件
+                        logger.info(f"开始刮削 {len(file_list)} 个文件")
+                        for sub_file_path in file_list:
+                            sub_file_item = storagechain.get_file_item(storage=fileitem.storage,
+                                                                       path=Path(sub_file_path))
+                            if sub_file_item:
+                                self.scrape_metadata(fileitem=sub_file_item,
+                                                     mediainfo=mediainfo,
+                                                     init_folder=False,
+                                                     overwrite=overwrite)
+                            else:
+                                logger.warn(f"无法获取文件项：{sub_file_path}")
                 else:
                     # 执行全量刮削
                     logger.info(f"开始刮削目录 {fileitem.path} ...")
@@ -416,20 +440,6 @@ class MediaChain(ChainBase):
         """
 
         storagechain = StorageChain()
-
-        def is_bluray_folder(_fileitem: schemas.FileItem) -> bool:
-            """
-            判断是否为原盘目录
-            """
-            if not _fileitem or _fileitem.type != "dir":
-                return False
-            # 蓝光原盘目录必备的文件或文件夹
-            required_files = ['BDMV', 'CERTIFICATE']
-            # 检查目录下是否存在所需文件或文件夹
-            for item in storagechain.list_files(_fileitem):
-                if item.name in required_files:
-                    return True
-            return False
 
         def __list_files(_fileitem: schemas.FileItem):
             """
@@ -521,7 +531,7 @@ class MediaChain(ChainBase):
                 # 电影目录
                 if recursive:
                     # 处理文件
-                    if is_bluray_folder(fileitem):
+                    if self.is_bluray_folder(fileitem):
                         # 原盘目录
                         if scraping_switchs.get('movie_nfo', True):
                             nfo_path = filepath / (filepath.name + ".nfo")
