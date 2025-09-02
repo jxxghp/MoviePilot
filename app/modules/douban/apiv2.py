@@ -154,6 +154,7 @@ class DoubanApi(metaclass=WeakSingleton):
     _api_url = "https://api.douban.com/v2"
 
     def __init__(self):
+        self.__clear_async_cache__ = False
         self._session = requests.Session()
 
     @classmethod
@@ -171,28 +172,24 @@ class DoubanApi(metaclass=WeakSingleton):
             ).digest()
         ).decode()
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     def __invoke_recommend(self, url: str, **kwargs) -> dict:
         """
         推荐/发现类API
         """
         return self.__invoke(url, **kwargs)
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     async def __async_invoke_recommend(self, url: str, **kwargs) -> dict:
         """
         推荐/发现类API（异步版本）
         """
         return await self.__async_invoke(url, **kwargs)
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     def __invoke_search(self, url: str, **kwargs) -> dict:
         """
         搜索类API
         """
         return self.__invoke(url, **kwargs)
 
-    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta)
     async def __async_invoke_search(self, url: str, **kwargs) -> dict:
         """
         搜索类API（异步版本）
@@ -245,6 +242,9 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         GET请求（异步版本）
         """
+        if self.__clear_async_cache__:
+            self.__clear_async_cache__ = False
+            await self.__async_invoke.cache_clear()
         req_url, params = self._prepare_get_request(url, **kwargs)
         resp = await AsyncRequestUtils(
             ua=choice(self._user_agents)
@@ -864,8 +864,8 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         清空LRU缓存
         """
-        # 尚未支持缓存清理
-        pass
+        self.__invoke.cache_clear()
+        self.__clear_async_cache__ = True
 
     def close(self):
         if self._session:

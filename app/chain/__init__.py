@@ -105,7 +105,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         异步删除缓存，同时删除Redis和本地缓存
         """
-        pass
+        await self.async_filecache.delete(filename)
 
     @staticmethod
     def __is_valid_empty(ret):

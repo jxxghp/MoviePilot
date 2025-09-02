@@ -249,7 +249,7 @@ class Scheduler(metaclass=SingletonClass):
                     "interval",
                     id="subscribe_search",
                     name="订阅搜索补全",
-                    hours=24,
+                    hours=settings.SUBSCRIBE_SEARCH_INTERVAL,
                     kwargs={
                         'job_id': 'subscribe_search'
                     }
