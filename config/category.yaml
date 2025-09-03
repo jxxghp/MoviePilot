@@ -8,6 +8,7 @@
 #   `release_year` 发行年份，格式：YYYY，电影实际对应`release_date`字段，电视剧实际对应`first_air_date`字段，支持范围设定，如：`YYYY-YYYY`
 #   themoviedb 详情API返回的其它一级字段
 # 4. 配置多项条件时需要同时满足，一个条件需要匹配多个值是使用`,`分隔
+# 5. !条件值表示排除该值
 
 # 配置电影的分类策略
 movie:

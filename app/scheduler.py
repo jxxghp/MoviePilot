@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import multiprocessing
 import threading
 import traceback
 from datetime import datetime, timedelta
@@ -23,8 +24,8 @@ from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.sites import SitesHelper  # noqa
 from app.helper.message import MessageHelper
+from app.helper.sites import SitesHelper  # noqa
 from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow, ConfigChangeEventData
@@ -71,7 +72,8 @@ class Scheduler(metaclass=SingletonClass):
             return
         event_data: ConfigChangeEventData = event.event_data
         if event_data.key not in ['DEV', 'COOKIECLOUD_INTERVAL', 'MEDIASERVER_SYNC_INTERVAL', 'SUBSCRIBE_SEARCH',
-                                  'SUBSCRIBE_MODE', 'SUBSCRIBE_RSS_INTERVAL', 'SITEDATA_REFRESH_INTERVAL']:
+                                  'SUBSCRIBE_SEARCH_INTERVAL', 'SUBSCRIBE_MODE', 'SUBSCRIBE_RSS_INTERVAL',
+                                  'SITEDATA_REFRESH_INTERVAL']:
             return
         logger.info(f"配置项 {event_data.key} 变更，重新初始化定时服务...")
         self.init()
@@ -94,17 +96,17 @@ class Scheduler(metaclass=SingletonClass):
                 "cookiecloud": {
                     "name": "同步CookieCloud站点",
                     "func": SiteChain().sync_cookies,
-                    "running": False,
+                    "running": False
                 },
                 "mediaserver_sync": {
                     "name": "同步媒体服务器",
                     "func": MediaServerChain().sync,
-                    "running": False,
+                    "running": False
                 },
                 "subscribe_tmdb": {
                     "name": "订阅元数据更新",
                     "func": SubscribeChain().check,
-                    "running": False,
+                    "running": False
                 },
                 "subscribe_search": {
                     "name": "订阅搜索补全",
@@ -125,47 +127,47 @@ class Scheduler(metaclass=SingletonClass):
                 "subscribe_refresh": {
                     "name": "订阅刷新",
                     "func": SubscribeChain().refresh,
-                    "running": False,
+                    "running": False
                 },
                 "subscribe_follow": {
                     "name": "关注的订阅分享",
                     "func": SubscribeChain().follow,
-                    "running": False,
+                    "running": False
                 },
                 "transfer": {
                     "name": "下载文件整理",
                     "func": TransferChain().process,
-                    "running": False,
+                    "running": False
                 },
                 "clear_cache": {
                     "name": "缓存清理",
                     "func": self.clear_cache,
-                    "running": False,
+                    "running": False
                 },
                 "user_auth": {
                     "name": "用户认证检查",
                     "func": self.user_auth,
-                    "running": False,
+                    "running": False
                 },
                 "scheduler_job": {
                     "name": "公共定时服务",
                     "func": SchedulerChain().scheduler_job,
-                    "running": False,
+                    "running": False
                 },
                 "random_wallpager": {
                     "name": "壁纸缓存",
                     "func": WallpaperHelper().get_wallpapers,
-                    "running": False,
+                    "running": False
                 },
                 "sitedata_refresh": {
                     "name": "站点数据刷新",
                     "func": SiteChain().refresh_userdatas,
-                    "running": False,
+                    "running": False
                 },
                 "recommend_refresh": {
                     "name": "推荐缓存",
                     "func": RecommendChain().refresh_recommend,
-                    "running": False,
+                    "running": False
                 },
                 "plugin_market_refresh": {
                     "name": "插件市场缓存",
@@ -417,9 +419,6 @@ class Scheduler(metaclass=SingletonClass):
             # 初始化插件服务
             self.init_plugin_jobs()
 
-            # 打印服务
-            self._scheduler.print_jobs()
-
             # 启动定时服务
             self._scheduler.start()
 
@@ -469,9 +468,18 @@ class Scheduler(metaclass=SingletonClass):
             func = job.get("func")
             if not func:
                 return
+            # 是否多进程运行
+            run_in_process = job.get("run_in_process", False)
             if inspect.iscoroutinefunction(func):
+                # 协程函数
                 __start_coro(func(*args, **kwargs))
+            elif run_in_process:
+                # 多进程运行
+                p = multiprocessing.Process(target=func, args=args, kwargs=kwargs)
+                p.start()
+                p.join()
             else:
+                # 普通函数
                 job["func"](*args, **kwargs)
         except Exception as e:
             logger.error(f"定时任务 {job.get('name')} 执行失败：{str(e)} - {traceback.format_exc()}")

@@ -327,8 +327,6 @@ def setup_prometheus_metrics(app):
             # 结束请求
             monitor.end_request()
 
-    logger.info("Prometheus指标监控已设置")
-
 
 def get_metrics_response():
     """

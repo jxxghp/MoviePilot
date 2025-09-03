@@ -48,7 +48,7 @@ class ModuleManager(metaclass=Singleton):
                     # 通过模板开关控制加载
                     _module.init_module()
                     self._running_modules[module_id] = _module
-                    logger.info(f"Moudle Loaded：{module_id}")
+                    logger.debug(f"Moudle Loaded：{module_id}")
             except Exception as err:
                 logger.error(f"Load Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
 
@@ -61,7 +61,7 @@ class ModuleManager(metaclass=Singleton):
             if hasattr(module, "stop"):
                 try:
                     module.stop()
-                    logger.info(f"Moudle Stoped：{module_id}")
+                    logger.debug(f"Moudle Stoped：{module_id}")
                 except Exception as err:
                     logger.error(f"Stop Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
         logger.info("所有模块停止完成")

@@ -459,7 +459,18 @@ class PluginHelper(metaclass=WeakSingleton):
         :param requirements_file: 依赖的 requirements.txt 文件路径
         :return: (是否成功, 错误信息)
         """
-        base_cmd = [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)]
+        wheels_dir = requirements_file.parent / "wheels"
+
+        find_links_option = []
+        if wheels_dir.is_dir():
+            # 如果目录存在，增加 --find-links 选项
+            logger.debug(f"[PIP] 发现插件内嵌的 wheels 目录: {wheels_dir}，将优先从本地安装。")
+            find_links_option = ["--find-links", str(wheels_dir)]
+        else:
+            # 如果不存在，选项为空列表，对后续命令无影响
+            logger.debug(f"[PIP] 未发现插件内嵌的 wheels 目录，将仅使用在线源。")
+
+        base_cmd = [sys.executable, "-m", "pip", "install"] + find_links_option + ["-r", str(requirements_file)]
         strategies = []
 
         # 添加策略到列表中

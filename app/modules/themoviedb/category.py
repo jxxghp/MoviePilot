@@ -108,6 +108,7 @@ class CategoryHelper(metaclass=WeakSingleton):
             return ""
         if not categorys:
             return ""
+
         for key, item in categorys.items():
             if not item:
                 return key
@@ -134,23 +135,41 @@ class CategoryHelper(metaclass=WeakSingleton):
                     else:
                         info_values = [str(info_value).upper()]
 
-                if value.find(",") != -1:
-                    # , 分隔多个值
-                    values = [str(val).upper() for val in value.split(",") if val]
-                elif value.find("-") != -1:
-                    # - 表示范围，仅限于数字
-                    value_begin = value.split("-")[0]
-                    value_end = value.split("-")[1]
+                values = []
+                invert_values = []
+
+                # 如果有 "," 进行分割
+                values = [str(val) for val in value.split(",") if val]
+
+                expanded_values = []
+                for v in values:
+                    if "-" not in v:
+                        expanded_values.append(v)
+                        continue
+
+                    # - 表示范围
+                    value_begin, value_end = v.split("-", 1)
+
+                    prefix = ""
+                    if value_begin.startswith('!'):
+                        prefix = '!'
+                        value_begin = value_begin[1:]
+
                     if value_begin.isdigit() and value_end.isdigit():
                         # 数字范围
-                        values = [str(val) for val in range(int(value_begin), int(value_end) + 1)]
+                        expanded_values.extend(f"{prefix}{val}" for val in range(int(value_begin), int(value_end) + 1))
                     else:
                         # 字符串范围
-                        values = [str(value_begin), str(value_end)]
-                else:
-                    values = [str(value).upper()]
+                        expanded_values.extend([f"{prefix}{value_begin}", f"{prefix}{value_end}"])
 
-                if not set(values).intersection(set(info_values)):
+                values = list(map(str.upper, expanded_values))
+
+                invert_values = [val[1:] for val in values if val.startswith('!')]
+                values = [val for val in values if not val.startswith('!')]
+
+                if values and not set(values).intersection(set(info_values)):
+                    match_flag = False
+                if invert_values and set(invert_values).intersection(set(info_values)):
                     match_flag = False
             if match_flag:
                 return key
