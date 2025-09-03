@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings
 from app.monitoring import setup_prometheus_metrics
@@ -13,7 +14,8 @@ def create_app() -> FastAPI:
     _app = FastAPI(
         title=settings.PROJECT_NAME,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
-        lifespan=lifespan
+        lifespan=lifespan,
+        default_response_class=ORJSONResponse
     )
 
     # 配置 CORS 中间件
