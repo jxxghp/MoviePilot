@@ -615,6 +615,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                     self.uploaded_size = 0
                     self.file_size = file_path.stat().st_size
 
+                def __len__(self) -> int:
+                    return self.file_size
+
                 def read(self, size=-1):
                     if global_vars.is_transfer_stopped(path.as_posix()):
                         logger.info(f"【OpenList】{path} 上传已取消！")
