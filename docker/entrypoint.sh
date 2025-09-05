@@ -274,4 +274,8 @@ fi
 
 # 启动后端服务
 INFO "→ 启动后端服务..."
-exec dumb-init gosu moviepilot:moviepilot ${VENV_PATH}/bin/python3 app/main.py
+if [ "${START_NOGOSU:-false}" = "true" ]; then
+    exec dumb-init "${VENV_PATH}/bin/python3" app/main.py
+else
+    exec dumb-init gosu moviepilot:moviepilot "${VENV_PATH}/bin/python3" app/main.py
+fi

@@ -294,6 +294,9 @@ class LocalStorage(StorageBase):
         try:
             src = Path(fileitem.path)
             dest = path / new_name
+            if src == dest:
+                # 目标和源文件相同，直接返回成功，不做任何操作
+                return True
             if self.__should_show_progress(src, dest):
                 if self._copy_with_progress(src, dest):
                     # 复制成功删除源文件

@@ -46,6 +46,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     # 文件块大小，默认10MB
     chunk_size = 10 * 1024 * 1024
 
+    # 流控重试间隔时间
+    retry_delay = 70
+
     def __init__(self):
         super().__init__()
         self._auth_state = {}
@@ -195,6 +198,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         result = resp.json()
         if result.get("code") != 0:
             logger.warn(f"【115】刷新 access_token 失败：{result.get('code')} - {result.get('message')}！")
+            return None
         return result.get("data")
 
     def _request_api(self, method: str, endpoint: str,
@@ -233,7 +237,18 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 返回数据
         ret_data = resp.json()
         if ret_data.get("code") != 0:
-            logger.warn(f"【115】{method} 请求 {endpoint} 出错：{ret_data.get('message')}！")
+            error_msg = ret_data.get("message")
+            logger.warn(f"【115】{method} 请求 {endpoint} 出错：{error_msg}！")
+            retry_times = kwargs.get("retry_limit", 5)
+            if "已达到当前访问上限" in error_msg:
+                if retry_times <= 0:
+                    logger.error(f"【115】{method} 请求 {endpoint} 达到访问上限，重试次数用尽！")
+                    return None
+                kwargs["retry_limit"] = retry_times - 1
+                logger.info(f"【115】{method} 请求 {endpoint} 达到访问上限，等待 {self.retry_delay} 秒后重试...")
+                time.sleep(self.retry_delay)
+                return self._request_api(method, endpoint, result_key, **kwargs)
+            return None
 
         if result_key:
             return ret_data.get(result_key)
@@ -259,8 +274,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         自动延迟重试 get_item 模块
         """
-        for _ in range(2):
-            time.sleep(2)
+        for i in range(1, 4):
+            time.sleep(2 ** i)
             fileitem = self.get_item(path)
             if fileitem:
                 return fileitem
@@ -434,6 +449,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 data=init_data
             )
             if not init_resp:
+                return None
+            if not init_resp.get("state"):
+                logger.warn(f"【115】上传二次认证失败: {init_resp.get('error')}")
                 return None
             # 二次认证结果
             init_result = init_resp.get("data")
@@ -787,8 +805,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if resp["state"]:
             new_path = Path(path) / fileitem.name
             new_item = self._delay_get_item(new_path)
-            self.rename(new_item, new_name)
-            return True
+            if not new_item:
+                return False
+            if self.rename(new_item, new_name):
+                return True
         return False
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
@@ -817,8 +837,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if resp["state"]:
             new_path = Path(path) / fileitem.name
             new_file = self._delay_get_item(new_path)
-            self.rename(new_file, new_name)
-            return True
+            if not new_file:
+                return False
+            if self.rename(new_file, new_name):
+                return True
         return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
