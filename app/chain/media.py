@@ -1,4 +1,5 @@
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Optional, List, Tuple, Union
 
@@ -456,36 +457,53 @@ class MediaChain(ChainBase):
             """
             if not _fileitem or not _content or not _path:
                 return
-            # 保存文件到临时目录
-            tmp_dir = settings.TEMP_PATH / StringUtils.generate_random_str(10)
-            tmp_dir.mkdir(parents=True, exist_ok=True)
-            tmp_file = tmp_dir / _path.name
-            tmp_file.write_bytes(_content)
-            # 获取文件的父目录
-            try:
-                item = storagechain.upload_file(fileitem=_fileitem, path=tmp_file, new_name=_path.name)
+            # 使用tempfile创建临时文件，自动删除
+            with NamedTemporaryFile(delete=True, suffix=_path.suffix) as tmp_file:
+                # 写入内容
+                if isinstance(_content, bytes):
+                    tmp_file.write(_content)
+                else:
+                    tmp_file.write(_content.encode('utf-8'))
+                tmp_file.flush()
+                # 上传文件
+                item = storagechain.upload_file(fileitem=_fileitem, path=Path(tmp_file.name), new_name=_path.name)
                 if item:
                     logger.info(f"已保存文件：{item.path}")
                 else:
                     logger.warn(f"文件保存失败：{_path}")
-            finally:
-                if tmp_file.exists():
-                    tmp_file.unlink()
 
-        def __download_image(_url: str) -> Optional[bytes]:
+        def __download_and_save_image(_fileitem: schemas.FileItem, _path: Path, _url: str):
             """
-            下载图片并保存
+            流式下载图片并直接保存到文件（减少内存占用）
+            :param _fileitem: 关联的媒体文件项
+            :param _path: 图片文件路径
+            :param _url: 图片下载URL
             """
+            if not _fileitem or not _url or not _path:
+                return
             try:
                 logger.info(f"正在下载图片：{_url} ...")
-                r = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT).get_res(url=_url)
-                if r:
-                    return r.content
-                else:
-                    logger.info(f"{_url} 图片下载失败，请检查网络连通性！")
+                request_utils = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT)
+                with request_utils.get_stream(url=_url) as r:
+                    if r and r.status_code == 200:
+                        # 使用tempfile创建临时文件，自动删除
+                        with NamedTemporaryFile(delete=True, suffix=_path.suffix) as tmp_file:
+                            # 流式写入文件
+                            for chunk in r.iter_content(chunk_size=8192):
+                                if chunk:
+                                    tmp_file.write(chunk)
+                            tmp_file.flush()
+                            # 上传文件
+                            item = storagechain.upload_file(fileitem=_fileitem, path=Path(tmp_file.name),
+                                                            new_name=_path.name)
+                            if item:
+                                logger.info(f"已保存图片：{item.path}")
+                            else:
+                                logger.warn(f"图片保存失败：{_path}")
+                    else:
+                        logger.info(f"{_url} 图片下载失败")
             except Exception as err:
                 logger.error(f"{_url} 图片下载失败：{str(err)}！")
-            return None
 
         if not fileitem:
             return
@@ -587,11 +605,8 @@ class MediaChain(ChainBase):
                                 image_path = filepath.with_name(image_name)
                                 if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                path=image_path):
-                                    # 下载图片
-                                    content = __download_image(image_url)
-                                    # 写入图片到当前目录
-                                    if content:
-                                        __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                    # 流式下载图片并直接保存
+                                    __download_and_save_image(_fileitem=fileitem, _path=image_path, _url=image_url)
                                 else:
                                     logger.info(f"已存在图片文件：{image_path}")
                             else:
@@ -637,13 +652,10 @@ class MediaChain(ChainBase):
                         for episode, image_url in image_dict.items():
                             image_path = filepath.with_suffix(Path(image_url).suffix)
                             if overwrite or not storagechain.get_file_item(storage=fileitem.storage, path=image_path):
-                                # 下载图片
-                                content = __download_image(image_url)
-                                # 保存图片文件到当前目录
-                                if content:
-                                    if not parent:
-                                        parent = storagechain.get_parent_item(fileitem)
-                                    __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                # 流式下载图片并直接保存
+                                if not parent:
+                                    parent = storagechain.get_parent_item(fileitem)
+                                __download_and_save_image(_fileitem=parent, _path=image_path, _url=image_url)
                             else:
                                 logger.info(f"已存在图片文件：{image_path}")
                 else:
@@ -694,13 +706,10 @@ class MediaChain(ChainBase):
                                     image_path = filepath.with_name(image_name)
                                     if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                    path=image_path):
-                                        # 下载图片
-                                        content = __download_image(image_url)
-                                        # 保存图片文件到剧集目录
-                                        if content:
-                                            if not parent:
-                                                parent = storagechain.get_parent_item(fileitem)
-                                            __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                        # 流式下载图片并直接保存
+                                        if not parent:
+                                            parent = storagechain.get_parent_item(fileitem)
+                                        __download_and_save_image(_fileitem=parent, _path=image_path, _url=image_url)
                                     else:
                                         logger.info(f"已存在图片文件：{image_path}")
                         else:
@@ -730,13 +739,11 @@ class MediaChain(ChainBase):
                                             continue
                                         if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                        path=image_path):
-                                            # 下载图片
-                                            content = __download_image(image_url)
-                                            # 保存图片文件到当前目录
-                                            if content:
-                                                if not parent:
-                                                    parent = storagechain.get_parent_item(fileitem)
-                                                __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                            # 流式下载图片并直接保存
+                                            if not parent:
+                                                parent = storagechain.get_parent_item(fileitem)
+                                            __download_and_save_image(_fileitem=parent, _path=image_path,
+                                                                      _url=image_url)
                                         else:
                                             logger.info(f"已存在图片文件：{image_path}")
                                     else:
@@ -786,11 +793,8 @@ class MediaChain(ChainBase):
                                     image_path = filepath / image_name
                                     if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                    path=image_path):
-                                        # 下载图片
-                                        content = __download_image(image_url)
-                                        # 保存图片文件到当前目录
-                                        if content:
-                                            __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                        # 流式下载图片并直接保存
+                                        __download_and_save_image(_fileitem=fileitem, _path=image_path, _url=image_url)
                                     else:
                                         logger.info(f"已存在图片文件：{image_path}")
                                 else:

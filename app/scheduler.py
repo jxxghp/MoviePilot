@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import inspect
 import multiprocessing
 import threading
@@ -30,6 +31,7 @@ from app.helper.wallpaper import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow, ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey
+from app.utils.gc import get_memory_usage
 from app.utils.singleton import SingletonClass
 from app.utils.timer import TimerUtils
 
@@ -180,6 +182,11 @@ class Scheduler(metaclass=SingletonClass):
                 "subscribe_calendar_cache": {
                     "name": "订阅日历缓存",
                     "func": SubscribeChain().cache_calendar,
+                    "running": False
+                },
+                "full_gc": {
+                    "name": "主动内存回收",
+                    "func": self.full_gc,
                     "running": False
                 }
             }
@@ -412,6 +419,19 @@ class Scheduler(metaclass=SingletonClass):
                     'job_id': 'subscribe_calendar_cache'
                 }
             )
+
+            # 主动内存回收
+            if settings.MEMORY_GC_INTERVAL:
+                self._scheduler.add_job(
+                    self.start,
+                    "interval",
+                    id="full_gc",
+                    name="主动内存回收",
+                    minutes=settings.MEMORY_GC_INTERVAL,
+                    kwargs={
+                        'job_id': 'full_gc'
+                    }
+                )
 
             # 初始化工作流服务
             self.init_workflow_jobs()
@@ -746,6 +766,17 @@ class Scheduler(metaclass=SingletonClass):
         清理缓存
         """
         SchedulerChain().clear_cache()
+
+    @staticmethod
+    def full_gc():
+        """
+        主动内存回收
+        """
+        memory_before = get_memory_usage()
+        collected = gc.collect()
+        memory_after = get_memory_usage()
+        memory_freed = memory_before - memory_after
+        logger.info(f"主动内存回收完成，回收对象数: {collected}，释放内存: {memory_freed:.2f} MB")
 
     def user_auth(self):
         """

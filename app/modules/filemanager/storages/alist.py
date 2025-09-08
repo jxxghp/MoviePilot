@@ -4,8 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 
-import requests
-
 from app import schemas
 from app.core.cache import cached
 from app.core.config import settings, global_vars
@@ -569,18 +567,22 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         else:
             local_path = path / fileitem.name
 
-        with requests.get(download_url, headers=self.__get_header_with_token(), stream=True) as r:
-            r.raise_for_status()
-            with open(local_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if global_vars.is_transfer_stopped(fileitem.path):
-                        logger.info(f"【OpenList】{fileitem.path} 下载已取消！")
-                        return None
-                    f.write(chunk)
+        request_utils = RequestUtils(headers=self.__get_header_with_token())
+        try:
+            with request_utils.get_stream(download_url, raise_exception=True) as r:
+                r.raise_for_status()
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if global_vars.is_transfer_stopped(fileitem.path):
+                            logger.info(f"【OpenList】{fileitem.path} 下载已取消！")
+                            return None
+                        f.write(chunk)
+        except Exception as e:
+            logger.error(f"【OpenList】下载文件 {fileitem.path} 失败：{e}")
+            if local_path.exists():
+                return local_path
 
-        if local_path.exists():
-            return local_path
-        return None
+        return local_path
 
     def upload(
             self, fileitem: schemas.FileItem, path: Path, new_name: Optional[str] = None, task: bool = False
