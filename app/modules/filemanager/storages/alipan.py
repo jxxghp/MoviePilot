@@ -252,6 +252,9 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         # 检查会话
         self._check_session()
 
+        # 错误日志控制
+        no_error_log = kwargs.pop("no_error_log", False)
+
         try:
             resp = self.session.request(
                 method, f"{self.base_url}{endpoint}",
@@ -274,7 +277,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         # 返回数据
         ret_data = resp.json()
         if ret_data.get("code"):
-            logger.warn(f"【阿里云盘】{method} {endpoint} 返回：{ret_data.get('code')} {ret_data.get('message')}")
+            if not no_error_log:
+                logger.warn(f"【阿里云盘】{method} {endpoint} 返回：{ret_data.get('code')} {ret_data.get('message')}")
 
         if result_key:
             return ret_data.get(result_key)
@@ -825,7 +829,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 json={
                     "drive_id": drive_id or self._default_drive_id,
                     "file_path": path.as_posix()
-                }
+                },
+                no_error_log=True
             )
             if not resp:
                 return None
