@@ -258,10 +258,10 @@ class RedisHelper(metaclass=Singleton):
                     for key in self.client.scan_iter(redis_key):
                         pipe.delete(key)
                     pipe.execute()
-                logger.info(f"Cleared Redis cache for region: {region}")
+                logger.debug(f"Cleared Redis cache for region: {region}")
             else:
                 self.client.flushdb()
-                logger.info("Cleared all Redis cache")
+                logger.info("All Redis cache Cleared！")
         except Exception as e:
             logger.error(f"Failed to clear cache, region: {region}, error: {e}")
 
@@ -496,7 +496,7 @@ class AsyncRedisHelper(metaclass=Singleton):
                     async for key in self.client.scan_iter(redis_key):
                         await pipe.delete(key)
                     await pipe.execute()
-                logger.info(f"Cleared Redis cache for region (async): {region}")
+                logger.debug(f"Cleared Redis cache for region (async): {region}")
             else:
                 await self.client.flushdb()
                 logger.info("Cleared all Redis cache (async)")
