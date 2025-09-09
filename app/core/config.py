@@ -169,7 +169,7 @@ class ConfigModel(BaseModel):
 
     # ==================== 媒体元数据配置 ====================
     # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
-    SEARCH_SOURCE: str = "themoviedb,douban,bangumi"
+    SEARCH_SOURCE: str = "themoviedb"
     # 媒体识别来源 themoviedb/douban
     RECOGNIZE_SOURCE: str = "themoviedb"
     # 刮削来源 themoviedb/douban
