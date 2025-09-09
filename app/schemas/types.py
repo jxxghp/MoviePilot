@@ -175,8 +175,6 @@ class SystemConfigKey(Enum):
     UserCustomCSS = "UserCustomCSS"
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
-    # 插件安装统计
-    PluginInstallReport = "PluginInstallReport"
     # 插件文件夹分组配置
     PluginFolders = "PluginFolders"
     # 默认电影订阅规则
@@ -193,6 +191,10 @@ class SystemConfigKey(Enum):
     NotificationTemplates = "NotificationTemplates"
     # 刮削开关设置
     ScrapingSwitchs = "ScrapingSwitchs"
+    # 插件安装统计
+    PluginInstallReport = "PluginInstallReport"
+    # 配置向导状态
+    SetupWizardState = "SetupWizardState"
 
 
 # 处理进度Key字典

@@ -75,6 +75,8 @@ class ConfigModel(BaseModel):
     DEBUG: bool = False
     # 是否开发模式
     DEV: bool = False
+    # 高级设置模式
+    ADVANCED_MODE: bool = True
 
     # ==================== 安全认证配置 ====================
     # 密钥
