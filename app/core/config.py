@@ -89,8 +89,10 @@ class ConfigModel(BaseModel):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # RESOURCE_TOKEN过期时间
     RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS: int = 60 * 30
-    # 超级管理员
+    # 超级管理员初始用户名
     SUPERUSER: str = "admin"
+    # 超级管理员初始密码
+    SUPERUSER_PASSWORD: str = None
     # 辅助认证，允许通过外部服务进行认证、单点登录以及自动创建用户
     AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
@@ -254,7 +256,7 @@ class ConfigModel(BaseModel):
     # 订阅搜索时间间隔（小时）
     SUBSCRIBE_SEARCH_INTERVAL: int = 24
     # 检查本地媒体库是否存在资源开关
-    LOCAL_EXISTS_SEARCH: bool = False
+    LOCAL_EXISTS_SEARCH: bool = True
 
     # ==================== 站点配置 ====================
     # 站点数据刷新间隔（小时）
