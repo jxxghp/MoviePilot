@@ -23,7 +23,7 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
         """
         更新进度百分比
         """
-        percent_value = int(percent)
+        percent_value = round(percent, 2) if isinstance(percent, float) else percent
         pbar.n = percent_value
         # 更新进度
         pbar.refresh()

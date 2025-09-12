@@ -39,8 +39,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         "copy": "复制",
     }
 
-    # 文件块大小，默认100MB
-    chunk_size = 100 * 1024 * 1024
+    # 文件块大小，默认10MB
+    chunk_size = 10 * 1024 * 1024
 
     def __init__(self):
         super().__init__()

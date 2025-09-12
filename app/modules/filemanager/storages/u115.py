@@ -540,8 +540,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             security_token=SecurityToken
         )
         bucket = oss2.Bucket(auth, endpoint, bucket_name)  # noqa
-        # determine_part_size方法用于确定分片大小，设置分片大小为 100M
-        part_size = determine_part_size(file_size, preferred_size=100 * 1024 * 1024)
+        # determine_part_size方法用于确定分片大小，设置分片大小为 10M
+        part_size = determine_part_size(file_size, preferred_size=10 * 1024 * 1024)
 
         # 初始化进度条
         logger.info(f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}")

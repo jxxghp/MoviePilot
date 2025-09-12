@@ -602,7 +602,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         file_size = local_path.stat().st_size
 
         # 1. 创建文件并检查秒传
-        chunk_size = 100 * 1024 * 1024  # 分片大小 100M
+        chunk_size = 10 * 1024 * 1024  # 分片大小 10M
         create_res = self._create_file(drive_id=target_dir.drive_id,
                                        parent_file_id=target_dir.fileid,
                                        file_name=target_name,

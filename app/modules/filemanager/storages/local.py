@@ -26,8 +26,8 @@ class LocalStorage(StorageBase):
         "softlink": "软链接"
     }
 
-    # 文件块大小，默认100MB
-    chunk_size = 100 * 1024 * 1024
+    # 文件块大小，默认10MB
+    chunk_size = 10 * 1024 * 1024
 
     def init_storage(self):
         """
