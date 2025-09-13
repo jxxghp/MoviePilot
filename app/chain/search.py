@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, Tuple
 from typing import List, Optional
 
+from app.helper.sites import SitesHelper  # noqa
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
@@ -16,7 +17,6 @@ from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
-from app.helper.sites import SitesHelper  # noqa
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
@@ -324,9 +324,6 @@ class SearchChain(ChainBase):
         :param _torrents: 种子列表
         :return: 去重后的种子列表
         """
-        if not settings.SEARCH_MULTIPLE_NAME:
-            return _torrents
-        # 通过encosure去重
         return list({f"{t.torrent_info.site_name}_{t.torrent_info.title}_{t.torrent_info.description}": t
                      for t in _torrents}.values())
 
@@ -384,16 +381,23 @@ class SearchChain(ChainBase):
             if search_count > 0:
                 logger.info(f"已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
                 time.sleep(random.randint(1, 10))
+
             # 搜索站点
-            torrents.extend(
-                self.__search_all_sites(
-                    mediainfo=mediainfo,
-                    keyword=search_word,
-                    sites=sites,
-                    area=area
-                ) or []
-            )
+            results = self.__search_all_sites(
+                mediainfo=mediainfo,
+                keyword=search_word,
+                sites=sites,
+                area=area
+            ) or []
+            # 合并结果
+
             search_count += 1
+            torrents.extend(results)
+
+            # 有结果则停止
+            if not settings.SEARCH_MULTIPLE_NAME and torrents:
+                logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
+                break
 
         # 处理结果
         return self.__parse_result(
