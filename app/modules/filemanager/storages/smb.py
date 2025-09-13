@@ -1,3 +1,4 @@
+import signal
 import threading
 import time
 from pathlib import Path
@@ -16,6 +17,51 @@ from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 
 lock = threading.Lock()
+
+# 全局SMB实例列表，用于信号处理
+_smb_instances = []
+
+
+def _signal_handler(signum, frame):
+    """
+    信号处理器，用于在进程终止时清理SMB连接
+    """
+    logger.info(f"【SMB】收到信号 {signum}，开始清理SMB连接...")
+    for smb_instance in _smb_instances:
+        try:
+            if hasattr(smb_instance, '_cleanup_connection'):
+                smb_instance._cleanup_connection()
+        except Exception as e:
+            logger.debug(f"【SMB】清理实例时出错: {e}")
+
+
+# 注册信号处理器
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
+
+
+def _safe_smb_operation(operation_func, *args, **kwargs):
+    """
+    安全地执行SMB操作，处理连接错误和线程问题
+    """
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            return operation_func(*args, **kwargs)
+        except (SMBResponseException, SMBException) as e:
+            retry_count += 1
+            logger.warning(f"【SMB】操作失败，尝试重试 ({retry_count}/{max_retries}): {e}")
+            if retry_count >= max_retries:
+                logger.error(f"【SMB】操作失败，已达到最大重试次数: {e}")
+                raise
+            # 短暂等待后重试
+            import time
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"【SMB】操作时发生未知错误: {e}")
+            raise
 
 
 class SMBConnectionError(Exception):
@@ -42,6 +88,21 @@ class SMB(StorageBase, metaclass=WeakSingleton):
     # 文件块大小，默认10MB
     chunk_size = 10 * 1024 * 1024
 
+    def __enter__(self):
+        """
+        上下文管理器入口
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        上下文管理器出口，确保连接被正确清理
+        """
+        try:
+            self._cleanup_connection()
+        except Exception as e:
+            logger.debug(f"【SMB】上下文管理器清理连接失败: {e}")
+
     def __init__(self):
         super().__init__()
         self._connected = False
@@ -49,6 +110,10 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         self._host = None
         self._username = None
         self._password = None
+        
+        # 注册到全局实例列表
+        _smb_instances.append(self)
+        
         self._init_connection()
 
     def _init_connection(self):
@@ -114,8 +179,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         测试SMB连接
         """
         try:
-            # 尝试列出根目录来测试连接
-            smbclient.listdir(self._server_path)
+            # 使用安全操作包装器测试连接
+            _safe_smb_operation(smbclient.listdir, self._server_path)
         except SMBAuthenticationError as e:
             raise SMBConnectionError(f"SMB认证失败：{e}")
         except SMBResponseException as e:
@@ -137,6 +202,13 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         if not self._connected or not self._server_path:
             raise SMBConnectionError("【SMB】连接未建立或已断开，请检查配置！")
+        
+        # 尝试重新连接如果连接已断开
+        try:
+            self._test_connection()
+        except Exception as e:
+            logger.warning(f"【SMB】连接检查失败，尝试重新连接: {e}")
+            self._reconnect()
 
     def _normalize_path(self, path: Union[str, Path]) -> str:
         """
@@ -233,6 +305,13 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             logger.debug(f"【SMB】连接检查失败：{e}")
             self._connected = False
+            # 尝试重新连接
+            try:
+                self._reconnect()
+                if self._connected:
+                    return True
+            except Exception as reconnect_error:
+                logger.debug(f"【SMB】重新连接失败：{reconnect_error}")
             return False
 
     def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
@@ -253,12 +332,11 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             # 列出目录内容
             try:
-                entries = smbclient.listdir(smb_path)
-            except SMBResponseException as e:
+                entries = _safe_smb_operation(smbclient.listdir, smb_path)
+            except Exception as e:
                 logger.error(f"【SMB】列出目录失败: {smb_path} - {e}")
-                return []
-            except SMBException as e:
-                logger.error(f"【SMB】列出目录失败: {smb_path} - {e}")
+                # 尝试重新连接
+                self._reconnect()
                 return []
 
             items = []
@@ -278,6 +356,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             return items
         except Exception as e:
             logger.error(f"【SMB】列出文件失败: {e}")
+            # 尝试重新连接
+            self._reconnect()
             return []
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
@@ -660,8 +740,51 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         析构函数，清理连接
         """
         try:
+            # 从全局实例列表中移除
+            if self in _smb_instances:
+                _smb_instances.remove(self)
+            
             # smbclient 自动管理连接池，但我们可以重置缓存
             if hasattr(self, '_connected') and self._connected:
-                reset_connection_cache()
+                self._cleanup_connection()
         except Exception as e:
             logger.debug(f"【SMB】清理连接失败: {e}")
+
+    def _reconnect(self):
+        """
+        重新建立SMB连接
+        """
+        try:
+            logger.info("【SMB】尝试重新连接...")
+            
+            # 清理现有连接
+            self._cleanup_connection()
+            
+            # 重新初始化连接
+            self._init_connection()
+            
+            if self._connected:
+                logger.info("【SMB】重新连接成功")
+            else:
+                logger.error("【SMB】重新连接失败")
+                
+        except Exception as e:
+            logger.error(f"【SMB】重新连接过程中出现错误: {e}")
+            self._connected = False
+
+    def _cleanup_connection(self):
+        """
+        安全地清理SMB连接
+        """
+        try:
+            # 标记连接为断开状态
+            self._connected = False
+            
+            # 重置连接缓存，这会清理所有连接
+            reset_connection_cache()
+            
+            logger.debug("【SMB】连接清理完成")
+        except Exception as e:
+            logger.debug(f"【SMB】连接清理过程中出现错误: {e}")
+            # 即使清理失败，也要确保连接状态被重置
+            self._connected = False
