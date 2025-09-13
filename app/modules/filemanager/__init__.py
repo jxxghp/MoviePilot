@@ -130,14 +130,15 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.support_transtype()
 
-    def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
+    @staticmethod
+    def recommend_name(meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
         """
         获取重命名后的名称
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :return: 重命名后的名称（含目录）
         """
-        handler = TransHandler(self._storage_schemas)
+        handler = TransHandler()
         # 重命名格式
         rename_format = settings.RENAME_FORMAT(mediainfo.type)
         # 获取集信息
@@ -413,7 +414,7 @@ class FileManagerModule(_ModuleBase):
         :param target_oper: 目标存储操作对象
         :return: {path, target_path, message}
         """
-        handler = TransHandler(self._storage_schemas)
+        handler = TransHandler()
         # 检查目录路径
         if fileitem.storage == "local" and not Path(fileitem.path).exists():
             return TransferInfo(success=False,
@@ -519,7 +520,7 @@ class FileManagerModule(_ModuleBase):
         获取对应媒体的媒体库文件列表
         :param mediainfo: 媒体信息
         """
-        handler = TransHandler(self._storage_schemas)
+        handler = TransHandler()
         ret_fileitems = []
         # 检查本地媒体库
         dest_dirs = DirectoryHelper().get_library_dirs()

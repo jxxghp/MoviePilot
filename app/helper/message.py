@@ -713,6 +713,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         self._running = False
         logger.info("正在停止消息队列...")
         self.thread.join()
+        logger.info("消息队列已停止")
 
 
 class MessageHelper(metaclass=Singleton):
