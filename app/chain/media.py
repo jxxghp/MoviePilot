@@ -457,20 +457,30 @@ class MediaChain(ChainBase):
             """
             if not _fileitem or not _content or not _path:
                 return
-            # 使用tempfile创建临时文件，自动删除
-            with NamedTemporaryFile(delete=True, suffix=_path.suffix) as tmp_file:
+            # 使用tempfile创建临时文件，手动删除
+            tmp_file = NamedTemporaryFile(delete=False, suffix=_path.suffix)
+            tmp_file_path = Path(tmp_file.name)
+            try:
                 # 写入内容
                 if isinstance(_content, bytes):
                     tmp_file.write(_content)
                 else:
                     tmp_file.write(_content.encode('utf-8'))
                 tmp_file.flush()
+                tmp_file.close()  # 关闭文件句柄
+                
                 # 上传文件
-                item = storagechain.upload_file(fileitem=_fileitem, path=Path(tmp_file.name), new_name=_path.name)
+                item = storagechain.upload_file(fileitem=_fileitem, path=tmp_file_path, new_name=_path.name)
                 if item:
                     logger.info(f"已保存文件：{item.path}")
                 else:
                     logger.warn(f"文件保存失败：{_path}")
+            finally:
+                # 手动删除临时文件
+                try:
+                    tmp_file_path.unlink(missing_ok=True)
+                except Exception as cleanup_err:
+                    logger.warning(f"清理临时文件失败：{cleanup_err}")
 
         def __download_and_save_image(_fileitem: schemas.FileItem, _path: Path, _url: str):
             """
@@ -486,20 +496,30 @@ class MediaChain(ChainBase):
                 request_utils = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT)
                 with request_utils.get_stream(url=_url) as r:
                     if r and r.status_code == 200:
-                        # 使用tempfile创建临时文件，自动删除
-                        with NamedTemporaryFile(delete=True, suffix=_path.suffix) as tmp_file:
+                        # 使用tempfile创建临时文件，手动删除
+                        tmp_file = NamedTemporaryFile(delete=False, suffix=_path.suffix)
+                        tmp_file_path = Path(tmp_file.name)
+                        try:
                             # 流式写入文件
                             for chunk in r.iter_content(chunk_size=8192):
                                 if chunk:
                                     tmp_file.write(chunk)
                             tmp_file.flush()
+                            tmp_file.close()  # 关闭文件句柄
+                            
                             # 上传文件
-                            item = storagechain.upload_file(fileitem=_fileitem, path=Path(tmp_file.name),
+                            item = storagechain.upload_file(fileitem=_fileitem, path=tmp_file_path,
                                                             new_name=_path.name)
                             if item:
                                 logger.info(f"已保存图片：{item.path}")
                             else:
                                 logger.warn(f"图片保存失败：{_path}")
+                        finally:
+                            # 手动删除临时文件
+                            try:
+                                tmp_file_path.unlink(missing_ok=True)
+                            except Exception as cleanup_err:
+                                logger.warning(f"清理临时文件失败：{cleanup_err}")
                     else:
                         logger.info(f"{_url} 图片下载失败")
             except Exception as err:
