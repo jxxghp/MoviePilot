@@ -242,7 +242,7 @@ class ConfigModel(BaseModel):
 
     # ==================== 媒体服务器配置 ====================
     # 媒体服务器同步间隔（小时）
-    MEDIASERVER_SYNC_INTERVAL: int = 6
+    MEDIASERVER_SYNC_INTERVAL: int = 72
 
     # ==================== 订阅配置 ====================
     # 订阅模式
@@ -260,7 +260,7 @@ class ConfigModel(BaseModel):
 
     # ==================== 站点配置 ====================
     # 站点数据刷新间隔（小时）
-    SITEDATA_REFRESH_INTERVAL: int = 6
+    SITEDATA_REFRESH_INTERVAL: int = 24
     # 读取和发送站点消息
     SITE_MESSAGE: bool = True
     # 不能缓存站点资源的站点域名，多个使用,分隔
@@ -369,7 +369,7 @@ class ConfigModel(BaseModel):
     # 编码探测的最低置信度阈值
     ENCODING_DETECTION_MIN_CONFIDENCE: float = 0.8
     # 主动内存回收时间间隔（分钟），0为不启用
-    MEMORY_GC_INTERVAL: int = 30
+    MEMORY_GC_INTERVAL: int = 6 * 60
 
     # ==================== 安全配置 ====================
     # 允许的图片缓存域名

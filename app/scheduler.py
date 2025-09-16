@@ -131,11 +131,11 @@ class Scheduler(metaclass=SingletonClass):
                     "func": SubscribeChain().refresh,
                     "running": False
                 },
-                "subscribe_follow": {
-                    "name": "关注的订阅分享",
-                    "func": SubscribeChain().follow,
-                    "running": False
-                },
+                # "subscribe_follow": {
+                #     "name": "关注的订阅分享",
+                #     "func": SubscribeChain().follow,
+                #     "running": False
+                # },
                 "transfer": {
                     "name": "下载文件整理",
                     "func": TransferChain().process,
@@ -233,7 +233,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="new_subscribe_search",
                 name="新增订阅搜索",
-                minutes=5,
+                minutes=24*60,
                 kwargs={
                     'job_id': 'new_subscribe_search'
                 }
@@ -245,7 +245,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="subscribe_tmdb",
                 name="订阅元数据更新",
-                hours=6,
+                hours=72,
                 kwargs={
                     'job_id': 'subscribe_tmdb'
                 }
@@ -266,7 +266,7 @@ class Scheduler(metaclass=SingletonClass):
 
             if settings.SUBSCRIBE_MODE == "spider":
                 # 站点首页种子定时刷新模式
-                triggers = TimerUtils.random_scheduler(num_executions=32)
+                triggers = TimerUtils.random_scheduler(num_executions=1)
                 for trigger in triggers:
                     self._scheduler.add_job(
                         self.start,
@@ -282,9 +282,9 @@ class Scheduler(metaclass=SingletonClass):
                 # RSS订阅模式
                 if not settings.SUBSCRIBE_RSS_INTERVAL \
                         or not str(settings.SUBSCRIBE_RSS_INTERVAL).isdigit():
-                    settings.SUBSCRIBE_RSS_INTERVAL = 30
-                elif int(settings.SUBSCRIBE_RSS_INTERVAL) < 5:
-                    settings.SUBSCRIBE_RSS_INTERVAL = 5
+                    settings.SUBSCRIBE_RSS_INTERVAL = 24 * 60
+                elif int(settings.SUBSCRIBE_RSS_INTERVAL) < 24 * 60:
+                    settings.SUBSCRIBE_RSS_INTERVAL = 24 * 60
                 self._scheduler.add_job(
                     self.start,
                     "interval",
@@ -297,16 +297,16 @@ class Scheduler(metaclass=SingletonClass):
                 )
 
             # 关注订阅分享（每1小时）
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="subscribe_follow",
-                name="关注的订阅分享",
-                hours=1,
-                kwargs={
-                    'job_id': 'subscribe_follow'
-                }
-            )
+            # self._scheduler.add_job(
+            #     self.start,
+            #     "interval",
+            #     id="subscribe_follow",
+            #     name="关注的订阅分享",
+            #     hours=1,
+            #     kwargs={
+            #         'job_id': 'subscribe_follow'
+            #     }
+            # )
 
             # 下载器文件转移（每5分钟）
             self._scheduler.add_job(
@@ -314,7 +314,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="transfer",
                 name="下载文件整理",
-                minutes=5,
+                minutes=3*60,
                 kwargs={
                     'job_id': 'transfer'
                 }
@@ -326,7 +326,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="random_wallpager",
                 name="壁纸缓存",
-                minutes=30,
+                minutes=72*60,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=1),
                 kwargs={
                     'job_id': 'random_wallpager'
@@ -339,7 +339,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="scheduler_job",
                 name="公共定时服务",
-                minutes=10,
+                minutes=3*60,
                 kwargs={
                     'job_id': 'scheduler_job'
                 }
@@ -363,7 +363,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="user_auth",
                 name="用户认证检查",
-                minutes=10,
+                minutes=24*60,
                 kwargs={
                     'job_id': 'user_auth'
                 }
@@ -388,7 +388,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="recommend_refresh",
                 name="推荐缓存",
-                hours=24,
+                hours=72,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=5),
                 kwargs={
                     'job_id': 'recommend_refresh'
@@ -401,7 +401,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="plugin_market_refresh",
                 name="插件市场缓存",
-                minutes=30,
+                minutes=72*60,
                 kwargs={
                     'job_id': 'plugin_market_refresh'
                 }
@@ -413,7 +413,7 @@ class Scheduler(metaclass=SingletonClass):
                 "interval",
                 id="subscribe_calendar_cache",
                 name="订阅日历缓存",
-                hours=6,
+                hours=24,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=2),
                 kwargs={
                     'job_id': 'subscribe_calendar_cache'
