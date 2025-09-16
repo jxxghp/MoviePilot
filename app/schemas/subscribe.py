@@ -180,6 +180,23 @@ class SubscribeEpisodeInfo(BaseModel):
     library: Optional[List[SubscribeLibraryFileInfo]] = Field(default_factory=list)
 
 
+class SubscribeStatisticItem(BaseModel):
+    """订阅统计项"""
+    name: Optional[str] = None
+    year: Optional[str] = None
+    type: Optional[str] = None
+    tmdbid: Optional[int] = None
+    imdbid: Optional[str] = None
+    tvdbid: Optional[int] = None
+    doubanid: Optional[str] = None
+    genre_ids: Optional[str] = None
+    season: Optional[int] = None
+    poster: Optional[str] = None
+    backdrop: Optional[str] = None
+    vote: Optional[float] = None
+    description: Optional[str] = None
+
+
 class SubscrbieInfo(BaseModel):
     # 订阅信息
     subscribe: Optional[Subscribe] = None
