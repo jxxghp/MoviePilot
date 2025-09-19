@@ -651,7 +651,7 @@ class DownloadChain(ChainBase):
                             if not torrent_episodes:
                                 continue
                             # 为需要集的子集则下载
-                            if torrent_episodes.issubset(set(need_episodes)):
+                            if torrent_episodes.issubset(set(need_episodes)) or total_episode == 1:
                                 # 下载
                                 logger.info(f"开始下载 {meta.title} ...")
                                 download_id = self.download_single(context, save_path=save_path,
