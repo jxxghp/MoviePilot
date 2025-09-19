@@ -91,6 +91,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                         "refresh_time": int(time.time()),
                         **tokens
                     })
+                else:
+                    return None
             access_token = tokens.get("access_token")
             if access_token:
                 self.session.headers.update({"Authorization": f"Bearer {access_token}"})
@@ -211,6 +213,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 错误日志标志
         no_error_log = kwargs.pop("no_error_log", False)
+        # 重试次数
+        retry_times = kwargs.pop("retry_limit", 5)
 
         try:
             resp = self.session.request(
@@ -224,6 +228,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if resp is None:
             logger.warn(f"【115】{method} 请求 {endpoint} 失败！")
             return None
+
+        kwargs["retry_limit"] = retry_times
 
         # 处理速率限制
         if resp.status_code == 429:
@@ -243,7 +249,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             error_msg = ret_data.get("message")
             if not no_error_log:
                 logger.warn(f"【115】{method} 请求 {endpoint} 出错：{error_msg}")
-            retry_times = kwargs.get("retry_limit", 5)
             if "已达到当前访问上限" in error_msg:
                 if retry_times <= 0:
                     logger.error(f"【115】{method} 请求 {endpoint} 达到访问上限，重试次数用尽！")

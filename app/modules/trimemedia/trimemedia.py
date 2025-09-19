@@ -13,6 +13,7 @@ class TrimeMedia:
     _password: Optional[str] = None
 
     _userinfo: Optional[fnapi.User] = None
+    _host: Optional[str] = None
     _playhost: Optional[str] = None
 
     _libraries: dict[str, fnapi.MediaDb] = {}
@@ -34,19 +35,18 @@ class TrimeMedia:
             return
         self._username = username
         self._password = password
+        self._host = host
         self._sync_libraries = sync_libraries or []
 
-        if (api := self.__create_api(host)) is None:
+        if not self.reconnect():
             logger.error(f"请检查服务端地址 {host}")
             return
-        self._api = api
-        if play_api := self.__create_api(play_host):
-            self._playhost = play_api.host
+        if result := self.__create_api(play_host):
+            self._playhost = result.api.host
+            result.api.close()
         elif play_host:
             logger.warning(f"请检查外网播放地址 {play_host}")
             self._playhost = UrlUtils.standardize_base_url(play_host).rstrip("/")
-
-        self.reconnect()
 
     @property
     def api(self) -> Optional[fnapi.Api]:
@@ -55,14 +55,19 @@ class TrimeMedia:
         """
         return self._api
 
+    class _ApiCreateResult:
+        api: fnapi.Api
+        version: fnapi.Version
+
     @staticmethod
-    def __create_api(host: Optional[str]) -> Optional[fnapi.Api]:
+    def __create_api(host: Optional[str]) -> Optional["TrimeMedia._ApiCreateResult"]:
         """
         创建一个飞牛API
 
         :param host:  服务端地址
         :return: 如果地址无效、不可访问则返回None
         """
+
         if not host:
             return None
         api_key = "16CCEB3D-AB42-077D-36A1-F355324E4237"
@@ -70,21 +75,35 @@ class TrimeMedia:
 
         if not host.endswith("/v"):
             # 尝试补上结尾的/v 测试能否正常访问
-            api = fnapi.Api(host + "/v", api_key)
-            if api.sys_version():
-                return api
+            res = TrimeMedia._ApiCreateResult()
+            res.api = fnapi.Api(host + "/v", api_key)
+            if fnver := res.api.sys_version():
+                res.version = fnver
+                return res
         # 测试用户配置的地址
-        api = fnapi.Api(host, api_key)
-        return api if api.sys_version() else None
+        res = TrimeMedia._ApiCreateResult()
+        res.api = fnapi.Api(host, api_key)
+        if fnver := res.api.sys_version():
+            res.version = fnver
+            return res
+        return None
 
     def close(self):
         self.disconnect()
 
     def is_configured(self) -> bool:
-        return self._api is not None
+        return bool(self._host and self._username and self._password)
 
     def is_authenticated(self) -> bool:
-        return self.is_configured() and self._api.token is not None
+        """
+        是否已登录
+        """
+        return (
+            self.is_configured()
+            and self._api is not None
+            and self._api.token is not None
+            and self._userinfo is not None
+        )
 
     def is_inactive(self) -> bool:
         """
@@ -101,10 +120,15 @@ class TrimeMedia:
         """
         if not self.is_configured():
             return False
-        if (fnver := self._api.sys_version()) is None:
+        self.disconnect()
+        if result := self.__create_api(self._host):
+            self._api = result.api
+            # 版本号:0.8.53, 服务版本:0.8.23
+            logger.debug(
+                f"版本号:{result.version.frontend}, 服务版本:{result.version.backend}"
+            )
+        else:
             return False
-        # 版本号:0.8.36, 服务版本:0.8.19
-        logger.debug(f"版本号:{fnver.frontend}, 服务版本:{fnver.backend}")
         if self._api.login(self._username, self._password) is None:
             return False
         self._userinfo = self._api.user_info()
@@ -119,9 +143,10 @@ class TrimeMedia:
         """
         断开与飞牛的连接
         """
-        if self.is_authenticated():
+        if self._api:
             self._api.logout()
             self._api.close()
+            self._api = None
             self._userinfo = None
             logger.debug(f"{self._username} 已断开飞牛影视")
 
@@ -163,7 +188,7 @@ class TrimeMedia:
                         for img_path in library.posters or []
                     ],
                     link=f"{self._playhost or self._api.host}/library/{library.guid}",
-                    server_type='trimemedia'
+                    server_type="trimemedia",
                 )
             )
         return libraries
@@ -205,10 +230,12 @@ class TrimeMedia:
             return None
         if not self.is_configured():
             return None
-        feiniu = fnapi.Api(self._api.host, self._api.apikey)
-        if token := feiniu.login(username, password):
-            feiniu.logout()
-        return token
+        if result := self.__create_api(self._host):
+            try:
+                return result.api.login(username, password)
+            finally:
+                result.api.logout()
+                result.api.close()
 
     def get_movies(
         self, title: str, year: Optional[str] = None, tmdb_id: Optional[int] = None
@@ -459,7 +486,7 @@ class TrimeMedia:
                 if item.duration and item.ts is not None
                 else 0
             ),
-            server_type='trimemedia',
+            server_type="trimemedia",
         )
 
     def get_items(

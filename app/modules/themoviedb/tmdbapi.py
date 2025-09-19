@@ -747,6 +747,9 @@ class TmdbApi:
         logger.info("正在从TheDbMovie网站查询：%s ..." % name)
         tmdb_url = self._build_tmdb_search_url(name)
         res = RequestUtils(timeout=5, ua=settings.NORMAL_USER_AGENT, proxies=settings.PROXY).get_res(url=tmdb_url)
+        if res is None:
+            logger.error("无法连接TheDbMovie")
+            return None
 
         # 响应验证
         response_result = self._validate_response(res)
@@ -1857,6 +1860,9 @@ class TmdbApi:
         tmdb_url = self._build_tmdb_search_url(name)
         res = await AsyncRequestUtils(timeout=5, ua=settings.NORMAL_USER_AGENT, proxies=settings.PROXY).get_res(
             url=tmdb_url)
+        if res is None:
+            logger.error("无法连接TheDbMovie")
+            return None
 
         # 响应验证
         response_result = self._validate_response(res)

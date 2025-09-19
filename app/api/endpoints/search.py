@@ -20,7 +20,7 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询搜索结果
     """
-    torrents = await SearchChain().async_last_search_results()
+    torrents = await SearchChain().async_last_search_results() or []
     return [torrent.to_dict() for torrent in torrents]
 
 

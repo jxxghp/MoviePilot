@@ -140,13 +140,13 @@ class Api:
         self._token: Optional[str] = None
         self._version: Optional[Version] = None
         self._session = requests.Session()
-        self._request_utils = RequestUtils(session=self._session)
+        self._request_utils = RequestUtils(session=self._session, timeout=10)
 
     def sys_version(self) -> Optional[Version]:
         """
         飞牛影视版本号
         """
-        if (res := self.__request_api("/sys/version")) and res.success:
+        if (res := self.request("/sys/version")) and res.success:
             if res.data:
                 self._version = Version(
                     frontend=res.data.get("version"),
@@ -162,7 +162,7 @@ class Api:
         :return: 成功返回token 否则返回None
         """
         if (
-            res := self.__request_api(
+            res := self.request(
                 "/login",
                 data={
                     "username": username,
@@ -178,7 +178,9 @@ class Api:
         """
         退出账号
         """
-        if (res := self.__request_api("/user/logout", method="post")) and res.success:
+        if not self._token:
+            return True
+        if (res := self.request("/user/logout", method="post")) and res.success:
             if res.data:
                 self._token = None
                 return True
@@ -188,7 +190,9 @@ class Api:
         """
         用户列表(仅管理员有权访问)
         """
-        if (res := self.__request_api("/manager/user/list")) and res.success:
+        if (res := self.request("/manager/user/list")) and res.success:
+            if not res.data:
+                return []
             return [
                 User(
                     guid=info.get("guid"),
@@ -203,7 +207,7 @@ class Api:
         """
         当前用户信息
         """
-        if (res := self.__request_api("/user/info")) and res.success:
+        if (res := self.request("/user/info")) and res.success:
             _user = User("", "")
             _user.__dict__.update(res.data)
             return _user
@@ -213,7 +217,7 @@ class Api:
         """
         媒体数量统计
         """
-        if (res := self.__request_api("/mediadb/sum")) and res.success:
+        if (res := self.request("/mediadb/sum")) and res.success:
             sums = MediaDbSummary()
             sums.__dict__.update(res.data)
             return sums
@@ -223,9 +227,9 @@ class Api:
         """
         媒体库列表(普通用户)
         """
-        if (res := self.__request_api("/mediadb/list")) and res.success:
+        if (res := self.request("/mediadb/list")) and res.success:
             _items = []
-            for info in res.data:
+            for info in res.data or []:
                 mdb = MediaDb(
                     guid=info.get("guid"),
                     category=Category(info.get("category")),
@@ -250,9 +254,9 @@ class Api:
         """
         媒体库列表(管理员)
         """
-        if (res := self.__request_api("/mdb/list")) and res.success:
+        if (res := self.request("/mdb/list")) and res.success:
             _items = []
-            for info in res.data:
+            for info in res.data or []:
                 mdb = MediaDb(
                     guid=info.get("guid"),
                     category=Category(info.get("category")),
@@ -271,7 +275,7 @@ class Api:
         """
         扫描所有媒体库
         """
-        if (res := self.__request_api("/mdb/scanall", method="post")) and res.success:
+        if (res := self.request("/mdb/scanall", method="post")) and res.success:
             if res.data:
                 return True
         return False
@@ -280,9 +284,7 @@ class Api:
         """
         扫描指定媒体库
         """
-        if (
-            res := self.__request_api(f"/mdb/scan/{mdb.guid}", data={})
-        ) and res.success:
+        if (res := self.request(f"/mdb/scan/{mdb.guid}", data={})) and res.success:
             if res.data:
                 return True
         return False
@@ -291,9 +293,7 @@ class Api:
         """
         当前正在运行的任务
         """
-        if (
-            res := self.__request_api("/task/running")
-        ) and res.success:
+        if (res := self.request("/task/running")) and res.success:
             if res.data:
                 # TODO 具体正在运行的任务
                 return True
@@ -341,7 +341,9 @@ class Api:
         if exclude_grouped_video:
             post["exclude_grouped_video"] = 1
 
-        if (res := self.__request_api("/item/list", data=post)) and res.success:
+        if (res := self.request("/item/list", data=post)) and res.success:
+            if not res.data:
+                return []
             return [self.__build_item(info) for info in res.data.get("list", [])]
         return None
 
@@ -350,8 +352,10 @@ class Api:
         搜索影片、演员
         """
         if (
-            res := self.__request_api("/search/list", params={"q": keywords})
+            res := self.request("/search/list", params={"q": keywords})
         ) and res.success:
+            if not res.data:
+                return []
             return [self.__build_item(info) for info in res.data]
         return None
 
@@ -359,7 +363,7 @@ class Api:
         """
         查询媒体详情
         """
-        if (res := self.__request_api(f"/item/{guid}")) and res.success:
+        if (res := self.request(f"/item/{guid}")) and res.success:
             return self.__build_item(res.data)
         return None
 
@@ -370,7 +374,7 @@ class Api:
         :param delete_file: True删除媒体文件，False仅从媒体库移除
         """
         if (
-            res := self.__request_api(
+            res := self.request(
                 f"/item/{guid}",
                 method="delete",
                 data={"delete_file": 1 if delete_file else 0, "media_guids": []},
@@ -384,7 +388,9 @@ class Api:
         """
         查询季列表
         """
-        if (res := self.__request_api(f"/season/list/{tv_guid}")) and res.success:
+        if (res := self.request(f"/season/list/{tv_guid}")) and res.success:
+            if not res.data:
+                return []
             return [self.__build_item(info) for info in res.data]
         return None
 
@@ -392,7 +398,9 @@ class Api:
         """
         查询剧集列表
         """
-        if (res := self.__request_api(f"/episode/list/{season_guid}")) and res.success:
+        if (res := self.request(f"/episode/list/{season_guid}")) and res.success:
+            if not res.data:
+                return []
             return [self.__build_item(info) for info in res.data]
         return None
 
@@ -400,7 +408,9 @@ class Api:
         """
         继续观看列表
         """
-        if (res := self.__request_api("/play/list")) and res.success:
+        if (res := self.request("/play/list")) and res.success:
+            if not res.data:
+                return []
             return [self.__build_item(info) for info in res.data]
         return None
 
@@ -431,7 +441,7 @@ class Api:
         sign = md5.hexdigest()
         return f"nonce={nonce}&timestamp={ts}&sign={sign}"
 
-    def __request_api(
+    def request(
         self,
         api: str,
         method: Optional[str] = None,
@@ -482,6 +492,8 @@ class Api:
             queries_unquoted = None
         headers = {
             "User-Agent": settings.USER_AGENT,
+            "Accept": "application/json",
+            "Referer": self._host,
             "Authorization": self._token,
             "authx": self.__get_authx(api_path, json_body or queries_unquoted),
         }

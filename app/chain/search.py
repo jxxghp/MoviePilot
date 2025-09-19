@@ -86,13 +86,13 @@ class SearchChain(ChainBase):
             self.save_cache(contexts, self.__result_temp_file)
         return contexts
 
-    def last_search_results(self) -> List[Context]:
+    def last_search_results(self) -> Optional[List[Context]]:
         """
         获取上次搜索结果
         """
         return self.load_cache(self.__result_temp_file)
 
-    async def async_last_search_results(self) -> List[Context]:
+    async def async_last_search_results(self) -> Optional[List[Context]]:
         """
         异步获取上次搜索结果
         """

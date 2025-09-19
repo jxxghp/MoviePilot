@@ -425,7 +425,7 @@ class TransHandler:
                     # 复制文件到新目录
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
-                        if source_oper.move(fileitem, Path(target_fileitem.path), target_file.name):
+                        if source_oper.copy(fileitem, Path(target_fileitem.path), target_file.name):
                             return target_oper.get_item(target_file), ""
                         else:
                             return None, f"【{target_storage}】{fileitem.path} 复制文件失败"
