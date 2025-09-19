@@ -56,7 +56,7 @@ class InvokePluginAction(BaseAction):
                 logger.error(f"插件不存在: {params.plugin_id}")
                 return context
             actions = plugin_actions[0].get("actions", [])
-            action = next((action for action in actions if action.action_id == params.action_id), None)
+            action = next((action for action in actions if action.get("action_id") == params.action_id), None)
             if not action or not action.get("func"):
                 logger.error(f"插件动作不存在: {params.plugin_id} - {params.action_id}")
                 return context

@@ -8,8 +8,10 @@ from app import schemas
 from app.chain.user import UserChain
 from app.core import security
 from app.core.config import settings
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper  # noqa
 from app.helper.wallpaper import WallpaperHelper
+from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
 
@@ -29,7 +31,10 @@ def login_access_token(
     if not success:
         raise HTTPException(status_code=401, detail=user_or_message)
 
+    # 用户等级
     level = SitesHelper().auth_level
+    # 是否显示配置向导
+    show_wizard = not SystemConfigOper().get(SystemConfigKey.SetupWizardState) and not settings.ADVANCED_MODE
     return schemas.Token(
         access_token=security.create_access_token(
             userid=user_or_message.id,
@@ -45,6 +50,7 @@ def login_access_token(
         avatar=user_or_message.avatar,
         level=level,
         permissions=user_or_message.permissions or {},
+        widzard=show_wizard
     )
 
 

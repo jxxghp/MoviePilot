@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Optional, List, Tuple, Union
 
@@ -19,6 +21,9 @@ from app.utils.string import StringUtils
 
 recognize_lock = Lock()
 scraping_lock = Lock()
+
+current_umask = os.umask(0)
+os.umask(current_umask)
 
 
 class MediaChain(ChainBase):
@@ -310,6 +315,21 @@ class MediaChain(ChainBase):
             )
         return None
 
+    @staticmethod
+    def is_bluray_folder(fileitem: schemas.FileItem) -> bool:
+        """
+        判断是否为原盘目录
+        """
+        if not fileitem or fileitem.type != "dir":
+            return False
+        # 蓝光原盘目录必备的文件或文件夹
+        required_files = ['BDMV', 'CERTIFICATE']
+        # 检查目录下是否存在所需文件或文件夹
+        for item in StorageChain().list_files(fileitem):
+            if item.name in required_files:
+                return True
+        return False
+
     @eventmanager.register(EventType.MetadataScrape)
     def scrape_metadata_event(self, event: Event):
         """
@@ -349,51 +369,60 @@ class MediaChain(ChainBase):
                                      overwrite=overwrite)
             else:
                 if file_list:
-                    # 1. 收集fileitem和file_list中每个文件之间所有子目录
-                    all_dirs = set()
-                    root_path = Path(fileitem.path)
+                    # 如果是BDMV原盘目录，只对根目录进行刮削，不处理子目录
+                    if self.is_bluray_folder(fileitem):
+                        logger.info(f"检测到BDMV原盘目录，只对根目录进行刮削：{fileitem.path}")
+                        self.scrape_metadata(fileitem=fileitem,
+                                             mediainfo=mediainfo,
+                                             init_folder=True,
+                                             recursive=False,
+                                             overwrite=overwrite)
+                    else:
+                        # 1. 收集fileitem和file_list中每个文件之间所有子目录
+                        all_dirs = set()
+                        root_path = Path(fileitem.path)
 
-                    logger.debug(f"开始收集目录，根目录：{root_path}")
-                    # 收集根目录
-                    all_dirs.add(root_path)
+                        logger.debug(f"开始收集目录，根目录：{root_path}")
+                        # 收集根目录
+                        all_dirs.add(root_path)
 
-                    # 收集所有目录（包括所有层级）
-                    for sub_file in file_list:
-                        sub_path = Path(sub_file)
-                        # 收集从根目录到文件的所有父目录
-                        current_path = sub_path.parent
-                        while current_path != root_path and current_path.is_relative_to(root_path):
-                            all_dirs.add(current_path)
-                            current_path = current_path.parent
+                        # 收集所有目录（包括所有层级）
+                        for sub_file in file_list:
+                            sub_path = Path(sub_file)
+                            # 收集从根目录到文件的所有父目录
+                            current_path = sub_path.parent
+                            while current_path != root_path and current_path.is_relative_to(root_path):
+                                all_dirs.add(current_path)
+                                current_path = current_path.parent
 
-                    logger.debug(f"共收集到 {len(all_dirs)} 个目录")
+                        logger.debug(f"共收集到 {len(all_dirs)} 个目录")
 
-                    # 2. 初始化一遍子目录，但不处理文件
-                    for sub_dir in all_dirs:
-                        sub_dir_item = storagechain.get_file_item(storage=fileitem.storage, path=sub_dir)
-                        if sub_dir_item:
-                            logger.info(f"为目录生成海报和nfo：{sub_dir}")
-                            # 初始化目录元数据，但不处理文件
-                            self.scrape_metadata(fileitem=sub_dir_item,
-                                                 mediainfo=mediainfo,
-                                                 init_folder=True,
-                                                 recursive=False,
-                                                 overwrite=overwrite)
-                        else:
-                            logger.warn(f"无法获取目录项：{sub_dir}")
+                        # 2. 初始化一遍子目录，但不处理文件
+                        for sub_dir in all_dirs:
+                            sub_dir_item = storagechain.get_file_item(storage=fileitem.storage, path=sub_dir)
+                            if sub_dir_item:
+                                logger.info(f"为目录生成海报和nfo：{sub_dir}")
+                                # 初始化目录元数据，但不处理文件
+                                self.scrape_metadata(fileitem=sub_dir_item,
+                                                     mediainfo=mediainfo,
+                                                     init_folder=True,
+                                                     recursive=False,
+                                                     overwrite=overwrite)
+                            else:
+                                logger.warn(f"无法获取目录项：{sub_dir}")
 
-                    # 3. 刮削每个文件
-                    logger.info(f"开始刮削 {len(file_list)} 个文件")
-                    for sub_file_path in file_list:
-                        sub_file_item = storagechain.get_file_item(storage=fileitem.storage,
-                                                                   path=Path(sub_file_path))
-                        if sub_file_item:
-                            self.scrape_metadata(fileitem=sub_file_item,
-                                                 mediainfo=mediainfo,
-                                                 init_folder=False,
-                                                 overwrite=overwrite)
-                        else:
-                            logger.warn(f"无法获取文件项：{sub_file_path}")
+                        # 3. 刮削每个文件
+                        logger.info(f"开始刮削 {len(file_list)} 个文件")
+                        for sub_file_path in file_list:
+                            sub_file_item = storagechain.get_file_item(storage=fileitem.storage,
+                                                                       path=Path(sub_file_path))
+                            if sub_file_item:
+                                self.scrape_metadata(fileitem=sub_file_item,
+                                                     mediainfo=mediainfo,
+                                                     init_folder=False,
+                                                     overwrite=overwrite)
+                            else:
+                                logger.warn(f"无法获取文件项：{sub_file_path}")
                 else:
                     # 执行全量刮削
                     logger.info(f"开始刮削目录 {fileitem.path} ...")
@@ -417,20 +446,6 @@ class MediaChain(ChainBase):
 
         storagechain = StorageChain()
 
-        def is_bluray_folder(_fileitem: schemas.FileItem) -> bool:
-            """
-            判断是否为原盘目录
-            """
-            if not _fileitem or _fileitem.type != "dir":
-                return False
-            # 蓝光原盘目录必备的文件或文件夹
-            required_files = ['BDMV', 'CERTIFICATE']
-            # 检查目录下是否存在所需文件或文件夹
-            for item in storagechain.list_files(_fileitem):
-                if item.name in required_files:
-                    return True
-            return False
-
         def __list_files(_fileitem: schemas.FileItem):
             """
             列出下级文件
@@ -446,36 +461,65 @@ class MediaChain(ChainBase):
             """
             if not _fileitem or not _content or not _path:
                 return
-            # 保存文件到临时目录
-            tmp_dir = settings.TEMP_PATH / StringUtils.generate_random_str(10)
-            tmp_dir.mkdir(parents=True, exist_ok=True)
-            tmp_file = tmp_dir / _path.name
-            tmp_file.write_bytes(_content)
-            # 获取文件的父目录
-            try:
-                item = storagechain.upload_file(fileitem=_fileitem, path=tmp_file, new_name=_path.name)
+            # 使用tempfile创建临时文件，自动删除
+            with NamedTemporaryFile(delete=True, delete_on_close=False, suffix=_path.suffix) as tmp_file:
+                tmp_file_path = Path(tmp_file.name)
+                # 写入内容
+                if isinstance(_content, bytes):
+                    tmp_file.write(_content)
+                else:
+                    tmp_file.write(_content.encode('utf-8'))
+                tmp_file.flush()
+                tmp_file.close()  # 关闭文件句柄
+
+                # 刮削文件只需要读写权限
+                tmp_file_path.chmod(0o666 & ~current_umask)
+
+                # 上传文件
+                item = storagechain.upload_file(fileitem=_fileitem, path=tmp_file_path, new_name=_path.name)
                 if item:
                     logger.info(f"已保存文件：{item.path}")
                 else:
                     logger.warn(f"文件保存失败：{_path}")
-            finally:
-                if tmp_file.exists():
-                    tmp_file.unlink()
 
-        def __download_image(_url: str) -> Optional[bytes]:
+        def __download_and_save_image(_fileitem: schemas.FileItem, _path: Path, _url: str):
             """
-            下载图片并保存
+            流式下载图片并直接保存到文件（减少内存占用）
+            :param _fileitem: 关联的媒体文件项
+            :param _path: 图片文件路径
+            :param _url: 图片下载URL
             """
+            if not _fileitem or not _url or not _path:
+                return
             try:
                 logger.info(f"正在下载图片：{_url} ...")
-                r = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT).get_res(url=_url)
-                if r:
-                    return r.content
-                else:
-                    logger.info(f"{_url} 图片下载失败，请检查网络连通性！")
+                request_utils = RequestUtils(proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT)
+                with request_utils.get_stream(url=_url) as r:
+                    if r and r.status_code == 200:
+                        # 使用tempfile创建临时文件，自动删除
+                        with NamedTemporaryFile(delete=True, delete_on_close=False, suffix=_path.suffix) as tmp_file:
+                            tmp_file_path = Path(tmp_file.name)
+                            # 流式写入文件
+                            for chunk in r.iter_content(chunk_size=8192):
+                                if chunk:
+                                    tmp_file.write(chunk)
+                            tmp_file.flush()
+                            tmp_file.close()  # 关闭文件句柄
+
+                            # 刮削的图片只需要读写权限
+                            tmp_file_path.chmod(0o666 & ~current_umask)
+
+                            # 上传文件
+                            item = storagechain.upload_file(fileitem=_fileitem, path=tmp_file_path,
+                                                            new_name=_path.name)
+                            if item:
+                                logger.info(f"已保存图片：{item.path}")
+                            else:
+                                logger.warn(f"图片保存失败：{_path}")
+                    else:
+                        logger.info(f"{_url} 图片下载失败")
             except Exception as err:
                 logger.error(f"{_url} 图片下载失败：{str(err)}！")
-            return None
 
         if not fileitem:
             return
@@ -521,7 +565,7 @@ class MediaChain(ChainBase):
                 # 电影目录
                 if recursive:
                     # 处理文件
-                    if is_bluray_folder(fileitem):
+                    if self.is_bluray_folder(fileitem):
                         # 原盘目录
                         if scraping_switchs.get('movie_nfo', True):
                             nfo_path = filepath / (filepath.name + ".nfo")
@@ -541,6 +585,9 @@ class MediaChain(ChainBase):
                         # 处理目录内的文件
                         files = __list_files(_fileitem=fileitem)
                         for file in files:
+                            if file.type == "dir":
+                                # 电影不处理子目录
+                                continue
                             self.scrape_metadata(fileitem=file,
                                                  mediainfo=mediainfo,
                                                  init_folder=False,
@@ -574,11 +621,8 @@ class MediaChain(ChainBase):
                                 image_path = filepath.with_name(image_name)
                                 if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                path=image_path):
-                                    # 下载图片
-                                    content = __download_image(image_url)
-                                    # 写入图片到当前目录
-                                    if content:
-                                        __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                    # 流式下载图片并直接保存
+                                    __download_and_save_image(_fileitem=fileitem, _path=image_path, _url=image_url)
                                 else:
                                     logger.info(f"已存在图片文件：{image_path}")
                             else:
@@ -624,13 +668,10 @@ class MediaChain(ChainBase):
                         for episode, image_url in image_dict.items():
                             image_path = filepath.with_suffix(Path(image_url).suffix)
                             if overwrite or not storagechain.get_file_item(storage=fileitem.storage, path=image_path):
-                                # 下载图片
-                                content = __download_image(image_url)
-                                # 保存图片文件到当前目录
-                                if content:
-                                    if not parent:
-                                        parent = storagechain.get_parent_item(fileitem)
-                                    __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                # 流式下载图片并直接保存
+                                if not parent:
+                                    parent = storagechain.get_parent_item(fileitem)
+                                __download_and_save_image(_fileitem=parent, _path=image_path, _url=image_url)
                             else:
                                 logger.info(f"已存在图片文件：{image_path}")
                 else:
@@ -640,6 +681,9 @@ class MediaChain(ChainBase):
                 if recursive:
                     files = __list_files(_fileitem=fileitem)
                     for file in files:
+                        if file.type == "dir" and not file.name.lower().startswith("season"):
+                            # 电视剧不处理非季子目录
+                            continue
                         self.scrape_metadata(fileitem=file,
                                              mediainfo=mediainfo,
                                              parent=fileitem if file.type == "file" else None,
@@ -678,13 +722,10 @@ class MediaChain(ChainBase):
                                     image_path = filepath.with_name(image_name)
                                     if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                    path=image_path):
-                                        # 下载图片
-                                        content = __download_image(image_url)
-                                        # 保存图片文件到剧集目录
-                                        if content:
-                                            if not parent:
-                                                parent = storagechain.get_parent_item(fileitem)
-                                            __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                        # 流式下载图片并直接保存
+                                        if not parent:
+                                            parent = storagechain.get_parent_item(fileitem)
+                                        __download_and_save_image(_fileitem=parent, _path=image_path, _url=image_url)
                                     else:
                                         logger.info(f"已存在图片文件：{image_path}")
                         else:
@@ -714,13 +755,11 @@ class MediaChain(ChainBase):
                                             continue
                                         if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                        path=image_path):
-                                            # 下载图片
-                                            content = __download_image(image_url)
-                                            # 保存图片文件到当前目录
-                                            if content:
-                                                if not parent:
-                                                    parent = storagechain.get_parent_item(fileitem)
-                                                __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                            # 流式下载图片并直接保存
+                                            if not parent:
+                                                parent = storagechain.get_parent_item(fileitem)
+                                            __download_and_save_image(_fileitem=parent, _path=image_path,
+                                                                      _url=image_url)
                                         else:
                                             logger.info(f"已存在图片文件：{image_path}")
                                     else:
@@ -770,11 +809,8 @@ class MediaChain(ChainBase):
                                     image_path = filepath / image_name
                                     if overwrite or not storagechain.get_file_item(storage=fileitem.storage,
                                                                                    path=image_path):
-                                        # 下载图片
-                                        content = __download_image(image_url)
-                                        # 保存图片文件到当前目录
-                                        if content:
-                                            __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                        # 流式下载图片并直接保存
+                                        __download_and_save_image(_fileitem=fileitem, _path=image_path, _url=image_url)
                                     else:
                                         logger.info(f"已存在图片文件：{image_path}")
                                 else:

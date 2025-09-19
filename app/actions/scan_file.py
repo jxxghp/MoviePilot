@@ -67,14 +67,8 @@ class ScanFileAction(BaseAction):
                 break
             if not file.extension or f".{file.extension.lower()}" not in settings.RMT_MEDIAEXT:
                 continue
-            # 检查缓存
-            cache_key = f"{file.path}"
-            if self.check_cache(workflow_id, cache_key):
-                logger.info(f"{file.path} 已处理过，跳过")
-                continue
-            self._fileitems.append(fileitem)
-            # 保存缓存
-            self.save_cache(workflow_id, cache_key)
+            # 添加文件到队列，而不是目录
+            self._fileitems.append(file)
 
         if self._fileitems:
             context.fileitems.extend(self._fileitems)

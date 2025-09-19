@@ -421,11 +421,23 @@ async def popular_subscribes(
         page: Optional[int] = 1,
         count: Optional[int] = 30,
         min_sub: Optional[int] = None,
+        genre_id: Optional[int] = None,
+        min_rating: Optional[float] = None,
+        max_rating: Optional[float] = None,
+        sort_type: Optional[str] = None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询热门订阅
     """
-    subscribes = await SubscribeHelper().async_get_statistic(stype=stype, page=page, count=count)
+    subscribes = await SubscribeHelper().async_get_statistic(
+        stype=stype,
+        page=page,
+        count=count,
+        genre_id=genre_id,
+        min_rating=min_rating,
+        max_rating=max_rating,
+        sort_type=sort_type
+    )
     if subscribes:
         ret_medias = []
         for sub in subscribes:
@@ -570,11 +582,23 @@ async def popular_subscribes(
         name: Optional[str] = None,
         page: Optional[int] = 1,
         count: Optional[int] = 30,
+        genre_id: Optional[int] = None,
+        min_rating: Optional[float] = None,
+        max_rating: Optional[float] = None,
+        sort_type: Optional[str] = None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询分享的订阅
     """
-    return await SubscribeHelper().async_get_shares(name=name, page=page, count=count)
+    return await SubscribeHelper().async_get_shares(
+        name=name,
+        page=page,
+        count=count,
+        genre_id=genre_id,
+        min_rating=min_rating,
+        max_rating=max_rating,
+        sort_type=sort_type
+    )
 
 
 @router.get("/share/statistics", summary="查询订阅分享统计", response_model=List[schemas.SubscribeShareStatistics])

@@ -13,7 +13,7 @@ from app import schemas
 from app.command import Command
 from app.core.config import settings
 from app.core.plugin import PluginManager
-from app.core.security import verify_apikey, verify_token, verify_apitoken
+from app.core.security import verify_apikey, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
@@ -21,7 +21,6 @@ from app.factory import app
 from app.helper.plugin import PluginHelper
 from app.log import logger
 from app.scheduler import Scheduler
-from app.schemas.plugin import PluginMemoryInfo
 from app.schemas.types import SystemConfigKey
 
 PROTECTED_ROUTES = {"/api/v1/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
@@ -492,57 +491,6 @@ def clone_plugin(plugin_id: str,
     except Exception as e:
         logger.error(f"创建插件分身失败：{str(e)}")
         return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")
-
-
-@router.get("/memory", summary="插件内存使用统计", response_model=List[PluginMemoryInfo])
-def plugin_memory_stats(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
-    """
-    获取所有插件的内存使用统计信息
-    """
-    try:
-        plugin_manager = PluginManager()
-        memory_stats = plugin_manager.get_plugin_memory_stats()
-        return memory_stats
-    except Exception as e:
-        logger.error(f"获取插件内存统计失败：{str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"获取插件内存统计失败：{str(e)}")
-
-
-@router.get("/memory/{plugin_id}", summary="单个插件内存使用统计", response_model=PluginMemoryInfo)
-def plugin_memory_stat(plugin_id: str, _: Annotated[str, Depends(verify_apitoken)]) -> Any:
-    """
-    获取指定插件的内存使用统计信息
-    """
-    try:
-        plugin_manager = PluginManager()
-        memory_stats = plugin_manager.get_plugin_memory_stats(plugin_id)
-        if not memory_stats:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"插件 {plugin_id} 不存在或未运行")
-        return memory_stats[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取插件 {plugin_id} 内存统计失败：{str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"获取插件内存统计失败：{str(e)}")
-
-
-@router.delete("/memory/cache", summary="清除插件内存统计缓存")
-def clear_plugin_memory_cache(_: Annotated[str, Depends(verify_apitoken)],
-                              plugin_id: Optional[str] = None) -> Any:
-    """
-    清除插件内存统计缓存
-    """
-    try:
-        plugin_manager = PluginManager()
-        plugin_manager.clear_plugin_memory_cache(plugin_id)
-        message = f"已清除插件 {plugin_id} 的内存统计缓存" if plugin_id else "已清除所有插件的内存统计缓存"
-        return schemas.Response(success=True, message=message)
-    except Exception as e:
-        logger.error(f"清除插件内存统计缓存失败：{str(e)}")
-        return schemas.Response(success=False, message=f"清除缓存失败：{str(e)}")
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")

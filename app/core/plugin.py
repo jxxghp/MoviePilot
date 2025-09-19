@@ -17,11 +17,12 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from app import schemas
+from app.core.cache import cached
 from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.plugin import PluginHelper, PluginMemoryMonitor
+from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.schemas.types import EventType, SystemConfigKey
@@ -98,8 +99,6 @@ class PluginManager(metaclass=Singleton):
         self._config_key: str = "plugin.%s"
         # 监听器
         self._observer: Observer = None
-        # 内存监控器
-        self._memory_monitor = PluginMemoryMonitor()
         # 开发者模式监测插件修改
         if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
             self.__start_monitor()
@@ -865,32 +864,14 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._running_plugins.keys())
 
-    def get_plugin_memory_stats(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        获取插件内存统计信息
-        :param pid: 插件ID，为空则获取所有插件
-        :return: 内存统计信息列表
-        """
-        if pid:
-            plugin_instance = self._running_plugins.get(pid)
-            if plugin_instance:
-                return [self._memory_monitor.get_plugin_memory_usage(pid, plugin_instance)]
-            else:
-                return []
-        else:
-            return self._memory_monitor.get_all_plugins_memory_usage(self._running_plugins)
-
-    def clear_plugin_memory_cache(self, pid: Optional[str] = None):
-        """
-        清除插件内存统计缓存
-        :param pid: 插件ID，为空则清除所有缓存
-        """
-        self._memory_monitor.clear_cache(pid)
-
+    @cached(maxsize=1, ttl=1800)
     def get_online_plugins(self, force: bool = False) -> List[schemas.Plugin]:
         """
         获取所有在线插件信息
         """
+        if force:
+            self.get_online_plugins.cache_clear()
+
         if not settings.PLUGIN_MARKET:
             return []
 
@@ -1186,11 +1167,15 @@ class PluginManager(metaclass=Singleton):
 
         return plugin
 
+    @cached(maxsize=1, ttl=1800)
     async def async_get_online_plugins(self, force: bool = False) -> List[schemas.Plugin]:
         """
         异步获取所有在线插件信息
         :param force: 是否强制刷新（忽略缓存）
         """
+        if force:
+            await self.async_get_online_plugins.cache_clear()
+
         if not settings.PLUGIN_MARKET:
             return []
 

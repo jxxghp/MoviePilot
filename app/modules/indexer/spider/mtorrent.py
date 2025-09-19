@@ -75,6 +75,9 @@ class MTorrentSpider:
             categories = self._tv_category
         else:
             categories = self._movie_category
+        # mtorrent搜索imdb需要输入完整imdb链接，参见 https://wiki.m-team.cc/zh-tw/imdbtosearch
+        if keyword and keyword.startswith("tt"):
+            keyword = f"https://www.imdb.com/title/{keyword}"
         return {
             "keyword": keyword,
             "categories": categories,
@@ -127,6 +130,8 @@ class MTorrentSpider:
                 'labels': labels,
                 'category': category
             }
+            if discount_end_time := (result.get('status') or {}).get('discountEndTime'):
+                torrent['freedate'] = StringUtils.format_timestamp(discount_end_time)
             torrents.append(torrent)
         return torrents
 

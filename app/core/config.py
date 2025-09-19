@@ -75,6 +75,8 @@ class ConfigModel(BaseModel):
     DEBUG: bool = False
     # 是否开发模式
     DEV: bool = False
+    # 高级设置模式
+    ADVANCED_MODE: bool = True
 
     # ==================== 安全认证配置 ====================
     # 密钥
@@ -87,8 +89,10 @@ class ConfigModel(BaseModel):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # RESOURCE_TOKEN过期时间
     RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS: int = 60 * 30
-    # 超级管理员
+    # 超级管理员初始用户名
     SUPERUSER: str = "admin"
+    # 超级管理员初始密码
+    SUPERUSER_PASSWORD: str = None
     # 辅助认证，允许通过外部服务进行认证、单点登录以及自动创建用户
     AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
@@ -114,7 +118,7 @@ class ConfigModel(BaseModel):
     # 数据库连接池获取连接的超时时间（秒）
     DB_POOL_TIMEOUT: int = 30
     # SQLite 连接池大小
-    DB_SQLITE_POOL_SIZE: int = 30
+    DB_SQLITE_POOL_SIZE: int = 10
     # SQLite 连接池溢出数量
     DB_SQLITE_MAX_OVERFLOW: int = 50
     # PostgreSQL 主机地址
@@ -128,7 +132,7 @@ class ConfigModel(BaseModel):
     # PostgreSQL 密码
     DB_POSTGRESQL_PASSWORD: str = "moviepilot"
     # PostgreSQL 连接池大小
-    DB_POSTGRESQL_POOL_SIZE: int = 30
+    DB_POSTGRESQL_POOL_SIZE: int = 10
     # PostgreSQL 连接池溢出数量
     DB_POSTGRESQL_MAX_OVERFLOW: int = 50
 
@@ -167,7 +171,7 @@ class ConfigModel(BaseModel):
 
     # ==================== 媒体元数据配置 ====================
     # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
-    SEARCH_SOURCE: str = "themoviedb,douban,bangumi"
+    SEARCH_SOURCE: str = "themoviedb"
     # 媒体识别来源 themoviedb/douban
     RECOGNIZE_SOURCE: str = "themoviedb"
     # 刮削来源 themoviedb/douban
@@ -249,8 +253,10 @@ class ConfigModel(BaseModel):
     SUBSCRIBE_STATISTIC_SHARE: bool = True
     # 订阅搜索开关
     SUBSCRIBE_SEARCH: bool = False
+    # 订阅搜索时间间隔（小时）
+    SUBSCRIBE_SEARCH_INTERVAL: int = 24
     # 检查本地媒体库是否存在资源开关
-    LOCAL_EXISTS_SEARCH: bool = False
+    LOCAL_EXISTS_SEARCH: bool = True
 
     # ==================== 站点配置 ====================
     # 站点数据刷新间隔（小时）
@@ -358,12 +364,12 @@ class ConfigModel(BaseModel):
     # ==================== 性能配置 ====================
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
-    # FastApi性能监控
-    PERFORMANCE_MONITOR_ENABLE: bool = False
     # 是否启用编码探测的性能模式
     ENCODING_DETECTION_PERFORMANCE_MODE: bool = True
     # 编码探测的最低置信度阈值
     ENCODING_DETECTION_MIN_CONFIDENCE: float = 0.8
+    # 主动内存回收时间间隔（分钟），0为不启用
+    MEMORY_GC_INTERVAL: int = 30
 
     # ==================== 安全配置 ====================
     # 允许的图片缓存域名
@@ -663,7 +669,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 douban=512,
                 bangumi=512,
                 fanart=512,
-                meta=(self.META_CACHE_EXPIRE or 24) * 3600,
+                meta=(self.META_CACHE_EXPIRE or 72) * 3600,
                 scheduler=100,
                 threadpool=100
             )
@@ -674,7 +680,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             douban=256,
             bangumi=256,
             fanart=128,
-            meta=(self.META_CACHE_EXPIRE or 2) * 3600,
+            meta=(self.META_CACHE_EXPIRE or 24) * 3600,
             scheduler=50,
             threadpool=50
         )

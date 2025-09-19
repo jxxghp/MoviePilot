@@ -123,7 +123,7 @@ async def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
-    return schedule()
+    return await schedule()
 
 
 @router.get("/transfer", summary="文件整理统计", response_model=List[int])

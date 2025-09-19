@@ -1,7 +1,6 @@
 import json
 import platform
 import re
-import subprocess
 import threading
 import time
 import traceback
@@ -10,13 +9,13 @@ from threading import Lock
 from typing import Any, Optional, Dict, List
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from app.core.cache import TTLCache, FileCache
 from watchdog.events import FileSystemEventHandler, FileSystemMovedEvent, FileSystemEvent
 from watchdog.observers.polling import PollingObserver
 
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
+from app.core.cache import TTLCache, FileCache
 from app.core.config import settings
 from app.core.event import Event, eventmanager
 from app.helper.directory import DirectoryHelper
@@ -26,6 +25,7 @@ from app.schemas import ConfigChangeEventData
 from app.schemas import FileItem
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.singleton import SingletonClass
+from app.utils.system import SystemUtils
 
 lock = Lock()
 snapshot_lock = Lock()
@@ -355,7 +355,8 @@ class Monitor(metaclass=SingletonClass):
 
         return tips
 
-    def should_use_polling(self, directory: Path, monitor_mode: str,
+    @staticmethod
+    def should_use_polling(directory: Path, monitor_mode: str,
                            file_count: int, limits: dict) -> tuple[bool, str]:
         """
         判断是否应该使用轮询模式
@@ -369,52 +370,13 @@ class Monitor(metaclass=SingletonClass):
             return True, "用户配置为兼容模式"
 
         # 检查网络文件系统
-        if self.is_network_filesystem(directory):
+        if SystemUtils.is_network_filesystem(directory):
             return True, "检测到网络文件系统，建议使用兼容模式"
 
         max_watches = limits.get('max_user_watches')
         if max_watches and file_count > max_watches * 0.8:
             return True, f"目录文件数量({file_count})接近系统限制({max_watches})"
         return False, "使用快速模式"
-
-    @staticmethod
-    def is_network_filesystem(directory: Path) -> bool:
-        """
-        检测是否为网络文件系统
-        :param directory: 目录路径
-        :return: 是否为网络文件系统
-        """
-        try:
-            system = platform.system()
-            if system == 'Linux':
-                # 检查挂载信息
-                result = subprocess.run(['df', '-T', str(directory)],
-                                        capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    output = result.stdout.lower()
-                    # 以下本地文件系统含有fuse关键字
-                    local_fs = [
-                        "fuse.shfs",  # Unraid
-                        "zfuse.zfsv",  # 极空间(zfuse.zfsv2、zfuse.zfsv3、...)
-                        # TBD
-                    ]
-                    if any(fs in output for fs in local_fs):
-                        return False
-                    network_fs = ['nfs', 'cifs', 'smbfs', 'fuse', 'sshfs', 'ftpfs']
-                    return any(fs in output for fs in network_fs)
-            elif system == 'Darwin':
-                # macOS 检查
-                result = subprocess.run(['df', '-T', str(directory)],
-                                        capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    output = result.stdout.lower()
-                    return 'nfs' in output or 'smbfs' in output
-            elif system == 'Windows':
-                # Windows 检查网络驱动器
-                return str(directory).startswith('\\\\')
-        except Exception as e:
-            logger.debug(f"检测网络文件系统时出错: {e}")
-        return False
 
     def init(self):
         """

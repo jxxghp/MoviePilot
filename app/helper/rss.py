@@ -384,6 +384,9 @@ class RssHelper:
                             pubdate = ""
                             if pubdate_nodes and pubdate_nodes[0].text:
                                 pubdate = StringUtils.get_time(pubdate_nodes[0].text)
+                                if pubdate is not None:
+                                    # 转为本地时区
+                                    pubdate = pubdate.astimezone(tz=None)
 
                             # 获取豆瓣昵称
                             nickname_nodes = item.xpath('.//*[local-name()="creator"]')

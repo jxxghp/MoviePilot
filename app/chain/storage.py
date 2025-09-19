@@ -173,7 +173,7 @@ class StorageChain(ChainBase):
         dir_item = fileitem if fileitem.type == "dir" else self.get_parent_item(fileitem)
         if not dir_item:
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 上级目录不存在")
-            return False
+            return True
 
         # 查找操作文件项匹配的配置目录(资源目录、媒体库目录)
         associated_dir = max(

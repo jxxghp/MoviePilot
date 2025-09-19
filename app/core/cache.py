@@ -455,7 +455,7 @@ class MemoryBackend(CacheBackend):
             if region_cache:
                 with lock:
                     region_cache.clear()
-                logger.info(f"Cleared cache for region: {region}")
+                logger.debug(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
             for region_cache in self._region_caches.values():
@@ -589,13 +589,13 @@ class AsyncMemoryBackend(AsyncCacheBackend):
             if region_cache:
                 with lock:
                     region_cache.clear()
-                logger.info(f"Cleared cache for region: {region}")
+                logger.debug(f"Cleared cache for region: {region}")
         else:
             # 清除所有区域的缓存
             for region_cache in self._region_caches.values():
                 with lock:
                     region_cache.clear()
-            logger.info("Cleared all cache")
+            logger.info("All cache cleared！")
 
     async def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:
         """

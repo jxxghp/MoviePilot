@@ -528,6 +528,45 @@ class SystemUtils:
             return False
 
     @staticmethod
+    def is_network_filesystem(directory: Path) -> bool:
+        """
+        检测是否为网络文件系统
+        :param directory: 目录路径
+        :return: 是否为网络文件系统
+        """
+        try:
+            system = platform.system()
+            if system == 'Linux':
+                # 检查挂载信息
+                result = subprocess.run(['df', '-T', str(directory)],
+                                        capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    output = result.stdout.lower()
+                    # 以下本地文件系统含有fuse关键字
+                    local_fs = [
+                        "fuse.shfs",  # Unraid
+                        "zfuse.zfsv",  # 极空间(zfuse.zfsv2、zfuse.zfsv3、...)
+                        # TBD
+                    ]
+                    if any(fs in output for fs in local_fs):
+                        return False
+                    network_fs = ['nfs', 'cifs', 'smbfs', 'fuse', 'sshfs', 'ftpfs']
+                    return any(fs in output for fs in network_fs)
+            elif system == 'Darwin':
+                # macOS 检查
+                result = subprocess.run(['df', '-T', str(directory)],
+                                        capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    output = result.stdout.lower()
+                    return 'nfs' in output or 'smbfs' in output
+            elif system == 'Windows':
+                # Windows 检查网络驱动器
+                return str(directory).startswith('\\\\')
+        except Exception as e:
+            print(f"Error occurred: {e}")
+        return False
+
+    @staticmethod
     def is_same_disk(src: Path, dest: Path) -> bool:
         """
         判断两个路径是否在同一磁盘

@@ -17,6 +17,11 @@ from app.utils.singleton import Singleton
 _complex_serializable_types = set()
 _simple_serializable_types = set()
 
+# 默认连接参数
+_socket_timeout = 30
+_socket_connect_timeout = 5
+_health_check_interval = 60
+
 
 def serialize(value: Any) -> bytes:
     """
@@ -96,9 +101,9 @@ class RedisHelper(metaclass=Singleton):
                 self.client = redis.Redis.from_url(
                     self.redis_url,
                     decode_responses=False,
-                    socket_timeout=30,
-                    socket_connect_timeout=5,
-                    health_check_interval=60,
+                    socket_timeout=_socket_timeout,
+                    socket_connect_timeout=_socket_connect_timeout,
+                    health_check_interval=_health_check_interval,
                 )
                 # 测试连接，确保Redis可用
                 self.client.ping()
@@ -253,10 +258,10 @@ class RedisHelper(metaclass=Singleton):
                     for key in self.client.scan_iter(redis_key):
                         pipe.delete(key)
                     pipe.execute()
-                logger.info(f"Cleared Redis cache for region: {region}")
+                logger.debug(f"Cleared Redis cache for region: {region}")
             else:
                 self.client.flushdb()
-                logger.info("Cleared all Redis cache")
+                logger.info("All Redis cache Cleared！")
         except Exception as e:
             logger.error(f"Failed to clear cache, region: {region}, error: {e}")
 
@@ -317,10 +322,6 @@ class AsyncRedisHelper(metaclass=Singleton):
     - 所有操作都是异步的
     """
 
-    # 类型缓存集合，针对非容器简单类型
-    _complex_serializable_types = set()
-    _simple_serializable_types = set()
-
     def __init__(self):
         """
         初始化异步Redis助手实例
@@ -337,9 +338,9 @@ class AsyncRedisHelper(metaclass=Singleton):
                 self.client = Redis.from_url(
                     self.redis_url,
                     decode_responses=False,
-                    socket_timeout=30,
-                    socket_connect_timeout=5,
-                    health_check_interval=60,
+                    socket_timeout=_socket_timeout,
+                    socket_connect_timeout=_socket_connect_timeout,
+                    health_check_interval=_health_check_interval,
                 )
                 # 测试连接，确保Redis可用
                 await self.client.ping()
@@ -495,7 +496,7 @@ class AsyncRedisHelper(metaclass=Singleton):
                     async for key in self.client.scan_iter(redis_key):
                         await pipe.delete(key)
                     await pipe.execute()
-                logger.info(f"Cleared Redis cache for region (async): {region}")
+                logger.debug(f"Cleared Redis cache for region (async): {region}")
             else:
                 await self.client.flushdb()
                 logger.info("Cleared all Redis cache (async)")

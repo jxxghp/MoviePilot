@@ -26,8 +26,8 @@ class LocalStorage(StorageBase):
         "softlink": "软链接"
     }
 
-    # 文件块大小，默认100MB
-    chunk_size = 100 * 1024 * 1024
+    # 文件块大小，默认10MB
+    chunk_size = 10 * 1024 * 1024
 
     def init_storage(self):
         """
@@ -246,6 +246,17 @@ class LocalStorage(StorageBase):
             logger.error(f"【本地】移动文件失败：{err}")
         return None
 
+    @staticmethod
+    def __should_show_progress(src: Path, dest: Path):
+        """
+        是否显示进度条
+        """
+        src_isnetwork = SystemUtils.is_network_filesystem(src)
+        dest_isnetwork = SystemUtils.is_network_filesystem(dest)
+        if src_isnetwork and dest_isnetwork and SystemUtils.is_same_disk(src, dest):
+            return True
+        return False
+
     def copy(
             self,
             fileitem: schemas.FileItem,
@@ -258,8 +269,15 @@ class LocalStorage(StorageBase):
         try:
             src = Path(fileitem.path)
             dest = path / new_name
-            if self._copy_with_progress(src, dest):
-                return True
+            if self.__should_show_progress(src, dest):
+                if self._copy_with_progress(src, dest):
+                    return True
+            else:
+                code, message = SystemUtils.copy(src, dest)
+                if code == 0:
+                    return True
+                else:
+                    logger.error(f"【本地】复制文件失败：{message}")
         except Exception as err:
             logger.error(f"【本地】复制文件失败：{err}")
         return False
@@ -276,10 +294,20 @@ class LocalStorage(StorageBase):
         try:
             src = Path(fileitem.path)
             dest = path / new_name
-            if self._copy_with_progress(src, dest):
-                # 复制成功删除源文件
-                src.unlink()
+            if src == dest:
+                # 目标和源文件相同，直接返回成功，不做任何操作
                 return True
+            if self.__should_show_progress(src, dest):
+                if self._copy_with_progress(src, dest):
+                    # 复制成功删除源文件
+                    src.unlink()
+                    return True
+            else:
+                code, message = SystemUtils.move(src, dest)
+                if code == 0:
+                    return True
+                else:
+                    logger.error(f"【本地】移动文件失败：{message}")
         except Exception as err:
             logger.error(f"【本地】移动文件失败：{err}")
         return False

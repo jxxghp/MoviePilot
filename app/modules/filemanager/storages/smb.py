@@ -39,8 +39,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         "copy": "复制",
     }
 
-    # 文件块大小，默认100MB
-    chunk_size = 100 * 1024 * 1024
+    # 文件块大小，默认10MB
+    chunk_size = 10 * 1024 * 1024
 
     def __init__(self):
         super().__init__()
@@ -49,6 +49,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         self._host = None
         self._username = None
         self._password = None
+
         self._init_connection()
 
     def _init_connection(self):
@@ -380,19 +381,95 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             self._check_connection()
 
             smb_path = self._normalize_path(fileitem.path.rstrip("/"))
+            logger.info(f"【SMB】开始删除: {fileitem.path} (类型: {fileitem.type})")
+
+            # 先检查路径是否存在
+            if not smbclient.path.exists(smb_path):
+                logger.warn(f"【SMB】路径不存在，跳过删除: {fileitem.path}")
+                return True
 
             if fileitem.type == "dir":
-                # 删除目录
-                smbclient.rmdir(smb_path)
+                # 递归删除目录及其内容
+                logger.debug(f"【SMB】递归删除目录: {smb_path}")
+                self._recursive_delete(smb_path)
             else:
                 # 删除文件
+                logger.debug(f"【SMB】删除文件: {smb_path}")
                 smbclient.remove(smb_path)
 
             logger.info(f"【SMB】删除成功: {fileitem.path}")
             return True
-        except Exception as e:
-            logger.error(f"【SMB】删除失败: {e}")
+        except SMBConnectionError as e:
+            logger.error(f"【SMB】删除失败 - 连接错误: {fileitem.path} - {e}")
             return False
+        except SMBResponseException as e:
+            logger.error(f"【SMB】删除失败 - SMB响应错误: {fileitem.path} - {e}")
+            return False
+        except SMBException as e:
+            logger.error(f"【SMB】删除失败 - SMB错误: {fileitem.path} - {e}")
+            return False
+        except Exception as e:
+            logger.error(f"【SMB】删除失败 - 未知错误: {fileitem.path} - {e}")
+            return False
+
+    def _recursive_delete(self, smb_path: str):
+        """
+        递归删除目录及其所有内容
+        """
+        try:
+            # 检查路径是否存在
+            if not smbclient.path.exists(smb_path):
+                logger.debug(f"【SMB】路径不存在，跳过删除: {smb_path}")
+                return
+
+            # 如果是文件，直接删除
+            if smbclient.path.isfile(smb_path):
+                logger.debug(f"【SMB】删除文件: {smb_path}")
+                smbclient.remove(smb_path)
+                return
+
+            # 如果是目录，先删除其内容
+            if smbclient.path.isdir(smb_path):
+                logger.debug(f"【SMB】开始删除目录内容: {smb_path}")
+                try:
+                    # 列出目录内容
+                    entries = smbclient.listdir(smb_path)
+                    logger.debug(f"【SMB】目录 {smb_path} 包含 {len(entries)} 个项目")
+
+                    for entry in entries:
+                        if entry in [".", ".."]:
+                            continue
+                        entry_path = f"{smb_path}\\{entry}"
+                        logger.debug(f"【SMB】递归删除子项: {entry_path}")
+                        # 递归删除子项
+                        self._recursive_delete(entry_path)
+
+                    # 删除空目录
+                    logger.debug(f"【SMB】删除空目录: {smb_path}")
+                    smbclient.rmdir(smb_path)
+                    logger.debug(f"【SMB】目录删除成功: {smb_path}")
+
+                except SMBResponseException as e:
+                    # 如果目录不为空，尝试强制删除
+                    logger.warn(f"【SMB】目录不为空，尝试强制删除: {smb_path} - {e}")
+                    # 使用remove方法尝试删除（某些SMB服务器支持）
+                    try:
+                        smbclient.remove(smb_path)
+                        logger.info(f"【SMB】强制删除目录成功: {smb_path}")
+                    except Exception as remove_error:
+                        # 如果还是失败，记录错误并抛出异常
+                        logger.error(f"【SMB】无法删除非空目录: {smb_path} - {remove_error}")
+                        raise SMBConnectionError(f"无法删除非空目录 {smb_path}: {remove_error}")
+                except SMBException as e:
+                    logger.error(f"【SMB】SMB操作失败: {smb_path} - {e}")
+                    raise SMBConnectionError(f"SMB操作失败 {smb_path}: {e}")
+
+        except SMBConnectionError:
+            # 重新抛出SMB连接错误
+            raise
+        except Exception as e:
+            logger.error(f"【SMB】递归删除失败: {smb_path} - {e}")
+            raise SMBConnectionError(f"递归删除失败 {smb_path}: {e}")
 
     def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
         """
@@ -584,8 +661,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         析构函数，清理连接
         """
         try:
-            # smbclient 自动管理连接池，但我们可以重置缓存
-            if hasattr(self, '_connected') and self._connected:
+            if self._connected:
                 reset_connection_cache()
         except Exception as e:
             logger.debug(f"【SMB】清理连接失败: {e}")

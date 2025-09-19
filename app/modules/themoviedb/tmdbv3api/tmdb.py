@@ -43,6 +43,8 @@ class TMDb(object):
         self._timeout = 15
         self.obj_cached = obj_cached
 
+        self.__clear_async_cache__ = False
+
     @property
     def page(self):
         return self._page
@@ -125,14 +127,17 @@ class TMDb(object):
     def cache(self, cache):
         self._cache_enabled = bool(cache)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         return self.request(method, url, data, json)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta)
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     async def async_cached_request(self, method, url, data, json,
                                    _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        if self.__clear_async_cache__:
+            self.__clear_async_cache__ = False
+            await self.async_cached_request.cache_clear()
         return await self.async_request(method, url, data, json)
 
     def request(self, method, url, data, json):
@@ -154,6 +159,7 @@ class TMDb(object):
         return req
 
     def cache_clear(self):
+        self.__clear_async_cache__ = True
         return self.cached_request.cache_clear()
 
     def _validate_api_key(self):

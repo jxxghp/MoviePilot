@@ -11,6 +11,7 @@ import aiofiles
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from anyio import Path as AsyncPath
+from app.helper.sites import SitesHelper  # noqa  # noqa
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -31,7 +32,6 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
-from app.helper.sites import SitesHelper  # noqa  # noqa
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
 from app.log import logger
@@ -52,19 +52,20 @@ async def fetch_image(
         proxy: bool = False,
         use_cache: bool = False,
         if_none_match: Optional[str] = None,
-        allowed_domains: Optional[set[str]] = None) -> Response:
+        allowed_domains: Optional[set[str]] = None) -> Optional[Response]:
     """
     处理图片缓存逻辑，支持HTTP缓存和磁盘缓存
     """
     if not url:
-        raise HTTPException(status_code=404, detail="URL not provided")
+        return None
 
     if allowed_domains is None:
         allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS)
 
     # 验证URL安全性
     if not SecurityUtils.is_safe_url(url, allowed_domains):
-        raise HTTPException(status_code=404, detail="Unsafe URL")
+        logger.warn(f"Blocked unsafe image URL: {url}")
+        return None
 
     # 缓存路径
     sanitized_path = SecurityUtils.sanitize_url_path(url)
@@ -98,15 +99,16 @@ async def fetch_image(
     response = await AsyncRequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=proxies, referer=referer,
                                        accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
     if not response:
-        raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
+        logger.warn(f"Failed to fetch image from URL: {url}")
+        return None
 
     # 验证下载的内容是否为有效图片
     try:
         content = response.content
         Image.open(io.BytesIO(content)).verify()
     except Exception as e:
-        logger.debug(f"Invalid image format for URL {url}: {e}")
-        raise HTTPException(status_code=502, detail="Invalid image format")
+        logger.warn(f"Invalid image format for URL {url}: {e}")
+        return None
 
     # 获取请求响应头
     response_headers = response.headers

@@ -14,6 +14,7 @@ from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process
 from app.schemas.types import StorageSchema
+from app.utils.http import RequestUtils
 from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
 
@@ -251,10 +252,18 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         # 检查会话
         self._check_session()
 
-        resp = self.session.request(
-            method, f"{self.base_url}{endpoint}",
-            **kwargs
-        )
+        # 错误日志控制
+        no_error_log = kwargs.pop("no_error_log", False)
+
+        try:
+            resp = self.session.request(
+                method, f"{self.base_url}{endpoint}",
+                **kwargs
+            )
+        except requests.exceptions.RequestException as e:
+            logger.error(f"【阿里云盘】{method} 请求 {endpoint} 网络错误: {str(e)}")
+            return None
+
         if resp is None:
             logger.warn(f"【阿里云盘】{method} 请求 {endpoint} 失败！")
             return None
@@ -268,7 +277,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         # 返回数据
         ret_data = resp.json()
         if ret_data.get("code"):
-            logger.warn(f"【阿里云盘】{method} {endpoint} 返回：{ret_data.get('code')} {ret_data.get('message')}")
+            if not no_error_log:
+                logger.warn(f"【阿里云盘】{method} {endpoint} 返回：{ret_data.get('code')} {ret_data.get('message')}")
 
         if result_key:
             return ret_data.get(result_key)
@@ -592,7 +602,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         file_size = local_path.stat().st_size
 
         # 1. 创建文件并检查秒传
-        chunk_size = 100 * 1024 * 1024  # 分片大小 100M
+        chunk_size = 10 * 1024 * 1024  # 分片大小 10M
         create_res = self._create_file(drive_id=target_dir.drive_id,
                                        parent_file_id=target_dir.fileid,
                                        file_name=target_name,
@@ -724,7 +734,25 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
         try:
-            with requests.get(download_url, stream=True) as r:
+            # 构建请求头，包含必要的认证信息
+            headers = {
+                "User-Agent": settings.NORMAL_USER_AGENT,
+                "Referer": "https://www.aliyundrive.com/",
+                "Accept": "*/*",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "cross-site"
+            }
+
+            # 如果有access_token，添加到请求头
+            if self.access_token:
+                headers["Authorization"] = f"Bearer {self.access_token}"
+
+            request_utils = RequestUtils(headers=headers)
+            with request_utils.get_stream(download_url, raise_exception=True) as r:
                 r.raise_for_status()
                 downloaded_size = 0
                 with open(local_path, "wb") as f:
@@ -743,21 +771,12 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 # 完成下载
                 progress_callback(100)
                 logger.info(f"【阿里云盘】下载完成: {fileitem.name}")
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"【阿里云盘】下载网络错误: {fileitem.name} - {str(e)}")
-            # 删除可能部分下载的文件
-            if local_path.exists():
-                local_path.unlink()
-            return None
+                return local_path
         except Exception as e:
             logger.error(f"【阿里云盘】下载失败: {fileitem.name} - {str(e)}")
-            # 删除可能部分下载的文件
             if local_path.exists():
                 local_path.unlink()
             return None
-
-        return local_path
 
     def check(self) -> bool:
         return self.access_token is not None
@@ -810,7 +829,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 json={
                     "drive_id": drive_id or self._default_drive_id,
                     "file_path": path.as_posix()
-                }
+                },
+                no_error_log=True
             )
             if not resp:
                 return None

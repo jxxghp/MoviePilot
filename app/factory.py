@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.monitoring import setup_prometheus_metrics
 from app.startup.lifecycle import lifespan
 
 
@@ -24,9 +23,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # 设置性能监控
-    setup_prometheus_metrics(_app)
 
     return _app
 
