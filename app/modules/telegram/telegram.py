@@ -31,11 +31,13 @@ class Telegram:
     _callback_handlers: Dict[str, Callable] = {}  # 存储回调处理器
     _user_chat_mapping: Dict[str, str] = {}  # userid -> chat_id mapping for reply targeting
     _bot_username: Optional[str] = None  # Bot username for mention detection
-
+    _escape_chars = r'_*[]()~`>#+-=|{}.!' # Telegram MarkdownV2
+    _markdown_escape_pattern = re.compile(f'([{re.escape(_escape_chars)}])') #Telegram MarkdownV2 规则转义特殊字符正则pattern
     def __init__(self, TELEGRAM_TOKEN: Optional[str] = None, TELEGRAM_CHAT_ID: Optional[str] = None, **kwargs):
         """
         初始化参数
         """
+
         if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
             logger.error("Telegram配置不完整！")
             return
@@ -237,8 +239,6 @@ class Telegram:
 
         try:
             if text:
-                # 对text进行Markdown特殊字符转义
-                text = re.sub(r"([_`])", r"\\\1", text)
                 caption = f"*{title}*\n{text}"
             else:
                 caption = f"*{title}*"
@@ -511,7 +511,7 @@ class Telegram:
                 self._bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=text,
+                    text=self.escape_markdown(text),
                     parse_mode="Markdown",
                     reply_markup=reply_markup
                 )
@@ -541,7 +541,7 @@ class Telegram:
                 # 发送图片到Telegram
                 ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                            photo=photo,
-                                           caption=caption,
+                                           caption=self.escape_markdown(caption),
                                            parse_mode="Markdown",
                                            reply_markup=reply_markup)
                 if ret is None:
@@ -552,12 +552,12 @@ class Telegram:
         if len(caption) > 4095:
             for i in range(0, len(caption), 4095):
                 ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
-                                             text=caption[i:i + 4095],
+                                             text=self.escape_markdown(caption[i:i + 4095]),
                                              parse_mode="Markdown",
                                              reply_markup=reply_markup if i == 0 else None)
         else:
             ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
-                                         text=caption,
+                                         text=self.escape_markdown(caption),
                                          parse_mode="Markdown",
                                          reply_markup=reply_markup)
         if ret is None:
@@ -597,3 +597,9 @@ class Telegram:
             self._bot.stop_polling()
             self._polling_thread.join()
             logger.info("Telegram消息接收服务已停止")
+
+    def escape_markdown(self, text: str) -> str:
+        # 按 Telegram MarkdownV2 规则转义特殊字符
+        if not isinstance(text, str):
+            return str(text) if text is not None else ""
+        return self._markdown_escape_pattern.sub(r'\\\1', text)
