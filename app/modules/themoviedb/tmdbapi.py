@@ -825,6 +825,114 @@ class TmdbApi:
 
         return tmdb_info
 
+    def __update_regional_images(self, tmdb_info: dict, media_type: str):
+        """
+        更新地区化图片信息
+        :param tmdb_info: TMDB信息
+        :param media_type: 媒体类型 (movie/tv)
+        """
+        try:
+            if media_type == "movie":
+                image_data = self.get_movie_images(tmdb_info.get("id"))
+            else:
+                image_data = self.get_tv_images(tmdb_info.get("id"))
+            
+            if not image_data:
+                return
+            
+            # 更新海报
+            posters = image_data.get("posters", [])
+            if posters:
+                # 按语言优先级排序：zh-CN > zh-TW > 其他
+                def sort_key(poster):
+                    lang = poster.get("iso_639_1", "")
+                    if lang == "zh-CN":
+                        return 0
+                    elif lang == "zh-TW":
+                        return 1
+                    else:
+                        return 2
+                
+                posters.sort(key=sort_key)
+                best_poster = posters[0]
+                if best_poster.get("file_path"):
+                    tmdb_info["poster_path"] = best_poster.get("file_path")
+            
+            # 更新背景图
+            backdrops = image_data.get("backdrops", [])
+            if backdrops:
+                # 按语言优先级排序：zh-CN > zh-TW > 其他
+                def sort_key(backdrop):
+                    lang = backdrop.get("iso_639_1", "")
+                    if lang == "zh-CN":
+                        return 0
+                    elif lang == "zh-TW":
+                        return 1
+                    else:
+                        return 2
+                
+                backdrops.sort(key=sort_key)
+                best_backdrop = backdrops[0]
+                if best_backdrop.get("file_path"):
+                    tmdb_info["backdrop_path"] = best_backdrop.get("file_path")
+                    
+        except Exception as e:
+            logger.error(f"更新地区化图片失败: {str(e)}")
+
+    async def __async_update_regional_images(self, tmdb_info: dict, media_type: str):
+        """
+        更新地区化图片信息（异步版本）
+        :param tmdb_info: TMDB信息
+        :param media_type: 媒体类型 (movie/tv)
+        """
+        try:
+            if media_type == "movie":
+                image_data = await self.async_get_movie_images(tmdb_info.get("id"))
+            else:
+                image_data = await self.async_get_tv_images(tmdb_info.get("id"))
+            
+            if not image_data:
+                return
+            
+            # 更新海报
+            posters = image_data.get("posters", [])
+            if posters:
+                # 按语言优先级排序：zh-CN > zh-TW > 其他
+                def sort_key(poster):
+                    lang = poster.get("iso_639_1", "")
+                    if lang == "zh-CN":
+                        return 0
+                    elif lang == "zh-TW":
+                        return 1
+                    else:
+                        return 2
+                
+                posters.sort(key=sort_key)
+                best_poster = posters[0]
+                if best_poster.get("file_path"):
+                    tmdb_info["poster_path"] = best_poster.get("file_path")
+            
+            # 更新背景图
+            backdrops = image_data.get("backdrops", [])
+            if backdrops:
+                # 按语言优先级排序：zh-CN > zh-TW > 其他
+                def sort_key(backdrop):
+                    lang = backdrop.get("iso_639_1", "")
+                    if lang == "zh-CN":
+                        return 0
+                    elif lang == "zh-TW":
+                        return 1
+                    else:
+                        return 2
+                
+                backdrops.sort(key=sort_key)
+                best_backdrop = backdrops[0]
+                if best_backdrop.get("file_path"):
+                    tmdb_info["backdrop_path"] = best_backdrop.get("file_path")
+                    
+        except Exception as e:
+            logger.error(f"更新地区化图片失败: {str(e)}")
+
     @staticmethod
     def __get_content_rating(tmdb_info: dict) -> Optional[str]:
         """
@@ -1081,6 +1189,8 @@ class TmdbApi:
             tmdbinfo = self.movie.details(tmdbid, append_to_response)
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('title')}")
+                # 获取地区化图片信息
+                self.__update_regional_images(tmdbinfo, "movie")
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -1266,6 +1376,8 @@ class TmdbApi:
             tmdbinfo = self.tv.details(tv_id=tmdbid, append_to_response=append_to_response)
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('name')}")
+                # 获取地区化图片信息
+                self.__update_regional_images(tmdbinfo, "tv")
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -1421,7 +1533,8 @@ class TmdbApi:
             return {}
         try:
             logger.debug(f"正在获取电影图片：{tmdbid}...")
-            return self.movie.images(movie_id=tmdbid) or {}
+            # 优先获取zh-CN地区的图片，如果没有则获取zh-TW，最后获取原始语言
+            return self.movie.images(movie_id=tmdbid, include_image_language="zh-CN,zh-TW,null") or {}
         except Exception as e:
             logger.error(str(e))
             return {}
@@ -1434,7 +1547,8 @@ class TmdbApi:
             return {}
         try:
             logger.debug(f"正在获取电视剧图片：{tmdbid}...")
-            return self.tv.images(tv_id=tmdbid) or {}
+            # 优先获取zh-CN地区的图片，如果没有则获取zh-TW，最后获取原始语言
+            return self.tv.images(tv_id=tmdbid, include_image_language="zh-CN,zh-TW,null") or {}
         except Exception as e:
             logger.error(str(e))
             return {}
@@ -1811,6 +1925,8 @@ class TmdbApi:
             tmdbinfo = await self.movie.async_details(tmdbid, append_to_response)
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('title')}")
+                # 获取地区化图片信息
+                await self.__async_update_regional_images(tmdbinfo, "movie")
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -1837,6 +1953,8 @@ class TmdbApi:
             tmdbinfo = await self.tv.async_details(tv_id=tmdbid, append_to_response=append_to_response)
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('name')}")
+                # 获取地区化图片信息
+                await self.__async_update_regional_images(tmdbinfo, "tv")
             return tmdbinfo or {}
         except Exception as e:
             logger.error(str(e))
@@ -2188,7 +2306,8 @@ class TmdbApi:
             return {}
         try:
             logger.debug(f"正在获取电影图片：{tmdbid}...")
-            return await self.movie.async_images(movie_id=tmdbid) or {}
+            # 优先获取zh-CN地区的图片，如果没有则获取zh-TW，最后获取原始语言
+            return await self.movie.async_images(movie_id=tmdbid, include_image_language="zh-CN,zh-TW,null") or {}
         except Exception as e:
             logger.error(str(e))
             return {}
@@ -2201,7 +2320,8 @@ class TmdbApi:
             return {}
         try:
             logger.debug(f"正在获取电视剧图片：{tmdbid}...")
-            return await self.tv.async_images(tv_id=tmdbid) or {}
+            # 优先获取zh-CN地区的图片，如果没有则获取zh-TW，最后获取原始语言
+            return await self.tv.async_images(tv_id=tmdbid, include_image_language="zh-CN,zh-TW,null") or {}
         except Exception as e:
             logger.error(str(e))
             return {}

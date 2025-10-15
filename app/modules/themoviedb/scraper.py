@@ -109,8 +109,13 @@ class TmdbScraper:
                         and attr_value.startswith("http"):
                     image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                     images[image_name] = attr_value
-            # 替换原语言Poster
-            if settings.TMDB_SCRAP_ORIGINAL_IMAGE:
+            
+            # 优先获取zh-CN地区的图片
+            regional_images = self.get_regional_images(mediainfo)
+            if regional_images:
+                images.update(regional_images)
+            # 如果设置了使用原始语言图片，则替换原语言Poster
+            elif settings.TMDB_SCRAP_ORIGINAL_IMAGE:
                 _mediainfo = self.original_tmdb(mediainfo).get_info(mediainfo.type, mediainfo.tmdb_id)
                 if _mediainfo:
                     for attr_name, attr_value in _mediainfo.items():
@@ -119,6 +124,68 @@ class TmdbScraper:
                             image_name = attr_name.replace("_path", "") + Path(image_url).suffix
                             images[image_name] = image_url
             return images
+
+    def get_regional_images(self, mediainfo: MediaInfo) -> dict:
+        """
+        获取地区化图片（优先zh-CN）
+        :param mediainfo: 媒体信息
+        """
+        images = {}
+        try:
+            if mediainfo.type == MediaType.MOVIE:
+                # 获取电影图片
+                image_data = self.default_tmdb.get_movie_images(mediainfo.tmdb_id)
+            else:
+                # 获取电视剧图片
+                image_data = self.default_tmdb.get_tv_images(mediainfo.tmdb_id)
+            
+            if not image_data:
+                return images
+            
+            # 优先选择zh-CN地区的海报
+            posters = image_data.get("posters", [])
+            if posters:
+                # 按语言优先级排序：zh-CN > zh-TW > 其他
+                def sort_key(poster):
+                    lang = poster.get("iso_639_1", "")
+                    if lang == "zh-CN":
+                        return 0
+                    elif lang == "zh-TW":
+                        return 1
+                    else:
+                        return 2
+                
+                posters.sort(key=sort_key)
+                best_poster = posters[0]
+                if best_poster.get("file_path"):
+                    poster_url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{best_poster.get('file_path')}"
+                    poster_name = "poster" + Path(poster_url).suffix
+                    images[poster_name] = poster_url
+            
+            # 优先选择zh-CN地区的背景图
+            backdrops = image_data.get("backdrops", [])
+            if backdrops:
+                # 按语言优先级排序：zh-CN > zh-TW > 其他
+                def sort_key(backdrop):
+                    lang = backdrop.get("iso_639_1", "")
+                    if lang == "zh-CN":
+                        return 0
+                    elif lang == "zh-TW":
+                        return 1
+                    else:
+                        return 2
+                
+                backdrops.sort(key=sort_key)
+                best_backdrop = backdrops[0]
+                if best_backdrop.get("file_path"):
+                    backdrop_url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{best_backdrop.get('file_path')}"
+                    backdrop_name = "backdrop" + Path(backdrop_url).suffix
+                    images[backdrop_name] = backdrop_url
+                    
+        except Exception as e:
+            logger.error(f"获取地区化图片失败: {str(e)}")
+        
+        return images
 
     @staticmethod
     def get_season_poster(seasoninfo: dict, season: int) -> Tuple[str, str]:
