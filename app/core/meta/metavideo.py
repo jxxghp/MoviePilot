@@ -230,6 +230,12 @@ class MetaVideo(MetaBase):
                     self.en_name = "%s %s" % (self.en_name, self._unknown_name_str)
                 self._last_token_type = "enname"
             self._unknown_name_str = ""
+        # 允许在特定条件下继续处理中文
+        # 保存原始的_stop_name_flag状态
+        original_stop_flag = self._stop_name_flag
+        if StringUtils.is_chinese(token) and not self._stop_cnname_flag:
+            # 重置标志位以允许中文识别
+            self._stop_name_flag = False
         if self._stop_name_flag:
             return
         if token.upper() == "AKA":
@@ -250,6 +256,8 @@ class MetaVideo(MetaBase):
                             and not re.search("%s" % self._name_se_words, token, flags=re.IGNORECASE)):
                     self.cn_name = "%s %s" % (self.cn_name, token)
                 self._stop_cnname_flag = True
+            # 处理完中文后，恢复原始的_stop_name_flag状态
+            self._stop_name_flag = original_stop_flag
         else:
             is_roman_digit = re.search(self._roman_numerals, token)
             # 阿拉伯数字或者罗马数字
