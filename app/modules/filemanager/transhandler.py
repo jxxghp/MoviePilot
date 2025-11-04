@@ -41,33 +41,22 @@ class TransHandler:
         :return: 花絮类型（trailer/interview/behindscenes/other），如果不是花絮则返回None
         """
         filename_lower = filename.lower()
-        
-        # 预告片相关关键词
-        trailer_keywords = ['trailer', 'preview', '预告', '预告片', '预告片', 'teaser']
-        # 采访相关关键词
-        interview_keywords = ['interview', '采访', '访谈', 'talkshow', 'talk-show']
-        # 幕后花絮相关关键词
-        behindscenes_keywords = ['behind', 'scenes', 'bts', 'behindthescenes', 'behind-the-scenes', 
-                                'making', 'makingof', 'making-of', '花絮', '幕后', '制作特辑', '特辑']
-        # 其他花絮相关关键词
-        other_keywords = ['featurette', 'deleted', 'scene', 'deletedscene', 'deleted-scene',
-                         'outtake', 'blooper', 'bloopers', 'extra', 'extras', 'bonus',
-                         'special', 'specials', 'specialfeature', 'special-feature',
-                         'deleted scenes', 'deleted-scenes', '特别收录', '删减片段']
-        
-        # 检查预告片
-        if any(keyword in filename_lower for keyword in trailer_keywords):
-            return 'trailer'
-        # 检查采访
-        if any(keyword in filename_lower for keyword in interview_keywords):
-            return 'interview'
-        # 检查幕后花絮
-        if any(keyword in filename_lower for keyword in behindscenes_keywords):
-            return 'behindscenes'
-        # 检查其他花絮
-        if any(keyword in filename_lower for keyword in other_keywords):
-            return 'other'
-        
+
+        keyword_map = {
+            'trailer': ['trailer', 'preview', '预告', '预告片', 'teaser'],
+            'interview': ['interview', '采访', '访谈', 'talkshow', 'talk-show'],
+            'behindscenes': ['behind', 'scenes', 'bts', 'behindthescenes', 'behind-the-scenes',
+                             'making', 'makingof', 'making-of', '花絮', '幕后', '制作特辑', '特辑'],
+            'other': ['featurette', 'deleted', 'scene', 'deletedscene', 'deleted-scene',
+                      'outtake', 'blooper', 'bloopers', 'extra', 'extras', 'bonus',
+                      'special', 'specials', 'specialfeature', 'special-feature',
+                      'deleted scenes', 'deleted-scenes', '特别收录', '删减片段']
+        }
+
+        for extra_type, keywords in keyword_map.items():
+            if any(keyword in filename_lower for keyword in keywords):
+                return extra_type
+
         return None
 
     @staticmethod
