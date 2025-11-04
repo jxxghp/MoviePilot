@@ -10,13 +10,14 @@ from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import TemplateHelper
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, TmdbEpisode, TransferDirectoryConf, FileItem, TransferInterceptEventData, \
     TransferRenameEventData
-from app.schemas.types import MediaType, ChainEventType
+from app.schemas.types import MediaType, ChainEventType, SystemConfigKey
 from app.utils.system import SystemUtils
 
 lock = Lock()
@@ -31,6 +32,64 @@ class TransHandler:
 
     def __init__(self):
         self.result = None
+
+    @staticmethod
+    def _detect_extra_type(filename: str) -> Optional[str]:
+        """
+        检测文件是否为花絮类文件（预告片、采访、幕后花絮等）
+        :param filename: 文件名
+        :return: 花絮类型（trailer/interview/behindscenes/other），如果不是花絮则返回None
+        """
+        filename_lower = filename.lower()
+        
+        # 预告片相关关键词
+        trailer_keywords = ['trailer', 'preview', '预告', '预告片', '预告片', 'teaser']
+        # 采访相关关键词
+        interview_keywords = ['interview', '采访', '访谈', 'talkshow', 'talk-show']
+        # 幕后花絮相关关键词
+        behindscenes_keywords = ['behind', 'scenes', 'bts', 'behindthescenes', 'behind-the-scenes', 
+                                'making', 'makingof', 'making-of', '花絮', '幕后', '制作特辑', '特辑']
+        # 其他花絮相关关键词
+        other_keywords = ['featurette', 'deleted', 'scene', 'deletedscene', 'deleted-scene',
+                         'outtake', 'blooper', 'bloopers', 'extra', 'extras', 'bonus',
+                         'special', 'specials', 'specialfeature', 'special-feature',
+                         'deleted scenes', 'deleted-scenes', '特别收录', '删减片段']
+        
+        # 检查预告片
+        if any(keyword in filename_lower for keyword in trailer_keywords):
+            return 'trailer'
+        # 检查采访
+        if any(keyword in filename_lower for keyword in interview_keywords):
+            return 'interview'
+        # 检查幕后花絮
+        if any(keyword in filename_lower for keyword in behindscenes_keywords):
+            return 'behindscenes'
+        # 检查其他花絮
+        if any(keyword in filename_lower for keyword in other_keywords):
+            return 'other'
+        
+        return None
+
+    @staticmethod
+    def _get_subfolder_name(extra_type: str) -> str:
+        """
+        获取自定义子文件夹名称
+        :param extra_type: 花絮类型（trailer/interview/behindscenes/other）
+        :return: 子文件夹名称
+        """
+        # 获取配置
+        subfolder_names = SystemConfigOper().get(SystemConfigKey.TransferSubfolderNames) or {}
+        
+        # 默认名称映射
+        default_names = {
+            'trailer': 'Trailers',
+            'interview': 'Interviews',
+            'behindscenes': 'Behind the Scenes',
+            'other': 'Other'
+        }
+        
+        # 如果配置中有自定义名称，使用自定义名称，否则使用默认名称
+        return subfolder_names.get(extra_type, default_names.get(extra_type, 'Other'))
 
     def __reset_result(self):
         """
@@ -161,9 +220,14 @@ class TransHandler:
                 return self.result.model_copy()
             else:
                 # 整理单个文件
+                # 检测是否为花絮类文件
+                extra_type = self._detect_extra_type(fileitem.name)
+                is_extra = extra_type is not None
+                
                 if mediainfo.type == MediaType.TV:
                     # 电视剧
-                    if in_meta.begin_episode is None:
+                    # 如果是花絮，跳过集数检查
+                    if not is_extra and in_meta.begin_episode is None:
                         logger.warn(f"文件 {fileitem.path} 整理失败：未识别到文件集数")
                         self.__set_result(success=False,
                                           message="未识别到文件集数",
@@ -183,34 +247,108 @@ class TransHandler:
                         in_meta.total_episode = 1
                         in_meta.end_episode = None
 
-                # 目的文件名
-                if need_rename:
-                    new_file = self.get_rename_path(
-                        path=target_path,
-                        template_string=rename_format,
-                        rename_dict=self.get_naming_dict(
-                            meta=in_meta,
-                            mediainfo=mediainfo,
-                            episodes_info=episodes_info,
-                            file_ext=f".{fileitem.extension}"
-                        )
-                    )
-                    folder_path = DirectoryHelper.get_media_root_path(
-                        rename_format, rename_path=new_file
-                    )
-                    if not folder_path:
-                        self.__set_result(
-                            success=False,
-                            message="重命名格式无效",
-                            fileitem=fileitem,
-                            fail_list=[fileitem.path],
-                            transfer_type=transfer_type,
-                            need_notify=need_notify,
-                        )
-                        return self.result.model_copy()
+                # 目的文件名和路径
+                if is_extra:
+                    # 花絮文件处理
+                    # 对于TV，花絮放在剧集根目录下的自定义子文件夹中
+                    # 对于Movie，花絮放在电影目录下的自定义子文件夹中
+                    if need_rename:
+                        # 获取媒体根路径（不包含季信息）
+                        if mediainfo.type == MediaType.TV:
+                            # 对于TV，使用剧集根路径（不包含季信息）
+                            # 创建简化的命名字典，只包含标题和年份，不包含季集信息
+                            naming_dict = self.get_naming_dict(
+                                meta=in_meta,
+                                mediainfo=mediainfo,
+                                file_ext=f".{fileitem.extension}"
+                            )
+                            # 移除季集相关的键，确保路径指向剧集根目录
+                            naming_dict.pop('season', None)
+                            naming_dict.pop('season_seq', None)
+                            naming_dict.pop('episode', None)
+                            naming_dict.pop('episode_seq', None)
+                            naming_dict.pop('episodes', None)
+                            naming_dict.pop('episodes_seq', None)
+                            # 构建简化格式，只包含title和year，这样可以获得剧集根目录
+                            simple_format = "{{title}}{% if year %} ({{year}}){% endif %}"
+                            # 构建剧集根路径
+                            show_root_path = self.get_rename_path(
+                                path=target_path,
+                                template_string=simple_format,
+                                rename_dict=naming_dict
+                            )
+                            # 获取媒体根路径（剧集根目录）
+                            folder_path = DirectoryHelper.get_media_root_path(
+                                simple_format, rename_path=show_root_path
+                            )
+                            if not folder_path:
+                                # fallback: 如果获取失败，尝试从show_root_path提取
+                                folder_path = show_root_path.parent if show_root_path.name else show_root_path
+                        else:
+                            # 对于Movie，使用电影目录
+                            new_file = self.get_rename_path(
+                                path=target_path,
+                                template_string=rename_format,
+                                rename_dict=self.get_naming_dict(
+                                    meta=in_meta,
+                                    mediainfo=mediainfo,
+                                    file_ext=f".{fileitem.extension}"
+                                )
+                            )
+                            folder_path = DirectoryHelper.get_media_root_path(
+                                rename_format, rename_path=new_file
+                            )
+                        
+                        if not folder_path:
+                            self.__set_result(
+                                success=False,
+                                message="重命名格式无效",
+                                fileitem=fileitem,
+                                fail_list=[fileitem.path],
+                                transfer_type=transfer_type,
+                                need_notify=need_notify,
+                            )
+                            return self.result.model_copy()
+                        
+                        # 在媒体根目录下添加自定义子文件夹
+                        subfolder_name = self._get_subfolder_name(extra_type)
+                        folder_path = folder_path / subfolder_name
+                        # 文件名保持原样
+                        new_file = folder_path / fileitem.name
+                    else:
+                        # 不重命名时，也在子文件夹中
+                        subfolder_name = self._get_subfolder_name(extra_type)
+                        folder_path = target_path / subfolder_name
+                        new_file = folder_path / fileitem.name
                 else:
-                    new_file = target_path / fileitem.name
-                    folder_path = target_path
+                    # 常规文件处理
+                    if need_rename:
+                        new_file = self.get_rename_path(
+                            path=target_path,
+                            template_string=rename_format,
+                            rename_dict=self.get_naming_dict(
+                                meta=in_meta,
+                                mediainfo=mediainfo,
+                                episodes_info=episodes_info,
+                                file_ext=f".{fileitem.extension}"
+                            )
+                        )
+                        folder_path = DirectoryHelper.get_media_root_path(
+                            rename_format, rename_path=new_file
+                        )
+                        if not folder_path:
+                            self.__set_result(
+                                success=False,
+                                message="重命名格式无效",
+                                fileitem=fileitem,
+                                fail_list=[fileitem.path],
+                                transfer_type=transfer_type,
+                                need_notify=need_notify,
+                            )
+                            return self.result.model_copy()
+                    else:
+                        new_file = target_path / fileitem.name
+                        folder_path = target_path
 
                 # 判断是否要覆盖
                 overflag = False

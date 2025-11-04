@@ -162,6 +162,8 @@ class SystemConfigKey(Enum):
     CustomIdentifiers = "CustomIdentifiers"
     # 转移屏蔽词
     TransferExcludeWords = "TransferExcludeWords"
+    # 自定义子文件夹名称配置（用于存放花絮、预告片、采访等）
+    TransferSubfolderNames = "TransferSubfolderNames"
     # 种子优先级规则
     TorrentsPriority = "TorrentsPriority"
     # 用户自定义规则
