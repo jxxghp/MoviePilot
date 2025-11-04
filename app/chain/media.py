@@ -25,6 +25,9 @@ scraping_lock = Lock()
 current_umask = os.umask(0)
 os.umask(current_umask)
 
+# 集剧情简介显示的最大长度
+EPISODE_SYNOPSIS_MAX_LENGTH = 200
+
 
 class MediaChain(ChainBase):
     """
@@ -650,21 +653,18 @@ class MediaChain(ChainBase):
                                                season=file_meta.begin_season,
                                                episode_group=file_mediainfo.episode_group)
                     if episodes:
-                        for ep in episodes:
-                            # 处理不同的返回类型：dict或TmdbEpisode对象
-                            if isinstance(ep, dict):
-                                ep_num = ep.get("episode_number")
-                                if ep_num == file_meta.begin_episode:
-                                    episode_synopsis = ep.get("overview")
-                                    episode_title = ep.get("name")
-                                    break
-                            else:
-                                # TmdbEpisode对象（Pydantic BaseModel）
-                                ep_num = getattr(ep, 'episode_number', None)
-                                if ep_num == file_meta.begin_episode:
-                                    episode_synopsis = getattr(ep, 'overview', None)
-                                    episode_title = getattr(ep, 'name', None)
-                                    break
+                        # 使用next()和生成器表达式查找目标集，支持dict和TmdbEpisode对象
+                        target_ep = next(
+                            (ep for ep in episodes if (
+                                ep.get("episode_number") if isinstance(ep, dict) 
+                                else getattr(ep, "episode_number", None)
+                            ) == file_meta.begin_episode),
+                            None
+                        )
+                        if target_ep:
+                            is_dict = isinstance(target_ep, dict)
+                            episode_synopsis = target_ep.get("overview") if is_dict else getattr(target_ep, "overview", None)
+                            episode_title = target_ep.get("name") if is_dict else getattr(target_ep, "name", None)
                     
                     # 显示集信息
                     if episode_title or episode_synopsis:
@@ -674,7 +674,10 @@ class MediaChain(ChainBase):
                         logger.info(episode_info_msg)
                         if episode_synopsis:
                             # 限制显示长度，避免日志过长
-                            synopsis_display = episode_synopsis[:200] + "..." if len(episode_synopsis) > 200 else episode_synopsis
+                            if len(episode_synopsis) > EPISODE_SYNOPSIS_MAX_LENGTH:
+                                synopsis_display = episode_synopsis[:EPISODE_SYNOPSIS_MAX_LENGTH] + "..."
+                            else:
+                                synopsis_display = episode_synopsis
                             logger.info(f"剧情简介：{synopsis_display}")
                 except Exception as e:
                     logger.debug(f"获取集信息失败：{str(e)}")
