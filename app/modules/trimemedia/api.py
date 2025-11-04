@@ -190,7 +190,7 @@ class Api:
         """
         用户列表(仅管理员有权访问)
         """
-        if (res := self.request("/memory/user/list")) and res.success:
+        if (res := self.request("/manager/user/list")) and res.success:
             if not res.data:
                 return []
             return [

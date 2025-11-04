@@ -12,7 +12,7 @@ import pillow_avif  # noqa 用于自动注册AVIF支持
 from PIL import Image
 from anyio import Path as AsyncPath
 from app.helper.sites import SitesHelper  # noqa  # noqa
-from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -52,6 +52,7 @@ async def fetch_image(
         proxy: bool = False,
         use_cache: bool = False,
         if_none_match: Optional[str] = None,
+        cookies: Optional[str] = None,
         allowed_domains: Optional[set[str]] = None) -> Optional[Response]:
     """
     处理图片缓存逻辑，支持HTTP缓存和磁盘缓存
@@ -96,8 +97,13 @@ async def fetch_image(
     # 请求远程图片
     referer = "https://movie.douban.com/" if "doubanio.com" in url else None
     proxies = settings.PROXY if proxy else None
-    response = await AsyncRequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=proxies, referer=referer,
-                                       accept_type="image/avif,image/webp,image/apng,*/*").get_res(url=url)
+    response = await AsyncRequestUtils(
+        ua=settings.NORMAL_USER_AGENT,
+        proxies=proxies,
+        referer=referer,
+        cookies=cookies,
+        accept_type="image/avif,image/webp,image/apng,*/*",
+    ).get_res(url=url)
     if not response:
         logger.warn(f"Failed to fetch image from URL: {url}")
         return None
@@ -141,6 +147,7 @@ async def proxy_img(
         proxy: bool = False,
         cache: bool = False,
         if_none_match: Annotated[str | None, Header()] = None,
+        cookies: Annotated[str | None, Query()] = None,
         _: schemas.TokenPayload = Depends(verify_resource_token)
 ) -> Response:
     """
@@ -150,7 +157,7 @@ async def proxy_img(
     hosts = [config.config.get("host") for config in MediaServerHelper().get_configs().values() if
              config and config.config and config.config.get("host")]
     allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS) | set(hosts)
-    return await fetch_image(url=imgurl, proxy=proxy, use_cache=cache,
+    return await fetch_image(url=imgurl, proxy=proxy, use_cache=cache, cookies=cookies,
                              if_none_match=if_none_match, allowed_domains=allowed_domains)
 
 

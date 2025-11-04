@@ -74,6 +74,8 @@ class MediaServerLibrary(BaseModel):
     link: Optional[str] = None
     # 服务器类型
     server_type: Optional[str] = None
+    # 飞牛的图片需要Cookies
+    cookies: Optional[str] = None
 
 
 class MediaServerItemUserState(BaseModel):
@@ -177,3 +179,5 @@ class MediaServerPlayItem(BaseModel):
     percent: Optional[float] = None
     BackdropImageTags: Optional[list] = Field(default_factory=list)
     server_type: Optional[str] = None
+    # 飞牛的图片需要Cookies
+    cookies: Optional[str] = None

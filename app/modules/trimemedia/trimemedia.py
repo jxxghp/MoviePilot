@@ -124,6 +124,7 @@ class TrimeMedia:
         if result := self.__create_api(self._host):
             self._api = result.api
             # 版本号:0.8.53, 服务版本:0.8.23
+            # 版本号:0.8.56, 服务版本:0.8.23 接口/memory/user/list改为/manager/user/list
             logger.debug(
                 f"版本号:{result.version.frontend}, 服务版本:{result.version.backend}"
             )
@@ -189,6 +190,7 @@ class TrimeMedia:
                     ],
                     link=f"{self._playhost or self._api.host}/library/{library.guid}",
                     server_type="trimemedia",
+                    cookies=f"Trim-MC-token={self._api.token}",
                 )
             )
         return libraries
@@ -487,6 +489,7 @@ class TrimeMedia:
                 else 0
             ),
             server_type="trimemedia",
+            cookies=f"Trim-MC-token={self._api.token}",
         )
 
     def get_items(
