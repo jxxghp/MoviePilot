@@ -31,8 +31,7 @@ class Telegram:
     _callback_handlers: Dict[str, Callable] = {}  # 存储回调处理器
     _user_chat_mapping: Dict[str, str] = {}  # userid -> chat_id mapping for reply targeting
     _bot_username: Optional[str] = None  # Bot username for mention detection
-    _escape_chars = r'_*[]()~`>#+-=|{}.!' # Telegram MarkdownV2
-    _markdown_escape_pattern = re.compile(f'([{re.escape(_escape_chars)}])') # Telegram MarkdownV2 规则转义特殊字符正则pattern
+
     def __init__(self, TELEGRAM_TOKEN: Optional[str] = None, TELEGRAM_CHAT_ID: Optional[str] = None, **kwargs):
         """
         初始化参数
@@ -53,7 +52,7 @@ class Telegram:
             else:
                 apihelper.proxy = settings.PROXY
             # bot
-            _bot = telebot.TeleBot(self._telegram_token, parse_mode="MarkdownV2")
+            _bot = telebot.TeleBot(self._telegram_token, parse_mode="Markdown")
             # 记录句柄
             self._bot = _bot
             # 获取并存储bot用户名用于@检测
@@ -216,8 +215,7 @@ class Telegram:
                  userid: Optional[str] = None, link: Optional[str] = None,
                  buttons: Optional[List[List[dict]]] = None,
                  original_message_id: Optional[int] = None,
-                 original_chat_id: Optional[str] = None,
-                 escape_markdown: bool = True) -> Optional[bool]:
+                 original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -228,8 +226,7 @@ class Telegram:
         :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
         :param original_message_id: 原消息ID，如果提供则编辑原消息
         :param original_chat_id: 原消息的聊天ID，编辑消息时需要
-        :param escape_markdown: 是否对内容进行Markdown转义
-
+        :userid: 发送消息的目标用户ID，为空则发给管理员
         """
         if not self._telegram_token or not self._telegram_chat_id:
             return None
@@ -239,20 +236,10 @@ class Telegram:
             return False
 
         try:
-            if title:
-                # 标题总是转义（因为通常标题不包含Markdown格式）
-                title = self.escape_markdown(title)
             if text:
-                if escape_markdown:
-                    # 完全转义模式：转义所有特殊字符
-                    text = self.escape_markdown(text)
-                else:
-                    # 智能转义模式：保留Markdown格式，只转义普通文本中的特殊字符
-                    text = self.escape_markdown_smart(text)
-                if title:
-                    caption = f"*{title}*\n{text}"
-                else:
-                    caption = text
+                # 对text进行Markdown特殊字符转义
+                text = re.sub(r"([_`])", r"\\\1", text)
+                caption = f"*{title}*\n{text}"
             else:
                 caption = f"*{title}*"
 
@@ -276,7 +263,7 @@ class Telegram:
                 return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
 
         except Exception as msg_e:
-            logger.error(f"使用 send_msg 发送消息失败：{msg_e}")
+            logger.error(f"发送消息失败：{msg_e}")
             return False
 
     def _determine_target_chat_id(self, userid: Optional[str] = None,
@@ -321,9 +308,6 @@ class Telegram:
             return None
 
         try:
-            if title:
-                # 标题总是转义（因为通常标题不包含Markdown格式）
-                title = self.escape_markdown(title)
             index, image, caption = 1, "", "*%s*" % title
             for media in medias:
                 if not image:
@@ -363,7 +347,7 @@ class Telegram:
                 return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
 
         except Exception as msg_e:
-            logger.error(f"使用 send_medias_msg 发送消息失败：{msg_e}")
+            logger.error(f"发送消息失败：{msg_e}")
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
@@ -385,9 +369,6 @@ class Telegram:
             return None
 
         try:
-            if title:
-                # 标题总是转义（因为通常标题不包含Markdown格式）
-                title = self.escape_markdown(title)
             index, caption = 1, "*%s*" % title
             image = torrents[0].media_info.get_message_image()
             for context in torrents:
@@ -426,7 +407,7 @@ class Telegram:
                 return self.__send_request(userid=chat_id, image=image, caption=caption, reply_markup=reply_markup)
 
         except Exception as msg_e:
-            logger.error(f"使用 send_torrents_msg 发送消息失败：{msg_e}")
+            logger.error(f"发送消息失败：{msg_e}")
             return False
 
     @staticmethod
@@ -518,7 +499,7 @@ class Telegram:
 
             if image:
                 # 如果有图片，使用edit_message_media
-                media = InputMediaPhoto(media=image, caption=text, parse_mode="MarkdownV2")
+                media = InputMediaPhoto(media=image, caption=text, parse_mode="Markdown")
                 self._bot.edit_message_media(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -531,7 +512,7 @@ class Telegram:
                     chat_id=chat_id,
                     message_id=message_id,
                     text=text,
-                    parse_mode="MarkdownV2",
+                    parse_mode="Markdown",
                     reply_markup=reply_markup
                 )
             return True
@@ -561,7 +542,7 @@ class Telegram:
                 ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                            photo=photo,
                                            caption=caption,
-                                           parse_mode="MarkdownV2",
+                                           parse_mode="Markdown",
                                            reply_markup=reply_markup)
                 if ret is None:
                     raise RetryException("发送图片消息失败")
@@ -572,12 +553,12 @@ class Telegram:
             for i in range(0, len(caption), 4095):
                 ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
                                              text=caption[i:i + 4095],
-                                             parse_mode="MarkdownV2",
+                                             parse_mode="Markdown",
                                              reply_markup=reply_markup if i == 0 else None)
         else:
             ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
                                          text=caption,
-                                         parse_mode="MarkdownV2",
+                                         parse_mode="Markdown",
                                          reply_markup=reply_markup)
         if ret is None:
             raise RetryException("发送文本消息失败")
@@ -616,84 +597,3 @@ class Telegram:
             self._bot.stop_polling()
             self._polling_thread.join()
             logger.info("Telegram消息接收服务已停止")
-
-    def escape_markdown(self, text: str) -> str:
-        # 按 Telegram MarkdownV2 规则转义特殊字符
-        if not isinstance(text, str):
-            return str(text) if text is not None else ""
-        return self._markdown_escape_pattern.sub(r'\\\1', text)
-
-    def escape_markdown_smart(self, text: str) -> str:
-        """
-        智能转义Markdown文本：只转义不在Markdown标记内的特殊字符
-        这样可以保留已有的Markdown格式（如*粗体*、_斜体_、[链接](url)等），
-        同时转义普通文本中的特殊字符以避免API错误
-        
-        注意：Telegram MarkdownV2不支持以下语法，这些字符会被转义：
-        - 标题语法（#、##、###）会被转义为 \#、\##、\###
-        - 列表语法（-、*、+）会被转义为 \-、\*、\+
-        - 引用语法（>）会被转义为 \>
-        
-        建议使用加粗文本模拟标题：*标题文本*
-        
-        :param text: 要转义的文本
-        :return: 转义后的文本
-        """
-        if not isinstance(text, str):
-            return str(text) if text is not None else ""
-        
-        # 如果没有特殊字符，直接返回
-        if not any(char in self._escape_chars for char in text):
-            return text
-        
-        # 标记受保护的区域（Markdown标记内的内容不转义）
-        protected = [False] * len(text)
-        
-        # 按优先级匹配Markdown标记（从最复杂到最简单）
-        # 1. 链接：[text](url) - 必须最先匹配
-        link_pattern = r'\[([^\]]*)\]\(([^)]*)\)'
-        for match in re.finditer(link_pattern, text):
-            for i in range(match.start(), match.end()):
-                protected[i] = True
-        
-        # 2. 粗体：*text*（单个*，不是**）
-        bold_pattern = r'(?<!\*)\*(?!\*)([^*]+?)(?<!\*)\*(?!\*)'
-        for match in re.finditer(bold_pattern, text):
-            if not any(protected[match.start():match.end()]):
-                for i in range(match.start(), match.end()):
-                    protected[i] = True
-        
-        # 3. 斜体：_text_（单个_，不是__）
-        italic_pattern = r'(?<!_)_(?!_)([^_]+?)(?<!_)_(?!_)'
-        for match in re.finditer(italic_pattern, text):
-            if not any(protected[match.start():match.end()]):
-                for i in range(match.start(), match.end()):
-                    protected[i] = True
-        
-        # 4. 代码：`text`
-        code_pattern = r'`([^`]+)`'
-        for match in re.finditer(code_pattern, text):
-            if not any(protected[match.start():match.end()]):
-                for i in range(match.start(), match.end()):
-                    protected[i] = True
-        
-        # 5. 删除线：~text~
-        strikethrough_pattern = r'~([^~]+)~'
-        for match in re.finditer(strikethrough_pattern, text):
-            if not any(protected[match.start():match.end()]):
-                for i in range(match.start(), match.end()):
-                    protected[i] = True
-        
-        # 构建结果：只转义未保护区域的特殊字符
-        result = []
-        for i, char in enumerate(text):
-            if protected[i]:
-                # 受保护区域（Markdown标记内），不转义
-                result.append(char)
-            elif char in self._escape_chars:
-                # 未保护区域，转义特殊字符
-                result.append('\\' + char)
-            else:
-                result.append(char)
-        
-        return ''.join(result)
