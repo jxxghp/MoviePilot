@@ -250,7 +250,8 @@ class Telegram:
                 caption = f"*{title}*"
 
             if link:
-                caption = f"{caption}\n[查看详情]({link})"
+                link_escaped = self.escape_markdown_url(link)
+                caption = f"{caption}\n[查看详情]({link_escaped})"
 
             # Determine target chat_id with improved logic using user mapping
             chat_id = self._determine_target_chat_id(userid, original_chat_id)
@@ -321,23 +322,31 @@ class Telegram:
             for media in medias:
                 if not image:
                     image = media.get_message_image()
+                # 转义媒体信息中的特殊字符
+                # 链接文本需要转义所有特殊字符，包括 .
+                title_year_escaped = self.escape_markdown_text(media.title_year) if media.title_year else ""
+                detail_link_escaped = self.escape_markdown_url(media.detail_link) if media.detail_link else ""
+                type_value_escaped = self.escape_markdown_text(media.type.value) if media.type and media.type.value else ""
+                vote_average_escaped = self.escape_markdown_text(str(media.vote_average)) if media.vote_average else ""
+                
                 if media.vote_average:
-                    caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
+                    caption = "%s\n%s\\. [%s](%s)\n_%s，%s_" % (caption,
                                                              index,
-                                                             media.title_year,
-                                                             media.detail_link,
-                                                             f"类型：{media.type.value}",
-                                                             f"评分：{media.vote_average}")
+                                                             title_year_escaped,
+                                                             detail_link_escaped,
+                                                             f"类型：{type_value_escaped}",
+                                                             f"评分：{vote_average_escaped}")
                 else:
-                    caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
+                    caption = "%s\n%s\\. [%s](%s)\n_%s_" % (caption,
                                                           index,
-                                                          media.title_year,
-                                                          media.detail_link,
-                                                          f"类型：{media.type.value}")
+                                                          title_year_escaped,
+                                                          detail_link_escaped,
+                                                          f"类型：{type_value_escaped}")
                 index += 1
 
             if link:
-                caption = f"{caption}\n[查看详情]({link})"
+                link_escaped = self.escape_markdown_url(link)
+                caption = f"{caption}\n[查看详情]({link_escaped})"
 
             # Determine target chat_id with improved logic using user mapping
             chat_id = self._determine_target_chat_id(userid, original_chat_id)
@@ -395,12 +404,20 @@ class Telegram:
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
-                caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
-                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}"
+                # 转义特殊字符
+                site_name_escaped = self.escape_markdown_text(site_name) if site_name else ""
+                title_escaped = self.escape_markdown_text(title) if title else ""
+                link_escaped = self.escape_markdown_url(link) if link else ""
+                free_escaped = self.escape_markdown_text(str(free)) if free else ""
+                seeder_escaped = self.escape_markdown_text(seeder) if seeder else ""
+                size_escaped = self.escape_markdown_text(StringUtils.str_filesize(torrent.size)) if torrent.size else ""
+                caption = f"{caption}\n{index}\\.【{site_name_escaped}】[{title_escaped}]({link_escaped}) " \
+                          f"{size_escaped} {free_escaped} {seeder_escaped}"
                 index += 1
 
             if link:
-                caption = f"{caption}\n[查看详情]({link})"
+                link_escaped = self.escape_markdown_url(link)
+                caption = f"{caption}\n[查看详情]({link_escaped})"
 
             # Determine target chat_id with improved logic using user mapping
             chat_id = self._determine_target_chat_id(userid, original_chat_id)
@@ -695,6 +712,56 @@ class Telegram:
                 result.append(char)
             elif char in self._escape_chars:
                 # 未保护区域，转义特殊字符（包括Markdown内容区域中的特殊字符）
+                result.append('\\' + char)
+            else:
+                result.append(char)
+        
+        return ''.join(result)
+
+    def escape_markdown_text(self, text: str) -> str:
+        """
+        转义 MarkdownV2 文本中的所有特殊字符
+        用于转义将要放在链接文本 [text] 或其他 Markdown 元素中的纯文本
+        不保护任何 Markdown 格式，转义所有特殊字符
+        
+        :param text: 要转义的文本
+        :return: 转义后的文本
+        """
+        if not isinstance(text, str):
+            return str(text) if text is not None else ""
+        
+        # 转义所有特殊字符
+        result = []
+        for char in text:
+            if char in self._escape_chars:
+                result.append('\\' + char)
+            else:
+                result.append(char)
+        
+        return ''.join(result)
+
+    def escape_markdown_url(self, url: str) -> str:
+        """
+        转义 MarkdownV2 链接 URL 中的特殊字符
+        根据 Telegram Bot API 文档，在链接 URL (url) 中需要转义的字符是：) 和 \
+        但为了安全起见，也转义其他可能引起问题的字符
+        
+        :param url: 要转义的 URL
+        :return: 转义后的 URL
+        """
+        if not isinstance(url, str):
+            return str(url) if url is not None else ""
+        
+        # URL 中需要转义的字符：) 和 \ 是必须的，其他保留字符也可能需要
+        # 但保留 URL 中常见的字符：. / : ? & = - _ ~
+        result = []
+        for char in url:
+            if char == ')':
+                result.append('\\)')
+            elif char == '\\':
+                result.append('\\\\')
+            elif char in self._escape_chars and char not in ['.', '/', ':', '?', '&', '=', '-', '_', '~']:
+                # 转义其他保留字符，但保留 URL 中常见的字符
                 result.append('\\' + char)
             else:
                 result.append(char)
