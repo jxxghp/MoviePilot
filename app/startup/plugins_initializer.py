@@ -1,4 +1,5 @@
-from app.core.config import GlobalVar
+import asyncio
+
 from app.core.plugin import PluginManager
 from app.log import logger
 
@@ -8,7 +9,9 @@ async def sync_plugins() -> bool:
     初始化安装插件，并动态注册后台任务及API
     """
     try:
-        loop = GlobalVar.CURRENT_EVENT_LOOP
+        # 使用当前正在运行的事件循环，而不是全局变量中的事件循环
+        # 这样可以避免事件循环不匹配的问题
+        loop = asyncio.get_running_loop()
         plugin_manager = PluginManager()
 
         sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")

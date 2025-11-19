@@ -1,5 +1,6 @@
 """搜索订阅缺失剧集工具"""
 
+import asyncio
 import json
 from typing import Optional, Type, List
 
@@ -7,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.chain.subscribe import SubscribeChain
-from app.core.config import GlobalVar
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
 
@@ -85,7 +85,8 @@ class SearchSubscribeTool(MoviePilotTool):
             
             # 在线程池中执行同步的搜索操作
             # 当 sid 有值时，state 参数会被忽略，直接处理该订阅
-            await GlobalVar.CURRENT_EVENT_LOOP.run_in_executor(
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
                 None,
                 lambda: subscribe_chain.search(
                     sid=subscribe_id,
