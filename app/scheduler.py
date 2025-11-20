@@ -709,6 +709,9 @@ class Scheduler(metaclass=SingletonClass):
             # 将正在运行的任务提取出来 (保障一次性任务正常显示)
             for job_id, service in self._jobs.items():
                 name = service.get("name")
+                # 确保 name 是字符串类型
+                if name and not isinstance(name, str):
+                    name = str(name)
                 provider_name = service.get("provider_name")
                 if service.get("running") and name and provider_name:
                     if job_id not in added:
@@ -733,9 +736,14 @@ class Scheduler(metaclass=SingletonClass):
                 status = "正在运行" if service.get("running") else "等待"
                 # 下次运行时间
                 next_run = TimerUtils.time_difference(job.next_run_time)
+                # 确保 name 是字符串类型
+                job_name = job.name
+                if not isinstance(job_name, str):
+                    # 如果 name 不是字符串，尝试转换为字符串或使用 service 中的 name
+                    job_name = str(job_name) if job_name else service.get("name", "")
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
-                    name=job.name,
+                    name=job_name,
                     provider=service.get("provider_name", "[系统]"),
                     status=status,
                     next_run=next_run
