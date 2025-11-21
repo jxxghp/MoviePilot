@@ -1,7 +1,6 @@
 """MoviePilot AI智能体实现"""
 
 import asyncio
-import threading
 from typing import Dict, List, Any
 
 from langchain.agents import AgentExecutor, create_openai_tools_agent
@@ -20,9 +19,6 @@ from app.core.config import settings
 from app.helper.message import MessageHelper
 from app.log import logger
 from app.schemas import Notification
-
-# 用于保护环境变量修改的线程锁
-_env_lock = threading.Lock()
 
 
 class AgentChain(ChainBase):
@@ -77,42 +73,26 @@ class MoviePilotAgent:
             raise ValueError("未配置 LLM_API_KEY")
 
         if provider == "google":
-            import os
-            from contextlib import contextmanager
-            from langchain_google_genai import ChatGoogleGenerativeAI
-
-            # 使用线程锁保护的临时环境变量配置
-            @contextmanager
-            def _temp_proxy_env():
-                """线程安全的临时设置代理环境变量的上下文管理器"""
-                with _env_lock:
-                    old_http = os.environ.get("HTTP_PROXY")
-                    old_https = os.environ.get("HTTPS_PROXY")
-                    try:
-                        if settings.PROXY_HOST:
-                            os.environ["HTTP_PROXY"] = settings.PROXY_HOST
-                            os.environ["HTTPS_PROXY"] = settings.PROXY_HOST
-                        yield
-                    finally:
-                        # 恢复原始环境变量
-                        if old_http is not None:
-                            os.environ["HTTP_PROXY"] = old_http
-                        elif "HTTP_PROXY" in os.environ:
-                            del os.environ["HTTP_PROXY"]
-
-                        if old_https is not None:
-                            os.environ["HTTPS_PROXY"] = old_https
-                        elif "HTTPS_PROXY" in os.environ:
-                            del os.environ["HTTPS_PROXY"]
-
-            # 在临时环境变量中初始化 ChatGoogleGenerativeAI
-            with _temp_proxy_env():
+            if settings.PROXY_HOST:
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(
+                    model=settings.LLM_MODEL,
+                    api_key=api_key,
+                    max_retries=3,
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+                    temperature=settings.LLM_TEMPERATURE,
+                    streaming=False,
+                    callbacks=[self.callback_handler],
+                    openai_proxy=settings.PROXY_HOST
+                )
+            else:
+                from langchain_google_genai import ChatGoogleGenerativeAI
                 return ChatGoogleGenerativeAI(
                     model=settings.LLM_MODEL,
                     google_api_key=api_key,
                     max_retries=3,
                     temperature=settings.LLM_TEMPERATURE,
-                    streaming=True,
+                    streaming=False,
                     callbacks=[self.callback_handler]
                 )
         elif provider == "deepseek":
