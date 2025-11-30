@@ -77,7 +77,7 @@ class SiteUserData(BaseModel):
     # 用户ID
     userid: Optional[Union[str, int]] = None
     # 用户等级
-    user_level: Optional[str] = None
+    user_level: Optional[Union[str, int]] = None
     # 加入时间
     join_at: Optional[str] = None
     # 积分
