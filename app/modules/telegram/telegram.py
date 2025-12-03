@@ -539,10 +539,11 @@ class Telegram:
 
         try:
             # 处理图片
-            image = self.__process_image(image) if image else None
-        except RetryException as e:
-            logger.error(f"{str(e)}, 达到重试次数上限, 仅发送文本消息")
-            image = None
+            try:
+                image = self.__process_image(image) if image else None
+            except RetryException as e:
+                logger.error(f"{str(e)}, 达到重试次数上限, 仅发送文本消息")
+                image = None
 
             # 图片消息的标题长度限制为1024，文本消息为4096
             caption_limit = 1024 if image else 4096
