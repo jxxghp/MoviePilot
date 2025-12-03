@@ -594,7 +594,6 @@ class Telegram:
             logger.error(f"图片验证失败：{str(e)}, 仅发送文本消息")
             return None
 
-
     @retry(RetryException, logger=logger)
     def __send_short_message(self, image: Optional[bytes], caption: str, **kwargs):
         """
