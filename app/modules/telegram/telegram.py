@@ -236,9 +236,9 @@ class Telegram:
 
         try:
             if title and text:
-                caption = f"**{title}**\n{text}"
+                caption = f"{title}\n{text}"
             elif title:
-                caption = f"**{title}**"
+                caption = f"{title}"
             elif text:
                 caption = text
             else:
