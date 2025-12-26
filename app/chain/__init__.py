@@ -862,7 +862,7 @@ class ChainBase(metaclass=ABCMeta):
         self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.model_dump())
         # 发送消息按设置隔离
-        if not message.userid and message.mtype:
+        if message.mtype:
             # 消息隔离设置
             notify_action = ServiceConfigHelper.get_notification_switch(message.mtype)
             if notify_action:
@@ -903,6 +903,7 @@ class ChainBase(metaclass=ABCMeta):
                     else:
                         # 按原消息发送全体
                         if not admin_sended:
+                            message.userid = None
                             send_orignal = True
                         break
                     # 按设定发送
