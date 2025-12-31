@@ -454,7 +454,6 @@ class Base:
 
     @db_update
     def update(self, db: Session, payload: dict):
-        payload = {k: v for k, v in payload.items() if v is not None}
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
@@ -462,7 +461,6 @@ class Base:
 
     @async_db_update
     async def async_update(self, db: AsyncSession, payload: dict):
-        payload = {k: v for k, v in payload.items() if v is not None}
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
