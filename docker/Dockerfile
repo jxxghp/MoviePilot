@@ -94,6 +94,7 @@ COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}
 
 # playwright 环境
 RUN playwright install-deps chromium \
+    && playwright install-deps firefox \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf \

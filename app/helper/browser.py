@@ -10,7 +10,7 @@ from app.utils.http import RequestUtils, cookie_parse
 
 
 class PlaywrightHelper:
-    def __init__(self, browser_type="chromium"):
+    def __init__(self, browser_type=settings.PLAYWRIGHT_BROWSER_TYPE):
         self.browser_type = browser_type
 
     @staticmethod

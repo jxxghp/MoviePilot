@@ -1,7 +1,7 @@
 """查询下载工具"""
 
 import json
-from typing import Optional, Type
+from typing import Optional, Type, List, Union
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +9,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.chain.download import DownloadChain
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.log import logger
+from app.schemas import TransferTorrent, DownloadingTorrent
+from app.schemas.types import TorrentStatus
 
 
 class QueryDownloadTasksInput(BaseModel):
@@ -26,6 +28,27 @@ class QueryDownloadTasksTool(MoviePilotTool):
     name: str = "query_download_tasks"
     description: str = "Query download status and list download tasks. Can query all active downloads, or search for specific tasks by hash or title. Shows download progress, completion status, and task details from configured downloaders."
     args_schema: Type[BaseModel] = QueryDownloadTasksInput
+
+    def _get_all_torrents(self, download_chain: DownloadChain, downloader: Optional[str] = None) -> List[Union[TransferTorrent, DownloadingTorrent]]:
+        """
+        查询所有状态的任务（包括下载中和已完成的任务）
+        """
+        all_torrents = []
+        # 查询正在下载的任务
+        downloading_torrents = download_chain.list_torrents(
+            downloader=downloader, 
+            status=TorrentStatus.DOWNLOADING
+        ) or []
+        all_torrents.extend(downloading_torrents)
+        
+        # 查询已完成的任务（可转移状态）
+        transfer_torrents = download_chain.list_torrents(
+            downloader=downloader,
+            status=TorrentStatus.TRANSFER
+        ) or []
+        all_torrents.extend(transfer_torrents)
+        
+        return all_torrents
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据查询参数生成友好的提示消息"""
@@ -60,7 +83,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
             
             # 如果提供了hash，直接查询该hash的任务（不限制状态）
             if hash:
-                torrents = download_chain.list_torrents(downloader=downloader, hashs=[hash])
+                torrents = download_chain.list_torrents(downloader=downloader, hashs=[hash]) or []
                 if not torrents:
                     return f"未找到hash为 {hash} 的下载任务（该任务可能已完成、已删除或不存在）"
                 # 转换为DownloadingTorrent格式
@@ -84,14 +107,25 @@ class QueryDownloadTasksTool(MoviePilotTool):
             elif title:
                 # 如果提供了title，查询所有任务并搜索匹配的标题
                 # 查询所有状态的任务
-                all_torrents = download_chain.list_torrents(downloader=downloader) or []
+                all_torrents = self._get_all_torrents(download_chain, downloader)
                 filtered_downloads = []
+                title_lower = title.lower()
                 for torrent in all_torrents:
-                    # 检查标题或名称是否匹配
-                    if (title.lower() in (torrent.title or "").lower()) or \
-                       (title.lower() in (torrent.name or "").lower()):
-                        # 获取下载历史信息
-                        history = DownloadHistoryOper().get_by_hash(torrent.hash)
+                    # 获取下载历史信息
+                    history = DownloadHistoryOper().get_by_hash(torrent.hash)
+                    
+                    # 检查标题或名称是否匹配（包括下载历史中的标题）
+                    matched = False
+                    # 检查torrent的title和name字段
+                    if (title_lower in (torrent.title or "").lower()) or \
+                       (title_lower in (torrent.name or "").lower()):
+                        matched = True
+                    # 检查下载历史中的标题
+                    if history and history.title:
+                        if title_lower in history.title.lower():
+                            matched = True
+                    
+                    if matched:
                         if history:
                             torrent.media = {
                                 "tmdbid": history.tmdbid,
@@ -110,7 +144,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
                 # 根据status决定查询方式
                 if status == "downloading":
                     # 如果status为下载中，使用downloading方法
-                    downloads = download_chain.downloading(name=downloader)
+                    downloads = download_chain.downloading(name=downloader) or []
                     filtered_downloads = []
                     for dl in downloads:
                         if downloader and dl.downloader != downloader:
@@ -119,7 +153,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
                 else:
                     # 其他状态（completed、paused、all），使用list_torrents查询所有任务
                     # 查询所有状态的任务
-                    all_torrents = download_chain.list_torrents(downloader=downloader) or []
+                    all_torrents = self._get_all_torrents(download_chain, downloader)
                     filtered_downloads = []
                     for torrent in all_torrents:
                         if downloader and torrent.downloader != downloader:

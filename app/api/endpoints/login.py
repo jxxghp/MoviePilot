@@ -10,7 +10,7 @@ from app.core import security
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper  # noqa
-from app.helper.graphics import WallpaperHelper
+from app.helper.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
@@ -29,6 +29,13 @@ def login_access_token(
                                                              mfa_code=otp_password)
 
     if not success:
+        # 如果是需要MFA验证，返回特殊标识
+        if user_or_message == "MFA_REQUIRED":
+            raise HTTPException(
+                status_code=401, 
+                detail="需要双重验证，请提供验证码或使用通行密钥",
+                headers={"X-MFA-Required": "true"}
+            )
         raise HTTPException(status_code=401, detail=user_or_message)
 
     # 用户等级
@@ -50,7 +57,7 @@ def login_access_token(
         avatar=user_or_message.avatar,
         level=level,
         permissions=user_or_message.permissions or {},
-        widzard=show_wizard
+        wizard=show_wizard
     )
 
 

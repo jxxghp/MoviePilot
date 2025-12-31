@@ -15,9 +15,9 @@ class GazelleSiteUserInfo(SiteParserBase):
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
-            tmps = html.xpath('//a[contains(@href, "user.php?id=")]')
+            tmps = html.xpath('//a[contains(@href, "user.php?id=") or contains(@href, "user?id=")]')
             if tmps:
-                user_id_match = re.search(r"user.php\?id=(\d+)", tmps[0].attrib['href'])
+                user_id_match = re.search(r"user(?:\.php)?\?id=(\d+)", tmps[0].attrib['href'])
                 if user_id_match and user_id_match.group().strip():
                     self.userid = user_id_match.group(1)
                     self._torrent_seeding_page = f"torrents.php?type=seeding&userid={self.userid}"
@@ -42,13 +42,13 @@ class GazelleSiteUserInfo(SiteParserBase):
 
             self.ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
 
-            tmps = html.xpath('//a[contains(@href, "bonus.php")]/@data-tooltip')
+            tmps = html.xpath('//a[contains(@href, "bonus")]/@data-tooltip')
             if tmps:
                 bonus_match = re.search(r"([\d,.]+)", tmps[0])
                 if bonus_match and bonus_match.group(1).strip():
                     self.bonus = StringUtils.str_float(bonus_match.group(1))
             else:
-                tmps = html.xpath('//a[contains(@href, "bonus.php")]')
+                tmps = html.xpath('//a[contains(@href, "bonus")]')
                 if tmps:
                     bonus_text = tmps[0].xpath("string(.)")
                     bonus_match = re.search(r"([\d,.]+)", bonus_text)
@@ -142,7 +142,7 @@ class GazelleSiteUserInfo(SiteParserBase):
 
             # 是否存在下页数据
             next_page = None
-            next_page_text = html.xpath('//a[contains(.//text(), "Next") or contains(.//text(), "下一页")]/@href')
+            next_page_text = html.xpath('//a[contains(.//text(), "Next") or contains(.//text(), "下一页") or contains(@title, "下一页") or contains(@title, "Next")]/@href')
             if next_page_text:
                 next_page = next_page_text[-1].strip()
         finally:

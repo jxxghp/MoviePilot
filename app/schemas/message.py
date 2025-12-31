@@ -221,6 +221,22 @@ class ChannelCapabilityManager:
             max_button_text_length=25,
             fallback_enabled=True
         ),
+        MessageChannel.Discord: ChannelCapabilities(
+            channel=MessageChannel.Discord,
+            capabilities={
+                ChannelCapability.INLINE_BUTTONS,
+                ChannelCapability.MESSAGE_EDITING,
+                ChannelCapability.MESSAGE_DELETION,
+                ChannelCapability.CALLBACK_QUERIES,
+                ChannelCapability.RICH_TEXT,
+                ChannelCapability.IMAGES,
+                ChannelCapability.LINKS
+            },
+            max_buttons_per_row=5,
+            max_button_rows=5,
+            max_button_text_length=80,
+            fallback_enabled=True
+        ),
         MessageChannel.SynologyChat: ChannelCapabilities(
             channel=MessageChannel.SynologyChat,
             capabilities={

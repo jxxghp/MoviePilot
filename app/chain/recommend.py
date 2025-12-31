@@ -8,7 +8,7 @@ from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.core.cache import cached
 from app.core.config import settings, global_vars
-from app.helper.graphics import ImageHelper
+from app.helper.image import ImageHelper
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.common import log_execution_time

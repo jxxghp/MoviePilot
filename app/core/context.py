@@ -95,18 +95,20 @@ class TorrentInfo:
         if upload_volume_factor is None or download_volume_factor is None:
             return "未知"
         free_strs = {
-            "1.0 1.0": "普通",
-            "1.0 0.0": "免费",
-            "2.0 1.0": "2X",
-            "4.0 1.0": "4X",
-            "2.0 0.0": "2X免费",
-            "4.0 0.0": "4X免费",
-            "1.0 0.5": "50%",
-            "2.0 0.5": "2X 50%",
-            "1.0 0.7": "70%",
-            "1.0 0.3": "30%"
+            "1.00 1.00": "普通",
+            "1.00 0.00": "免费",
+            "2.00 1.00": "2X",
+            "4.00 1.00": "4X",
+            "2.00 0.00": "2X免费",
+            "4.00 0.00": "4X免费",
+            "1.00 0.50": "50%",
+            "2.00 0.50": "2X 50%",
+            "1.00 0.70": "70%",
+            "1.00 0.30": "30%",
+            "1.00 0.75": "75%",
+            "1.00 0.25": "25%"
         }
-        return free_strs.get('%.1f %.1f' % (upload_volume_factor, download_volume_factor), "未知")
+        return free_strs.get('%.2f %.2f' % (upload_volume_factor, download_volume_factor), "未知")
 
     @property
     def volume_factor(self):

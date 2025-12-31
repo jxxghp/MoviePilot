@@ -32,7 +32,7 @@ from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.system import SystemHelper
-from app.helper.graphics import ImageHelper
+from app.helper.image import ImageHelper
 from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas import ConfigChangeEventData
@@ -134,18 +134,24 @@ def get_global_setting(token: str):
     if token != "moviepilot":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # FIXME: 新增敏感配置项时要在此处添加排除项
+    # 白名单模式，仅包含前端业务逻辑必需的字段
     info = settings.model_dump(
-        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
-                 "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN", "U115_APP_ID",
-                 "ALIPAN_APP_ID", "TVDB_V4_API_KEY", "TVDB_V4_API_PIN"}
+        include={
+            "TMDB_IMAGE_DOMAIN",
+            "GLOBAL_IMAGE_CACHE",
+            "ADVANCED_MODE",
+            "RECOGNIZE_SOURCE",
+            "SEARCH_SOURCE"
+        }
     )
     # 追加用户唯一ID和订阅分享管理权限
     share_admin = SubscribeHelper().is_admin_user()
     info.update({
         "USER_UNIQUE_ID": SubscribeHelper().get_user_uuid(),
         "SUBSCRIBE_SHARE_MANAGE": share_admin,
-        "WORKFLOW_SHARE_MANAGE": share_admin
+        "WORKFLOW_SHARE_MANAGE": share_admin,
+        "FRONTEND_VERSION": SystemChain.get_frontend_version(),
+        "BACKEND_VERSION": APP_VERSION
     })
     return schemas.Response(success=True,
                             data=info)

@@ -199,7 +199,8 @@ class ImageHelper(metaclass=Singleton):
             logger.warn(f"Invalid image format: {e}")
             return False
 
-    def _get_request_params(self, url: str, proxy: Optional[bool], cookies: Optional[str | dict]) -> dict:
+    @staticmethod
+    def _get_request_params(url: str, proxy: Optional[bool], cookies: Optional[str | dict]) -> dict:
         """获取参数"""
         referer = "https://movie.douban.com/" if "doubanio.com" in url else None
         if proxy is None:

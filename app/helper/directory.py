@@ -9,7 +9,7 @@ from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.system import SystemUtils
 
-JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
 
 
 class DirectoryHelper:

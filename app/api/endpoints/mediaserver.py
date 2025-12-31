@@ -82,7 +82,7 @@ def exists(media_in: schemas.MediaInfo,
     mediainfo.from_dict(media_in.model_dump())
     existsinfo: schemas.ExistMediaInfo = MediaServerChain().media_exists(mediainfo=mediainfo)
     if not existsinfo:
-        return []
+        return {}
     if media_in.season:
         return {
             media_in.season: existsinfo.seasons.get(media_in.season) or []

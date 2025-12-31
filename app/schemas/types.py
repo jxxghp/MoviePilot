@@ -265,6 +265,7 @@ class MessageChannel(Enum):
     Wechat = "微信"
     Telegram = "Telegram"
     Slack = "Slack"
+    Discord = "Discord"
     SynologyChat = "SynologyChat"
     VoceChat = "VoceChat"
     Web = "Web"

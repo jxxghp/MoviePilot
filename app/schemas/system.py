@@ -51,6 +51,8 @@ class DownloaderConf(BaseModel):
     config: Optional[dict] = Field(default_factory=dict)
     # 是否启用
     enabled: Optional[bool] = False
+    # 路径映射
+    path_mapping: Optional[list[tuple[str, str]]] = Field(default_factory=list)
 
 
 class NotificationConf(BaseModel):

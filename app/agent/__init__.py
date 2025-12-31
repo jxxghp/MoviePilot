@@ -7,7 +7,7 @@ from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.callbacks import get_openai_callback
 from langchain_core.chat_history import InMemoryChatMessageHistory
-from langchain_core.messages import HumanMessage, AIMessage, ToolCall
+from langchain_core.messages import HumanMessage, AIMessage, ToolCall, ToolMessage, SystemMessage
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 from app.agent.callback import StreamingCallbackHandler
@@ -55,9 +55,6 @@ class MoviePilotAgent:
 
         # 工具
         self.tools = self._initialize_tools()
-
-        # 会话存储
-        self.session_store = self._initialize_session_store()
 
         # 提示词模板
         self.prompt = self._initialize_prompt()
@@ -127,7 +124,8 @@ class MoviePilotAgent:
             channel=self.channel,
             source=self.source,
             username=self.username,
-            callback_handler=self.callback_handler
+            callback_handler=self.callback_handler,
+            memory_mananger=self.memory_manager
         )
 
     @staticmethod
@@ -137,34 +135,36 @@ class MoviePilotAgent:
 
     def get_session_history(self, session_id: str) -> InMemoryChatMessageHistory:
         """获取会话历史"""
-        if session_id not in self.session_store:
-            chat_history = InMemoryChatMessageHistory()
-            messages: List[dict] = self.memory_manager.get_recent_messages_for_agent(
-                session_id=session_id,
-                user_id=self.user_id
-            )
-            if messages:
-                for msg in messages:
-                    if msg.get("role") == "user":
-                        chat_history.add_user_message(HumanMessage(content=msg.get("content", "")))
-                    elif msg.get("role") == "agent":
-                        chat_history.add_ai_message(AIMessage(content=msg.get("content", "")))
-                    elif msg.get("role") == "tool_call":
-                        metadata = msg.get("metadata", {})
-                        chat_history.add_ai_message(AIMessage(
+        chat_history = InMemoryChatMessageHistory()
+        messages: List[dict] = self.memory_manager.get_recent_messages_for_agent(
+            session_id=session_id,
+            user_id=self.user_id
+        )
+        if messages:
+            for msg in messages:
+                if msg.get("role") == "user":
+                    chat_history.add_message(HumanMessage(content=msg.get("content", "")))
+                elif msg.get("role") == "agent":
+                    chat_history.add_message(AIMessage(content=msg.get("content", "")))
+                elif msg.get("role") == "tool_call":
+                    metadata = msg.get("metadata", {})
+                    chat_history.add_message(
+                        AIMessage(
                             content=msg.get("content", ""),
-                            tool_calls=[ToolCall(
-                                id=metadata.get("call_id"),
-                                name=metadata.get("tool_name"),
-                                args=metadata.get("parameters"),
-                            )]
-                        ))
-                    elif msg.get("role") == "tool_result":
-                        chat_history.add_ai_message(AIMessage(content=msg.get("content", "")))
-                    elif msg.get("role") == "system":
-                        chat_history.add_ai_message(AIMessage(content=msg.get("content", "")))
-            self.session_store[session_id] = chat_history
-        return self.session_store[session_id]
+                            tool_calls=[
+                                ToolCall(
+                                    id=metadata.get("call_id"),
+                                    name=metadata.get("tool_name"),
+                                    args=metadata.get("parameters"),
+                                )
+                            ]
+                        )
+                    )
+                elif msg.get("role") == "tool_result":
+                    chat_history.add_message(ToolMessage(content=msg.get("content", "")))
+                elif msg.get("role") == "system":
+                    chat_history.add_message(SystemMessage(content=msg.get("content", "")))
+        return chat_history
 
     @staticmethod
     def _initialize_prompt() -> ChatPromptTemplate:
@@ -306,8 +306,6 @@ class MoviePilotAgent:
 
     async def cleanup(self):
         """清理智能体资源"""
-        if self.session_id in self.session_store:
-            del self.session_store[self.session_id]
         logger.info(f"MoviePilot智能体已清理: session_id={self.session_id}")
 
 

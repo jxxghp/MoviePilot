@@ -4,7 +4,7 @@ from typing import Annotated, Callable, Any, Dict, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRoute
 
@@ -128,9 +128,12 @@ async def get_cookie(
 @cookie_router.post("/get/{uuid}")
 async def post_cookie(
         uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
-        request: schemas.CookiePassword):
+        request: Optional[schemas.CookiePassword] = Body(None)):
     """
     POST 下载加密数据
     """
     data = await load_encrypt_data(uuid)
-    return get_decrypted_cookie_data(uuid, request.password, data["encrypted"])
+    if request is not None:
+        return get_decrypted_cookie_data(uuid, request.password, data["encrypted"])
+    else:
+        return data

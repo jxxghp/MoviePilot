@@ -45,17 +45,27 @@ class ConversationMemoryManager:
 
         logger.info("对话记忆管理器已关闭")
 
+    @staticmethod
+    def get_memory_key(session_id: str, user_id: str):
+        """计算内存Key"""
+        return f"{user_id}:{session_id}" if user_id else session_id
+
+    @staticmethod
+    def get_redis_key(session_id: str, user_id: str):
+        """计算Redis Key"""
+        return f"agent_memory:{user_id}:{session_id}" if user_id else f"agent_memory:{session_id}"
+
     async def get_memory(self, session_id: str, user_id: str) -> ConversationMemory:
         """获取会话记忆"""
         # 首先检查缓存
-        cache_key = f"{user_id}:{session_id}" if user_id else session_id
+        cache_key = self.get_memory_key(session_id, user_id)
         if cache_key in self.memory_cache:
             return self.memory_cache[cache_key]
 
         # 尝试从Redis加载
         if settings.CACHE_BACKEND_TYPE == "redis":
             try:
-                redis_key = f"agent_memory:{user_id}:{session_id}" if user_id else f"agent_memory:{session_id}"
+                redis_key = self.get_redis_key(session_id, user_id)
                 memory_data = await self.redis_helper.get(redis_key, region="AI_AGENT")
                 if memory_data:
                     memory_dict = json.loads(memory_data) if isinstance(memory_data, str) else memory_data
@@ -180,15 +190,13 @@ class ConversationMemoryManager:
 
         如果消息Token数量超过模型最大上下文长度的阀值，会自动进行摘要裁剪
         """
-        cache_key = f"{user_id}:{session_id}" if user_id else session_id
+        cache_key = self.get_memory_key(session_id, user_id)
         memory = self.memory_cache.get(cache_key)
         if not memory:
             return []
 
         # 获取所有消息
-        messages = memory.messages
-
-        return messages
+        return memory.messages
 
     async def get_recent_messages(
             self,
@@ -218,7 +226,7 @@ class ConversationMemoryManager:
             del self.memory_cache[cache_key]
 
         if settings.CACHE_BACKEND_TYPE == "redis":
-            redis_key = f"agent_memory:{user_id}:{session_id}" if user_id else f"agent_memory:{session_id}"
+            redis_key = self.get_redis_key(session_id, user_id)
             await self.redis_helper.delete(redis_key, region="AI_AGENT")
 
         logger.info(f"会话记忆已清空: session_id={session_id}, user_id={user_id}")
@@ -229,14 +237,14 @@ class ConversationMemoryManager:
         Redis中的记忆会自动通过TTL机制过期，无需手动清理
         """
         # 更新内存缓存
-        cache_key = f"{memory.user_id}:{memory.session_id}" if memory.user_id else memory.session_id
+        cache_key = self.get_memory_key(memory.session_id, memory.user_id)
         self.memory_cache[cache_key] = memory
 
         # 保存到Redis，设置TTL自动过期
         if settings.CACHE_BACKEND_TYPE == "redis":
             try:
                 memory_dict = memory.model_dump()
-                redis_key = f"agent_memory:{memory.user_id}:{memory.session_id}" if memory.user_id else f"agent_memory:{memory.session_id}"
+                redis_key = self.get_redis_key(memory.session_id, memory.user_id)
                 ttl = int(timedelta(days=settings.LLM_REDIS_MEMORY_RETENTION_DAYS).total_seconds())
                 await self.redis_helper.set(
                     redis_key,

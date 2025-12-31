@@ -1,5 +1,6 @@
 from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
+from pathlib import Path
 
 from app.helper.service import ServiceConfigHelper
 from app.schemas import Notification, NotificationConf, MediaServerConf, DownloaderConf
@@ -290,6 +291,30 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         重置默认配置名称
         """
         self._default_config_name = None
+    
+    def normalize_path(self, path: Path, downloader: Optional[str]) -> str:
+        """
+        根据下载器配置和路径映射，规范化下载路径
+
+        :param path: 存储路径
+        :param downloader: 下载器名称
+        :return: 规范化后发送给下载器的路径
+        """
+        dir = path.as_posix()
+        conf = self.get_config(downloader)
+        if conf and conf.path_mapping:
+            for (storage_path, download_path) in conf.path_mapping:
+                storage_path = Path(storage_path.strip()).as_posix()
+                download_path = Path(download_path.strip()).as_posix()
+                if dir.startswith(storage_path):
+                    dir = dir.replace(storage_path, download_path, 1)
+                    break
+        # 去掉存储协议前缀 if any, 下载器无法识别
+        for s in StorageSchema:
+            prefix = f"{s.value}:"
+            if dir.startswith(prefix):
+                return dir[len(prefix):]
+        return dir
 
 
 class _MediaServerBase(ServiceBase[TService, MediaServerConf]):

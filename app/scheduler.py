@@ -27,7 +27,7 @@ from app.core.plugin import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper  # noqa
-from app.helper.graphics import WallpaperHelper
+from app.helper.image import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow
 from app.schemas.types import EventType, SystemConfigKey

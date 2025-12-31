@@ -707,19 +707,17 @@ class ChainBase(metaclass=ABCMeta):
                                cookie=cookie, episodes=episodes, category=category, label=label,
                                downloader=downloader)
 
-    def download_added(self, context: Context, download_dir: Path, storage: str, torrent_content: Union[str, bytes] = None) -> None:
+    def download_added(self, context: Context, download_dir: Path, torrent_content: Union[str, bytes] = None) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param download_dir:  下载目录
-        :param storage:  存储类型
         :param torrent_content:  种子内容，如果有则直接使用该内容，否则从context中获取种子文件路径
         :return: None，该方法可被多个模块同时处理
         """
         return self.run_module("download_added", context=context,
                                torrent_content=torrent_content,
-                               download_dir=download_dir,
-                               storage=storage)
+                               download_dir=download_dir)
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,

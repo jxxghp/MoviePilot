@@ -19,7 +19,7 @@ from app.db.mediaserver_oper import MediaServerOper
 from app.helper.directory import DirectoryHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, \
+from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloadingTorrent, Notification, ResourceSelectionEventData, \
     ResourceDownloadEventData
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
@@ -235,10 +235,7 @@ class DownloadChain(ChainBase):
         storage = 'local'
         # 下载目录
         if save_path:
-            uri = schemas.FileURI.from_uri(save_path)
-            # 下载目录使用自定义的
-            download_dir = Path(uri.path)
-            storage = uri.storage
+            download_dir = Path(save_path)
         else:
             # 根据媒体信息查询下载目录配置
             dir_info = DirectoryHelper().get_dir(_media, include_unsorted=True)
@@ -263,6 +260,8 @@ class DownloadChain(ChainBase):
                 self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
                                        title="下载失败", role="system")
                 return None
+            fileURI = FileURI(storage=storage, path=download_dir.as_posix())
+            download_dir = Path(fileURI.uri)
 
         # 添加下载
         result: Optional[tuple] = self.download(content=torrent_content,
@@ -362,7 +361,7 @@ class DownloadChain(ChainBase):
                 username=username,
             )
             # 下载成功后处理
-            self.download_added(context=context, download_dir=download_dir, storage=storage, torrent_content=torrent_content)
+            self.download_added(context=context, download_dir=download_dir, torrent_content=torrent_content)
             # 广播事件
             self.eventmanager.send_event(EventType.DownloadAdded, {
                 "hash": _hash,

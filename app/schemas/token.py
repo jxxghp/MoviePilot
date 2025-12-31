@@ -21,7 +21,7 @@ class Token(BaseModel):
     # 详细权限
     permissions: Optional[dict] = Field(default_factory=dict)
     # 是否显示配置向导
-    widzard: Optional[bool] = None
+    wizard: Optional[bool] = None
 
 
 class TokenPayload(BaseModel):

@@ -43,6 +43,7 @@ cf_clearance~=0.31.0
 torrentool~=1.2.0
 slack-bolt~=1.23.0
 slack-sdk~=3.35.0
+discord.py==2.6.4
 chardet~=5.2.0
 starlette~=0.46.2
 PyVirtualDisplay~=3.0
@@ -61,6 +62,7 @@ cachetools~=6.1.0
 fast-bencode~=1.1.7
 pystray~=0.19.5
 pyotp~=2.9.0
+webauthn~=2.7.0
 Pinyin2Hanzi~=0.1.1
 pywebpush~=2.0.3
 aiopathlib~=0.6.0
