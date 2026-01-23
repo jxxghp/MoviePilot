@@ -181,8 +181,7 @@ class SearchWebTool(MoviePilotTool):
             endpoint = "https://api.bing.microsoft.com/v7.0/search"
             
             # 检查是否配置了 Bing API key
-            # 注意：需要在环境变量中设置 BING_SEARCH_API_KEY
-            api_key = settings.BING_SEARCH_API_KEY if hasattr(settings, 'BING_SEARCH_API_KEY') else None
+            api_key = settings.BING_SEARCH_API_KEY
             
             if not api_key:
                 logger.warning("未配置 Bing 搜索 API Key (BING_SEARCH_API_KEY)，无法使用 Bing 搜索")
