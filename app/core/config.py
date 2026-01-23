@@ -443,6 +443,8 @@ class ConfigModel(BaseModel):
     LLM_MEMORY_RETENTION_DAYS: int = 1
     # Redis记忆保留天数（如果使用Redis）
     LLM_REDIS_MEMORY_RETENTION_DAYS: int = 7
+    # Bing搜索API密钥（用于Web搜索工具）
+    BING_SEARCH_API_KEY: Optional[str] = None
     # 是否启用AI推荐
     AI_RECOMMEND_ENABLED: bool = False
     # AI推荐用户偏好

@@ -5,12 +5,19 @@ import json
 import re
 from typing import Optional, Type
 
-from duckduckgo_search import DDGS
 from pydantic import BaseModel, Field
+import httpx
 
 from app.agent.tools.base import MoviePilotTool
 from app.core.config import settings
 from app.log import logger
+
+try:
+    from ddgs import DDGS
+    DDGS_AVAILABLE = True
+except ImportError:
+    DDGS_AVAILABLE = False
+    logger.warning("ddgs 包未安装，DuckDuckGo 搜索将不可用")
 
 # 搜索超时时间（秒）
 SEARCH_TIMEOUT = 20
@@ -51,8 +58,15 @@ class SearchWebTool(MoviePilotTool):
             # 限制最大结果数
             max_results = min(max(1, max_results or 5), 10)
             
-            # 使用 duckduckgo-search 库进行搜索
-            search_results = await self._search_duckduckgo(query, max_results)
+            # 首先尝试使用 ddgs
+            search_results = []
+            if DDGS_AVAILABLE:
+                search_results = await self._search_ddgs(query, max_results)
+            
+            # 如果 ddgs 搜索失败或不可用，尝试使用 Bing
+            if not search_results:
+                logger.info("DuckDuckGo 搜索不可用或失败，尝试使用 Bing 搜索")
+                search_results = await self._search_bing(query, max_results)
             
             if not search_results:
                 return f"未找到与 '{query}' 相关的搜索结果"
@@ -88,9 +102,9 @@ class SearchWebTool(MoviePilotTool):
         return proxy_setting
 
     @staticmethod
-    async def _search_duckduckgo(query: str, max_results: int) -> list:
+    async def _search_ddgs(query: str, max_results: int) -> list:
         """
-        使用 duckduckgo-search 库进行搜索
+        使用 ddgs 库进行搜索
         
         Args:
             query: 搜索查询
@@ -99,8 +113,12 @@ class SearchWebTool(MoviePilotTool):
         Returns:
             搜索结果列表
         """
+        if not DDGS_AVAILABLE:
+            logger.warning("ddgs 包未安装")
+            return []
+            
         try:
-            # duckduckgo-search 是同步库，需要在 executor 中运行
+            # ddgs 是同步库，需要在 executor 中运行
             def sync_search():
                 results = []
                 try:
@@ -116,7 +134,7 @@ class SearchWebTool(MoviePilotTool):
                     with DDGS(**ddgs_kwargs) as ddgs:
                         # 使用 text 方法进行搜索
                         search_results = list(ddgs.text(
-                            keywords=query,
+                            query=query,
                             max_results=max_results
                         ))
                         
@@ -129,7 +147,7 @@ class SearchWebTool(MoviePilotTool):
                             })
                     
                 except Exception as e:
-                    logger.warning(f"duckduckgo-search 搜索失败: {e}")
+                    logger.warning(f"ddgs 搜索失败: {e}")
                     raise
                 
                 return results
@@ -140,10 +158,77 @@ class SearchWebTool(MoviePilotTool):
             return results
             
         except ImportError:
-            logger.error("duckduckgo-search 库未安装，请在 requirements.in 中添加依赖后重新构建")
+            logger.error("ddgs 库未安装，请在 requirements.in 中添加依赖后重新构建")
             return []
         except Exception as e:
             logger.warning(f"DuckDuckGo 搜索失败: {e}")
+            return []
+
+    @staticmethod
+    async def _search_bing(query: str, max_results: int) -> list:
+        """
+        使用 Bing 搜索 API 进行搜索
+        
+        Args:
+            query: 搜索查询
+            max_results: 最大结果数
+            
+        Returns:
+            搜索结果列表
+        """
+        try:
+            # Bing Web Search API endpoint
+            endpoint = "https://api.bing.microsoft.com/v7.0/search"
+            
+            # 检查是否配置了 Bing API key
+            # 注意：需要在环境变量中设置 BING_SEARCH_API_KEY
+            api_key = settings.BING_SEARCH_API_KEY if hasattr(settings, 'BING_SEARCH_API_KEY') else None
+            
+            if not api_key:
+                logger.warning("未配置 Bing 搜索 API Key (BING_SEARCH_API_KEY)，无法使用 Bing 搜索")
+                return []
+            
+            headers = {
+                'Ocp-Apim-Subscription-Key': api_key
+            }
+            
+            params = {
+                'q': query,
+                'count': max_results,
+                'mkt': 'zh-CN',
+                'responseFilter': 'Webpages'
+            }
+            
+            # 使用代理（如果配置了）
+            proxy_url = SearchWebTool._get_proxy_url(settings.PROXY)
+            proxies = None
+            if proxy_url:
+                proxies = {
+                    'http://': proxy_url,
+                    'https://': proxy_url
+                }
+            
+            async with httpx.AsyncClient(proxies=proxies, timeout=SEARCH_TIMEOUT) as client:
+                response = await client.get(endpoint, headers=headers, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                results = []
+                
+                if 'webPages' in data and 'value' in data['webPages']:
+                    for item in data['webPages']['value']:
+                        results.append({
+                            'title': item.get('name', ''),
+                            'snippet': item.get('snippet', ''),
+                            'url': item.get('url', ''),
+                            'source': 'Bing'
+                        })
+                
+                logger.info(f"Bing 搜索成功，返回 {len(results)} 条结果")
+                return results
+                
+        except Exception as e:
+            logger.warning(f"Bing 搜索失败: {e}")
             return []
 
     @staticmethod

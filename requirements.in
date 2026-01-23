@@ -91,4 +91,4 @@ langchain-deepseek~=0.1.4
 langchain-experimental~=0.3.4
 openai~=1.108.2
 google-generativeai~=0.8.5
-duckduckgo-search~=7.2.1
+ddgs~=9.10.0
