@@ -66,7 +66,7 @@ class Subscribe(Base):
     # 订阅用户
     username = Column(String)
     # 订阅站点
-    sites = Column(JSON, default=list)
+    sites = Column(JSON, default=lambda: [])
     # 下载器
     downloader = Column(String)
     # 是否洗版
@@ -84,7 +84,7 @@ class Subscribe(Base):
     # 自定义媒体类别
     media_category = Column(String)
     # 过滤规则组
-    filter_groups = Column(JSON, default=list)
+    filter_groups = Column(JSON, default=lambda: [])
     # 选择的剧集组
     episode_group = Column(String)
 

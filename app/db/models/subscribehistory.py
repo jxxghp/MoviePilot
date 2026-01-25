@@ -69,7 +69,7 @@ class SubscribeHistory(Base):
     # 自定义媒体类别
     media_category = Column(String)
     # 过滤规则组
-    filter_groups = Column(JSON, default=list)
+    filter_groups = Column(JSON, default=lambda: [])
     # 剧集组
     episode_group = Column(String)
 
