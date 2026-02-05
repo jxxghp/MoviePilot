@@ -76,7 +76,7 @@ class TemplateContextBuilder:
         """
         if not mediainfo:
             return
-        season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None else None
+        season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None and mediainfo.season > 0 else None
         base_info = {
             # 标题
             "title": self.__convert_invalid_characters(mediainfo.title),
