@@ -70,7 +70,11 @@ async def create_subscribe(
     if subscribe_in.doubanid or subscribe_in.bangumiid:
         meta = MetaInfo(subscribe_in.name)
         subscribe_in.name = meta.name
-        subscribe_in.season = meta.begin_season
+        # 电影订阅时季应传入None而不是0
+        parsed_season = meta.begin_season
+        if parsed_season is not None and parsed_season <= 0:
+            parsed_season = None
+        subscribe_in.season = parsed_season
     # 标题转换
     if subscribe_in.name:
         title = subscribe_in.name

@@ -546,7 +546,11 @@ class MediaInfo:
         meta = MetaInfo(info.get("title"))
         # 季
         if self.season is None:
-            self.season = meta.begin_season
+            extracted_season = meta.begin_season
+            # 电影订阅时季应传入None而不是0
+            if extracted_season is not None and extracted_season <= 0:
+                extracted_season = None
+            self.season = extracted_season
             if self.season is not None:
                 self.type = MediaType.TV
             elif not self.type:
@@ -668,7 +672,11 @@ class MediaInfo:
         meta = MetaInfo(self.title)
         # 季
         if self.season is None:
-            self.season = meta.begin_season
+            extracted_season = meta.begin_season
+            # 电影订阅时季应传入None而不是0
+            if extracted_season is not None and extracted_season <= 0:
+                extracted_season = None
+            self.season = extracted_season
         # 评分
         if not self.vote_average:
             rating = info.get("rating")
