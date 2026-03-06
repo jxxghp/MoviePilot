@@ -68,13 +68,13 @@ echo ""
 
 # 5. 提交修改
 echo "[5] 提交修改..."
-git add $(git diff --name-only --cached; git diff --name-only --no-index /dev/null) 2>/dev/null
-git add $(git status --porcelain | awk '{print $2}') 2>/dev/null
-git commit -m "feat: 移除PT站认证限制" > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-    echo "⚠️  没有需要提交的修改"
-else
+modified_files=$(git diff --name-only --cached; git diff --name-only)
+if [ -n "$modified_files" ]; then
+    git add $modified_files 2>/dev/null
+    git commit -m "feat: 移除PT站认证限制" > /dev/null 2>&1
     echo "✅ 修改已提交"
+else
+    echo "⚠️  没有需要提交的修改"
 fi
 echo ""
 
