@@ -780,42 +780,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
     def user_auth(self):
         """
-        用户认证检查
+        用户认证检查 - 已禁用
         """
-        if SitesHelper().auth_level >= 2:
-            return
-        # 最大重试次数
-        __max_try__ = 30
-        if self._auth_count > __max_try__:
-            if not self._auth_message:
-                SchedulerChain().messagehelper.put(title=f"用户认证失败",
-                                                   message="用户认证失败次数过多，将不再尝试认证！",
-                                                   role="system")
-                self._auth_message = True
-            return
-        logger.info("用户未认证，正在尝试认证...")
-        auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
-        if auth_conf:
-            status, msg = SitesHelper().check_user(**auth_conf)
-        else:
-            status, msg = SitesHelper().check_user()
-        if status:
-            self._auth_count = 0
-            logger.info(f"{msg} 用户认证成功")
-            SchedulerChain().post_message(
-                Notification(
-                    mtype=NotificationType.Manual,
-                    title="MoviePilot用户认证成功",
-                    text=f"使用站点：{msg}，如有插件使用异常，请重启MoviePilot。",
-                    link=settings.MP_DOMAIN('#/site')
-                )
-            )
-            # 认证通过后重新初始化插件
-            PluginManager().init_config()
-            self.init_plugin_jobs()
-
-        else:
-            self._auth_count += 1
-            logger.error(f"用户认证失败，{msg}，共失败 {self._auth_count} 次")
-            if self._auth_count >= __max_try__:
-                logger.error("用户认证失败次数过多，将不再尝试认证！")
+        logger.info("用户认证检查已禁用")
+        return

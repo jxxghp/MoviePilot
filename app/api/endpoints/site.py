@@ -51,8 +51,6 @@ async def add_site(
     """
     if not site_in.url:
         return schemas.Response(success=False, message="站点地址不能为空")
-    if SitesHelper().auth_level < 2:
-        return schemas.Response(success=False, message="用户未通过认证，无法使用站点功能！")
     domain = StringUtils.get_url_domain(site_in.url)
     site_info = await SitesHelper().async_get_indexer(domain)
     if not site_info:

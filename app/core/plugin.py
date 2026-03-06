@@ -1341,23 +1341,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         elif not hasattr(plugin, "auth_level"):
             return True
 
-        # auth_level 级别说明
-        # 1 - 所有用户可见
-        # 2 - 站点认证用户可见
-        # 3 - 站点&密钥认证可见
-        # 99 - 站点&特殊密钥认证可见
-        # 如果当前站点认证级别大于 1 且插件级别为 99，并存在插件公钥，说明为特殊密钥认证，通过密钥匹配进行认证
-        siteshelper = SitesHelper()
-        if siteshelper.auth_level > 1 and plugin.auth_level == 99 and hasattr(plugin, "plugin_public_key"):
-            plugin_id = plugin.id if isinstance(plugin, schemas.Plugin) else plugin.__name__
-            public_key = plugin.plugin_public_key
-            if public_key:
-                private_key = PluginManager.__get_plugin_private_key(plugin_id)
-                verify = RSAUtils.verify_rsa_keys(public_key=public_key, private_key=private_key)
-                return verify
-        # 如果当前站点认证级别小于插件级别，则返回 False
-        if siteshelper.auth_level < plugin.auth_level:
-            return False
+        # 不检查认证级别，所有插件都可见
         return True
 
     @staticmethod

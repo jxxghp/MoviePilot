@@ -92,19 +92,9 @@ def user_auth():
 
 def check_auth():
     """
-    检查认证状态
+    检查认证状态 - 已禁用认证检查
     """
-    if SitesHelper().auth_level < 2:
-        err_msg = "用户认证失败，站点相关功能将无法使用！"
-        MessageHelper().put(f"注意：{err_msg}", title="用户认证", role="system")
-        CommandChain().post_message(
-            Notification(
-                mtype=NotificationType.Manual,
-                title="MoviePilot用户认证",
-                text=err_msg,
-                link=settings.MP_DOMAIN('#/site')
-            )
-        )
+    pass
 
 
 async def stop_modules():
