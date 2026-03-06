@@ -1,0 +1,73 @@
+name: Auto Sync Upstream and Apply Patches
+on:
+  # 定时任务：每天早上 8 点（UTC+8 时间）
+  schedule:
+    - cron: '0 0 * * *'
+
+  # 手动触发
+  workflow_dispatch:
+
+  # PR 或 issue 评论触发（如需要）
+  issue_comment:
+    types: [created]
+
+jobs:
+  sync-and-apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      # 1. 检查仓库
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/no-auth
+
+      # 2. 设置 Git
+      - name: Configure Git
+        run: |
+          git config --global user.name 'Auto Sync Action'
+          git config --global user.email 'auto-sync@github.com'
+          git remote add upstream https://github.com/jxxghp/MoviePilot.git
+
+      # 3. 同步上游到 main 分支
+      - name: Sync upstream to main
+        run: |
+          git fetch upstream v2
+          git switch main || git checkout -b main
+          git reset --hard upstream/v2
+          git push origin main --force
+
+      # 4. 切换到功能分支
+      - name: Switch to feature branch
+        run: |
+          git switch feature/no-auth || git checkout -b feature/no-auth main
+
+      # 5. 应用认证限制移除补丁
+      - name: Apply no-auth patch
+        run: |
+          if [ -f "no-auth-patch.diff" ]; then
+            echo "Applying no-auth patch..."
+            git apply --reject no-auth-patch.diff || echo "Patch applied with rejects"
+          fi
+
+      # 6. 提交修改
+      - name: Commit changes
+        run: |
+          git add .
+          git status
+
+          # 只在有修改时提交
+          if [ -n "$(git diff --name-only --cached; git diff --name-only)" ]; then
+            git commit -m "feat: 移除PT站认证限制" -m "自动同步上游代码并应用认证限制移除补丁"
+            git status
+          fi
+
+      # 7. 推送到功能分支
+      - name: Push to feature branch
+        run: |
+          git push origin feature/no-auth --force
