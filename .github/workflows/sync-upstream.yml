@@ -1,0 +1,88 @@
+name: Sync Upstream and Apply Patches
+on:
+  # 定时任务：每天早上 8 点（UTC+8 时间）
+  schedule:
+    - cron: '0 0 * * *'  # UTC 时间 0 点，对应北京时间 8 点
+
+  # 手动触发
+  workflow_dispatch:
+
+  # 当有新的 issue 或 PR 时触发（可选）
+  issue_comment:
+    types: [created]
+
+jobs:
+  sync-and-apply-patches:
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'schedule') || (github.event_name == 'workflow_dispatch') || (github.event.comment.body == '/sync' && github.actor == '你的用户名')
+
+    steps:
+      # 1. 检查当前仓库
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: feature/no-auth
+
+      # 2. 配置 Git
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'github-action@github.com'
+          git remote add upstream https://github.com/jxxghp/MoviePilot.git
+
+      # 3. 同步上游 main 分支到本地
+      - name: Sync with upstream main branch
+        run: |
+          git fetch upstream
+          git switch main || git checkout -b main upstream/v2
+          git merge upstream/v2 --no-edit
+          git push origin main
+
+      # 4. 切换到我们的功能分支并合并 main
+      - name: Switch to feature branch and merge main
+        run: |
+          git switch feature/no-auth || git checkout -b feature/no-auth
+          git merge main
+
+      # 5. 检查是否有认证限制移除补丁需要更新
+      - name: Check if patch needs updating
+        id: check-patch
+        run: |
+          git status
+          if git diff --quiet HEAD~1 HEAD no-auth-patch.diff; then
+            echo "PATCH_UPDATED=false" >> $GITHUB_OUTPUT
+          else
+            echo "PATCH_UPDATED=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 6. 如果补丁已更新，重新应用
+      - name: Apply patches if updated
+        if: steps.check-patch.outputs.PATCH_UPDATED == 'true'
+        run: |
+          git apply --reject no-auth-patch.diff || echo "Patch application partially succeeded (conflicts may exist)"
+          git status
+
+      # 7. 提交我们的修改（包括补丁更新）
+      - name: Commit changes
+        run: |
+          git add no-auth-patch.diff $(git diff --name-only)
+          git commit -m "Sync with upstream and update no-auth patch" || echo "No changes to commit"
+          git status
+
+      # 8. 解决可能的冲突（如果需要）
+      - name: Resolve conflicts (experimental)
+        if: failure()
+        run: |
+          git status
+          # 这里可以添加自动解决冲突的逻辑，比如使用我们的修改覆盖上游
+          git add .
+          git commit -m "Resolve conflicts by keeping our changes" --allow-empty
+          git status
+
+      # 9. 推送到我们的仓库（包括main和feature/no-auth分支）
+      - name: Push changes
+        run: |
+          git push origin main
+          git push origin feature/no-auth
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
