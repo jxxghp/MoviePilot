@@ -41,8 +41,8 @@ class SearchChainTest(TestCase):
             def end(self):
                 pass
 
-        def fake_match_season_episodes(torrent, meta, season_episodes):
-            self.assertIs(torrent, torrent_info)
+        def fake_match_season_episodes(torrent_arg, meta, season_episodes):
+            self.assertIs(torrent_arg, torrent)
             self.assertIs(meta, fake_meta)
             self.assertEqual(season_episodes, {1: [1]})
             return True
@@ -52,8 +52,6 @@ class SearchChainTest(TestCase):
             season_list=[1],
             episode_list=[1]
         )
-        torrent_info = torrent
-
         with patch("app.chain.search.ProgressHelper", FakeProgressHelper), \
                 patch("app.chain.search.MetaInfo", return_value=fake_meta), \
                 patch("app.chain.search.TorrentHelper.__init__", return_value=None), \
