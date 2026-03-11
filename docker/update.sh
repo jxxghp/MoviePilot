@@ -69,7 +69,7 @@ function install_backend_and_download_resources() {
             # 复制新的requirements.in
             cp "${TMP_PATH}/App/requirements.in" /app/requirements.in
             # 重新编译依赖
-            if ! ${VENV_PATH}/bin/pip-compile /app/requirements.in; then
+            if ! ${VENV_PATH}/bin/pip-compile --allow-unsafe /app/requirements.in; then
                 ERROR "依赖编译失败，恢复原依赖"
                 cp /tmp/requirements.txt.backup /app/requirements.txt
                 return 1

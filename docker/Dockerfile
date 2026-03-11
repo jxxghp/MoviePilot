@@ -67,7 +67,7 @@ COPY requirements.in requirements.in
 RUN python3 -m venv ${VENV_PATH} \
     && pip install --upgrade "pip<25.0" \
     && pip install "Cython" "pip-tools<7.5" \
-    && pip-compile requirements.in \
+    && pip-compile --allow-unsafe requirements.in \
     && pip install -r requirements.txt
 
 # 下载准备代码
