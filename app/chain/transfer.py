@@ -927,6 +927,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     # 识别媒体信息
                     mediainfo = MediaChain().recognize_by_meta(task.meta)
 
+
+                if not mediainfo and task.fileitem and task.fileitem.path:
+                    # 根据目录识别
+                    mediainfo = MediaChain().recognize_by_path(task.fileitem.path).media_info
+
                 # 更新媒体图片
                 if mediainfo:
                     self.obtain_images(mediainfo=mediainfo)
@@ -1326,7 +1331,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if not self.__is_media_file(file_item):
                     return False
                 if not self.__is_allow_filesize(file_item, min_filesize):
-                    return False
+                                                 return False
             # 回收站及隐藏的文件不处理
             if (
                 file_item.path.find("/@Recycle/") != -1
