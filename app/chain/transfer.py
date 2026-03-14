@@ -1331,7 +1331,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if not self.__is_media_file(file_item):
                     return False
                 if not self.__is_allow_filesize(file_item, min_filesize):
-                                                 return False
+                    return False
             # 回收站及隐藏的文件不处理
             if (
                 file_item.path.find("/@Recycle/") != -1
