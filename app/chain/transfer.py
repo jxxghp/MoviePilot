@@ -927,7 +927,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     # 识别媒体信息
                     mediainfo = MediaChain().recognize_by_meta(task.meta)
 
-
+                logger.error(f"整理任务看是否需要根据目录识别：{mediainfo} - {task}")
                 if not mediainfo and task.fileitem and task.fileitem.path:
                     # 根据目录识别
                     mediainfo = MediaChain().recognize_by_path(task.fileitem.path).media_info
