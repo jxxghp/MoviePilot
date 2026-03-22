@@ -325,6 +325,7 @@ if [ "${START_NOGOSU:-false}" = "true" ]; then
     "${VENV_PATH}/bin/python3" app/main.py > /dev/stdout 2> /dev/stderr &
 else
     gosu moviepilot:moviepilot "${VENV_PATH}/bin/python3" app/main.py > /dev/stdout 2> /dev/stderr &
+fi
 PYTHON_PID=$!
 
 # 等待 Python 进程退出。
