@@ -13,7 +13,7 @@ from langchain_core.messages import (
 )
 from langgraph.checkpoint.memory import InMemorySaver
 
-from app.agent.callback import StreamingHandler, StreamingHandler
+from app.agent.callback import StreamingHandler
 from app.agent.memory import memory_manager
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
