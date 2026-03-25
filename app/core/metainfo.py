@@ -5,6 +5,10 @@ import regex as re
 
 from app.core.config import settings
 from app.core.meta import MetaAnime, MetaVideo, MetaBase
+from app.core.meta.infopath import (
+    clear_parsed_title_for_parent_merge,
+    should_use_parent_title_for_file_stem,
+)
 from app.core.meta.words import WordsMatcher
 from app.log import logger
 from app.schemas.types import MediaType
@@ -71,6 +75,8 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None) -> MetaBase:
     """
     # 文件元数据，不包含后缀
     file_meta = MetaInfo(title=path.name, custom_words=custom_words)
+    if should_use_parent_title_for_file_stem(path.stem, path.parent.name, file_meta):
+        clear_parsed_title_for_parent_merge(file_meta)
     # 上级目录元数据
     dir_meta = MetaInfo(title=path.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or dir_meta.type != MediaType.TV:
