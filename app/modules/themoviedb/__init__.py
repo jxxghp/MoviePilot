@@ -102,7 +102,7 @@ class TheMovieDbModule(_ModuleBase):
         if meta and not tmdbid and settings.RECOGNIZE_SOURCE != "themoviedb":
             return False
 
-        if meta and not meta.name:
+        if meta and not meta.name and not tmdbid:
             logger.warn("识别媒体信息时未提供元数据名称")
             return False
 
@@ -117,6 +117,98 @@ class TheMovieDbModule(_ModuleBase):
         zh_name = zhconv.convert(meta.cn_name, "zh-hans") if meta.cn_name else None
         # 使用中英文名分别识别，去重去空，但要保持顺序
         return list(dict.fromkeys([k for k in [meta.cn_name, zh_name, meta.en_name] if k]))
+
+    def _get_info_by_tmdbid(self, tmdbid: int, mtype: Optional[MediaType],
+                             meta: Optional[MetaBase]) -> Optional[dict]:
+        """
+        根据tmdbid查询媒体信息，当类型未知且同时存在电影和电视剧时，通过元数据消歧
+        """
+        if mtype:
+            return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
+        # 类型未知，分别查询电影和电视剧
+        info_tv = self.tmdb.get_info(mtype=MediaType.TV, tmdbid=tmdbid)
+        info_movie = self.tmdb.get_info(mtype=MediaType.MOVIE, tmdbid=tmdbid)
+        if info_tv and info_movie:
+            # 同时存在，尝试通过元数据消歧
+            result = self._disambiguate_by_meta(info_tv, info_movie, meta)
+            if result:
+                return result
+            logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
+            return None
+        return info_tv or info_movie or None
+
+    async def _async_get_info_by_tmdbid(self, tmdbid: int, mtype: Optional[MediaType],
+                                         meta: Optional[MetaBase]) -> Optional[dict]:
+        """
+        根据tmdbid查询媒体信息，当类型未知且同时存在电影和电视剧时，通过元数据消歧（异步版本）
+        """
+        if mtype:
+            return await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid)
+        # 类型未知，分别查询电影和电视剧
+        info_tv = await self.tmdb.async_get_info(mtype=MediaType.TV, tmdbid=tmdbid)
+        info_movie = await self.tmdb.async_get_info(mtype=MediaType.MOVIE, tmdbid=tmdbid)
+        if info_tv and info_movie:
+            # 同时存在，尝试通过元数据消歧
+            result = self._disambiguate_by_meta(info_tv, info_movie, meta)
+            if result:
+                return result
+            logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
+            return None
+        return info_tv or info_movie or None
+
+    @staticmethod
+    def _disambiguate_by_meta(info_tv: dict, info_movie: dict,
+                               meta: Optional[MetaBase]) -> Optional[dict]:
+        """
+        通过元数据（标题、年份、类型）对同tmdbid的电影和电视剧进行消歧
+        """
+        if not meta:
+            return None
+
+        def _collect_titles(info: dict) -> set:
+            titles = set()
+            for key in ('title', 'name', 'original_title', 'original_name'):
+                if info.get(key):
+                    titles.add(info[key])
+            for name in (info.get('names') or []):
+                titles.add(name)
+            return titles
+
+        def _match_score(info: dict) -> int:
+            score = 0
+            # 标题匹配
+            titles = _collect_titles(info)
+            meta_names = [n for n in [meta.cn_name, meta.en_name] if n]
+            for meta_name in meta_names:
+                if any(meta_name in t or t in meta_name for t in titles):
+                    score += 2
+                    break
+            # 年份匹配
+            if meta.year:
+                release_date = info.get('release_date') or info.get('first_air_date') or ''
+                if release_date and release_date[:4] == meta.year:
+                    score += 1
+            return score
+
+        score_tv = _match_score(info_tv)
+        score_movie = _match_score(info_movie)
+
+        if score_tv > score_movie:
+            logger.info(f"通过元数据消歧，tmdb_id:{info_tv.get('id')} 识别为电视剧")
+            return info_tv
+        elif score_movie > score_tv:
+            logger.info(f"通过元数据消歧，tmdb_id:{info_movie.get('id')} 识别为电影")
+            return info_movie
+
+        # 评分相同时参考meta.type
+        if meta.type == MediaType.TV:
+            logger.info(f"通过媒体类型提示消歧，tmdb_id:{info_tv.get('id')} 识别为电视剧")
+            return info_tv
+        elif meta.type == MediaType.MOVIE:
+            logger.info(f"通过媒体类型提示消歧，tmdb_id:{info_movie.get('id')} 识别为电影")
+            return info_movie
+
+        return None
 
     def _search_by_name(self, name: str, meta: MetaBase, group_seasons: List[dict]) -> dict:
         """
@@ -404,9 +496,9 @@ class TheMovieDbModule(_ModuleBase):
             info = None
             # 缓存没有或者强制不使用缓存
             if tmdbid:
-                # 直接查询详情
-                info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
-            if not info and meta:
+                # 直接查询详情，支持同ID电影/电视剧消歧
+                info = self._get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
+            if not info and meta and not tmdbid:
                 # 准备搜索名称
                 names = self._prepare_search_names(meta)
                 for name in names:
@@ -422,7 +514,10 @@ class TheMovieDbModule(_ModuleBase):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
                                               tmdbid=info.get("id"))
             elif not info:
-                logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
+                if tmdbid:
+                    logger.warn(f"tmdb_id:{tmdbid} 无法确定媒体类型，识别失败")
+                else:
+                    logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
                 return None
 
             # 保存到缓存
@@ -485,9 +580,9 @@ class TheMovieDbModule(_ModuleBase):
             info = None
             # 缓存没有或者强制不使用缓存
             if tmdbid:
-                # 直接查询详情
-                info = await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid)
-            if not info and meta:
+                # 直接查询详情，支持同ID电影/电视剧消歧
+                info = await self._async_get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
+            if not info and meta and not tmdbid:
                 # 准备搜索名称
                 names = self._prepare_search_names(meta)
                 for name in names:
@@ -503,7 +598,10 @@ class TheMovieDbModule(_ModuleBase):
                     info = await self.tmdb.async_get_info(mtype=info.get("media_type"),
                                                           tmdbid=info.get("id"))
             elif not info:
-                logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
+                if tmdbid:
+                    logger.warn(f"tmdb_id:{tmdbid} 无法确定媒体类型，识别失败")
+                else:
+                    logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
                 return None
 
             # 保存到缓存

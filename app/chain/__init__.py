@@ -403,16 +403,16 @@ class ChainBase(metaclass=ABCMeta):
         :return: 识别的媒体信息，包括剧集信息
         """
         # 识别用名中含指定信息情形
-        if not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
-            mtype = meta.type
         if not tmdbid and hasattr(meta, "tmdbid"):
             tmdbid = meta.tmdbid
         if not doubanid and hasattr(meta, "doubanid"):
             doubanid = meta.doubanid
-        # 有tmdbid时不使用其它ID
+        # 有tmdbid时，不使用meta推断的类型（由消歧逻辑决定），也不使用其它ID
         if tmdbid:
             doubanid = None
             bangumiid = None
+        elif not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
+            mtype = meta.type
         with fresh(not cache):
             return self.run_module(
                 "recognize_media",
@@ -447,16 +447,16 @@ class ChainBase(metaclass=ABCMeta):
         :return: 识别的媒体信息，包括剧集信息
         """
         # 识别用名中含指定信息情形
-        if not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
-            mtype = meta.type
         if not tmdbid and hasattr(meta, "tmdbid"):
             tmdbid = meta.tmdbid
         if not doubanid and hasattr(meta, "doubanid"):
             doubanid = meta.doubanid
-        # 有tmdbid时不使用其它ID
+        # 有tmdbid时，不使用meta推断的类型（由消歧逻辑决定），也不使用其它ID
         if tmdbid:
             doubanid = None
             bangumiid = None
+        elif not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
+            mtype = meta.type
         async with async_fresh(not cache):
             return await self.async_run_module(
                 "async_recognize_media",
