@@ -335,7 +335,7 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
                         MAX_MEMORY_FILE_SIZE,
                     )
                     continue
-                contents[path] = await file_path.read_text()
+                contents[path] = await file_path.read_text(encoding="utf-8")
                 logger.debug("Loaded memory from: %s", path)
             except Exception as e:
                 logger.warning("Failed to read memory file %s: %s", path, e)
