@@ -294,12 +294,16 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             key=lambda e: e.get("offset", 0),
             reverse=True,
         )
+        text_utf16 = text.encode("utf-16-le")
         for entity in text_link_entities:
             offset = entity.get("offset", 0)
             length = entity.get("length", 0)
             url = entity["url"]
-            display_text = text[offset: offset + length]
-            text = text[:offset] + f"{display_text}({url})" + text[offset + length:]
+            char_offset = len(text_utf16[:offset * 2].decode("utf-16-le"))
+            char_length = len(text_utf16[offset * 2: (offset + length) * 2].decode("utf-16-le"))
+            display_text = text[char_offset: char_offset + char_length]
+            text = text[:char_offset] + f"{display_text}({url})" + text[char_offset + char_length:]
+            text_utf16 = text.encode("utf-16-le")
         return text
 
     @staticmethod
