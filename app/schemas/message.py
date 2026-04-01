@@ -104,6 +104,8 @@ class Notification(BaseModel):
     original_message_id: Optional[Union[str, int]] = None
     # 原消息的聊天ID，用于编辑消息
     original_chat_id: Optional[str] = None
+    # 是否禁用链接预览（仅Telegram支持）
+    disable_web_page_preview: Optional[bool] = None
 
     def to_dict(self):
         """

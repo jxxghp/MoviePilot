@@ -333,6 +333,7 @@ class Telegram:
             buttons: Optional[List[List[dict]]] = None,
             original_message_id: Optional[int] = None,
             original_chat_id: Optional[str] = None,
+            disable_web_page_preview: Optional[bool] = None,
     ) -> Optional[dict]:
         """
         发送Telegram消息
@@ -344,6 +345,7 @@ class Telegram:
         :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
         :param original_message_id: 原消息ID，如果提供则编辑原消息
         :param original_chat_id: 原消息的聊天ID，编辑消息时需要
+        :param disable_web_page_preview: 是否禁用链接预览
         :return: 包含 message_id, chat_id, success 的字典
         """
         if not self._telegram_token or not self._telegram_chat_id:
@@ -397,6 +399,7 @@ class Telegram:
                     image=image,
                     caption=caption,
                     reply_markup=reply_markup,
+                    disable_web_page_preview=disable_web_page_preview,
                 )
                 self._stop_typing_task(chat_id)
                 if sent and hasattr(sent, "message_id"):
@@ -766,10 +769,12 @@ class Telegram:
             image="",
             caption="",
             reply_markup: Optional[InlineKeyboardMarkup] = None,
+            disable_web_page_preview: Optional[bool] = None,
     ):
         """
         向Telegram发送报文，返回发送的消息对象
         :param reply_markup: 内联键盘
+        :param disable_web_page_preview: 是否禁用链接预览
         :return: 发送成功返回消息对象，失败返回None
         """
         kwargs = {
@@ -777,6 +782,8 @@ class Telegram:
             "parse_mode": "MarkdownV2",
             "reply_markup": reply_markup,
         }
+        if disable_web_page_preview is not None:
+            kwargs["disable_web_page_preview"] = disable_web_page_preview
 
         # 处理图片
         image = self.__process_image(image)
