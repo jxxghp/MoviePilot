@@ -827,9 +827,11 @@ class Telegram:
                     photo=image, caption=standardize(caption), **kwargs
                 )
             else:
-                if disable_web_page_preview is not None:
-                    kwargs["disable_web_page_preview"] = disable_web_page_preview
-                return self._bot.send_message(text=standardize(caption), **kwargs)
+                return self._bot.send_message(
+                    text=standardize(caption),
+                    disable_web_page_preview=disable_web_page_preview,
+                    **kwargs
+                )
         except Exception:
             raise RetryException(f"发送{'图片' if image else '文本'}消息失败")
 
