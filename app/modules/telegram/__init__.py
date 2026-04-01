@@ -191,10 +191,17 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         """
         处理普通文本消息
         """
-        text = msg.get("text")
+        text = msg.get("text") or msg.get("caption")
         user_id = msg.get("from", {}).get("id")
         user_name = msg.get("from", {}).get("username")
         chat_id = msg.get("chat", {}).get("id")
+
+        # 将 text_link 实体中的 URL 嵌入到文本中
+        if text:
+            text = self._embed_entity_links(text, msg.get("entities") or msg.get("caption_entities"))
+
+        # 将 reply_markup 中的 URL 按钮信息追加到文本中
+        text = self._append_reply_markup_links(text, msg.get("reply_markup"))
 
         images = self._extract_images(msg)
 
@@ -270,6 +277,58 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 images.append(file_id)
 
         return images if images else None
+
+    @staticmethod
+    def _embed_entity_links(text: str, entities: Optional[List[dict]]) -> str:
+        """
+        将 text_link 实体中的 URL 嵌入到文本中
+
+        :param text: 原始文本
+        :param entities: 消息实体列表
+        :return: 嵌入链接后的文本
+        """
+        if not entities:
+            return text
+        text_link_entities = sorted(
+            [e for e in entities if e.get("type") == "text_link" and e.get("url")],
+            key=lambda e: e.get("offset", 0),
+            reverse=True,
+        )
+        for entity in text_link_entities:
+            offset = entity.get("offset", 0)
+            length = entity.get("length", 0)
+            url = entity["url"]
+            display_text = text[offset: offset + length]
+            text = text[:offset] + f"{display_text}({url})" + text[offset + length:]
+        return text
+
+    @staticmethod
+    def _append_reply_markup_links(text: Optional[str], reply_markup: Optional[dict]) -> Optional[str]:
+        """
+        将 reply_markup 中的 URL 按钮信息追加到文本末尾
+
+        :param text: 原始文本
+        :param reply_markup: 消息的 reply_markup 字段
+        :return: 追加按钮链接后的文本
+        """
+        if not reply_markup:
+            return text
+        inline_keyboard = reply_markup.get("inline_keyboard")
+        if not inline_keyboard:
+            return text
+        button_lines = []
+        for row in inline_keyboard:
+            for button in row:
+                btn_text = button.get("text", "")
+                btn_url = button.get("url")
+                if btn_url:
+                    button_lines.append(f"{btn_text}({btn_url})")
+        if not button_lines:
+            return text
+        buttons_text = "\n".join(button_lines)
+        if text:
+            return f"{text}\n{buttons_text}"
+        return buttons_text
 
     @staticmethod
     def _clean_bot_mention(text: str, bot_username: Optional[str]) -> str:

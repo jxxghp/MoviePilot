@@ -101,7 +101,10 @@ class Telegram:
                     "温馨提示：直接发送名称或`订阅`+名称，搜索或订阅电影、电视剧",
                 )
 
-            @_bot.message_handler(func=lambda message: True)
+            @_bot.message_handler(content_types=[
+                "text", "photo", "video", "document", "animation",
+                "audio", "voice", "sticker", "video_note",
+            ], func=lambda message: True)
             def echo_all(message):
                 # Update user-chat mapping when receiving messages
                 self._update_user_chat_mapping(message.from_user.id, message.chat.id)
