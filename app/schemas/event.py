@@ -168,6 +168,7 @@ class TransferRenameEventData(ChainEventData):
         rename_dict (dict): 渲染上下文
         render_str (str): 渲染生成的字符串
         path (Optional[Path]): 当前文件的目标路径
+        source_path (Optional[str]): 源文件路径，即待整理的文件路径
 
         # 输出参数
         updated (bool): 是否已更新，默认值为 False
@@ -179,6 +180,7 @@ class TransferRenameEventData(ChainEventData):
     rename_dict: Dict[str, Any] = Field(..., description="渲染上下文")
     path: Optional[Path] = Field(None, description="文件的目标路径")
     render_str: str = Field(..., description="渲染生成的字符串")
+    source_path: Optional[str] = Field(None, description="源文件路径，即待整理的文件路径")
 
     # 输出参数
     updated: bool = Field(default=False, description="是否已更新")

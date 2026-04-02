@@ -129,7 +129,8 @@ class TransHandler:
                         path=target_path,
                         template_string=rename_format,
                         rename_dict=self.get_naming_dict(meta=in_meta,
-                                                         mediainfo=mediainfo)
+                                                         mediainfo=mediainfo),
+                        source_path=fileitem.path
                     )
                     new_path = DirectoryHelper.get_media_root_path(
                         rename_format, rename_path=new_path
@@ -218,7 +219,8 @@ class TransHandler:
                             mediainfo=mediainfo,
                             episodes_info=episodes_info,
                             file_ext=f".{fileitem.extension}"
-                        )
+                        ),
+                        source_path=fileitem.path
                     )
 
                     # 针对字幕文件，文件名中补充额外标识信息
@@ -814,12 +816,14 @@ class TransHandler:
         return True
 
     @staticmethod
-    def get_rename_path(template_string: str, rename_dict: dict, path: Path = None) -> Path:
+    def get_rename_path(template_string: str, rename_dict: dict,
+                        path: Path = None, source_path: str = None) -> Path:
         """
         生成重命名后的完整路径，支持智能重命名事件
         :param template_string: Jinja2 模板字符串
         :param rename_dict: 渲染上下文，用于替换模板中的变量
         :param path: 可选的基础路径，如果提供，将在其基础上拼接生成的路径
+        :param source_path: 源文件路径，即待整理的文件路径
         :return: 生成的完整路径
         """
         # 创建jinja2模板对象
@@ -833,7 +837,8 @@ class TransHandler:
             template_string=template_string,
             rename_dict=rename_dict,
             render_str=render_str,
-            path=path
+            path=path,
+            source_path=source_path
         )
         event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
         # 检查事件返回的结果
