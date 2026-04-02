@@ -1234,4 +1234,55 @@ meta_cases = [{
         "video_codec": "x265 10bit",
         "audio_codec": "2Audio"
     }
+}, {
+    # 第一个括号包含完整发布名称（含年份+分辨率），应提取标题而非丢弃
+    "title": "[Caligula.The.Ultimate.Cut.2023.2160p.UHD.Blu-ray.HEVC.DTS-HD.MA.5.1-BHYS@OurBits][DIY中字原盘] [罗马帝国艳情史：最终剪辑版][澳大利亚版UHD原盘 DIY 简体简英字幕][91.86GB].iso",
+    "subtitle": "",
+    "target": {
+        "type": "未知",
+        "cn_name": "",
+        "en_name": "Caligula The Ultimate Cut",
+        "year": "2023",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "UHD",
+        "pix": "2160p",
+        "video_codec": "HEVC",
+        "audio_codec": "DTS-HD MA 5.1"
+    }
+}, {
+    # 第一个括号包含完整发布名称（含年份+BluRay），应提取标题
+    "title": "[The.Shawshank.Redemption.1994.1080p.BluRay.x264-GROUP][中文字幕]",
+    "subtitle": "",
+    "target": {
+        "type": "未知",
+        "cn_name": "",
+        "en_name": "The Shawshank Redemption",
+        "year": "1994",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "BluRay",
+        "pix": "1080p",
+        "video_codec": "x264",
+        "audio_codec": ""
+    }
+}, {
+    # 第一个括号为短标签（无年份无分辨率），应正常移除
+    "title": "[YTS.MX] The Shawshank Redemption 1994 1080p BluRay x264",
+    "subtitle": "",
+    "target": {
+        "type": "未知",
+        "cn_name": "",
+        "en_name": "The Shawshank Redemption",
+        "year": "1994",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "BluRay",
+        "pix": "1080p",
+        "video_codec": "x264",
+        "audio_codec": ""
+    }
 }]

@@ -85,7 +85,16 @@ class MetaVideo(MetaBase):
                 self.total_season = 1
             return
         # 去掉名称中第1个[]的内容
-        title = re.sub(r'%s' % self._name_no_begin_re, "", title, count=1)
+        _first_bracket = re.match(r'^[\[【](.+?)[\]】]', title)
+        if _first_bracket:
+            _bracket_content = _first_bracket.group(1)
+            # 如果第一个括号内为点分隔的英文发布名格式（含年份+资源类型），保留内容去掉括号
+            if re.search(r'[A-Za-z]+\..+(?:19|20)\d{2}', _bracket_content) \
+                    and re.search(r'(?:2160|1080|720|480)[PIpi]|4K|UHD|Blu[\-.]?ray|REMUX|WEB[\-.]?DL|HDTV',
+                                  _bracket_content, re.IGNORECASE):
+                title = _bracket_content + title[_first_bracket.end():]
+            else:
+                title = title[_first_bracket.end():]
         # 把xxxx-xxxx年份换成前一个年份，常出现在季集上
         title = re.sub(r'([\s.]+)(\d{4})-(\d{4})', r'\1\2', title)
         # 把大小去掉
@@ -247,9 +256,9 @@ class MetaVideo(MetaBase):
             if not self.cn_name:
                 self.cn_name = token
             elif not self._stop_cnname_flag:
-                if re.search("%s" % self._name_movie_words, token, flags=re.IGNORECASE) \
+                if re.search("|".join(self._name_movie_words), token, flags=re.IGNORECASE) \
                         or (not re.search("%s" % self._name_no_chinese_re, token, flags=re.IGNORECASE)
-                            and not re.search("%s" % self._name_se_words, token, flags=re.IGNORECASE)):
+                            and not any(w in token for w in self._name_se_words)):
                     self.cn_name = "%s %s" % (self.cn_name, token)
                 self._stop_cnname_flag = True
         else:
