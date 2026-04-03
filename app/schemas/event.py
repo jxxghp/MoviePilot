@@ -11,6 +11,7 @@ class Event(BaseModel):
     """
     事件模型
     """
+
     event_type: str = Field(..., description="事件类型")
     event_data: Optional[dict] = Field(default={}, description="事件数据")
     priority: Optional[int] = Field(0, description="事件优先级")
@@ -20,6 +21,7 @@ class BaseEventData(BaseModel):
     """
     事件数据的基类，所有具体事件数据类应继承自此类
     """
+
     pass
 
 
@@ -27,11 +29,14 @@ class ConfigChangeEventData(BaseEventData):
     """
     ConfigChange 事件的数据模型
     """
+
     key: set[str] = Field(..., description="配置项的键（集合类型）")
     value: Optional[Any] = Field(default=None, description="配置项的新值")
-    change_type: str = Field(default="update", description="配置项的变更类型，如 'add', 'update', 'delete'")
+    change_type: str = Field(
+        default="update", description="配置项的变更类型，如 'add', 'update', 'delete'"
+    )
 
-    @field_validator('key', mode='before')
+    @field_validator("key", mode="before")
     @classmethod
     def convert_to_set(cls, v):
         """将输入的 str、list、dict.keys() 等转为 set"""
@@ -55,6 +60,7 @@ class ChainEventData(BaseEventData):
     """
     链式事件数据的基类，所有具体事件数据类应继承自此类
     """
+
     pass
 
 
@@ -73,12 +79,24 @@ class AuthCredentials(ChainEventData):
         channel (Optional[str]): 认证渠道
         service (Optional[str]): 服务名称
     """
+
     # 输入参数
-    username: Optional[str] = Field(None, description="用户名，适用于 'password' 认证类型")
-    password: Optional[str] = Field(None, description="用户密码，适用于 'password' 认证类型")
-    mfa_code: Optional[str] = Field(None, description="一次性密码，目前仅适用于 'password' 认证类型")
-    code: Optional[str] = Field(None, description="授权码，适用于 'authorization_code' 认证类型")
-    grant_type: str = Field(..., description="认证类型，如 'password', 'authorization_code', 'client_credentials'")
+    username: Optional[str] = Field(
+        None, description="用户名，适用于 'password' 认证类型"
+    )
+    password: Optional[str] = Field(
+        None, description="用户密码，适用于 'password' 认证类型"
+    )
+    mfa_code: Optional[str] = Field(
+        None, description="一次性密码，目前仅适用于 'password' 认证类型"
+    )
+    code: Optional[str] = Field(
+        None, description="授权码，适用于 'authorization_code' 认证类型"
+    )
+    grant_type: str = Field(
+        ...,
+        description="认证类型，如 'password', 'authorization_code', 'client_credentials'",
+    )
     # scope: List[str] = Field(default_factory=list, description="权限范围，如 ['read', 'write']")
 
     # 输出参数
@@ -87,7 +105,7 @@ class AuthCredentials(ChainEventData):
     channel: Optional[str] = Field(default=None, description="认证渠道")
     service: Optional[str] = Field(default=None, description="服务名称")
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def check_fields_based_on_grant_type(cls, values):  # noqa
         grant_type = values.get("grant_type")
@@ -97,7 +115,9 @@ class AuthCredentials(ChainEventData):
 
         if grant_type == "password":
             if not values.get("username") or not values.get("password"):
-                raise ValueError("username and password are required for grant_type 'password'")
+                raise ValueError(
+                    "username and password are required for grant_type 'password'"
+                )
 
         elif grant_type == "authorization_code":
             if not values.get("code"):
@@ -122,11 +142,15 @@ class AuthInterceptCredentials(ChainEventData):
         source (str): 拦截源，默认值为 "未知拦截源"
         cancel (bool): 是否取消认证，默认值为 False
     """
+
     # 输入参数
     username: Optional[str] = Field(..., description="用户名")
     channel: str = Field(..., description="认证渠道")
     service: str = Field(..., description="服务名称")
-    status: str = Field(..., description="认证状态, 包含 'triggered' 表示认证触发，'completed' 表示认证成功")
+    status: str = Field(
+        ...,
+        description="认证状态, 包含 'triggered' 表示认证触发，'completed' 表示认证成功",
+    )
     token: Optional[str] = Field(default=None, description="认证令牌")
 
     # 输出参数
@@ -148,6 +172,7 @@ class CommandRegisterEventData(ChainEventData):
         source (str): 拦截源，默认值为 "未知拦截源"
         cancel (bool): 是否取消认证，默认值为 False
     """
+
     # 输入参数
     commands: Dict[str, dict] = Field(..., description="菜单命令")
     origin: str = Field(..., description="事件源")
@@ -169,18 +194,25 @@ class TransferRenameEventData(ChainEventData):
         render_str (str): 渲染生成的字符串
         path (Optional[Path]): 当前文件的目标路径
         source_path (Optional[str]): 源文件路径，即待整理的文件路径
+        source_item (Optional[FileItem]): 源文件信息，即待整理的文件信息
 
         # 输出参数
         updated (bool): 是否已更新，默认值为 False
         updated_str (str): 更新后的字符串
         source (str): 拦截源，默认值为 "未知拦截源"
     """
+
     # 输入参数
     template_string: str = Field(..., description="模板字符串")
     rename_dict: Dict[str, Any] = Field(..., description="渲染上下文")
     path: Optional[Path] = Field(None, description="文件的目标路径")
     render_str: str = Field(..., description="渲染生成的字符串")
-    source_path: Optional[str] = Field(None, description="源文件路径，即待整理的文件路径")
+    source_path: Optional[str] = Field(
+        None, description="源文件路径，即待整理的文件路径"
+    )
+    source_item: Optional[FileItem] = Field(
+        None, description="源文件信息，即待整理的文件信息"
+    )
 
     # 输出参数
     updated: bool = Field(default=False, description="是否已更新")
@@ -202,6 +234,7 @@ class ResourceSelectionEventData(BaseModel):
         updated_contexts (Optional[List[Context]]): 已更新的资源上下文列表，默认值为 None
         source (str): 更新源，默认值为 "未知更新源"
     """
+
     # 输入参数
     contexts: Any = Field(None, description="待选择的资源上下文列表")
     downloader: Optional[str] = Field(None, description="下载器")
@@ -209,7 +242,9 @@ class ResourceSelectionEventData(BaseModel):
 
     # 输出参数
     updated: bool = Field(default=False, description="是否已更新")
-    updated_contexts: Optional[List[Any]] = Field(default=None, description="已更新的资源上下文列表")
+    updated_contexts: Optional[List[Any]] = Field(
+        default=None, description="已更新的资源上下文列表"
+    )
     source: Optional[str] = Field(default="未知拦截源", description="拦截源")
 
 
@@ -231,6 +266,7 @@ class ResourceDownloadEventData(ChainEventData):
         source (str): 拦截源，默认值为 "未知拦截源"
         reason (str): 拦截原因，描述拦截的具体原因
     """
+
     # 输入参数
     context: Any = Field(None, description="当前资源上下文")
     episodes: Optional[Set[int]] = Field(None, description="需要下载的集数")
@@ -262,6 +298,7 @@ class TransferInterceptEventData(ChainEventData):
         source (str): 拦截源，默认值为 "未知拦截源"
         reason (str): 拦截原因，描述拦截的具体原因
     """
+
     # 输入参数
     fileitem: FileItem = Field(..., description="源文件")
     mediainfo: Any = Field(..., description="媒体信息")
@@ -280,12 +317,17 @@ class DiscoverMediaSource(BaseModel):
     """
     探索媒体数据源的基类
     """
+
     name: str = Field(..., description="数据源名称")
     mediaid_prefix: str = Field(..., description="媒体ID的前缀，不含:")
     api_path: str = Field(..., description="媒体数据源API地址")
-    filter_params: Optional[Dict[str, Any]] = Field(default=None, description="过滤参数")
+    filter_params: Optional[Dict[str, Any]] = Field(
+        default=None, description="过滤参数"
+    )
     filter_ui: Optional[List[dict]] = Field(default=[], description="过滤参数UI配置")
-    depends: Optional[Dict[str, list]] = Field(default=None, description="UI依赖关系字典")
+    depends: Optional[Dict[str, list]] = Field(
+        default=None, description="UI依赖关系字典"
+    )
 
 
 class DiscoverSourceEventData(ChainEventData):
@@ -296,14 +338,18 @@ class DiscoverSourceEventData(ChainEventData):
         # 输出参数
         extra_sources (List[DiscoverMediaSource]): 额外媒体数据源
     """
+
     # 输出参数
-    extra_sources: List[DiscoverMediaSource] = Field(default_factory=list, description="额外媒体数据源")
+    extra_sources: List[DiscoverMediaSource] = Field(
+        default_factory=list, description="额外媒体数据源"
+    )
 
 
 class RecommendMediaSource(BaseModel):
     """
     推荐媒体数据源的基类
     """
+
     name: str = Field(..., description="数据源名称")
     api_path: str = Field(..., description="媒体数据源API地址")
     type: str = Field(..., description="类型")
@@ -317,8 +363,11 @@ class RecommendSourceEventData(ChainEventData):
         # 输出参数
         extra_sources (List[RecommendMediaSource]): 额外媒体数据源
     """
+
     # 输出参数
-    extra_sources: List[RecommendMediaSource] = Field(default_factory=list, description="额外媒体数据源")
+    extra_sources: List[RecommendMediaSource] = Field(
+        default_factory=list, description="额外媒体数据源"
+    )
 
 
 class MediaRecognizeConvertEventData(ChainEventData):
@@ -333,12 +382,15 @@ class MediaRecognizeConvertEventData(ChainEventData):
         # 输出参数
         media_dict (dict): TheMovieDb/豆瓣的媒体数据
     """
+
     # 输入参数
     mediaid: str = Field(..., description="媒体ID")
     convert_type: str = Field(..., description="转换类型（themoviedb/douban）")
 
     # 输出参数
-    media_dict: dict = Field(default_factory=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）")
+    media_dict: dict = Field(
+        default_factory=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）"
+    )
 
 
 class StorageOperSelectionEventData(ChainEventData):
@@ -352,6 +404,7 @@ class StorageOperSelectionEventData(ChainEventData):
         # 输出参数
         storage_oper (Callable): 存储操作对象
     """
+
     # 输入参数
     storage: Optional[str] = Field(default=None, description="存储类型")
 
