@@ -50,6 +50,9 @@ class QQBot:
         :param QQ_GROUP_OPENID: 默认群组 openid（群聊，与 QQ_OPENID 二选一）
         :param name: 配置名称，用于消息来源标识和 Gateway 接收
         """
+        self._gateway_stop = None
+        self._gateway_thread = None
+        self._gateway_ws_holder: list = []
         if not QQ_APP_ID or not QQ_APP_SECRET:
             logger.error("QQ Bot 配置不完整：缺少 AppID 或 AppSecret")
             self._ready = False
@@ -151,6 +154,7 @@ class QQBot:
                     "get_gateway_url_fn": get_gateway_url,
                     "on_message_fn": self._on_gateway_message,
                     "stop_event": self._gateway_stop,
+                    "ws_holder": self._gateway_ws_holder,
                 },
                 daemon=True,
             )
@@ -161,10 +165,19 @@ class QQBot:
 
     def stop(self) -> None:
         """停止 Gateway 连接"""
-        if self._gateway_stop:
+        if self._gateway_stop is not None:
             self._gateway_stop.set()
-        if self._gateway_thread and self._gateway_thread.is_alive():
-            self._gateway_thread.join(timeout=5)
+        try:
+            if self._gateway_ws_holder:
+                self._gateway_ws_holder[0].close()
+        except Exception as e:
+            logger.debug(f"QQ Bot Gateway WebSocket close: {e}")
+        if self._gateway_thread is not None and self._gateway_thread.is_alive():
+            self._gateway_thread.join(timeout=20)
+            if self._gateway_thread.is_alive():
+                logger.warning(
+                    "QQ Bot Gateway 线程在 stop 后仍未退出，可能存在重复收消息，请重启进程"
+                )
 
     def get_state(self) -> bool:
         """获取就绪状态"""
