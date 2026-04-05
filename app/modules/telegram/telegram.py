@@ -927,10 +927,16 @@ class Telegram:
         """
         停止Telegram消息接收服务
         """
+        if not self._bot:
+            return
         # 停止所有typing任务
         for chat_id in list(self._typing_tasks.keys()):
             self._stop_typing_task(chat_id)
-        if self._bot:
+        try:
             self._bot.stop_polling()
-            self._polling_thread.join()
-            logger.info("Telegram消息接收服务已停止")
+        except Exception as e:
+            logger.debug(f"Telegram stop_polling: {e}")
+        thread = getattr(self, "_polling_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=15)
+        logger.info("Telegram消息接收服务已停止")

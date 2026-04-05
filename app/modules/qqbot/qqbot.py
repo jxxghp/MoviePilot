@@ -50,6 +50,8 @@ class QQBot:
         :param QQ_GROUP_OPENID: 默认群组 openid（群聊，与 QQ_OPENID 二选一）
         :param name: 配置名称，用于消息来源标识和 Gateway 接收
         """
+        self._gateway_stop = None
+        self._gateway_thread = None
         if not QQ_APP_ID or not QQ_APP_SECRET:
             logger.error("QQ Bot 配置不完整：缺少 AppID 或 AppSecret")
             self._ready = False
@@ -161,9 +163,9 @@ class QQBot:
 
     def stop(self) -> None:
         """停止 Gateway 连接"""
-        if self._gateway_stop:
+        if self._gateway_stop is not None:
             self._gateway_stop.set()
-        if self._gateway_thread and self._gateway_thread.is_alive():
+        if self._gateway_thread is not None and self._gateway_thread.is_alive():
             self._gateway_thread.join(timeout=5)
 
     def get_state(self) -> bool:

@@ -25,6 +25,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         """
         初始化模块
         """
+        self.stop()
         super().init_service(
             service_name=Telegram.__name__.lower(), service_type=Telegram
         )

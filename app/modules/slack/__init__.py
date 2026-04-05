@@ -15,6 +15,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         """
         初始化模块
         """
+        self.stop()
         super().init_service(service_name=Slack.__name__.lower(), service_type=Slack)
         self._channel = MessageChannel.Slack
 

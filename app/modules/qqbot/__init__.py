@@ -19,6 +19,7 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
     """QQ Bot 通知模块"""
 
     def init_module(self) -> None:
+        self.stop()
         super().init_service(service_name=QQBot.__name__.lower(), service_type=QQBot)
         self._channel = MessageChannel.QQ
 
