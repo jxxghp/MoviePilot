@@ -211,7 +211,7 @@ class CacheBackend(ABC):
         """
         获取缓存的区
         """
-        return f"region:{region}" if region else "region:default"
+        return f"region:{region}" if region else "region:DEFAULT"
 
     @staticmethod
     def is_redis() -> bool:

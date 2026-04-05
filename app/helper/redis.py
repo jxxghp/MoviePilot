@@ -140,7 +140,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         获取缓存的区
         """
-        return f"region:{quote(region)}" if region else "region:DEFAULT"
+        return f"region:{region}" if region else "region:DEFAULT"
 
     def __make_redis_key(self, region: str, key: str) -> str:
         """
@@ -370,7 +370,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         获取缓存的区
         """
-        return f"region:{region}" if region else "region:default"
+        return f"region:{region}" if region else "region:DEFAULT"
 
     def __make_redis_key(self, region: str, key: str) -> str:
         """
