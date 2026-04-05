@@ -6,7 +6,7 @@ QQ Bot Gateway WebSocket 客户端
 import json
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import websocket
 
@@ -24,6 +24,7 @@ def run_gateway(
     get_gateway_url_fn: Callable[[str], str],
     on_message_fn: Callable[[dict], None],
     stop_event: threading.Event,
+    ws_holder: List,
 ) -> None:
     """
     在后台线程中运行 Gateway WebSocket 连接
@@ -34,20 +35,20 @@ def run_gateway(
     :param get_gateway_url_fn: 获取 gateway URL 的函数 (token) -> url
     :param on_message_fn: 收到消息时的回调 (payload_dict) -> None
     :param stop_event: 停止事件，set 时退出循环
+    :param ws_holder: 调用方持有的单元素列表，存放当前 WebSocketApp，供 stop() 时 close 以打断 run_forever
     """
     last_seq: Optional[int] = None
     heartbeat_interval_ms: Optional[int] = None
     heartbeat_timer: Optional[threading.Timer] = None
-    ws_ref: list = []  # 用于在闭包中保持 ws 引用
 
     def send_heartbeat():
         nonlocal heartbeat_timer
         if stop_event.is_set():
             return
         try:
-            if ws_ref and ws_ref[0]:
+            if ws_holder and ws_holder[0]:
                 payload = {"op": 1, "d": last_seq}
-                ws_ref[0].send(json.dumps(payload))
+                ws_holder[0].send(json.dumps(payload))
                 logger.debug(f"[QQ Gateway:{config_name}] Heartbeat sent, seq={last_seq}")
         except Exception as err:
             logger.debug(f"[QQ Gateway:{config_name}] Heartbeat error: {err}")
@@ -87,7 +88,7 @@ def run_gateway(
                     "shard": [0, 1],
                 },
             }
-            ws_ref[0].send(json.dumps(identify))
+            ws_holder[0].send(json.dumps(identify))
             logger.info(f"[QQ Gateway:{config_name}] Identify sent")
 
             # 启动心跳
@@ -139,8 +140,8 @@ def run_gateway(
 
         elif op == 9:  # Invalid Session
             logger.warning(f"[QQ Gateway:{config_name}] Invalid session")
-            if ws_ref and ws_ref[0]:
-                ws_ref[0].close()
+            if ws_holder and ws_holder[0]:
+                ws_holder[0].close()
 
     def on_ws_error(_, error):
         logger.error(f"[QQ Gateway:{config_name}] WebSocket error: {error}")
@@ -149,6 +150,7 @@ def run_gateway(
         logger.info(f"[QQ Gateway:{config_name}] WebSocket closed: {close_status_code} {close_msg}")
         if heartbeat_timer:
             heartbeat_timer.cancel()
+        ws_holder.clear()
 
     reconnect_delays = [1, 2, 5, 10, 30, 60]
     attempt = 0
@@ -165,8 +167,8 @@ def run_gateway(
                 on_error=on_ws_error,
                 on_close=on_ws_close,
             )
-            ws_ref.clear()
-            ws_ref.append(ws)
+            ws_holder.clear()
+            ws_holder.append(ws)
 
             # run_forever 会阻塞，需要传入 stop_event 的检查
             # websocket-client 的 run_forever 支持 ping_interval, ping_timeout
