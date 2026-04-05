@@ -10,6 +10,7 @@ from tests.test_mediascrape import (
 )
 from tests.test_metainfo import MetaInfoTest
 from tests.test_object import ObjectUtilsTest
+from tests.test_subscribe_chain import SubscribeChainTest
 
 
 if __name__ == '__main__':
@@ -35,6 +36,9 @@ if __name__ == '__main__':
     suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestMediaScrapingImages))
     suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestMediaScrapingTVDirectory))
     suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestMediaScrapeEvents))
+
+    # 测试订阅洗版匹配
+    suite.addTest(SubscribeChainTest('test_is_episode_range_covered'))
 
     # 运行测试
     runner = unittest.TextTestRunner()

@@ -593,11 +593,17 @@ class SubscribeChain(ChainBase):
 
                                 # 洗版
                                 if subscribe.best_version:
-                                    # 洗版时，非整季不要
-                                    if torrent_mediainfo.type == MediaType.TV:
-                                        if torrent_meta.episode_list:
-                                            logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
-                                            continue
+                                    # 洗版时，不符合订阅集数的不要
+                                    if (
+                                        torrent_mediainfo.type == MediaType.TV
+                                        and not self._is_episode_range_covered(
+                                            meta=torrent_meta, subscribe=subscribe
+                                        )
+                                    ):
+                                        logger.info(
+                                            f"{subscribe.name} 正在洗版，{torrent_info.title} 不符合订阅集数范围"
+                                        )
+                                        continue
                                     # 洗版时，优先级小于等于已下载优先级的不要
                                     if subscribe.current_priority \
                                             and torrent_info.pri_order <= subscribe.current_priority:
@@ -985,11 +991,18 @@ class SubscribeChain(ChainBase):
                                                 )
                                                 continue
                                 else:
-                                    # 洗版时，非整季不要
-                                    if meta.type == MediaType.TV:
-                                        if torrent_meta.episode_list:
-                                            logger.debug(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
-                                            continue
+                                    # 洗版时，不符合订阅集数的不要
+                                    if (
+                                        meta.type == MediaType.TV
+                                        and not self._is_episode_range_covered(
+                                            meta=torrent_meta,
+                                            subscribe=subscribe,
+                                        )
+                                    ):
+                                        logger.debug(
+                                            f"{subscribe.name} 正在洗版，{torrent_info.title} 不符合订阅集数范围"
+                                        )
+                                        continue
 
                             # 匹配订阅附加参数
                             if not torrenthelper.filter_torrent(torrent_info=torrent_info,
@@ -1820,6 +1833,23 @@ class SubscribeChain(ChainBase):
 
         # 返回结果，表示媒体未完全下载或存在
         return False, no_exists
+
+    @staticmethod
+    def _is_episode_range_covered(meta: MetaBase, subscribe: Subscribe) -> bool:
+        """
+        判断种子是否包含指定订阅的剧集范围
+        """
+        episodes = meta.episode_list
+        if not episodes:
+            # 没有剧集信息，表示该种子为合集
+            return True
+
+        min_ep = min(episodes)
+        max_ep = max(episodes)
+        start_ep = subscribe.start_episode or 1
+        end_ep = subscribe.total_episode
+
+        return min_ep <= start_ep and max_ep >= end_ep
 
     @staticmethod
     def get_states_for_search(state: str) -> str:
