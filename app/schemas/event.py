@@ -317,9 +317,9 @@ class TransferOverwriteCheckEventData(ChainEventData):
     """
     TransferOverwriteCheck 事件的数据模型
 
-    在覆盖模式判断（如按文件大小覆盖）执行之前触发，允许插件提供目标文件
-    的真实大小（例如本地 .strm 文件指向的网盘原始文件大小），或者直接给出
-    覆盖决策。
+    在覆盖模式判断（如按文件大小覆盖）执行之前触发，允许插件提供源文件与
+    目标文件的真实大小（例如本地 .strm 文件指向的网盘原始文件大小），或者
+    直接给出覆盖决策。
 
     Attributes:
         # 输入参数
@@ -332,6 +332,8 @@ class TransferOverwriteCheckEventData(ChainEventData):
         options (dict): 其他参数
 
         # 输出参数
+        source_size (Optional[int]): 由插件提供的源文件真实大小，覆盖
+            fileitem.size 用于 size 模式比较；为 None 时表示不修改
         target_size (Optional[int]): 由插件提供的目标文件真实大小，覆盖
             target_item.size 用于 size 模式比较；为 None 时表示不修改
         overwrite (Optional[bool]): 由插件直接给出的覆盖决策，非 None 时
@@ -350,6 +352,9 @@ class TransferOverwriteCheckEventData(ChainEventData):
     options: Optional[dict] = Field(default=None, description="其他参数")
 
     # 输出参数
+    source_size: Optional[int] = Field(
+        default=None, description="插件提供的源文件真实大小"
+    )
     target_size: Optional[int] = Field(
         default=None, description="插件提供的目标文件真实大小"
     )

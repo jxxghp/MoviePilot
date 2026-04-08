@@ -298,7 +298,7 @@ class TransHandler:
                             logger.info(
                                 f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}"
                             )
-                            # 触发覆盖检查事件，允许插件提供目标文件真实大小
+                            # 触发覆盖检查事件，允许插件提供源/目标文件真实大小
                             # 或直接给出覆盖决策（例如 .strm 文件指向网盘原始文件）
                             overwrite_event_data = TransferOverwriteCheckEventData(
                                 fileitem=fileitem,
@@ -313,18 +313,22 @@ class TransHandler:
                                 overwrite_event_data,
                             )
                             plugin_overwrite: Optional[bool] = None
+                            plugin_source_size: Optional[int] = None
                             plugin_target_size: Optional[int] = None
                             if overwrite_event and overwrite_event.event_data:
                                 overwrite_event_data = overwrite_event.event_data
                                 plugin_overwrite = overwrite_event_data.overwrite
+                                plugin_source_size = overwrite_event_data.source_size
                                 plugin_target_size = overwrite_event_data.target_size
                                 if (
                                     plugin_overwrite is not None
+                                    or plugin_source_size is not None
                                     or plugin_target_size is not None
                                 ):
                                     logger.info(
                                         f"覆盖检查事件由 {overwrite_event_data.source} 处理："
                                         f"overwrite={plugin_overwrite}, "
+                                        f"source_size={plugin_source_size}, "
                                         f"target_size={plugin_target_size}, "
                                         f"reason={overwrite_event_data.reason}"
                                     )
@@ -349,12 +353,17 @@ class TransHandler:
                                 overflag = True
                             elif overwrite_mode == "size":
                                 # 存在时大覆盖小
+                                source_size = (
+                                    plugin_source_size
+                                    if plugin_source_size is not None
+                                    else fileitem.size
+                                )
                                 target_size = (
                                     plugin_target_size
                                     if plugin_target_size is not None
                                     else target_item.size
                                 )
-                                if target_size < fileitem.size:
+                                if target_size < source_size:
                                     logger.info(
                                         f"目标文件文件大小更小，将覆盖：{new_file}"
                                     )
