@@ -156,6 +156,8 @@ class ChainEventType(Enum):
     TransferRename = "transfer.rename"
     # 整理拦截
     TransferIntercept = "transfer.intercept"
+    # 整理覆盖检查
+    TransferOverwriteCheck = "transfer.overwrite.check"
     # 资源选择
     ResourceSelection = "resource.selection"
     # 资源下载

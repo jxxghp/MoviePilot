@@ -313,6 +313,53 @@ class TransferInterceptEventData(ChainEventData):
     reason: str = Field(default="", description="拦截原因")
 
 
+class TransferOverwriteCheckEventData(ChainEventData):
+    """
+    TransferOverwriteCheck 事件的数据模型
+
+    在覆盖模式判断（如按文件大小覆盖）执行之前触发，允许插件提供目标文件
+    的真实大小（例如本地 .strm 文件指向的网盘原始文件大小），或者直接给出
+    覆盖决策。
+
+    Attributes:
+        # 输入参数
+        fileitem (FileItem): 源文件
+        target_item (FileItem): 目标文件（已存在）
+        target_storage (str): 目标存储
+        target_path (Path): 目标文件路径
+        overwrite_mode (str): 覆盖模式（always、size、never、latest）
+        transfer_type (str): 整理方式
+        options (dict): 其他参数
+
+        # 输出参数
+        target_size (Optional[int]): 由插件提供的目标文件真实大小，覆盖
+            target_item.size 用于 size 模式比较；为 None 时表示不修改
+        overwrite (Optional[bool]): 由插件直接给出的覆盖决策，非 None 时
+            将完全跳过 MoviePilot 内置的 size/never/latest 等比较逻辑
+        source (str): 处理来源
+        reason (str): 处理原因，描述插件做出决策或修改的原因
+    """
+
+    # 输入参数
+    fileitem: FileItem = Field(..., description="源文件")
+    target_item: FileItem = Field(..., description="目标已存在文件")
+    target_storage: str = Field(..., description="目标存储")
+    target_path: Path = Field(..., description="目标文件路径")
+    overwrite_mode: str = Field(..., description="覆盖模式")
+    transfer_type: str = Field(..., description="整理方式")
+    options: Optional[dict] = Field(default=None, description="其他参数")
+
+    # 输出参数
+    target_size: Optional[int] = Field(
+        default=None, description="插件提供的目标文件真实大小"
+    )
+    overwrite: Optional[bool] = Field(
+        default=None, description="插件直接给出的覆盖决策"
+    )
+    source: str = Field(default="未知处理源", description="处理来源")
+    reason: str = Field(default="", description="处理原因")
+
+
 class DiscoverMediaSource(BaseModel):
     """
     探索媒体数据源的基类
