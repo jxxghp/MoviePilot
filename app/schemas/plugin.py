@@ -69,6 +69,24 @@ class PluginDashboard(Plugin):
     elements: Optional[List[dict]] = Field(default_factory=list)
 
 
+class PluginSidebarNavItem(BaseModel):
+    """
+    插件侧栏导航项（前端全页路由）
+    """
+    plugin_id: str = Field(description="插件 ID")
+    nav_key: str = Field(description="导航键，对应 URL 段")
+    title: str = Field(description="侧栏标题")
+    icon: str = Field(default="mdi-puzzle", description="MDI 图标名")
+    section: str = Field(
+        description="分组：start / discovery / subscribe / organize / system",
+    )
+    permission: Optional[str] = Field(
+        default=None,
+        description="权限：subscribe / discovery / search / manage / admin",
+    )
+    order: int = Field(default=0, description="同组内排序，越小越靠前")
+
+
 class PluginMemoryInfo(BaseModel):
     """插件内存信息"""
     plugin_id: str = Field(description="插件ID")

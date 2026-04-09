@@ -809,6 +809,64 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 })
         return remotes
 
+    def get_plugin_sidebar_nav(self) -> List[Dict[str, Any]]:
+        """
+        聚合所有已启用 Vue 插件的侧栏导航项（get_sidebar_nav）。
+        """
+        valid_sections = {"start", "discovery", "subscribe", "organize", "system"}
+        valid_permissions = {"subscribe", "discovery", "search", "manage", "admin"}
+        items: List[Dict[str, Any]] = []
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
+            if not plugin.get_state():
+                continue
+            if not hasattr(plugin, "get_sidebar_nav") or not ObjectUtils.check_method(plugin.get_sidebar_nav):
+                continue
+            if not hasattr(plugin, "get_render_mode"):
+                continue
+            render_mode, _ = plugin.get_render_mode()
+            if render_mode != "vue":
+                continue
+            try:
+                nav_list = plugin.get_sidebar_nav()
+                if not nav_list:
+                    continue
+                for raw in nav_list:
+                    if not raw or not isinstance(raw, dict):
+                        continue
+                    nav_key = str(raw.get("nav_key") or raw.get("key") or "main").strip()
+                    if not nav_key or any(c in nav_key for c in ["/", "?", "#", " "]):
+                        logger.warning(f"插件[{plugin_id}]侧栏项 nav_key 无效，已跳过: {nav_key!r}")
+                        continue
+                    title = raw.get("title") or plugin.plugin_name
+                    icon = raw.get("icon") or "mdi-puzzle"
+                    section = str(raw.get("section") or "system").lower()
+                    if section not in valid_sections:
+                        section = "system"
+                    perm = raw.get("permission")
+                    if perm is not None and str(perm) not in valid_permissions:
+                        perm = None
+                    else:
+                        perm = str(perm) if perm is not None else None
+                    order = raw.get("order", 0)
+                    try:
+                        order = int(order)
+                    except (TypeError, ValueError):
+                        order = 0
+                    items.append({
+                        "plugin_id": plugin_id,
+                        "nav_key": nav_key,
+                        "title": title,
+                        "icon": icon,
+                        "section": section,
+                        "permission": perm,
+                        "order": order,
+                    })
+            except Exception as e:
+                logger.error(f"获取插件[{plugin_id}]侧栏导航出错：{str(e)}")
+        items.sort(key=lambda x: (x["section"], x["order"], x["plugin_id"], x["nav_key"]))
+        return items
+
     def get_plugin_dashboard_meta(self) -> List[Dict[str, str]]:
         """
         获取所有插件仪表盘元信息

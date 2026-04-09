@@ -260,6 +260,14 @@ async def remotes(token: str) -> Any:
     return PluginManager().get_plugin_remotes()
 
 
+@router.get("/sidebar_nav", summary="获取插件侧栏导航项", response_model=List[schemas.PluginSidebarNavItem])
+def plugin_sidebar_nav(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    聚合已启用 Vue 插件声明的侧栏入口（get_sidebar_nav），供前端主界面侧栏展示。
+    """
+    return PluginManager().get_plugin_sidebar_nav()
+
+
 @router.get("/form/{plugin_id}", summary="获取插件表单页面")
 def plugin_form(plugin_id: str,
                 _: User = Depends(get_current_active_superuser)) -> dict:
