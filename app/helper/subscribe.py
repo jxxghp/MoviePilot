@@ -108,7 +108,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
             return False, "连接MoviePilot服务器失败"
 
         # 检查响应状态
-        if res and res.status_code == 200:
+        if res.status_code == 200:
             # 清除缓存
             if clear_cache:
                 self.get_shares.cache_clear()
@@ -126,7 +126,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
         """
         处理返回List的HTTP响应
         """
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return res.json()
         return []
 
@@ -202,7 +202,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
         res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_reg, json=sub)
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return True
         return False
 
@@ -216,7 +216,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
         res = await AsyncRequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_reg, json=sub)
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return True
         return False
 
@@ -267,7 +267,7 @@ class SubscribeHelper(metaclass=WeakSingleton):
                                                     sub.to_dict() for sub in subscribes
                                                 ]
                                             })
-        return True if res else False
+        return bool(res is not None and res.status_code == 200)
 
     def sub_share(self, subscribe_id: int,
                   share_title: str, share_comment: str, share_user: str) -> Tuple[bool, str]:

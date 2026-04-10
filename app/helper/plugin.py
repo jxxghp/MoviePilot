@@ -146,7 +146,7 @@ class PluginHelper(metaclass=WeakSingleton):
         if not settings.PLUGIN_STATISTIC_SHARE:
             return {}
         res = RequestUtils(proxies=settings.PROXY, timeout=10).get_res(self._install_statistic)
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return res.json()
         return {}
 
@@ -167,7 +167,7 @@ class PluginHelper(metaclass=WeakSingleton):
             "plugin_id": pid,
             "repo_url": repo_url
         })
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return True
         return False
 
@@ -192,7 +192,7 @@ class PluginHelper(metaclass=WeakSingleton):
                            content_type="application/json",
                            timeout=5).post(self._install_report,
                                            json={"plugins": payload_plugins})
-        return True if res else False
+        return bool(res is not None and res.status_code == 200)
 
     def install(self, pid: str, repo_url: str, package_version: Optional[str] = None, force_install: bool = False) \
             -> Tuple[bool, str]:
@@ -1002,7 +1002,7 @@ class PluginHelper(metaclass=WeakSingleton):
         if not settings.PLUGIN_STATISTIC_SHARE:
             return {}
         res = await AsyncRequestUtils(proxies=settings.PROXY, timeout=10).get_res(self._install_statistic)
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return res.json()
         return {}
 
@@ -1023,7 +1023,7 @@ class PluginHelper(metaclass=WeakSingleton):
             "plugin_id": pid,
             "repo_url": repo_url
         })
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             return True
         return False
 
@@ -1048,7 +1048,7 @@ class PluginHelper(metaclass=WeakSingleton):
                                       content_type="application/json",
                                       timeout=5).post(self._install_report,
                                                       json={"plugins": payload_plugins})
-        return True if res else False
+        return bool(res is not None and res.status_code == 200)
 
     async def __async_get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
             Tuple[Optional[list], Optional[str]]:
