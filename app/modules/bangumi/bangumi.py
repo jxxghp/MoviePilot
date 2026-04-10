@@ -39,7 +39,7 @@ class BangumiApi(object):
             params.update(kwargs)
         resp = self._req.get_res(url=req_url, params=params)
         try:
-            if not resp:
+            if resp is None or resp.status_code != 200:
                 return None
             result = resp.json()
             return result.get(key) if key else result
@@ -55,7 +55,7 @@ class BangumiApi(object):
             params.update(kwargs)
         resp = await self._async_req.get_res(url=req_url, params=params)
         try:
-            if not resp:
+            if resp is None or resp.status_code != 200:
                 return None
             result = resp.json()
             return result.get(key) if key else result

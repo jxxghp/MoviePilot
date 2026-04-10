@@ -238,7 +238,7 @@ class ImageHelper(metaclass=Singleton):
         # 请求远程图片
         params = self._get_request_params(url, proxy, cookies)
         response = RequestUtils(**params).get_res(url=url)
-        if not response:
+        if response is None or response.status_code != 200:
             logger.warn(f"Failed to fetch image from URL: {url}")
             return None
 
@@ -274,7 +274,7 @@ class ImageHelper(metaclass=Singleton):
         # 请求远程图片
         params = self._get_request_params(url, proxy, cookies)
         response = await AsyncRequestUtils(**params).get_res(url=url)
-        if not response:
+        if response is None or response.status_code != 200:
             logger.warn(f"Failed to fetch image from URL: {url}")
             return None
 
