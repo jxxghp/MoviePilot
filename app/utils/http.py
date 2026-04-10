@@ -161,7 +161,7 @@ class RequestUtils:
             response = self.request(method=method, url=url, **kwargs)
             yield response
         finally:
-            if response:
+            if response is not None:
                 try:
                     response.close()
                 except Exception as e:
@@ -280,7 +280,7 @@ class RequestUtils:
         try:
             yield response
         finally:
-            if response:
+            if response is not None:
                 response.close()
 
     def post_res(self,
@@ -654,7 +654,7 @@ class AsyncRequestUtils:
             response = await self.request(method=method, url=url, **kwargs)
             yield response
         finally:
-            if response:
+            if response is not None:
                 try:
                     await response.aclose()
                 except Exception as e:
@@ -785,7 +785,7 @@ class AsyncRequestUtils:
         try:
             yield response
         finally:
-            if response:
+            if response is not None:
                 await response.aclose()
 
     async def post_res(self,
