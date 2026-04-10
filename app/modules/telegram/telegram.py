@@ -2,7 +2,7 @@ import asyncio
 import re
 import threading
 import time
-from typing import Optional, List, Dict, Callable, Union
+from typing import Any, Optional, List, Dict, Callable, Union
 from urllib.parse import urljoin, quote
 
 from telebot import TeleBot, apihelper
@@ -384,7 +384,12 @@ class Telegram:
             if original_message_id and original_chat_id:
                 # 编辑消息
                 result = self.__edit_message(
-                    original_chat_id, original_message_id, caption, buttons, image
+                    original_chat_id,
+                    original_message_id,
+                    caption,
+                    buttons,
+                    image,
+                    disable_web_page_preview=disable_web_page_preview,
                 )
                 self._stop_typing_task(chat_id)
                 return {
@@ -719,6 +724,7 @@ class Telegram:
             text: str,
             buttons: Optional[List[List[dict]]] = None,
             image: Optional[str] = None,
+            disable_web_page_preview: Optional[bool] = None,
     ) -> Optional[bool]:
         """
         编辑已发送的消息
@@ -727,6 +733,7 @@ class Telegram:
         :param text: 新的消息内容
         :param buttons: 按钮列表
         :param image: 图片URL或路径
+        :param disable_web_page_preview: 是否禁用链接预览（仅纯文本编辑时生效）
         :return: 编辑是否成功
         """
         if not self._bot:
@@ -751,13 +758,18 @@ class Telegram:
                 )
             else:
                 # 如果没有图片，使用edit_message_text
-                self._bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=standardize(text),
-                    parse_mode="MarkdownV2",
-                    reply_markup=reply_markup,
-                )
+                edit_text_kwargs: Dict[str, Any] = {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": standardize(text),
+                    "parse_mode": "MarkdownV2",
+                    "reply_markup": reply_markup,
+                }
+                if disable_web_page_preview is not None:
+                    edit_text_kwargs["disable_web_page_preview"] = (
+                        disable_web_page_preview
+                    )
+                self._bot.edit_message_text(**edit_text_kwargs)
             return True
         except Exception as e:
             logger.error(f"编辑消息失败：{str(e)}")
