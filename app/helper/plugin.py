@@ -444,23 +444,63 @@ class PluginHelper(metaclass=WeakSingleton):
         if plugin_dir.exists():
             shutil.rmtree(plugin_dir, ignore_errors=True)
 
+    def __collect_plugin_wheels_dirs(self) -> List[Path]:
+        """
+        收集已安装插件目录下可用的 wheels 目录，供批量依赖安装时复用。
+        """
+        wheels_dirs = []
+        try:
+            install_plugins = {
+                plugin_id.lower()
+                for plugin_id in self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
+            }
+            for plugin_id in install_plugins:
+                wheels_dir = PLUGIN_DIR / plugin_id / "wheels"
+                if wheels_dir.is_dir():
+                    wheels_dirs.append(wheels_dir)
+        except Exception as e:
+            logger.error(f"收集插件 wheels 目录时发生错误：{e}")
+            return []
+
+        # 去重并保持稳定顺序，避免重复传递相同目录
+        return list(dict.fromkeys(wheels_dirs))
+
     @staticmethod
-    def pip_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
+    def pip_install_with_fallback(requirements_file: Path,
+                                  find_links_dirs: Optional[List[Path]] = None) -> Tuple[bool, str]:
         """
         使用自动降级策略安装依赖，并确保新安装的包可被动态导入
         :param requirements_file: 依赖的 requirements.txt 文件路径
+        :param find_links_dirs: 额外的本地 wheels 目录列表
         :return: (是否成功, 错误信息)
         """
         wheels_dir = requirements_file.parent / "wheels"
+        candidate_dirs = []
+        if wheels_dir.is_dir():
+            candidate_dirs.append(wheels_dir)
+        if find_links_dirs:
+            candidate_dirs.extend(find_links_dirs)
+
+        # 去重并保持传入顺序
+        resolved_dirs = []
+        seen_dirs = set()
+        for candidate_dir in candidate_dirs:
+            candidate_path = Path(candidate_dir)
+            if not candidate_path.is_dir():
+                continue
+            candidate_key = str(candidate_path.resolve())
+            if candidate_key in seen_dirs:
+                continue
+            seen_dirs.add(candidate_key)
+            resolved_dirs.append(candidate_path)
 
         find_links_option = []
-        if wheels_dir.is_dir():
-            # 如果目录存在，增加 --find-links 选项
-            logger.debug(f"[PIP] 发现插件内嵌的 wheels 目录: {wheels_dir}，将优先从本地安装。")
-            find_links_option = ["--find-links", str(wheels_dir)]
+        if resolved_dirs:
+            for local_wheels_dir in resolved_dirs:
+                logger.debug(f"[PIP] 发现可用的 wheels 目录: {local_wheels_dir}，将优先从本地安装。")
+                find_links_option.extend(["--find-links", str(local_wheels_dir)])
         else:
-            # 如果不存在，选项为空列表，对后续命令无影响
-            logger.debug(f"[PIP] 未发现插件内嵌的 wheels 目录，将仅使用在线源。")
+            logger.debug(f"[PIP] 未发现可用的 wheels 目录，将仅使用在线源。")
 
         base_cmd = [sys.executable, "-m", "pip", "install"] + find_links_option + ["-r", str(requirements_file)]
         strategies = []
@@ -719,7 +759,8 @@ class PluginHelper(metaclass=WeakSingleton):
                     f.write(dep + "\n")
             try:
                 # 使用自动降级策略安装依赖
-                return self.pip_install_with_fallback(requirements_temp_file)
+                wheels_dirs = self.__collect_plugin_wheels_dirs()
+                return self.pip_install_with_fallback(requirements_temp_file, wheels_dirs)
             finally:
                 # 删除临时文件
                 requirements_temp_file.unlink()
@@ -1237,7 +1278,8 @@ class PluginHelper(metaclass=WeakSingleton):
 
             try:
                 # 使用自动降级策略安装依赖
-                return self.pip_install_with_fallback(Path(requirements_temp_file))
+                wheels_dirs = self.__collect_plugin_wheels_dirs()
+                return self.pip_install_with_fallback(Path(requirements_temp_file), wheels_dirs)
             finally:
                 # 删除临时文件
                 await requirements_temp_file.unlink()
