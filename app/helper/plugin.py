@@ -49,6 +49,24 @@ class PluginHelper(metaclass=WeakSingleton):
                 if self.install_report():
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
+    @staticmethod
+    def __parse_plugin_index_response(content: str) -> Optional[Dict[str, dict]]:
+        """
+        解析插件索引响应，仅缓存成功解析出的字典结果。
+        """
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            if "404: Not Found" not in content:
+                logger.warn(f"插件包数据解析失败：{content}")
+            return None
+
+        if not isinstance(payload, dict):
+            logger.warn(f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}")
+            return None
+
+        return payload
+
     @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
                          package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
@@ -68,17 +86,9 @@ class PluginHelper(metaclass=WeakSingleton):
         package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
 
         res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
-        if res is None:
+        if res is None or res.status_code != 200:
             return None
-        if res:
-            content = res.text
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                if "404: Not Found" not in content:
-                    logger.warn(f"插件包数据解析失败：{content}")
-                    return None
-        return {}
+        return self.__parse_plugin_index_response(res.text)
 
     def get_plugin_package_version(self, pid: str, repo_url: str,
                                    package_version: Optional[str] = None) -> Optional[str]:
@@ -940,17 +950,9 @@ class PluginHelper(metaclass=WeakSingleton):
 
         res = await self.__async_request_with_fallback(package_url,
                                                        headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
-        if res is None:
+        if res is None or res.status_code != 200:
             return None
-        if res:
-            content = res.text
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                if "404: Not Found" not in content:
-                    logger.warn(f"插件包数据解析失败：{content}")
-                    return None
-        return {}
+        return self.__parse_plugin_index_response(res.text)
 
     async def async_get_statistic(self) -> Dict:
         """
