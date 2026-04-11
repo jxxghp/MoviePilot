@@ -1766,6 +1766,8 @@ class SubscribeChain(ChainBase):
             - exist_flag (bool): 布尔值，表示媒体是否已经完全下载或已存在
             - no_exists (dict): 缺失的媒体信息，包含缺失的集数或其他相关信息
         """
+        self.__refresh_total_episode_before_completion(subscribe=subscribe, mediainfo=mediainfo)
+
         # 非洗版
         if not subscribe.best_version:
             # 每季总集数
@@ -1833,6 +1835,35 @@ class SubscribeChain(ChainBase):
 
         # 返回结果，表示媒体未完全下载或存在
         return False, no_exists
+
+    @staticmethod
+    def __refresh_total_episode_before_completion(subscribe: Subscribe, mediainfo: MediaInfo):
+        """
+        在完成判断前，按最新识别结果兜底修正订阅总集数，防止旧总集数导致误完成。
+        """
+        if subscribe.type != MediaType.TV.value:
+            return
+        if subscribe.manual_total_episode:
+            return
+        if subscribe.season is None:
+            return
+
+        new_total_episode = len((mediainfo.seasons or {}).get(subscribe.season) or [])
+        old_total_episode = subscribe.total_episode or 0
+        if not new_total_episode or new_total_episode <= old_total_episode:
+            return
+
+        old_lack_episode = subscribe.lack_episode or 0
+        new_lack_episode = old_lack_episode + (new_total_episode - old_total_episode)
+        SubscribeOper().update(subscribe.id, {
+            "total_episode": new_total_episode,
+            "lack_episode": new_lack_episode
+        })
+        subscribe.total_episode = new_total_episode
+        subscribe.lack_episode = new_lack_episode
+        logger.info(
+            f"订阅 {subscribe.name} 第{subscribe.season}季 总集数更新为 {new_total_episode}，缺失集数更新为 {new_lack_episode}"
+        )
 
     @staticmethod
     def _is_episode_range_covered(meta: MetaBase, subscribe: Subscribe) -> bool:
