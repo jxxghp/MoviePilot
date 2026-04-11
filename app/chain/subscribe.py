@@ -1855,12 +1855,15 @@ class SubscribeChain(ChainBase):
 
         old_lack_episode = subscribe.lack_episode or 0
         new_lack_episode = old_lack_episode + (new_total_episode - old_total_episode)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         SubscribeOper().update(subscribe.id, {
             "total_episode": new_total_episode,
-            "lack_episode": new_lack_episode
+            "lack_episode": new_lack_episode,
+            "last_update": now
         })
         subscribe.total_episode = new_total_episode
         subscribe.lack_episode = new_lack_episode
+        subscribe.last_update = now
         logger.info(
             f"订阅 {subscribe.name} 第{subscribe.season}季 总集数更新为 {new_total_episode}，缺失集数更新为 {new_lack_episode}"
         )
