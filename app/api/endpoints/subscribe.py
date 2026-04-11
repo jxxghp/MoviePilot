@@ -399,7 +399,15 @@ async def subscribe_history(
     """
     查询电影/电视剧订阅历史
     """
-    return await SubscribeHistory.async_list_by_type(db, mtype=mtype, page=page, count=count)
+    histories = await SubscribeHistory.async_list_by_type(db, mtype=mtype, page=page, count=count)
+    result = []
+    for history in histories:
+        history_item = schemas.Subscribe.model_validate(history, from_attributes=True)
+        if history_item.type == MediaType.TV.value:
+            history_item.total_episode = 0
+            history_item.lack_episode = 0
+        result.append(history_item)
+    return result
 
 
 @router.delete("/history/{history_id}", summary="删除订阅历史", response_model=schemas.Response)
