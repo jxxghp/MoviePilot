@@ -86,8 +86,12 @@ class PluginHelper(metaclass=WeakSingleton):
         package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
 
         res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
-        if res is None or res.status_code != 200:
-            return {} if res.status_code == 404 else None
+        if res is None:
+            return None
+        if res.status_code == 404:
+            return {}
+        if res.status_code != 200:
+            return None
         return self.__parse_plugin_index_response(res.text)
 
     def get_plugin_package_version(self, pid: str, repo_url: str,
@@ -991,7 +995,11 @@ class PluginHelper(metaclass=WeakSingleton):
 
         res = await self.__async_request_with_fallback(package_url,
                                                        headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
-        if res is None or res.status_code != 200:
+        if res is None:
+            return None
+        if res.status_code == 404:
+            return {}
+        if res.status_code != 200:
             return None
         return self.__parse_plugin_index_response(res.text)
 
