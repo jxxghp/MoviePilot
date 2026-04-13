@@ -126,6 +126,20 @@ class Discord:
                 if isinstance(message.channel, discord.DMChannel)
                 else "guild",
             }
+            if message.attachments:
+                payload["attachments"] = [
+                    {
+                        "id": str(attachment.id),
+                        "filename": attachment.filename,
+                        "content_type": attachment.content_type,
+                        "url": attachment.url,
+                        "proxy_url": attachment.proxy_url,
+                        "size": attachment.size,
+                        "height": attachment.height,
+                        "width": attachment.width,
+                    }
+                    for attachment in message.attachments
+                ]
             await self._post_to_ds(payload)
 
         @self._client.event
@@ -346,7 +360,7 @@ class Discord:
         original_message_id: Optional[Union[int, str]],
         original_chat_id: Optional[str],
         mtype: Optional["NotificationType"] = None,
-    ) -> Tuple[bool, Optional[int]]:
+    ) -> Tuple[bool, Optional[Dict[str, str]]]:
         logger.debug(
             f"[Discord] _send_message: userid={userid}, original_chat_id={original_chat_id}"
         )
@@ -373,13 +387,29 @@ class Discord:
                 embed=embed,
                 view=view,
             )
-            return success, int(original_message_id) if original_message_id else None
+            return (
+                success,
+                {
+                    "message_id": str(original_message_id),
+                    "chat_id": str(original_chat_id),
+                }
+                if success and original_message_id and original_chat_id
+                else None,
+            )
 
         logger.debug(f"[Discord] 发送新消息到频道: {channel}")
         try:
             sent_message = await channel.send(content=content, embed=embed, view=view)
             logger.debug("[Discord] 消息发送成功")
-            return True, sent_message.id if sent_message else None
+            return (
+                True,
+                {
+                    "message_id": str(sent_message.id),
+                    "chat_id": str(channel.id),
+                }
+                if sent_message and getattr(channel, "id", None) is not None
+                else None,
+            )
         except Exception as e:
             logger.error(f"[Discord] 发送消息到频道失败: {e}")
             return False, None

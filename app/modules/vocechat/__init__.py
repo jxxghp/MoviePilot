@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import Context, MediaInfo
@@ -10,6 +11,30 @@ from app.schemas.types import ModuleType
 
 
 class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
+    _IMAGE_SUFFIXES = (
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".tiff",
+        ".svg",
+    )
+    _AUDIO_SUFFIXES = (
+        ".mp3",
+        ".m4a",
+        ".wav",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".aac",
+        ".amr",
+        ".flac",
+        ".mpga",
+        ".mpeg",
+        ".webm",
+    )
 
     def init_module(self) -> None:
         """
@@ -99,12 +124,18 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
             msg_body = json.loads(body)
             # 类型
             msg_type = msg_body.get("detail", {}).get("type")
-            if msg_type != "normal":
-                # 非新消息
+            if msg_type not in ("normal", "reply"):
+                # 非新消息/回复
                 return None
             logger.debug(f"收到VoceChat请求：{msg_body}")
-            # 文本内容
-            content = msg_body.get("detail", {}).get("content")
+            detail = msg_body.get("detail", {}) or {}
+            content_type = detail.get("content_type") or ""
+            content = detail.get("content")
+            images = self._extract_images(detail)
+            audio_refs = self._extract_audio_refs(detail)
+            text = None
+            if content_type in ("text/plain", "text/markdown") and isinstance(content, str):
+                text = content
             # 用户ID
             gid = msg_body.get("target", {}).get("gid")
             channel_id = client_config.config.get("channel_id")
@@ -116,12 +147,86 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                 userid = f"UID#{msg_body.get('from_uid')}"
 
             # 处理消息内容
-            if content and userid:
-                logger.info(f"收到来自 {client_config.name} 的VoceChat消息：userid={userid}, text={content}")
+            if (text or images or audio_refs) and userid:
+                logger.info(
+                    f"收到来自 {client_config.name} 的VoceChat消息："
+                    f"userid={userid}, text={text}, images={len(images) if images else 0}, "
+                    f"audios={len(audio_refs) if audio_refs else 0}"
+                )
                 return CommingMessage(channel=MessageChannel.VoceChat, source=client_config.name,
-                                      userid=userid, username=userid, text=content)
+                                      userid=userid, username=userid, text=text or "",
+                                      images=images, audio_refs=audio_refs)
         except Exception as err:
             logger.error(f"VoceChat消息处理发生错误：{str(err)}")
+        return None
+
+    @classmethod
+    def _extract_images(cls, detail: dict) -> Optional[List[str]]:
+        content_type = detail.get("content_type") or ""
+        if content_type != "vocechat/file":
+            return None
+        properties = detail.get("properties") or {}
+        mime_type = (
+            properties.get("content_type")
+            or properties.get("mime_type")
+            or properties.get("contentType")
+            or ""
+        ).lower()
+        file_path = (
+            properties.get("path")
+            or properties.get("file_path")
+            or properties.get("storage_path")
+            or detail.get("content")
+        )
+        direct_url = (
+            properties.get("url")
+            or properties.get("download_url")
+            or properties.get("file_url")
+        )
+        file_name = (
+            properties.get("name")
+            or properties.get("filename")
+            or (str(file_path).rsplit("/", 1)[-1] if file_path else "")
+        ).lower()
+
+        is_image = mime_type.startswith("image/") or file_name.endswith(cls._IMAGE_SUFFIXES)
+        if not is_image:
+            return None
+        if isinstance(direct_url, str) and direct_url.startswith("http"):
+            return [direct_url]
+        if isinstance(file_path, str) and file_path:
+            return [f"vocechat://file/{quote(file_path, safe='')}"]
+        return None
+
+    @classmethod
+    def _extract_audio_refs(cls, detail: dict) -> Optional[List[str]]:
+        content_type = detail.get("content_type") or ""
+        if content_type != "vocechat/file":
+            return None
+        properties = detail.get("properties") or {}
+        mime_type = (
+            properties.get("content_type")
+            or properties.get("mime_type")
+            or properties.get("contentType")
+            or ""
+        ).lower()
+        file_path = (
+            properties.get("path")
+            or properties.get("file_path")
+            or properties.get("storage_path")
+            or detail.get("content")
+        )
+        file_name = (
+            properties.get("name")
+            or properties.get("filename")
+            or (str(file_path).rsplit("/", 1)[-1] if file_path else "")
+        ).lower()
+
+        is_audio = mime_type.startswith("audio/") or file_name.endswith(cls._AUDIO_SUFFIXES)
+        if not is_audio:
+            return None
+        if isinstance(file_path, str) and file_path:
+            return [f"vocechat://file/{quote(file_path, safe='')}"]
         return None
 
     def post_message(self, message: Notification, **kwargs) -> None:
@@ -136,11 +241,11 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
             targets = message.targets
             userid = message.userid
             if not message.userid and targets:
-                userid = targets.get('telegram_userid')
+                userid = targets.get('vocechat_userid')
             client: VoceChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
-                                userid=userid, link=message.link)
+                                image=message.image, userid=userid, link=message.link)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -182,3 +287,37 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
 
     def register_commands(self, commands: Dict[str, dict]):
         pass
+
+    def download_vocechat_image_to_data_url(self, image_ref: str, source: str) -> Optional[str]:
+        """
+        下载 VoceChat 图片并转换为 data URL
+        """
+        if not image_ref or not image_ref.startswith("vocechat://file/"):
+            return None
+        client_config = self.get_config(source)
+        if not client_config:
+            return None
+        client: VoceChat = self.get_instance(client_config.name)
+        if not client:
+            return None
+        file_path = unquote(image_ref.replace("vocechat://file/", "", 1))
+        return client.download_file_to_data_url(file_path)
+
+    def download_vocechat_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
+        """
+        下载 VoceChat 文件并返回原始字节
+        """
+        if not file_ref or not file_ref.startswith("vocechat://file/"):
+            return None
+        client_config = self.get_config(source)
+        if not client_config:
+            return None
+        client: VoceChat = self.get_instance(client_config.name)
+        if not client:
+            return None
+        file_path = unquote(file_ref.replace("vocechat://file/", "", 1))
+        file_data = client.download_file(file_path)
+        if file_data:
+            content, _ = file_data
+            return content
+        return None

@@ -1,5 +1,6 @@
 import json
 import re
+from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any
 
 from app.core.context import MediaInfo, Context
@@ -11,6 +12,21 @@ from app.schemas.types import ModuleType
 
 
 class SlackModule(_ModuleBase, _MessageBase[Slack]):
+    _AUDIO_SUFFIXES = (
+        ".mp3",
+        ".m4a",
+        ".wav",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".aac",
+        ".amr",
+        ".flac",
+        ".mpga",
+        ".mpeg",
+        ".webm",
+    )
+
     def init_module(self) -> None:
         """
         初始化模块
@@ -193,17 +209,24 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         if not client_config:
             return None
         try:
-            msg_json: dict = json.loads(body)
+            msg_json = json.loads(body)
+            while isinstance(msg_json, str):
+                msg_json = json.loads(msg_json)
         except Exception as err:
             logger.debug(f"解析Slack消息失败：{str(err)}")
             return None
+        if not isinstance(msg_json, dict):
+            logger.debug(f"Slack消息格式无效：{type(msg_json)}")
+            return None
         if msg_json:
             images = None
+            audio_refs = None
             if msg_json.get("type") == "message":
                 userid = msg_json.get("user")
                 text = msg_json.get("text")
                 username = msg_json.get("user")
                 images = self._extract_images(msg_json)
+                audio_refs = self._extract_audio_refs(msg_json)
             elif msg_json.get("type") == "block_actions":
                 userid = msg_json.get("user", {}).get("id")
                 callback_data = msg_json.get("actions")[0].get("value")
@@ -246,6 +269,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 ).strip()
                 username = ""
                 images = self._extract_images(msg_json.get("event", {}))
+                audio_refs = self._extract_audio_refs(msg_json.get("event", {}))
             elif msg_json.get("type") == "shortcut":
                 userid = msg_json.get("user", {}).get("id")
                 text = msg_json.get("callback_id")
@@ -257,7 +281,8 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             else:
                 return None
             logger.info(
-                f"收到来自 {client_config.name} 的Slack消息：userid={userid}, username={username}, text={text}, images={len(images) if images else 0}"
+                f"收到来自 {client_config.name} 的Slack消息：userid={userid}, username={username}, "
+                f"text={text}, images={len(images) if images else 0}, audios={len(audio_refs) if audio_refs else 0}"
             )
             return CommingMessage(
                 channel=MessageChannel.Slack,
@@ -266,6 +291,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 username=username,
                 text=text,
                 images=images,
+                audio_refs=audio_refs,
             )
         return None
 
@@ -279,11 +305,81 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             return None
         images = []
         for file in files:
-            if file.get("type") in ("image", "jpg", "jpeg", "png", "gif", "webp"):
+            file_type = str(file.get("type", "")).lower()
+            file_ext = str(file.get("filetype", "")).lower()
+            mime_type = str(file.get("mimetype", "")).lower()
+            if (
+                file_type == "image"
+                or file_ext in ("jpg", "jpeg", "png", "gif", "webp", "bmp")
+                or mime_type.startswith("image/")
+            ):
                 url = file.get("url_private") or file.get("url_private_download")
                 if url:
                     images.append(url)
         return images if images else None
+
+    @classmethod
+    def _extract_audio_refs(cls, msg_json: dict) -> Optional[List[str]]:
+        """
+        从Slack消息中提取音频文件引用
+        """
+        files = msg_json.get("files", [])
+        if not files:
+            return None
+        audio_refs = []
+        for file in files:
+            file_type = str(file.get("type", "")).lower()
+            file_ext = f".{str(file.get('filetype', '')).lower().lstrip('.')}"
+            mime_type = str(file.get("mimetype", "")).lower()
+            if (
+                file_type == "audio"
+                or mime_type.startswith("audio/")
+                or file_ext in cls._AUDIO_SUFFIXES
+            ):
+                url = file.get("url_private_download") or file.get("url_private")
+                if url:
+                    audio_refs.append(f"slack://file/{quote(url, safe='')}")
+        return audio_refs if audio_refs else None
+
+    def download_slack_file_to_data_url(self, file_url: str, source: str) -> Optional[str]:
+        """
+        下载Slack文件并转为data URL
+        :param file_url: Slack私有文件URL
+        :param source: 来源名称
+        :return: data URL
+        """
+        config = self.get_config(source)
+        if not config:
+            return None
+        client = self.get_instance(config.name)
+        if not client:
+            return None
+        file_data = client.download_file(file_url)
+        if file_data:
+            import base64
+
+            content, mime_type = file_data
+            return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
+        return None
+
+    def download_slack_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
+        """
+        下载Slack音频文件并返回原始字节
+        """
+        if not file_ref or not file_ref.startswith("slack://file/"):
+            return None
+        config = self.get_config(source)
+        if not config:
+            return None
+        client = self.get_instance(config.name)
+        if not client:
+            return None
+        file_url = unquote(file_ref.replace("slack://file/", "", 1))
+        file_data = client.download_file(file_url)
+        if file_data:
+            content, _ = file_data
+            return content
+        return None
 
     def post_message(self, message: Notification, **kwargs) -> None:
         """

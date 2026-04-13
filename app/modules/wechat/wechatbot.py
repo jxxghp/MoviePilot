@@ -5,9 +5,11 @@ import re
 import threading
 import time
 import uuid
+import base64
 from typing import Optional, List, Dict, Tuple, Set
 
 import websocket
+from Crypto.Cipher import AES
 
 from app.core.cache import FileCache
 from app.core.config import settings
@@ -332,6 +334,116 @@ class WeChatBot:
         text = "\n".join(part for part in text_parts if part).strip()
         return text or None
 
+    @staticmethod
+    def _build_image_ref(image_payload: dict) -> Optional[str]:
+        if not image_payload or not isinstance(image_payload, dict):
+            return None
+        download_url = (
+            image_payload.get("download_url")
+            or image_payload.get("url")
+            or image_payload.get("cdnurl")
+        )
+        if not download_url:
+            return None
+        payload = {
+            "url": download_url,
+            "aeskey": image_payload.get("aeskey")
+            or image_payload.get("encoding_aes_key")
+            or image_payload.get("encrypt_key"),
+            "mime_type": image_payload.get("mime_type")
+            or image_payload.get("content_type"),
+        }
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        return f"wxbot://image/{encoded}"
+
+    @classmethod
+    def _extract_images_from_body(cls, body: dict) -> Optional[List[str]]:
+        images: List[str] = []
+        msgtype = body.get("msgtype")
+
+        if msgtype == "image":
+            image_ref = cls._build_image_ref(body.get("image") or {})
+            if image_ref:
+                images.append(image_ref)
+        elif msgtype == "mixed":
+            for item in (body.get("mixed") or {}).get("msg_item") or []:
+                if item.get("msgtype") != "image":
+                    continue
+                image_ref = cls._build_image_ref(item.get("image") or {})
+                if image_ref:
+                    images.append(image_ref)
+
+        quote = body.get("quote") or {}
+        if not images and quote.get("msgtype") == "image":
+            image_ref = cls._build_image_ref(quote.get("image") or {})
+            if image_ref:
+                images.append(image_ref)
+
+        return images or None
+
+    @staticmethod
+    def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
+        if not content:
+            return default
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if content.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if content.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if content.startswith(b"BM"):
+            return "image/bmp"
+        if content.startswith(b"RIFF") and b"WEBP" in content[:16]:
+            return "image/webp"
+        return default
+
+    def download_image_to_data_url(self, image_ref: str) -> Optional[str]:
+        if not image_ref or not image_ref.startswith("wxbot://image/"):
+            return None
+        encoded = image_ref.replace("wxbot://image/", "", 1)
+        try:
+            padding = "=" * (-len(encoded) % 4)
+            payload = json.loads(
+                base64.urlsafe_b64decode((encoded + padding).encode("ascii")).decode(
+                    "utf-8"
+                )
+            )
+        except Exception as err:
+            logger.error(f"解析企业微信智能机器人图片引用失败：{err}")
+            return None
+
+        download_url = payload.get("url")
+        if not download_url:
+            return None
+
+        try:
+            resp = RequestUtils(timeout=30).get_res(download_url)
+        except Exception as err:
+            logger.error(f"下载企业微信智能机器人图片失败：{err}")
+            return None
+        if not resp or not resp.content:
+            return None
+
+        content = resp.content
+        aes_key = payload.get("aeskey")
+        if aes_key:
+            try:
+                aes_bytes = base64.b64decode(aes_key + "=" * (-len(aes_key) % 4))
+                cipher = AES.new(aes_bytes, AES.MODE_CBC, aes_bytes[:16])
+                decrypted = cipher.decrypt(content)
+                padding_len = decrypted[-1]
+                if 0 < padding_len <= 32:
+                    decrypted = decrypted[:-padding_len]
+                content = decrypted
+            except Exception as err:
+                logger.error(f"解密企业微信智能机器人图片失败：{err}")
+                return None
+
+        mime_type = self._guess_mime_type(content, payload.get("mime_type") or "image/jpeg")
+        return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
+
     def _handle_callback_message(self, payload: dict) -> None:
         body = payload.get("body") or {}
         sender = ((body.get("from") or {}).get("userid") or "").strip()
@@ -343,20 +455,24 @@ class WeChatBot:
             return
 
         text = self._extract_text_from_body(body)
-        if not text:
-            return
+        images = self._extract_images_from_body(body)
 
-        text = re.sub(r"@\S+", "", text).strip()
-        if not text:
+        if text:
+            text = re.sub(r"@\S+", "", text).strip()
+
+        if not text and not images:
             return
 
         self._remember_target(sender)
 
-        if text.startswith("/") and self._admins and sender not in self._admins:
+        if text and text.startswith("/") and self._admins and sender not in self._admins:
             self.send_msg(title="只有管理员才有权限执行此命令", userid=sender)
             return
 
-        logger.info(f"收到来自 {self._config_name} 的企业微信智能机器人消息：userid={sender}, text={text}")
+        logger.info(
+            f"收到来自 {self._config_name} 的企业微信智能机器人消息："
+            f"userid={sender}, text={text}, images={len(images) if images else 0}"
+        )
         self._forward_to_message_chain(payload)
 
     def _forward_to_message_chain(self, payload: dict) -> None:

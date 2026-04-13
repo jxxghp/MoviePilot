@@ -129,6 +129,8 @@ class MoviePilotAgent:
         self.channel = channel
         self.source = source
         self.username = username
+        self.reply_with_voice = False
+        self._tool_context: Dict[str, object] = {}
 
         # 流式token管理
         self.stream_handler = StreamingHandler()
@@ -150,6 +152,8 @@ class MoviePilotAgent:
         - 其他情况不启用流式输出
         """
         if self.is_background:
+            return False
+        if self.reply_with_voice:
             return False
         # 啰嗦模式下始终需要流式输出来捕获工具调用前的 Agent 文字
         if settings.AI_AGENT_VERBOSE:
@@ -214,6 +218,7 @@ class MoviePilotAgent:
             source=self.source,
             username=self.username,
             stream_handler=self.stream_handler,
+            agent_context=self._tool_context,
         )
 
     def _create_agent(self, streaming: bool = False):
@@ -223,7 +228,10 @@ class MoviePilotAgent:
         """
         try:
             # 系统提示词
-            system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
+            system_prompt = prompt_manager.get_agent_prompt(
+                channel=self.channel,
+                prefer_voice_reply=self.reply_with_voice,
+            )
 
             # LLM 模型（用于 agent 执行）
             llm = self._initialize_llm(streaming=streaming)
@@ -281,6 +289,11 @@ class MoviePilotAgent:
             logger.info(
                 f"Agent推理: session_id={self.session_id}, input={message}, images={len(images) if images else 0}"
             )
+            self._tool_context = {
+                "incoming_voice": self.reply_with_voice,
+                "user_reply_sent": False,
+                "reply_mode": None,
+            }
 
             # 获取历史消息
             messages = memory_manager.get_agent_messages(
@@ -417,7 +430,7 @@ class MoviePilotAgent:
                     # 流式输出未能发送全部内容（发送失败等）
                     # 通过常规方式发送剩余内容
                     remaining_text = await self.stream_handler.take()
-                    if remaining_text:
+                    if remaining_text and not self._tool_context.get("user_reply_sent"):
                         await self.send_agent_message(remaining_text)
                 elif streamed_text:
                     # 流式输出已发送全部内容，但未记录到数据库，补充保存消息记录
@@ -447,7 +460,7 @@ class MoviePilotAgent:
                             final_text = text.strip()
                             break
 
-                if final_text:
+                if final_text and not self._tool_context.get("user_reply_sent"):
                     if self.is_background:
                         # 后台任务仅广播最终回复，带标题
                         await self.send_agent_message(
@@ -534,6 +547,7 @@ class _MessageTask:
     channel: Optional[str] = None
     source: Optional[str] = None
     username: Optional[str] = None
+    reply_with_voice: bool = False
 
 
 class AgentManager:
@@ -599,6 +613,7 @@ class AgentManager:
         channel: str = None,
         source: str = None,
         username: str = None,
+        reply_with_voice: bool = False,
     ) -> str:
         """
         处理用户消息：将消息放入会话队列，按顺序依次处理。
@@ -612,6 +627,7 @@ class AgentManager:
             channel=channel,
             source=source,
             username=username,
+            reply_with_voice=reply_with_voice,
         )
 
         # 获取或创建会话队列
@@ -709,6 +725,7 @@ class AgentManager:
                 agent.source = task.source
             if task.username:
                 agent.username = task.username
+        agent.reply_with_voice = task.reply_with_voice
 
         return await agent.process(task.message, images=task.images)
 

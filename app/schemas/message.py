@@ -55,6 +55,8 @@ class CommingMessage(BaseModel):
     callback_query: Optional[Dict] = None
     # 图片列表（图片URL或file_id）
     images: Optional[List[str]] = None
+    # 语音/音频引用列表
+    audio_refs: Optional[List[str]] = None
 
     def to_dict(self):
         """
@@ -86,6 +88,10 @@ class Notification(BaseModel):
     text: Optional[str] = None
     # 图片
     image: Optional[str] = None
+    # 语音文件路径
+    voice_path: Optional[str] = None
+    # 语音消息附带说明文字
+    voice_caption: Optional[str] = None
     # 链接
     link: Optional[str] = None
     # 用户ID

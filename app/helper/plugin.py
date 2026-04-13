@@ -69,7 +69,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
     @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
-                         package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+                    package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
@@ -87,7 +87,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
         res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
         if res is None or res.status_code != 200:
-            return None
+            return {} if res.status_code == 404 else None
         return self.__parse_plugin_index_response(res.text)
 
     def get_plugin_package_version(self, pid: str, repo_url: str,
@@ -973,7 +973,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
     @cached(maxsize=128, ttl=1800)
     async def async_get_plugins(self, repo_url: str,
-                                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+                                package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
         异步获取Github所有最新插件列表
         :param repo_url: Github仓库地址

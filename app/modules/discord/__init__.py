@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any
 
 from app.core.context import MediaInfo, Context
@@ -6,6 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import MessageChannel, CommingMessage, Notification, MessageResponse
 from app.schemas.types import ModuleType
+from app.utils.http import RequestUtils
 
 try:
     from app.modules.discord.discord import Discord
@@ -15,6 +17,31 @@ except Exception as err:  # ImportError or other load issues
 
 
 class DiscordModule(_ModuleBase, _MessageBase[Discord]):
+    _IMAGE_SUFFIXES = (
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".tiff",
+        ".svg",
+    )
+    _AUDIO_SUFFIXES = (
+        ".mp3",
+        ".m4a",
+        ".wav",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".aac",
+        ".amr",
+        ".flac",
+        ".mpga",
+        ".mpeg",
+        ".webm",
+    )
+
     def init_module(self) -> None:
         """
         初始化模块
@@ -131,10 +158,12 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
             text = msg_json.get("text")
             chat_id = msg_json.get("chat_id")
             images = self._extract_images(msg_json)
-            if (text or images) and userid:
+            audio_refs = self._extract_audio_refs(msg_json)
+            if (text or images or audio_refs) and userid:
                 logger.info(
                     f"收到来自 {client_config.name} 的 Discord 消息："
-                    f"userid={userid}, username={username}, text={text}, images={len(images) if images else 0}"
+                    f"userid={userid}, username={username}, text={text}, "
+                    f"images={len(images) if images else 0}, audios={len(audio_refs) if audio_refs else 0}"
                 )
                 return CommingMessage(
                     channel=MessageChannel.Discord,
@@ -144,6 +173,7 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
                     text=text,
                     chat_id=str(chat_id) if chat_id else None,
                     images=images,
+                    audio_refs=audio_refs,
                 )
         return None
 
@@ -157,11 +187,51 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
             return None
         images = []
         for attachment in attachments:
-            if attachment.get("type") == "image":
-                url = attachment.get("url")
-                if url:
-                    images.append(url)
+            url = attachment.get("url") or attachment.get("proxy_url")
+            if not url:
+                continue
+            content_type = (attachment.get("content_type") or "").lower()
+            filename = (attachment.get("filename") or "").lower()
+            if (
+                attachment.get("type") == "image"
+                or content_type.startswith("image/")
+                or filename.endswith(DiscordModule._IMAGE_SUFFIXES)
+            ):
+                images.append(url)
         return images if images else None
+
+    @classmethod
+    def _extract_audio_refs(cls, msg_json: dict) -> Optional[List[str]]:
+        """
+        从Discord消息中提取音频URL
+        """
+        attachments = msg_json.get("attachments", [])
+        if not attachments:
+            return None
+        audio_refs = []
+        for attachment in attachments:
+            url = attachment.get("url") or attachment.get("proxy_url")
+            if not url:
+                continue
+            content_type = (attachment.get("content_type") or "").lower()
+            filename = (attachment.get("filename") or "").lower()
+            if content_type.startswith("audio/") or filename.endswith(cls._AUDIO_SUFFIXES):
+                audio_refs.append(f"discord://file/{quote(url, safe='')}")
+        return audio_refs if audio_refs else None
+
+    def download_discord_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
+        """
+        下载Discord附件并返回原始字节
+        """
+        if not file_ref or not file_ref.startswith("discord://file/"):
+            return None
+        if not self.get_config(source):
+            return None
+        file_url = unquote(file_ref.replace("discord://file/", "", 1))
+        resp = RequestUtils(timeout=30).get_res(file_url)
+        if resp and resp.content:
+            return resp.content
+        return None
 
     def post_message(self, message: Notification, **kwargs) -> None:
         """
@@ -363,15 +433,22 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
                     userid=userid,
                 )
                 if result:
-                    success, message_id = (
+                    success, response_data = (
                         (result[0], result[1])
                         if isinstance(result, tuple)
                         else (result, None)
                     )
                     if success:
+                        message_id = None
+                        chat_id = None
+                        if isinstance(response_data, dict):
+                            message_id = response_data.get("message_id")
+                            chat_id = response_data.get("chat_id")
+                        elif response_data is not None:
+                            message_id = str(response_data)
                         return MessageResponse(
                             message_id=str(message_id) if message_id else None,
-                            chat_id=None,
+                            chat_id=str(chat_id) if chat_id else None,
                             channel=MessageChannel.Discord,
                             source=conf.name,
                             success=True,

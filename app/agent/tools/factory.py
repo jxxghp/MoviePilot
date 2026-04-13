@@ -30,6 +30,7 @@ from app.agent.tools.impl.search_torrents import SearchTorrentsTool
 from app.agent.tools.impl.get_search_results import GetSearchResultsTool
 from app.agent.tools.impl.search_web import SearchWebTool
 from app.agent.tools.impl.send_message import SendMessageTool
+from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.agent.tools.impl.query_schedulers import QuerySchedulersTool
 from app.agent.tools.impl.run_scheduler import RunSchedulerTool
 from app.agent.tools.impl.query_workflows import QueryWorkflowsTool
@@ -72,6 +73,7 @@ class MoviePilotToolFactory:
         source: str = None,
         username: str = None,
         stream_handler: Callable = None,
+        agent_context: dict = None,
     ) -> List[MoviePilotTool]:
         """
         创建MoviePilot工具列表
@@ -117,6 +119,7 @@ class MoviePilotToolFactory:
             QueryTransferHistoryTool,
             TransferFileTool,
             SendMessageTool,
+            SendVoiceMessageTool,
             QuerySchedulersTool,
             RunSchedulerTool,
             QueryWorkflowsTool,
@@ -138,6 +141,7 @@ class MoviePilotToolFactory:
             tool = ToolClass(session_id=session_id, user_id=user_id)
             tool.set_message_attr(channel=channel, source=source, username=username)
             tool.set_stream_handler(stream_handler=stream_handler)
+            tool.set_agent_context(agent_context=agent_context)
             tools.append(tool)
 
         # 加载插件提供的工具
@@ -161,6 +165,7 @@ class MoviePilotToolFactory:
                         channel=channel, source=source, username=username
                     )
                     tool.set_stream_handler(stream_handler=stream_handler)
+                    tool.set_agent_context(agent_context=agent_context)
                     tools.append(tool)
                     plugin_tools_count += 1
                     logger.debug(

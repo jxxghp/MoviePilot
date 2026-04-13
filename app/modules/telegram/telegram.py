@@ -1,8 +1,10 @@
 import asyncio
+import json
 import re
 import threading
 import time
-from typing import Optional, List, Dict, Callable, Union
+from pathlib import Path
+from typing import Any, Optional, List, Dict, Callable, Union
 from urllib.parse import urljoin, quote
 
 from telebot import TeleBot, apihelper
@@ -113,7 +115,11 @@ class Telegram:
                 if self._should_process_message(message):
                     # 启动持续发送正在输入状态
                     self._start_typing_task(message.chat.id)
-                    RequestUtils(timeout=15).post_res(self._ds_url, json=message.json)
+                    payload = self._serialize_update_payload(message)
+                    if not payload:
+                        logger.warn("Telegram消息序列化失败，跳过转发")
+                        return
+                    RequestUtils(timeout=15).post_res(self._ds_url, json=payload)
 
             @_bot.callback_query_handler(func=lambda call: True)
             def callback_query(call):
@@ -200,13 +206,47 @@ class Telegram:
             return None
         try:
             file_info = self._bot.get_file(file_id)
-            file_url = f"https://api.telegram.org/file/bot{self._telegram_token}/{file_info.file_path}"
-            resp = RequestUtils(timeout=30).get_res(file_url)
+            file_url = apihelper.FILE_URL.format(
+                self._telegram_token, file_info.file_path
+            )
+            resp = RequestUtils(
+                proxies=apihelper.proxy, timeout=30
+            ).get_res(file_url)
             if resp and resp.content:
+                logger.info(
+                    "Telegram图片下载成功: file_id=%s, file_path=%s, content_bytes=%s",
+                    file_id,
+                    file_info.file_path,
+                    len(resp.content),
+                )
                 return resp.content
+            logger.warn(
+                "Telegram图片下载失败: file_id=%s, file_path=%s, file_url=%s, proxy_enabled=%s",
+                file_id,
+                getattr(file_info, "file_path", None),
+                file_url,
+                bool(apihelper.proxy),
+            )
         except Exception as e:
             logger.error(f"下载Telegram文件失败: {e}")
         return None
+
+    @staticmethod
+    def _serialize_update_payload(message: Any) -> Optional[dict]:
+        """
+        将 Telegram Message 对象稳定序列化为 dict，避免 requests 的 json 参数再次包一层字符串。
+        """
+        try:
+            if hasattr(message, "to_dict"):
+                payload = message.to_dict()
+            else:
+                payload = getattr(message, "json", None) or message
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            return payload if isinstance(payload, dict) else None
+        except Exception as e:
+            logger.error(f"序列化Telegram消息失败: {e}")
+            return None
 
     def _update_user_chat_mapping(self, userid: int, chat_id: int) -> None:
         """
@@ -384,7 +424,12 @@ class Telegram:
             if original_message_id and original_chat_id:
                 # 编辑消息
                 result = self.__edit_message(
-                    original_chat_id, original_message_id, caption, buttons, image
+                    original_chat_id,
+                    original_message_id,
+                    caption,
+                    buttons,
+                    image,
+                    disable_web_page_preview=disable_web_page_preview,
                 )
                 self._stop_typing_task(chat_id)
                 return {
@@ -416,6 +461,51 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             self._stop_typing_task(chat_id)
             return {"success": False}
+
+    def send_voice(
+            self,
+            voice_path: str,
+            userid: Optional[str] = None,
+            caption: Optional[str] = None,
+            original_chat_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        发送Telegram语音消息。
+        """
+        if not self._bot or not voice_path:
+            return None
+
+        chat_id = self._determine_target_chat_id(userid, original_chat_id)
+        voice_file = Path(voice_path)
+        if not voice_file.exists():
+            logger.error(f"语音文件不存在: {voice_file}")
+            return {"success": False}
+
+        try:
+            with voice_file.open("rb") as fp:
+                sent = self._bot.send_voice(
+                    chat_id=chat_id,
+                    voice=fp,
+                    caption=standardize(caption) if caption else None,
+                    parse_mode="MarkdownV2" if caption else None,
+                )
+            self._stop_typing_task(chat_id)
+            if sent and hasattr(sent, "message_id"):
+                return {
+                    "success": True,
+                    "message_id": sent.message_id,
+                    "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
+                }
+            return {"success": bool(sent)}
+        except Exception as err:
+            logger.error(f"发送语音消息失败：{err}")
+            self._stop_typing_task(chat_id)
+            return {"success": False}
+        finally:
+            try:
+                voice_file.unlink(missing_ok=True)
+            except Exception as cleanup_err:
+                logger.debug(f"清理语音临时文件失败: {cleanup_err}")
 
     def _determine_target_chat_id(
             self, userid: Optional[str] = None, original_chat_id: Optional[str] = None
@@ -719,6 +809,7 @@ class Telegram:
             text: str,
             buttons: Optional[List[List[dict]]] = None,
             image: Optional[str] = None,
+            disable_web_page_preview: Optional[bool] = None,
     ) -> Optional[bool]:
         """
         编辑已发送的消息
@@ -727,6 +818,7 @@ class Telegram:
         :param text: 新的消息内容
         :param buttons: 按钮列表
         :param image: 图片URL或路径
+        :param disable_web_page_preview: 是否禁用链接预览（仅纯文本编辑时生效）
         :return: 编辑是否成功
         """
         if not self._bot:
@@ -751,13 +843,18 @@ class Telegram:
                 )
             else:
                 # 如果没有图片，使用edit_message_text
-                self._bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=standardize(text),
-                    parse_mode="MarkdownV2",
-                    reply_markup=reply_markup,
-                )
+                edit_text_kwargs: Dict[str, Any] = {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": standardize(text),
+                    "parse_mode": "MarkdownV2",
+                    "reply_markup": reply_markup,
+                }
+                if disable_web_page_preview is not None:
+                    edit_text_kwargs["disable_web_page_preview"] = (
+                        disable_web_page_preview
+                    )
+                self._bot.edit_message_text(**edit_text_kwargs)
             return True
         except Exception as e:
             logger.error(f"编辑消息失败：{str(e)}")

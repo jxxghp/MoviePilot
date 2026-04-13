@@ -1,6 +1,8 @@
 import re
 import threading
-from typing import Optional, List
+import base64
+from typing import Optional, List, Tuple
+from urllib.parse import quote
 
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
@@ -21,6 +23,7 @@ class VoceChat:
     _channel_id = None
     # 请求对象
     _client = None
+    _file_client = None
 
     def __init__(self, VOCECHAT_HOST: Optional[str] = None, VOCECHAT_API_KEY: Optional[str] = None, VOCECHAT_CHANNEL_ID: Optional[str] = None, **kwargs):
         """
@@ -29,12 +32,11 @@ class VoceChat:
         if not VOCECHAT_HOST or not VOCECHAT_API_KEY or not VOCECHAT_CHANNEL_ID:
             logger.error("VoceChat配置不完整！")
             return
-        self._host = VOCECHAT_HOST
-        if self._host:
-            if not self._host.endswith("/"):
-                self._host += "/"
-            if not self._host.startswith("http"):
-                self._playhost = "http://" + self._host
+        self._host = VOCECHAT_HOST.strip()
+        if self._host and not self._host.startswith("http"):
+            self._host = f"http://{self._host}"
+        if self._host and not self._host.endswith("/"):
+            self._host += "/"
         self._apikey = VOCECHAT_API_KEY
         self._channel_id = VOCECHAT_CHANNEL_ID
         if self._apikey and self._host and self._channel_id:
@@ -42,6 +44,10 @@ class VoceChat:
                 "content-type": "text/markdown",
                 "x-api-key": self._apikey,
                 "accept": "application/json; charset=utf-8"
+            })
+            self._file_client = RequestUtils(headers={
+                "x-api-key": self._apikey,
+                "accept": "*/*"
             })
 
     def get_state(self):
@@ -61,6 +67,7 @@ class VoceChat:
             return result.json()
 
     def send_msg(self, title: str, text: Optional[str] = None,
+                 image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
@@ -83,6 +90,9 @@ class VoceChat:
             else:
                 caption = f"**{title}**"
 
+            if image:
+                caption = f"{caption}\n![]({image})"
+
             if link:
                 caption = f"{caption}\n[查看详情]({link})"
 
@@ -96,6 +106,46 @@ class VoceChat:
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
             return False
+
+    @staticmethod
+    def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
+        if not content:
+            return default
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if content.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if content.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if content.startswith(b"BM"):
+            return "image/bmp"
+        if content.startswith(b"RIFF") and b"WEBP" in content[:16]:
+            return "image/webp"
+        return default
+
+    def download_file(self, path: str) -> Optional[Tuple[bytes, str]]:
+        """
+        下载 VoceChat 文件资源
+        """
+        if not path or not self._file_client:
+            return None
+        req_url = f"{self._host}api/resource/file?path={quote(path, safe='')}"
+        try:
+            res = self._file_client.get_res(req_url)
+        except Exception as err:
+            logger.error(f"VoceChat 文件下载失败：{err}")
+            return None
+        if not res or not res.content:
+            return None
+        mime_type = (res.headers.get("Content-Type") or "").split(";")[0].strip()
+        return res.content, mime_type or self._guess_mime_type(res.content)
+
+    def download_file_to_data_url(self, path: str) -> Optional[str]:
+        file_data = self.download_file(path)
+        if not file_data:
+            return None
+        content, mime_type = file_data
+        return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
     def send_medias_msg(self, title: str, medias: List[MediaInfo],
                         userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:

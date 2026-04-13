@@ -38,21 +38,69 @@ async def user_message(background_tasks: BackgroundTasks, request: Request,
     body = await request.body()
     form = await request.form()
     args = request.query_params
+    source = args.get("source")
+    content_type = request.headers.get("content-type", "")
+    body_text = body.decode("utf-8", errors="ignore")
+    image_markers = [
+        marker
+        for marker in (
+            '"photo"',
+            '"document"',
+            '"files"',
+            '"attachments"',
+            '"url_private"',
+            '"image/"',
+            '"image_url"',
+        )
+        if marker in body_text
+    ]
+    logger.info(
+        "消息入口收到请求: source=%s, content_type=%s, body_bytes=%s, form_keys=%s, image_markers=%s",
+        source,
+        content_type,
+        len(body),
+        list(form.keys()) if form else [],
+        image_markers,
+    )
     background_tasks.add_task(start_message_chain, body, form, args)
     return schemas.Response(success=True)
 
 
 @router.post("/web", summary="接收WEB消息", response_model=schemas.Response)
-def web_message(text: str, current_user: User = Depends(get_current_active_superuser)):
+async def web_message(
+    request: Request,
+    text: Optional[str] = None,
+    current_user: User = Depends(get_current_active_superuser),
+):
     """
     WEB消息响应
     """
+    images = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            text = payload.get("text", text)
+            image = payload.get("image")
+            images = payload.get("images")
+            if image:
+                if isinstance(images, list):
+                    images = [*images, image]
+                else:
+                    images = [image]
+            elif isinstance(images, str):
+                images = [images]
+
     MessageChain().handle_message(
         channel=MessageChannel.Web,
         source=current_user.name,
         userid=current_user.name,
         username=current_user.name,
-        text=text
+        text=text or "",
+        images=images,
     )
     return schemas.Response(success=True)
 

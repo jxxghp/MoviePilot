@@ -538,6 +538,35 @@ class ConfigModel(BaseModel):
     # AI智能体自动重试整理失败记录开关
     AI_AGENT_RETRY_TRANSFER: bool = False
 
+    # 语音能力提供商（当前仅支持 openai）
+    AI_VOICE_PROVIDER: str = "openai"
+    # 语音识别提供商，未设置时回退到 AI_VOICE_PROVIDER
+    AI_VOICE_STT_PROVIDER: Optional[str] = None
+    # 语音合成提供商，未设置时回退到 AI_VOICE_PROVIDER
+    AI_VOICE_TTS_PROVIDER: Optional[str] = None
+    # 语音能力 API 密钥，未设置且 LLM_PROVIDER=openai 时回退使用 LLM_API_KEY
+    AI_VOICE_API_KEY: Optional[str] = None
+    # 语音识别 API 密钥，未设置时回退到 AI_VOICE_API_KEY
+    AI_VOICE_STT_API_KEY: Optional[str] = None
+    # 语音合成 API 密钥，未设置时回退到 AI_VOICE_API_KEY
+    AI_VOICE_TTS_API_KEY: Optional[str] = None
+    # 语音能力基础URL，未设置且 LLM_PROVIDER=openai 时回退使用 LLM_BASE_URL
+    AI_VOICE_BASE_URL: Optional[str] = None
+    # 语音识别基础URL，未设置时回退到 AI_VOICE_BASE_URL
+    AI_VOICE_STT_BASE_URL: Optional[str] = None
+    # 语音合成基础URL，未设置时回退到 AI_VOICE_BASE_URL
+    AI_VOICE_TTS_BASE_URL: Optional[str] = None
+    # 语音转文字模型
+    AI_VOICE_STT_MODEL: str = "gpt-4o-mini-transcribe"
+    # 文字转语音模型
+    AI_VOICE_TTS_MODEL: str = "gpt-4o-mini-tts"
+    # TTS 发音人
+    AI_VOICE_TTS_VOICE: str = "alloy"
+    # 语音识别语言
+    AI_VOICE_LANGUAGE: str = "zh"
+    # 回复语音时是否同时附带文字说明
+    AI_VOICE_REPLY_WITH_TEXT: bool = False
+
 
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """

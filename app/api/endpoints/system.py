@@ -164,6 +164,9 @@ def get_global_setting(token: str):
             "BACKEND_VERSION": APP_VERSION,
         }
     )
+    # 仅在后端开发模式下返回该标记，避免生产环境暴露无意义运行态信息
+    if settings.DEV:
+        info.update({"BACKEND_DEV": True})
     return schemas.Response(success=True, data=info)
 
 
