@@ -268,6 +268,26 @@ class JobManager:
                     - set(task.meta.episode_list)
                 )
 
+    def fail_unfinished_task(self, task: TransferTask):
+        """
+        将指定任务视图中的非终态任务标记为失败
+        """
+        if not task or not task.fileitem:
+            return
+        with job_lock:
+            for mediaid, job in self._job_view.items():
+                for job_task in job.tasks:
+                    if job_task.fileitem != task.fileitem:
+                        continue
+                    if job_task.state not in ["completed", "failed"]:
+                        job_task.state = "failed"
+                        if mediaid in self._season_episodes:
+                            self._season_episodes[mediaid] = list(
+                                set(self._season_episodes[mediaid])
+                                - set(task.meta.episode_list)
+                            )
+                    return
+
     def remove_task(self, fileitem: FileItem) -> Optional[TransferJobTask]:
         """
         根据文件项移除任务
@@ -1071,6 +1091,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     logger.error(
                         f"{fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
                     )
+                    self.jobview.fail_unfinished_task(task)
+                    self.jobview.try_remove_job(task)
                     with task_lock:
                         self._processed_num += 1
                         self._fail_num += 1
@@ -1803,9 +1825,18 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             "finished": finished_files,
                         },
                     )
-                    state, err_msg = self.__handle_transfer(
-                        task=transfer_task, callback=self.__default_callback
-                    )
+                    try:
+                        state, err_msg = self.__handle_transfer(
+                            task=transfer_task, callback=self.__default_callback
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"{transfer_task.fileitem.name} 整理任务处理出现错误："
+                            f"{e} - {traceback.format_exc()}"
+                        )
+                        self.jobview.fail_unfinished_task(transfer_task)
+                        self.jobview.try_remove_job(transfer_task)
+                        state, err_msg = False, str(e)
                     if not state:
                         all_success = False
                         logger.warn(f"{transfer_task.fileitem.name} {err_msg}")

@@ -126,6 +126,39 @@ class TransferJobManagerTest(unittest.TestCase):
         migrate_to_media_job(jobview, tasks[1])
         self.assertEqual([], jobview.list_jobs())
 
+    def test_exception_marks_unfinished_meta_task_failed_and_cleans_jobs(self):
+        jobview = JobManager()
+        tasks = [make_task(episode) for episode in range(1, 3)]
+        for task in tasks:
+            self.assertTrue(jobview.add_task(task))
+
+        migrate_to_media_job(jobview, tasks[0])
+        jobview.running_task(tasks[1])
+
+        jobview.fail_unfinished_task(tasks[1])
+        jobview.try_remove_job(tasks[1])
+
+        self.assertEqual([], jobview.list_jobs())
+
+    def test_exception_marks_unfinished_media_task_failed_and_cleans_jobs(self):
+        jobview = JobManager()
+        task = make_task(1)
+        self.assertTrue(jobview.add_task(task))
+
+        curr_task = jobview.remove_task(task.fileitem)
+        task.mediainfo = FakeMedia()
+        jobview.add_task(
+            task,
+            state=curr_task.state if curr_task else "waiting",
+            link_meta_job=curr_task is not None,
+        )
+        jobview.running_task(task)
+
+        jobview.fail_unfinished_task(task)
+        jobview.try_remove_job(task)
+
+        self.assertEqual([], jobview.list_jobs())
+
     def test_pre_recognized_jobs_with_same_meta_do_not_block_each_other(self):
         jobview = JobManager()
         task1 = make_task(1)
