@@ -83,13 +83,8 @@ def make_task(episode: int) -> TransferTask:
 
 
 def migrate_to_media_job(jobview: JobManager, task: TransferTask):
-    curr_task = jobview.remove_task(task.fileitem)
     task.mediainfo = FakeMedia()
-    jobview.add_task(
-        task,
-        state=curr_task.state if curr_task else "waiting",
-        link_meta_job=curr_task is not None,
-    )
+    jobview.migrate_task(task)
     jobview.running_task(task)
     jobview.finish_task(task)
     jobview.try_remove_job(task)
@@ -145,13 +140,8 @@ class TransferJobManagerTest(unittest.TestCase):
         task = make_task(1)
         self.assertTrue(jobview.add_task(task))
 
-        curr_task = jobview.remove_task(task.fileitem)
         task.mediainfo = FakeMedia()
-        jobview.add_task(
-            task,
-            state=curr_task.state if curr_task else "waiting",
-            link_meta_job=curr_task is not None,
-        )
+        jobview.migrate_task(task)
         jobview.running_task(task)
 
         jobview.fail_unfinished_task(task)
