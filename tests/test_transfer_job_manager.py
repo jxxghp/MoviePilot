@@ -1,6 +1,6 @@
 import unittest
 
-from app.chain.transfer import JobManager
+from app.chain.transfer import JobManager, TransferChain
 from app.schemas import FileItem, TransferTask
 from app.schemas.types import MediaType
 
@@ -166,6 +166,46 @@ class TransferJobManagerTest(unittest.TestCase):
         jobs = jobview.list_jobs()
         self.assertEqual(1, len(jobs))
         self.assertEqual(task2.fileitem, jobs[0].tasks[0].fileitem)
+
+    def test_pre_recognized_migrations_with_same_meta_do_not_link_jobs(self):
+        jobview = JobManager()
+        task1 = make_task(1)
+        task2 = make_task(2)
+        task1.mediainfo = FakeMedia(100)
+        task2.mediainfo = FakeMedia(200)
+
+        self.assertTrue(jobview.add_task(task1))
+        self.assertTrue(jobview.add_task(task2))
+
+        self.assertTrue(jobview.migrate_task(task1))
+        self.assertTrue(jobview.migrate_task(task2))
+        jobview.running_task(task1)
+        jobview.finish_task(task1)
+        jobview.try_remove_job(task1)
+
+        jobs = jobview.list_jobs()
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(task2.fileitem, jobs[0].tasks[0].fileitem)
+
+    def test_exception_failure_marks_downloader_hash_completed_before_cleanup(self):
+        chain = object.__new__(TransferChain)
+        chain.jobview = JobManager()
+        completed = []
+
+        def fake_transfer_completed(hashs, downloader):
+            completed.append((hashs, downloader))
+
+        chain.transfer_completed = fake_transfer_completed
+        task = make_task(1)
+        task.downloader = "qbittorrent"
+        task.download_hash = "abc123"
+        self.assertTrue(chain.jobview.add_task(task))
+        chain.jobview.running_task(task)
+
+        chain._TransferChain__fail_transfer_task(task)
+
+        self.assertEqual([("abc123", "qbittorrent")], completed)
+        self.assertEqual([], chain.jobview.list_jobs())
 
 
 if __name__ == "__main__":

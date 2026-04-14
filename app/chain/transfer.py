@@ -192,7 +192,7 @@ class JobManager:
         """
         将任务从 meta 作业迁移到 media 作业
         """
-        curr_task = self.remove_task(task.fileitem)
+        curr_task, source_job_id = self.__remove_task_with_job_id(task.fileitem)
         if not self.add_task(task, state=curr_task.state if curr_task else "waiting"):
             return False
         if curr_task and task.mediainfo:
@@ -200,7 +200,7 @@ class JobManager:
                 meta=task.meta, season=task.meta.begin_season
             )
             mediaid = self.__get_id(task)
-            if mediaid != metaid:
+            if source_job_id == metaid and mediaid != metaid:
                 with job_lock:
                     self._meta_to_media_ids.setdefault(metaid, set()).add(mediaid)
         return True
@@ -297,6 +297,15 @@ class JobManager:
         """
         根据文件项移除任务
         """
+        task, _ = self.__remove_task_with_job_id(fileitem)
+        return task
+
+    def __remove_task_with_job_id(
+        self, fileitem: FileItem
+    ) -> Tuple[Optional[TransferJobTask], Optional[Tuple]]:
+        """
+        根据文件项移除任务，并返回任务所在的作业ID
+        """
         with job_lock:
             for mediaid in list(self._job_view):
                 job = self._job_view[mediaid]
@@ -312,8 +321,8 @@ class JobManager:
                                 set(self._season_episodes[mediaid])
                                 - set(task.meta.episode_list)
                             )
-                        return task
-            return None
+                        return task, mediaid
+            return None, None
 
     def remove_job(self, task: TransferTask) -> Optional[TransferJob]:
         """
@@ -1020,6 +1029,17 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
         self.jobview.remove_task(fileitem)
 
+    def __fail_transfer_task(self, task: TransferTask):
+        """
+        标记异常整理任务失败并清理作业视图
+        """
+        self.jobview.fail_unfinished_task(task)
+        if task.download_hash and self.jobview.is_torrent_done(task.download_hash):
+            self.transfer_completed(
+                hashs=task.download_hash, downloader=task.downloader
+            )
+        self.jobview.try_remove_job(task)
+
     def __start_transfer(self):
         """
         处理队列
@@ -1096,8 +1116,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     logger.error(
                         f"{fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
                     )
-                    self.jobview.fail_unfinished_task(task)
-                    self.jobview.try_remove_job(task)
+                    self.__fail_transfer_task(task)
                     with task_lock:
                         self._processed_num += 1
                         self._fail_num += 1
@@ -1832,8 +1851,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             f"{transfer_task.fileitem.name} 整理任务处理出现错误："
                             f"{e} - {traceback.format_exc()}"
                         )
-                        self.jobview.fail_unfinished_task(transfer_task)
-                        self.jobview.try_remove_job(transfer_task)
+                        self.__fail_transfer_task(transfer_task)
                         state, err_msg = False, str(e)
                     if not state:
                         all_success = False
