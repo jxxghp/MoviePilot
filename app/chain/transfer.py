@@ -74,10 +74,13 @@ class JobManager:
     _job_view: Dict[Tuple, TransferJob] = {}
     # 汇总季集清单
     _season_episodes: Dict[Tuple, List[int]] = {}
+    # 记录从 meta 作业迁移到 media 作业的关系，用于清理提前失败后残留的 media 作业
+    _meta_to_media_ids: Dict[Tuple, set[Tuple]] = {}
 
     def __init__(self):
         self._job_view = {}
         self._season_episodes = {}
+        self._meta_to_media_ids = {}
 
     @staticmethod
     def __get_meta_id(meta: MetaBase = None, season: Optional[int] = None) -> Tuple:
@@ -133,7 +136,12 @@ class JobManager:
         """
         return schemas.MetaInfo(**task.meta.to_dict())
 
-    def add_task(self, task: TransferTask, state: Optional[str] = "waiting") -> bool:
+    def add_task(
+        self,
+        task: TransferTask,
+        state: Optional[str] = "waiting",
+        link_meta_job: Optional[bool] = False,
+    ) -> bool:
         """
         添加整理任务，自动分组到对应的作业中
         :return: True表示任务已添加，False表示任务无效或已存在（重复）
@@ -142,6 +150,9 @@ class JobManager:
             return False
         with job_lock:
             __mediaid__ = self.__get_id(task)
+            __metaid__ = self.__get_meta_id(
+                meta=task.meta, season=task.meta.begin_season
+            )
             if __mediaid__ not in self._job_view:
                 self._job_view[__mediaid__] = TransferJob(
                     media=self.__get_media(task),
@@ -175,6 +186,10 @@ class JobManager:
                         state=state,
                     )
                 )
+            if link_meta_job and task.mediainfo and __mediaid__ != __metaid__:
+                self._meta_to_media_ids.setdefault(__metaid__, set()).add(
+                    __mediaid__
+                )
             # 添加季集信息
             if self._season_episodes.get(__mediaid__):
                 self._season_episodes[__mediaid__].extend(task.meta.episode_list)
@@ -184,6 +199,26 @@ class JobManager:
             else:
                 self._season_episodes[__mediaid__] = task.meta.episode_list
             return True
+
+    def __is_job_done(self, job_id: Tuple) -> bool:
+        """
+        检查指定作业是否已完成
+        """
+        if job_id not in self._job_view:
+            return True
+        return all(
+            task.state in ["completed", "failed"]
+            for task in self._job_view[job_id].tasks
+        )
+
+    def __pop_job(self, job_id: Tuple):
+        """
+        移除指定作业和对应季集缓存
+        """
+        if job_id in self._season_episodes:
+            self._season_episodes.pop(job_id)
+        if job_id in self._job_view:
+            self._job_view.pop(job_id)
 
     def running_task(self, task: TransferTask):
         """
@@ -280,27 +315,20 @@ class JobManager:
                 media=task.mediainfo, season=task.meta.begin_season
             )
 
-            meta_done = True
-            if __metaid__ in self._job_view:
-                meta_done = all(
-                    t.state in ["completed", "failed"]
-                    for t in self._job_view[__metaid__].tasks
-                )
+            related_media_ids = set(self._meta_to_media_ids.get(__metaid__, set()))
+            if task.mediainfo:
+                related_media_ids.add(__mediaid__)
 
-            media_done = True
-            if __mediaid__ in self._job_view:
-                media_done = all(
-                    t.state in ["completed", "failed"]
-                    for t in self._job_view[__mediaid__].tasks
-                )
+            meta_done = self.__is_job_done(__metaid__)
+            media_done = all(
+                self.__is_job_done(mediaid) for mediaid in related_media_ids
+            )
 
             if meta_done and media_done:
-                __id__ = self.__get_id(task)
-                if __id__ in self._job_view:
-                    # 移除季集信息
-                    if __id__ in self._season_episodes:
-                        self._season_episodes.pop(__id__)
-                    self._job_view.pop(__id__)
+                remove_ids = {__metaid__, self.__get_id(task), *related_media_ids}
+                for job_id in remove_ids:
+                    self.__pop_job(job_id)
+                self._meta_to_media_ids.pop(__metaid__, None)
 
     def is_done(self, task: TransferTask) -> bool:
         """
@@ -1080,6 +1108,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             transferhis = TransferHistoryOper()
             mediainfo = task.mediainfo
             mediainfo_changed = False
+            link_meta_job = False
             if not mediainfo:
                 download_history = task.download_history
                 # 下载用户
@@ -1156,6 +1185,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     return False, "未识别到媒体信息"
 
                 mediainfo_changed = True
+                link_meta_job = True
 
             # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
             if not settings.SCRAP_FOLLOW_TMDB:
@@ -1172,7 +1202,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # 更新队列任务
                 curr_task = self.jobview.remove_task(task.fileitem)
                 self.jobview.add_task(
-                    task, state=curr_task.state if curr_task else "waiting"
+                    task,
+                    state=curr_task.state if curr_task else "waiting",
+                    link_meta_job=link_meta_job and curr_task is not None,
                 )
 
             # 获取集数据
