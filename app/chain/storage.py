@@ -61,6 +61,12 @@ class StorageChain(ChainBase):
         """
         return self.run_module("create_folder", fileitem=fileitem, name=name)
 
+    def get_folder(self, storage: str, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取目录，不存在则递归创建
+        """
+        return self.run_module("get_folder", storage=storage, path=path)
+
     def download_file(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件

@@ -162,7 +162,7 @@ class SubtitleModule(_ModuleBase):
             time.sleep(1)
         # 目录仍然不存在，且有文件夹名，则创建目录
         if not working_dir_item and folder_name:
-            parent_dir_item = storageChain.get_file_item(storage, download_dir)
+            parent_dir_item = storageChain.get_folder(storage, download_dir)
             if parent_dir_item:
                 working_dir_item = storageChain.create_folder(
                     parent_dir_item,
