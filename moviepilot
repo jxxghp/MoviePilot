@@ -1,0 +1,280 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+show_help() {
+  cat <<'EOF'
+Usage: moviepilot [BOOTSTRAP COMMAND] | [RUNTIME COMMAND]
+       moviepilot help [COMMAND ...]
+       moviepilot commands
+
+Bootstrap Commands:
+  moviepilot install deps [--python PYTHON] [--venv PATH] [--recreate]
+  moviepilot install frontend [--version latest] [--node-version 20.12.1]
+  moviepilot install resources [--resources-repo PATH] [--resource-dir PATH]
+  moviepilot init [--skip-resources] [--force-token] [--wizard]
+  moviepilot setup [--python PYTHON] [--venv PATH] [--recreate] [--frontend-version latest] [--node-version 20.12.1] [--wizard]
+
+Runtime Commands:
+  moviepilot start|stop|restart|status|logs|version
+  moviepilot config ...
+  moviepilot tool ...
+  moviepilot scheduler ...
+
+Discovery Commands:
+  moviepilot help
+  moviepilot help config
+  moviepilot help install
+  moviepilot commands
+
+Examples:
+  moviepilot install deps
+  moviepilot install frontend
+  moviepilot install resources
+  moviepilot setup --wizard
+  moviepilot help config
+  moviepilot config keys
+  moviepilot start
+  moviepilot tool list
+EOF
+}
+
+show_commands() {
+  cat <<'EOF'
+Bootstrap Commands
+  install deps
+  install frontend
+  install resources
+  init
+  setup
+
+Runtime Commands
+  start
+  stop
+  restart
+  status
+  logs
+  version
+  config path
+  config list
+  config get
+  config set
+  config keys
+  config describe
+  tool list
+  tool show
+  tool run
+  scheduler list
+  scheduler run
+
+Discovery Commands
+  help
+  commands
+EOF
+}
+
+show_install_help() {
+  cat <<'EOF'
+Usage:
+  moviepilot install deps [OPTIONS]
+  moviepilot install frontend [OPTIONS]
+  moviepilot install resources [OPTIONS]
+
+Options:
+  deps:
+    --python PYTHON   用于创建虚拟环境的 Python 解释器
+    --venv PATH       虚拟环境目录，默认 ./venv
+    --recreate        删除并重建虚拟环境
+
+  frontend:
+    --version TAG         前端版本，默认 latest
+    --node-version VER    本地 Node 运行时版本，默认 20.12.1
+
+  resources:
+    --resources-repo PATH 本地 MoviePilot-Resources 仓库路径
+    --resource-dir PATH   直接指定 resources.v2 目录
+
+  -h, --help              显示帮助
+EOF
+}
+
+show_init_help() {
+  cat <<'EOF'
+Usage: moviepilot init [OPTIONS]
+
+Options:
+  --skip-resources          跳过资源同步
+  --force-token             强制重置 API_TOKEN
+  --wizard                  启动交互式初始化向导
+  -h, --help                显示帮助
+EOF
+}
+
+show_setup_help() {
+  cat <<'EOF'
+Usage: moviepilot setup [OPTIONS]
+
+Options:
+  --python PYTHON           用于创建虚拟环境的 Python 解释器
+  --venv PATH               虚拟环境目录，默认 ./venv
+  --recreate                删除并重建虚拟环境
+  --frontend-version TAG    前端版本，默认 latest
+  --node-version VER        本地 Node 运行时版本，默认 20.12.1
+  --skip-resources          跳过资源同步
+  --force-token             强制重置 API_TOKEN
+  --wizard                  安装完成后启动交互式初始化向导
+  -h, --help                显示帮助
+EOF
+}
+
+find_system_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+  return 1
+}
+
+run_runtime_cli() {
+  if [ ! -x "$VENV_PYTHON" ]; then
+    echo "未找到项目虚拟环境，请先执行 moviepilot install deps 或 moviepilot setup" >&2
+    exit 1
+  fi
+  exec "$VENV_PYTHON" -m app.cli "$@"
+}
+
+show_command_help() {
+  case "${1:-}" in
+    ""|-h|--help|help)
+      show_help
+      exit 0
+      ;;
+    install)
+      shift
+      case "${1:-}" in
+        ""|deps|-h|--help)
+          show_install_help
+          exit 0
+          ;;
+        frontend)
+          show_install_help
+          exit 0
+          ;;
+        resources)
+          show_install_help
+          exit 0
+          ;;
+        *)
+          echo "仅支持：moviepilot help install、moviepilot help install deps、moviepilot help install frontend、moviepilot help install resources" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    init)
+      show_init_help
+      exit 0
+      ;;
+    setup)
+      show_setup_help
+      exit 0
+      ;;
+    commands)
+      show_commands
+      exit 0
+      ;;
+    *)
+      run_runtime_cli "$@" --help
+      ;;
+  esac
+}
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE_TARGET="$(readlink "$SOURCE")"
+  if [[ "$SOURCE_TARGET" != /* ]]; then
+    SOURCE="$SOURCE_DIR/$SOURCE_TARGET"
+  else
+    SOURCE="$SOURCE_TARGET"
+  fi
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+VENV_PYTHON="$ROOT/venv/bin/python"
+SETUP_SCRIPT="$ROOT/scripts/local_setup.py"
+
+BOOTSTRAP_PYTHON=""
+if [ -x "$VENV_PYTHON" ]; then
+  BOOTSTRAP_PYTHON="$VENV_PYTHON"
+else
+  BOOTSTRAP_PYTHON="$(find_system_python || true)"
+fi
+
+cd "$ROOT"
+
+case "${1:-}" in
+  ""|-h|--help|help)
+    if [ "${1:-}" = "help" ]; then
+      shift
+      show_command_help "$@"
+    fi
+    show_help
+    exit 0
+    ;;
+  commands)
+    show_commands
+    exit 0
+    ;;
+  install)
+    shift
+    if [ -z "$BOOTSTRAP_PYTHON" ]; then
+      echo "未找到可用的 Python 解释器，请先安装 Python 3" >&2
+      exit 1
+    fi
+    case "${1:-}" in
+      deps)
+        shift
+        exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-deps "$@"
+        ;;
+      frontend)
+        shift
+        exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-frontend "$@"
+        ;;
+      resources)
+        shift
+        exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-resources "$@"
+        ;;
+      *)
+        echo "支持的命令：moviepilot install deps|frontend|resources" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  init)
+    shift
+    if [ -z "$BOOTSTRAP_PYTHON" ]; then
+      echo "未找到可用的 Python 解释器，请先安装 Python 3" >&2
+      exit 1
+    fi
+    exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" init "$@"
+    ;;
+  setup)
+    shift
+    if [ -z "$BOOTSTRAP_PYTHON" ]; then
+      echo "未找到可用的 Python 解释器，请先安装 Python 3" >&2
+      exit 1
+    fi
+    exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" setup "$@"
+    ;;
+esac
+
+if [ ! -x "$VENV_PYTHON" ]; then
+  echo "未找到项目虚拟环境，请先执行 moviepilot install deps 或 moviepilot setup" >&2
+  exit 1
+fi
+
+exec "$VENV_PYTHON" -m app.cli "$@"

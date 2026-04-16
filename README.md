@@ -16,17 +16,31 @@
 
 发布频道：https://t.me/moviepilot_channel
 
+
 ## 主要特性
 
 - 前后端分离，基于FastApi + Vue3。
 - 聚焦核心需求，简化功能和设置，部分设置项可直接使用默认值。
 - 重新设计了用户界面，更加美观易用。
 
+
 ## 安装使用
 
 官方Wiki：https://wiki.movie-pilot.org
 
-### 为 AI Agent 添加 Skills
+
+## 本地 CLI
+
+一键安装运行脚本：
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
+```
+
+使用 `moviepilot` 命令管理MoviePilot，完整 CLI 文档：[`docs/cli.md`](docs/cli.md)
+
+
+## 为 AI Agent 添加 Skills
 ```shell
 npx skills add https://github.com/jxxghp/MoviePilot
 ```
@@ -37,32 +51,9 @@ API文档：https://api.movie-pilot.org
 
 MCP工具API文档：详见 [docs/mcp-api.md](docs/mcp-api.md)
 
-本地运行需要 `Python 3.12`、`Node JS v20.12.1`
+开发环境准备与本地源码运行说明：[`docs/development-setup.md`](docs/development-setup.md)
 
-- 克隆主项目 [MoviePilot](https://github.com/jxxghp/MoviePilot) 
-```shell
-git clone https://github.com/jxxghp/MoviePilot
-```
-- 克隆资源项目 [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources) ，将 `resources` 目录下对应平台及版本的库 `.so`/`.pyd`/`.bin` 文件复制到 `app/helper` 目录
-```shell
-git clone https://github.com/jxxghp/MoviePilot-Resources
-```
-- 安装后端依赖，运行 `main.py` 启动后端服务，默认监听端口：`3001`，API文档地址：`http://localhost:3001/docs`
-```shell
-cd MoviePilot
-pip install -r requirements.txt
-python3 -m app.main
-```
-- 克隆前端项目 [MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)
-```shell
-git clone https://github.com/jxxghp/MoviePilot-Frontend
-```
-- 安装前端依赖，运行前端项目，访问：`http://localhost:5173`
-```shell
-yarn
-yarn dev
-```
-- 参考 [插件开发指引](https://wiki.movie-pilot.org/zh/plugindev) 在 `app/plugins` 目录下开发插件代码
+插件开发说明：<https://wiki.movie-pilot.org/zh/plugindev>
 
 ## 相关项目
 

@@ -15,11 +15,14 @@ app/helper/*.bin
 app/plugins/**
 !app/plugins/__init__.py
 config/cookies/**
+config/app.env
 config/user.db*
 config/sites/**
 config/logs/
 config/temp/
 config/cache/
+.runtime/
+public/
 *.pyc
 *.log
 .vscode
