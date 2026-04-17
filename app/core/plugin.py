@@ -39,7 +39,7 @@ from app.utils.system import SystemUtils
 
 class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     """插件管理器"""
-    CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD"}
+    CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_PATHS"}
 
     def __init__(self):
         # 插件列表
