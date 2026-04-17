@@ -26,10 +26,12 @@ from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils, AsyncRequestUtils
 from app.utils.singleton import WeakSingleton
+from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
 
 PLUGIN_DIR = Path(settings.ROOT_PATH) / "app" / "plugins"
+LOCAL_REPO_PREFIX = "local://"
 
 
 class PluginHelper(metaclass=WeakSingleton):
@@ -48,6 +50,181 @@ class PluginHelper(metaclass=WeakSingleton):
             if not self.systemconfig.get(SystemConfigKey.PluginInstallReport):
                 if self.install_report():
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
+
+    @staticmethod
+    def is_local_repo_url(repo_url: Optional[str]) -> bool:
+        """
+        判断是否为本地插件来源标识。
+        """
+        return bool(repo_url and repo_url.startswith(LOCAL_REPO_PREFIX))
+
+    @staticmethod
+    def make_local_repo_url(pid: str) -> str:
+        """
+        生成本地插件安装来源标识。
+        """
+        return f"{LOCAL_REPO_PREFIX}{pid}"
+
+    @staticmethod
+    def parse_local_repo_url(repo_url: str) -> Optional[str]:
+        """
+        从本地插件来源标识中解析插件ID。
+        """
+        if not PluginHelper.is_local_repo_url(repo_url):
+            return None
+        pid = repo_url[len(LOCAL_REPO_PREFIX):].strip("/")
+        return pid or None
+
+    @staticmethod
+    def get_local_source_paths() -> List[Path]:
+        """
+        获取本地插件来源目录列表。
+        """
+        if not settings.PLUGIN_LOCAL_PATHS:
+            return []
+        paths = []
+        for item in settings.PLUGIN_LOCAL_PATHS.split(","):
+            local_path = item.strip()
+            if not local_path:
+                continue
+            path = Path(local_path).expanduser()
+            if not path.is_absolute():
+                path = settings.ROOT_PATH / path
+            paths.append(path.resolve())
+        return paths
+
+    @staticmethod
+    def __get_local_package(source_path: Path, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+        """
+        从本地插件仓库读取 package.json 或 package.{version}.json。
+        """
+        package_file = source_path / (
+            f"package.{package_version}.json" if package_version else "package.json"
+        )
+        if not package_file.exists():
+            return {}
+        try:
+            content = package_file.read_text(encoding="utf-8")
+            payload = json.loads(content)
+        except Exception as e:
+            logger.warning(f"读取本地插件包 {package_file} 失败：{e}")
+            return None
+        if not isinstance(payload, dict):
+            logger.warning(f"本地插件包 {package_file} 格式不正确")
+            return None
+        return payload
+
+    @staticmethod
+    def __get_local_plugin_dir(source_path: Path, pid: str, package_version: Optional[str]) -> Path:
+        plugin_root = f"plugins.{package_version}" if package_version else "plugins"
+        return source_path / plugin_root / pid.lower()
+
+    def get_local_plugin_candidates(self) -> Dict[str, dict]:
+        """
+        扫描本地插件仓库，按插件ID保留版本号最高的候选。
+        """
+        candidates: Dict[str, dict] = {}
+        for source_order, source_path in enumerate(self.get_local_source_paths()):
+            if not source_path.exists() or not source_path.is_dir():
+                logger.warning(f"本地插件来源目录不存在或不可读：{source_path}")
+                continue
+
+            package_candidates = []
+            if settings.VERSION_FLAG:
+                package_candidates.append((settings.VERSION_FLAG, self.__get_local_package(source_path,
+                                                                                           settings.VERSION_FLAG)))
+            package_candidates.append(("", self.__get_local_package(source_path)))
+
+            for package_version, local_plugins in package_candidates:
+                if local_plugins is None:
+                    continue
+                for pid, plugin_info in local_plugins.items():
+                    if not isinstance(plugin_info, dict):
+                        continue
+                    # package.json 中的旧结构需要声明兼容当前版本。
+                    if (
+                            not package_version
+                            and settings.VERSION_FLAG
+                            and plugin_info.get(settings.VERSION_FLAG) is not True
+                    ):
+                        continue
+
+                    plugin_dir = self.__get_local_plugin_dir(source_path, pid, package_version)
+                    if not plugin_dir.is_dir():
+                        logger.debug(f"跳过本地插件 {pid}：插件目录不存在 {plugin_dir}")
+                        continue
+
+                    candidate = plugin_info.copy()
+                    candidate["id"] = pid
+                    candidate["package_version"] = package_version
+                    candidate["source_order"] = source_order
+                    candidate["source_path"] = source_path
+                    candidate["path"] = plugin_dir
+                    candidate_version = str(candidate.get("version") or "0")
+
+                    existing = candidates.get(pid)
+                    if not existing:
+                        candidates[pid] = candidate
+                        continue
+
+                    existing_version = str(existing.get("version") or "0")
+                    if StringUtils.compare_version(candidate_version, ">", existing_version):
+                        candidates[pid] = candidate
+                    elif (
+                        candidate_version == existing_version
+                        and source_order < int(existing.get("source_order", source_order))
+                    ):
+                        logger.info(f"本地插件 {pid} 存在同版本来源，使用靠前目录：{source_path}")
+                        candidates[pid] = candidate
+
+        return candidates
+
+    def get_local_plugin_candidate(self, pid: str, package_version: Optional[str] = None,
+                                   source_path: Optional[Path] = None,
+                                   strict_compat: bool = True) -> Optional[dict]:
+        """
+        获取指定插件ID的本地插件候选。
+        """
+        if not pid:
+            return None
+        if package_version is not None or source_path is not None:
+            source_paths = [source_path.resolve()] if source_path else self.get_local_source_paths()
+            for source_order, local_source_path in enumerate(self.get_local_source_paths()):
+                if local_source_path not in source_paths:
+                    continue
+                local_plugins = self.__get_local_package(local_source_path, package_version or "")
+                if not local_plugins:
+                    continue
+                for candidate_pid, plugin_info in local_plugins.items():
+                    if candidate_pid.lower() != pid.lower() or not isinstance(plugin_info, dict):
+                        continue
+                    is_compatible = not (
+                            not package_version
+                            and settings.VERSION_FLAG
+                            and plugin_info.get(settings.VERSION_FLAG) is not True
+                    )
+                    if not is_compatible and strict_compat:
+                        return None
+                    plugin_dir = self.__get_local_plugin_dir(local_source_path, candidate_pid, package_version or "")
+                    if not plugin_dir.is_dir():
+                        return None
+                    candidate = plugin_info.copy()
+                    candidate["id"] = candidate_pid
+                    candidate["package_version"] = package_version or ""
+                    candidate["source_order"] = source_order
+                    candidate["source_path"] = local_source_path
+                    candidate["path"] = plugin_dir
+                    if not is_compatible:
+                        candidate["compatible"] = False
+                        candidate["skip_reason"] = f"package.json 未声明 {settings.VERSION_FLAG} 兼容"
+                    return candidate
+            return None
+
+        candidates = self.get_local_plugin_candidates()
+        for candidate_pid, candidate in candidates.items():
+            if candidate_pid.lower() == pid.lower():
+                return candidate
+        return None
 
     @staticmethod
     def __parse_plugin_index_response(content: str) -> Optional[Dict[str, dict]]:
@@ -270,6 +447,46 @@ class PluginHelper(metaclass=WeakSingleton):
                 return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
 
             return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
+
+    def install_local(self, pid: str, repo_url: str = "", force_install: bool = False) -> Tuple[bool, str]:
+        """
+        从本地插件来源目录安装插件。
+        """
+        local_pid = self.parse_local_repo_url(repo_url) if repo_url else pid
+        if not local_pid or local_pid.lower() != pid.lower():
+            return False, "本地插件来源与插件ID不匹配"
+
+        candidate = self.get_local_plugin_candidate(pid)
+        if not candidate:
+            return False, f"未找到本地插件：{pid}"
+
+        source_dir = Path(candidate.get("path"))
+        dest_dir = PLUGIN_DIR / pid.lower()
+        try:
+            if source_dir.resolve() == dest_dir.resolve():
+                return False, "本地插件来源不能与运行目录相同"
+        except Exception:
+            return False, "本地插件来源路径无效"
+
+        def prepare_local() -> Tuple[bool, str]:
+            try:
+                shutil.copytree(
+                    source_dir,
+                    dest_dir,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+                )
+                return True, ""
+            except Exception as e:
+                logger.error(f"复制本地插件 {pid} 失败：{e}")
+                return False, f"复制本地插件失败：{e}"
+
+        return self.__install_flow_sync(
+            pid=pid,
+            force_install=force_install,
+            prepare_content=prepare_local,
+            repo_url=None
+        )
 
     def __get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
             Tuple[Optional[list], Optional[str]]:
