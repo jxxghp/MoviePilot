@@ -124,6 +124,25 @@ class PluginHelper(metaclass=WeakSingleton):
             return None
 
     @staticmethod
+    def sanitize_repo_url_for_statistic(repo_url: Optional[str]) -> Optional[str]:
+        """
+        统计上报前脱敏 repo_url，避免泄露本地仓库绝对路径
+        """
+        if not repo_url:
+            return repo_url
+        if not PluginHelper.is_local_repo_url(repo_url):
+            return repo_url
+
+        pid = PluginHelper.parse_local_repo_url(repo_url)
+        if not pid:
+            return LOCAL_REPO_PREFIX.rstrip("/")
+
+        return PluginHelper.make_local_repo_url(
+            pid=pid,
+            package_version=PluginHelper.parse_local_repo_package_version(repo_url)
+        )
+
+    @staticmethod
     def get_local_repo_paths() -> List[Path]:
         """
         获取本地插件仓库目录列表
@@ -410,7 +429,7 @@ class PluginHelper(metaclass=WeakSingleton):
             timeout=5
         ).post(install_reg_url, json={
             "plugin_id": pid,
-            "repo_url": repo_url
+            "repo_url": self.sanitize_repo_url_for_statistic(repo_url)
         })
         if res is not None and res.status_code == 200:
             return True
@@ -427,7 +446,10 @@ class PluginHelper(metaclass=WeakSingleton):
         if items:
             for pid, repo_url in items:
                 if pid:
-                    payload_plugins.append({"plugin_id": pid, "repo_url": repo_url})
+                    payload_plugins.append({
+                        "plugin_id": pid,
+                        "repo_url": self.sanitize_repo_url_for_statistic(repo_url)
+                    })
         else:
             plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins)
             if not plugins:
@@ -1323,7 +1345,7 @@ class PluginHelper(metaclass=WeakSingleton):
             timeout=5
         ).post(install_reg_url, json={
             "plugin_id": pid,
-            "repo_url": repo_url
+            "repo_url": self.sanitize_repo_url_for_statistic(repo_url)
         })
         if res is not None and res.status_code == 200:
             return True
@@ -1340,7 +1362,10 @@ class PluginHelper(metaclass=WeakSingleton):
         if items:
             for pid, repo_url in items:
                 if pid:
-                    payload_plugins.append({"plugin_id": pid, "repo_url": repo_url})
+                    payload_plugins.append({
+                        "plugin_id": pid,
+                        "repo_url": self.sanitize_repo_url_for_statistic(repo_url)
+                    })
         else:
             plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins)
             if not plugins:
