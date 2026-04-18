@@ -232,22 +232,16 @@ async def install(plugin_id: str,
     install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
     # 首先检查插件是否已经存在，并且是否强制安装，否则只进行安装统计
     plugin_helper = PluginHelper()
-    is_local_install = plugin_helper.is_local_repo_url(repo_url)
-    if not force and plugin_id in PluginManager().get_plugin_ids() and not is_local_install:
-        await plugin_helper.async_install_reg(pid=plugin_id)
+    if not force and plugin_id in PluginManager().get_plugin_ids():
+        await plugin_helper.async_install_reg(pid=plugin_id, repo_url=repo_url)
     else:
         # 插件不存在或需要强制安装，下载安装并注册插件
-        if is_local_install:
-            state, msg = await run_in_threadpool(
-                plugin_helper.install_local,
-                plugin_id,
-                repo_url,
-                force
+        if repo_url:
+            state, msg = await plugin_helper.async_install(
+                pid=plugin_id,
+                repo_url=repo_url,
+                force_install=force
             )
-            if not state:
-                return schemas.Response(success=False, message=msg)
-        elif repo_url:
-            state, msg = await plugin_helper.async_install(pid=plugin_id, repo_url=repo_url)
             # 安装失败则直接响应
             if not state:
                 return schemas.Response(success=False, message=msg)

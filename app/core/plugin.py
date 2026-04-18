@@ -343,7 +343,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                                 f"但跳过处理：{candidate.get('skip_reason')}"
                             )
                             continue
-                        logger.warning(f"检测到本地插件 {candidate.get('id')} 依赖文件变化，请重新安装本地插件以安装依赖")
+                        logger.warn(f"检测到本地插件 {candidate.get('id')} 依赖文件变化，请重新安装本地插件以安装依赖")
                     continue
 
                 # 跳过非 .py 文件

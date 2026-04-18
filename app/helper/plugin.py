@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import io
 import json
@@ -391,6 +392,9 @@ class PluginHelper(metaclass=WeakSingleton):
         :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
         :return: (是否成功, 错误信息)
         """
+        if self.is_local_repo_url(repo_url):
+            return self.install_local(pid=pid, repo_url=repo_url, force_install=force_install)
+
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
 
@@ -840,10 +844,10 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.error(f"{pid} 准备插件内容失败：{message}")
             if backup_dir:
                 self.__restore_plugin(pid, backup_dir)
-                logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
             else:
                 self.__remove_old_plugin(pid)
-                logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, message
 
         dependencies_exist, dep_ok, dep_msg = self.__install_dependencies_if_required(pid)
@@ -851,10 +855,10 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.error(f"{pid} 依赖安装失败：{dep_msg}")
             if backup_dir:
                 self.__restore_plugin(pid, backup_dir)
-                logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
             else:
                 self.__remove_old_plugin(pid)
-                logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, dep_msg
 
         self.install_reg(pid, repo_url)
@@ -1635,6 +1639,9 @@ class PluginHelper(metaclass=WeakSingleton):
         :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
         :return: (是否成功, 错误信息)
         """
+        if self.is_local_repo_url(repo_url):
+            return await asyncio.to_thread(self.install_local, pid, repo_url, force_install)
+
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
 
@@ -1722,10 +1729,10 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.error(f"{pid} 准备插件内容失败：{message}")
             if backup_dir:
                 await self.__async_restore_plugin(pid, backup_dir)
-                logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
             else:
                 await self.__async_remove_old_plugin(pid)
-                logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, message
 
         dependencies_exist, dep_ok, dep_msg = await self.__async_install_dependencies_if_required(pid)
@@ -1733,10 +1740,10 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.error(f"{pid} 依赖安装失败：{dep_msg}")
             if backup_dir:
                 await self.__async_restore_plugin(pid, backup_dir)
-                logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
             else:
                 await self.__async_remove_old_plugin(pid)
-                logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, dep_msg
 
         await self.async_install_reg(pid, repo_url)
