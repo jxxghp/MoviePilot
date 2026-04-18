@@ -159,7 +159,7 @@ async def all_plugins(_: User = Depends(get_current_active_superuser_async),
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     # 在线插件
     online_plugins = await plugin_manager.async_get_online_plugins(force)
-    candidate_plugins = plugin_manager._process_plugins_list(online_plugins + local_repo_plugins, []) \
+    candidate_plugins = plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, []) \
         if online_plugins or local_repo_plugins else []
     if not candidate_plugins:
         # 没有获取在线插件

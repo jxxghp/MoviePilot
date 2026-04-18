@@ -437,7 +437,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def _get_local_plugin_candidate_from_path(event_path: Path) -> Optional[dict]:
         """
-        根据本地插件仓库路径解析具体插件候选，保留 plugins/plugins.v2 来源差异。
+        根据本地插件仓库路径解析具体插件候选，保留 plugins/plugins.v2 来源差异
         """
         try:
             event_path = event_path.resolve()
@@ -475,7 +475,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def _sync_local_plugin_if_installed(pid: str, candidate: Optional[dict] = None) -> bool:
         """
-        已安装本地插件源码变化时，同步到运行目录。
+        已安装本地插件源码变化时，同步到运行目录
         """
         installed_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         if pid not in installed_plugins:
@@ -1158,7 +1158,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     else:
                         base_version_plugins.extend(plugins)  # 收集 v1 版本插件
 
-        return self._process_plugins_list(higher_version_plugins, base_version_plugins)
+        return self.process_plugins_list(higher_version_plugins, base_version_plugins)
 
     def get_local_plugins(self) -> List[schemas.Plugin]:
         """
@@ -1235,7 +1235,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_local_repo_plugins(self) -> List[schemas.Plugin]:
         """
-        获取本地插件仓库目录中的插件信息。
+        获取本地插件仓库目录中的插件信息
         """
         plugins = []
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
@@ -1326,8 +1326,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return ret_plugins
 
     @staticmethod
-    def _process_plugins_list(higher_version_plugins: List[schemas.Plugin],
-                              base_version_plugins: List[schemas.Plugin]) -> List[schemas.Plugin]:
+    def process_plugins_list(higher_version_plugins: List[schemas.Plugin],
+                             base_version_plugins: List[schemas.Plugin]) -> List[schemas.Plugin]:
         """
         处理插件列表：合并、去重、排序、保留最高版本
         :param higher_version_plugins: 高版本插件列表
@@ -1523,7 +1523,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     else:
                         base_version_plugins.extend(plugins)  # 收集 v1 版本插件
 
-        return self._process_plugins_list(higher_version_plugins, base_version_plugins)
+        return self.process_plugins_list(higher_version_plugins, base_version_plugins)
 
     async def async_get_plugins_from_market(self, market: str,
                                             package_version: Optional[str] = None,
