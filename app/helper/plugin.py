@@ -80,10 +80,10 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         获取本地插件来源目录列表。
         """
-        if not settings.PLUGIN_LOCAL_PATHS:
+        if not settings.PLUGIN_LOCAL_REPO_PATHS:
             return []
         paths = []
-        for item in settings.PLUGIN_LOCAL_PATHS.split(","):
+        for item in settings.PLUGIN_LOCAL_REPO_PATHS.split(","):
             local_path = item.strip()
             if not local_path:
                 continue

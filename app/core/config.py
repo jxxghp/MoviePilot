@@ -418,7 +418,7 @@ class ConfigModel(BaseModel):
     # 是否开启插件热加载
     PLUGIN_AUTO_RELOAD: bool = False
     # 本地插件仓库目录，多个地址使用,分隔
-    PLUGIN_LOCAL_PATHS: Optional[str] = None
+    PLUGIN_LOCAL_REPO_PATHS: Optional[str] = None
 
     # ==================== Github & PIP ====================
     # Github token，提高请求api限流阈值 ghp_****
