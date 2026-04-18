@@ -1245,7 +1245,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugin = self._process_plugin_info(
                 pid=pid,
                 plugin_info=plugin_info,
-                market=PluginHelper.make_local_repo_url(pid),
+                market=PluginHelper.make_local_repo_url(
+                    pid,
+                    plugin_info.get("repo_path"),
+                    package_version
+                ),
                 installed_apps=installed_apps,
                 add_time=0,
                 package_version=package_version
