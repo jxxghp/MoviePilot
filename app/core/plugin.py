@@ -601,11 +601,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         # 获取已安装插件列表
         install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
-        # 获取在线插件列表
+        # 获取远程和本地仓库来源插件列表
         online_plugins = self.get_online_plugins()
+        local_repo_plugins = self.get_local_repo_plugins()
+        candidate_plugins = self.process_plugins_list(online_plugins + local_repo_plugins, []) \
+            if online_plugins or local_repo_plugins else []
         # 确定需要安装的插件
         plugins_to_install = [
-            plugin for plugin in online_plugins
+            plugin for plugin in candidate_plugins
             if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id, plugin.plugin_version)
         ]
 
@@ -1158,7 +1161,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     else:
                         base_version_plugins.extend(plugins)  # 收集 v1 版本插件
 
-        return self.process_plugins_list(higher_version_plugins, base_version_plugins)
+        result = self.process_plugins_list(higher_version_plugins, base_version_plugins)
+        logger.info(f"获取到 {len(result)} 个线上插件")
+        return result
 
     def get_local_plugins(self) -> List[schemas.Plugin]:
         """
@@ -1240,6 +1245,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         plugins = []
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         local_candidates = PluginHelper().get_local_plugin_candidates()
+        if not local_candidates:
+            return []
         for pid, plugin_info in local_candidates.items():
             package_version = plugin_info.get("package_version")
             plugin = self._process_plugin_info(
@@ -1260,6 +1267,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugins.append(plugin)
 
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
+        logger.info(f"获取到 {len(plugins)} 个本地插件")
         return plugins
 
     @staticmethod
@@ -1374,9 +1382,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     and not PluginHelper.is_local_repo_url(plugin.repo_url):
                 result_by_id[plugin.id] = plugin
 
-        result = list(result_by_id.values())
-        logger.info(f"共获取到 {len(result)} 个线上插件")
-        return result
+        return list(result_by_id.values())
 
     def _process_plugin_info(self, pid: str, plugin_info: dict, market: str,
                              installed_apps: List[str], add_time: int,
@@ -1523,7 +1529,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     else:
                         base_version_plugins.extend(plugins)  # 收集 v1 版本插件
 
-        return self.process_plugins_list(higher_version_plugins, base_version_plugins)
+        result = self.process_plugins_list(higher_version_plugins, base_version_plugins)
+        logger.info(f"获取到 {len(result)} 个线上插件")
+        return result
 
     async def async_get_plugins_from_market(self, market: str,
                                             package_version: Optional[str] = None,
