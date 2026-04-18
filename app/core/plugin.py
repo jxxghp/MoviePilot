@@ -312,9 +312,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         # 监视插件目录
         plugin_paths = [str(settings.ROOT_PATH / "app" / "plugins")]
-        for local_path in PluginHelper.get_local_source_paths():
-            if local_path.exists() and local_path.is_dir():
-                plugin_paths.append(str(local_path))
+        for local_repo_path in PluginHelper.get_local_repo_paths():
+            if local_repo_path.exists() and local_repo_path.is_dir():
+                plugin_paths.append(str(local_repo_path))
         logger.info(">>> 监控线程已启动，准备进入watch循环...")
         # 使用 watchfiles 监视目录变化，并响应变化事件
         # Todo: yield_on_timeout = True 时，每秒检查停止事件，会返回空集合；后续可以考虑用来做心跳之类的功能？
@@ -437,17 +437,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def _get_local_plugin_candidate_from_path(event_path: Path) -> Optional[dict]:
         """
-        根据本地插件来源路径解析具体插件候选，保留 plugins/plugins.v2 来源差异。
+        根据本地插件仓库路径解析具体插件候选，保留 plugins/plugins.v2 来源差异。
         """
         try:
             event_path = event_path.resolve()
-            for local_path in PluginHelper.get_local_source_paths():
-                if not local_path.exists() or not local_path.is_dir():
+            for local_repo_path in PluginHelper.get_local_repo_paths():
+                if not local_repo_path.exists() or not local_repo_path.is_dir():
                     continue
-                if not event_path.is_relative_to(local_path):
+                if not event_path.is_relative_to(local_repo_path):
                     continue
                 try:
-                    relative_parts = event_path.relative_to(local_path).parts
+                    relative_parts = event_path.relative_to(local_repo_path).parts
                 except (ValueError, IndexError):
                     continue
                 if len(relative_parts) < 2:
@@ -462,14 +462,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 candidate = PluginHelper().get_local_plugin_candidate(
                     pid=plugin_dir_name,
                     package_version=package_version,
-                    source_path=local_path,
+                    repo_path=local_repo_path,
                     strict_compat=False
                 )
                 if candidate:
                     return candidate
             return None
         except Exception as e:
-            logger.error(f"从本地来源路径解析插件候选时出错: {e}")
+            logger.error(f"从本地插件仓库路径解析插件候选时出错: {e}")
             return None
 
     @staticmethod
@@ -1233,9 +1233,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         return plugins
 
-    def get_local_source_plugins(self) -> List[schemas.Plugin]:
+    def get_local_repo_plugins(self) -> List[schemas.Plugin]:
         """
-        获取本地插件来源目录中的插件信息。
+        获取本地插件仓库目录中的插件信息。
         """
         plugins = []
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []

@@ -76,29 +76,29 @@ class PluginHelper(metaclass=WeakSingleton):
         return pid or None
 
     @staticmethod
-    def get_local_source_paths() -> List[Path]:
+    def get_local_repo_paths() -> List[Path]:
         """
-        获取本地插件来源目录列表。
+        获取本地插件仓库目录列表。
         """
         if not settings.PLUGIN_LOCAL_REPO_PATHS:
             return []
         paths = []
         for item in settings.PLUGIN_LOCAL_REPO_PATHS.split(","):
-            local_path = item.strip()
-            if not local_path:
+            local_repo_path = item.strip()
+            if not local_repo_path:
                 continue
-            path = Path(local_path).expanduser()
+            path = Path(local_repo_path).expanduser()
             if not path.is_absolute():
                 path = settings.ROOT_PATH / path
             paths.append(path.resolve())
         return paths
 
     @staticmethod
-    def __get_local_package(source_path: Path, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
+    def __get_local_package(repo_path: Path, package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
         从本地插件仓库读取 package.json 或 package.{version}.json。
         """
-        package_file = source_path / (
+        package_file = repo_path / (
             f"package.{package_version}.json" if package_version else "package.json"
         )
         if not package_file.exists():
@@ -115,25 +115,25 @@ class PluginHelper(metaclass=WeakSingleton):
         return payload
 
     @staticmethod
-    def __get_local_plugin_dir(source_path: Path, pid: str, package_version: Optional[str]) -> Path:
+    def __get_local_plugin_dir(repo_path: Path, pid: str, package_version: Optional[str]) -> Path:
         plugin_root = f"plugins.{package_version}" if package_version else "plugins"
-        return source_path / plugin_root / pid.lower()
+        return repo_path / plugin_root / pid.lower()
 
     def get_local_plugin_candidates(self) -> Dict[str, dict]:
         """
         扫描本地插件仓库，按插件ID保留版本号最高的候选。
         """
         candidates: Dict[str, dict] = {}
-        for source_order, source_path in enumerate(self.get_local_source_paths()):
-            if not source_path.exists() or not source_path.is_dir():
-                logger.warning(f"本地插件来源目录不存在或不可读：{source_path}")
+        for source_order, repo_path in enumerate(self.get_local_repo_paths()):
+            if not repo_path.exists() or not repo_path.is_dir():
+                logger.warning(f"本地插件仓库目录不存在或不可读：{repo_path}")
                 continue
 
             package_candidates = []
             if settings.VERSION_FLAG:
-                package_candidates.append((settings.VERSION_FLAG, self.__get_local_package(source_path,
+                package_candidates.append((settings.VERSION_FLAG, self.__get_local_package(repo_path,
                                                                                            settings.VERSION_FLAG)))
-            package_candidates.append(("", self.__get_local_package(source_path)))
+            package_candidates.append(("", self.__get_local_package(repo_path)))
 
             for package_version, local_plugins in package_candidates:
                 if local_plugins is None:
@@ -149,7 +149,7 @@ class PluginHelper(metaclass=WeakSingleton):
                     ):
                         continue
 
-                    plugin_dir = self.__get_local_plugin_dir(source_path, pid, package_version)
+                    plugin_dir = self.__get_local_plugin_dir(repo_path, pid, package_version)
                     if not plugin_dir.is_dir():
                         logger.debug(f"跳过本地插件 {pid}：插件目录不存在 {plugin_dir}")
                         continue
@@ -158,7 +158,7 @@ class PluginHelper(metaclass=WeakSingleton):
                     candidate["id"] = pid
                     candidate["package_version"] = package_version
                     candidate["source_order"] = source_order
-                    candidate["source_path"] = source_path
+                    candidate["repo_path"] = repo_path
                     candidate["path"] = plugin_dir
                     candidate_version = str(candidate.get("version") or "0")
 
@@ -174,25 +174,25 @@ class PluginHelper(metaclass=WeakSingleton):
                         candidate_version == existing_version
                         and source_order < int(existing.get("source_order", source_order))
                     ):
-                        logger.info(f"本地插件 {pid} 存在同版本来源，使用靠前目录：{source_path}")
+                        logger.info(f"本地插件 {pid} 存在同版本来源，使用靠前目录：{repo_path}")
                         candidates[pid] = candidate
 
         return candidates
 
     def get_local_plugin_candidate(self, pid: str, package_version: Optional[str] = None,
-                                   source_path: Optional[Path] = None,
+                                   repo_path: Optional[Path] = None,
                                    strict_compat: bool = True) -> Optional[dict]:
         """
         获取指定插件ID的本地插件候选。
         """
         if not pid:
             return None
-        if package_version is not None or source_path is not None:
-            source_paths = [source_path.resolve()] if source_path else self.get_local_source_paths()
-            for source_order, local_source_path in enumerate(self.get_local_source_paths()):
-                if local_source_path not in source_paths:
+        if package_version is not None or repo_path is not None:
+            repo_paths = [repo_path.resolve()] if repo_path else self.get_local_repo_paths()
+            for source_order, local_repo_path in enumerate(self.get_local_repo_paths()):
+                if local_repo_path not in repo_paths:
                     continue
-                local_plugins = self.__get_local_package(local_source_path, package_version or "")
+                local_plugins = self.__get_local_package(local_repo_path, package_version or "")
                 if not local_plugins:
                     continue
                 for candidate_pid, plugin_info in local_plugins.items():
@@ -205,14 +205,14 @@ class PluginHelper(metaclass=WeakSingleton):
                     )
                     if not is_compatible and strict_compat:
                         return None
-                    plugin_dir = self.__get_local_plugin_dir(local_source_path, candidate_pid, package_version or "")
+                    plugin_dir = self.__get_local_plugin_dir(local_repo_path, candidate_pid, package_version or "")
                     if not plugin_dir.is_dir():
                         return None
                     candidate = plugin_info.copy()
                     candidate["id"] = candidate_pid
                     candidate["package_version"] = package_version or ""
                     candidate["source_order"] = source_order
-                    candidate["source_path"] = local_source_path
+                    candidate["repo_path"] = local_repo_path
                     candidate["path"] = plugin_dir
                     if not is_compatible:
                         candidate["compatible"] = False
@@ -450,7 +450,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
     def install_local(self, pid: str, repo_url: str = "", force_install: bool = False) -> Tuple[bool, str]:
         """
-        从本地插件来源目录安装插件。
+        从本地插件仓库目录安装插件。
         """
         local_pid = self.parse_local_repo_url(repo_url) if repo_url else pid
         if not local_pid or local_pid.lower() != pid.lower():

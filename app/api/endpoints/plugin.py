@@ -155,12 +155,12 @@ async def all_plugins(_: User = Depends(get_current_active_superuser_async),
 
     # 未安装的本地插件
     not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
-    # 本地插件来源目录中的插件
-    local_source_plugins = plugin_manager.get_local_source_plugins()
+    # 本地插件仓库目录中的插件
+    local_repo_plugins = plugin_manager.get_local_repo_plugins()
     # 在线插件
     online_plugins = await plugin_manager.async_get_online_plugins(force)
-    candidate_plugins = plugin_manager._process_plugins_list(online_plugins + local_source_plugins, []) \
-        if online_plugins or local_source_plugins else []
+    candidate_plugins = plugin_manager._process_plugins_list(online_plugins + local_repo_plugins, []) \
+        if online_plugins or local_repo_plugins else []
     if not candidate_plugins:
         # 没有获取在线插件
         if state == "market":
