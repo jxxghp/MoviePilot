@@ -774,6 +774,37 @@ class PluginHelper(metaclass=WeakSingleton):
         if plugin_dir.exists():
             shutil.rmtree(plugin_dir, ignore_errors=True)
 
+    @staticmethod
+    def refresh_persistent_plugin_backup(pid: str) -> bool:
+        """
+        刷新插件持久化备份目录，供 docker 重置后恢复使用
+        """
+        if not SystemUtils.is_docker():
+            return True
+
+        plugin_dir = PLUGIN_DIR / pid.lower()
+        if not plugin_dir.exists():
+            logger.warn(f"{pid} 插件目录不存在，跳过刷新插件备份")
+            return False
+
+        backup_root = settings.CONFIG_PATH / "plugins_backup"
+        backup_dir = backup_root / pid.lower()
+        try:
+            backup_root.mkdir(parents=True, exist_ok=True)
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            shutil.copytree(
+                plugin_dir,
+                backup_dir,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+            )
+            logger.info(f"已刷新插件备份: {pid}")
+            return True
+        except Exception as e:
+            logger.error(f"刷新插件备份失败: {pid} - {e}")
+            return False
+
     def __collect_plugin_wheels_dirs(self) -> List[Path]:
         """
         收集已安装插件目录下可用的 wheels 目录，供批量依赖安装时复用。
@@ -957,6 +988,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, dep_msg
 
         self.install_reg(pid, repo_url)
+        self.refresh_persistent_plugin_backup(pid)
         return True, ""
 
     def __install_from_release(self, pid: str, user_repo: str, release_tag: str) -> Tuple[bool, str]:
@@ -1845,6 +1877,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, dep_msg
 
         await self.async_install_reg(pid, repo_url)
+        await asyncio.to_thread(self.refresh_persistent_plugin_backup, pid)
         return True, ""
 
     def __prepare_content_via_filelist_sync(self, pid: str, user_repo: str,
