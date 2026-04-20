@@ -1,7 +1,9 @@
 import json
 import subprocess
+import threading
+import time
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from app import schemas
 from app.core.config import settings
@@ -10,6 +12,9 @@ from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.types import StorageSchema
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
+
+_folder_locks: dict[str, threading.Lock] = {}
+_folder_locks_guard = threading.Lock()
 
 
 class Rclone(StorageBase):
@@ -120,6 +125,43 @@ class Rclone(StorageBase):
                 modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
             )
 
+    @staticmethod
+    def __normalize_remote_path(path: Union[Path, str]) -> str:
+        """
+        规范化远端路径，统一目录锁键值。
+        """
+        path_str = Path(str(path or "/")).as_posix()
+        if not path_str.startswith("/"):
+            path_str = f"/{path_str}"
+        if path_str != "/":
+            path_str = path_str.rstrip("/")
+        return path_str or "/"
+
+    @staticmethod
+    def __get_path_lock(path: Union[Path, str]) -> threading.Lock:
+        """
+        获取指定远端路径的模块级锁。
+        """
+        normalized = Rclone.__normalize_remote_path(path)
+        with _folder_locks_guard:
+            if normalized not in _folder_locks:
+                _folder_locks[normalized] = threading.Lock()
+            return _folder_locks[normalized]
+
+    def __wait_for_item(
+        self, path: Path, retries: int = 3, delay: float = 0.2
+    ) -> Optional[schemas.FileItem]:
+        """
+        等待目录或文件在远端可见，兼容云盘最终一致性延迟。
+        """
+        for attempt in range(retries):
+            item = self.get_item(path)
+            if item:
+                return item
+            if attempt < retries - 1:
+                time.sleep(delay)
+        return None
+
     def check(self) -> bool:
         """
         检查存储是否可用
@@ -163,50 +205,53 @@ class Rclone(StorageBase):
         :param fileitem: 父目录
         :param name: 目录名
         """
+        path = Path(self.__normalize_remote_path(Path(fileitem.path) / name))
         try:
             retcode = subprocess.run(
                 [
                     'rclone', 'mkdir',
-                    f'MP:{Path(fileitem.path) / name}'
+                    f'MP:{path}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                return self.get_item(Path(fileitem.path) / name)
+                folder = self.__wait_for_item(path)
+                if folder:
+                    return folder
+                logger.warn(f"【rclone】目录 {path} 创建成功后暂未可见")
+                return None
+            folder = self.__wait_for_item(path, retries=2)
+            if folder:
+                logger.info(f"【rclone】目录 {path} 已存在，忽略重复创建")
+                return folder
         except Exception as err:
             logger.error(f"【rclone】创建目录失败：{err}")
+            folder = self.__wait_for_item(path, retries=2)
+            if folder:
+                logger.info(f"【rclone】目录 {path} 已存在，忽略创建异常")
+                return folder
         return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
         根据文件路程获取目录，不存在则创建
         """
-
-        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
-            """
-            查找下级目录中匹配名称的目录
-            """
-            for sub_folder in self.list(_fileitem):
-                if sub_folder.type != "dir":
-                    continue
-                if sub_folder.name == _name:
-                    return sub_folder
-            return None
+        normalized = Path(self.__normalize_remote_path(path))
 
         # 是否已存在
-        folder = self.get_item(path)
+        folder = self.get_item(normalized)
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
-        for part in path.parts[1:]:
-            dir_file = __find_dir(fileitem, part)
-            if dir_file:
-                fileitem = dir_file
-            else:
-                dir_file = self.create_folder(fileitem, part)
+        fileitem = schemas.FileItem(storage=self.schema.value, type="dir", path="/")
+        for part in normalized.parts[1:]:
+            current_path = Path(self.__normalize_remote_path(Path(fileitem.path) / part))
+            with self.__get_path_lock(current_path):
+                dir_file = self.get_item(current_path)
                 if not dir_file:
-                    logger.warn(f"【rclone】创建目录 {fileitem.path}{part} 失败！")
+                    dir_file = self.create_folder(fileitem, part)
+                if not dir_file:
+                    logger.warn(f"【rclone】创建目录 {current_path} 失败！")
                     return None
                 fileitem = dir_file
         return fileitem
