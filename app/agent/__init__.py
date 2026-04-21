@@ -302,7 +302,7 @@ class MoviePilotAgent:
             )
         except Exception as e:
             logger.error(f"创建 Agent 失败: {e}")
-            raise e
+            raise
 
     async def process(
         self,
