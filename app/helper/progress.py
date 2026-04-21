@@ -61,11 +61,11 @@ class ProgressHelper:
         current = self._progress.get(self._key)
         if not current or not current.get('enable'):
             return
-        if value:
+        if value is not None:
             current['value'] = value
-        if text:
+        if text is not None:
             current['text'] = text
-        if data:
+        if data is not None:
             if not current.get('data'):
                 current['data'] = {}
             current['data'].update(data)

@@ -30,7 +30,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         # 写入数据库
         conf = UserConfig.get_by_key(db=self._db, username=username, key=key)
         if conf:
-            if value:
+            if value is not None:
                 conf.update(self._db, {"value": value})
             else:
                 conf.delete(self._db, conf.id)
