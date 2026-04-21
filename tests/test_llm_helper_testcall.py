@@ -1,8 +1,8 @@
 import asyncio
-import importlib
 import importlib.util
 import sys
 import unittest
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -45,7 +45,7 @@ _stub_module(
 )
 _stub_module("app.log", logger=_DummyLogger())
 
-module_path = "/Users/sdongmaker/VScode/MoviePilot/app/helper/llm.py"
+module_path = Path(__file__).resolve().parents[1] / "app" / "helper" / "llm.py"
 spec = importlib.util.spec_from_file_location("test_llm_module", module_path)
 llm_module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
