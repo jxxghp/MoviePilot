@@ -19,6 +19,15 @@ class _Dummy:
     def __init__(self, *args, **kwargs):
         pass
 
+    def __getattr__(self, _name):
+        return lambda *args, **kwargs: None
+
+
+class _DummyError(Exception):
+    def __init__(self, message="", duration_ms=None):
+        super().__init__(message)
+        self.duration_ms = duration_ms
+
 
 for _module_name in ("pillow_avif", "aiofiles", "psutil"):
     _stub_module(_module_name)
@@ -44,7 +53,12 @@ _stub_module(
     get_current_active_superuser_async=_Dummy,
     get_current_active_user_async=_Dummy,
 )
-_stub_module("app.helper.llm", LLMHelper=_Dummy)
+_stub_module(
+    "app.helper.llm",
+    LLMHelper=_Dummy,
+    LLMTestError=_DummyError,
+    LLMTestTimeout=_DummyError,
+)
 _stub_module("app.helper.mediaserver", MediaServerHelper=_Dummy)
 _stub_module("app.helper.message", MessageHelper=_Dummy)
 _stub_module("app.helper.progress", ProgressHelper=_Dummy)
@@ -53,6 +67,12 @@ _stub_module("app.helper.subscribe", SubscribeHelper=_Dummy)
 _stub_module("app.helper.system", SystemHelper=_Dummy)
 _stub_module("app.helper.image", ImageHelper=_Dummy)
 _stub_module("app.scheduler", Scheduler=_Dummy)
+_stub_module(
+    "app.log",
+    logger=_Dummy(),
+    log_settings=_Dummy(),
+    LogConfigModel=type("LogConfigModel", (), {}),
+)
 _stub_module("app.utils.crypto", HashUtils=_Dummy)
 _stub_module("app.utils.http", RequestUtils=_Dummy, AsyncRequestUtils=_Dummy)
 _stub_module("version", APP_VERSION="test")

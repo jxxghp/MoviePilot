@@ -1,10 +1,28 @@
 """LLM模型相关辅助功能"""
 
+import asyncio
 import inspect
+import time
 from typing import List
 
 from app.core.config import settings
 from app.log import logger
+
+
+class LLMTestError(RuntimeError):
+    """LLM 测试调用异常，附带请求耗时。"""
+
+    def __init__(self, message: str, duration_ms: int | None = None):
+        super().__init__(message)
+        self.duration_ms = duration_ms
+
+
+class LLMTestTimeout(TimeoutError):
+    """LLM 测试调用超时，附带请求耗时。"""
+
+    def __init__(self, message: str, duration_ms: int | None = None):
+        super().__init__(message)
+        self.duration_ms = duration_ms
 
 
 def _patch_gemini_thought_signature():
@@ -67,19 +85,29 @@ class LLMHelper:
         return bool(settings.LLM_SUPPORT_IMAGE_INPUT)
 
     @staticmethod
-    def get_llm(streaming: bool = False):
+    def get_llm(
+        streaming: bool = False,
+        provider: str | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ):
         """
         获取LLM实例
         :param streaming: 是否启用流式输出
         :return: LLM实例
         """
-        provider = settings.LLM_PROVIDER.lower()
-        api_key = settings.LLM_API_KEY
+        provider_name = str(
+            provider if provider is not None else settings.LLM_PROVIDER
+        ).lower()
+        model_name = model if model is not None else settings.LLM_MODEL
+        api_key_value = api_key if api_key is not None else settings.LLM_API_KEY
+        base_url_value = base_url if base_url is not None else settings.LLM_BASE_URL
 
-        if not api_key:
+        if not api_key_value:
             raise ValueError("未配置LLM API Key")
 
-        if provider == "google":
+        if provider_name == "google":
             # 修补 Gemini 2.5 思考模型的 thought_signature 兼容性
             _patch_gemini_thought_signature()
 
@@ -94,19 +122,19 @@ class LLMHelper:
                 client_args = {proxy_key: settings.PROXY_HOST}
 
             model = ChatGoogleGenerativeAI(
-                model=settings.LLM_MODEL,
-                api_key=api_key,
+                model=model_name,
+                api_key=api_key_value,
                 retries=3,
                 temperature=settings.LLM_TEMPERATURE,
                 streaming=streaming,
                 client_args=client_args,
             )
-        elif provider == "deepseek":
+        elif provider_name == "deepseek":
             from langchain_deepseek import ChatDeepSeek
 
             model = ChatDeepSeek(
-                model=settings.LLM_MODEL,
-                api_key=api_key,
+                model=model_name,
+                api_key=api_key_value,
                 max_retries=3,
                 temperature=settings.LLM_TEMPERATURE,
                 streaming=streaming,
@@ -116,10 +144,10 @@ class LLMHelper:
             from langchain_openai import ChatOpenAI
 
             model = ChatOpenAI(
-                model=settings.LLM_MODEL,
-                api_key=api_key,
+                model=model_name,
+                api_key=api_key_value,
                 max_retries=3,
-                base_url=settings.LLM_BASE_URL,
+                base_url=base_url_value,
                 temperature=settings.LLM_TEMPERATURE,
                 streaming=streaming,
                 stream_usage=True,
@@ -136,6 +164,93 @@ class LLMHelper:
             }
 
         return model
+
+    @staticmethod
+    def _extract_text_content(content) -> str:
+        """
+        从响应内容中提取纯文本，仅保留真实文本块。
+        """
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, str):
+                    text_parts.append(block)
+                    continue
+
+                if isinstance(block, dict) or hasattr(block, "get"):
+                    block_type = block.get("type")
+                    if block.get("thought") or block_type in (
+                        "thinking",
+                        "reasoning_content",
+                        "reasoning",
+                        "thought",
+                    ):
+                        continue
+                    if block_type == "text":
+                        text_parts.append(block.get("text", ""))
+                        continue
+                    if not block_type and isinstance(block.get("text"), str):
+                        text_parts.append(block.get("text", ""))
+            return "".join(text_parts)
+        if isinstance(content, dict) or hasattr(content, "get"):
+            if content.get("thought"):
+                return ""
+            if content.get("type") == "text":
+                return content.get("text", "")
+            if not content.get("type") and isinstance(content.get("text"), str):
+                return content.get("text", "")
+        return ""
+
+    @staticmethod
+    async def test_current_settings(
+        prompt: str = "请只回复 OK",
+        timeout: int = 20,
+        provider: str | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> dict:
+        """
+        使用当前已保存配置执行一次最小 LLM 调用。
+        """
+        provider_name = provider if provider is not None else settings.LLM_PROVIDER
+        model_name = model if model is not None else settings.LLM_MODEL
+        api_key_value = api_key if api_key is not None else settings.LLM_API_KEY
+        base_url_value = base_url if base_url is not None else settings.LLM_BASE_URL
+        start = time.perf_counter()
+        llm = LLMHelper.get_llm(
+            streaming=False,
+            provider=provider_name,
+            model=model_name,
+            api_key=api_key_value,
+            base_url=base_url_value,
+        )
+        try:
+            response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=timeout)
+        except TimeoutError as err:
+            duration_ms = round((time.perf_counter() - start) * 1000)
+            raise LLMTestTimeout("LLM 调用超时", duration_ms=duration_ms) from err
+        except Exception as err:
+            duration_ms = round((time.perf_counter() - start) * 1000)
+            raise LLMTestError(str(err), duration_ms=duration_ms) from err
+
+        reply_text = LLMHelper._extract_text_content(
+            getattr(response, "content", response)
+        ).strip()
+        duration_ms = round((time.perf_counter() - start) * 1000)
+
+        data = {
+            "provider": provider_name,
+            "model": model_name,
+            "duration_ms": duration_ms,
+        }
+        if reply_text:
+            data["reply_preview"] = reply_text[:120]
+        return data
 
     def get_models(
         self, provider: str, api_key: str, base_url: str = None
