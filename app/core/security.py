@@ -13,7 +13,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from cryptography.fernet import Fernet
 from fastapi import HTTPException, status, Security, Request, Response
-from fastapi.security import OAuth2PasswordBearer, APIKeyHeader, APIKeyQuery, APIKeyCookie
+from fastapi.security import OAuth2PasswordBearer, APIKeyHeader, APIKeyQuery, APIKeyCookie, HTTPBearer
 from passlib.context import CryptContext
 
 from app import schemas
@@ -41,6 +41,12 @@ api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False, scheme_name="a
 
 # API KEY 通过 QUERY 认证
 api_key_query = APIKeyQuery(name="apikey", auto_error=False, scheme_name="api_key_query")
+
+# OpenAI compatible Bearer Token 认证
+openai_bearer_scheme = HTTPBearer(auto_error=False)
+
+# Anthropic compatible API Key 认证
+anthropic_api_key_header = APIKeyHeader(name="x-api-key", auto_error=False, scheme_name="anthropic_api_key_header")
 
 
 def __get_api_token(
