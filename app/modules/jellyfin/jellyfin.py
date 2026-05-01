@@ -243,7 +243,12 @@ class Jellyfin:
                             best_admin_id = user.get("Id")
                             best_admin_name = user.get("Name")
                             best_admin_library_count = current_count
-                if best_admin_id:
+                if best_admin_id is None:
+                    logger.warning("未找到可用的管理员账号，无法获取管理员用户，请检查Jellyfin用户及权限配置！")
+                    return None
+                logger.warning(
+                    f"未找到具备全库访问权限的管理员账号，回退使用仅可访问{best_admin_library_count}/{total_library_count}个媒体库的管理员账号{best_admin_name}！"
+                )
                     logger.warning(f"未找到具备全库访问权限的管理员账号，回退使用仅可访问{best_admin_library_count}/{total_library_count}个媒体库的管理员账号{best_admin_name}！")
                 return best_admin_id
             else:

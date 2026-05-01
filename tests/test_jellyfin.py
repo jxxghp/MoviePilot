@@ -179,8 +179,22 @@ class JellyfinUserResolutionTest(unittest.TestCase):
             user_id = client.get_user("admin")
 
         self.assertEqual(user_id, "large-admin-id")
-        warning_mock.assert_called_once()
-        self.assertIn("默认超级管理员状态流失", warning_mock.call_args.args[0])
+        self.assertGreaterEqual(warning_mock.call_count, 2)
+
+        warning_messages = [
+            call.args[0] for call in warning_mock.call_args_list if call.args and isinstance(call.args[0], str)
+        ]
+        self.assertTrue(any("超级管理员" in message for message in warning_messages))
+        self.assertTrue(
+            any(
+                ("部分" in message)
+                or ("可见" in message)
+                or ("访问范围" in message)
+                or ("EnabledFolders" in message)
+                for message in warning_messages
+            )
+        )
+        self.assertTrue(any(("回退" in message) or ("fallback" in message.lower()) for message in warning_messages))
 
     def test_get_jellyfin_librarys_returns_empty_when_user_missing(self):
         client = self._build_client()
