@@ -1,4 +1,5 @@
 import json
+import posixpath
 from datetime import datetime
 from typing import List, Union, Optional, Dict, Generator, Tuple, Any
 
@@ -123,7 +124,12 @@ class Jellyfin:
             user = self.get_user(username)
         else:
             user = self.user
-        url = f"{self._host}Users/{user}/Views"
+        if not user:
+            return []
+        # 使用标准库路径拼接结合统一 URL 规整，避免 host 尾部斜杠缺失导致的寻址偏移。
+        url = UrlUtils.combine_url(self._host, posixpath.join("Users", str(user), "Views"))
+        if not url:
+            return []
         params = {"api_key": self._apikey}
         try:
             res = RequestUtils().get_res(url, params)
@@ -213,10 +219,31 @@ class Jellyfin:
                     for user in users:
                         if user.get("Name") == user_name:
                             return user.get("Id")
-                # 查询管理员
+                if user_name == settings.SUPERUSER:
+                    logger.warning(
+                        "MoviePilot 当前配置的超级管理员用户名为 {}，请确保Jellyfin中存在同名管理员账号，否则可能无法正常使用部分功能！".format(settings.SUPERUSER)
+                    )
+                # 查询管理员，优先选择同时具备全库访问能力的账号，再回退到普通管理员。
+                # 获取总媒体库数量
+                total_library_count = len(self.get_jellyfin_folders())
+                best_admin_id = None
+                best_admin_name = None
+                best_admin_library_count = -1
                 for user in users:
-                    if user.get("Policy", {}).get("IsAdministrator"):
+                    policy = user.get("Policy") or {}
+                    if not policy.get("IsAdministrator"):
+                        continue
+                    if policy.get("EnableAllFolders"):
                         return user.get("Id")
+                    elif not policy.get("EnableAllFolders"):
+                        logger.warning(f"管理员账号 {user.get('Name')} 仅可访问{len(policy.get("EnabledFolders") or [])}/{total_library_count}个媒体库，可能导致媒体库数据不完整！")
+                        # 更新最佳管理员
+                        if best_admin_id is None or len(policy.get("EnabledFolders") or []) > best_admin_library_count:
+                            best_admin_id = user.get("Id")
+                            best_admin_name = user.get("Name")
+                            best_admin_library_count = len(policy.get("EnabledFolders") or [])
+                logger.warning(f"未找到具备全库访问权限的管理员账号，回退使用仅可访问{best_admin_library_count}/{total_library_count}个媒体库的管理员账号{best_admin_name}！")
+                return best_admin_id
             else:
                 logger.error(f"Users 未获取到返回数据")
         except Exception as e:
