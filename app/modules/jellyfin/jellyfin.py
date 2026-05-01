@@ -249,7 +249,6 @@ class Jellyfin:
                 logger.warning(
                     f"未找到具备全库访问权限的管理员账号，回退使用仅可访问{best_admin_library_count}/{total_library_count}个媒体库的管理员账号{best_admin_name}！"
                 )
-                    logger.warning(f"未找到具备全库访问权限的管理员账号，回退使用仅可访问{best_admin_library_count}/{total_library_count}个媒体库的管理员账号{best_admin_name}！")
                 return best_admin_id
             else:
                 logger.error(f"Users 未获取到返回数据")
