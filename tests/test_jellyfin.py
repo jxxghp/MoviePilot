@@ -8,89 +8,94 @@ from unittest.mock import call, patch
 
 def _load_jellyfin_module():
     module_name = "_test_jellyfin_module"
-    if module_name in sys.modules:
-        return sys.modules[module_name]
+    app_module = types.ModuleType("app")
+    core_module = types.ModuleType("app.core")
+    utils_module = types.ModuleType("app.utils")
+    log_module = types.ModuleType("app.log")
+    config_module = types.ModuleType("app.core.config")
+    schemas_module = types.ModuleType("app.schemas")
+    http_module = types.ModuleType("app.utils.http")
+    url_module = types.ModuleType("app.utils.url")
 
-    if "app.log" not in sys.modules:
-        log_module = types.ModuleType("app.log")
+    class _Logger:
+        def info(self, *_args, **_kwargs):
+            pass
 
-        class _Logger:
-            def info(self, *_args, **_kwargs):
-                pass
+        def warning(self, *_args, **_kwargs):
+            pass
 
-            def warning(self, *_args, **_kwargs):
-                pass
+        def error(self, *_args, **_kwargs):
+            pass
 
-            def error(self, *_args, **_kwargs):
-                pass
+        def debug(self, *_args, **_kwargs):
+            pass
 
-            def debug(self, *_args, **_kwargs):
-                pass
+    class _RequestUtils:
+        def __init__(self, *args, **kwargs):
+            pass
 
-        log_module.logger = _Logger()
-        sys.modules["app.log"] = log_module
+        def get_res(self, *args, **kwargs):
+            return None
 
-    if "app.core.config" not in sys.modules:
-        config_module = types.ModuleType("app.core.config")
-        config_module.settings = types.SimpleNamespace(SUPERUSER="admin", USER_AGENT="MoviePilot")
-        sys.modules["app.core.config"] = config_module
-
-    if "app.schemas" not in sys.modules:
-        schemas_module = types.ModuleType("app.schemas")
-        schemas_module.MediaType = types.SimpleNamespace(MOVIE=types.SimpleNamespace(value="movie"))
-        schemas_module.MediaServerItem = object
-        schemas_module.MediaServerLibrary = object
-        schemas_module.Statistic = object
-        schemas_module.WebhookEventInfo = object
-        schemas_module.MediaServerItemUserState = object
-        schemas_module.MediaServerPlayItem = object
-        sys.modules["app.schemas"] = schemas_module
-
-    if "app.utils.http" not in sys.modules:
-        http_module = types.ModuleType("app.utils.http")
-
-        class _RequestUtils:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def get_res(self, *args, **kwargs):
-                return None
-
-        http_module.RequestUtils = _RequestUtils
-        sys.modules["app.utils.http"] = http_module
-
-    if "app.utils.url" not in sys.modules:
-        url_module = types.ModuleType("app.utils.url")
-
-        class _UrlUtils:
-            @staticmethod
-            def standardize_base_url(host):
-                if not host:
-                    return host
-                if not host.endswith("/"):
-                    host += "/"
-                if not host.startswith("http://") and not host.startswith("https://"):
-                    host = "http://" + host
+    class _UrlUtils:
+        @staticmethod
+        def standardize_base_url(host):
+            if not host:
                 return host
+            if not host.endswith("/"):
+                host += "/"
+            if not host.startswith("http://") and not host.startswith("https://"):
+                host = "http://" + host
+            return host
 
-            @staticmethod
-            def combine_url(host, path=None, query=None):
-                from urllib.parse import urljoin
+        @staticmethod
+        def combine_url(host, path=None, query=None):
+            from urllib.parse import urljoin
 
-                if path is None:
-                    path = "/"
-                host = _UrlUtils.standardize_base_url(host)
-                return urljoin(host, path)
+            if path is None:
+                path = "/"
+            host = _UrlUtils.standardize_base_url(host)
+            return urljoin(host, path)
 
-        url_module.UrlUtils = _UrlUtils
-        sys.modules["app.utils.url"] = url_module
+    log_module.logger = _Logger()
+    config_module.settings = types.SimpleNamespace(SUPERUSER="admin", USER_AGENT="MoviePilot")
+    schemas_module.MediaType = types.SimpleNamespace(MOVIE=types.SimpleNamespace(value="movie"))
+    schemas_module.MediaServerItem = object
+    schemas_module.MediaServerLibrary = object
+    schemas_module.Statistic = object
+    schemas_module.WebhookEventInfo = object
+    schemas_module.MediaServerItemUserState = object
+    schemas_module.MediaServerPlayItem = object
+    http_module.RequestUtils = _RequestUtils
+    url_module.UrlUtils = _UrlUtils
+
+    app_module.schemas = schemas_module
+    app_module.log = log_module
+    app_module.core = core_module
+    app_module.utils = utils_module
+    core_module.config = config_module
+    utils_module.http = http_module
+    utils_module.url = url_module
+
+    stub_modules = {
+        "app": app_module,
+        "app.log": log_module,
+        "app.core": core_module,
+        "app.core.config": config_module,
+        "app.schemas": schemas_module,
+        "app.utils": utils_module,
+        "app.utils.http": http_module,
+        "app.utils.url": url_module,
+    }
+    for stub_module in stub_modules.values():
+        stub_module._jellyfin_test_stub = True
 
     jellyfin_path = Path(__file__).resolve().parents[1] / "app" / "modules" / "jellyfin" / "jellyfin.py"
     spec = importlib.util.spec_from_file_location(module_name, jellyfin_path)
     module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
     assert spec and spec.loader
-    spec.loader.exec_module(module)
+    with patch.dict(sys.modules, stub_modules):
+        spec.loader.exec_module(module)
     return module
 
 
@@ -107,6 +112,12 @@ class _FakeResponse:
 
 
 class JellyfinUserResolutionTest(unittest.TestCase):
+    def test_loader_does_not_leave_stub_modules_in_sys_modules(self):
+        self.assertNotIn("_test_jellyfin_module", sys.modules)
+        self.assertFalse(getattr(sys.modules.get("app.log"), "_jellyfin_test_stub", False))
+        self.assertFalse(getattr(sys.modules.get("app.core.config"), "_jellyfin_test_stub", False))
+        self.assertFalse(getattr(sys.modules.get("app.utils.http"), "_jellyfin_test_stub", False))
+
     def _build_client(self) -> Jellyfin:
         client = Jellyfin.__new__(Jellyfin)
         client._host = "http://jellyfin.local:8096"
