@@ -2348,7 +2348,7 @@ class SubscribeChain(ChainBase):
                         )
                         if subscribe.type == MediaType.TV.value:
                             season_number = file_meta.begin_season
-                            if season_number and season_number != subscribe.season:
+                            if season_number is not None and season_number != subscribe.season:
                                 continue
                             episode_number = file_meta.begin_episode
                             if episode_number and episodes.get(episode_number):
@@ -2389,7 +2389,7 @@ class SubscribeChain(ChainBase):
                 )
                 if subscribe.type == MediaType.TV.value:
                     season_number = file_meta.begin_season
-                    if season_number and season_number != subscribe.season:
+                    if season_number is not None and season_number != subscribe.season:
                         continue
                     episode_number = file_meta.begin_episode
                     if episode_number and episodes.get(episode_number):
