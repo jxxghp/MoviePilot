@@ -833,6 +833,11 @@ class SubscribeChain(ChainBase):
                             re_mediainfo.clear()
                             # 更新种子缓存
                             context.media_info = re_mediainfo
+                            context.match_source = self.__get_media_id_match_source(re_mediainfo)
+                            context.candidate_recognized = bool(
+                                re_mediainfo.tmdb_id or re_mediainfo.douban_id
+                            )
+                            context.media_info_is_target = False
                             # 重置失败次数
                             context.media_recognize_fail_count = 0
                             logger.debug(f'种子 {context.torrent_info.title} 重新识别成功')
@@ -941,6 +946,11 @@ class SubscribeChain(ChainBase):
                                         torrent_mediainfo.clear()
                                         # 更新种子缓存
                                         _context.media_info = torrent_mediainfo
+                                        _context.match_source = self.__get_media_id_match_source(torrent_mediainfo)
+                                        _context.candidate_recognized = bool(
+                                            torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id
+                                        )
+                                        _context.media_info_is_target = False
 
                             # 如果仍然没有识别到媒体信息，尝试标题匹配
                             if not torrent_mediainfo or (
@@ -956,6 +966,9 @@ class SubscribeChain(ChainBase):
                                     torrent_mediainfo = mediainfo
                                     # 更新种子缓存
                                     _context.media_info = mediainfo
+                                    _context.match_source = "title"
+                                    _context.candidate_recognized = False
+                                    _context.media_info_is_target = True
                                 else:
                                     continue
 
@@ -971,6 +984,18 @@ class SubscribeChain(ChainBase):
                                     continue
                                 logger.info(
                                     f'{mediainfo.title_year} 通过媒体ID匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                                match_source = getattr(_context, "match_source", "unknown")
+                                if match_source == "title":
+                                    # 标题兜底使用的是订阅目标 media_info，不能标记为候选自身识别结果。
+                                    _context.candidate_recognized = False
+                                    _context.media_info_is_target = True
+                                elif match_source == "unknown":
+                                    _context.match_source = self.__get_media_id_match_source(torrent_mediainfo)
+                                    _context.candidate_recognized = True
+                                    _context.media_info_is_target = False
+                                else:
+                                    _context.candidate_recognized = True
+                                    _context.media_info_is_target = False
                             else:
                                 continue
 
@@ -2536,6 +2561,17 @@ class SubscribeChain(ChainBase):
         end_ep = subscribe.total_episode
 
         return min_ep <= start_ep and max_ep >= end_ep
+
+    @staticmethod
+    def __get_media_id_match_source(mediainfo: Optional[MediaInfo]) -> str:
+        """
+        返回候选自身识别命中的明确媒体 ID 类型。
+        """
+        if mediainfo and mediainfo.tmdb_id:
+            return "tmdbid"
+        if mediainfo and mediainfo.douban_id:
+            return "doubanid"
+        return "unknown"
 
     @staticmethod
     def get_states_for_search(state: str) -> str:
