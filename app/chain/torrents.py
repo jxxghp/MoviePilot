@@ -60,8 +60,8 @@ class TorrentsChain(ChainBase):
         else:
             torrents_cache = self.load_cache(self._rss_file) or {}
 
-        # 兼容性处理：为旧版本的Context对象添加失败次数字段
-        self._ensure_context_compatibility(torrents_cache)
+        # 兼容性处理：为旧版本的Context对象补齐新增候选识别字段
+        self._ensure_context_compatibility(torrents_cache, stype=stype)
 
         return torrents_cache
 
@@ -80,8 +80,8 @@ class TorrentsChain(ChainBase):
         else:
             torrents_cache = await self.async_load_cache(self._rss_file) or {}
 
-        # 兼容性处理：为旧版本的Context对象添加失败次数字段
-        self._ensure_context_compatibility(torrents_cache)
+        # 兼容性处理：为旧版本的Context对象补齐新增候选识别字段
+        self._ensure_context_compatibility(torrents_cache, stype=stype)
 
         return torrents_cache
 
@@ -285,8 +285,18 @@ class TorrentsChain(ChainBase):
                             mediainfo = MediaInfo()
                         # 清理多余数据，减少内存占用
                         mediainfo.clear()
+                        candidate_recognized = bool(mediainfo and (mediainfo.tmdb_id or mediainfo.douban_id))
+                        match_source = self._get_media_id_match_source(mediainfo)
                         # 上下文
-                        context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
+                        context = Context(
+                            meta_info=meta,
+                            media_info=mediainfo,
+                            torrent_info=torrent,
+                            resource_source="spider" if stype == "spider" else "rss",
+                            match_source=match_source if candidate_recognized else "unknown",
+                            candidate_recognized=candidate_recognized,
+                            media_info_is_target=False,
+                        )
                         # 如果未识别到媒体信息，设置初始失败次数为1
                         if not mediainfo or (not mediainfo.tmdb_id and not mediainfo.douban_id):
                             context.media_recognize_fail_count = 1
@@ -317,19 +327,44 @@ class TorrentsChain(ChainBase):
         return torrents_cache
 
     @staticmethod
-    def _ensure_context_compatibility(torrents_cache: Dict[str, List[Context]]):
+    def _ensure_context_compatibility(torrents_cache: Dict[str, List[Context]], stype: Optional[str] = None):
         """
         确保Context对象的兼容性，为旧版本添加缺失的字段
         """
         for domain, contexts in torrents_cache.items():
             for context in contexts:
-                # 如果Context对象没有media_recognize_fail_count字段，添加默认值
-                if not hasattr(context, 'media_recognize_fail_count'):
+                context_fields = vars(context)
+                # 旧 pickle 实例会读到 dataclass 类默认值，必须检查实例字段，避免跳过兼容回填。
+                if "media_recognize_fail_count" not in context_fields:
                     context.media_recognize_fail_count = 0
                     # 如果媒体信息未识别，设置初始失败次数
                     if (not context.media_info or
                             (not context.media_info.tmdb_id and not context.media_info.douban_id)):
                         context.media_recognize_fail_count = 1
+                if "resource_source" not in context_fields:
+                    context.resource_source = "spider" if stype == "spider" else "rss"
+                if "candidate_recognized" not in context_fields:
+                    context.candidate_recognized = bool(
+                        context.media_info and (context.media_info.tmdb_id or context.media_info.douban_id)
+                    )
+                if "match_source" not in context_fields:
+                    context.match_source = (
+                        TorrentsChain._get_media_id_match_source(context.media_info)
+                        if context.candidate_recognized else "unknown"
+                    )
+                if "media_info_is_target" not in context_fields:
+                    context.media_info_is_target = False
+
+    @staticmethod
+    def _get_media_id_match_source(mediainfo: Optional[MediaInfo]) -> str:
+        """
+        返回候选自身识别命中的明确媒体 ID 类型。
+        """
+        if mediainfo and mediainfo.tmdb_id:
+            return "tmdbid"
+        if mediainfo and mediainfo.douban_id:
+            return "doubanid"
+        return "unknown"
 
     def __renew_rss_url(self, domain: str, site: dict):
         """
