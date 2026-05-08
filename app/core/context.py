@@ -832,6 +832,14 @@ class Context:
     torrent_info: TorrentInfo = None
     # 媒体识别失败次数
     media_recognize_fail_count: int = 0
+    # 候选资源来源：rss、spider、search、unknown。
+    resource_source: str = "unknown"
+    # 候选匹配来源：tmdbid、doubanid、imdbid、title、plugin、unknown。
+    match_source: str = "unknown"
+    # 候选自身是否已经识别出有效媒体 ID。
+    candidate_recognized: bool = False
+    # 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
+    media_info_is_target: bool = False
 
     def to_dict(self):
         """
@@ -841,5 +849,9 @@ class Context:
             "meta_info": self.meta_info.to_dict() if self.meta_info else None,
             "torrent_info": self.torrent_info.to_dict() if self.torrent_info else None,
             "media_info": self.media_info.to_dict() if self.media_info else None,
-            "media_recognize_fail_count": self.media_recognize_fail_count
+            "media_recognize_fail_count": self.media_recognize_fail_count,
+            "resource_source": self.resource_source,
+            "match_source": self.match_source,
+            "candidate_recognized": self.candidate_recognized,
+            "media_info_is_target": self.media_info_is_target,
         }
