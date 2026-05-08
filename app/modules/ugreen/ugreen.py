@@ -653,9 +653,19 @@ class Ugreen:
         tmdb_id: Optional[int] = None,
         season: Optional[int] = None,
     ) -> tuple[Optional[str], Optional[Dict[int, list]]]:
+        """
+        根据标题、年份、TMDB ID和季号查询绿联媒体库中的电视剧已入库集数。
+        :param item_id: 绿联媒体库中的剧集ID，存在缓存ID时优先使用
+        :param title: 标题
+        :param year: 年份
+        :param tmdb_id: TMDB ID
+        :param season: 季号
+        :return: 命中的剧集ID及每季已入库集数
+        """
         if not self.is_authenticated() or not self._api:
             return None, None
 
+        cached_item_id = item_id
         if not item_id:
             if not title:
                 return None, None
@@ -669,6 +679,16 @@ class Ugreen:
             item_id = str(item_id)
 
         item_info = self.get_iteminfo(item_id)
+        if not item_info and cached_item_id and title:
+            # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
+            logger.warning(f"绿联缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
+            if not (tv_info := self.__search_tv_item(title, year, tmdb_id)):
+                return None, {}
+            found_item_id = tv_info.get("ug_video_info_id")
+            if found_item_id is None:
+                return None, {}
+            item_id = str(found_item_id)
+            item_info = self.get_iteminfo(item_id)
         if not item_info:
             return None, {}
         if tmdb_id and item_info.tmdbid and tmdb_id != item_info.tmdbid:
