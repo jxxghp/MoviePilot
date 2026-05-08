@@ -219,6 +219,25 @@ function graceful_exit() {
 # 使用env配置
 load_config_from_app_env
 
+# 一次性升级标记仅影响本次启动，避免把临时升级模式带入运行中的 Python 进程
+ONE_SHOT_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_update"
+ONE_SHOT_UPDATE_APPLIED="false"
+MOVIEPILOT_AUTO_UPDATE_ORIGINAL="${MOVIEPILOT_AUTO_UPDATE}"
+if [ -f "${ONE_SHOT_UPDATE_FLAG}" ]; then
+    ONE_SHOT_UPDATE_MODE="$(tr -d '\r\n' < "${ONE_SHOT_UPDATE_FLAG}" | tr '[:upper:]' '[:lower:]')"
+    rm -f "${ONE_SHOT_UPDATE_FLAG}"
+    if [ "${ONE_SHOT_UPDATE_MODE}" = "true" ]; then
+        ONE_SHOT_UPDATE_MODE="release"
+    fi
+    if [ "${ONE_SHOT_UPDATE_MODE}" = "release" ] || [ "${ONE_SHOT_UPDATE_MODE}" = "dev" ]; then
+        INFO "检测到一次性升级标记，本次启动将执行 ${ONE_SHOT_UPDATE_MODE} 升级..."
+        export MOVIEPILOT_AUTO_UPDATE="${ONE_SHOT_UPDATE_MODE}"
+        ONE_SHOT_UPDATE_APPLIED="true"
+    elif [ -n "${ONE_SHOT_UPDATE_MODE}" ]; then
+        WARN "检测到无效的一次性升级模式：${ONE_SHOT_UPDATE_MODE}，已忽略"
+    fi
+fi
+
 # 生成HTTPS配置块
 if [ "${ENABLE_SSL}" = "true" ]; then
     export HTTPS_SERVER_CONF=$(cat <<EOF
@@ -256,6 +275,9 @@ envsubst '${NGINX_PORT}${PORT}${NGINX_CLIENT_MAX_BODY_SIZE}${ENABLE_SSL}${HTTPS_
 # 自动更新
 cd /
 source /usr/local/bin/mp_update.sh
+if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
+    export MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
+fi
 cd /app || exit
 
 # 更改 moviepilot userid 和 groupid

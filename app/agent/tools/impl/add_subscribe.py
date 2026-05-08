@@ -1,13 +1,14 @@
 """添加订阅工具"""
 
-from typing import Optional, Type, List
+from typing import List, Optional, Type
 
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.chain.subscribe import SubscribeChain
+from app.db.user_oper import UserOper
 from app.log import logger
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MessageChannel
 
 
 class AddSubscribeInput(BaseModel):
@@ -101,6 +102,36 @@ class AddSubscribeTool(MoviePilotTool):
 
         return message
 
+    async def _resolve_subscribe_username(self) -> Optional[str]:
+        """优先映射为系统用户名，未绑定时回退当前渠道用户名。"""
+        resolved_username = self._username
+        if not self._channel or not self._user_id:
+            return resolved_username
+
+        try:
+            channel = MessageChannel(self._channel)
+        except ValueError:
+            return resolved_username
+
+        binding_keys = {
+            MessageChannel.Telegram: ("telegram_userid",),
+            MessageChannel.Discord: ("discord_userid",),
+            MessageChannel.Wechat: ("wechat_userid",),
+            MessageChannel.Slack: ("slack_userid",),
+            MessageChannel.VoceChat: ("vocechat_userid",),
+            MessageChannel.SynologyChat: ("synologychat_userid",),
+            MessageChannel.QQ: ("qq_userid", "qq_openid"),
+        }.get(channel)
+        if not binding_keys:
+            return resolved_username
+
+        mapped_username = await self.run_blocking(
+            "db",
+            UserOper().get_name,
+            **{key: self._user_id for key in binding_keys},
+        )
+        return mapped_username or resolved_username
+
     async def run(
         self,
         title: str,
@@ -137,6 +168,7 @@ class AddSubscribeTool(MoviePilotTool):
                 if media_type_enum == MediaType.TV
                 else None
             )
+            subscribe_username = await self._resolve_subscribe_username()
 
             # 构建额外的订阅参数
             subscribe_kwargs = {}
@@ -162,7 +194,7 @@ class AddSubscribeTool(MoviePilotTool):
                 tmdbid=tmdb_id,
                 doubanid=douban_id,
                 season=season,
-                username=self._user_id,
+                username=subscribe_username,
                 **subscribe_kwargs,
             )
             if sid:

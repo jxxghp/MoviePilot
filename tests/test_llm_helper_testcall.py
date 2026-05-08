@@ -38,6 +38,7 @@ _stub_module(
         LLM_MODEL="global-model",
         LLM_API_KEY="global-key",
         LLM_BASE_URL="https://global.example.com",
+        LLM_BASE_URL_PRESET=None,
         LLM_THINKING_LEVEL=None,
         LLM_TEMPERATURE=0.1,
         LLM_MAX_CONTEXT_TOKENS=64,
@@ -76,6 +77,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
                     model="deepseek-chat",
                     api_key="sk-test",
                     base_url="https://api.deepseek.com",
+                    base_url_preset="deepseek-default",
                 )
             )
 
@@ -86,6 +88,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
             thinking_level=None,
             api_key="sk-test",
             base_url="https://api.deepseek.com",
+            base_url_preset="deepseek-default",
         )
         self.assertEqual(result["provider"], "deepseek")
         self.assertEqual(result["model"], "deepseek-chat")

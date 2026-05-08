@@ -605,6 +605,66 @@ class SearchChain(ChainBase):
                                         torrent_list=torrent_list,
                                         mediainfo=mediainfo) or []
 
+        def __do_site_filter(torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+            """
+            执行单个站点的过滤流程
+            """
+            if not torrent_list:
+                return []
+
+            filtered_torrents = torrent_list
+            if filter_params:
+                torrenthelper = TorrentHelper()
+                filtered_torrents = [
+                    torrent for torrent in filtered_torrents
+                    if torrenthelper.filter_torrent(torrent, filter_params)
+                ]
+
+            if rule_groups and filtered_torrents:
+                filtered_torrents = __do_filter(filtered_torrents)
+
+            return filtered_torrents
+
+        def __do_parallel_filter(torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+            """
+            按站点并发执行过滤，保持站点内顺序不变
+            """
+            if not torrent_list or (not filter_params and not rule_groups):
+                return torrent_list
+
+            site_torrents: Dict[Tuple[Optional[int], Optional[str]], List[TorrentInfo]] = {}
+            for torrent in torrent_list:
+                site_key = (torrent.site, torrent.site_name)
+                if site_key not in site_torrents:
+                    site_torrents[site_key] = []
+                site_torrents[site_key].append(torrent)
+
+            if len(site_torrents) <= 1:
+                return __do_site_filter(torrent_list)
+
+            finished_count = 0
+            filtered_by_site: Dict[Tuple[Optional[int], Optional[str]], List[TorrentInfo]] = {}
+            max_workers = min(len(site_torrents), settings.CONF.threadpool or len(site_torrents))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                all_tasks = {
+                    executor.submit(__do_site_filter, site_torrent_list): site_key
+                    for site_key, site_torrent_list in site_torrents.items()
+                }
+                for future in as_completed(all_tasks):
+                    finished_count += 1
+                    filtered_by_site[all_tasks[future]] = future.result() or []
+                    progress.update(
+                        value=finished_count / len(site_torrents) * 50,
+                        text=f'正在过滤，已完成 {finished_count} / {len(site_torrents)} 个站点 ...'
+                    )
+
+            filtered_ids = {
+                id(torrent)
+                for filtered_torrents in filtered_by_site.values()
+                for torrent in filtered_torrents
+            }
+            return [torrent for torrent in torrent_list if id(torrent) in filtered_ids]
+
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
@@ -618,14 +678,14 @@ class SearchChain(ChainBase):
         # 匹配订阅附加参数
         if filter_params:
             logger.info(f'开始附加参数过滤，附加参数：{filter_params} ...')
-            torrents = [torrent for torrent in torrents if TorrentHelper().filter_torrent(torrent, filter_params)]
         # 开始过滤规则过滤
         if rule_groups is None:
             # 取搜索过滤规则
             rule_groups: List[str] = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups)
         if rule_groups:
             logger.info(f'开始过滤规则/剧集过滤，使用规则组：{rule_groups} ...')
-            torrents = __do_filter(torrents)
+        torrents = __do_parallel_filter(torrents)
+        if rule_groups:
             if not torrents:
                 logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
                 return []

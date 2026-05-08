@@ -352,6 +352,16 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     return current_fileitem, None  # 返回一个表示失败的FileItem和None
                 target_dir_path = Path(target_dir_item.path)
         # 图片通常是放在当前目录 (current_fileitem) 下
+        # Jellyfin/Kodi 等在季目录内使用通用图片名，而不是 season01-poster.jpg
+        elif item_type == ScrapingTarget.SEASON:
+            season_image_name_map = {
+                ScrapingMetadata.POSTER: "poster",
+                ScrapingMetadata.BANNER: "banner",
+                ScrapingMetadata.THUMB: "thumb",
+            }
+            if season_image_name := season_image_name_map.get(metadata_type):
+                hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
+                final_filename = f"{season_image_name}{hint_ext}"
         # 如果是 EPISODE 类型的图片（如thumb），通常也是放在文件同级目录，文件名与视频文件一致
         elif (
                 metadata_type in [ScrapingMetadata.THUMB]

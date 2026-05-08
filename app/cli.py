@@ -16,6 +16,7 @@ import click
 import psutil
 
 from app.core.config import Settings, settings
+from app.helper.system import SystemHelper
 from version import APP_VERSION
 
 BACKEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.runtime.json"
@@ -272,7 +273,10 @@ def _git_current_branch() -> Optional[str]:
 
 
 def _auto_update_mode() -> str:
-    return str(getattr(settings, "MOVIEPILOT_AUTO_UPDATE", "") or "").strip().lower()
+    one_shot_mode = SystemHelper.consume_one_shot_update_mode()
+    if one_shot_mode:
+        return one_shot_mode
+    return SystemHelper.get_auto_update_mode()
 
 
 def _resolve_auto_update_targets(mode: str) -> tuple[Optional[str], Optional[str]]:

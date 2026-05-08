@@ -30,6 +30,7 @@ class LlmTestRequest(BaseModel):
     thinking_level: Optional[str] = None
     api_key: Optional[str] = None
     base_url: Optional[str] = None
+    base_url_preset: Optional[str] = None
 
 
 class LlmProviderAuthStartRequest(BaseModel):
@@ -65,6 +66,7 @@ async def get_llm_models(
         provider: str,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        base_url_preset: Optional[str] = None,
         force_refresh: Optional[bool] = False,
         _: User = Depends(get_current_active_user_async),
 ):
@@ -77,6 +79,7 @@ async def get_llm_models(
             provider=provider,
             api_key=api_key,
             base_url=base_url,
+            base_url_preset=base_url_preset,
             force_refresh=bool(force_refresh),
         )
         return schemas.Response(
@@ -99,7 +102,7 @@ async def get_llm_providers(
     返回前端可直接渲染的 provider 目录。
     """
     try:
-        providers = LLMProviderManager().list_providers()
+        providers = await LLMProviderManager().list_providers_async()
         return schemas.Response(success=True, data=providers)
     except Exception as err:
         return schemas.Response(success=False, message=str(err))
@@ -232,6 +235,7 @@ async def llm_test(
         thinking_level=settings.LLM_THINKING_LEVEL,
         api_key=settings.LLM_API_KEY,
         base_url=settings.LLM_BASE_URL,
+        base_url_preset=settings.LLM_BASE_URL_PRESET,
     )
 
     if not payload.provider:
@@ -263,6 +267,7 @@ async def llm_test(
             thinking_level=payload.thinking_level,
             api_key=payload.api_key,
             base_url=payload.base_url,
+            base_url_preset=payload.base_url_preset,
         )
         if not result.get("reply_preview"):
             return schemas.Response(

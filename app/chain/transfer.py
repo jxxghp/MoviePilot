@@ -20,7 +20,7 @@ from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
 from app.db.downloadhistory_oper import DownloadHistoryOper
-from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
@@ -1686,7 +1686,102 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ]
 
     @staticmethod
+    def _get_shared_download_roots(file_path: Path) -> set[str]:
+        """
+        获取当前文件所在的共享下载根目录边界。
+
+        父目录兜底回查只应在种子自身目录内进行，不能越过共享下载根目录，
+        否则历史中的单文件/无子目录任务会污染同级其它文件的识别结果。
+        """
+        shared_roots: set[str] = set()
+        media_type_dirs = {mtype.value for mtype in MediaType}
+
+        for dir_info in DirectoryHelper().get_download_dirs():
+            if not dir_info.download_path:
+                continue
+
+            download_root = Path(dir_info.download_path)
+            if not file_path.is_relative_to(download_root):
+                continue
+
+            shared_roots.add(download_root.as_posix())
+            relative_parts = file_path.relative_to(download_root).parts
+            current_root = download_root
+            part_index = 0
+
+            if (
+                    not dir_info.media_type
+                    and dir_info.download_type_folder
+                    and len(relative_parts) > part_index
+                    and relative_parts[part_index] in media_type_dirs
+            ):
+                current_root = current_root / relative_parts[part_index]
+                shared_roots.add(current_root.as_posix())
+                part_index += 1
+
+            if (
+                    not dir_info.media_category
+                    and dir_info.download_category_folder
+                    and len(relative_parts) > part_index
+            ):
+                current_root = current_root / relative_parts[part_index]
+                shared_roots.add(current_root.as_posix())
+
+        return shared_roots
+
+    @staticmethod
+    def _match_download_file(
+            download_file: DownloadFiles,
+            file_path: Path,
+            save_path: Path,
+    ) -> bool:
+        """
+        判断下载文件记录是否明确对应当前文件。
+        """
+        if download_file.fullpath == file_path.as_posix():
+            return True
+
+        filepath = download_file.filepath
+        if not filepath:
+            return False
+
+        try:
+            return (save_path / Path(filepath)).as_posix() == file_path.as_posix()
+        except (TypeError, ValueError):
+            return False
+
+    def _resolve_history_from_download_files(
+            self,
+            downloadhis: DownloadHistoryOper,
+            download_files: List[DownloadFiles],
+            file_path: Optional[Path] = None,
+            save_path: Optional[Path] = None,
+    ) -> Optional[DownloadHistory]:
+        """
+        从下载文件记录中解析唯一的下载历史。
+        """
+        if file_path and save_path:
+            download_files = [
+                download_file
+                for download_file in download_files
+                if self._match_download_file(
+                    download_file=download_file,
+                    file_path=file_path,
+                    save_path=save_path,
+                )
+            ]
+
+        download_hashes = {
+            download_file.download_hash
+            for download_file in download_files
+            if download_file.download_hash
+        }
+        if len(download_hashes) == 1:
+            return downloadhis.get_by_hash(next(iter(download_hashes)))
+        return None
+
     def _resolve_download_history(
+            self,
             downloadhis: DownloadHistoryOper,
             file_path: Path,
             bluray_dir: bool = False,
@@ -1707,20 +1802,35 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         # 多文件种子里的字幕/附加文件可能没有稳定的 fullpath 记录，
         # 退回到父目录和 savepath 继续查找，尽量补齐同一种子的关联信息。
+        shared_download_roots = self._get_shared_download_roots(file_path)
+
         for parent_path in file_path.parents:
             parent_posix = parent_path.as_posix()
+            download_files = downloadhis.get_files_by_savepath(parent_posix) or []
+
+            if parent_posix in shared_download_roots:
+                # 共享下载根目录只能接受有明确文件记录的匹配，
+                # 避免单文件/磁力任务把整个根目录污染成同一媒体。
+                history = self._resolve_history_from_download_files(
+                    downloadhis=downloadhis,
+                    download_files=download_files,
+                    file_path=file_path,
+                    save_path=parent_path,
+                )
+                if history:
+                    return history
+                break
+
             download_history = downloadhis.get_by_path(parent_posix)
             if download_history:
                 return download_history
 
-            download_files = downloadhis.get_files_by_savepath(parent_posix) or []
-            download_hashes = {
-                download_file.download_hash
-                for download_file in download_files
-                if download_file.download_hash
-            }
-            if len(download_hashes) == 1:
-                return downloadhis.get_by_hash(next(iter(download_hashes)))
+            history = self._resolve_history_from_download_files(
+                downloadhis=downloadhis,
+                download_files=download_files,
+            )
+            if history:
+                return history
 
         return None
 

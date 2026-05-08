@@ -8,7 +8,7 @@ from app.utils.crypto import HashUtils
 from app.utils.string import StringUtils
 
 SEARCH_RESULT_CACHE_FILE = "__search_result__"
-TORRENT_RESULT_LIMIT = 50
+TORRENT_RESULT_LIMIT = 200
 
 
 def build_torrent_ref(context: Optional[Context]) -> str:

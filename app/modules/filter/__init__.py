@@ -15,10 +15,6 @@ from app.utils.string import StringUtils
 
 class FilterModule(_ModuleBase):
     CONFIG_WATCH = {SystemConfigKey.CustomFilterRules.value}
-    # 规则解析器
-    parser: RuleParser = None
-    # 媒体信息
-    media: MediaInfo = None
 
     # 保留一份只读内置规则定义，方便查询工具准确区分“内置规则”和“自定义规则”。
     builtin_rule_set: Dict[str, dict] = deepcopy(BUILTIN_RULE_SET)
@@ -30,7 +26,6 @@ class FilterModule(_ModuleBase):
         self.rulehelper = RuleHelper()
 
     def init_module(self) -> None:
-        self.parser = RuleParser()
         # 每次重载都先恢复为纯内置规则，避免旧的自定义规则残留在内存里。
         self.rule_set = deepcopy(self.builtin_rule_set)
         self.__init_custom_rules()
@@ -90,7 +85,7 @@ class FilterModule(_ModuleBase):
         """
         if not rule_groups:
             return torrent_list
-        self.media = mediainfo
+        parser = RuleParser()
         # 查询规则表详情
         groups = self.rulehelper.get_rule_group_by_media(media=mediainfo, group_names=rule_groups)
         if groups:
@@ -99,12 +94,16 @@ class FilterModule(_ModuleBase):
                 torrent_list = self.__filter_torrents(
                     rule_string=group.rule_string,
                     rule_name=group.name,
-                    torrent_list=torrent_list
+                    torrent_list=torrent_list,
+                    mediainfo=mediainfo,
+                    parser=parser,
                 )
         return torrent_list
 
     def __filter_torrents(self, rule_string: str, rule_name: str,
-                          torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+                          torrent_list: List[TorrentInfo],
+                          mediainfo: MediaInfo,
+                          parser: RuleParser) -> List[TorrentInfo]:
         """
         过滤种子
         """
@@ -112,7 +111,7 @@ class FilterModule(_ModuleBase):
         ret_torrents = []
         for torrent in torrent_list:
             # 能命中优先级的才返回
-            if not self.__get_order(torrent, rule_string):
+            if not self.__get_order(torrent, rule_string, mediainfo, parser):
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description or ''} "
                              f"不匹配 {rule_name} 过滤规则")
                 continue
@@ -120,7 +119,8 @@ class FilterModule(_ModuleBase):
 
         return ret_torrents
 
-    def __get_order(self, torrent: TorrentInfo, rule_str: str) -> Optional[TorrentInfo]:
+    def __get_order(self, torrent: TorrentInfo, rule_str: str,
+                    mediainfo: MediaInfo, parser: RuleParser) -> Optional[TorrentInfo]:
         """
         获取种子匹配的规则优先级，值越大越优先，未匹配时返回None
         """
@@ -133,8 +133,8 @@ class FilterModule(_ModuleBase):
 
         for rule_group in rule_groups:
             # 解析规则组
-            parsed_group = self.parser.parse(rule_group.strip())
-            if self.__match_group(torrent, parsed_group.as_list()[0]):
+            parsed_group = parser.parse(rule_group.strip())
+            if self.__match_group(torrent, parsed_group.as_list()[0], mediainfo):
                 # 出现匹配时中断
                 matched = True
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} 优先级为 {100 - res_order + 1}")
@@ -145,27 +145,31 @@ class FilterModule(_ModuleBase):
 
         return None if not matched else torrent
 
-    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str]) -> Optional[bool]:
+    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str],
+                      mediainfo: MediaInfo) -> Optional[bool]:
         """
         判断种子是否匹配规则组
         """
         if not isinstance(rule_group, list):
             # 不是列表，说明是规则名称
-            return self.__match_rule(torrent, rule_group)
+            return self.__match_rule(torrent, rule_group, mediainfo)
         elif isinstance(rule_group, list) and len(rule_group) == 1:
             # 只有一个规则项
-            return self.__match_group(torrent, rule_group[0])
+            return self.__match_group(torrent, rule_group[0], mediainfo)
         elif rule_group[0] == "not":
             # 非操作
-            return not self.__match_group(torrent, rule_group[1:])
+            return not self.__match_group(torrent, rule_group[1:], mediainfo)
         elif rule_group[1] == "and":
             # 与操作
-            return self.__match_group(torrent, rule_group[0]) and self.__match_group(torrent, rule_group[2:])
+            return self.__match_group(torrent, rule_group[0], mediainfo) \
+                and self.__match_group(torrent, rule_group[2:], mediainfo)
         elif rule_group[1] == "or":
             # 或操作
-            return self.__match_group(torrent, rule_group[0]) or self.__match_group(torrent, rule_group[2:])
+            return self.__match_group(torrent, rule_group[0], mediainfo) \
+                or self.__match_group(torrent, rule_group[2:], mediainfo)
 
-    def __match_rule(self, torrent: TorrentInfo, rule_name: str) -> bool:
+    def __match_rule(self, torrent: TorrentInfo, rule_name: str,
+                     mediainfo: MediaInfo) -> bool:
         """
         判断种子是否匹配规则项
         """
@@ -176,7 +180,7 @@ class FilterModule(_ModuleBase):
         # TMDB规则
         tmdb = self.rule_set[rule_name].get("tmdb")
         # 符合TMDB规则的直接返回True，即不过滤
-        if tmdb and self.__match_tmdb(tmdb):
+        if tmdb and self.__match_tmdb(tmdb, mediainfo):
             logger.debug(f"种子 {torrent.site_name} - {torrent.title} 符合 {rule_name} 的TMDB规则，匹配成功")
             return True
         # 匹配项：标题、副标题、标签
@@ -259,18 +263,19 @@ class FilterModule(_ModuleBase):
 
         return True
 
-    def __match_tmdb(self, tmdb: dict) -> bool:
+    @staticmethod
+    def __match_tmdb(tmdb: dict, mediainfo: MediaInfo) -> bool:
         """
         判断种子是否匹配TMDB规则
         """
 
         def __get_media_value(key: str):
             try:
-                return getattr(self.media, key)
+                return getattr(mediainfo, key)
             except ValueError:
                 return ""
 
-        if not self.media:
+        if not mediainfo:
             return False
 
         for attr, value in tmdb.items():

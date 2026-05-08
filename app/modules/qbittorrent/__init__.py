@@ -148,7 +148,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
         # 添加任务
-        state = server.add_torrent(
+        state, added_torrent_ids = server.add_torrent(
             content=content,
             download_dir=self.normalize_path(download_dir, downloader),
             is_paused=is_paused,
@@ -188,7 +188,11 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             return None, None, None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
-            torrent_hash = server.get_torrent_id_by_tag(tags=tag)
+            torrent_hash = next(iter(added_torrent_ids), None)
+            if torrent_hash:
+                server.delete_torrents_tag(torrent_hash, tag)
+            else:
+                torrent_hash = server.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
                 return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
             else:

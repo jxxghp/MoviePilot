@@ -310,7 +310,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | POST | `/api/v1/workflow/fork` | Fork shared workflow. Body: WorkflowShare JSON |
 | GET | `/api/v1/workflow/shares` | List shared workflows. Params: `name`, `page`, `count` |
 
-### System (20 endpoints)
+### System (21 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -321,6 +321,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/system/global` | Non-sensitive settings. Params: `token` (required) |
 | GET | `/api/v1/system/global/user` | User-related settings |
 | GET | `/api/v1/system/restart` | Restart system |
+| POST | `/api/v1/system/upgrade` | Upgrade and restart system. Body: `"release"` or `"dev"` |
 | GET | `/api/v1/system/runscheduler` | Run scheduled service. Params: `jobid` (required) |
 | GET | `/api/v1/system/runscheduler2` | Run scheduler (API_TOKEN, use `--token-param`). Params: `jobid` |
 | GET | `/api/v1/system/modulelist` | List loaded modules |
