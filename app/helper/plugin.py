@@ -5,6 +5,7 @@ import json
 import shutil
 import site
 import sys
+import threading
 import traceback
 import zipfile
 from pathlib import Path
@@ -45,6 +46,8 @@ class PluginHelper(metaclass=WeakSingleton):
     _install_reg = f"{settings.MP_SERVER_HOST}/plugin/install/{{pid}}"
     _install_report = f"{settings.MP_SERVER_HOST}/plugin/install"
     _install_statistic = f"{settings.MP_SERVER_HOST}/plugin/statistic"
+    # 串行化运行期依赖安装，避免多个 pip 子进程和导入缓存刷新互相踩踏。
+    _pip_install_lock = threading.Lock()
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
@@ -873,28 +876,24 @@ class PluginHelper(metaclass=WeakSingleton):
             strategies.append(("代理", base_cmd + ["--proxy", settings.PROXY_HOST]))
         strategies.append(("直连", base_cmd))
 
-        # 记录当前已安装的包，以便后续刷新
-        before_installation = set(sys.modules.keys())
-
-        # 遍历策略进行安装
-        for strategy_name, pip_command in strategies:
-            logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
-            success, message = SystemUtils.execute_with_subprocess(pip_command)
-            if success:
-                logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
-                # 安装成功后刷新Python的模块系统
-                importlib.reload(site)
-                # 获取新安装的模块
-                current_modules = set(sys.modules.keys())
-                new_modules = current_modules - before_installation
-                # 重新加载新安装的模块
-                for module in new_modules:
-                    if module in sys.modules:
-                        del sys.modules[module]
-                logger.debug(f"[PIP] 已刷新导入系统，新加载的模块: {new_modules}")
-                return True, message
-            else:
-                logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
+        # pip 会修改当前解释器的 site-packages，安装与缓存刷新必须串行，避免运行态模块被并发安装窗口污染。
+        with PluginHelper._pip_install_lock:
+            loaded_modules_before_install = set(sys.modules.keys())
+            # 遍历策略进行安装
+            for strategy_name, pip_command in strategies:
+                logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+                success, message = SystemUtils.execute_with_subprocess(pip_command)
+                if success:
+                    logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
+                    # 刷新导入系统即可发现新安装依赖，同时保持安装窗口内的运行态模块缓存稳定。
+                    importlib.reload(site)
+                    importlib.invalidate_caches()
+                    loaded_modules_after_install = set(sys.modules.keys())
+                    loaded_modules_during_install = loaded_modules_after_install - loaded_modules_before_install
+                    logger.debug(f"[PIP] 已刷新导入系统，新加载的模块: {loaded_modules_during_install}")
+                    return True, message
+                else:
+                    logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
 
         return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接或 PIP 配置"
 
