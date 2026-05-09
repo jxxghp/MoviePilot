@@ -126,14 +126,12 @@ class TmdbScraper:
                     poster_name, poster_url = self.get_season_poster(seasoninfo, season)
                     if poster_name and poster_url:
                         images[poster_name] = poster_url
-            return images
         else:
-            # 获取媒体信息中原有图片（TheMovieDb或Fanart）
+            # 获取媒体信息中原有图片
             for attr_name, attr_value in vars(mediainfo).items():
                 if (
                     attr_value
                     and attr_name.endswith("_path")
-                    and attr_value
                     and isinstance(attr_value, str)
                     and attr_value.startswith("http")
                 ):
@@ -141,6 +139,7 @@ class TmdbScraper:
                         attr_name.replace("_path", "") + Path(attr_value).suffix
                     )
                     images[image_name] = attr_value
+
             # 替换原语言Poster
             if settings.TMDB_SCRAP_ORIGINAL_IMAGE:
                 _mediainfo = self.original_tmdb(mediainfo).get_info(
@@ -154,7 +153,7 @@ class TmdbScraper:
                                 attr_name.replace("_path", "") + Path(image_url).suffix
                             )
                             images[image_name] = image_url
-            return images
+        return images
 
     @staticmethod
     def get_season_poster(seasoninfo: dict, season: int) -> Tuple[str, str]:

@@ -310,21 +310,6 @@ class MediaInfo:
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
-    def set_image(self, name: str, image: str):
-        """
-        设置图片地址
-        """
-        setattr(self, f"{name}_path", image)
-
-    def get_image(self, name: str):
-        """
-        获取图片地址
-        """
-        try:
-            return getattr(self, f"{name}_path")
-        except AttributeError:
-            return None
-
     def set_category(self, cat: str):
         """
         设置二级分类
