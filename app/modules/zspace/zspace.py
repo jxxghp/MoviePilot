@@ -301,7 +301,12 @@ class ZSpace:
 
     def get_user_count(self) -> int:
         """
-        获得用户数量
+        获得用户数量。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）的 `Users/Query` 端点会把路径段 "Query"
+        当作 mediaUid 校验，返回 400 "invalid mediaUid format"；此时无法
+        从服务端拿到真实用户数，退化为：已登录则至少有 1 个用户。
         """
         if not self._host or not self._apikey:
             return 0
@@ -313,9 +318,10 @@ class ZSpace:
                 if count:
                     return count
             else:
-                logger.error("Users/Query 未获取到返回数据")
+                # 极影视未实现该端点会走到这里，降为 debug 避免主日志误报
+                logger.debug("Users/Query 未获取到返回数据，可能服务端未实现该端点，回退到登录用户兜底")
         except Exception as e:
-            logger.error(f"连接Users/Query出错：{e}")
+            logger.debug(f"连接Users/Query出错：{e}，回退到登录用户兜底")
         return 1 if self.user else 0
 
     def get_medias_count(self) -> schemas.Statistic:
