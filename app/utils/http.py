@@ -52,6 +52,7 @@ class _NonClosingTransportProxy(httpx.AsyncBaseTransport):
 _SharedTransportKey = Tuple[
     Optional[str],          # proxy
     Union[bool, str],       # verify
+    bool,                   # http2
     int,                    # max_keepalive_connections
     int,                    # max_connections
     int,                    # keepalive_expiry
@@ -76,6 +77,7 @@ _pending_eviction_tasks: set[asyncio.Task] = set()
 def _get_shared_async_transport(
     proxy: Optional[str],
     verify: Union[bool, str],
+    http2: bool,
     max_keepalive_connections: int,
     max_connections: int,
     keepalive_expiry: int,
@@ -104,6 +106,7 @@ def _get_shared_async_transport(
     key: _SharedTransportKey = (
         proxy,
         verify,
+        http2,
         max_keepalive_connections,
         max_connections,
         keepalive_expiry,
@@ -115,6 +118,7 @@ def _get_shared_async_transport(
 
     # 首次见到这个配置，创建新的共享 transport 桶
     transport = httpx.AsyncHTTPTransport(
+        http2=http2,
         proxy=proxy,
         verify=verify,
         limits=httpx.Limits(
@@ -786,6 +790,7 @@ class AsyncRequestUtils:
         accept_type: str = None,
         verify: Union[bool, str] = False,
         follow_redirects: bool = True,
+        http2: bool = True,
         max_keepalive_connections: int = _DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
         max_connections: int = _DEFAULT_MAX_CONNECTIONS,
         keepalive_expiry: int = _DEFAULT_KEEPALIVE_EXPIRY,
@@ -802,6 +807,10 @@ class AsyncRequestUtils:
         :param accept_type: Accept头部信息，默认为 "application/json"
         :param verify: 是否校验证书
         :param follow_redirects: 客户端默认是否跟随重定向
+        :param http2: 是否启用 HTTP/2（默认 True）。基于 TLS ALPN 协商：服务端
+            支持 h2 时复用流多路复用，不支持（含明文 HTTP、老 nginx/Apache）
+            自动透明回落 HTTP/1.1。如遇个别站点 h2 实现异常，可显式传
+            http2=False 单独关闭。
         :param max_keepalive_connections: 共享 AsyncHTTPTransport 的最大 keep-alive 连接数
         :param max_connections: 共享 AsyncHTTPTransport 的最大连接数
         :param keepalive_expiry: 共享 AsyncHTTPTransport 的 keep-alive 连接过期时间（秒）
@@ -811,6 +820,7 @@ class AsyncRequestUtils:
         self._timeout = timeout or 20
         self._verify = verify
         self._follow_redirects = follow_redirects
+        self._http2 = http2
         self._max_keepalive_connections = max_keepalive_connections
         self._max_connections = max_connections
         self._keepalive_expiry = keepalive_expiry
@@ -915,6 +925,7 @@ class AsyncRequestUtils:
         transport = _get_shared_async_transport(
             proxy=self._proxies,
             verify=self._verify,
+            http2=self._http2,
             max_keepalive_connections=self._max_keepalive_connections,
             max_connections=self._max_connections,
             keepalive_expiry=self._keepalive_expiry,
@@ -934,6 +945,7 @@ class AsyncRequestUtils:
 
         # 兜底：没有运行中的事件循环时，临时客户端走完即关
         async with httpx.AsyncClient(
+            http2=self._http2,
             proxy=self._proxies,
             timeout=self._timeout,
             verify=self._verify,
@@ -1116,6 +1128,7 @@ class AsyncRequestUtils:
                 transport = _get_shared_async_transport(
                     proxy=self._proxies,
                     verify=self._verify,
+                    http2=self._http2,
                     max_keepalive_connections=self._max_keepalive_connections,
                     max_connections=self._max_connections,
                     keepalive_expiry=self._keepalive_expiry,
@@ -1132,6 +1145,7 @@ class AsyncRequestUtils:
                 else:
                     client = await stack.enter_async_context(
                         httpx.AsyncClient(
+                            http2=self._http2,
                             proxy=self._proxies,
                             timeout=self._timeout,
                             verify=self._verify,
