@@ -381,8 +381,11 @@ class ZSpace:
         通过遍历媒体库视图累计条目数，兜底实现 `get_medias_count`。
 
         对每个 View 调 `Users/{uid}/Items?ParentId=<libId>&Recursive=true&Limit=0`
-        只拿 `TotalRecordCount`，按 View 的 `CollectionType` 分桶。集数在极影视
-        当前兼容层无法可靠拿到（见 `get_medias_count` 注释），统一计为 0。
+        只拿 `TotalRecordCount`，再按视图类型分桶到 movie/tv。极影视当前 Emby
+        兼容层返回的 View 中 `CollectionType` 恒为 null，无法直接判定库类型，
+        因此优先用 `CollectionType`；若缺失，则用 `Limit=1` 采样一条目，按返回
+        条目的 `Type`（Movie/Series/Episode）兜底分类。集数维度在该服务端无法
+        可靠拿到（见 `get_medias_count` 注释），统一计为 0。
         """
         if not self._host or not self._apikey or not self.user:
             return schemas.Statistic()
@@ -391,26 +394,55 @@ class ZSpace:
             view_id = view.get("Id")
             if not view_id:
                 continue
-            collection_type = view.get("CollectionType")
-            count_url = f"{self._host}emby/Users/{self.user}/Items"
-            params = {
-                "ParentId": view_id,
-                "Recursive": "true",
-                "Limit": 0
-            }
-            try:
-                res = self.__request_utils().get_res(count_url, params=params)
-                if not res:
-                    continue
-                total = res.json().get("TotalRecordCount") or 0
-            except Exception as e:
-                logger.debug(f"按媒体库 {view_id} 统计 TotalRecordCount 出错：{e}")
+            total, bucket = self.__count_view(view_id, view.get("CollectionType"))
+            if not total:
                 continue
-            if collection_type == "movies":
+            if bucket == "movies":
                 stat.movie_count = (stat.movie_count or 0) + total
-            elif collection_type == "tvshows":
+            elif bucket == "tvshows":
                 stat.tv_count = (stat.tv_count or 0) + total
         return stat
+
+    def __count_view(self, view_id: str,
+                     collection_type: Optional[str]) -> Tuple[int, Optional[str]]:
+        """
+        返回单个媒体库视图的 (TotalRecordCount, 桶名)。桶名取 `movies`/`tvshows`，
+        无法判定时返回 None。CollectionType 缺失时采样首个 Item 的 `Type` 决定。
+        """
+        count_url = f"{self._host}emby/Users/{self.user}/Items"
+        try:
+            res = self.__request_utils().get_res(
+                count_url,
+                params={"ParentId": view_id, "Recursive": "true", "Limit": 0}
+            )
+            if not res:
+                return 0, None
+            total = res.json().get("TotalRecordCount") or 0
+        except Exception as e:
+            logger.debug(f"按媒体库 {view_id} 统计 TotalRecordCount 出错：{e}")
+            return 0, None
+        if not total:
+            return 0, None
+        if collection_type == "movies":
+            return total, "movies"
+        if collection_type == "tvshows":
+            return total, "tvshows"
+        # CollectionType 缺失时采样一条目按 Type 兜底分类
+        try:
+            res = self.__request_utils().get_res(
+                count_url,
+                params={"ParentId": view_id, "Recursive": "true", "Limit": 1}
+            )
+            items = (res.json().get("Items") if res else None) or []
+            sample_type = items[0].get("Type") if items else None
+        except Exception as e:
+            logger.debug(f"采样媒体库 {view_id} 首条目类型出错：{e}")
+            sample_type = None
+        if sample_type == "Movie":
+            return total, "movies"
+        if sample_type in ("Series", "Episode", "Season"):
+            return total, "tvshows"
+        return total, None
 
     def __get_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
