@@ -345,8 +345,19 @@ class ZSpace:
 
     def get_medias_count(self) -> schemas.Statistic:
         """
-        获得电影、电视剧、动漫媒体数量
-        :return: MovieCount SeriesCount SongCount
+        获得电影、电视剧、动漫媒体数量。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）：
+        - `Items/Counts` 返回 401 "无权限"，`Users/{uid}/Items/Counts` 500，
+          两条路径都拿不到全局统计。
+        - `Users/{uid}/Items` 的 `IncludeItemTypes` 参数被服务端忽略（实测无论
+          传 Series/Episode/Folder 都返回相同的顶层条目），因此无法在单个
+          请求中按类型拆分集数。
+        降级策略：先尝试标准 `Items/Counts`；失败则遍历各媒体库视图，按视图
+        的 `CollectionType` 把 `TotalRecordCount` 汇总到 movie/tv 两个桶，
+        集数维度暂时无法统计（保持 0）。
+        :return: MovieCount SeriesCount EpisodeCount
         """
         if not self._host or not self._apikey:
             return schemas.Statistic()
@@ -360,12 +371,46 @@ class ZSpace:
                     tv_count=result.get("SeriesCount") or 0,
                     episode_count=result.get("EpisodeCount") or 0
                 )
-            else:
-                logger.error("Items/Counts 未获取到返回数据")
-                return schemas.Statistic()
+            logger.debug("Items/Counts 未获取到返回数据，回退到按媒体库累计 TotalRecordCount")
         except Exception as e:
-            logger.error(f"连接Items/Counts出错：{e}")
+            logger.debug(f"连接Items/Counts出错：{e}，回退到按媒体库累计 TotalRecordCount")
+        return self.__count_medias_by_views()
+
+    def __count_medias_by_views(self) -> schemas.Statistic:
+        """
+        通过遍历媒体库视图累计条目数，兜底实现 `get_medias_count`。
+
+        对每个 View 调 `Users/{uid}/Items?ParentId=<libId>&Recursive=true&Limit=0`
+        只拿 `TotalRecordCount`，按 View 的 `CollectionType` 分桶。集数在极影视
+        当前兼容层无法可靠拿到（见 `get_medias_count` 注释），统一计为 0。
+        """
+        if not self._host or not self._apikey or not self.user:
             return schemas.Statistic()
+        stat = schemas.Statistic()
+        for view in self.__get_library_views() or []:
+            view_id = view.get("Id")
+            if not view_id:
+                continue
+            collection_type = view.get("CollectionType")
+            count_url = f"{self._host}emby/Users/{self.user}/Items"
+            params = {
+                "ParentId": view_id,
+                "Recursive": "true",
+                "Limit": 0
+            }
+            try:
+                res = self.__request_utils().get_res(count_url, params=params)
+                if not res:
+                    continue
+                total = res.json().get("TotalRecordCount") or 0
+            except Exception as e:
+                logger.debug(f"按媒体库 {view_id} 统计 TotalRecordCount 出错：{e}")
+                continue
+            if collection_type == "movies":
+                stat.movie_count = (stat.movie_count or 0) + total
+            elif collection_type == "tvshows":
+                stat.tv_count = (stat.tv_count or 0) + total
+        return stat
 
     def __get_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
