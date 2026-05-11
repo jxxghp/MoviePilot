@@ -123,7 +123,13 @@ class ZSpace:
 
     def get_library_folders(self) -> List[dict]:
         """
-        获取极影视媒体库路径列表
+        获取极影视媒体库路径列表。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）未实现 `Library/SelectableMediaFolders`
+        （实测 404）。此处先尝试标准端点；不可用时退化为 `Users/{uid}/Views`
+        的返回（仅有 Id/Name，**没有 SubFolders/Path**）——下游按子目录路径
+        匹配库 ID 的逻辑在该服务端上无法工作，会回退到整库刷新分支。
         """
         if not self._host or not self._apikey:
             return []
@@ -132,12 +138,10 @@ class ZSpace:
             res = self.__request_utils().get_res(url)
             if res:
                 return res.json()
-            else:
-                logger.error("Library/SelectableMediaFolders 未获取到返回数据")
-                return []
+            logger.debug("Library/SelectableMediaFolders 未获取到返回数据，回退到 Users/{uid}/Views")
         except Exception as e:
-            logger.error(f"连接Library/SelectableMediaFolders 出错：{e}")
-            return []
+            logger.debug(f"连接Library/SelectableMediaFolders 出错：{e}，回退到 Users/{{uid}}/Views")
+        return self.__get_library_views() or []
 
     def get_virtual_folders(self) -> List[dict]:
         """
