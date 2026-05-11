@@ -348,15 +348,23 @@ class ZSpace:
         获得电影、电视剧、动漫媒体数量。
 
         极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
-        对齐 Emby Server 4.7 协议）：
-        - `Items/Counts` 返回 401 "无权限"，`Users/{uid}/Items/Counts` 500，
-          两条路径都拿不到全局统计。
-        - `Users/{uid}/Items` 的 `IncludeItemTypes` 参数被服务端忽略（实测无论
-          传 Series/Episode/Folder 都返回相同的顶层条目），因此无法在单个
-          请求中按类型拆分集数。
-        降级策略：先尝试标准 `Items/Counts`；失败则遍历各媒体库视图，按视图
-        的 `CollectionType` 把 `TotalRecordCount` 汇总到 movie/tv 两个桶，
-        集数维度暂时无法统计（保持 0）。
+        对齐 Emby Server 4.7 协议）相关接口实测：
+        - `Items/Counts` → 401 "无权限"；`Users/{uid}/Items/Counts` → 500，
+          两条标准聚合路径都拿不到全局统计。
+        - `Users/{uid}/Items` 的 `IncludeItemTypes` 参数：
+          - 在带 `ParentId` 时**完全被忽略**（同一库无论传 Movie/Series/
+            Episode/Folder/Audio，TotalRecordCount 都等于该库总条数）。
+          - 在不带 `ParentId` 的全局层面，单类型 `Movie` / `Series` 过滤
+            生效；`Episode` 与多类型逗号组合（如 `Movie,Series`）不生效。
+        - Views 返回的 `CollectionType` 在该服务端恒为 null，无法直接
+          区分库类型。
+        因为还要遵循 `_sync_libraries` 选中过滤，不能用"两次全局过滤请求"
+        的简化方案（全局聚合无 ParentId 入参）。降级流程：
+        1. 先尝试标准 `Items/Counts`；
+        2. 失败则遍历**被选中**的媒体库视图，按 `Users/{uid}/Items
+           ?ParentId=...&Limit=0` 拿单库 TotalRecordCount，再通过
+           `Limit=1` 采样首条目 `Type` 兜底分桶到 movie / tv；
+        3. 集数维度在该服务端无法可靠拿到，统一计 0。
         :return: MovieCount SeriesCount EpisodeCount
         """
         if not self._host or not self._apikey:
@@ -380,19 +388,29 @@ class ZSpace:
         """
         通过遍历媒体库视图累计条目数，兜底实现 `get_medias_count`。
 
-        对每个 View 调 `Users/{uid}/Items?ParentId=<libId>&Recursive=true&Limit=0`
-        只拿 `TotalRecordCount`，再按视图类型分桶到 movie/tv。极影视当前 Emby
-        兼容层返回的 View 中 `CollectionType` 恒为 null，无法直接判定库类型，
-        因此优先用 `CollectionType`；若缺失，则用 `Limit=1` 采样一条目，按返回
-        条目的 `Type`（Movie/Series/Episode）兜底分类。集数维度在该服务端无法
-        可靠拿到（见 `get_medias_count` 注释），统一计为 0。
+        - 仅统计 `_sync_libraries` 选中的库；空集或包含 `"all"` 时视为
+          全部，与 `get_librarys` / `get_user_library_folders` 的过滤语义
+          保持一致。
+        - 对每个被选中的 View 调 `Users/{uid}/Items?ParentId=<libId>
+          &Recursive=true&Limit=0` 只拿 `TotalRecordCount`，再按视图类型
+          分桶到 movie / tv。极影视当前 Emby 兼容层返回的 View 中
+          `CollectionType` 恒为 null，无法直接判定库类型，因此优先用
+          `CollectionType`；缺失时用 `Limit=1` 采样一条目，按返回条目的
+          `Type`（Movie / Series / Episode）兜底分类。
+        - 集数维度在该服务端无法可靠拿到（见 `get_medias_count` 注释），
+          统一计为 0。
         """
         if not self._host or not self._apikey or not self.user:
             return schemas.Statistic()
+        # 与 get_librarys / get_user_library_folders 保持一致的选中库过滤：
+        # _sync_libraries 为空或包含 "all" 视为全部库。
+        sync_all = (not self._sync_libraries) or ("all" in self._sync_libraries)
         stat = schemas.Statistic()
         for view in self.__get_library_views() or []:
             view_id = view.get("Id")
             if not view_id:
+                continue
+            if not sync_all and view_id not in self._sync_libraries:
                 continue
             total, bucket = self.__count_view(view_id, view.get("CollectionType"))
             if not total:
