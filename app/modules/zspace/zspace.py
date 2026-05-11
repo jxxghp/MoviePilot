@@ -1032,7 +1032,12 @@ class ZSpace:
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
         List[schemas.MediaServerPlayItem]]:
         """
-        获得最近更新
+        获得最近更新。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）的 `Users/{uid}/Items/Latest` 端点实测
+        返回 500（疑似服务端 panic），无法使用。降级为以 `DateCreated` 倒序
+        查询 `Users/{uid}/Items`，语义上近似"最近添加"。
         """
         if not self._host or not self._apikey:
             return None
@@ -1042,16 +1047,24 @@ class ZSpace:
             user = self.user
         if not user:
             return []
-        url = f"{self._host}emby/Users/{user}/Items/Latest"
+        url = f"{self._host}emby/Users/{user}/Items"
         params = {
+            "Recursive": "true",
+            "SortBy": "DateCreated",
+            "SortOrder": "Descending",
+            "IncludeItemTypes": "Movie,Series",
             "Limit": 100,
-            "MediaTypes": "Video",
             "Fields": "ProductionYear,Path,BackdropImageTags"
         }
         try:
             res = self.__request_utils().get_res(url, params=params)
             if res:
-                result = res.json() or []
+                # 兼容两种返回形态：原 Latest 返回裸数组，新接口返回 {Items, TotalRecordCount}
+                payload = res.json()
+                if isinstance(payload, dict):
+                    result = payload.get("Items") or []
+                else:
+                    result = payload or []
                 ret_latest = []
                 library_folders = self.get_user_library_folders()
                 for item in result:
@@ -1078,9 +1091,9 @@ class ZSpace:
                     ))
                 return ret_latest
             else:
-                logger.error("Users/Items/Latest 未获取到返回数据")
+                logger.debug("Users/Items?SortBy=DateCreated 未获取到返回数据")
         except Exception as e:
-            logger.error(f"连接Users/Items/Latest出错：{e}")
+            logger.error(f"连接 Users/Items（DateCreated 排序）出错：{e}")
         return []
 
     def get_user_library_folders(self):
