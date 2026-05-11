@@ -237,6 +237,11 @@ class ZSpace:
     def get_user(self, user_name: Optional[str] = None) -> Optional[Union[str, int]]:
         """
         获取可用用户ID，优先按用户名匹配，失败时回退当前登录用户。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）暂未实现 `Users` 全量列表端点（实测 404），
+        所以多用户名匹配在该服务端不可用；这里按"端点可用→按名匹配 / 端点不可用→
+        当前登录用户兜底"的顺序处理，避免主日志反复刷 ERROR。
         """
         if not self._host or not self._apikey:
             return None
@@ -257,11 +262,12 @@ class ZSpace:
                         if user.get("Id"):
                             return user.get("Id")
                 else:
-                    logger.error("Users 返回数据格式错误")
+                    logger.debug("Users 返回数据格式错误，回退到当前登录用户")
             else:
-                logger.error("Users 未获取到返回数据")
+                # 极影视未实现该端点会走到这里，仅 debug 级即可，避免污染主日志
+                logger.debug("Users 未获取到返回数据，可能服务端未实现该端点，回退到当前登录用户")
         except Exception as e:
-            logger.error(f"连接Users出错：{e}")
+            logger.debug(f"连接Users出错：{e}，回退到当前登录用户")
         return self.__get_current_user_id() or self.user
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
