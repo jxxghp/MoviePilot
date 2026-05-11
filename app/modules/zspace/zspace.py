@@ -609,7 +609,12 @@ class ZSpace:
 
     def __refresh_library_by_id(self, item_id: str) -> bool:
         """
-        通知极影视刷新一个项目的媒体库
+        通知极影视刷新一个项目的媒体库。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）未实现 `Items/{id}/Refresh`（实测 404），
+        因此该方法目前必然失败。保留实现以便兼容层补齐后自动复用，并把端点
+        缺失的常态情况降级为 debug，避免污染主日志。
         """
         if not self._host or not self._apikey:
             return False
@@ -621,16 +626,17 @@ class ZSpace:
             res = self.__request_utils().post_res(url, params=params)
             if res:
                 return True
-            else:
-                logger.info(f"刷新媒体库对象 {item_id} 失败，无法连接极影视！")
+            logger.debug(f"刷新媒体库对象 {item_id} 未生效，极影视当前 Emby 兼容层未实现该端点")
         except Exception as e:
-            logger.error(f"连接Items/Id/Refresh出错：{e}")
-            return False
+            logger.debug(f"连接Items/Id/Refresh出错：{e}（极影视当前 Emby 兼容层未实现该端点）")
         return False
 
     def refresh_root_library(self) -> bool:
         """
-        通知极影视刷新整个媒体库
+        通知极影视刷新整个媒体库。
+
+        与 `__refresh_library_by_id` 同源：极影视当前 Emby 兼容层未实现
+        `Library/Refresh`（实测 404）。保留实现并把常态失败降为 debug。
         """
         if not self._host or not self._apikey:
             return False
@@ -639,11 +645,9 @@ class ZSpace:
             res = self.__request_utils().post_res(url)
             if res:
                 return True
-            else:
-                logger.info("刷新媒体库失败，无法连接极影视！")
+            logger.debug("刷新媒体库未生效，极影视当前 Emby 兼容层未实现 Library/Refresh")
         except Exception as e:
-            logger.error(f"连接Library/Refresh出错：{e}")
-            return False
+            logger.debug(f"连接Library/Refresh出错：{e}（极影视当前 Emby 兼容层未实现该端点）")
         return False
 
     def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> Optional[bool]:
