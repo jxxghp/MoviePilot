@@ -39,3 +39,4 @@ def should_use_parent_title_for_file_stem(
 def clear_parsed_title_for_parent_merge(meta: MetaBase) -> None:
     meta.cn_name = None
     meta.en_name = None
+    meta.original_name = None

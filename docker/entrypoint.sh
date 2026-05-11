@@ -216,6 +216,39 @@ function graceful_exit() {
     exit "$exit_code"
 }
 
+# 启动前先检查后端核心依赖是否仍然可导入。
+# 插件依赖和主程序共用同一套 venv 时，历史安装记录可能已经污染环境，
+# 这里优先在真正拉起后端前做一次自愈，避免容器反复起不来。
+function ensure_backend_runtime_dependencies() {
+    local probe_code="import alembic, fastapi, pydantic, pydantic_core, pydantic_settings, sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
+
+    INFO "→ 启动前检查后端核心依赖..."
+    if "${VENV_PATH}/bin/python3" -c "${probe_code}" >/dev/null 2>&1; then
+        INFO "→ 后端核心依赖检查通过。"
+        return 0
+    fi
+
+    WARN "→ 检测到后端核心依赖异常，开始尝试恢复主程序依赖..."
+    local -a pip_cmd=("${VENV_PATH}/bin/python3" "-m" "pip" "install" "-r" "/app/requirements.txt")
+    if [ -n "${PIP_PROXY}" ]; then
+        pip_cmd+=("-i" "${PIP_PROXY}")
+    elif [ -n "${PROXY_HOST}" ]; then
+        pip_cmd+=("--proxy" "${PROXY_HOST}")
+    fi
+
+    if ! "${pip_cmd[@]}" > /dev/stdout 2> /dev/stderr; then
+        ERROR "→ 自动恢复主程序依赖失败，后端无法启动。"
+        exit 1
+    fi
+
+    if ! "${VENV_PATH}/bin/python3" -c "${probe_code}" >/dev/null 2>&1; then
+        ERROR "→ 主程序依赖恢复后仍然异常，后端无法启动。"
+        exit 1
+    fi
+
+    INFO "→ 已自动恢复主程序依赖，继续启动后端。"
+}
+
 # 使用env配置
 load_config_from_app_env
 
@@ -324,6 +357,9 @@ fi
 
 # 设置后端服务权限掩码
 umask "${UMASK}"
+
+# 启动前优先确认主运行环境仍然健康，避免插件依赖污染导致服务直接起不来。
+ensure_backend_runtime_dependencies
 
 # 清除非系统环境导入的变量，保证转移到 dumb-init 的时候，不会带入不必要的环境变量
 INFO "准备为 Python 应用清理的非系统环境导入的变量..."

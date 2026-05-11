@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import FileResponse, Response
 
 from app import schemas
+from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
-from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token
 from app.db.models import User
 from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
@@ -198,12 +198,17 @@ def rename(fileitem: schemas.FileItem,
                 if f".{sub_file.extension.lower()}" not in media_exts:
                     continue
                 sub_path = Path(f"{fileitem.path}{sub_file.name}")
-                meta = MetaInfoPath(sub_path)
-                mediainfo = transferchain.recognize_media(meta)
-                if not mediainfo:
+                context = MediaChain().recognize_by_path(
+                    sub_path,
+                    obtain_images=False,
+                )
+                if not context or not context.media_info:
                     progress.end()
                     return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
-                new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
+                new_path = transferchain.recommend_name(
+                    meta=context.meta_info,
+                    mediainfo=context.media_info
+                )
                 if not new_path:
                     progress.end()
                     return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")

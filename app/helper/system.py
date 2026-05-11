@@ -334,8 +334,8 @@ class SystemHelper(ConfigReloadMixin):
         """
 
         def monitor_thread():
-            time.sleep(30)  # 等待30秒
-            logger.warning("优雅退出超时30秒，使用Docker API强制重启...")
+            time.sleep(180)  # 等待180秒
+            logger.warning("优雅退出超时180秒，使用Docker API强制重启...")
             try:
                 SystemHelper._docker_api_restart()
             except Exception as e:

@@ -115,9 +115,7 @@ class QueryWorkflowsTool(MoviePilotTool):
                         "last_time": wf.last_time,
                         "current_action": wf.current_action
                     }
-                    # 如果有结果，添加结果信息
-                    if wf.result:
-                        simplified["result"] = wf.result
+                    # wf.result 往往是执行日志或上下文快照，不适合作为列表查询结果返回。
                     simplified_workflows.append(simplified)
                 
                 result_json = json.dumps(simplified_workflows, ensure_ascii=False, indent=2)

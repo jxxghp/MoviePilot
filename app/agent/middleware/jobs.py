@@ -21,6 +21,7 @@ from app.log import logger
 
 # JOB.md 文件最大限制为 1MB
 MAX_JOB_FILE_SIZE = 1 * 1024 * 1024
+ACTIVE_JOB_STATUSES = ("pending", "in_progress")
 
 
 class JobMetadata(TypedDict):
@@ -143,6 +144,9 @@ async def _alist_jobs(source_path: AsyncPath) -> list[JobMetadata]:
     if not job_dirs:
         return []
 
+    # 显式按目录名排序，避免文件系统返回顺序不稳定时破坏提示词缓存命中。
+    job_dirs.sort(key=lambda p: p.name.casefold())
+
     # 解析 JOB.md
     for job_path in job_dirs:
         job_md_path = job_path / "JOB.md"
@@ -159,6 +163,31 @@ async def _alist_jobs(source_path: AsyncPath) -> list[JobMetadata]:
             jobs.append(job_metadata)
 
     return jobs
+
+
+def filter_active_jobs(jobs_metadata: list[JobMetadata]) -> list[JobMetadata]:
+    """筛选需要参与心跳检查的活跃任务。
+
+    这里严格以任务状态为准，只保留 `pending` / `in_progress`。
+    `recurring` 任务执行完成后按约定应回写为 `pending`，因此无需再额外放宽
+    到 `completed`，避免已结束任务被重复注入后台心跳。
+    """
+    return [
+        job for job in jobs_metadata if job.get("status") in ACTIVE_JOB_STATUSES
+    ]
+
+
+async def load_jobs_metadata(source_paths: list[str]) -> list[JobMetadata]:
+    """按顺序加载多个 jobs 目录下的任务元数据。"""
+    all_jobs: list[JobMetadata] = []
+    for source_path_str in source_paths:
+        source_path = AsyncPath(source_path_str)
+        if not await source_path.exists():
+            await source_path.mkdir(parents=True, exist_ok=True)
+            continue
+        source_jobs = await _alist_jobs(source_path)
+        all_jobs.extend(source_jobs)
+    return all_jobs
 
 
 JOBS_SYSTEM_PROMPT = """
@@ -289,13 +318,8 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         """将任务文档注入模型请求的系统消息中。"""
         jobs_metadata = request.state.get("jobs_metadata", [])  # noqa
 
-        # 过滤：只展示活跃任务（pending / in_progress / recurring）
-        active_jobs = [
-            j
-            for j in jobs_metadata
-            if j["status"] in ("pending", "in_progress")
-            or (j["schedule"] == "recurring" and j["status"] not in ("cancelled",))
-        ]
+        # 仅注入真正活跃的任务，避免把已完成任务继续塞进心跳上下文。
+        active_jobs = filter_active_jobs(jobs_metadata)
 
         jobs_list = self._format_jobs_list(active_jobs)
         jobs_location = self.sources[0] if self.sources else ""
@@ -322,18 +346,9 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         if "jobs_metadata" in state:
             return None
 
-        all_jobs: list[JobMetadata] = []
-
-        # 遍历源加载任务
-        for source_path_str in self.sources:
-            source_path = AsyncPath(source_path_str)
-            if not await source_path.exists():
-                await source_path.mkdir(parents=True, exist_ok=True)
-                continue
-            source_jobs = await _alist_jobs(source_path)
-            all_jobs.extend(source_jobs)
-
-        return JobsStateUpdate(jobs_metadata=all_jobs)
+        return JobsStateUpdate(
+            jobs_metadata=await load_jobs_metadata(self.sources)
+        )
 
     async def awrap_model_call(
         self,
@@ -347,4 +362,10 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         return await handler(modified_request)
 
 
-__all__ = ["JobMetadata", "JobsMiddleware"]
+__all__ = [
+    "ACTIVE_JOB_STATUSES",
+    "JobMetadata",
+    "JobsMiddleware",
+    "filter_active_jobs",
+    "load_jobs_metadata",
+]

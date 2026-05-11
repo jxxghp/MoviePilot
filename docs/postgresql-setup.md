@@ -24,7 +24,7 @@ DB_TYPE=postgresql
 # PostgreSQL 主机地址
 DB_POSTGRESQL_HOST=localhost
 
-# PostgreSQL 端口
+# PostgreSQL 端口；使用 Unix Socket 时可留空
 DB_POSTGRESQL_PORT=5432
 
 # PostgreSQL 数据库名
@@ -43,6 +43,21 @@ DB_POSTGRESQL_POOL_SIZE=20
 DB_POSTGRESQL_MAX_OVERFLOW=30
 ```
 
+### 3. Unix Socket 连接
+
+如果 PostgreSQL 通过 Unix Socket 暴露，可以把 `DB_POSTGRESQL_HOST` 设置为套接字目录。
+
+```bash
+DB_TYPE=postgresql
+DB_POSTGRESQL_HOST=/var/run/postgresql
+DB_POSTGRESQL_PORT=
+DB_POSTGRESQL_DATABASE=moviepilot
+DB_POSTGRESQL_USERNAME=moviepilot
+DB_POSTGRESQL_PASSWORD=moviepilot
+```
+
+如需显式指定 socket 端口，也可以保留 `DB_POSTGRESQL_PORT`，程序会生成带 `host=/path/to/socket` 查询参数的 PostgreSQL URL。
+
 ## Docker 部署
 
 ### 使用外部 PostgreSQL
@@ -58,6 +73,13 @@ DB_POSTGRESQL_PORT=5432
 DB_POSTGRESQL_DATABASE=moviepilot
 DB_POSTGRESQL_USERNAME=your-username
 DB_POSTGRESQL_PASSWORD=your-password
+```
+
+使用 Redis Unix Socket 时，可直接设置 `CACHE_BACKEND_URL`，例如：
+
+```bash
+CACHE_BACKEND_TYPE=redis
+CACHE_BACKEND_URL=unix:///var/run/redis/redis.sock?db=0
 ```
 
 ## 数据迁移

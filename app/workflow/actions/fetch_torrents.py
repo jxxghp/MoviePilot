@@ -72,7 +72,10 @@ class FetchTorrentsAction(BaseAction):
                     continue
                 # 识别媒体信息
                 if params.match_media:
-                    torrent.media_info = searchchain.recognize_media(torrent.meta_info)
+                    torrent.media_info = searchchain.recognize_by_meta(
+                        torrent.meta_info,
+                        obtain_images=False,
+                    )
                     if not torrent.media_info:
                         logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
                         continue

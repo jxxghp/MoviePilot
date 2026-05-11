@@ -1,8 +1,11 @@
 import time
 import traceback
-from typing import Optional, Union, Tuple, List
+from http.cookies import SimpleCookie
+from typing import Any, Optional, Union, Tuple, List
+from urllib.parse import urlparse
 
 import qbittorrentapi
+from packaging.version import InvalidVersion, Version
 from qbittorrentapi import TorrentDictionary, TorrentFilesList
 from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
@@ -17,6 +20,7 @@ class Qbittorrent:
     """
     def __init__(self, host: Optional[str] = None, port: int = None,
                  username: Optional[str] = None, password: Optional[str] = None,
+                 apikey: Optional[str] = None,
                  category: Optional[bool] = False, sequentail: Optional[bool] = False,
                  force_resume: Optional[bool] = False, first_last_piece=False,
                  **kwargs):
@@ -33,11 +37,121 @@ class Qbittorrent:
             return
         self._username = username
         self._password = password
+        self._apikey = str(apikey or "").strip() or None
         self._category = category
         self._sequentail = sequentail
         self._force_resume = force_resume
         self._first_last_piece = first_last_piece
         self.qbc = self.__login_qbittorrent()
+
+    @staticmethod
+    def __get_mapping_value(data: Any, key: str) -> Any:
+        if data is None:
+            return None
+        if isinstance(data, dict):
+            return data.get(key)
+        getter = getattr(data, "get", None)
+        if callable(getter):
+            try:
+                return getter(key)
+            except Exception:
+                pass
+        return getattr(data, key, None)
+
+    def __normalize_cookie(self, cookie: Any) -> dict:
+        result = {}
+        for key in ("domain", "path", "name", "value", "expirationDate"):
+            value = self.__get_mapping_value(cookie, key)
+            if value not in (None, ""):
+                result[key] = value
+        return result
+
+    @staticmethod
+    def __cookie_key(cookie: dict) -> Optional[tuple]:
+        name = cookie.get("name")
+        domain = cookie.get("domain")
+        path = cookie.get("path") or "/"
+        if not name or not domain:
+            return None
+        return domain, path, name
+
+    @staticmethod
+    def __build_site_cookies(url: str, cookie_header: str) -> List[dict]:
+        domain = urlparse(url).hostname
+        if not domain:
+            return []
+
+        raw_cookies = SimpleCookie()
+        raw_cookies.load(cookie_header)
+        return [
+            {
+                "domain": domain,
+                "path": "/",
+                "name": morsel.key,
+                "value": morsel.value,
+            }
+            for morsel in raw_cookies.values()
+        ]
+
+    def __parse_add_torrent_response(self, response: Any) -> Tuple[bool, List[str]]:
+        if not response:
+            return False, []
+        if isinstance(response, str):
+            return "Ok" in response, []
+
+        success_count = self.__get_mapping_value(response, "success_count") or 0
+        pending_count = self.__get_mapping_value(response, "pending_count") or 0
+        added_torrent_ids = self.__get_mapping_value(response, "added_torrent_ids") or []
+        if not isinstance(added_torrent_ids, list):
+            added_torrent_ids = list(added_torrent_ids)
+        added_torrent_ids = [str(torrent_id) for torrent_id in added_torrent_ids if torrent_id]
+        if added_torrent_ids:
+            return True, added_torrent_ids
+        if success_count or pending_count:
+            return True, []
+        return "Ok" in str(response), []
+
+    def __use_api_key_auth(self) -> bool:
+        return bool(self._apikey)
+
+    def __supports_cookie_api(self) -> bool:
+        if not self.qbc:
+            return False
+        try:
+            web_api_version = self.qbc.app_web_api_version()
+            return Version(str(web_api_version)) >= Version("2.11.3")
+        except (InvalidVersion, TypeError, ValueError):
+            return False
+        except Exception as err:
+            logger.warn(f"获取 qbittorrent Web API 版本失败，跳过 Cookie API 兼容：{err}")
+            return False
+
+    def __sync_download_cookies(self, url: str, cookie_header: str) -> bool:
+        if not self.qbc or not url or not cookie_header or not self.__supports_cookie_api():
+            return False
+
+        try:
+            site_cookies = self.__build_site_cookies(url=url, cookie_header=cookie_header)
+            if not site_cookies:
+                return False
+
+            merged_cookies = {}
+            for cookie in self.qbc.app_cookies() or []:
+                normalized = self.__normalize_cookie(cookie)
+                cookie_key = self.__cookie_key(normalized)
+                if cookie_key:
+                    merged_cookies[cookie_key] = normalized
+
+            for cookie in site_cookies:
+                cookie_key = self.__cookie_key(cookie)
+                if cookie_key:
+                    merged_cookies[cookie_key] = cookie
+
+            self.qbc.app_set_cookies(cookies=list(merged_cookies.values()))
+            return True
+        except Exception as err:
+            logger.error(f"同步下载Cookie出错：{str(err)}")
+            return False
 
     def is_inactive(self) -> bool:
         """
@@ -67,14 +181,20 @@ class Qbittorrent:
                                         port=self._port,
                                         username=self._username,
                                         password=self._password,
+                                        EXTRA_HEADERS={"Authorization": f"Bearer {self._apikey}"}
+                                        if self.__use_api_key_auth() else None,
                                         VERIFY_WEBUI_CERTIFICATE=False,
                                         REQUESTS_ARGS={'timeout': (15, 60)})
             try:
-                qbt.auth_log_in()
-            except (qbittorrentapi.LoginFailed, qbittorrentapi.Forbidden403Error) as e:
-                logger.error(f"qbittorrent 登录失败：{str(e).strip() or '请检查用户名和密码是否正确'}")
-                return None
+                if self.__use_api_key_auth():
+                    qbt.app_version()
+                else:
+                    qbt.auth_log_in()
             except Exception as e:
+                if e.__class__.__name__ in {"LoginFailed", "Forbidden403Error", "Unauthorized401Error"}:
+                    error_hint = "请检查 API Key 是否正确" if self.__use_api_key_auth() else "请检查用户名和密码是否正确"
+                    logger.error(f"qbittorrent 登录失败：{str(e).strip() or error_hint}")
+                    return None
                 stack_trace = "".join(traceback.format_exception(None, e, e.__traceback__))[:2000]
                 logger.error(f"qbittorrent 登录失败：{str(e)}\n{stack_trace}")
                 return None
@@ -241,7 +361,7 @@ class Qbittorrent:
                     category: Optional[str] = None,
                     cookie: Optional[str] = None,
                     **kwargs
-                    ) -> bool:
+                    ) -> Tuple[bool, List[str]]:
         """
         添加种子
         :param content: 种子urls或文件内容
@@ -251,10 +371,10 @@ class Qbittorrent:
         :param download_dir: 下载路径
         :param cookie: 站点Cookie用于辅助下载种子
         :param kwargs: 可选参数，如 ignore_category_check 以及 QB相关参数
-        :return: bool
+        :return: 添加是否成功, 新版API返回的种子ID列表
         """
         if not self.qbc or not content:
-            return False
+            return False, []
 
         # 下载内容
         if isinstance(content, str):
@@ -287,6 +407,11 @@ class Qbittorrent:
                 is_auto = False
                 category = None
         try:
+            cookie_to_use = cookie
+            if urls and cookie and not StringUtils.is_magnet_link(urls):
+                if self.__sync_download_cookies(url=urls, cookie_header=cookie):
+                    cookie_to_use = None
+
             # 添加下载
             qbc_ret = self.qbc.torrents_add(urls=urls,
                                             torrent_files=torrent_files,
@@ -296,13 +421,13 @@ class Qbittorrent:
                                             use_auto_torrent_management=is_auto,
                                             is_sequential_download=self._sequentail,
                                             is_first_last_piece_priority=self._first_last_piece,
-                                            cookie=cookie,
+                                            cookie=cookie_to_use,
                                             category=category,
                                             **kwargs)
-            return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
+            return self.__parse_add_torrent_response(qbc_ret)
         except Exception as err:
             logger.error(f"添加种子出错：{str(err)}")
-            return False
+            return False, []
 
     def start_torrents(self, ids: Union[str, list]) -> bool:
         """

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Tuple, Generator, Any, Union
 from urllib.parse import quote_plus
 
+from plexapi.exceptions import NotFound
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
 from requests import Response, Session
@@ -260,20 +261,18 @@ class Plex:
         if not self._plex:
             return None, {}
         if item_id:
-            videos = self.__fetch_item(item_id)
+            try:
+                videos = self.__fetch_item(item_id)
+            except NotFound:
+                # Plex删除并重新入库后metadata id会变化，缓存的旧item_id失效时回退到搜索路径。
+                logger.warning(f"Plex缓存的电视剧媒体ID {item_id} 已失效，尝试按标题重新搜索：{title}")
+                videos = self.__search_show(title=title,
+                                            original_title=original_title,
+                                            year=year)
         else:
-            # 兼容年份为空的场景
-            kwargs = {"year": year} if year else {}
-            # 根据标题和年份模糊搜索，该结果不够准确
-            videos = self._plex.library.search(title=title,
-                                               libtype="show",
-                                               **kwargs)
-            if (not videos
-                    and original_title
-                    and str(original_title) != str(title)):
-                videos = self._plex.library.search(title=original_title,
-                                                   libtype="show",
-                                                   **kwargs)
+            videos = self.__search_show(title=title,
+                                        original_title=original_title,
+                                        year=year)
 
         if not videos:
             return None, {}
@@ -292,6 +291,31 @@ class Plex:
                 season_episodes[episode.seasonNumber] = []
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
+
+    def __search_show(self,
+                      title: Optional[str] = None,
+                      original_title: Optional[str] = None,
+                      year: Optional[str] = None) -> Any:
+        """
+        按标题搜索Plex电视剧条目，供常规查询和缓存item_id失效后的回退查询复用。
+        :param title: 标题
+        :param original_title: 原产地标题
+        :param year: 年份，可以为空，为空时不按年份过滤
+        :return: Plex搜索返回的电视剧条目列表
+        """
+        # 兼容年份为空的场景
+        kwargs = {"year": year} if year else {}
+        # 根据标题和年份模糊搜索，该结果不够准确，后续仍会通过tmdb_id校验。
+        videos = self._plex.library.search(title=title,
+                                           libtype="show",
+                                           **kwargs)
+        if (not videos
+                and original_title
+                and str(original_title) != str(title)):
+            videos = self._plex.library.search(title=original_title,
+                                               libtype="show",
+                                               **kwargs)
+        return videos
 
     def get_remote_image_by_id(self,
                                item_id: str,

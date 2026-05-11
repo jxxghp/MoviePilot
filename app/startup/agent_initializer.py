@@ -44,7 +44,7 @@ class AgentInitializer:
             logger.info("AI智能体管理器已关闭")
 
         except Exception as e:
-            logger.error(f"关闭AI智能体管理器时发生错误: {e}")
+            logger.debug(f"关闭AI智能体管理器时发生错误: {e}")
 
 
 # 全局AI智能体初始化器实例

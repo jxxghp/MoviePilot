@@ -9,13 +9,15 @@ from app.agent.tools.base import MoviePilotTool
 from app.helper.subscribe import SubscribeHelper
 from app.log import logger
 
+MAX_PAGE_SIZE = 50
+
 
 class QuerySubscribeSharesInput(BaseModel):
     """查询订阅分享工具的输入参数模型"""
     explanation: str = Field(..., description="Clear explanation of why this tool is being used in the current context")
     name: Optional[str] = Field(None, description="Filter shares by media name (partial match, optional)")
     page: Optional[int] = Field(1, description="Page number for pagination (default: 1)")
-    count: Optional[int] = Field(30, description="Number of items per page (default: 30)")
+    count: Optional[int] = Field(30, description="Number of items per page (default: 30, max: 50)")
     genre_id: Optional[int] = Field(None, description="Filter by genre ID (optional)")
     min_rating: Optional[float] = Field(None, description="Minimum rating filter (optional, e.g., 7.5)")
     max_rating: Optional[float] = Field(None, description="Maximum rating filter (optional, e.g., 10.0)")
@@ -63,6 +65,8 @@ class QuerySubscribeSharesTool(MoviePilotTool):
                 page = 1
             if count is None or count < 1:
                 count = 30
+            # 订阅分享是外部列表型结果，限制单页大小能降低工具上下文占用。
+            count = min(count, MAX_PAGE_SIZE)
 
             subscribe_helper = SubscribeHelper()
             shares = await subscribe_helper.async_get_shares(

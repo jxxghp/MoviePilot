@@ -11,6 +11,7 @@ from app.core.security import verify_token
 from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
+from app.helper.directory import DirectoryHelper
 from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
@@ -76,12 +77,17 @@ def add(
     # 元数据
     metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
     # 媒体信息
-    mediainfo = MediaChain().select_recognize_source(
-                    log_name=torrent_in.title,
-                    log_context=torrent_in.title,
-                    native_fn=lambda: MediaChain().recognize_media(meta=metainfo, tmdbid=tmdbid, doubanid=doubanid),
-                    plugin_fn=lambda: MediaChain().recognize_help(title=torrent_in.title, org_meta=metainfo)
-                )
+    if tmdbid or doubanid:
+        mediainfo = MediaChain().recognize_media(
+            meta=metainfo,
+            tmdbid=tmdbid,
+            doubanid=doubanid,
+        )
+    else:
+        mediainfo = MediaChain().recognize_by_meta(
+            metainfo,
+            obtain_images=False,
+        )
     if not mediainfo:
         return schemas.Response(success=False, message="无法识别媒体信息")
     # 种子信息
@@ -133,6 +139,29 @@ async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     if downloaders:
         return [{"name": d.get("name"), "type": d.get("type")} for d in downloaders if d.get("enabled")]
     return []
+
+
+@router.get("/paths", summary="查询可用下载路径", response_model=List[schemas.DownloadDirectory])
+def paths(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询可直接用于下载接口 save_path 参数的下载路径
+    """
+    return [
+        schemas.DownloadDirectory(
+            name=dir_info.name,
+            storage=dir_info.storage or "local",
+            download_path=dir_info.download_path,
+            save_path=schemas.FileURI(
+                storage=dir_info.storage or "local",
+                path=dir_info.download_path,
+            ).uri,
+            priority=dir_info.priority,
+            media_type=dir_info.media_type,
+            media_category=dir_info.media_category,
+        )
+        for dir_info in DirectoryHelper().get_download_dirs()
+        if dir_info.download_path
+    ]
 
 
 @router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)

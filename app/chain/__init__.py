@@ -21,6 +21,7 @@ from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.message_oper import MessageOper
 from app.db.user_oper import UserOper
+from app.helper.recognize import MediaRecognizeShareHelper
 from app.helper.message import MessageHelper, MessageQueueManager, MessageTemplateHelper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
@@ -398,6 +399,63 @@ class ChainBase(metaclass=ABCMeta):
             method, result, *args, **kwargs
         )
 
+    @staticmethod
+    def _can_use_media_recognize_share(
+            meta: Optional[MetaBase],
+            tmdbid: Optional[int],
+            doubanid: Optional[str],
+            bangumiid: Optional[int],
+    ) -> bool:
+        """
+        仅在名称识别场景下使用共享识别，显式ID识别不再重复回查
+        """
+        return bool(
+            settings.MEDIA_RECOGNIZE_SHARE
+            and meta
+            and not any([tmdbid, doubanid, bangumiid])
+        )
+
+    @staticmethod
+    def _snapshot_recognize_cache_meta(meta: Optional[MetaBase]) -> Optional[MetaBase]:
+        """
+        保存共享识别前的本地缓存关键元数据，用于共享成功后回填正缓存覆盖负缓存。
+        """
+        if not meta:
+            return None
+        return copy.deepcopy(meta)
+
+    def _update_local_recognize_cache(
+            self,
+            meta: Optional[MetaBase],
+            mediainfo: Optional[MediaInfo],
+    ) -> None:
+        """
+        共享识别成功后回填本地识别缓存，避免名称负缓存导致后续重复回查共享。
+        """
+        if not meta or not mediainfo:
+            return
+        self.run_module(
+            "update_recognize_cache",
+            meta=meta,
+            mediainfo=mediainfo,
+        )
+
+    async def _async_update_local_recognize_cache(
+            self,
+            meta: Optional[MetaBase],
+            mediainfo: Optional[MediaInfo],
+    ) -> None:
+        """
+        异步回填本地识别缓存。
+        """
+        if not meta or not mediainfo:
+            return
+        await self.async_run_module(
+            "async_update_recognize_cache",
+            meta=meta,
+            mediainfo=mediainfo,
+        )
+
     def recognize_media(
             self,
             meta: MetaBase = None,
@@ -407,10 +465,12 @@ class ChainBase(metaclass=ABCMeta):
             bangumiid: Optional[int] = None,
             episode_group: Optional[str] = None,
             cache: bool = True,
+            share_meta: MetaBase = None,
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片
         :param meta:     识别的元数据
+        :param share_meta: 共享识别查询/上报使用的原始元数据
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
         :param doubanid: 豆瓣ID
@@ -430,8 +490,10 @@ class ChainBase(metaclass=ABCMeta):
             bangumiid = None
         elif not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
             mtype = meta.type
+        share_query_meta = share_meta or meta
+        share_helper = MediaRecognizeShareHelper()
         with fresh(not cache):
-            return self.run_module(
+            mediainfo = self.run_module(
                 "recognize_media",
                 meta=meta,
                 mtype=mtype,
@@ -441,6 +503,41 @@ class ChainBase(metaclass=ABCMeta):
                 episode_group=episode_group,
                 cache=cache,
             )
+        if mediainfo:
+            if not mediainfo.recognize_cache_hit:
+                share_helper.report(
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    keyword_meta=share_query_meta,
+                )
+            return mediainfo
+
+        if self._can_use_media_recognize_share(
+                share_query_meta, tmdbid, doubanid, bangumiid
+        ):
+            shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
+            shared_item = share_helper.query(
+                meta=meta,
+                mtype=mtype,
+                keyword_meta=share_query_meta,
+            )
+            shared_params = share_helper.to_recognize_params(shared_item)
+            if shared_params:
+                with fresh(not cache):
+                    mediainfo = self.run_module(
+                        "recognize_media",
+                        meta=meta,
+                        mtype=shared_params.get("mtype") or mtype,
+                        tmdbid=shared_params.get("tmdbid"),
+                        doubanid=shared_params.get("doubanid"),
+                        bangumiid=shared_params.get("bangumiid"),
+                        episode_group=episode_group,
+                        cache=cache,
+                    )
+                if mediainfo:
+                    self._update_local_recognize_cache(shared_cache_meta, mediainfo)
+                    return mediainfo
+        return None
 
     async def async_recognize_media(
             self,
@@ -451,10 +548,12 @@ class ChainBase(metaclass=ABCMeta):
             bangumiid: Optional[int] = None,
             episode_group: Optional[str] = None,
             cache: bool = True,
+            share_meta: MetaBase = None,
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片（异步版本）
         :param meta:     识别的元数据
+        :param share_meta: 共享识别查询/上报使用的原始元数据
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
         :param doubanid: 豆瓣ID
@@ -474,8 +573,10 @@ class ChainBase(metaclass=ABCMeta):
             bangumiid = None
         elif not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
             mtype = meta.type
+        share_query_meta = share_meta or meta
+        share_helper = MediaRecognizeShareHelper()
         async with async_fresh(not cache):
-            return await self.async_run_module(
+            mediainfo = await self.async_run_module(
                 "async_recognize_media",
                 meta=meta,
                 mtype=mtype,
@@ -485,6 +586,41 @@ class ChainBase(metaclass=ABCMeta):
                 episode_group=episode_group,
                 cache=cache,
             )
+        if mediainfo:
+            if not mediainfo.recognize_cache_hit:
+                await share_helper.async_report(
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    keyword_meta=share_query_meta,
+                )
+            return mediainfo
+
+        if self._can_use_media_recognize_share(
+                share_query_meta, tmdbid, doubanid, bangumiid
+        ):
+            shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
+            shared_item = await share_helper.async_query(
+                meta=meta,
+                mtype=mtype,
+                keyword_meta=share_query_meta,
+            )
+            shared_params = share_helper.to_recognize_params(shared_item)
+            if shared_params:
+                async with async_fresh(not cache):
+                    mediainfo = await self.async_run_module(
+                        "async_recognize_media",
+                        meta=meta,
+                        mtype=shared_params.get("mtype") or mtype,
+                        tmdbid=shared_params.get("tmdbid"),
+                        doubanid=shared_params.get("doubanid"),
+                        bangumiid=shared_params.get("bangumiid"),
+                        episode_group=episode_group,
+                        cache=cache,
+                    )
+                if mediainfo:
+                    await self._async_update_local_recognize_cache(shared_cache_meta, mediainfo)
+                    return mediainfo
+        return None
 
     def match_doubaninfo(
             self,

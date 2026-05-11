@@ -4,7 +4,7 @@ import threading
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Any, Callable, Optional
+from typing import Any, Callable, ClassVar, Optional
 
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
@@ -21,6 +21,56 @@ from app.schemas.types import MessageChannel
 
 class ToolChain(ChainBase):
     pass
+
+
+# 单个工具结果的兜底上限。各工具仍应优先在自身逻辑中分页或摘要化；
+# 这里用于拦截遗漏路径，避免超大结果直接进入模型上下文。
+DEFAULT_TOOL_RESULT_MAX_CHARS = 64 * 1024
+MIN_TOOL_RESULT_PREVIEW_CHARS = 512
+
+
+def serialize_tool_result_for_agent(result: Any) -> str:
+    """将工具返回值稳定转换为 Agent 可消费的字符串。"""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, (int, float)):
+        return str(result)
+    try:
+        return json.dumps(result, ensure_ascii=False, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"工具结果转换为JSON失败: {e}, 使用字符串表示")
+        return str(result)
+
+
+def format_tool_result_for_agent(
+    result: Any,
+    *,
+    tool_name: Optional[str] = None,
+    max_chars: Optional[int] = DEFAULT_TOOL_RESULT_MAX_CHARS,
+) -> str:
+    """
+    统一格式化工具结果，并在超长时返回结构化预览。
+
+    具体工具可以通过 `result_max_chars` 覆盖上限；传入 None 或 <=0 表示不截断。
+    """
+    formatted_result = serialize_tool_result_for_agent(result)
+    if not max_chars or max_chars <= 0 or len(formatted_result) <= max_chars:
+        return formatted_result
+
+    preview_limit = max(MIN_TOOL_RESULT_PREVIEW_CHARS, max_chars)
+    preview = formatted_result[:preview_limit]
+    payload = {
+        "tool_result_truncated": True,
+        "tool_name": tool_name,
+        "total_chars": len(formatted_result),
+        "returned_chars": len(preview),
+        "content_preview": preview,
+        "message": (
+            f"工具返回内容超过 {max_chars} 字符，已截断为预览；"
+            "请使用更精确的筛选条件、分页参数或专用查询参数继续获取。"
+        ),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 # 将常见的阻塞调用按能力域拆分到独立线程池，避免外部慢 IO 抢占同一批 worker。
@@ -65,6 +115,8 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
     """
     MoviePilot专用工具基类（LangChain v1 / langchain_core）
     """
+
+    result_max_chars: ClassVar[Optional[int]] = DEFAULT_TOOL_RESULT_MAX_CHARS
 
     _session_id: str = PrivateAttr()
     _user_id: str = PrivateAttr()
@@ -160,21 +212,16 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         # 执行具体工具逻辑
         try:
             result = await self.run(**kwargs)
-            logger.debug(f"Tool {self.name} executed with result: {result}")
+            result_len = len(str(result)) if result is not None else 0
+            logger.debug(f"Tool {self.name} executed, raw result length: {result_len}")
         except Exception as e:
             error_message = f"工具执行异常 ({type(e).__name__}): {str(e)}"
             logger.error(f"Tool {self.name} execution failed: {e}", exc_info=True)
             result = error_message
 
-        # 格式化结果
-        if isinstance(result, str):
-            formatted_result = result
-        elif isinstance(result, (int, float)):
-            formatted_result = str(result)
-        else:
-            formatted_result = json.dumps(result, ensure_ascii=False, indent=2)
-
-        return formatted_result
+        return format_tool_result_for_agent(
+            result, tool_name=self.name, max_chars=self.result_max_chars
+        )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """
@@ -256,6 +303,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             MessageChannel.Telegram: "telegram",
             MessageChannel.Discord: "discord",
             MessageChannel.Wechat: "wechat",
+            MessageChannel.WechatClawBot: "wechatclawbot",
             MessageChannel.Slack: "slack",
             MessageChannel.VoceChat: "vocechat",
             MessageChannel.SynologyChat: "synologychat",
@@ -275,6 +323,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             "telegram": "TELEGRAM_ADMINS",
             "discord": "DISCORD_ADMINS",
             "wechat": "WECHAT_ADMINS",
+            "wechatclawbot": "WECHATCLAWBOT_ADMINS",
             "slack": "SLACK_ADMINS",
             "vocechat": "VOCECHAT_ADMINS",
             "synologychat": "SYNOLOGYCHAT_ADMINS",
@@ -285,6 +334,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             "telegram": "TELEGRAM_CHAT_ID",
             "vocechat": "VOCECHAT_CHANNEL_ID",
             "wechat": "WECHAT_BOT_CHAT_ID",
+            "wechatclawbot": "WECHATCLAWBOT_DEFAULT_TARGET",
         }
 
         admin_key = admin_key_map.get(channel_type)

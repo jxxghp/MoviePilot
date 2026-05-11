@@ -1,7 +1,7 @@
 import time
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Float, JSON, select
+from sqlalchemy import Column, Integer, String, Float, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -64,7 +64,7 @@ class Subscribe(Base):
     # 创建时间
     date = Column(String)
     # 订阅用户
-    username = Column(String)
+    username = Column(String, index=True)
     # 订阅站点
     sites = Column(JSON, default=list)
     # 下载器
@@ -87,6 +87,10 @@ class Subscribe(Base):
     filter_groups = Column(JSON, default=list)
     # 选择的剧集组
     episode_group = Column(String)
+
+    __table_args__ = (
+        Index('ix_subscribe_type_date', 'type', 'date'),
+    )
 
     @classmethod
     @db_query

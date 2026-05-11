@@ -14,13 +14,13 @@ from app.log import logger
 from app.schemas.types import MediaType
 
 
-def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None) -> MetaBase:
+def _build_meta_info(
+        title: str,
+        subtitle: Optional[str] = None,
+        custom_words: List[str] = None,
+) -> MetaBase:
     """
-    根据标题和副标题识别元数据
-    :param title: 标题、种子名、文件名
-    :param subtitle: 副标题、描述
-    :param custom_words: 自定义识别词列表
-    :return: MetaAnime、MetaVideo
+    根据标题构造元数据
     """
     # 原标题
     org_title = title
@@ -40,7 +40,7 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
     meta = MetaAnime(title, subtitle, isfile) if is_anime(title) else MetaVideo(title, subtitle, isfile)
     # 记录原标题
     meta.title = org_title
-    #  记录使用的识别词
+    # 记录使用的识别词
     meta.apply_words = apply_words or []
     # 修正媒体信息
     if metainfo.get('tmdbid'):
@@ -64,6 +64,23 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
         meta.end_episode = metainfo['end_episode']
     if metainfo.get('total_episode'):
         meta.total_episode = metainfo['total_episode']
+    return meta
+
+
+def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None) -> MetaBase:
+    """
+    根据标题和副标题识别元数据
+    :param title: 标题、种子名、文件名
+    :param subtitle: 副标题、描述
+    :param custom_words: 自定义识别词列表
+    :return: MetaAnime、MetaVideo
+    """
+    meta = _build_meta_info(title=title, subtitle=subtitle, custom_words=custom_words)
+    if meta.apply_words:
+        original_meta = _build_meta_info(title=title, subtitle=subtitle)
+        meta.original_name = original_meta.name or meta.name
+    else:
+        meta.original_name = meta.name
     return meta
 
 

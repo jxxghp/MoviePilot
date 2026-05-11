@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
@@ -352,6 +353,16 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     return current_fileitem, None  # 返回一个表示失败的FileItem和None
                 target_dir_path = Path(target_dir_item.path)
         # 图片通常是放在当前目录 (current_fileitem) 下
+        # Jellyfin/Kodi 等在季目录内使用通用图片名，而不是 season01-poster.jpg
+        elif item_type == ScrapingTarget.SEASON:
+            season_image_name_map = {
+                ScrapingMetadata.POSTER: "poster",
+                ScrapingMetadata.BANNER: "banner",
+                ScrapingMetadata.THUMB: "thumb",
+            }
+            if season_image_name := season_image_name_map.get(metadata_type):
+                hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
+                final_filename = f"{season_image_name}{hint_ext}"
         # 如果是 EPISODE 类型的图片（如thumb），通常也是放在文件同级目录，文件名与视频文件一致
         elif (
                 metadata_type in [ScrapingMetadata.THUMB]
@@ -437,39 +448,83 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return mediainfo
 
     def recognize_by_meta(
-            self, metainfo: MetaBase, episode_group: Optional[str] = None
+            self,
+            metainfo: MetaBase,
+            episode_group: Optional[str] = None,
+            obtain_images: bool = False,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
         """
+        mediainfo = self._recognize_with_fallback_by_meta(
+            metainfo=metainfo,
+            episode_group=episode_group,
+            obtain_images=obtain_images,
+        )
+        if not mediainfo:
+            logger.warn(f"{metainfo.title} 未识别到媒体信息")
+        return mediainfo
+
+    def _recognize_with_fallback_by_meta(
+            self,
+            metainfo: MetaBase,
+            episode_group: Optional[str] = None,
+            obtain_images: bool = False,
+    ) -> Optional[MediaInfo]:
+        """
+        根据标题识别媒体信息，必要时回退到辅助识别。
+        """
+        if not metainfo:
+            return None
         title = metainfo.title
+        share_meta = deepcopy(metainfo)
+
+        def native_recognize() -> Optional[MediaInfo]:
+            return self.recognize_media(
+                meta=metainfo,
+                share_meta=share_meta,
+                episode_group=episode_group,
+            )
+
+        def plugin_recognize() -> Optional[MediaInfo]:
+            return self.recognize_help(
+                title=title,
+                org_meta=metainfo,
+                share_meta=share_meta,
+                episode_group=episode_group,
+            )
+
         # 按 config 中设置的识别顺序识别
         mediainfo = self.select_recognize_source(
             log_name=title,
             log_context=title,
-            native_fn=lambda: self.recognize_media(
-                meta=metainfo, episode_group=episode_group
-            ),
-            plugin_fn=lambda: self.recognize_help(title=title, org_meta=metainfo),
+            native_fn=native_recognize,
+            plugin_fn=plugin_recognize,
         )
         if not mediainfo:
-            logger.warn(f"{title} 未识别到媒体信息")
             return None
         # 识别成功
         logger.info(
             f"{title} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}"
         )
-        # 更新媒体图片
-        self.obtain_images(mediainfo=mediainfo)
-        # 返回上下文
+        if obtain_images:
+            self.obtain_images(mediainfo=mediainfo)
         return mediainfo
 
-    def recognize_help(self, title: str, org_meta: MetaBase) -> Optional[MediaInfo]:
+    def recognize_help(
+            self,
+            title: str,
+            org_meta: MetaBase,
+            share_meta: MetaBase = None,
+            episode_group: Optional[str] = None,
+    ) -> Optional[MediaInfo]:
         """
         请求辅助识别，返回媒体信息
 
         :param title: 标题
         :param org_meta: 原始元数据
+        :param share_meta: 共享识别查询/上报使用的原始元数据
+        :param episode_group: 剧集组
         """
         # 发送请求事件，等待结果
         result: Event = eventmanager.send_event(
@@ -511,10 +566,17 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if org_meta.begin_season is not None or org_meta.begin_episode is not None:
             org_meta.type = MediaType.TV
         # 重新识别
-        return self.recognize_media(meta=org_meta)
+        return self.recognize_media(
+            meta=org_meta,
+            share_meta=share_meta,
+            episode_group=episode_group,
+        )
 
     def recognize_by_path(
-            self, path: str, episode_group: Optional[str] = None
+            self,
+            path: str,
+            episode_group: Optional[str] = None,
+            obtain_images: bool = False,
     ) -> Optional[Context]:
         """
         根据文件路径识别媒体信息
@@ -523,23 +585,14 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_path = Path(path)
         # 元数据
         file_meta = MetaInfoPath(file_path)
-        # 按 config 中设置的识别顺序识别
-        mediainfo = self.select_recognize_source(
-            log_name=file_path.name,
-            log_context=path,
-            native_fn=lambda: self.recognize_media(
-                meta=file_meta, episode_group=episode_group
-            ),
-            plugin_fn=lambda: self.recognize_help(title=path, org_meta=file_meta),
+        mediainfo = self._recognize_with_fallback_by_meta(
+            metainfo=file_meta,
+            episode_group=episode_group,
+            obtain_images=obtain_images,
         )
         if not mediainfo:
             logger.warn(f"{path} 未识别到媒体信息")
             return Context(meta_info=file_meta)
-        logger.info(
-            f"{path} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}"
-        )
-        # 更新媒体图片
-        self.obtain_images(mediainfo=mediainfo)
         # 返回上下文
         return Context(meta_info=file_meta, media_info=mediainfo)
 
@@ -1330,21 +1383,51 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return mediainfo
 
     async def async_recognize_by_meta(
-            self, metainfo: MetaBase, episode_group: Optional[str] = None
+            self,
+            metainfo: MetaBase,
+            episode_group: Optional[str] = None,
+            obtain_images: bool = False,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息（异步版本）
         """
-        title = metainfo.title
+        mediainfo = await self._async_recognize_with_fallback_by_meta(
+            metainfo=metainfo,
+            episode_group=episode_group,
+            obtain_images=obtain_images,
+        )
+        if not mediainfo:
+            logger.warn(f"{metainfo.title} 未识别到媒体信息")
+        return mediainfo
 
-        # 定义识别函数
+    async def _async_recognize_with_fallback_by_meta(
+            self,
+            metainfo: MetaBase,
+            episode_group: Optional[str] = None,
+            obtain_images: bool = False,
+    ) -> Optional[MediaInfo]:
+        """
+        异步根据标题识别媒体信息，必要时回退到辅助识别。
+        """
+        if not metainfo:
+            return None
+        title = metainfo.title
+        share_meta = deepcopy(metainfo)
+
         async def native_recognize():
             return await self.async_recognize_media(
-                meta=metainfo, episode_group=episode_group
+                meta=metainfo,
+                share_meta=share_meta,
+                episode_group=episode_group,
             )
 
         async def plugin_recognize():
-            return await self.async_recognize_help(title=title, org_meta=metainfo)
+            return await self.async_recognize_help(
+                title=title,
+                org_meta=metainfo,
+                share_meta=share_meta,
+                episode_group=episode_group,
+            )
 
         # 按 config 中设置的识别顺序识别
         mediainfo = await self.async_select_recognize_source(
@@ -1354,25 +1437,28 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             plugin_fn=plugin_recognize,
         )
         if not mediainfo:
-            logger.warn(f"{title} 未识别到媒体信息")
             return None
-        # 识别成功
         logger.info(
             f"{title} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}"
         )
-        # 更新媒体图片
-        await self.async_obtain_images(mediainfo=mediainfo)
-        # 返回上下文
+        if obtain_images:
+            await self.async_obtain_images(mediainfo=mediainfo)
         return mediainfo
 
     async def async_recognize_help(
-            self, title: str, org_meta: MetaBase
+            self,
+            title: str,
+            org_meta: MetaBase,
+            share_meta: MetaBase = None,
+            episode_group: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         请求辅助识别，返回媒体信息（异步版本）
 
         :param title: 标题
         :param org_meta: 原始元数据
+        :param share_meta: 共享识别查询/上报使用的原始元数据
+        :param episode_group: 剧集组
         """
         # 发送请求事件，等待结果
         result: Event = await eventmanager.async_send_event(
@@ -1414,10 +1500,17 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if org_meta.begin_season or org_meta.begin_episode:
             org_meta.type = MediaType.TV
         # 重新识别
-        return await self.async_recognize_media(meta=org_meta)
+        return await self.async_recognize_media(
+            meta=org_meta,
+            share_meta=share_meta,
+            episode_group=episode_group,
+        )
 
     async def async_recognize_by_path(
-            self, path: str, episode_group: Optional[str] = None
+            self,
+            path: str,
+            episode_group: Optional[str] = None,
+            obtain_images: bool = False,
     ) -> Optional[Context]:
         """
         根据文件路径识别媒体信息（异步版本）
@@ -1426,31 +1519,14 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_path = Path(path)
         # 元数据
         file_meta = MetaInfoPath(file_path)
-
-        # 定义识别函数
-        async def native_recognize():
-            return await self.async_recognize_media(
-                meta=file_meta, episode_group=episode_group
-            )
-
-        async def plugin_recognize():
-            return await self.async_recognize_help(title=path, org_meta=file_meta)
-
-        # 按 config 中设置的识别顺序识别
-        mediainfo = await self.async_select_recognize_source(
-            log_name=file_path.name,
-            log_context=path,
-            native_fn=native_recognize,
-            plugin_fn=plugin_recognize,
+        mediainfo = await self._async_recognize_with_fallback_by_meta(
+            metainfo=file_meta,
+            episode_group=episode_group,
+            obtain_images=obtain_images,
         )
         if not mediainfo:
             logger.warn(f"{path} 未识别到媒体信息")
             return Context(meta_info=file_meta)
-        logger.info(
-            f"{path} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}"
-        )
-        # 更新媒体图片
-        await self.async_obtain_images(mediainfo=mediainfo)
         # 返回上下文
         return Context(meta_info=file_meta, media_info=mediainfo)
 

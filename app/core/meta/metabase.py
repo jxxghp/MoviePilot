@@ -29,6 +29,8 @@ class MetaBase(object):
     cn_name: Optional[str] = None
     # 识别的英文名
     en_name: Optional[str] = None
+    # 未应用识别词时识别出的名称
+    original_name: Optional[str] = None
     # 年份
     year: Optional[str] = None
     # 总季数
@@ -555,6 +557,9 @@ class MetaBase(object):
         if not self.name:
             self.cn_name = meta.cn_name
             self.en_name = meta.en_name
+        # 未应用识别词时识别出的名称
+        if not self.original_name:
+            self.original_name = meta.original_name
         # 年份
         if not self.year:
             self.year = meta.year

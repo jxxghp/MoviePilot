@@ -31,7 +31,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
 
     @staticmethod
     def get_name() -> str:
-        return "微信"
+        return "企业微信"
 
     @staticmethod
     def get_type() -> ModuleType:

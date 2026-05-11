@@ -108,6 +108,7 @@ class DoubanModule(_ModuleBase):
             if doubanid:
                 meta.doubanid = doubanid
             cache_info = self.cache.get(meta)
+        cache_hit = False
 
         # 识别豆瓣信息
         if not cache_info or not cache:
@@ -148,6 +149,7 @@ class DoubanModule(_ModuleBase):
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
+            cache_hit = True
             if cache_info.get("title"):
                 logger.info(f"{meta.name} 使用豆瓣识别缓存：{cache_info.get('title')}")
                 info = douban_info_func(mtype=cache_info.get("type"),
@@ -159,6 +161,7 @@ class DoubanModule(_ModuleBase):
         if info:
             # 赋值TMDB信息并返回
             mediainfo = MediaInfo(douban_info=info)
+            mediainfo.recognize_cache_hit = cache_hit
             if meta:
                 logger.info(f"{meta.name} 豆瓣识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year} "
@@ -209,6 +212,7 @@ class DoubanModule(_ModuleBase):
             if doubanid:
                 meta.doubanid = doubanid
             cache_info = self.cache.get(meta)
+        cache_hit = False
 
         # 识别豆瓣信息
         if not cache_info or not cache:
@@ -249,6 +253,7 @@ class DoubanModule(_ModuleBase):
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
+            cache_hit = True
             if cache_info.get("title"):
                 logger.info(f"{meta.name} 使用豆瓣识别缓存：{cache_info.get('title')}")
                 info = await async_douban_info_func(mtype=cache_info.get("type"),
@@ -260,6 +265,7 @@ class DoubanModule(_ModuleBase):
         if info:
             # 赋值TMDB信息并返回
             mediainfo = MediaInfo(douban_info=info)
+            mediainfo.recognize_cache_hit = cache_hit
             if meta:
                 logger.info(f"{meta.name} 豆瓣识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year} "
@@ -318,6 +324,31 @@ class DoubanModule(_ModuleBase):
             async_match_doubaninfo_func=self.async_match_doubaninfo,
             **kwargs
         )
+
+    def update_recognize_cache(
+            self,
+            meta: MetaBase,
+            mediainfo: MediaInfo,
+    ) -> Optional[bool]:
+        """
+        回填豆瓣本地识别缓存，覆盖名称负缓存，避免共享识别后重复回查。
+        """
+        if not meta or not mediainfo:
+            return None
+        if mediainfo.source != "douban" or not mediainfo.douban_info:
+            return None
+        self.cache.update(meta, mediainfo.douban_info)
+        return True
+
+    async def async_update_recognize_cache(
+            self,
+            meta: MetaBase,
+            mediainfo: MediaInfo,
+    ) -> Optional[bool]:
+        """
+        异步回填豆瓣本地识别缓存。
+        """
+        return self.update_recognize_cache(meta=meta, mediainfo=mediainfo)
 
     @rate_limit_exponential(source="douban_info")
     def douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[dict]:

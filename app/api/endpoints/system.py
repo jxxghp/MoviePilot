@@ -13,6 +13,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Re
 from fastapi.responses import StreamingResponse
 
 from app import schemas
+from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
@@ -785,7 +786,10 @@ def ruletest(
         )
 
     # 根据标题查询媒体信息
-    media_info = SearchChain().recognize_media(MetaInfo(title=title, subtitle=subtitle))
+    media_info = MediaChain().recognize_by_meta(
+        MetaInfo(title=title, subtitle=subtitle),
+        obtain_images=False,
+    )
     if not media_info:
         return schemas.Response(success=False, message="未识别到媒体信息！")
 

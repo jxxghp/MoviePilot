@@ -12,13 +12,15 @@ from app.helper.subscribe import SubscribeHelper
 from app.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
 
+MAX_PAGE_SIZE = 50
+
 
 class QueryPopularSubscribesInput(BaseModel):
     """查询热门订阅工具的输入参数模型"""
     explanation: str = Field(..., description="Clear explanation of why this tool is being used in the current context")
     media_type: str = Field(..., description="Allowed values: movie, tv")
     page: Optional[int] = Field(1, description="Page number for pagination (default: 1)")
-    count: Optional[int] = Field(30, description="Number of items per page (default: 30)")
+    count: Optional[int] = Field(30, description="Number of items per page (default: 30, max: 50)")
     min_sub: Optional[int] = Field(None, description="Minimum number of subscribers filter (optional, e.g., 5)")
     genre_id: Optional[int] = Field(None, description="Filter by genre ID (optional)")
     min_rating: Optional[float] = Field(None, description="Minimum rating filter (optional, e.g., 7.5)")
@@ -69,6 +71,8 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                 page = 1
             if count is None or count < 1:
                 count = 30
+            # 外部统计接口支持传入 count，这里做硬上限，避免 Agent 一次拉取过多结果。
+            count = min(count, MAX_PAGE_SIZE)
             media_type_enum = MediaType.from_agent(media_type)
             if not media_type_enum:
                 return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"

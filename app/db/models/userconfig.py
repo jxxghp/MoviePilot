@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, UniqueConstraint, Index, JSON
+from sqlalchemy import Column, String, UniqueConstraint, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, Base
@@ -10,7 +10,7 @@ class UserConfig(Base):
     """
     id = get_id_column()
     # 用户名
-    username = Column(String, index=True)
+    username = Column(String)
     # 配置键
     key = Column(String)
     # 值
@@ -19,7 +19,6 @@ class UserConfig(Base):
     __table_args__ = (
         # 用户名和配置键联合唯一
         UniqueConstraint('username', 'key'),
-        Index('ix_userconfig_username_key', 'username', 'key'),
     )
 
     @classmethod

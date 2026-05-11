@@ -1,10 +1,10 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, JSON, select
+from sqlalchemy import Column, Integer, String, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base, get_id_column, async_db_query
+from app.db import db_query, db_update, Base, get_id_column, async_db_query
 
 
 class Message(Base):
@@ -29,11 +29,15 @@ class Message(Base):
     # 用户ID
     userid = Column(String)
     # 登记时间
-    reg_time = Column(String, index=True)
+    reg_time = Column(String)
     # 消息方向：0-接收息，1-发送消息
     action = Column(Integer)
     # 附件json
     note = Column(JSON)
+
+    __table_args__ = (
+        Index('ix_message_reg_time_id', 'reg_time', 'id'),
+    )
 
     @classmethod
     @db_query
@@ -47,3 +51,30 @@ class Message(Base):
             select(cls).order_by(cls.reg_time.desc()).offset((page - 1) * count).limit(count)
         )
         return result.scalars().all()
+
+    @classmethod
+    @db_update
+    def delete_before(
+        cls,
+        db: Session,
+        before_time: str,
+        limit: Optional[int] = 500,
+    ) -> int:
+        """
+        分批删除指定时间之前的消息记录。
+        """
+        ids = [
+            row[0]
+            for row in db.query(cls.id)
+            .filter(cls.reg_time < before_time)
+            .order_by(cls.id.asc())
+            .limit(limit)
+            .all()
+        ]
+        if not ids:
+            return 0
+        return (
+            db.query(cls)
+            .filter(cls.id.in_(ids))
+            .delete(synchronize_session=False)
+        )

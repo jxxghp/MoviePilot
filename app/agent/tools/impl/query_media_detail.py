@@ -10,6 +10,10 @@ from app.chain.media import MediaChain
 from app.log import logger
 from app.schemas.types import MediaType
 
+DIRECTOR_PREVIEW_LIMIT = 10
+ACTOR_PREVIEW_LIMIT = 20
+SEASON_PREVIEW_LIMIT = 100
+
 
 class QueryMediaDetailInput(BaseModel):
     """查询媒体详情工具的输入参数模型"""
@@ -64,23 +68,23 @@ class QueryMediaDetailTool(MoviePilotTool):
             genres = [g.get("name") for g in (mediainfo.genres or []) if g.get("name")]
 
             # 精简 directors - 只保留姓名和职位
+            director_source = [d for d in (mediainfo.directors or []) if d.get("name")]
             directors = [
                 {
                     "name": d.get("name"),
                     "job": d.get("job")
                 }
-                for d in (mediainfo.directors or [])
-                if d.get("name")
+                for d in director_source[:DIRECTOR_PREVIEW_LIMIT]
             ]
 
             # 精简 actors - 只保留姓名和角色
+            actor_source = [a for a in (mediainfo.actors or []) if a.get("name")]
             actors = [
                 {
                     "name": a.get("name"),
                     "character": a.get("character")
                 }
-                for a in (mediainfo.actors or [])
-                if a.get("name")
+                for a in actor_source[:ACTOR_PREVIEW_LIMIT]
             ]
 
             # 构建基础媒体详情信息
@@ -88,12 +92,20 @@ class QueryMediaDetailTool(MoviePilotTool):
                 "status": mediainfo.status,
                 "genres": genres,
                 "directors": directors,
-                "actors": actors
+                "directors_total": len(director_source),
+                "directors_truncated": len(director_source) > DIRECTOR_PREVIEW_LIMIT,
+                "actors": actors,
+                "actors_total": len(actor_source),
+                "actors_truncated": len(actor_source) > ACTOR_PREVIEW_LIMIT,
             }
 
             # 如果是电视剧，添加电视剧特有信息
             if mediainfo.type == MediaType.TV:
                 # 精简 season_info - 只保留基础摘要
+                season_source = [
+                    s for s in (mediainfo.season_info or [])
+                    if s.get("season_number") is not None
+                ]
                 season_info = [
                     {
                         "season_number": s.get("season_number"),
@@ -101,8 +113,7 @@ class QueryMediaDetailTool(MoviePilotTool):
                         "episode_count": s.get("episode_count"),
                         "air_date": s.get("air_date")
                     }
-                    for s in (mediainfo.season_info or [])
-                    if s.get("season_number") is not None
+                    for s in season_source[:SEASON_PREVIEW_LIMIT]
                 ]
 
                 result.update({
@@ -110,7 +121,9 @@ class QueryMediaDetailTool(MoviePilotTool):
                     "number_of_episodes": mediainfo.number_of_episodes,
                     "first_air_date": mediainfo.first_air_date,
                     "last_air_date": mediainfo.last_air_date,
-                    "season_info": season_info
+                    "season_info": season_info,
+                    "season_info_total": len(season_source),
+                    "season_info_truncated": len(season_source) > SEASON_PREVIEW_LIMIT,
                 })
 
             return json.dumps(result, ensure_ascii=False, indent=2)

@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootst
 - 自动检查并尽量安装 `git`、`curl`、`Python 3.11+`
 - 克隆 `MoviePilot`
 - 安装后端依赖
-- 下载 `MoviePilot-Frontend` 最新 release 的 `dist.zip`
+- 按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载对应前端 release 的 `dist.zip`
 - 下载 `MoviePilot-Resources` 主分支资源
 - 将 `resources.v2/*` 同步到后端 [app/helper](/Users/jxxghp/PycharmProjects/MoviePilot/app/helper)
 - 下载本地 Node 运行时并安装前端运行依赖
@@ -172,7 +172,8 @@ moviepilot install frontend --config-dir /path/to/moviepilot-config
 
 说明：
 
-- 默认下载 `MoviePilot-Frontend` 最新 release 的 `dist.zip`
+- 默认按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载对应前端 release 的 `dist.zip`
+- 如需覆盖默认行为，仍可显式传入 `--version latest` 或指定具体 tag
 - 会自动安装本地 Node 运行时
 - 会自动安装 `service.js` 所需的运行依赖
 
@@ -323,8 +324,8 @@ moviepilot update all --skip-resources
 说明：
 
 - `update backend` 会更新 Git 仓库并重新安装后端依赖
-- `update frontend` 会下载并替换前端 release
-- `update all` 会同时更新后端、前端，默认也会同步资源文件
+- `update frontend` 会按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载并替换前端 release
+- `update all` 会先更新后端，再按更新后代码中的 `FRONTEND_VERSION` 更新前端，默认也会同步资源文件
 - 更新前请先执行 `moviepilot stop`
 
 ## Agent 命令

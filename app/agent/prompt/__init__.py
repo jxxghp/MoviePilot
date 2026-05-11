@@ -281,10 +281,15 @@ class PromptManager:
             db_info = f"SQLite ({settings.CONFIG_PATH / 'db' / 'moviepilot.db'})"
         else:
             db_password = settings.DB_POSTGRESQL_PASSWORD or ""
-            db_info = f"PostgreSQL ({settings.DB_POSTGRESQL_USERNAME}:{db_password}@{settings.DB_POSTGRESQL_HOST}:{settings.DB_POSTGRESQL_PORT}/{settings.DB_POSTGRESQL_DATABASE})"
+            db_info = (
+                f"PostgreSQL ({settings.DB_POSTGRESQL_USERNAME}:{db_password}@"
+                f"{settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE})"
+            )
 
+        # 保留日期用于提供“今天是哪天”的稳定上下文，但不再注入秒级时间，
+        # 避免每次请求都生成不同的 system prompt，影响 provider 侧 cache 命中率。
         info_lines = [
-            f"- 当前时间: {strftime('%Y-%m-%d %H:%M:%S')}",
+            f"- 当前日期: {strftime('%Y-%m-%d')}",
             f"- 运行环境: {SystemUtils.platform} {'docker' if SystemUtils.is_docker() else ''}",
             f"- 主机名: {hostname}",
             f"- IP地址: {ip_address}",
@@ -423,11 +428,11 @@ class PromptManager:
             return text
 
         context = cls._normalize_template_context(template_context)
-        missing_fields = sorted(field for field in required_fields if field not in context)
+        missing_fields = sorted(f for f in required_fields if f not in context)
         if missing_fields:
             raise PromptConfigError(
                 f"系统任务定义 `{task_type}` 的 `{field_name}` 缺少变量: "
-                + ", ".join(f"`{field}`" for field in missing_fields)
+                + ", ".join(f"`{f}`" for f in missing_fields)
             )
 
         # 这里统一做字符串替换，让 YAML 成为后台任务文案的唯一行为来源。

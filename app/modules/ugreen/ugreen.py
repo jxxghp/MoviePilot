@@ -15,6 +15,8 @@ from app.utils.url import UrlUtils
 
 
 class Ugreen:
+    LIBRARY_PATH_PAGE_LIMIT = 200
+
     _username: Optional[str] = None
     _password: Optional[str] = None
 
@@ -171,11 +173,13 @@ class Ugreen:
         if not self.is_configured():
             return False
 
+        self._libraries = {}
+        self._library_paths = {}
+
         # 关闭旧连接（不主动登出，避免破坏可复用会话）
         self.disconnect(logout=False)
 
         if self.__restore_persisted_session():
-            self.get_librarys()
             return True
 
         self._api = Api(host=self._host, verify_ssl=self._verify_ssl)
@@ -191,7 +195,6 @@ class Ugreen:
         # 登录成功后持久化参数，下次优先复用
         self.__save_persisted_session()
         logger.debug(f"{self._username} 成功登录绿联影视")
-        self.get_librarys()
         return True
 
     def disconnect(self, logout: bool = False):
@@ -204,6 +207,8 @@ class Ugreen:
             self._api = None
             self._userinfo = None
             logger.debug(f"{self._username} 已断开绿联影视")
+        self._libraries = {}
+        self._library_paths = {}
 
     @staticmethod
     def __normalize_dir_path(path: Union[str, Path, None]) -> str:
@@ -487,7 +492,7 @@ class Ugreen:
 
         paths: dict[str, str] = {}
         page = 1
-        while True:
+        while page <= self.LIBRARY_PATH_PAGE_LIMIT:
             data = self._api.poster_wall_get_folder(page=page, page_size=100)
             if not data:
                 break
@@ -501,6 +506,12 @@ class Ugreen:
             if data.get("is_last_page"):
                 break
             page += 1
+
+        if page > self.LIBRARY_PATH_PAGE_LIMIT:
+            # 部分固件分页标志异常时会无限返回下一页，这里加硬限制避免阻塞调用方。
+            logger.warning(
+                f"绿联影视 {self._username} 媒体库目录分页超过上限 {self.LIBRARY_PATH_PAGE_LIMIT} 页，停止继续加载"
+            )
 
         return paths
 
@@ -653,9 +664,19 @@ class Ugreen:
         tmdb_id: Optional[int] = None,
         season: Optional[int] = None,
     ) -> tuple[Optional[str], Optional[Dict[int, list]]]:
+        """
+        根据标题、年份、TMDB ID和季号查询绿联媒体库中的电视剧已入库集数。
+        :param item_id: 绿联媒体库中的剧集ID，存在缓存ID时优先使用
+        :param title: 标题
+        :param year: 年份
+        :param tmdb_id: TMDB ID
+        :param season: 季号
+        :return: 命中的剧集ID及每季已入库集数
+        """
         if not self.is_authenticated() or not self._api:
             return None, None
 
+        cached_item_id = item_id
         if not item_id:
             if not title:
                 return None, None
@@ -669,6 +690,16 @@ class Ugreen:
             item_id = str(item_id)
 
         item_info = self.get_iteminfo(item_id)
+        if not item_info and cached_item_id and title:
+            # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
+            logger.warning(f"绿联缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
+            if not (tv_info := self.__search_tv_item(title, year, tmdb_id)):
+                return None, {}
+            found_item_id = tv_info.get("ug_video_info_id")
+            if found_item_id is None:
+                return None, {}
+            item_id = str(found_item_id)
+            item_info = self.get_iteminfo(item_id)
         if not item_info:
             return None, {}
         if tmdb_id and item_info.tmdbid and tmdb_id != item_info.tmdbid:

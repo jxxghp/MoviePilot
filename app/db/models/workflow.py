@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, JSON, String, and_, or_, select
+from sqlalchemy import Column, Integer, JSON, String, Index, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import Base, db_query, get_id_column, db_update, async_db_query, async_db_update
@@ -43,6 +43,10 @@ class Workflow(Base):
     add_time = Column(String, default=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     # 最后执行时间
     last_time = Column(String)
+
+    __table_args__ = (
+        Index('ix_workflow_trigger_type_state', 'trigger_type', 'state'),
+    )
 
     @classmethod
     @db_query

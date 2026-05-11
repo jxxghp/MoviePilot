@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON, select
+from sqlalchemy import Column, String, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -16,9 +16,13 @@ class PluginData(Base):
     插件数据表
     """
     id = get_id_column()
-    plugin_id = Column(String, nullable=False, index=True)
-    key = Column(String, index=True, nullable=False)
+    plugin_id = Column(String, nullable=False)
+    key = Column(String, nullable=False)
     value = Column(JSON)
+
+    __table_args__ = (
+        Index('ix_plugindata_plugin_id_key', 'plugin_id', 'key'),
+    )
 
     @classmethod
     @db_query

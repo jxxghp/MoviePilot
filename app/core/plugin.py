@@ -141,16 +141,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"正在停止插件 {pid}...")
             plugin_obj = self._running_plugins.get(pid)
             if not plugin_obj:
+                # 指定插件可能在上次加载时已导入模块但初始化失败，此时不会进入运行态列表。
+                # 仍需继续清理类缓存和 sys.modules，避免后续热重载反复复用旧模块。
                 logger.debug(f"插件 {pid} 不存在或未加载")
-                return
-            plugins = {pid: plugin_obj}
+                plugins = {}
+            else:
+                plugins = {pid: plugin_obj}
         else:
             logger.info("正在停止所有插件...")
             plugins = self._running_plugins
         for plugin_id, plugin in plugins.items():
             eventmanager.disable_event_handler(type(plugin))
             self.__stop_plugin(plugin)
-        # 清空对像
+        # 清空对象
         if pid:
             # 清空指定插件
             self._plugins.pop(pid, None)

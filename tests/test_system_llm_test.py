@@ -77,7 +77,7 @@ _stub_module("app.utils.crypto", HashUtils=_Dummy)
 _stub_module("app.utils.http", RequestUtils=_Dummy, AsyncRequestUtils=_Dummy)
 _stub_module("version", APP_VERSION="test")
 
-from app.api.endpoints import system as system_endpoint
+from app.api.endpoints import llm as system_endpoint
 
 
 class LlmTestEndpointTest(unittest.TestCase):
@@ -125,6 +125,8 @@ class LlmTestEndpointTest(unittest.TestCase):
         ), patch.object(
             system_endpoint.settings, "LLM_BASE_URL", "https://api.deepseek.com"
         ), patch.object(
+            system_endpoint.settings, "LLM_BASE_URL_PRESET", "deepseek-default"
+        ), patch.object(
             system_endpoint.LLMHelper,
             "test_current_settings",
             llm_test_mock,
@@ -138,6 +140,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             thinking_level="max",
             api_key="sk-test",
             base_url="https://api.deepseek.com",
+            base_url_preset="deepseek-default",
         )
         self.assertTrue(resp.success)
         self.assertEqual(resp.data["provider"], "deepseek")
@@ -161,6 +164,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             thinking_level="high",
             api_key="sk-live",
             base_url="https://example.com/v1",
+            base_url_preset="openai-default",
         )
 
         with patch.object(system_endpoint.settings, "AI_AGENT_ENABLE", False), patch.object(
@@ -183,6 +187,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             thinking_level="high",
             api_key="sk-live",
             base_url="https://example.com/v1",
+            base_url_preset="openai-default",
         )
         self.assertTrue(resp.success)
         self.assertEqual(resp.data["provider"], "openai")
@@ -203,6 +208,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             model="deepseek-v4-pro",
             api_key="sk-live",
             base_url="https://api.deepseek.com",
+            base_url_preset="deepseek-default",
         )
 
         with patch.object(system_endpoint.settings, "AI_AGENT_ENABLE", False), patch.object(
@@ -219,6 +225,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             thinking_level=None,
             api_key="sk-live",
             base_url="https://api.deepseek.com",
+            base_url_preset="deepseek-default",
         )
         self.assertTrue(resp.success)
 

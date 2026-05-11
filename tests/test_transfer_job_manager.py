@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.chain.transfer import JobManager, TransferChain
 from app.schemas import FileItem, TransferTask
@@ -187,7 +189,7 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertEqual(task2.fileitem, jobs[0].tasks[0].fileitem)
 
-    def test_exception_failure_marks_downloader_hash_completed_before_cleanup(self):
+    def test_exception_failure_does_not_mark_downloader_without_history(self):
         chain = object.__new__(TransferChain)
         chain.jobview = JobManager()
         completed = []
@@ -204,6 +206,129 @@ class TransferJobManagerTest(unittest.TestCase):
 
         chain._TransferChain__fail_transfer_task(task)
 
+        self.assertEqual([], completed)
+        self.assertEqual([], chain.jobview.list_jobs())
+
+    def test_successful_history_skip_marks_downloader_hash_completed(self):
+        chain = object.__new__(TransferChain)
+        chain.jobview = JobManager()
+        completed = []
+
+        def fake_transfer_completed(hashs, downloader):
+            completed.append((hashs, downloader))
+
+        chain.transfer_completed = fake_transfer_completed
+        chain._TransferChain__get_trans_fileitems = lambda fileitem, predicate: [
+            (fileitem, False)
+        ]
+
+        fileitem = make_task(1).fileitem
+        history = SimpleNamespace(
+            status=True,
+            download_hash="abc123",
+            downloader="qbittorrent",
+        )
+        transfer_history_oper = SimpleNamespace(
+            get_by_src=lambda src, storage=None: history
+        )
+        system_config_oper = SimpleNamespace(get=lambda key: None)
+
+        with patch(
+            "app.chain.transfer.TransferHistoryOper",
+            return_value=transfer_history_oper,
+        ), patch(
+            "app.chain.transfer.SystemConfigOper",
+            return_value=system_config_oper,
+        ):
+            state, errmsg = TransferChain.do_transfer(
+                chain,
+                fileitem=fileitem,
+                downloader="qbittorrent",
+                download_hash="abc123",
+                background=False,
+            )
+
+        self.assertTrue(state)
+        self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
+        self.assertEqual([("abc123", "qbittorrent")], completed)
+
+    def test_failed_history_skip_still_marks_downloader_hash_completed(self):
+        chain = object.__new__(TransferChain)
+        chain.jobview = JobManager()
+        completed = []
+
+        def fake_transfer_completed(hashs, downloader):
+            completed.append((hashs, downloader))
+
+        chain.transfer_completed = fake_transfer_completed
+        chain._TransferChain__get_trans_fileitems = lambda fileitem, predicate: [
+            (fileitem, False)
+        ]
+
+        fileitem = make_task(1).fileitem
+        history = SimpleNamespace(
+            status=False,
+            download_hash="abc123",
+            downloader="qbittorrent",
+        )
+        transfer_history_oper = SimpleNamespace(
+            get_by_src=lambda src, storage=None: history
+        )
+        system_config_oper = SimpleNamespace(get=lambda key: None)
+
+        with patch(
+            "app.chain.transfer.TransferHistoryOper",
+            return_value=transfer_history_oper,
+        ), patch(
+            "app.chain.transfer.SystemConfigOper",
+            return_value=system_config_oper,
+        ):
+            state, errmsg = TransferChain.do_transfer(
+                chain,
+                fileitem=fileitem,
+                downloader="qbittorrent",
+                download_hash="abc123",
+                background=False,
+            )
+
+        self.assertFalse(state)
+        self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
+        self.assertEqual([("abc123", "qbittorrent")], completed)
+
+    def test_unrecognized_task_marks_downloader_hash_completed(self):
+        chain = object.__new__(TransferChain)
+        chain.jobview = JobManager()
+        chain.post_message = lambda *_args, **_kwargs: None
+        completed = []
+
+        def fake_transfer_completed(hashs, downloader):
+            completed.append((hashs, downloader))
+
+        chain.transfer_completed = fake_transfer_completed
+        task = make_task(1)
+        task.downloader = "qbittorrent"
+        task.download_hash = "abc123"
+        self.assertTrue(chain.jobview.add_task(task))
+
+        transfer_history_oper = SimpleNamespace(
+            add_fail=lambda **kwargs: SimpleNamespace(id=1)
+        )
+
+        with patch(
+            "app.chain.transfer.TransferHistoryOper",
+            return_value=transfer_history_oper,
+        ), patch(
+            "app.chain.transfer.MediaChain"
+        ) as media_chain_cls, patch(
+            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+        ), patch(
+            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+        ):
+            media_chain_cls.return_value.recognize_by_meta.return_value = None
+            state, errmsg = chain._TransferChain__handle_transfer(task)
+
+        self.assertFalse(state)
+        self.assertEqual("未识别到媒体信息", errmsg)
         self.assertEqual([("abc123", "qbittorrent")], completed)
         self.assertEqual([], chain.jobview.list_jobs())
 

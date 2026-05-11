@@ -31,7 +31,6 @@ HEALTH_PATH = "/api/v1/system/global"
 HEALTH_TOKEN = "moviepilot"
 FRONTEND_HEALTH_PATH = "/version.txt"
 BACKEND_RELEASES_API = "https://api.github.com/repos/jxxghp/MoviePilot/releases"
-FRONTEND_RELEASES_API = "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases"
 LOCAL_HOSTS = {"0.0.0.0", "::", "::1", "", "localhost"}
 MANAGED_ACTIVE_STATES = {"running", "starting"}
 AUTO_UPDATE_ENABLED_VALUES = {"true", "release", "dev"}
@@ -279,9 +278,8 @@ def _auto_update_mode() -> str:
     return SystemHelper.get_auto_update_mode()
 
 
-def _resolve_auto_update_targets(mode: str) -> tuple[Optional[str], Optional[str]]:
+def _resolve_auto_update_targets(mode: str) -> Optional[str]:
     backend_prefix = _release_prefix(APP_VERSION)
-    frontend_prefix = _release_prefix(_installed_frontend_version() or APP_VERSION)
 
     if mode == "dev":
         current_branch = _git_current_branch()
@@ -295,13 +293,7 @@ def _resolve_auto_update_targets(mode: str) -> tuple[Optional[str], Optional[str
             repo="jxxghp/MoviePilot",
             prefix=backend_prefix,
         )
-
-    frontend_version = _latest_release_tag(
-        FRONTEND_RELEASES_API,
-        repo="jxxghp/MoviePilot-Frontend",
-        prefix=frontend_prefix,
-    )
-    return backend_ref, frontend_version
+    return backend_ref
 
 
 def _best_effort_auto_update() -> None:
@@ -310,12 +302,12 @@ def _best_effort_auto_update() -> None:
         return
 
     try:
-        backend_ref, frontend_version = _resolve_auto_update_targets(mode)
+        backend_ref = _resolve_auto_update_targets(mode)
     except RuntimeError as exc:
         _warn(f"自动更新准备失败，继续使用当前版本启动：{exc}")
         return
 
-    if not backend_ref or not frontend_version:
+    if not backend_ref:
         _warn("自动更新准备失败，未能解析当前主版本对应的远端版本，继续使用当前版本启动")
         return
 
@@ -326,8 +318,6 @@ def _best_effort_auto_update() -> None:
         "all",
         "--ref",
         backend_ref,
-        "--frontend-version",
-        frontend_version,
         "--venv",
         str(_repo_root() / "venv"),
         "--config-dir",

@@ -1,4 +1,5 @@
 import threading
+from datetime import datetime
 from typing import List, Union, Optional, Generator, Any
 
 from app.chain import ChainBase
@@ -134,9 +135,10 @@ class MediaServerChain(ChainBase):
         with lock:
             # 汇总统计
             total_count = 0
-            # 清空登记薄
             dboper = MediaServerOper()
-            dboper.empty()
+            enabled_servers = [mediaserver.name for mediaserver in mediaservers
+                               if mediaserver and mediaserver.enabled and mediaserver.name]
+            dboper.delete_excluded_servers(enabled_servers)
             # 遍历媒体服务器
             for mediaserver in mediaservers:
                 if not mediaserver:
@@ -152,6 +154,7 @@ class MediaServerChain(ChainBase):
                 if not libraries:
                     logger.info(f"没有获取到媒体服务器 {server_name} 的媒体库，跳过")
                     continue
+                sync_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                 for library in libraries:
                     if sync_libraries \
                             and "all" not in sync_libraries \
@@ -180,8 +183,11 @@ class MediaServerChain(ChainBase):
                         item_dict = item.model_dump()
                         item_dict["seasoninfo"] = seasoninfo
                         item_dict["item_type"] = item_type
-                        dboper.add(**item_dict)
+                        item_dict["lst_mod_date"] = sync_time
+                        dboper.upsert(**item_dict)
                     logger.info(f"{server_name} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
                     # 总数累加
                     total_count += library_count
+                stale_count = dboper.delete_stale(server=server_name, sync_time=sync_time)
+                logger.info(f"媒体服务器 {server_name} 清理陈旧数据完成，删除数量：{stale_count}")
                 logger.info(f"媒体服务器 {server_name} 数据同步完成，总同步数量：{total_count}")

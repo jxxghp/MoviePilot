@@ -15,10 +15,10 @@ def get_id_column():
     """
     if settings.DB_TYPE.lower() == "postgresql":
         # PostgreSQL使用SERIAL类型，让数据库自动处理序列
-        return Column(Integer, Identity(start=1, cycle=True), primary_key=True, index=True)
+        return Column(Integer, Identity(start=1, cycle=True), primary_key=True)
     else:
         # SQLite使用Sequence
-        return Column(Integer, Sequence('id'), primary_key=True, index=True)
+        return Column(Integer, Sequence('id'), primary_key=True)
 
 
 def _get_database_engine(is_async: bool = False):
@@ -116,11 +116,7 @@ def _get_postgresql_engine(is_async: bool = False):
     """
     获取PostgreSQL数据库引擎
     """
-    # 构建PostgreSQL连接URL
-    if settings.DB_POSTGRESQL_PASSWORD:
-        db_url = f"postgresql://{settings.DB_POSTGRESQL_USERNAME}:{settings.DB_POSTGRESQL_PASSWORD}@{settings.DB_POSTGRESQL_HOST}:{settings.DB_POSTGRESQL_PORT}/{settings.DB_POSTGRESQL_DATABASE}"
-    else:
-        db_url = f"postgresql://{settings.DB_POSTGRESQL_USERNAME}@{settings.DB_POSTGRESQL_HOST}:{settings.DB_POSTGRESQL_PORT}/{settings.DB_POSTGRESQL_DATABASE}"
+    db_url = settings.DB_POSTGRESQL_URL()
 
     # PostgreSQL连接参数
     _connect_args = {}
@@ -150,12 +146,11 @@ def _get_postgresql_engine(is_async: bool = False):
 
         # 创建数据库引擎
         engine = create_engine(**_db_kwargs)
-        print(f"PostgreSQL database connected to {settings.DB_POSTGRESQL_HOST}:{settings.DB_POSTGRESQL_PORT}/{settings.DB_POSTGRESQL_DATABASE}")
+        print(f"PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
 
         return engine
     else:
-        # 构建异步PostgreSQL连接URL
-        async_db_url = f"postgresql+asyncpg://{settings.DB_POSTGRESQL_USERNAME}:{settings.DB_POSTGRESQL_PASSWORD}@{settings.DB_POSTGRESQL_HOST}:{settings.DB_POSTGRESQL_PORT}/{settings.DB_POSTGRESQL_DATABASE}"
+        async_db_url = settings.DB_POSTGRESQL_URL("asyncpg")
 
         # 数据库参数，只能使用 NullPool
         _db_kwargs = {
@@ -168,7 +163,7 @@ def _get_postgresql_engine(is_async: bool = False):
         }
         # 创建异步数据库引擎
         async_engine = create_async_engine(**_db_kwargs)
-        print(f"Async PostgreSQL database connected to {settings.DB_POSTGRESQL_HOST}:{settings.DB_POSTGRESQL_PORT}/{settings.DB_POSTGRESQL_DATABASE}")
+        print(f"Async PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
 
         return async_engine
 

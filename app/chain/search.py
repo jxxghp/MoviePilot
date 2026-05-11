@@ -374,8 +374,13 @@ class SearchChain(ChainBase):
             logger.warn(f'{title} 未搜索到资源')
             return []
         # 组装上下文
-        contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                            torrent_info=torrent) for torrent in torrents]
+        contexts = [
+            Context(
+                meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                torrent_info=torrent,
+                resource_source="search",
+            ) for torrent in torrents
+        ]
         # 保存到本地文件
         if cache_local:
             self.save_cache(contexts, self.__result_temp_file)
@@ -446,8 +451,13 @@ class SearchChain(ChainBase):
             logger.warn(f'{title} 未搜索到资源')
             return []
         # 组装上下文
-        contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                            torrent_info=torrent) for torrent in torrents]
+        contexts = [
+            Context(
+                meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                torrent_info=torrent,
+                resource_source="search",
+            ) for torrent in torrents
+        ]
         # 保存到本地文件
         if cache_local:
             await self.async_save_cache(contexts, self.__result_temp_file)
@@ -470,8 +480,11 @@ class SearchChain(ChainBase):
         async for event in self.__async_search_all_sites_stream(keyword=title, sites=sites, page=page):
             result = event.pop("items", []) or []
             batch_contexts = [
-                Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                        torrent_info=torrent)
+                Context(
+                    meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                    torrent_info=torrent,
+                    resource_source="search",
+                )
                 for torrent in result
             ]
             if batch_contexts:
@@ -718,7 +731,7 @@ class SearchChain(ChainBase):
                         and mediainfo.imdb_id \
                         and torrent.imdbid == mediainfo.imdb_id:
                     logger.info(f'{mediainfo.title} 通过IMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
-                    _match_torrents.append((torrent, torrent_meta))
+                    _match_torrents.append((torrent, torrent_meta, "imdbid"))
                     continue
 
                 # 比对种子
@@ -726,7 +739,7 @@ class SearchChain(ChainBase):
                                                torrent_meta=torrent_meta,
                                                torrent=torrent):
                     # 匹配成功
-                    _match_torrents.append((torrent, torrent_meta))
+                    _match_torrents.append((torrent, torrent_meta, "title"))
                     continue
             # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
@@ -736,9 +749,17 @@ class SearchChain(ChainBase):
             # 去掉mediainfo中多余的数据
             mediainfo.clear()
             # 组装上下文
-            contexts = [Context(torrent_info=t[0],
-                                media_info=mediainfo,
-                                meta_info=t[1]) for t in _match_torrents]
+            contexts = [
+                Context(
+                    torrent_info=t[0],
+                    media_info=mediainfo,
+                    meta_info=t[1],
+                    resource_source="search",
+                    match_source=t[2],
+                    candidate_recognized=False,
+                    media_info_is_target=True,
+                ) for t in _match_torrents
+            ]
         finally:
             torrents.clear()
             del torrents
@@ -989,9 +1010,13 @@ class SearchChain(ChainBase):
                 result = event.pop("items", []) or []
                 torrents.extend(result)
                 batch_contexts = [
-                    Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                            media_info=mediainfo,
-                            torrent_info=torrent)
+                    Context(
+                        meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                        media_info=mediainfo,
+                        torrent_info=torrent,
+                        resource_source="search",
+                        media_info_is_target=True,
+                    )
                     for torrent in result
                 ]
                 candidate_contexts.extend(batch_contexts)

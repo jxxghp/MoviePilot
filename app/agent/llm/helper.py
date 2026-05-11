@@ -454,7 +454,11 @@ class LLMHelper:
         if not api_key_value:
             raise ValueError("未配置LLM API Key")
 
-        runtime_name = provider_name if provider_name in {"google", "deepseek"} else "openai_compatible"
+        runtime_name = (
+            provider_name
+            if provider_name in {"google", "deepseek"}
+            else "openai_compatible"
+        )
         return {
             "provider_id": provider_name,
             "runtime": runtime_name,
@@ -510,6 +514,7 @@ class LLMHelper:
             thinking_level: str | None = None,
             api_key: str | None = settings.LLM_API_KEY,
             base_url: str | None = settings.LLM_BASE_URL,
+            base_url_preset: str | None = settings.LLM_BASE_URL_PRESET,
     ):
         """
         获取LLM实例
@@ -539,6 +544,7 @@ class LLMHelper:
                 model=model_name,
                 api_key=api_key,
                 base_url=base_url,
+                base_url_preset_id=base_url_preset,
             )
         except Exception as err:
             logger.debug(f"LLM provider 目录不可用，回退到旧运行时逻辑: {err}")
@@ -700,6 +706,7 @@ class LLMHelper:
             thinking_level: str | None = None,
             api_key: str | None = None,
             base_url: str | None = None,
+            base_url_preset: str | None = None,
     ) -> dict:
         """
         使用当前已保存配置执行一次最小 LLM 调用。
@@ -714,6 +721,7 @@ class LLMHelper:
             thinking_level=thinking_level,
             api_key=api_key,
             base_url=base_url,
+            base_url_preset=base_url_preset,
         )
         try:
             response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=timeout)
@@ -743,6 +751,7 @@ class LLMHelper:
             provider: str,
             api_key: str | None = None,
             base_url: str | None = None,
+            base_url_preset: str | None = None,
             force_refresh: bool = False,
     ) -> List[dict[str, Any]]:
         """
@@ -759,6 +768,7 @@ class LLMHelper:
                 provider_id=provider,
                 api_key=api_key,
                 base_url=base_url,
+                base_url_preset_id=base_url_preset,
                 force_refresh=force_refresh,
             )
         except Exception as err:
@@ -776,6 +786,7 @@ class LLMHelper:
                     LLMProviderManager().resolve_model_list_base_url(
                         provider_id=provider,
                         base_url=base_url,
+                        base_url_preset_id=base_url_preset,
                     )
                     or base_url
                 )

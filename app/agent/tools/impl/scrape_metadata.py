@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.chain.media import MediaChain
-from app.core.metainfo import MetaInfoPath
 from app.log import logger
 from app.schemas import FileItem
 
@@ -80,8 +79,7 @@ class ScrapeMetadataTool(MoviePilotTool):
 
             # 检查本地存储路径是否存在
             if storage == "local":
-                scrape_path = Path(path)
-                if not scrape_path.exists():
+                if not Path(path).exists():
                     return json.dumps(
                         {"success": False, "message": f"刮削路径不存在: {path}"},
                         ensure_ascii=False,
@@ -89,11 +87,12 @@ class ScrapeMetadataTool(MoviePilotTool):
 
             # 识别媒体信息
             media_chain = MediaChain()
-            scrape_path = Path(path)
-            meta = MetaInfoPath(scrape_path)
-            mediainfo = await media_chain.async_recognize_by_meta(meta)
+            context = await media_chain.async_recognize_by_path(
+                path,
+                obtain_images=True,
+            )
 
-            if not mediainfo:
+            if not context or not context.media_info:
                 return json.dumps(
                     {
                         "success": False,
@@ -108,8 +107,8 @@ class ScrapeMetadataTool(MoviePilotTool):
                 "storage",
                 media_chain.scrape_metadata,
                 fileitem=fileitem,
-                meta=meta,
-                mediainfo=mediainfo,
+                meta=context.meta_info,
+                mediainfo=context.media_info,
                 overwrite=overwrite,
             )
 
@@ -119,11 +118,11 @@ class ScrapeMetadataTool(MoviePilotTool):
                     "message": f"{path} 刮削完成",
                     "path": path,
                     "media_info": {
-                        "title": mediainfo.title,
-                        "year": mediainfo.year,
-                        "type": mediainfo.type.value if mediainfo.type else None,
-                        "tmdb_id": mediainfo.tmdb_id,
-                        "season": mediainfo.season,
+                        "title": context.media_info.title,
+                        "year": context.media_info.year,
+                        "type": context.media_info.type.value if context.media_info.type else None,
+                        "tmdb_id": context.media_info.tmdb_id,
+                        "season": context.media_info.season,
                     },
                 },
                 ensure_ascii=False,

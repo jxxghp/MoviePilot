@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl._plugin_tool_utils import (
     DEFAULT_PLUGIN_CANDIDATE_LIMIT,
+    MAX_PLUGIN_CANDIDATE_LIMIT,
     load_market_plugins,
     search_plugin_candidates,
     summarize_candidates,
@@ -29,7 +30,7 @@ class QueryMarketPluginsInput(BaseModel):
     )
     max_results: Optional[int] = Field(
         DEFAULT_PLUGIN_CANDIDATE_LIMIT,
-        description="Maximum number of plugins to return. Defaults to 10.",
+        description="Maximum number of plugins to return. Defaults to 50, capped at 200.",
     )
     force_refresh: Optional[bool] = Field(
         False,
@@ -56,7 +57,10 @@ class QueryMarketPluginsTool(MoviePilotTool):
     def _clamp_results(max_results: Optional[int]) -> int:
         if max_results is None:
             return DEFAULT_PLUGIN_CANDIDATE_LIMIT
-        return max(1, min(int(max_results), 200))
+        try:
+            return max(1, min(int(max_results), MAX_PLUGIN_CANDIDATE_LIMIT))
+        except (TypeError, ValueError):
+            return DEFAULT_PLUGIN_CANDIDATE_LIMIT
 
     async def run(
         self,

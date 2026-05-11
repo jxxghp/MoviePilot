@@ -35,7 +35,7 @@ class SearchPersonTool(MoviePilotTool):
             persons = await media_chain.async_search_persons(name=name)
 
             if persons:
-                # 限制最多30条结果
+                # 人物搜索结果只返回前 30 条，避免 biography/别名等字段挤占上下文。
                 total_count = len(persons)
                 limited_persons = persons[:30]
                 # 精简字段，只保留关键信息
@@ -72,8 +72,8 @@ class SearchPersonTool(MoviePilotTool):
                 
                 result_json = json.dumps(simplified_results, ensure_ascii=False, indent=2)
                 # 如果结果被裁剪，添加提示信息
-                if total_count > 50:
-                    return f"注意：搜索结果共找到 {total_count} 条，为节省上下文空间，仅显示前 50 条结果。\n\n{result_json}"
+                if total_count > len(limited_persons):
+                    return f"注意：搜索结果共找到 {total_count} 条，为节省上下文空间，仅显示前 {len(limited_persons)} 条结果。\n\n{result_json}"
                 return result_json
             else:
                 return f"未找到相关人物信息: {name}"

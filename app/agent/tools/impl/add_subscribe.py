@@ -117,6 +117,7 @@ class AddSubscribeTool(MoviePilotTool):
             MessageChannel.Telegram: ("telegram_userid",),
             MessageChannel.Discord: ("discord_userid",),
             MessageChannel.Wechat: ("wechat_userid",),
+            MessageChannel.WechatClawBot: ("wechatclawbot_userid",),
             MessageChannel.Slack: ("slack_userid",),
             MessageChannel.VoceChat: ("vocechat_userid",),
             MessageChannel.SynologyChat: ("synologychat_userid",),

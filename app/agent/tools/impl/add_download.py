@@ -6,7 +6,8 @@ from typing import List, Optional, Type
 
 from pydantic import BaseModel, Field
 
-from app.agent.tools.base import MoviePilotTool, ToolChain
+from app.agent.tools.base import MoviePilotTool
+from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.chain.download import DownloadChain
 from app.core.config import settings
@@ -275,7 +276,10 @@ class AddDownloadTool(MoviePilotTool):
                     meta_info = MetaInfo(title=torrent_title, subtitle=torrent_description)
                     media_info = cached_context.media_info if cached_context.media_info else None
                     if not media_info:
-                        media_info = await ToolChain().async_recognize_media(meta=meta_info)
+                        media_info = await MediaChain().async_recognize_by_meta(
+                            meta_info,
+                            obtain_images=False,
+                        )
                     if not media_info:
                         failed_messages.append(f"{torrent_input} 无法识别媒体信息")
                         continue

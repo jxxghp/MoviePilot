@@ -490,6 +490,7 @@ class TheMovieDbModule(_ModuleBase):
         group_seasons = []
         if episode_group:
             group_seasons = self.tmdb.get_tv_group_seasons(episode_group)
+        cache_hit = False
 
         # 识别匹配
         if not cache_info or not cache:
@@ -525,6 +526,7 @@ class TheMovieDbModule(_ModuleBase):
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
+            cache_hit = True
             if cache_info.get("title"):
                 logger.info(f"{meta.name} 使用TMDB识别缓存：{cache_info.get('title')}")
                 info = self.tmdb.get_info(mtype=cache_info.get("type"),
@@ -534,7 +536,10 @@ class TheMovieDbModule(_ModuleBase):
                 info = None
 
         if info:
-            return self._build_media_info_result(info, meta, tmdbid, episode_group, group_seasons)
+            mediainfo = self._build_media_info_result(info, meta, tmdbid, episode_group, group_seasons)
+            if mediainfo:
+                mediainfo.recognize_cache_hit = cache_hit
+            return mediainfo
         else:
             logger.info(f"{meta.name if meta else tmdbid} 未匹配到TMDB媒体信息")
 
@@ -574,6 +579,7 @@ class TheMovieDbModule(_ModuleBase):
         group_seasons = []
         if episode_group:
             group_seasons = await self.tmdb.async_get_tv_group_seasons(episode_group)
+        cache_hit = False
 
         # 识别匹配
         if not cache_info or not cache:
@@ -609,6 +615,7 @@ class TheMovieDbModule(_ModuleBase):
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
+            cache_hit = True
             if cache_info.get("title"):
                 logger.info(f"{meta.name} 使用TMDB识别缓存：{cache_info.get('title')}")
                 info = await self.tmdb.async_get_info(mtype=cache_info.get("type"),
@@ -618,7 +625,10 @@ class TheMovieDbModule(_ModuleBase):
                 info = None
 
         if info:
-            return await self._async_build_media_info_result(info, meta, tmdbid, episode_group, group_seasons)
+            mediainfo = await self._async_build_media_info_result(info, meta, tmdbid, episode_group, group_seasons)
+            if mediainfo:
+                mediainfo.recognize_cache_hit = cache_hit
+            return mediainfo
         else:
             logger.info(f"{meta.name if meta else tmdbid} 未匹配到TMDB媒体信息")
 
@@ -691,6 +701,31 @@ class TheMovieDbModule(_ModuleBase):
             return await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid)
         else:
             return await self.tmdb.async_get_tv_season_detail(tmdbid=tmdbid, season=season)
+
+    def update_recognize_cache(
+            self,
+            meta: MetaBase,
+            mediainfo: MediaInfo,
+    ) -> Optional[bool]:
+        """
+        回填TMDB本地识别缓存，覆盖名称负缓存，避免共享识别后重复回查。
+        """
+        if not meta or not mediainfo:
+            return None
+        if mediainfo.source != "themoviedb" or not mediainfo.tmdb_info:
+            return None
+        self.cache.update(meta, mediainfo.tmdb_info)
+        return True
+
+    async def async_update_recognize_cache(
+            self,
+            meta: MetaBase,
+            mediainfo: MediaInfo,
+    ) -> Optional[bool]:
+        """
+        异步回填TMDB本地识别缓存。
+        """
+        return self.update_recognize_cache(meta=meta, mediainfo=mediainfo)
 
     def media_category(self) -> Optional[Dict[str, list]]:
         """

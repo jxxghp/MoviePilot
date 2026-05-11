@@ -9,7 +9,6 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings, global_vars
-from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models import User
@@ -30,16 +29,18 @@ def query_name(path: str, filetype: str,
     :param filetype: 文件类型
     :param _: Token校验
     """
-    meta = MetaInfoPath(Path(path))
-    mediainfo = MediaChain().recognize_media(meta)
-    if not mediainfo:
+    context = MediaChain().recognize_by_path(
+        path,
+        obtain_images=False,
+    )
+    if not context or not context.media_info:
         return schemas.Response(success=False, message="未识别到媒体信息")
-    new_path = TransferChain().recommend_name(meta=meta, mediainfo=mediainfo)
+    new_path = TransferChain().recommend_name(meta=context.meta_info, mediainfo=context.media_info)
     if not new_path:
         return schemas.Response(success=False, message="未识别到新名称")
     if filetype == "dir":
         media_path = DirectoryHelper.get_media_root_path(
-            rename_format=settings.RENAME_FORMAT(mediainfo.type),
+            rename_format=settings.RENAME_FORMAT(context.media_info.type),
             rename_path=Path(new_path),
         )
         if media_path:

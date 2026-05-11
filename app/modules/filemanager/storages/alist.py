@@ -176,86 +176,101 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             if item:
                 return [item]
             return []
-        resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
-            self.__get_api_url("/api/fs/list"),
-            json={
-                "path": fileitem.path,
-                "password": password,
-                "page": page,
-                "per_page": per_page,
-                "refresh": refresh,
-            },
-        )
-        """
-        {
-            "path": "/t",
-            "password": "",
-            "page": 1,
-            "per_page": 0,
-            "refresh": false
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": {
-                "content": [
-                {
-                    "name": "Alist V3.md",
-                    "size": 1592,
-                    "is_dir": false,
-                    "modified": "2024-05-17T13:47:55.4174917+08:00",
-                    "created": "2024-05-17T13:47:47.5725906+08:00",
-                    "sign": "",
-                    "thumb": "",
-                    "type": 4,
-                    "hashinfo": "null",
-                    "hash_info": null
-                }
-                ],
-                "total": 1,
-                "readme": "",
-                "header": "",
-                "write": true,
-                "provider": "Local"
+        items = []
+        current_page = page
+        while True:
+            resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
+                self.__get_api_url("/api/fs/list"),
+                json={
+                    "path": fileitem.path,
+                    "password": password,
+                    "page": current_page,
+                    "per_page": per_page,
+                    "refresh": refresh,
+                },
+            )
+            """
+            {
+                "path": "/t",
+                "password": "",
+                "page": 1,
+                "per_page": 0,
+                "refresh": false
             }
-        }
-        """
+            ======================================
+            {
+                "code": 200,
+                "message": "success",
+                "data": {
+                    "content": [
+                    {
+                        "name": "Alist V3.md",
+                        "size": 1592,
+                        "is_dir": false,
+                        "modified": "2024-05-17T13:47:55.4174917+08:00",
+                        "created": "2024-05-17T13:47:47.5725906+08:00",
+                        "sign": "",
+                        "thumb": "",
+                        "type": 4,
+                        "hashinfo": "null",
+                        "hash_info": null
+                    }
+                    ],
+                    "total": 1,
+                    "readme": "",
+                    "header": "",
+                    "write": true,
+                    "provider": "Local"
+                }
+            }
+            """
 
-        if resp is None:
-            logger.warn(
-                f"【OpenList】请求获取目录 {fileitem.path} 的文件列表失败，无法连接alist服务"
-            )
-            return []
-        if resp.status_code != 200:
-            logger.warn(
-                f"【OpenList】请求获取目录 {fileitem.path} 的文件列表失败，状态码：{resp.status_code}"
-            )
-            return []
+            if resp is None:
+                logger.warn(
+                    f"【OpenList】请求获取目录 {fileitem.path} 的文件列表失败，无法连接alist服务"
+                )
+                return []
+            if resp.status_code != 200:
+                logger.warn(
+                    f"【OpenList】请求获取目录 {fileitem.path} 的文件列表失败，状态码：{resp.status_code}"
+                )
+                return []
 
-        result = resp.json()
+            result = resp.json()
 
-        if result["code"] != 200:
-            logger.warn(
-                f"【OpenList】获取目录 {fileitem.path} 的文件列表失败，错误信息：{result['message']}"
-            )
-            return []
+            if result["code"] != 200:
+                logger.warn(
+                    f"【OpenList】获取目录 {fileitem.path} 的文件列表失败，错误信息：{result['message']}"
+                )
+                return []
 
-        return [
-            schemas.FileItem(
-                storage=self.schema.value,
-                type="dir" if item["is_dir"] else "file",
-                path=(Path(fileitem.path) / item["name"]).as_posix()
-                + ("/" if item["is_dir"] else ""),
-                name=item["name"],
-                basename=Path(item["name"]).stem,
-                extension=Path(item["name"]).suffix[1:] if not item["is_dir"] else None,
-                size=item["size"] if not item["is_dir"] else None,
-                modify_time=self.__parse_timestamp(item["modified"]),
-                thumbnail=item["thumb"],
+            page_content = result["data"].get("content") or []
+            items.extend(
+                [
+                    schemas.FileItem(
+                        storage=self.schema.value,
+                        type="dir" if item["is_dir"] else "file",
+                        path=(Path(fileitem.path) / item["name"]).as_posix()
+                        + ("/" if item["is_dir"] else ""),
+                        name=item["name"],
+                        basename=Path(item["name"]).stem,
+                        extension=Path(item["name"]).suffix[1:] if not item["is_dir"] else None,
+                        size=item["size"] if not item["is_dir"] else None,
+                        modify_time=self.__parse_timestamp(item["modified"]),
+                        thumbnail=item["thumb"],
+                    )
+                    for item in page_content
+                ]
             )
-            for item in result["data"]["content"] or []
-        ]
+
+            if per_page > 0:
+                return items
+
+            total = result["data"].get("total") or 0
+            if not page_content or len(items) >= total:
+                return items
+
+            current_page += 1
 
     def create_folder(
         self, fileitem: schemas.FileItem, name: str

@@ -1,17 +1,20 @@
 import asyncio
 import gc
 import inspect
+import json
 import multiprocessing
 import threading
 import traceback
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Callable, Optional, Dict, Any
+from typing import List
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain import ChainBase
@@ -24,10 +27,15 @@ from app.chain.workflow import WorkflowChain
 from app.core.config import settings, global_vars
 from app.core.event import eventmanager
 from app.core.plugin import PluginManager
+from app.db import SessionFactory
+from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
+from app.db.models.message import Message
+from app.db.models.siteuserdata import SiteUserData
+from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.image import WallpaperHelper
 from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper  # noqa
-from app.helper.image import WallpaperHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow
 from app.schemas.types import EventType, SystemConfigKey
@@ -40,7 +48,199 @@ lock = threading.Lock()
 
 
 class SchedulerChain(ChainBase):
-    pass
+    """
+    定时任务链，负责执行各类定时任务，包括数据清理等
+    """
+    # 每批处理的记录数，避免一次性删除过多数据导致性能问题
+    DEFAULT_BATCH_SIZE = 500
+
+    def cleanup(self, batch_size: Optional[int] = None) -> Dict[str, Any]:
+        """
+        按配置保留期执行分批清理。
+        """
+        started_at = datetime.now()
+        batch_size = batch_size or self.DEFAULT_BATCH_SIZE
+        if batch_size <= 0:
+            batch_size = self.DEFAULT_BATCH_SIZE
+
+        report: Dict[str, Any] = {
+            "started_at": started_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "batch_size": batch_size,
+            "enabled": bool(settings.DATA_CLEANUP_ENABLE),
+            "tables": {},
+            "total_deleted": 0,
+        }
+
+        if not settings.DATA_CLEANUP_ENABLE:
+            report["skipped_reason"] = "disabled"
+            logger.info("数据表清理总开关未开启，跳过执行")
+            return report
+
+        errors = []
+
+        plans = self._build_cleanup_plans(started_at=started_at, batch_size=batch_size)
+
+        with SessionFactory() as db:
+            for plan in plans:
+                name = plan["name"]
+                retention_days = plan["retention_days"]
+                if retention_days <= 0:
+                    report["tables"][name] = {
+                        "deleted": 0,
+                        "batches": 0,
+                        "cutoff": None,
+                        "retention_days": retention_days,
+                        "skipped": True,
+                        "reason": "retention_days<=0",
+                    }
+                    continue
+
+                try:
+                    table_report = self._cleanup_in_batches(
+                        db=db,
+                        table_name=name,
+                        delete_batch=plan["handler"],
+                    )
+                    table_report["cutoff"] = plan["cutoff"]
+                    table_report["retention_days"] = retention_days
+                    report["tables"][name] = table_report
+                    report["total_deleted"] += table_report["deleted"]
+                except Exception as err:
+                    errors.append(f"{name}: {str(err)}")
+                    logger.error(f"数据表 {name} 清理失败：{str(err)}")
+                    report["tables"][name] = {
+                        "deleted": 0,
+                        "batches": 0,
+                        "cutoff": plan["cutoff"],
+                        "retention_days": retention_days,
+                        "error": str(err),
+                    }
+
+        if errors:
+            report["errors"] = errors
+            logger.error(
+                f"数据表清理部分失败：{json.dumps(report, ensure_ascii=False)}"
+            )
+            raise RuntimeError("；".join(errors))
+
+        logger.info(f"数据表清理完成：{json.dumps(report, ensure_ascii=False)}")
+        return report
+
+    @staticmethod
+    def _normalize_retention_days(retention_days: Any) -> int:
+        try:
+            normalized_days = int(retention_days or 0)
+        except (TypeError, ValueError):
+            return 0
+        return max(normalized_days, 0)
+
+    def _build_cleanup_plans(
+            self,
+            started_at: datetime,
+            batch_size: int,
+    ) -> List[Dict[str, Any]]:
+        message_days = self._normalize_retention_days(settings.DATA_CLEANUP_MESSAGE_DAYS)
+        download_history_days = self._normalize_retention_days(
+            settings.DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS
+        )
+        site_userdata_days = self._normalize_retention_days(
+            settings.DATA_CLEANUP_SITE_USERDATA_DAYS
+        )
+        transfer_history_days = self._normalize_retention_days(
+            settings.DATA_CLEANUP_TRANSFER_HISTORY_DAYS
+        )
+
+        message_cutoff = (
+            started_at - timedelta(days=message_days)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        download_history_cutoff = (
+            started_at - timedelta(days=download_history_days)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        site_userdata_cutoff = (
+            started_at - timedelta(days=site_userdata_days)
+        ).strftime("%Y-%m-%d")
+        transfer_history_cutoff = (
+            started_at - timedelta(days=transfer_history_days)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+
+        return [
+            {
+                "name": "message",
+                "retention_days": message_days,
+                "cutoff": message_cutoff,
+                "handler": lambda db: Message.delete_before(
+                    db=db,
+                    before_time=message_cutoff,
+                    limit=batch_size,
+                ),
+            },
+            {
+                "name": "downloadhistory",
+                "retention_days": download_history_days,
+                "cutoff": download_history_cutoff,
+                "handler": lambda db: DownloadHistory.delete_before(
+                    db=db,
+                    before_time=download_history_cutoff,
+                    limit=batch_size,
+                ),
+            },
+            {
+                "name": "downloadfiles",
+                "retention_days": download_history_days,
+                "cutoff": "follow-parent-history",
+                "handler": lambda db: DownloadFiles.delete_orphans(
+                    db=db,
+                    limit=batch_size,
+                ),
+            },
+            {
+                "name": "siteuserdata",
+                "retention_days": site_userdata_days,
+                "cutoff": site_userdata_cutoff,
+                "handler": lambda db: SiteUserData.delete_before(
+                    db=db,
+                    before_day=site_userdata_cutoff,
+                    limit=batch_size,
+                ),
+            },
+            {
+                "name": "transferhistory",
+                "retention_days": transfer_history_days,
+                "cutoff": transfer_history_cutoff,
+                "handler": lambda db: TransferHistory.delete_before(
+                    db=db,
+                    before_time=transfer_history_cutoff,
+                    limit=batch_size,
+                ),
+            },
+        ]
+
+    @staticmethod
+    def _cleanup_in_batches(
+            db: Session,
+            table_name: str,
+            delete_batch: Callable[[Session], int],
+    ) -> Dict[str, int]:
+        """
+        循环执行单表分批删除，直到没有可删除数据。
+        """
+        total_deleted = 0
+        batches = 0
+
+        while True:
+            deleted = delete_batch(db) or 0
+            if deleted <= 0:
+                break
+            batches += 1
+            total_deleted += deleted
+            logger.info(
+                f"数据表 {table_name} 清理第 {batches} 批完成，删除 {deleted} 条记录"
+            )
+
+        return {
+            "deleted": total_deleted,
+            "batches": batches,
+        }
 
 
 class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
@@ -59,6 +259,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         "SITEDATA_REFRESH_INTERVAL",
         "AI_AGENT_ENABLE",
         "AI_AGENT_JOB_INTERVAL",
+        "DATA_CLEANUP_ENABLE",
+        "DATA_CLEANUP_MESSAGE_DAYS",
+        "DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS",
+        "DATA_CLEANUP_SITE_USERDATA_DAYS",
+        "DATA_CLEANUP_TRANSFER_HISTORY_DAYS",
     }
 
     def __init__(self):
@@ -145,6 +350,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     "func": self.clear_cache,
                     "running": False,
                 },
+                "data_cleanup": {
+                    "name": "数据表清理",
+                    "func": SchedulerChain().cleanup,
+                    "running": False,
+                },
                 "user_auth": {
                     "name": "用户认证检查",
                     "func": self.user_auth,
@@ -201,8 +411,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
             # CookieCloud定时同步
             if (
-                settings.COOKIECLOUD_INTERVAL
-                and str(settings.COOKIECLOUD_INTERVAL).isdigit()
+                    settings.COOKIECLOUD_INTERVAL
+                    and str(settings.COOKIECLOUD_INTERVAL).isdigit()
             ):
                 self._scheduler.add_job(
                     self.start,
@@ -211,14 +421,14 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     name="同步CookieCloud站点",
                     minutes=int(settings.COOKIECLOUD_INTERVAL),
                     next_run_time=datetime.now(pytz.timezone(settings.TZ))
-                    + timedelta(minutes=5),
+                                  + timedelta(minutes=5),
                     kwargs={"job_id": "cookiecloud"},
                 )
 
             # 媒体服务器同步
             if (
-                settings.MEDIASERVER_SYNC_INTERVAL
-                and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit()
+                    settings.MEDIASERVER_SYNC_INTERVAL
+                    and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit()
             ):
                 self._scheduler.add_job(
                     self.start,
@@ -227,7 +437,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     name="同步媒体服务器",
                     hours=int(settings.MEDIASERVER_SYNC_INTERVAL),
                     next_run_time=datetime.now(pytz.timezone(settings.TZ))
-                    + timedelta(minutes=10),
+                                  + timedelta(minutes=10),
                     kwargs={"job_id": "mediaserver_sync"},
                 )
 
@@ -278,8 +488,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             else:
                 # RSS订阅模式
                 if (
-                    not settings.SUBSCRIBE_RSS_INTERVAL
-                    or not str(settings.SUBSCRIBE_RSS_INTERVAL).isdigit()
+                        not settings.SUBSCRIBE_RSS_INTERVAL
+                        or not str(settings.SUBSCRIBE_RSS_INTERVAL).isdigit()
                 ):
                     settings.SUBSCRIBE_RSS_INTERVAL = 30
                 elif int(settings.SUBSCRIBE_RSS_INTERVAL) < 5:
@@ -321,7 +531,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 name="壁纸缓存",
                 minutes=30,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ))
-                + timedelta(seconds=1),
+                              + timedelta(seconds=1),
                 kwargs={"job_id": "random_wallpager"},
             )
 
@@ -344,6 +554,18 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 hours=settings.CONF.meta / 3600,
                 kwargs={"job_id": "clear_cache"},
             )
+
+            # 数据表清理服务，每天凌晨执行一次
+            if settings.DATA_CLEANUP_ENABLE:
+                self._scheduler.add_job(
+                    self.start,
+                    "cron",
+                    id="data_cleanup",
+                    name="数据表清理",
+                    hour=3,
+                    minute=30,
+                    kwargs={"job_id": "data_cleanup"},
+                )
 
             # 定时检查用户认证，每隔10分钟
             self._scheduler.add_job(
@@ -374,7 +596,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 name="推荐缓存",
                 hours=24,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ))
-                + timedelta(seconds=5),
+                              + timedelta(seconds=5),
                 kwargs={"job_id": "recommend_refresh"},
             )
 
@@ -396,7 +618,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 name="订阅日历缓存",
                 hours=6,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ))
-                + timedelta(minutes=2),
+                              + timedelta(minutes=2),
                 kwargs={"job_id": "subscribe_calendar_cache"},
             )
 

@@ -1139,6 +1139,15 @@ class MessageChain(ChainBase):
                         source=source,
                     )
                     filename = "input.amr"
+                elif audio_ref.startswith("wxclaw://voice/"):
+                    content = self.run_module(
+                        "download_wechat_media_bytes",
+                        media_ref=audio_ref,
+                        source=source,
+                    )
+                    filename = self._guess_audio_filename(
+                        audio_ref, default="input.amr"
+                    )
                 elif audio_ref.startswith("slack://file/"):
                     content = self.run_module(
                         "download_slack_file_bytes", file_ref=audio_ref, source=source
@@ -1270,6 +1279,8 @@ class MessageChain(ChainBase):
                         "wxwork://media_id/"
                 ) or attachment_ref.startswith(
                     "wxbot://image/"
+                ) or attachment_ref.startswith(
+                    "wxclaw://image/"
                 ):
                     data_url = self.run_module(
                         "download_wechat_image_to_data_url",
@@ -1438,10 +1449,19 @@ class MessageChain(ChainBase):
                 "download_wechat_image_to_data_url", image_ref=file_ref, source=source
             )
             return self._decode_data_url_bytes(data_url) if data_url else None
+        if file_ref.startswith("wxclaw://image/"):
+            data_url = self.run_module(
+                "download_wechat_image_to_data_url", image_ref=file_ref, source=source
+            )
+            return self._decode_data_url_bytes(data_url) if data_url else None
         if file_ref.startswith("wxbot://file/"):
             file_url = unquote(file_ref.replace("wxbot://file/", "", 1))
             resp = RequestUtils(timeout=30).get_res(file_url)
             return resp.content if resp and resp.content else None
+        if file_ref.startswith("wxclaw://file/") or file_ref.startswith("wxclaw://voice/"):
+            return self.run_module(
+                "download_wechat_media_bytes", media_ref=file_ref, source=source
+            )
         if file_ref.startswith("slack://file/"):
             return self.run_module(
                 "download_slack_file_bytes", file_ref=file_ref, source=source

@@ -101,6 +101,50 @@ class _FakeUgreenApi:
         return {"total_num": 0}
 
 
+class _FakeReconnectApi:
+    token = "test-token"
+
+    @staticmethod
+    def login(_username, _password):
+        return "test-token"
+
+    @staticmethod
+    def current_user():
+        return {"name": "tester"}
+
+    @staticmethod
+    def close():
+        return None
+
+    @staticmethod
+    def export_session_state():
+        return {"token": "test-token", "public_key": "public-key"}
+
+
+class _PagedFolderApi:
+    def __init__(self, stop_after: int | None = None):
+        self.calls = 0
+        self.pages = []
+        self.stop_after = stop_after
+
+    def poster_wall_get_folder(self, page: int, page_size: int = 100):
+        self.calls += 1
+        self.pages.append(page)
+        if self.stop_after is not None and page >= self.stop_after:
+            return {
+                "folder_arr": [
+                    {"media_lib_set_id": page, "path": f"/library/{page}"},
+                ],
+                "is_last_page": True,
+            }
+        return {
+            "folder_arr": [
+                {"media_lib_set_id": page, "path": f"/library/{page}"},
+            ],
+            "is_last_page": False,
+        }
+
+
 class UgreenScanModeTest(unittest.TestCase):
     def test_resolve_scan_type(self):
         resolve = Ugreen._Ugreen__resolve_scan_type
@@ -146,6 +190,53 @@ class UgreenStatisticTest(unittest.TestCase):
         self.assertEqual(stat.movie_count, 12)
         self.assertEqual(stat.tv_count, 34)
         self.assertIsNone(stat.episode_count)
+
+
+class UgreenReconnectTest(unittest.TestCase):
+    def test_reconnect_does_not_eagerly_load_libraries(self):
+        ugreen = Ugreen.__new__(Ugreen)
+        ugreen._host = "http://127.0.0.1:9999"
+        ugreen._username = "tester"
+        ugreen._password = "secret"
+        ugreen._verify_ssl = True
+        ugreen._libraries = {"old": {"id": "old"}}
+        ugreen._library_paths = {"old": "/old"}
+        ugreen._api = None
+        ugreen._userinfo = None
+
+        with patch.object(Ugreen, "_Ugreen__restore_persisted_session", return_value=False), patch(
+            "_test_ugreen_module.Api", return_value=_FakeReconnectApi()
+        ), patch.object(Ugreen, "_Ugreen__save_persisted_session", return_value=None), patch.object(
+            Ugreen, "disconnect", wraps=ugreen.disconnect
+        ), patch.object(Ugreen, "get_librarys") as mocked_get_librarys:
+            self.assertTrue(ugreen.reconnect())
+
+        mocked_get_librarys.assert_not_called()
+        self.assertEqual(ugreen._libraries, {})
+        self.assertEqual(ugreen._library_paths, {})
+
+
+class UgreenLibraryPathLimitTest(unittest.TestCase):
+    def test_load_library_paths_stops_at_last_page(self):
+        ugreen = Ugreen.__new__(Ugreen)
+        ugreen._username = "tester"
+        ugreen._api = _PagedFolderApi(stop_after=3)
+
+        paths = ugreen._Ugreen__load_library_paths()
+
+        self.assertEqual(ugreen._api.pages, [1, 2, 3])
+        self.assertEqual(paths["3"], "/library/3")
+
+    def test_load_library_paths_respects_page_limit(self):
+        ugreen = Ugreen.__new__(Ugreen)
+        ugreen._username = "tester"
+        ugreen._api = _PagedFolderApi()
+
+        paths = ugreen._Ugreen__load_library_paths()
+
+        self.assertEqual(ugreen._api.calls, Ugreen.LIBRARY_PATH_PAGE_LIMIT)
+        self.assertEqual(len(paths), Ugreen.LIBRARY_PATH_PAGE_LIMIT)
+        self.assertIn(str(Ugreen.LIBRARY_PATH_PAGE_LIMIT), paths)
 
 
 class DashboardStatisticTest(unittest.TestCase):

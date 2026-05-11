@@ -28,7 +28,7 @@ class SearchWebInput(BaseModel):
     )
     max_results: Optional[int] = Field(
         20,
-        description="Maximum number of search results to return (default: 5, max: 10)",
+        description="Maximum number of search results to return (default: 20, max: 20)",
     )
 
 

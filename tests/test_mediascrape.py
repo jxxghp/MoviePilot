@@ -64,6 +64,28 @@ class TestMediaScrapingPaths(unittest.TestCase):
         self.assertEqual(target_item, fileitem)
         self.assertEqual(target_path, Path("/tv/Show/Season 1/season.nfo"))
 
+    def test_season_dir_poster_path(self):
+        fileitem = schemas.FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
+        target_item, target_path = self.media_chain._get_target_fileitem_and_path(
+            current_fileitem=fileitem,
+            item_type=ScrapingTarget.SEASON,
+            metadata_type=ScrapingMetadata.POSTER,
+            filename_hint="season01-poster.jpg"
+        )
+        self.assertEqual(target_item, fileitem)
+        self.assertEqual(target_path, Path("/tv/Show/Season 1/poster.jpg"))
+
+    def test_season_dir_specials_poster_path(self):
+        fileitem = schemas.FileItem(path="/tv/Show/Specials", name="Specials", type="dir", storage="local")
+        target_item, target_path = self.media_chain._get_target_fileitem_and_path(
+            current_fileitem=fileitem,
+            item_type=ScrapingTarget.SEASON,
+            metadata_type=ScrapingMetadata.POSTER,
+            filename_hint="season-specials-poster.jpg"
+        )
+        self.assertEqual(target_item, fileitem)
+        self.assertEqual(target_path, Path("/tv/Show/Specials/poster.jpg"))
+
     def test_episode_file_nfo_path(self):
         fileitem = schemas.FileItem(path="/tv/Show/Season 1/S01E01.mp4", name="S01E01.mp4", type="file", storage="local")
         parent_item = schemas.FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
@@ -171,6 +193,7 @@ class TestMediaScrapingImages(unittest.TestCase):
         calls = self.media_chain._download_and_save_image.call_args_list
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0].kwargs["url"], "http://season01")
+        self.assertEqual(calls[0].kwargs["path"], Path("/tv/Show/Season 1/poster.jpg"))
 
     def test_scrape_episode_thumb_image_path(self):
         fileitem = schemas.FileItem(path="/tv/Show/Season 1/S01E01.mp4", name="S01E01.mp4", type="file", storage="local")

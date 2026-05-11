@@ -117,6 +117,13 @@ class MetaInfoTest(TestCase):
         if meta.apply_words:
             self.assertIn("替换词 => 新词", meta.apply_words)
 
+    def test_metainfo_preserves_original_name_when_custom_words_applied(self):
+        """测试应用识别词后仍保留未应用识别词时识别出的名称"""
+        custom_words = ["测试替换 => "]
+        meta = MetaInfo(title="电影测试替换名称 (2024)", custom_words=custom_words)
+        self.assertEqual(meta.name, "电影名称")
+        self.assertEqual(meta.original_name, "电影测试替换名称")
+
     def test_metainfopath_auxiliary_chinese_stem_uses_parent_title(self):
         """
         文件名为简英双语/特效等压制标签、父目录为拉丁片名时，应合并父目录标题与年份。
@@ -127,6 +134,7 @@ class MetaInfoTest(TestCase):
         meta = MetaInfoPath(path)
         self.assertEqual(meta.en_name, "Marty Supreme")
         self.assertEqual(meta.year, "2025")
+        self.assertEqual(meta.original_name, "Marty Supreme")
 
     def test_metainfopath_chinese_parent_not_replaced_by_auxiliary_rule(self):
         """

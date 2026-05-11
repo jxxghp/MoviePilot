@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Float, JSON, select
+from sqlalchemy import Column, Integer, String, Float, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -72,6 +72,10 @@ class SubscribeHistory(Base):
     filter_groups = Column(JSON, default=list)
     # 剧集组
     episode_group = Column(String)
+
+    __table_args__ = (
+        Index('ix_subscribehistory_type_date', 'type', 'date'),
+    )
 
     @classmethod
     @db_query

@@ -10,10 +10,10 @@ Usage: moviepilot [BOOTSTRAP COMMAND] | [RUNTIME COMMAND]
 
 Bootstrap Commands:
   moviepilot install deps [--python PYTHON] [--venv PATH] [--recreate] [--config-dir PATH]
-  moviepilot install frontend [--version latest] [--node-version 20.12.1] [--config-dir PATH]
+  moviepilot install frontend [--version TAG] [--node-version 20.12.1] [--config-dir PATH]
   moviepilot install resources [--resources-repo PATH] [--resource-dir PATH] [--config-dir PATH]
   moviepilot init [--skip-resources] [--force-token] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
-  moviepilot setup [--python PYTHON] [--venv PATH] [--recreate] [--frontend-version latest] [--node-version 20.12.1] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
+  moviepilot setup [--python PYTHON] [--venv PATH] [--recreate] [--frontend-version TAG] [--node-version 20.12.1] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
   moviepilot uninstall [--venv PATH] [--config-dir PATH]
   moviepilot update {backend|frontend|all} [OPTIONS]
   moviepilot startup {enable|disable|status} [--venv PATH] [--config-dir PATH]
@@ -107,7 +107,7 @@ Options:
     --config-dir PATH 指定配置目录
 
   frontend:
-    --version TAG         前端版本，默认 latest
+    --version TAG         前端版本，默认使用 version.py 中的 FRONTEND_VERSION
     --node-version VER    本地 Node 运行时版本，默认 20.12.1
     --config-dir PATH     指定配置目录
 
@@ -143,7 +143,7 @@ Options:
   --python PYTHON           用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.11+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv
   --recreate                删除并重建虚拟环境
-  --frontend-version TAG    前端版本，默认 latest
+  --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
   --skip-resources          跳过资源同步
   --force-token             强制重置 API_TOKEN
@@ -180,7 +180,7 @@ Usage:
 
 Options:
   --ref REF                 后端 Git 版本，默认 latest
-  --frontend-version TAG    前端版本，默认 latest
+  --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
   --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.11+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv

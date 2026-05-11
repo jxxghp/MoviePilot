@@ -324,6 +324,17 @@ class ChannelCapabilityManager:
             },
             fallback_enabled=True,
         ),
+        MessageChannel.WechatClawBot: ChannelCapabilities(
+            channel=MessageChannel.WechatClawBot,
+            capabilities={
+                ChannelCapability.MARKDOWN,
+                ChannelCapability.IMAGES,
+                ChannelCapability.LINKS,
+                ChannelCapability.FILE_SENDING,
+            },
+            max_message_length=2800,
+            fallback_enabled=True,
+        ),
         MessageChannel.Slack: ChannelCapabilities(
             channel=MessageChannel.Slack,
             capabilities={

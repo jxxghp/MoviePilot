@@ -22,7 +22,11 @@ from app.agent.callback import StreamingHandler
 from app.agent.llm import LLMHelper
 from app.agent.memory import memory_manager
 from app.agent.middleware.activity_log import ActivityLogMiddleware
-from app.agent.middleware.jobs import JobsMiddleware
+from app.agent.middleware.jobs import (
+    JobsMiddleware,
+    filter_active_jobs,
+    load_jobs_metadata,
+)
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
@@ -160,6 +164,9 @@ class ReplyMode(str, Enum):
     CAPTURE_ONLY = "capture_only"
 
 
+HEARTBEAT_SESSION_PREFIX = "__agent_heartbeat_"
+
+
 class MoviePilotAgent:
     """
     MoviePilot AI智能体（基于 LangChain v1 + LangGraph）
@@ -287,6 +294,16 @@ class MoviePilotAgent:
         是否应将最终回复真正发送到消息渠道。
         """
         return self.reply_mode == ReplyMode.DISPATCH
+
+    @property
+    def is_heartbeat_session(self) -> bool:
+        """
+        是否为后台心跳会话。
+
+        心跳场景只负责检查并执行待处理 job，不需要携带近期活动日志，
+        否则会让这类高频后台调用持续带入无关动态上下文，影响缓存命中率。
+        """
+        return self.session_id.startswith(HEARTBEAT_SESSION_PREFIX)
 
     def _should_stream(self) -> bool:
         """
@@ -430,10 +447,6 @@ class MoviePilotAgent:
                 RuntimeConfigMiddleware(),
                 # 记忆管理
                 MemoryMiddleware(memory_dir=str(agent_runtime_manager.memory_dir)),
-                # 活动日志
-                ActivityLogMiddleware(
-                    activity_dir=str(agent_runtime_manager.activity_dir),
-                ),
                 # 上下文压缩
                 SummarizationMiddleware(
                     model=non_streaming_model, trigger=("fraction", 0.85)
@@ -443,6 +456,14 @@ class MoviePilotAgent:
                 # 用量统计
                 UsageMiddleware(on_usage=self._record_usage),
             ]
+
+            if not self.is_heartbeat_session:
+                middlewares.insert(
+                    4,
+                    ActivityLogMiddleware(
+                        activity_dir=str(agent_runtime_manager.activity_dir),
+                    ),
+                )
 
             # 工具选择
             if max_tools > 0:
@@ -1085,8 +1106,17 @@ class AgentManager:
         由定时调度器周期性调用，每次使用独立的会话避免上下文干扰。
         """
         try:
+            active_jobs = filter_active_jobs(
+                await load_jobs_metadata([str(agent_runtime_manager.jobs_dir)])
+            )
+            # 先在本地判断是否存在活跃任务。没有任务时直接短路，避免一次完整
+            # 的后台 Agent/LLM 空调用。
+            if not active_jobs:
+                logger.info("智能体心跳唤醒：没有活跃任务，跳过模型调用")
+                return
+
             # 每次使用唯一的 session_id，避免共享上下文
-            session_id = f"__agent_heartbeat_{uuid.uuid4().hex[:12]}__"
+            session_id = f"{HEARTBEAT_SESSION_PREFIX}{uuid.uuid4().hex[:12]}__"
             user_id = SYSTEM_INTERNAL_USER_ID
 
             logger.info("智能体心跳唤醒：开始检查待处理任务...")

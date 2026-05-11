@@ -548,8 +548,12 @@ def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: 
             seas = list(range(1, int(sea_num) + 1))
 
         # 根据TVDB查询媒体信息
-        mediainfo = MediaChain().recognize_media(meta=MetaInfo(tvdbinfo.get('name')),
-                                                 mtype=MediaType.TV)
+        meta = MetaInfo(tvdbinfo.get('name'))
+        meta.type = MediaType.TV
+        mediainfo = MediaChain().recognize_by_meta(
+            meta,
+            obtain_images=False,
+        )
         if not mediainfo:
             continue
         # 查询是否存在

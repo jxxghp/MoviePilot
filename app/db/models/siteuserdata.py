@@ -1,11 +1,11 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Float, JSON, func, or_, select
+from sqlalchemy import Column, Integer, String, Float, JSON, Index, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base, get_id_column, async_db_query
+from app.db import db_query, db_update, Base, get_id_column, async_db_query
 
 
 class SiteUserData(Base):
@@ -14,7 +14,7 @@ class SiteUserData(Base):
     """
     id = get_id_column()
     # 站点域名
-    domain = Column(String, index=True)
+    domain = Column(String)
     # 站点名称
     name = Column(String)
     # 用户名
@@ -50,9 +50,14 @@ class SiteUserData(Base):
     # 错误信息
     err_msg = Column(String)
     # 更新日期
-    updated_day = Column(String, index=True, default=datetime.now().strftime('%Y-%m-%d'))
+    updated_day = Column(String, default=datetime.now().strftime('%Y-%m-%d'))
     # 更新时间
     updated_time = Column(String, default=datetime.now().strftime('%H:%M:%S'))
+
+    __table_args__ = (
+        Index('ix_siteuserdata_updated_day_id', 'updated_day', 'id'),
+        Index('ix_siteuserdata_domain_updated_day_updated_time', 'domain', 'updated_day', 'updated_time'),
+    )
 
     @classmethod
     @db_query
@@ -129,3 +134,31 @@ class SiteUserData(Base):
                 (cls.updated_day == subquery.c.latest_update_day)
             ).order_by(cls.updated_time.desc()))
         return result.scalars().all()
+
+    @classmethod
+    @db_update
+    def delete_before(
+        cls,
+        db: Session,
+        before_day: str,
+        limit: Optional[int] = 500,
+    ) -> int:
+        """
+        分批删除指定日期之前的站点用户快照。
+        """
+        ids = [
+            row[0]
+            for row in db.query(cls.id)
+            .filter(cls.updated_day < before_day)
+            .order_by(cls.id.asc())
+            .limit(limit)
+            .all()
+        ]
+        if not ids:
+            return 0
+        deleted = (
+            db.query(cls)
+            .filter(cls.id.in_(ids))
+            .delete(synchronize_session=False)
+        )
+        return deleted

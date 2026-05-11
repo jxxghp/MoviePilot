@@ -73,7 +73,7 @@ class SearchMediaTool(MoviePilotTool):
                     filtered_results.append(result)
 
                 if filtered_results:
-                    # 限制最多30条结果
+                    # 搜索结果只返回前 30 条，后续可通过更精确的年份/类型条件缩小范围。
                     total_count = len(filtered_results)
                     limited_results = filtered_results[:30]
                     # 精简字段，只保留关键信息
@@ -96,8 +96,8 @@ class SearchMediaTool(MoviePilotTool):
                         simplified_results.append(simplified)
                     result_json = json.dumps(simplified_results, ensure_ascii=False, indent=2)
                     # 如果结果被裁剪，添加提示信息
-                    if total_count > 100:
-                        return f"注意：搜索结果共找到 {total_count} 条，为节省上下文空间，仅显示前 100 条结果。\n\n{result_json}"
+                    if total_count > len(limited_results):
+                        return f"注意：搜索结果共找到 {total_count} 条，为节省上下文空间，仅显示前 {len(limited_results)} 条结果。\n\n{result_json}"
                     return result_json
                 else:
                     return f"未找到符合条件的媒体资源: {title}"

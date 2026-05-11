@@ -2,6 +2,7 @@ import json
 import uuid
 from typing import Any, Dict, List, Optional
 
+from app.agent.tools.base import format_tool_result_for_agent
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.log import logger
 
@@ -237,22 +238,14 @@ class MoviePilotToolsManager:
             # 规范化参数类型
             normalized_arguments = self._normalize_arguments(tool_instance, arguments)
 
-            # 调用工具的run方法
+            # 调用工具的run方法。HTTP/MCP 工具调用不会经过 BaseTool._arun，
+            # 因此这里也必须复用同一套返回值格式化和兜底截断逻辑。
             result = await tool_instance.run(**normalized_arguments)
-
-            # 确保返回字符串
-            if isinstance(result, str):
-                formated_result = result
-            elif isinstance(result, (int, float)):
-                formated_result = str(result)
-            else:
-                try:
-                    formated_result = json.dumps(result, ensure_ascii=False, indent=2)
-                except Exception as e:
-                    logger.warning(f"结果转换为JSON失败: {e}, 使用字符串表示")
-                    formated_result = str(result)
-
-            return formated_result
+            return format_tool_result_for_agent(
+                result,
+                tool_name=tool_name,
+                max_chars=getattr(tool_instance, "result_max_chars", None),
+            )
         except Exception as e:
             logger.error(f"调用工具 {tool_name} 时发生错误: {e}", exc_info=True)
             error_msg = json.dumps(

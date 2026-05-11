@@ -5,6 +5,8 @@ import json
 import shutil
 import site
 import sys
+import tempfile
+import threading
 import traceback
 import zipfile
 from pathlib import Path
@@ -45,6 +47,23 @@ class PluginHelper(metaclass=WeakSingleton):
     _install_reg = f"{settings.MP_SERVER_HOST}/plugin/install/{{pid}}"
     _install_report = f"{settings.MP_SERVER_HOST}/plugin/install"
     _install_statistic = f"{settings.MP_SERVER_HOST}/plugin/statistic"
+    # 串行化运行期依赖安装，避免多个 pip 子进程和导入缓存刷新互相踩踏。
+    _pip_install_lock = threading.Lock()
+    # 这些包一旦被插件覆盖，最容易直接拖垮主程序启动，因此冲突提示需要单独高亮。
+    _protected_runtime_packages = frozenset({
+        "alembic",
+        "fastapi",
+        "pydantic",
+        "pydantic_core",
+        "pydantic_settings",
+        "sqlalchemy",
+        "starlette",
+        "uvicorn",
+    })
+    _runtime_import_probe = (
+        "import alembic, fastapi, pydantic, pydantic_core, pydantic_settings, "
+        "sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
+    )
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
@@ -827,7 +846,178 @@ class PluginHelper(metaclass=WeakSingleton):
         return list(dict.fromkeys(wheels_dirs))
 
     @staticmethod
-    def pip_install_with_fallback(requirements_file: Path,
+    def __build_pip_install_strategies(base_cmd: List[str]) -> List[Tuple[str, List[str]]]:
+        """
+        为 pip 命令构建统一的网络降级策略，避免不同安装路径各自拼接参数。
+        """
+        strategies = []
+        if settings.PIP_PROXY:
+            strategies.append(("镜像站", base_cmd + ["-i", settings.PIP_PROXY]))
+        if settings.PROXY_HOST:
+            strategies.append(("代理", base_cmd + ["--proxy", settings.PROXY_HOST]))
+        strategies.append(("直连", base_cmd))
+        return strategies
+
+    @staticmethod
+    def __format_pkg_name_for_pip(name: str) -> str:
+        """
+        将内部统一使用的下划线包名转回 pip 更常见的连字符写法，便于日志和约束文件阅读。
+        """
+        return name.replace("_", "-")
+
+    @classmethod
+    def __validate_runtime_dependency_conflicts(
+            cls,
+            requirements_file: Path,
+            installed_packages: Dict[str, Version]
+    ) -> Tuple[bool, str]:
+        """
+        在真正执行 pip 前，先拦截插件对现有运行环境中已安装包的显式覆盖请求。
+
+        共享 venv 场景下，允许插件新增依赖，但不允许它升级/降级已有包，否则不仅主程序，
+        其他插件也会被一起污染。
+        """
+        conflicts = []
+        try:
+            with open(requirements_file, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    try:
+                        requirement = Requirement(line)
+                    except Exception as err:
+                        logger.debug(f"无法解析依赖项 '{line}'，跳过运行环境冲突预检：{err}")
+                        continue
+
+                    if requirement.marker and not requirement.marker.evaluate():
+                        continue
+
+                    package_name = cls.__standardize_pkg_name(requirement.name)
+                    installed_version = installed_packages.get(package_name)
+                    if installed_version is None:
+                        continue
+
+                    if requirement.url:
+                        conflicts.append((
+                            package_name,
+                            str(installed_version),
+                            f"来自 {requirement.url} 的同名包",
+                            package_name in cls._protected_runtime_packages,
+                        ))
+                        continue
+
+                    if requirement.specifier and not requirement.specifier.contains(
+                            installed_version,
+                            prereleases=True
+                    ):
+                        conflicts.append((
+                            package_name,
+                            str(installed_version),
+                            str(requirement.specifier),
+                            package_name in cls._protected_runtime_packages,
+                        ))
+        except Exception as e:
+            logger.error(f"执行运行环境依赖冲突预检时发生错误：{e}")
+            return False, f"插件依赖预检失败：{e}"
+
+        if not conflicts:
+            return True, ""
+
+        def sort_key(item: Tuple[str, str, str, bool]) -> Tuple[int, str]:
+            return 0 if item[3] else 1, item[0]
+
+        details = []
+        for package_name, installed_version, expected, _is_protected in sorted(conflicts, key=sort_key)[:5]:
+            details.append(
+                f"{cls.__format_pkg_name_for_pip(package_name)} 当前为 {installed_version}，"
+                f"插件要求 {expected}"
+            )
+        if len(conflicts) > 5:
+            details.append(f"其余 {len(conflicts) - 5} 项冲突已省略")
+
+        scope = "主程序核心依赖" if any(item[3] for item in conflicts) else "已安装依赖"
+        return False, (
+            f"插件依赖与当前运行环境的{scope}冲突：{'；'.join(details)}。"
+            f"为避免共享运行环境被污染，已拒绝安装。"
+        )
+
+    @classmethod
+    def __create_runtime_constraints_file(cls, installed_packages: Dict[str, Version]) -> Path:
+        """
+        以“当前环境已安装版本”为准生成临时约束文件，确保插件只能新增依赖，
+        不能悄悄升级或降级任何已安装包。
+        """
+        temp_dir = Path(settings.TEMP_PATH) / "plugin_dependencies"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=temp_dir,
+                prefix="runtime-constraints-",
+                suffix=".txt",
+                delete=False
+        ) as temp_file:
+            for package_name, version in sorted(installed_packages.items()):
+                temp_file.write(
+                    f"{cls.__format_pkg_name_for_pip(package_name)}=={version}\n"
+                )
+        return Path(temp_file.name)
+
+    @staticmethod
+    def __refresh_import_system():
+        """
+        依赖安装或修复后刷新当前解释器的导入缓存，保证后续动态导入能看到新状态。
+        """
+        importlib.reload(site)
+        importlib.invalidate_caches()
+
+    @classmethod
+    def __run_runtime_healthcheck(cls) -> Tuple[bool, str]:
+        """
+        安装完成后立即执行运行环境自检，尽量在插件加载前发现依赖图已被污染。
+        """
+        checks = [
+            ("pip check", [sys.executable, "-m", "pip", "check"]),
+            ("核心依赖导入检查", [sys.executable, "-c", cls._runtime_import_probe]),
+        ]
+        for check_name, command in checks:
+            success, message = SystemUtils.execute_with_subprocess(command)
+            if not success:
+                return False, f"{check_name}失败：{message}"
+        return True, ""
+
+    @classmethod
+    def __repair_main_runtime_dependencies(cls, snapshot_file: Optional[Path] = None) -> Tuple[bool, str]:
+        """
+        依赖安装后如果发现主运行环境已异常，优先恢复安装前依赖快照；
+        若快照不可用，再按主项目依赖重新安装进行自愈。
+        """
+        repair_target = snapshot_file
+        repair_desc = "安装前依赖快照"
+        if repair_target and not repair_target.exists():
+            repair_target = None
+        if repair_target is None:
+            repair_target = settings.ROOT_PATH / "requirements.txt"
+            repair_desc = "主程序 requirements.txt"
+        if not repair_target.exists():
+            return False, f"恢复依赖文件不存在：{repair_target}"
+
+        last_error = ""
+        base_cmd = [sys.executable, "-m", "pip", "install", "-r", str(repair_target)]
+        for strategy_name, pip_command in cls.__build_pip_install_strategies(base_cmd):
+            logger.warning(f"[PIP] 运行环境异常，尝试使用策略：{strategy_name} 恢复{repair_desc}")
+            success, message = SystemUtils.execute_with_subprocess(pip_command)
+            if success:
+                cls.__refresh_import_system()
+                return True, message
+            last_error = message
+            logger.error(f"[PIP] 使用策略：{strategy_name} 恢复{repair_desc}失败：{message}")
+        return False, last_error or f"恢复{repair_desc}失败"
+
+    @classmethod
+    def pip_install_with_fallback(cls,
+                                  requirements_file: Path,
                                   find_links_dirs: Optional[List[Path]] = None) -> Tuple[bool, str]:
         """
         使用自动降级策略安装依赖，并确保新安装的包可被动态导入
@@ -863,40 +1053,71 @@ class PluginHelper(metaclass=WeakSingleton):
         else:
             logger.debug(f"[PIP] 未发现可用的 wheels 目录，将仅使用在线源。")
 
-        base_cmd = [sys.executable, "-m", "pip", "install"] + find_links_option + ["-r", str(requirements_file)]
-        strategies = []
+        installed_packages = cls.__get_installed_packages()
+        check_ok, check_message = cls.__validate_runtime_dependency_conflicts(requirements_file, installed_packages)
+        if not check_ok:
+            logger.error(f"[PIP] 运行环境冲突预检失败：{check_message}")
+            return False, check_message
 
-        # 添加策略到列表中
-        if settings.PIP_PROXY:
-            strategies.append(("镜像站", base_cmd + ["-i", settings.PIP_PROXY]))
-        if settings.PROXY_HOST:
-            strategies.append(("代理", base_cmd + ["--proxy", settings.PROXY_HOST]))
-        strategies.append(("直连", base_cmd))
+        constraints_file = None
+        try:
+            constraints_file = cls.__create_runtime_constraints_file(installed_packages)
+        except Exception as e:
+            logger.error(f"[PIP] 创建运行环境约束文件失败：{e}")
+            return False, f"创建运行环境约束文件失败：{e}"
 
-        # 记录当前已安装的包，以便后续刷新
-        before_installation = set(sys.modules.keys())
+        base_cmd = [sys.executable, "-m", "pip", "install"] + find_links_option
+        if constraints_file:
+            # 这里固定约束到当前运行环境的已安装版本，避免共享 venv 被插件重写。
+            base_cmd.extend(["-c", str(constraints_file)])
+        base_cmd.extend(["-r", str(requirements_file)])
+        strategies = cls.__build_pip_install_strategies(base_cmd)
 
-        # 遍历策略进行安装
-        for strategy_name, pip_command in strategies:
-            logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
-            success, message = SystemUtils.execute_with_subprocess(pip_command)
-            if success:
-                logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
-                # 安装成功后刷新Python的模块系统
-                importlib.reload(site)
-                # 获取新安装的模块
-                current_modules = set(sys.modules.keys())
-                new_modules = current_modules - before_installation
-                # 重新加载新安装的模块
-                for module in new_modules:
-                    if module in sys.modules:
-                        del sys.modules[module]
-                logger.debug(f"[PIP] 已刷新导入系统，新加载的模块: {new_modules}")
-                return True, message
-            else:
-                logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
+        try:
+            # pip 会修改当前解释器的 site-packages，安装与缓存刷新必须串行，避免运行态模块被并发安装窗口污染。
+            with cls._pip_install_lock:
+                loaded_modules_before_install = set(sys.modules.keys())
+                # 遍历策略进行安装
+                for strategy_name, pip_command in strategies:
+                    logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+                    success, message = SystemUtils.execute_with_subprocess(pip_command)
+                    if success:
+                        logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
+                        health_ok, health_message = cls.__run_runtime_healthcheck()
+                        if not health_ok:
+                            logger.error(f"[PIP] 依赖安装后运行环境自检失败：{health_message}")
+                            repair_ok, repair_message = cls.__repair_main_runtime_dependencies(constraints_file)
+                            if repair_ok:
+                                health_restored, restored_message = cls.__run_runtime_healthcheck()
+                                if health_restored:
+                                    cls.__refresh_import_system()
+                                    return False, (
+                                        f"依赖安装后运行环境自检失败，已自动恢复主程序依赖：{health_message}"
+                                    )
+                                logger.error(
+                                    f"[PIP] 主程序依赖恢复后仍未通过健康检查：{restored_message}"
+                                )
+                                return False, (
+                                    f"依赖安装后运行环境自检失败，恢复主程序依赖后仍异常："
+                                    f"{restored_message}"
+                                )
+                            return False, (
+                                f"依赖安装后运行环境自检失败，且自动恢复主程序依赖失败："
+                                f"{repair_message}"
+                            )
 
-        return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接或 PIP 配置"
+                        cls.__refresh_import_system()
+                        loaded_modules_after_install = set(sys.modules.keys())
+                        loaded_modules_during_install = loaded_modules_after_install - loaded_modules_before_install
+                        logger.debug(f"[PIP] 已刷新导入系统，新加载的模块: {loaded_modules_during_install}")
+                        return True, message
+
+                    logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
+        finally:
+            if constraints_file:
+                constraints_file.unlink(missing_ok=True)
+
+        return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接、PIP 配置或插件依赖约束"
 
     @staticmethod
     def __request_with_fallback(url: str,

@@ -20,7 +20,7 @@ from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
 from app.db.downloadhistory_oper import DownloadHistoryOper
-from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
@@ -1075,10 +1075,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             __notify()
 
         # 只要该种子的所有任务都已整理完成，则设置种子状态为已整理
-        if task.download_hash and self.jobview.is_torrent_done(task.download_hash):
-            self.transfer_completed(
-                hashs=task.download_hash, downloader=task.downloader
-            )
+        self.__mark_torrent_completed_if_done(task.download_hash, task.downloader)
 
         # 移动模式，全部成功时删除空目录和种子文件
         if transferinfo.transfer_type in ["move"]:
@@ -1136,6 +1133,22 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         return self.jobview.add_task(task)
 
+    def __mark_torrent_completed_if_done(
+            self,
+            download_hash: Optional[str],
+            downloader: Optional[str],
+            history_exists: bool = True,
+    ):
+        """
+        当同一种子的任务都已结束时，回写下载器已整理标签。
+        """
+        if (
+                history_exists
+                and download_hash
+                and self.jobview.is_torrent_done(download_hash)
+        ):
+            self.transfer_completed(hashs=download_hash, downloader=downloader)
+
     def remove_from_queue(self, fileitem: FileItem):
         """
         从待整理队列移除
@@ -1149,10 +1162,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         标记异常整理任务失败并清理作业视图
         """
         self.jobview.fail_unfinished_task(task)
-        if task.download_hash and self.jobview.is_torrent_done(task.download_hash):
-            self.transfer_completed(
-                hashs=task.download_hash, downloader=task.downloader
-            )
         self.jobview.try_remove_job(task)
 
     def __start_transfer(self):
@@ -1269,6 +1278,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             transferhis = TransferHistoryOper()
             mediainfo = task.mediainfo
             mediainfo_changed = False
+            need_obtain_images = False
             if not mediainfo:
                 download_history = task.download_history
                 # 下载用户
@@ -1283,16 +1293,20 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             doubanid=download_history.doubanid,
                             episode_group=download_history.episode_group,
                         )
+                        need_obtain_images = True
                         if mediainfo:
                             # 更新自定义媒体类别
                             if download_history.media_category:
                                 mediainfo.category = download_history.media_category
                 else:
                     # 识别媒体信息
-                    mediainfo = MediaChain().recognize_by_meta(task.meta)
+                    mediainfo = MediaChain().recognize_by_meta(
+                        task.meta,
+                        obtain_images=True,
+                    )
 
-                # 更新媒体图片
-                if mediainfo:
+                # 按名称识别时已在识别链路补图，这里只补齐显式ID识别的场景。
+                if mediainfo and need_obtain_images:
                     self.obtain_images(mediainfo=mediainfo)
 
                 if not mediainfo:
@@ -1323,6 +1337,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     )
                     # 任务失败，直接移除task
                     self.jobview.remove_task(task.fileitem)
+                    self.__mark_torrent_completed_if_done(
+                        task.download_hash, task.downloader
+                    )
 
                     # AI智能体自动重试整理
                     if (
@@ -1686,7 +1703,102 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ]
 
     @staticmethod
+    def _get_shared_download_roots(file_path: Path) -> set[str]:
+        """
+        获取当前文件所在的共享下载根目录边界。
+
+        父目录兜底回查只应在种子自身目录内进行，不能越过共享下载根目录，
+        否则历史中的单文件/无子目录任务会污染同级其它文件的识别结果。
+        """
+        shared_roots: set[str] = set()
+        media_type_dirs = {mtype.value for mtype in MediaType}
+
+        for dir_info in DirectoryHelper().get_download_dirs():
+            if not dir_info.download_path:
+                continue
+
+            download_root = Path(dir_info.download_path)
+            if not file_path.is_relative_to(download_root):
+                continue
+
+            shared_roots.add(download_root.as_posix())
+            relative_parts = file_path.relative_to(download_root).parts
+            current_root = download_root
+            part_index = 0
+
+            if (
+                    not dir_info.media_type
+                    and dir_info.download_type_folder
+                    and len(relative_parts) > part_index
+                    and relative_parts[part_index] in media_type_dirs
+            ):
+                current_root = current_root / relative_parts[part_index]
+                shared_roots.add(current_root.as_posix())
+                part_index += 1
+
+            if (
+                    not dir_info.media_category
+                    and dir_info.download_category_folder
+                    and len(relative_parts) > part_index
+            ):
+                current_root = current_root / relative_parts[part_index]
+                shared_roots.add(current_root.as_posix())
+
+        return shared_roots
+
+    @staticmethod
+    def _match_download_file(
+            download_file: DownloadFiles,
+            file_path: Path,
+            save_path: Path,
+    ) -> bool:
+        """
+        判断下载文件记录是否明确对应当前文件。
+        """
+        if download_file.fullpath == file_path.as_posix():
+            return True
+
+        filepath = download_file.filepath
+        if not filepath:
+            return False
+
+        try:
+            return (save_path / Path(filepath)).as_posix() == file_path.as_posix()
+        except (TypeError, ValueError):
+            return False
+
+    def _resolve_history_from_download_files(
+            self,
+            downloadhis: DownloadHistoryOper,
+            download_files: List[DownloadFiles],
+            file_path: Optional[Path] = None,
+            save_path: Optional[Path] = None,
+    ) -> Optional[DownloadHistory]:
+        """
+        从下载文件记录中解析唯一的下载历史。
+        """
+        if file_path and save_path:
+            download_files = [
+                download_file
+                for download_file in download_files
+                if self._match_download_file(
+                    download_file=download_file,
+                    file_path=file_path,
+                    save_path=save_path,
+                )
+            ]
+
+        download_hashes = {
+            download_file.download_hash
+            for download_file in download_files
+            if download_file.download_hash
+        }
+        if len(download_hashes) == 1:
+            return downloadhis.get_by_hash(next(iter(download_hashes)))
+        return None
+
     def _resolve_download_history(
+            self,
             downloadhis: DownloadHistoryOper,
             file_path: Path,
             bluray_dir: bool = False,
@@ -1707,20 +1819,35 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         # 多文件种子里的字幕/附加文件可能没有稳定的 fullpath 记录，
         # 退回到父目录和 savepath 继续查找，尽量补齐同一种子的关联信息。
+        shared_download_roots = self._get_shared_download_roots(file_path)
+
         for parent_path in file_path.parents:
             parent_posix = parent_path.as_posix()
+            download_files = downloadhis.get_files_by_savepath(parent_posix) or []
+
+            if parent_posix in shared_download_roots:
+                # 共享下载根目录只能接受有明确文件记录的匹配，
+                # 避免单文件/磁力任务把整个根目录污染成同一媒体。
+                history = self._resolve_history_from_download_files(
+                    downloadhis=downloadhis,
+                    download_files=download_files,
+                    file_path=file_path,
+                    save_path=parent_path,
+                )
+                if history:
+                    return history
+                break
+
             download_history = downloadhis.get_by_path(parent_posix)
             if download_history:
                 return download_history
 
-            download_files = downloadhis.get_files_by_savepath(parent_posix) or []
-            download_hashes = {
-                download_file.download_hash
-                for download_file in download_files
-                if download_file.download_hash
-            }
-            if len(download_hashes) == 1:
-                return downloadhis.get_by_hash(next(iter(download_hashes)))
+            history = self._resolve_history_from_download_files(
+                downloadhis=downloadhis,
+                download_files=download_files,
+            )
+            if history:
+                return history
 
         return None
 
@@ -1838,10 +1965,13 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
-        logger.info(f"正在计划整理 {len(file_items)} 个文件...")
+        planned_file_count = len(file_items)
+        logger.info(f"正在计划整理 {planned_file_count} 个文件...")
 
         # 整理所有文件
         transfer_tasks: List[TransferTask] = []
+        skipped_history_count = 0
+        skipped_torrents = set()
         try:
             for file_item, bluray_dir in file_items:
                 if global_vars.is_system_stopped:
@@ -1856,8 +1986,15 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         file_item.path, storage=file_item.storage
                     )
                     if transferd:
+                        skipped_history_count += 1
                         if not transferd.status:
                             all_success = False
+                        candidate_hash = download_hash or transferd.download_hash
+                        candidate_downloader = downloader or transferd.downloader
+                        if candidate_hash and candidate_downloader:
+                            skipped_torrents.add(
+                                (candidate_hash, candidate_downloader)
+                            )
                         logger.info(
                             f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。"
                         )
@@ -2024,6 +2161,18 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             progress.update(value=100, text=__end_msg, data={})
             progress.end()
 
+        # 下载器任务在这一轮可能因为历史记录全部命中而没有进入整理队列，
+        # 这里补打一遍已整理标签，避免同一种子被重复扫描。
+        if (
+                skipped_history_count == planned_file_count
+                and skipped_torrents
+        ):
+            for skipped_hash, skipped_downloader in skipped_torrents:
+                logger.info(f"补充设置下载任务已整理标签：{skipped_hash}")
+                self.__mark_torrent_completed_if_done(
+                    skipped_hash, skipped_downloader
+                )
+
         error_msg = "、".join(err_msgs[:2]) + (
             f"，等{len(err_msgs)}个文件错误！" if len(err_msgs) > 2 else ""
         )
@@ -2159,9 +2308,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # 更新媒体图片
                 self.obtain_images(mediainfo=mediainfo)
         else:
-            mediainfo = MediaChain().recognize_by_path(
-                str(src_path), episode_group=history.episode_group
+            recognize_context = MediaChain().recognize_by_path(
+                str(src_path),
+                episode_group=history.episode_group,
+                obtain_images=True,
             )
+            mediainfo = recognize_context.media_info if recognize_context else None
         if not mediainfo:
             return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
         # 重新执行整理

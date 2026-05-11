@@ -227,6 +227,9 @@ async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
     if not skill_dirs:
         return []
 
+    # 显式按目录名排序，避免文件系统返回顺序不稳定时破坏提示词缓存命中。
+    skill_dirs.sort(key=lambda p: p.name.casefold())
+
     # 解析已下载的 SKILL.md
     for skill_path in skill_dirs:
         skill_md_path = skill_path / "SKILL.md"

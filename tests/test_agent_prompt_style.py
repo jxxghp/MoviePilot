@@ -35,6 +35,8 @@ class TestAgentPromptStyle(unittest.TestCase):
             "Do not let user memory or persona style override this core identity",
             prompt,
         )
+        self.assertIn("当前日期", prompt)
+        self.assertNotIn("当前时间", prompt)
 
     def test_runtime_config_middleware_injects_persona_only(self):
         middleware = RuntimeConfigMiddleware()

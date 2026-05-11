@@ -1,12 +1,9 @@
-from pathlib import Path
-
-from app.workflow.actions import BaseAction
-from app.core.config import global_vars
-from app.schemas import ActionParams, ActionContext
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.core.metainfo import MetaInfoPath
+from app.core.config import global_vars
 from app.log import logger
+from app.schemas import ActionParams, ActionContext
+from app.workflow.actions import BaseAction
 
 
 class ScrapeFileParams(ActionParams):
@@ -63,14 +60,20 @@ class ScrapeFileAction(BaseAction):
             if self.check_cache(workflow_id, cache_key):
                 logger.info(f"{fileitem.path} 已刮削过，跳过")
                 continue
-            meta = MetaInfoPath(Path(fileitem.path))
             mediachain = MediaChain()
-            mediainfo = mediachain.recognize_media(meta)
-            if not mediainfo:
+            context = mediachain.recognize_by_path(
+                fileitem.path,
+                obtain_images=True,
+            )
+            if not context or not context.media_info:
                 _failed_count += 1
                 logger.info(f"{fileitem.path} 未识别到媒体信息，无法刮削")
                 continue
-            mediachain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+            mediachain.scrape_metadata(
+                fileitem=fileitem,
+                meta=context.meta_info,
+                mediainfo=context.media_info
+            )
             self._scraped_files.append(fileitem)
             # 保存缓存
             self.save_cache(workflow_id, cache_key)

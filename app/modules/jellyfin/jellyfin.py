@@ -429,6 +429,7 @@ class Jellyfin:
         """
         if not self._host or not self._apikey or not self.user:
             return None, None
+        cached_item_id = item_id
         # 查TVID
         if not item_id:
             item_id = self.__get_jellyfin_series_id_by_name(title, year)
@@ -438,6 +439,17 @@ class Jellyfin:
                 return None, {}
         # 验证tmdbid是否相同
         item_info = self.get_iteminfo(item_id)
+        if not item_info and cached_item_id and title:
+            # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
+            logger.warning(f"Jellyfin缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
+            item_id = self.__get_jellyfin_series_id_by_name(title, year)
+            if item_id is None:
+                return None, None
+            if not item_id:
+                return None, {}
+            item_info = self.get_iteminfo(item_id)
+        if not item_info:
+            return None, {}
         if item_info:
             if tmdb_id and item_info.tmdbid:
                 if str(tmdb_id) != str(item_info.tmdbid):

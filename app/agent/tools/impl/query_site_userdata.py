@@ -11,6 +11,14 @@ from app.db.models.site import Site
 from app.db.models.siteuserdata import SiteUserData
 from app.log import logger
 
+SITE_USERDATA_DETAIL_PREVIEW_LIMIT = 10
+
+
+def _preview_list(value, limit: int = SITE_USERDATA_DETAIL_PREVIEW_LIMIT) -> tuple[list, int, bool]:
+    """返回列表字段预览，避免做种明细或未读消息一次性撑大工具结果。"""
+    items = list(value) if isinstance(value, (list, tuple)) else []
+    return items[:limit], len(items), len(items) > limit
+
 
 class QuerySiteUserdataInput(BaseModel):
     """查询站点用户数据工具的输入参数模型"""
@@ -110,6 +118,13 @@ class QuerySiteUserdataTool(MoviePilotTool):
                         else 0
                     )
 
+                    seeding_preview, seeding_count, seeding_truncated = _preview_list(
+                        user_data.seeding_info
+                    )
+                    unread_preview, unread_count, unread_truncated = _preview_list(
+                        user_data.message_unread_contents
+                    )
+
                     user_data_dict = {
                         "domain": user_data.domain,
                         "name": user_data.name,
@@ -131,13 +146,13 @@ class QuerySiteUserdataTool(MoviePilotTool):
                         "seeding_size_gb": round(seeding_size_gb, 2),
                         "leeching_size": user_data.leeching_size,
                         "leeching_size_gb": round(leeching_size_gb, 2),
-                        "seeding_info": user_data.seeding_info
-                        if user_data.seeding_info
-                        else [],
+                        "seeding_info_count": seeding_count,
+                        "seeding_info": seeding_preview,
+                        "seeding_info_truncated": seeding_truncated,
                         "message_unread": user_data.message_unread,
-                        "message_unread_contents": user_data.message_unread_contents
-                        if user_data.message_unread_contents
-                        else [],
+                        "message_unread_contents_count": unread_count,
+                        "message_unread_contents": unread_preview,
+                        "message_unread_contents_truncated": unread_truncated,
                         "err_msg": user_data.err_msg,
                         "updated_day": user_data.updated_day,
                         "updated_time": user_data.updated_time,

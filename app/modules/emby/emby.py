@@ -407,6 +407,7 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None, None
+        cached_item_id = item_id
         # 电视剧
         if not item_id:
             item_id = self.__get_emby_series_id_by_name(title, year)
@@ -416,6 +417,17 @@ class Emby:
                 return None, {}
         # 验证tmdbid是否相同
         item_info = self.get_iteminfo(item_id)
+        if not item_info and cached_item_id and title:
+            # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
+            logger.warning(f"Emby缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
+            item_id = self.__get_emby_series_id_by_name(title, year)
+            if item_id is None:
+                return None, None
+            if not item_id:
+                return None, {}
+            item_info = self.get_iteminfo(item_id)
+        if not item_info:
+            return None, {}
         if item_info:
             if tmdb_id and item_info.tmdbid:
                 if str(tmdb_id) != str(item_info.tmdbid):
