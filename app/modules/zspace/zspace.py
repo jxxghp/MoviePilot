@@ -1055,23 +1055,24 @@ class ZSpace:
 
     def __get_current_user(self) -> Optional[dict]:
         """
-        获取当前登录用户信息
+        获取当前登录用户信息。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）将 `Users/{seg}` 中的 {seg} 严格按 mediaUid 校验，
+        非 GUID 的 `Users/Me` 会被直接判定为 "invalid mediaUid format" 返回 400，
+        因此只走精确的 `Users/{userId}` 路径，避免污染日志且少一次无效请求。
         """
-        if not self._host or not self._apikey:
+        if not self._host or not self._apikey or not self.user:
             return None
-        urls = []
-        if self.user:
-            urls.append(f"{self._host}emby/Users/{self.user}")
-        urls.append(f"{self._host}emby/Users/Me")
-        for url in urls:
-            try:
-                res = self.__request_utils().get_res(url)
-                if res:
-                    result = res.json()
-                    if isinstance(result, dict):
-                        return result
-            except Exception as e:
-                logger.error(f"连接 {url} 出错：{e}")
+        url = f"{self._host}emby/Users/{self.user}"
+        try:
+            res = self.__request_utils().get_res(url)
+            if res:
+                result = res.json()
+                if isinstance(result, dict):
+                    return result
+        except Exception as e:
+            logger.error(f"连接 {url} 出错：{e}")
         return None
 
     def __get_current_user_id(self) -> Optional[str]:
