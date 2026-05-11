@@ -145,7 +145,14 @@ class ZSpace:
 
     def get_virtual_folders(self) -> List[dict]:
         """
-        获取极影视媒体库所有路径列表（包含共享路径）
+        获取极影视媒体库所有路径列表（包含共享路径）。
+
+        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
+        对齐 Emby Server 4.7 协议）未实现 `Library/VirtualFolders/Query`
+        （实测 404），且 `Users/{uid}/Views` 与 `Users/{uid}/Items` 返回里
+        `Path` 均为空字符串，因此该端点不可用时仅能给出"库 Id/Name + 空路径
+        列表"。下游 `get_user_library_folders()` 会跳过空 Path 的库，等价于
+        对所有库都不做路径前缀过滤——这是当前可用的最小可工作策略。
         """
         if not self._host or not self._apikey:
             return []
@@ -173,12 +180,20 @@ class ZSpace:
                             'Path': library_paths
                         })
                 return libraries
-            else:
-                logger.error("Library/VirtualFolders/Query 未获取到返回数据")
-                return []
+            logger.debug("Library/VirtualFolders/Query 未获取到返回数据，回退到 Users/{uid}/Views（路径列表为空）")
         except Exception as e:
-            logger.error(f"连接Library/VirtualFolders/Query 出错：{e}")
-            return []
+            logger.debug(f"连接Library/VirtualFolders/Query 出错：{e}，回退到 Users/{{uid}}/Views（路径列表为空）")
+        libraries = []
+        for view in self.__get_library_views() or []:
+            view_id = view.get("Id")
+            view_name = view.get("Name")
+            if view_id and view_name:
+                libraries.append({
+                    'Id': view_id,
+                    'Name': view_name,
+                    'Path': []
+                })
+        return libraries
 
     def __get_library_views(self, username: Optional[str] = None) -> List[dict]:
         """
