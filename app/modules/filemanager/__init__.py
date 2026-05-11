@@ -406,7 +406,8 @@ class FileManagerModule(_ModuleBase):
                  transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
                  library_type_folder: Optional[bool] = None, library_category_folder: Optional[bool] = None,
                  episodes_info: List[TmdbEpisode] = None,
-                 source_oper: Callable = None, target_oper: Callable = None) -> TransferInfo:
+                 source_oper: Callable = None, target_oper: Callable = None,
+                 preview: Optional[bool] = False) -> TransferInfo:
         """
         文件整理
         :param fileitem:  文件信息
@@ -522,6 +523,7 @@ class FileManagerModule(_ModuleBase):
                                       need_notify=need_notify,
                                       overwrite_mode=overwrite_mode,
                                       episodes_info=episodes_info,
+                                      preview=preview,
                                       source_oper=source_oper,
                                       target_oper=target_oper)
 

@@ -1102,6 +1102,7 @@ class ChainBase(metaclass=ABCMeta):
             episodes_info: List[TmdbEpisode] = None,
             source_oper: Callable = None,
             target_oper: Callable = None,
+            preview: bool = False,
     ) -> Optional[TransferInfo]:
         """
         文件转移
@@ -1118,6 +1119,7 @@ class ChainBase(metaclass=ABCMeta):
         :param episodes_info: 当前季的全部集信息
         :param source_oper:  源存储操作类
         :param target_oper:  目标存储操作类
+        :param preview: 是否仅预览，不执行实际转移
         :return: {path, target_path, message}
         """
         return self.run_module(
@@ -1135,6 +1137,7 @@ class ChainBase(metaclass=ABCMeta):
             episodes_info=episodes_info,
             source_oper=source_oper,
             target_oper=target_oper,
+            preview=preview,
         )
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:

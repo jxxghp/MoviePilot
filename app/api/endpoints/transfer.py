@@ -113,7 +113,7 @@ def manual_transfer(transer_item: ManualTransferItem,
             # 源路径
             src_fileitem = FileItem(**history.src_fileitem)
             # 目的路径
-            if history.dest_fileitem:
+            if history.dest_fileitem and not transer_item.preview:
                 # 删除旧的已整理文件
                 dest_fileitem = FileItem(**history.dest_fileitem)
                 state = StorageChain().delete_media_file(dest_fileitem)
@@ -181,14 +181,23 @@ def manual_transfer(transer_item: ManualTransferItem,
         force=force,
         background=background,
         downloader=downloader,
-        download_hash=download_hash
+        download_hash=download_hash,
+        preview=transer_item.preview,
     )
     # 失败
     if not state:
         if isinstance(errormsg, list):
             errormsg = f"整理完成，{len(errormsg)} 个文件转移失败！"
+        if isinstance(errormsg, dict):
+            return schemas.Response(
+                success=True,
+                message=errormsg.get("message"),
+                data=errormsg,
+            )
         return schemas.Response(success=False, message=errormsg)
     # 成功
+    if transer_item.preview:
+        return schemas.Response(success=True, data=errormsg or {})
     return schemas.Response(success=True)
 
 

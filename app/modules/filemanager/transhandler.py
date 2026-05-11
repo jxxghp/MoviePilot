@@ -78,6 +78,7 @@ class TransHandler:
         need_notify: Optional[bool] = True,
         overwrite_mode: Optional[str] = None,
         episodes_info: List[TmdbEpisode] = None,
+        preview: Optional[bool] = False,
     ) -> TransferInfo:
         """
         识别并整理一个文件或者一个目录下的所有文件
@@ -94,6 +95,7 @@ class TransHandler:
         :param need_notify: 是否需要通知
         :param overwrite_mode: 覆盖模式
         :param episodes_info: 当前季的全部集信息
+        :param preview: 是否仅预览
         :return: TransferInfo、错误信息
         """
 
@@ -158,6 +160,27 @@ class TransHandler:
                         return result
                 else:
                     new_path = target_path / fileitem.name
+                if preview:
+                    preview_diritem = FileItem(
+                        storage=target_storage,
+                        path=new_path.as_posix(),
+                        name=new_path.name,
+                        basename=new_path.stem,
+                        type="dir",
+                    )
+                    self.__update_result(
+                        result=result,
+                        success=True,
+                        fileitem=fileitem,
+                        target_item=preview_diritem,
+                        target_diritem=preview_diritem,
+                        file_list=[fileitem.path],
+                        file_list_new=[new_path.as_posix()],
+                        need_scrape=need_scrape,
+                        need_notify=False,
+                        transfer_type=transfer_type,
+                    )
+                    return result
                 # 原盘大小只计算STREAM目录内的文件大小
                 if stream_fileitem := source_oper.get_item(
                     Path(fileitem.path) / "BDMV" / "STREAM"
@@ -267,19 +290,28 @@ class TransHandler:
                     folder_path = target_path
 
                 # 目标目录
-                target_diritem = target_oper.get_folder(folder_path)
-                if not target_diritem:
-                    logger.error(f"目标目录 {folder_path} 获取失败")
-                    self.__update_result(
-                        result=result,
-                        success=False,
-                        message=f"目标目录 {folder_path} 获取失败",
-                        fileitem=fileitem,
-                        fail_list=[fileitem.path],
-                        transfer_type=transfer_type,
-                        need_notify=need_notify,
+                if preview:
+                    target_diritem = FileItem(
+                        storage=target_storage,
+                        path=folder_path.as_posix(),
+                        name=folder_path.name,
+                        basename=folder_path.stem,
+                        type="dir",
                     )
-                    return result
+                else:
+                    target_diritem = target_oper.get_folder(folder_path)
+                    if not target_diritem:
+                        logger.error(f"目标目录 {folder_path} 获取失败")
+                        self.__update_result(
+                            result=result,
+                            success=False,
+                            message=f"目标目录 {folder_path} 获取失败",
+                            fileitem=fileitem,
+                            fail_list=[fileitem.path],
+                            transfer_type=transfer_type,
+                            need_notify=need_notify,
+                        )
+                        return result
 
                 # 判断是否要覆盖，附加文件强制覆盖
                 overflag = False
@@ -407,10 +439,39 @@ class TransHandler:
                             logger.info(
                                 f"当前整理覆盖模式设置为 {overwrite_mode}，仅保留最新版本，正在删除已有版本文件 ..."
                             )
-                            self.__delete_version_files(target_oper, new_file)
+                            if not preview:
+                                self.__delete_version_files(target_oper, new_file)
                 else:
                     # 附加文件 总是需要覆盖
                     overflag = True
+
+                if preview:
+                    target_item = target_oper.get_item(new_file)
+                    if not target_item:
+                        target_item = FileItem(
+                            storage=target_storage,
+                            path=new_file.as_posix(),
+                            name=new_file.name,
+                            basename=new_file.stem,
+                            type="file",
+                            extension=new_file.suffix.lstrip("."),
+                            size=fileitem.size,
+                        )
+                    self.__update_result(
+                        result=result,
+                        success=True,
+                        fileitem=fileitem,
+                        target_item=target_item,
+                        target_diritem=target_diritem,
+                        file_list=[fileitem.path],
+                        file_list_new=[new_file.as_posix()],
+                        file_count=1,
+                        total_size=fileitem.size or 0,
+                        need_scrape=need_scrape,
+                        transfer_type=transfer_type,
+                        need_notify=False,
+                    )
+                    return result
 
                 # 整理文件
                 new_item, err_msg = self.__transfer_file(

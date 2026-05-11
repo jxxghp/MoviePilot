@@ -1310,6 +1310,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     self.obtain_images(mediainfo=mediainfo)
 
                 if not mediainfo:
+                    if task.preview:
+                        return False, "未识别到媒体信息"
                     # 新增整理失败历史记录
                     his = transferhis.add_fail(
                         fileitem=task.fileitem,
@@ -1470,6 +1472,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 library_category_folder=task.library_category_folder,
                 source_oper=source_oper,
                 target_oper=target_oper,
+                preview=task.preview,
             )
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
@@ -1871,8 +1874,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             force: Optional[bool] = False,
             background: Optional[bool] = True,
             manual: Optional[bool] = False,
+            preview: Optional[bool] = False,
             continue_callback: Callable = None,
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -1893,11 +1897,15 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param force: 是否强制整理
         :param background: 是否后台运行
         :param manual: 是否手动整理
+        :param preview: 是否仅预览
         :param continue_callback: 继续处理回调
         返回：成功标识，错误信息
         """
         # 是否全部成功
         all_success = True
+        if preview:
+            # 预览模式始终同步执行，避免进入异步队列
+            background = False
 
         # 自定义格式
         formaterHandler = (
@@ -1981,7 +1989,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 file_path = Path(file_item.path)
 
                 # 整理成功的不再处理
-                if not force:
+                if not force and not preview:
                     transferd = TransferHistoryOper().get_by_src(
                         file_item.path, storage=file_item.storage
                     )
@@ -2077,6 +2085,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     download_history=download_history,
                     manual=manual,
                     background=background,
+                    preview=preview,
                 )
                 if background:
                     if self.put_to_queue(task=transfer_task):
@@ -2096,6 +2105,28 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             del file_items
 
         # 实时整理
+        preview_items: List[dict] = []
+
+        def _preview_callback(task: TransferTask, transferinfo: TransferInfo) -> Tuple[bool, str]:
+            item_meta = task.meta
+            item_media = task.mediainfo
+            preview_items.append(
+                {
+                    "source": task.fileitem.path,
+                    "target": transferinfo.target_item.path if transferinfo.target_item else None,
+                    "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
+                    "success": transferinfo.success,
+                    "message": transferinfo.message,
+                    "type": item_media.type.value if item_media and item_media.type else None,
+                    "title": item_media.title_year if item_media else None,
+                    "season": item_meta.begin_season if item_meta else None,
+                    "episode": item_meta.begin_episode if item_meta else None,
+                    "episode_end": item_meta.end_episode if item_meta else None,
+                    "part": item_meta.part if item_meta else None,
+                }
+            )
+            return transferinfo.success, transferinfo.message
+
         if transfer_tasks:
             # 总数量
             total_num = len(transfer_tasks)
@@ -2106,46 +2137,75 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             # 已完成文件
             finished_files = []
 
-            # 启动进度
-            progress = ProgressHelper(ProgressKey.FileTransfer)
-            progress.start()
-            __process_msg = f"开始整理，共 {total_num} 个文件 ..."
-            logger.info(__process_msg)
-            progress.update(value=0, text=__process_msg)
+            progress = None
+            if not preview:
+                # 启动进度
+                progress = ProgressHelper(ProgressKey.FileTransfer)
+                progress.start()
+                __process_msg = f"开始整理，共 {total_num} 个文件 ..."
+                logger.info(__process_msg)
+                progress.update(value=0, text=__process_msg)
             try:
                 for transfer_task in transfer_tasks:
                     if global_vars.is_system_stopped:
                         break
                     if continue_callback and not continue_callback():
                         break
-                    # 更新进度
-                    __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
-                    logger.info(__process_msg)
-                    progress.update(
-                        value=(processed_num + fail_num) / total_num * 100,
-                        text=__process_msg,
-                        data={
-                            "current": Path(transfer_task.fileitem.path).as_posix(),
-                            "finished": finished_files,
-                        },
-                    )
+                    if not preview:
+                        # 更新进度
+                        __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
+                        logger.info(__process_msg)
+                        progress.update(
+                            value=(processed_num + fail_num) / total_num * 100,
+                            text=__process_msg,
+                            data={
+                                "current": Path(transfer_task.fileitem.path).as_posix(),
+                                "finished": finished_files,
+                            },
+                        )
                     try:
                         state, err_msg = self.__handle_transfer(
-                            task=transfer_task, callback=self.__default_callback
+                            task=transfer_task,
+                            callback=_preview_callback if preview else self.__default_callback,
                         )
                     except Exception as e:
                         logger.error(
                             f"{transfer_task.fileitem.name} 整理任务处理出现错误："
                             f"{e} - {traceback.format_exc()}"
                         )
-                        self.__fail_transfer_task(transfer_task)
+                        if not preview:
+                            self.__fail_transfer_task(transfer_task)
                         state, err_msg = False, str(e)
                     if not state:
                         all_success = False
                         logger.warn(f"{transfer_task.fileitem.name} {err_msg}")
                         err_msgs.append(f"{transfer_task.fileitem.name} {err_msg}")
+                        if preview:
+                            # 预览模式不走默认回调，这里需要手动收敛任务状态，避免残留 running
+                            self.jobview.fail_task(transfer_task)
+                            self.jobview.try_remove_job(transfer_task)
+                        if preview and (not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path):
+                            preview_items.append(
+                                {
+                                    "source": transfer_task.fileitem.path,
+                                    "target": None,
+                                    "target_dir": None,
+                                    "success": False,
+                                    "message": err_msg,
+                                    "type": None,
+                                    "title": None,
+                                    "season": transfer_task.meta.begin_season if transfer_task.meta else None,
+                                    "episode": transfer_task.meta.begin_episode if transfer_task.meta else None,
+                                    "episode_end": transfer_task.meta.end_episode if transfer_task.meta else None,
+                                    "part": transfer_task.meta.part if transfer_task.meta else None,
+                                }
+                            )
                         fail_num += 1
                     else:
+                        if preview:
+                            # 预览模式手动标记完成，确保可重复预览
+                            self.jobview.finish_task(transfer_task)
+                            self.jobview.try_remove_job(transfer_task)
                         processed_num += 1
                     # 记录已完成
                     finished_files.append(Path(transfer_task.fileitem.path).as_posix())
@@ -2154,12 +2214,13 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 del transfer_tasks
 
             # 整理结束
-            __end_msg = (
-                f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"
-            )
-            logger.info(__end_msg)
-            progress.update(value=100, text=__end_msg, data={})
-            progress.end()
+            if not preview:
+                __end_msg = (
+                    f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"
+                )
+                logger.info(__end_msg)
+                progress.update(value=100, text=__end_msg, data={})
+                progress.end()
 
         # 下载器任务在这一轮可能因为历史记录全部命中而没有进入整理队列，
         # 这里补打一遍已整理标签，避免同一种子被重复扫描。
@@ -2176,6 +2237,16 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         error_msg = "、".join(err_msgs[:2]) + (
             f"，等{len(err_msgs)}个文件错误！" if len(err_msgs) > 2 else ""
         )
+        if preview:
+            return all_success, {
+                "summary": {
+                    "total": len(preview_items),
+                    "success": len([item for item in preview_items if item.get("success")]),
+                    "failed": len([item for item in preview_items if not item.get("success")]),
+                },
+                "items": preview_items,
+                "message": error_msg,
+            }
         return all_success, error_msg
 
     def remote_transfer(
@@ -2360,7 +2431,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             background: Optional[bool] = False,
             downloader: Optional[str] = None,
             download_hash: Optional[str] = None,
-    ) -> Tuple[bool, Union[str, list]]:
+            preview: Optional[bool] = False,
+    ) -> Tuple[bool, Union[str, dict]]:
         """
         手动整理，支持复杂条件，带进度显示
         :param fileitem: 文件项
@@ -2381,6 +2453,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param background: 是否后台运行
         :param downloader: 下载器名称
         :param download_hash: 下载任务哈希
+        :param preview: 是否仅预览
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         if tmdbid or doubanid:
@@ -2419,12 +2492,13 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 manual=True,
                 downloader=downloader,
                 download_hash=download_hash,
+                preview=preview,
             )
             if not state:
                 return False, errmsg
 
             logger.info(f"{fileitem.path} 整理完成")
-            return True, ""
+            return True, errmsg if preview else ""
         else:
             # 没有输入TMDBID时，按文件识别
             state, errmsg = self.do_transfer(
@@ -2443,6 +2517,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 manual=True,
                 downloader=downloader,
                 download_hash=download_hash,
+                preview=preview,
             )
             return state, errmsg
 
