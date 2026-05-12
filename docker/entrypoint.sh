@@ -62,7 +62,7 @@ function load_config_from_app_env() {
         ["SSL_DOMAIN"]=""
         ["NGINX_PORT"]="3000"
         ["PORT"]="3001"
-        ["NGINX_CLIENT_MAX_BODY_SIZE"]="50M"
+        ["NGINX_CLIENT_MAX_BODY_SIZE"]="50m"
     )
 
     INFO "开始加载配置 (配置文件: ${env_file})..."
