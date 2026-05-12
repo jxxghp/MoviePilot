@@ -189,9 +189,6 @@ class TMDb(object):
             result = self.request(method, url, data, json,
                                   _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
 
-        if result is None:
-            return None
-
         headers, json_data = result
         self._handle_headers(headers)
 
@@ -215,9 +212,6 @@ class TMDb(object):
         async with async_fresh(not call_cached or method == "POST"):
             result = await self.async_request(method, url, data, json,
                                               _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-
-        if result is None:
-            return None
 
         headers, json_data = result
         self._handle_headers(headers)
