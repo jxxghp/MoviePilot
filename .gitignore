@@ -36,4 +36,6 @@ pylint-report.json
 .pylint.d/
 
 # AI
+.claude/
+!.claude/*.json
 .claude/settings.local.json
