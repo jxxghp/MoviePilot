@@ -5,6 +5,7 @@ from typing import Optional, List
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
+from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.core.config import global_vars
 from app.log import logger
@@ -72,7 +73,7 @@ class FetchTorrentsAction(BaseAction):
                     continue
                 # 识别媒体信息
                 if params.match_media:
-                    torrent.media_info = searchchain.recognize_by_meta(
+                    torrent.media_info = MediaChain().recognize_by_meta(
                         torrent.meta_info,
                         obtain_images=False,
                     )
