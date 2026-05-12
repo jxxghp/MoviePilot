@@ -16,6 +16,7 @@ from .exceptions import TMDbException
 logger = logging.getLogger(__name__)
 
 
+
 class TMDb(object):
 
     def __init__(self, session=None, language=None):
@@ -114,7 +115,7 @@ class TMDb(object):
             req = self._req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return req
+        return dict(req.headers), req.json()
 
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     async def async_request(self, method, url, data, json, **kwargs):
@@ -124,7 +125,7 @@ class TMDb(object):
             req = await self._async_req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return req
+        return dict(req.headers), req.json()
 
     def cache_clear(self):
         return self.request.cache_clear()
@@ -185,21 +186,20 @@ class TMDb(object):
         url = self._build_url(action, params)
 
         with fresh(not call_cached or method == "POST"):
-            req = self.request(method, url, data, json,
-                                      _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+            result = self.request(method, url, data, json,
+                                  _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
 
-        if req is None:
+        if result is None:
             return None
 
-        self._handle_headers(req.headers)
+        headers, json_data = result
+        self._handle_headers(headers)
 
         rate_limit_result = self._handle_rate_limit()
         if rate_limit_result:
             logger.warning("达到请求频率限制，将在 %d 秒后重试..." % rate_limit_result)
             time.sleep(rate_limit_result)
             return self._request_obj(action, params, False, method, data, json, key)
-
-        json_data = req.json()
         self._process_json_response(json_data, is_async=False)
         self._handle_errors(json_data)
 
@@ -213,21 +213,20 @@ class TMDb(object):
         url = self._build_url(action, params)
 
         async with async_fresh(not call_cached or method == "POST"):
-            req = await self.async_request(method, url, data, json,
-                                           _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+            result = await self.async_request(method, url, data, json,
+                                              _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
 
-        if req is None:
+        if result is None:
             return None
 
-        self._handle_headers(req.headers)
+        headers, json_data = result
+        self._handle_headers(headers)
 
         rate_limit_result = self._handle_rate_limit()
         if rate_limit_result:
             logger.warning("达到请求频率限制，将在 %d 秒后重试..." % rate_limit_result)
             await asyncio.sleep(rate_limit_result)
             return await self._async_request_obj(action, params, False, method, data, json, key)
-
-        json_data = req.json()
         self._process_json_response(json_data, is_async=True)
         self._handle_errors(json_data)
 
