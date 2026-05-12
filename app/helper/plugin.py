@@ -1064,6 +1064,40 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return protected_packages
 
+    @staticmethod
+    def __is_upgrade_only_conflict(specifier_set: SpecifierSet, installed_version: Version) -> bool:
+        """
+        判断版本冲突是否只能通过升级来解决（specifier 允许的所有版本都严格高于已安装版本）。
+        返回 True 表示纯升级冲突；返回 False 表示可能需要降级或无法确定方向。
+        """
+        has_lower_bound = False
+        for spec in specifier_set:
+            op = spec.operator
+            ver_str = spec.version.rstrip("*").rstrip(".") or "0"
+            try:
+                ver = Version(ver_str)
+            except InvalidVersion:
+                return False
+
+            if op in ("<", "<="):
+                upper = ver if op == "<" else Version(f"{ver}.post0")
+                if upper <= installed_version:
+                    return False
+            elif op == "==":
+                if ver <= installed_version:
+                    return False
+            elif op == "~=":
+                # ~=X.Y.Z 等价于 >=X.Y.Z, <X.(Y+1)；若 X.Y.Z <= 已安装版本说明需降级
+                if ver <= installed_version:
+                    return False
+                has_lower_bound = True
+            elif op in (">=", ">"):
+                has_lower_bound = True
+            # != 操作符：单独出现时可能允许低版本，需结合其他约束判断
+
+        # 若没有任何明确的下限约束（仅 != 等），保守地视为不确定 → 返回 False
+        return has_lower_bound
+
     @classmethod
     def __validate_runtime_dependency_conflicts(
             cls,
@@ -1110,12 +1144,16 @@ class PluginHelper(metaclass=WeakSingleton):
                             installed_version,
                             prereleases=True
                     ):
-                        conflicts.append((
-                            package_name,
-                            str(installed_version),
-                            str(requirement.specifier),
-                            package_name in cls._protected_runtime_packages,
-                        ))
+                        is_core = package_name in cls._protected_runtime_packages
+                        # 非核心包的纯升级冲突（插件要求更新版本）允许放行，由 pip 约束文件控制实际安装
+                        if is_core or not cls.__is_upgrade_only_conflict(
+                                requirement.specifier, installed_version):
+                            conflicts.append((
+                                package_name,
+                                str(installed_version),
+                                str(requirement.specifier),
+                                is_core,
+                            ))
         except Exception as e:
             logger.error(f"执行运行环境依赖冲突预检时发生错误：{e}")
             return False, f"插件依赖预检失败：{e}"
@@ -1157,9 +1195,12 @@ class PluginHelper(metaclass=WeakSingleton):
                 delete=False
         ) as temp_file:
             for package_name, version in sorted(protected_packages.items()):
-                temp_file.write(
-                    f"{cls.__format_pkg_name_for_pip(package_name)}=={version}\n"
-                )
+                if package_name in cls._protected_runtime_packages:
+                    # 核心包严格锁定，插件不得改写
+                    temp_file.write(f"{cls.__format_pkg_name_for_pip(package_name)}=={version}\n")
+                else:
+                    # 非核心主程序依赖：允许升级，但禁止降级
+                    temp_file.write(f"{cls.__format_pkg_name_for_pip(package_name)}>={version}\n")
         return Path(temp_file.name)
 
     @staticmethod
