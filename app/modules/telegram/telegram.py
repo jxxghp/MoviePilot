@@ -276,9 +276,12 @@ class Telegram:
             logger.debug(f"处理私聊消息：用户 {message.from_user.id}")
             return True
 
+        # 消息内容：文本消息用 text，媒体消息的说明文字用 caption
+        message_text = message.text or message.caption or ""
+
         # 群聊中的命令消息总是处理（以/开头）
-        if message.text and message.text.startswith("/"):
-            logger.debug(f"处理群聊命令消息：{message.text[:20]}...")
+        if message_text.startswith("/"):
+            logger.debug(f"处理群聊命令消息：{message_text[:20]}...")
             return True
 
         # 群聊中检查是否@了机器人
@@ -288,27 +291,27 @@ class Telegram:
                 logger.debug("未获取到bot用户名，处理所有群聊消息")
                 return True
 
-            # 检查消息文本中是否包含@bot_username
-            if message.text and f"@{self._bot_username}" in message.text:
+            # 检查消息文本或说明文字中是否包含@bot_username
+            if f"@{self._bot_username}" in message_text:
                 logger.debug(f"检测到@{self._bot_username}，处理群聊消息")
                 return True
 
-            # 检查消息实体中是否有提及bot
-            if message.entities:
-                for entity in message.entities:
-                    if entity.type == "mention":
-                        mention_text = message.text[
-                            entity.offset: entity.offset + entity.length
-                        ]
-                        if mention_text == f"@{self._bot_username}":
-                            logger.debug(
-                                f"通过实体检测到@{self._bot_username}，处理群聊消息"
-                            )
-                            return True
+            # 检查消息实体（文本消息用 entities，媒体消息用 caption_entities）
+            entities = message.entities or message.caption_entities or []
+            for entity in entities:
+                if entity.type == "mention":
+                    mention_text = message_text[
+                        entity.offset: entity.offset + entity.length
+                    ]
+                    if mention_text == f"@{self._bot_username}":
+                        logger.debug(
+                            f"通过实体检测到@{self._bot_username}，处理群聊消息"
+                        )
+                        return True
 
             # 群聊中没有@机器人，不处理
             logger.debug(
-                f"群聊消息未@机器人，跳过处理：{message.text[:30] if message.text else 'No text'}..."
+                f"群聊消息未@机器人，跳过处理：{message_text[:30] if message_text else 'No text'}..."
             )
             return False
 
