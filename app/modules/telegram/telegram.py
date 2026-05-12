@@ -297,12 +297,13 @@ class Telegram:
                 return True
 
             # 检查消息实体（文本消息用 entities，媒体消息用 caption_entities）
-            entities = message.entities or message.caption_entities or []
+            entities = (message.entities if message.text is not None else message.caption_entities) or []
             for entity in entities:
                 if entity.type == "mention":
-                    mention_text = message_text[
-                        entity.offset: entity.offset + entity.length
-                    ]
+                    # Telegram offset/length 基于 UTF-16 代码单元，需用字节编码处理含 emoji 的消息
+                    mention_text = message_text.encode('utf-16-le')[
+                        entity.offset * 2: (entity.offset + entity.length) * 2
+                    ].decode('utf-16-le')
                     if mention_text == f"@{self._bot_username}":
                         logger.debug(
                             f"通过实体检测到@{self._bot_username}，处理群聊消息"
