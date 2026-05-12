@@ -1,20 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-import logging
 import time
 from datetime import datetime
 
 import requests
 import requests.exceptions
+from requests.structures import CaseInsensitiveDict
 
 from app.core.cache import cached, fresh, async_fresh
 from app.core.config import settings
+from app.log import logger
 from app.utils.http import RequestUtils, AsyncRequestUtils
 from .exceptions import TMDbException
-
-logger = logging.getLogger(__name__)
-
 
 
 class TMDb(object):
@@ -115,7 +113,7 @@ class TMDb(object):
             req = self._req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return req.headers.copy(), req.json()
+        return CaseInsensitiveDict(req.headers), req.json()
 
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     async def async_request(self, method, url, data, json, **kwargs):
@@ -125,7 +123,7 @@ class TMDb(object):
             req = await self._async_req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return req.headers.copy(), req.json()
+        return CaseInsensitiveDict(req.headers), req.json()
 
     def cache_clear(self):
         return self.request.cache_clear()
