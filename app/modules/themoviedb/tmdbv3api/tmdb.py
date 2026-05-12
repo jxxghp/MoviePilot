@@ -115,7 +115,7 @@ class TMDb(object):
             req = self._req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return dict(req.headers), req.json()
+        return req.headers.copy(), req.json()
 
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
     async def async_request(self, method, url, data, json, **kwargs):
@@ -125,7 +125,7 @@ class TMDb(object):
             req = await self._async_req.post_res(url, data=data, json=json)
         if req is None:
             raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return dict(req.headers), req.json()
+        return req.headers.copy(), req.json()
 
     def cache_clear(self):
         return self.request.cache_clear()
