@@ -69,27 +69,22 @@ class TransferHistory(Base):
     @db_query
     def list_by_title(cls, db: Session, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
                       status: bool = None, wildcard: bool = False):
-        if status is not None:
-            query = db.query(cls).filter(
-                cls.status == status
-            ).order_by(
-                cls.date.desc()
-            )
-        elif wildcard:
-            query = db.query(cls).filter(or_(
+        if wildcard:
+            text_filter = or_(
+                cls.title.like(title, escape='\\'),
                 cls.src.like(title, escape='\\'),
                 cls.dest.like(title, escape='\\'),
-            )).order_by(
-                cls.date.desc()
             )
         else:
-            query = db.query(cls).filter(or_(
+            text_filter = or_(
                 cls.title.like(f'%{title}%'),
                 cls.src.like(f'%{title}%'),
                 cls.dest.like(f'%{title}%'),
-            )).order_by(
-                cls.date.desc()
             )
+        query = db.query(cls).filter(text_filter)
+        if status is not None:
+            query = query.filter(cls.status == status)
+        query = query.order_by(cls.date.desc())
 
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
@@ -101,27 +96,22 @@ class TransferHistory(Base):
     @async_db_query
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
                                   status: bool = None, wildcard: bool = False):
-        if status is not None:
-            query = select(cls).filter(
-                cls.status == status
-            ).order_by(
-                cls.date.desc()
-            )
-        elif wildcard:
-            query = select(cls).filter(or_(
+        if wildcard:
+            text_filter = or_(
+                cls.title.like(title, escape='\\'),
                 cls.src.like(title, escape='\\'),
                 cls.dest.like(title, escape='\\'),
-            )).order_by(
-                cls.date.desc()
             )
         else:
-            query = select(cls).filter(or_(
+            text_filter = or_(
                 cls.title.like(f'%{title}%'),
                 cls.src.like(f'%{title}%'),
                 cls.dest.like(f'%{title}%'),
-            )).order_by(
-                cls.date.desc()
             )
+        query = select(cls).filter(text_filter)
+        if status is not None:
+            query = query.filter(cls.status == status)
+        query = query.order_by(cls.date.desc())
 
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
@@ -247,42 +237,42 @@ class TransferHistory(Base):
     @classmethod
     @db_query
     def count_by_title(cls, db: Session, title: str, status: bool = None, wildcard: bool = False):
-        if status is not None:
-            return db.query(func.count(cls.id)).filter(cls.status == status).first()[0]
-        elif wildcard:
-            return db.query(func.count(cls.id)).filter(or_(
+        if wildcard:
+            text_filter = or_(
+                cls.title.like(title, escape='\\'),
                 cls.src.like(title, escape='\\'),
                 cls.dest.like(title, escape='\\'),
-            )).first()[0]
+            )
         else:
-            return db.query(func.count(cls.id)).filter(or_(
+            text_filter = or_(
                 cls.title.like(f'%{title}%'),
                 cls.src.like(f'%{title}%'),
-                cls.dest.like(f'%{title}%')
-            )).first()[0]
+                cls.dest.like(f'%{title}%'),
+            )
+        query = db.query(func.count(cls.id)).filter(text_filter)
+        if status is not None:
+            query = query.filter(cls.status == status)
+        return query.first()[0]
 
     @classmethod
     @async_db_query
     async def async_count_by_title(cls, db: AsyncSession, title: str, status: bool = None, wildcard: bool = False):
-        if status is not None:
-            result = await db.execute(
-                select(func.count(cls.id)).filter(cls.status == status)
-            )
-        elif wildcard:
-            result = await db.execute(
-                select(func.count(cls.id)).filter(or_(
-                    cls.src.like(title, escape='\\'),
-                    cls.dest.like(title, escape='\\'),
-                ))
+        if wildcard:
+            text_filter = or_(
+                cls.title.like(title, escape='\\'),
+                cls.src.like(title, escape='\\'),
+                cls.dest.like(title, escape='\\'),
             )
         else:
-            result = await db.execute(
-                select(func.count(cls.id)).filter(or_(
-                    cls.title.like(f'%{title}%'),
-                    cls.src.like(f'%{title}%'),
-                    cls.dest.like(f'%{title}%')
-                ))
+            text_filter = or_(
+                cls.title.like(f'%{title}%'),
+                cls.src.like(f'%{title}%'),
+                cls.dest.like(f'%{title}%'),
             )
+        stmt = select(func.count(cls.id)).filter(text_filter)
+        if status is not None:
+            stmt = stmt.filter(cls.status == status)
+        result = await db.execute(stmt)
         return result.scalar()
 
     @classmethod
