@@ -378,9 +378,10 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             if not resp:
                 break
             next_marker = resp.get("next_marker")
-            for item in resp.get("items", []):
+            current_items = resp.get("items") or []
+            for item in current_items:
                 items.append(self.__get_fileitem(item, parent=str(fileitem.path)))
-            if len(resp.get("items")) < 100:
+            if len(current_items) < 100:
                 break
         return items
 
