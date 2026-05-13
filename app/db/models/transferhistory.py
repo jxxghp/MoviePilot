@@ -68,11 +68,18 @@ class TransferHistory(Base):
     @classmethod
     @db_query
     def list_by_title(cls, db: Session, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
-                      status: bool = None):
+                      status: bool = None, wildcard: bool = False):
         if status is not None:
             query = db.query(cls).filter(
                 cls.status == status
             ).order_by(
+                cls.date.desc()
+            )
+        elif wildcard:
+            query = db.query(cls).filter(or_(
+                cls.src.like(title, escape='\\'),
+                cls.dest.like(title, escape='\\'),
+            )).order_by(
                 cls.date.desc()
             )
         else:
@@ -83,21 +90,28 @@ class TransferHistory(Base):
             )).order_by(
                 cls.date.desc()
             )
-        
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
             query = query.offset((page - 1) * count).limit(count)
-        
+
         return query.all()
 
     @classmethod
     @async_db_query
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
-                                  status: bool = None):
+                                  status: bool = None, wildcard: bool = False):
         if status is not None:
             query = select(cls).filter(
                 cls.status == status
             ).order_by(
+                cls.date.desc()
+            )
+        elif wildcard:
+            query = select(cls).filter(or_(
+                cls.src.like(title, escape='\\'),
+                cls.dest.like(title, escape='\\'),
+            )).order_by(
                 cls.date.desc()
             )
         else:
@@ -108,11 +122,11 @@ class TransferHistory(Base):
             )).order_by(
                 cls.date.desc()
             )
-        
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
             query = query.offset((page - 1) * count).limit(count)
-        
+
         result = await db.execute(query)
         return result.scalars().all()
 
@@ -232,9 +246,14 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def count_by_title(cls, db: Session, title: str, status: bool = None):
+    def count_by_title(cls, db: Session, title: str, status: bool = None, wildcard: bool = False):
         if status is not None:
             return db.query(func.count(cls.id)).filter(cls.status == status).first()[0]
+        elif wildcard:
+            return db.query(func.count(cls.id)).filter(or_(
+                cls.src.like(title, escape='\\'),
+                cls.dest.like(title, escape='\\'),
+            )).first()[0]
         else:
             return db.query(func.count(cls.id)).filter(or_(
                 cls.title.like(f'%{title}%'),
@@ -244,10 +263,17 @@ class TransferHistory(Base):
 
     @classmethod
     @async_db_query
-    async def async_count_by_title(cls, db: AsyncSession, title: str, status: bool = None):
+    async def async_count_by_title(cls, db: AsyncSession, title: str, status: bool = None, wildcard: bool = False):
         if status is not None:
             result = await db.execute(
                 select(func.count(cls.id)).filter(cls.status == status)
+            )
+        elif wildcard:
+            result = await db.execute(
+                select(func.count(cls.id)).filter(or_(
+                    cls.src.like(title, escape='\\'),
+                    cls.dest.like(title, escape='\\'),
+                ))
             )
         else:
             result = await db.execute(

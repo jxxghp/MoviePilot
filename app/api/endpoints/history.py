@@ -235,6 +235,14 @@ async def delete_download_history(
     return schemas.Response(success=True)
 
 
+def _glob_to_like(pattern: str) -> str:
+    """
+    将 glob 通配符模式转换为 SQL LIKE 模式（使用 \\ 作为转义字符）
+    """
+    result = pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return result.replace("*", "%").replace("?", "_")
+
+
 @router.get("/transfer", summary="查询整理记录", response_model=schemas.Response)
 async def transfer_history(
     title: Optional[str] = None,
@@ -245,7 +253,7 @@ async def transfer_history(
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    查询整理记录
+    查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）
     """
     if title == "失败":
         title = None
@@ -255,14 +263,23 @@ async def transfer_history(
         status = True
 
     if title:
-        words = jieba.cut(title, HMM=False)
-        title = "%".join(words)
-        total = await TransferHistory.async_count_by_title(
-            db, title=title, status=status
-        )
-        result = await TransferHistory.async_list_by_title(
-            db, title=title, page=page, count=count, status=status
-        )
+        if "*" in title or "?" in title:
+            like_pattern = _glob_to_like(title)
+            total = await TransferHistory.async_count_by_title(
+                db, title=like_pattern, status=status, wildcard=True
+            )
+            result = await TransferHistory.async_list_by_title(
+                db, title=like_pattern, page=page, count=count, status=status, wildcard=True
+            )
+        else:
+            words = jieba.cut(title, HMM=False)
+            like_pattern = "%".join(words)
+            total = await TransferHistory.async_count_by_title(
+                db, title=like_pattern, status=status
+            )
+            result = await TransferHistory.async_list_by_title(
+                db, title=like_pattern, page=page, count=count, status=status
+            )
     else:
         result = await TransferHistory.async_list_by_page(
             db, page=page, count=count, status=status

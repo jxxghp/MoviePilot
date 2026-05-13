@@ -1,4 +1,6 @@
+import fnmatch
 import math
+import re
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -88,17 +90,22 @@ def reset(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
 def list_files(
     fileitem: schemas.FileItem,
     sort: Optional[str] = "updated_at",
+    keyword: Optional[str] = None,
     _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     查询当前目录下所有目录和文件
     :param fileitem: 文件项
     :param sort: 排序方式，name:按名称排序，time:按修改时间排序
+    :param keyword: 通配符过滤，支持 * 和 ?，如 *.mkv、movie?.*
     :param _: token
     :return: 所有目录和文件
     """
     file_list = StorageChain().list_files(fileitem)
     if file_list:
+        if keyword:
+            _pat = re.compile(fnmatch.translate(keyword), re.IGNORECASE)
+            file_list = [f for f in file_list if _pat.match(f.name or "")]
         if sort == "name":
             file_list.sort(key=lambda x: StringUtils.natural_sort_key(x.name or ""))
         else:
