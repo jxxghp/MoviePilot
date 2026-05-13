@@ -63,12 +63,12 @@ def _sanitize_llm_test_error(message: str, api_key: Optional[str] = None) -> str
 
 @router.get("/models", summary="获取LLM模型列表", response_model=schemas.Response)
 async def get_llm_models(
-        provider: str,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        base_url_preset: Optional[str] = None,
-        force_refresh: Optional[bool] = False,
-        _: User = Depends(get_current_active_user_async),
+    provider: str,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    base_url_preset: Optional[str] = None,
+    force_refresh: Optional[bool] = False,
+    _: User = Depends(get_current_active_user_async),
 ):
     """
     获取指定 provider 的模型目录。
@@ -96,7 +96,7 @@ async def get_llm_models(
 
 @router.get("/providers", summary="获取LLM提供商目录", response_model=schemas.Response)
 async def get_llm_providers(
-        _: User = Depends(get_current_active_user_async),
+    _: User = Depends(get_current_active_user_async),
 ):
     """
     返回前端可直接渲染的 provider 目录。
@@ -114,9 +114,9 @@ async def get_llm_providers(
     response_model=schemas.Response,
 )
 async def start_llm_provider_auth(
-        payload: LlmProviderAuthStartRequest,
-        request: Request,
-        _: User = Depends(get_current_active_superuser_async),
+    payload: LlmProviderAuthStartRequest,
+    request: Request,
+    _: User = Depends(get_current_active_superuser_async),
 ):
     """
     启动 provider 授权会话。
@@ -125,7 +125,9 @@ async def start_llm_provider_auth(
         callback_url = None
         if payload.provider == "chatgpt" and payload.method == "browser_oauth":
             callback_url = str(
-                request.url_for("llm_provider_auth_callback", provider_id=payload.provider)
+                request.url_for(
+                    "llm_provider_auth_callback", provider_id=payload.provider
+                )
             )
         result = await LLMProviderManager().start_auth(
             payload.provider,
@@ -143,8 +145,8 @@ async def start_llm_provider_auth(
     response_model=schemas.Response,
 )
 async def get_llm_provider_auth_session(
-        session_id: str,
-        _: User = Depends(get_current_active_superuser_async),
+    session_id: str,
+    _: User = Depends(get_current_active_superuser_async),
 ):
     """
     查询授权会话状态。
@@ -162,8 +164,8 @@ async def get_llm_provider_auth_session(
     response_model=schemas.Response,
 )
 async def poll_llm_provider_auth_session(
-        session_id: str,
-        _: User = Depends(get_current_active_superuser_async),
+    session_id: str,
+    _: User = Depends(get_current_active_superuser_async),
 ):
     """
     轮询 device code / OAuth 会话状态。
@@ -181,8 +183,8 @@ async def poll_llm_provider_auth_session(
     response_model=schemas.Response,
 )
 async def delete_llm_provider_auth(
-        provider_id: str,
-        _: User = Depends(get_current_active_superuser_async),
+    provider_id: str,
+    _: User = Depends(get_current_active_superuser_async),
 ):
     """
     删除已保存的 provider 授权信息。
@@ -201,11 +203,11 @@ async def delete_llm_provider_auth(
     name="llm_provider_auth_callback",
 )
 async def llm_provider_auth_callback(
-        provider_id: str,
-        code: Optional[str] = None,
-        state: Optional[str] = None,
-        error: Optional[str] = None,
-        error_description: Optional[str] = None,
+    provider_id: str,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
 ):
     """
     处理需要浏览器回跳的 OAuth provider。
@@ -222,8 +224,8 @@ async def llm_provider_auth_callback(
 
 @router.post("/test", summary="测试LLM调用", response_model=schemas.Response)
 async def llm_test(
-        payload: Annotated[Optional[LlmTestRequest], Body()] = None,
-        _: User = Depends(get_current_active_superuser_async),
+    payload: Annotated[Optional[LlmTestRequest], Body()] = None,
+    _: User = Depends(get_current_active_superuser_async),
 ):
     """
     使用传入配置或当前已保存配置执行一次最小 LLM 调用。
@@ -250,9 +252,8 @@ async def llm_test(
     if not payload.enabled:
         return schemas.Response(success=False, message="请先启用智能助手", data=data)
 
-    if (
-            payload.provider not in {"chatgpt", "github-copilot"}
-            and (not payload.api_key or not payload.api_key.strip())
+    if payload.provider not in {"chatgpt", "github-copilot"} and (
+        not payload.api_key or not payload.api_key.strip()
     ):
         return schemas.Response(
             success=False,

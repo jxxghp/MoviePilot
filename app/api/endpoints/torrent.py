@@ -9,7 +9,10 @@ from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.models import User
-from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
+from app.db.user_oper import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+)
 from app.utils.crypto import HashUtils
 
 router = APIRouter()
@@ -35,35 +38,56 @@ async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
     torrent_data = []
     for domain, contexts in cache_info.items():
         for context in contexts:
-            torrent_hash = HashUtils.md5(f"{context.torrent_info.title}{context.torrent_info.description}")
-            torrent_data.append({
-                "hash": torrent_hash,
-                "domain": domain,
-                "title": context.torrent_info.title,
-                "description": context.torrent_info.description,
-                "size": context.torrent_info.size,
-                "pubdate": context.torrent_info.pubdate,
-                "site_name": context.torrent_info.site_name,
-                "media_name": context.media_info.title if context.media_info else "",
-                "media_year": context.media_info.year if context.media_info else "",
-                "media_type": context.media_info.type if context.media_info else "",
-                "season_episode": context.meta_info.season_episode if context.meta_info else "",
-                "resource_term": context.meta_info.resource_term if context.meta_info else "",
-                "enclosure": context.torrent_info.enclosure,
-                "page_url": context.torrent_info.page_url,
-                "poster_path": context.media_info.get_poster_image() if context.media_info else "",
-                "backdrop_path": context.media_info.get_backdrop_image() if context.media_info else ""
-            })
+            torrent_hash = HashUtils.md5(
+                f"{context.torrent_info.title}{context.torrent_info.description}"
+            )
+            torrent_data.append(
+                {
+                    "hash": torrent_hash,
+                    "domain": domain,
+                    "title": context.torrent_info.title,
+                    "description": context.torrent_info.description,
+                    "size": context.torrent_info.size,
+                    "pubdate": context.torrent_info.pubdate,
+                    "site_name": context.torrent_info.site_name,
+                    "media_name": context.media_info.title
+                    if context.media_info
+                    else "",
+                    "media_year": context.media_info.year if context.media_info else "",
+                    "media_type": context.media_info.type if context.media_info else "",
+                    "season_episode": context.meta_info.season_episode
+                    if context.meta_info
+                    else "",
+                    "resource_term": context.meta_info.resource_term
+                    if context.meta_info
+                    else "",
+                    "enclosure": context.torrent_info.enclosure,
+                    "page_url": context.torrent_info.page_url,
+                    "poster_path": context.media_info.get_poster_image()
+                    if context.media_info
+                    else "",
+                    "backdrop_path": context.media_info.get_backdrop_image()
+                    if context.media_info
+                    else "",
+                }
+            )
 
-    return schemas.Response(success=True, data={
-        "count": torrent_count,
-        "sites": len(cache_info),
-        "data": torrent_data
-    })
+    return schemas.Response(
+        success=True,
+        data={"count": torrent_count, "sites": len(cache_info), "data": torrent_data},
+    )
 
 
-@router.delete("/cache/{domain}/{torrent_hash}", summary="删除指定种子缓存", response_model=schemas.Response)
-async def delete_cache(domain: str, torrent_hash: str, _: User = Depends(get_current_active_superuser_async)):
+@router.delete(
+    "/cache/{domain}/{torrent_hash}",
+    summary="删除指定种子缓存",
+    response_model=schemas.Response,
+)
+async def delete_cache(
+    domain: str,
+    torrent_hash: str,
+    _: User = Depends(get_current_active_superuser_async),
+):
     """
     删除指定的种子缓存
     :param domain: 站点域名
@@ -83,8 +107,12 @@ async def delete_cache(domain: str, torrent_hash: str, _: User = Depends(get_cur
         # 查找并删除指定种子
         original_count = len(cache_data[domain])
         cache_data[domain] = [
-            context for context in cache_data[domain]
-            if HashUtils.md5(f"{context.torrent_info.title}{context.torrent_info.description}") != torrent_hash
+            context
+            for context in cache_data[domain]
+            if HashUtils.md5(
+                f"{context.torrent_info.title}{context.torrent_info.description}"
+            )
+            != torrent_hash
         ]
 
         if len(cache_data[domain]) == original_count:
@@ -128,15 +156,26 @@ def refresh_cache(_: User = Depends(get_current_active_superuser)):
         total_count = sum(len(torrents) for torrents in result.values())
         sites_count = len(result)
 
-        return schemas.Response(success=True, message=f"缓存刷新完成，共刷新 {sites_count} 个站点，{total_count} 个种子")
+        return schemas.Response(
+            success=True,
+            message=f"缓存刷新完成，共刷新 {sites_count} 个站点，{total_count} 个种子",
+        )
     except Exception as e:
         return schemas.Response(success=False, message=f"刷新失败：{str(e)}")
 
 
-@router.post("/cache/reidentify/{domain}/{torrent_hash}", summary="重新识别种子", response_model=schemas.Response)
-async def reidentify_cache(domain: str, torrent_hash: str,
-                           tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-                           _: User = Depends(get_current_active_superuser_async)):
+@router.post(
+    "/cache/reidentify/{domain}/{torrent_hash}",
+    summary="重新识别种子",
+    response_model=schemas.Response,
+)
+async def reidentify_cache(
+    domain: str,
+    torrent_hash: str,
+    tmdbid: Optional[int] = None,
+    doubanid: Optional[str] = None,
+    _: User = Depends(get_current_active_superuser_async),
+):
     """
     重新识别指定的种子
     :param domain: 站点域名
@@ -159,7 +198,12 @@ async def reidentify_cache(domain: str, torrent_hash: str,
         # 查找指定种子
         target_context = None
         for context in cache_data[domain]:
-            if HashUtils.md5(f"{context.torrent_info.title}{context.torrent_info.description}") == torrent_hash:
+            if (
+                HashUtils.md5(
+                    f"{context.torrent_info.title}{context.torrent_info.description}"
+                )
+                == torrent_hash
+            ):
                 target_context = context
                 break
 
@@ -167,10 +211,15 @@ async def reidentify_cache(domain: str, torrent_hash: str,
             return schemas.Response(success=False, message="未找到指定的种子")
 
         # 重新识别
-        meta = MetaInfo(title=target_context.torrent_info.title, subtitle=target_context.torrent_info.description)
+        meta = MetaInfo(
+            title=target_context.torrent_info.title,
+            subtitle=target_context.torrent_info.description,
+        )
         if tmdbid or doubanid:
             # 手动指定媒体信息
-            mediainfo = await media_chain.async_recognize_media(meta=meta, tmdbid=tmdbid, doubanid=doubanid)
+            mediainfo = await media_chain.async_recognize_media(
+                meta=meta, tmdbid=tmdbid, doubanid=doubanid
+            )
         else:
             # 自动重新识别
             mediainfo = await media_chain.async_recognize_by_meta(meta)
@@ -188,10 +237,16 @@ async def reidentify_cache(domain: str, torrent_hash: str,
         # 保存更新后的缓存
         await torrents_chain.async_save_cache(cache_data, TorrentsChain().cache_file)
 
-        return schemas.Response(success=True, message="重新识别完成", data={
-            "media_name": mediainfo.title if mediainfo else "",
-            "media_year": mediainfo.year if mediainfo else "",
-            "media_type": mediainfo.type.value if mediainfo and mediainfo.type else ""
-        })
+        return schemas.Response(
+            success=True,
+            message="重新识别完成",
+            data={
+                "media_name": mediainfo.title if mediainfo else "",
+                "media_year": mediainfo.year if mediainfo else "",
+                "media_type": mediainfo.type.value
+                if mediainfo and mediainfo.type
+                else "",
+            },
+        )
     except Exception as e:
         return schemas.Response(success=False, message=f"重新识别失败：{str(e)}")

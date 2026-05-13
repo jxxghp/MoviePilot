@@ -15,7 +15,6 @@ from app.utils.crypto import CryptoJsUtils, HashUtils
 
 
 class GzipRequest(Request):
-
     async def body(self) -> bytes:
         if not hasattr(self, "_body"):
             body = await super().body()
@@ -26,7 +25,6 @@ class GzipRequest(Request):
 
 
 class GzipRoute(APIRoute):
-
     def get_route_handler(self) -> Callable:
         original_route_handler = super().get_route_handler()
 
@@ -46,9 +44,11 @@ async def verify_server_enabled():
     return True
 
 
-cookie_router = APIRouter(route_class=GzipRoute,
-                          tags=["servcookie"],
-                          dependencies=[Depends(verify_server_enabled)])
+cookie_router = APIRouter(
+    route_class=GzipRoute,
+    tags=["servcookie"],
+    dependencies=[Depends(verify_server_enabled)],
+)
 
 
 @cookie_router.get("/", response_class=PlainTextResponse)
@@ -95,8 +95,9 @@ async def load_encrypt_data(uuid: str) -> Dict[str, Any]:
     return data
 
 
-def get_decrypted_cookie_data(uuid: str, password: str,
-                              encrypted: str) -> Optional[Dict[str, Any]]:
+def get_decrypted_cookie_data(
+    uuid: str, password: str, encrypted: str
+) -> Optional[Dict[str, Any]]:
     """
     加载本地加密数据并解密为Cookie
     """
@@ -118,7 +119,8 @@ def get_decrypted_cookie_data(uuid: str, password: str,
 
 @cookie_router.get("/get/{uuid}")
 async def get_cookie(
-        uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")]):
+    uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
+):
     """
     GET 下载加密数据
     """
@@ -127,8 +129,9 @@ async def get_cookie(
 
 @cookie_router.post("/get/{uuid}")
 async def post_cookie(
-        uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
-        request: Optional[schemas.CookiePassword] = Body(None)):
+    uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
+    request: Optional[schemas.CookiePassword] = Body(None),
+):
     """
     POST 下载加密数据
     """

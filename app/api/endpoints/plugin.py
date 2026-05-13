@@ -16,7 +16,10 @@ from app.core.plugin import PluginManager
 from app.core.security import verify_apikey, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_superuser, get_current_active_superuser_async
+from app.db.user_oper import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+)
 from app.factory import app
 from app.helper.plugin import PluginHelper
 from app.log import logger
@@ -76,7 +79,10 @@ def _update_plugin_api_routes(plugin_id: Optional[str], action: str):
                 auth_mode = api.pop("auth", "apikey")
                 dependencies = api.setdefault("dependencies", [])
                 if not allow_anonymous:
-                    if auth_mode == "bear" and Depends(verify_token) not in dependencies:
+                    if (
+                        auth_mode == "bear"
+                        and Depends(verify_token) not in dependencies
+                    ):
                         dependencies.append(Depends(verify_token))
                     elif Depends(verify_apikey) not in dependencies:
                         dependencies.append(Depends(verify_apikey))
@@ -140,8 +146,11 @@ def register_plugin(plugin_id: str):
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-async def all_plugins(_: User = Depends(get_current_active_superuser_async),
-                      state: Optional[str] = "all", force: bool = False) -> List[schemas.Plugin]:
+async def all_plugins(
+    _: User = Depends(get_current_active_superuser_async),
+    state: Optional[str] = "all",
+    force: bool = False,
+) -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
@@ -159,8 +168,11 @@ async def all_plugins(_: User = Depends(get_current_active_superuser_async),
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     # 在线插件
     online_plugins = await plugin_manager.async_get_online_plugins(force)
-    candidate_plugins = plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, []) \
-        if online_plugins or local_repo_plugins else []
+    candidate_plugins = (
+        plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, [])
+        if online_plugins or local_repo_plugins
+        else []
+    )
     if not candidate_plugins:
         # 没有获取在线插件
         if state == "market":
@@ -208,8 +220,12 @@ async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return await PluginHelper().async_get_statistic()
 
 
-@router.get("/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response)
-def reload_plugin(plugin_id: str, _: User = Depends(get_current_active_superuser)) -> Any:
+@router.get(
+    "/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response
+)
+def reload_plugin(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
     """
     重新加载插件
     """
@@ -221,10 +237,12 @@ def reload_plugin(plugin_id: str, _: User = Depends(get_current_active_superuser
 
 
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
-async def install(plugin_id: str,
-                  repo_url: Optional[str] = "",
-                  force: Optional[bool] = False,
-                  _: User = Depends(get_current_active_superuser_async)) -> Any:
+async def install(
+    plugin_id: str,
+    repo_url: Optional[str] = "",
+    force: Optional[bool] = False,
+    _: User = Depends(get_current_active_superuser_async),
+) -> Any:
     """
     安装插件
     """
@@ -238,21 +256,23 @@ async def install(plugin_id: str,
         # 插件不存在或需要强制安装，下载安装并注册插件
         if repo_url:
             state, msg = await plugin_helper.async_install(
-                pid=plugin_id,
-                repo_url=repo_url,
-                force_install=force
+                pid=plugin_id, repo_url=repo_url, force_install=force
             )
             # 安装失败则直接响应
             if not state:
                 return schemas.Response(success=False, message=msg)
         else:
             # repo_url 为空时，也直接响应
-            return schemas.Response(success=False, message="没有传入仓库地址，无法正确安装插件，请检查配置")
+            return schemas.Response(
+                success=False, message="没有传入仓库地址，无法正确安装插件，请检查配置"
+            )
     # 安装插件
     if plugin_id not in install_plugins:
         install_plugins.append(plugin_id)
         # 保存设置
-        await SystemConfigOper().async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+        await SystemConfigOper().async_set(
+            SystemConfigKey.UserInstalledPlugins, install_plugins
+        )
     # 重新加载插件
     await run_in_threadpool(reload_plugin, plugin_id)
     return schemas.Response(success=True)
@@ -268,7 +288,11 @@ async def remotes(token: str) -> Any:
     return PluginManager().get_plugin_remotes()
 
 
-@router.get("/sidebar_nav", summary="获取插件侧栏导航项", response_model=List[schemas.PluginSidebarNavItem])
+@router.get(
+    "/sidebar_nav",
+    summary="获取插件侧栏导航项",
+    response_model=List[schemas.PluginSidebarNavItem],
+)
 def plugin_sidebar_nav(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     聚合已启用 Vue 插件声明的侧栏入口（get_sidebar_nav），供前端主界面侧栏展示。
@@ -277,15 +301,19 @@ def plugin_sidebar_nav(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/form/{plugin_id}", summary="获取插件表单页面")
-def plugin_form(plugin_id: str,
-                _: User = Depends(get_current_active_superuser)) -> dict:
+def plugin_form(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> dict:
     """
     根据插件ID获取插件配置表单或Vue组件URL
     """
     plugin_manager = PluginManager()
     plugin_instance = plugin_manager.running_plugins.get(plugin_id)
     if not plugin_instance:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {plugin_id} 不存在或未加载")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"插件 {plugin_id} 不存在或未加载",
+        )
 
     # 渲染模式
     render_mode, _ = plugin_instance.get_render_mode()
@@ -294,7 +322,7 @@ def plugin_form(plugin_id: str,
         return {
             "render_mode": render_mode,
             "conf": conf,
-            "model": plugin_manager.get_plugin_config(plugin_id) or model
+            "model": plugin_manager.get_plugin_config(plugin_id) or model,
         }
     except Exception as e:
         logger.error(f"插件 {plugin_id} 调用方法 get_form 出错: {str(e)}")
@@ -302,29 +330,33 @@ def plugin_form(plugin_id: str,
 
 
 @router.get("/page/{plugin_id}", summary="获取插件数据页面")
-def plugin_page(plugin_id: str, _: User = Depends(get_current_active_superuser)) -> dict:
+def plugin_page(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> dict:
     """
     根据插件ID获取插件数据页面
     """
     plugin_instance = PluginManager().running_plugins.get(plugin_id)
     if not plugin_instance:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {plugin_id} 不存在或未加载")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"插件 {plugin_id} 不存在或未加载",
+        )
 
     # 渲染模式
     render_mode, _ = plugin_instance.get_render_mode()
     try:
         page = plugin_instance.get_page()
-        return {
-            "render_mode": render_mode,
-            "page": page or []
-        }
+        return {"render_mode": render_mode, "page": page or []}
     except Exception as e:
         logger.error(f"插件 {plugin_id} 调用方法 get_page 出错: {str(e)}")
     return {}
 
 
 @router.get("/dashboard/meta", summary="获取所有插件仪表板元信息")
-def plugin_dashboard_meta(_: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+def plugin_dashboard_meta(
+    _: schemas.TokenPayload = Depends(verify_token),
+) -> List[dict]:
     """
     获取所有插件仪表板元信息
     """
@@ -332,8 +364,12 @@ def plugin_dashboard_meta(_: schemas.TokenPayload = Depends(verify_token)) -> Li
 
 
 @router.get("/dashboard/{plugin_id}/{key}", summary="获取插件仪表板配置")
-def plugin_dashboard_by_key(plugin_id: str, key: str, user_agent: Annotated[str | None, Header()] = None,
-                            _: schemas.TokenPayload = Depends(verify_token)) -> Optional[schemas.PluginDashboard]:
+def plugin_dashboard_by_key(
+    plugin_id: str,
+    key: str,
+    user_agent: Annotated[str | None, Header()] = None,
+    _: schemas.TokenPayload = Depends(verify_token),
+) -> Optional[schemas.PluginDashboard]:
     """
     根据插件ID获取插件仪表板
     """
@@ -341,17 +377,23 @@ def plugin_dashboard_by_key(plugin_id: str, key: str, user_agent: Annotated[str 
 
 
 @router.get("/dashboard/{plugin_id}", summary="获取插件仪表板配置")
-def plugin_dashboard(plugin_id: str, user_agent: Annotated[str | None, Header()] = None,
-                     _: schemas.TokenPayload = Depends(verify_token)) -> schemas.PluginDashboard:
+def plugin_dashboard(
+    plugin_id: str,
+    user_agent: Annotated[str | None, Header()] = None,
+    _: schemas.TokenPayload = Depends(verify_token),
+) -> schemas.PluginDashboard:
     """
     根据插件ID获取插件仪表板
     """
     return plugin_dashboard_by_key(plugin_id, "", user_agent)
 
 
-@router.get("/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response)
-def reset_plugin(plugin_id: str,
-                 _: User = Depends(get_current_active_superuser)) -> Any:
+@router.get(
+    "/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response
+)
+def reset_plugin(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
     """
     根据插件ID重置插件配置及数据
     """
@@ -372,42 +414,54 @@ async def plugin_static_file(plugin_id: str, filepath: str):
     """
     # 基础安全检查
     if ".." in filepath or ".." in plugin_id:
-        logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
+        logger.warning(
+            f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}"
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    plugin_base_dir = AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / plugin_id.lower()
-    plugin_file_path = plugin_base_dir / filepath.lstrip('/')
+    plugin_base_dir = (
+        AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / plugin_id.lower()
+    )
+    plugin_file_path = plugin_base_dir / filepath.lstrip("/")
 
     try:
         resolved_base = await plugin_base_dir.resolve()
         resolved_file = await plugin_file_path.resolve()
     except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path"
+        )
 
     if not resolved_file.is_relative_to(resolved_base):
-        logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
+        logger.warning(
+            f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}"
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     if not await plugin_file_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{plugin_file_path} 不存在")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"{plugin_file_path} 不存在"
+        )
     if not await plugin_file_path.is_file():
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{plugin_file_path} 不是文件")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=f"{plugin_file_path} 不是文件"
+        )
 
     # 判断 MIME 类型
     response_type, _ = mimetypes.guess_type(str(plugin_file_path))
     suffix = plugin_file_path.suffix.lower()
     # 强制修正 .mjs 和 .js 的 MIME 类型
-    if suffix in ['.js', '.mjs']:
-        response_type = 'application/javascript'
-    elif suffix == '.css' and not response_type:  # 如果 guess_type 没猜对 css，也修正
-        response_type = 'text/css'
+    if suffix in [".js", ".mjs"]:
+        response_type = "application/javascript"
+    elif suffix == ".css" and not response_type:  # 如果 guess_type 没猜对 css，也修正
+        response_type = "text/css"
     elif not response_type:  # 对于其他猜不出的类型
-        response_type = 'application/octet-stream'
+        response_type = "application/octet-stream"
 
     try:
         # 异步生成器函数，用于流式读取文件
         async def file_generator():
-            async with aiofiles.open(plugin_file_path, mode='rb') as file:
+            async with aiofiles.open(plugin_file_path, mode="rb") as file:
                 # 8KB 块大小
                 while chunk := await file.read(8192):
                     yield chunk
@@ -415,15 +469,22 @@ async def plugin_static_file(plugin_id: str, filepath: str):
         return StreamingResponse(
             file_generator(),
             media_type=response_type,
-            headers={"Content-Disposition": f"inline; filename={plugin_file_path.name}"}
+            headers={
+                "Content-Disposition": f"inline; filename={plugin_file_path.name}"
+            },
         )
     except Exception as e:
-        logger.error(f"Error creating/sending StreamingResponse for {plugin_file_path}: {e}", exc_info=True)
+        logger.error(
+            f"Error creating/sending StreamingResponse for {plugin_file_path}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @router.get("/folders", summary="获取插件文件夹配置", response_model=dict)
-async def get_plugin_folders(_: User = Depends(get_current_active_superuser_async)) -> dict:
+async def get_plugin_folders(
+    _: User = Depends(get_current_active_superuser_async),
+) -> dict:
     """
     获取插件文件夹分组配置
     """
@@ -436,7 +497,9 @@ async def get_plugin_folders(_: User = Depends(get_current_active_superuser_asyn
 
 
 @router.post("/folders", summary="保存插件文件夹配置", response_model=schemas.Response)
-async def save_plugin_folders(folders: dict, _: User = Depends(get_current_active_superuser_async)) -> Any:
+async def save_plugin_folders(
+    folders: dict, _: User = Depends(get_current_active_superuser_async)
+) -> Any:
     """
     保存插件文件夹分组配置
     """
@@ -448,9 +511,12 @@ async def save_plugin_folders(folders: dict, _: User = Depends(get_current_activ
         return schemas.Response(success=False, message=str(e))
 
 
-@router.post("/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response)
-async def create_plugin_folder(folder_name: str,
-                               _: User = Depends(get_current_active_superuser_async)) -> Any:
+@router.post(
+    "/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response
+)
+async def create_plugin_folder(
+    folder_name: str, _: User = Depends(get_current_active_superuser_async)
+) -> Any:
     """
     创建新的插件文件夹
     """
@@ -458,14 +524,19 @@ async def create_plugin_folder(folder_name: str,
     if folder_name not in folders:
         folders[folder_name] = []
         SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
-        return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 创建成功")
+        return schemas.Response(
+            success=True, message=f"文件夹 '{folder_name}' 创建成功"
+        )
     else:
         return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 已存在")
 
 
-@router.delete("/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response)
-async def delete_plugin_folder(folder_name: str,
-                               _: User = Depends(get_current_active_superuser_async)) -> Any:
+@router.delete(
+    "/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response
+)
+async def delete_plugin_folder(
+    folder_name: str, _: User = Depends(get_current_active_superuser_async)
+) -> Any:
     """
     删除插件文件夹
     """
@@ -473,27 +544,40 @@ async def delete_plugin_folder(folder_name: str,
     if folder_name in folders:
         del folders[folder_name]
         await SystemConfigOper().async_set(SystemConfigKey.PluginFolders, folders)
-        return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 删除成功")
+        return schemas.Response(
+            success=True, message=f"文件夹 '{folder_name}' 删除成功"
+        )
     else:
         return schemas.Response(success=False, message=f"文件夹 '{folder_name}' 不存在")
 
 
-@router.put("/folders/{folder_name}/plugins", summary="更新文件夹中的插件", response_model=schemas.Response)
-async def update_folder_plugins(folder_name: str, plugin_ids: List[str],
-                                _: User = Depends(get_current_active_superuser_async)) -> Any:
+@router.put(
+    "/folders/{folder_name}/plugins",
+    summary="更新文件夹中的插件",
+    response_model=schemas.Response,
+)
+async def update_folder_plugins(
+    folder_name: str,
+    plugin_ids: List[str],
+    _: User = Depends(get_current_active_superuser_async),
+) -> Any:
     """
     更新指定文件夹中的插件列表
     """
     folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
     folders[folder_name] = plugin_ids
     await SystemConfigOper().async_set(SystemConfigKey.PluginFolders, folders)
-    return schemas.Response(success=True, message=f"文件夹 '{folder_name}' 中的插件已更新")
+    return schemas.Response(
+        success=True, message=f"文件夹 '{folder_name}' 中的插件已更新"
+    )
 
 
-@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response)
-def clone_plugin(plugin_id: str,
-                 clone_data: dict,
-                 _: User = Depends(get_current_active_superuser)) -> Any:
+@router.post(
+    "/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response
+)
+def clone_plugin(
+    plugin_id: str, clone_data: dict, _: User = Depends(get_current_active_superuser)
+) -> Any:
     """
     创建插件分身
     """
@@ -504,7 +588,7 @@ def clone_plugin(plugin_id: str,
             name=clone_data.get("name", ""),
             description=clone_data.get("description", ""),
             version=clone_data.get("version", ""),
-            icon=clone_data.get("icon", "")
+            icon=clone_data.get("icon", ""),
         )
 
         if success:
@@ -521,8 +605,9 @@ def clone_plugin(plugin_id: str,
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
-async def plugin_config(plugin_id: str,
-                        _: User = Depends(get_current_active_superuser_async)) -> dict:
+async def plugin_config(
+    plugin_id: str, _: User = Depends(get_current_active_superuser_async)
+) -> dict:
     """
     根据插件ID获取插件配置信息
     """
@@ -530,8 +615,9 @@ async def plugin_config(plugin_id: str,
 
 
 @router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
-def set_plugin_config(plugin_id: str, conf: dict,
-                      _: User = Depends(get_current_active_superuser)) -> Any:
+def set_plugin_config(
+    plugin_id: str, conf: dict, _: User = Depends(get_current_active_superuser)
+) -> Any:
     """
     更新插件配置
     """
@@ -546,8 +632,9 @@ def set_plugin_config(plugin_id: str, conf: dict,
 
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
-def uninstall_plugin(plugin_id: str,
-                     _: User = Depends(get_current_active_superuser)) -> Any:
+def uninstall_plugin(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
     """
     卸载插件
     """
@@ -599,9 +686,9 @@ def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):
         # 查找原插件所在的文件夹
         target_folder = None
         for folder_name, folder_data in folders.items():
-            if isinstance(folder_data, dict) and 'plugins' in folder_data:
+            if isinstance(folder_data, dict) and "plugins" in folder_data:
                 # 新格式：{"plugins": [...], "order": ..., "icon": ...}
-                if original_plugin_id in folder_data['plugins']:
+                if original_plugin_id in folder_data["plugins"]:
                     target_folder = folder_name
                     break
             elif isinstance(folder_data, list):
@@ -613,21 +700,27 @@ def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):
         # 如果找到了原插件所在的文件夹，则将分身插件也添加到该文件夹中
         if target_folder:
             folder_data = folders[target_folder]
-            if isinstance(folder_data, dict) and 'plugins' in folder_data:
+            if isinstance(folder_data, dict) and "plugins" in folder_data:
                 # 新格式
-                if clone_plugin_id not in folder_data['plugins']:
-                    folder_data['plugins'].append(clone_plugin_id)
-                    logger.info(f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中")
+                if clone_plugin_id not in folder_data["plugins"]:
+                    folder_data["plugins"].append(clone_plugin_id)
+                    logger.info(
+                        f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中"
+                    )
             elif isinstance(folder_data, list):
                 # 旧格式
                 if clone_plugin_id not in folder_data:
                     folder_data.append(clone_plugin_id)
-                    logger.info(f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中")
+                    logger.info(
+                        f"已将分身插件 {clone_plugin_id} 添加到文件夹 '{target_folder}' 中"
+                    )
 
             # 保存更新后的文件夹配置
             config_oper.set(SystemConfigKey.PluginFolders, folders)
         else:
-            logger.info(f"原插件 {original_plugin_id} 不在任何文件夹中，分身插件 {clone_plugin_id} 将保持独立")
+            logger.info(
+                f"原插件 {original_plugin_id} 不在任何文件夹中，分身插件 {clone_plugin_id} 将保持独立"
+            )
 
     except Exception as e:
         logger.error(f"处理插件文件夹时出错：{str(e)}")
@@ -649,10 +742,10 @@ def _remove_plugin_from_folders(plugin_id: str):
 
         # 遍历所有文件夹，移除指定插件
         for folder_name, folder_data in folders.items():
-            if isinstance(folder_data, dict) and 'plugins' in folder_data:
+            if isinstance(folder_data, dict) and "plugins" in folder_data:
                 # 新格式：{"plugins": [...], "order": ..., "icon": ...}
-                if plugin_id in folder_data['plugins']:
-                    folder_data['plugins'].remove(plugin_id)
+                if plugin_id in folder_data["plugins"]:
+                    folder_data["plugins"].remove(plugin_id)
                     logger.info(f"已从文件夹 '{folder_name}' 中移除插件 {plugin_id}")
                     modified = True
             elif isinstance(folder_data, list):

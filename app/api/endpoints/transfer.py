@@ -21,8 +21,9 @@ router = APIRouter()
 
 
 @router.get("/name", summary="查询整理后的名称", response_model=schemas.Response)
-def query_name(path: str, filetype: str,
-               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def query_name(
+    path: str, filetype: str, _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
     """
     查询整理后的名称
     :param path: 文件路径
@@ -35,7 +36,9 @@ def query_name(path: str, filetype: str,
     )
     if not context or not context.media_info:
         return schemas.Response(success=False, message="未识别到媒体信息")
-    new_path = TransferChain().recommend_name(meta=context.meta_info, mediainfo=context.media_info)
+    new_path = TransferChain().recommend_name(
+        meta=context.meta_info, mediainfo=context.media_info
+    )
     if not new_path:
         return schemas.Response(success=False, message="未识别到新名称")
     if filetype == "dir":
@@ -54,9 +57,7 @@ def query_name(path: str, filetype: str,
                 new_name = parents[0].name
     else:
         new_name = Path(new_path).name
-    return schemas.Response(success=True, data={
-        "name": new_name
-    })
+    return schemas.Response(success=True, data={"name": new_name})
 
 
 @router.get("/queue", summary="查询整理队列", response_model=List[schemas.TransferJob])
@@ -68,8 +69,12 @@ async def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return TransferChain().get_queue_tasks()
 
 
-@router.delete("/queue", summary="从整理队列中删除任务", response_model=schemas.Response)
-async def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.delete(
+    "/queue", summary="从整理队列中删除任务", response_model=schemas.Response
+)
+async def remove_queue(
+    fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
     """
     查询整理队列
     :param fileitem: 文件项
@@ -82,10 +87,12 @@ async def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Dep
 
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
-def manual_transfer(transer_item: ManualTransferItem,
-                    background: Optional[bool] = False,
-                    db: Session = Depends(get_db),
-                    _: User = Depends(get_current_active_superuser)) -> Any:
+def manual_transfer(
+    transer_item: ManualTransferItem,
+    background: Optional[bool] = False,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
     :param transer_item: 手工整理项
@@ -101,7 +108,9 @@ def manual_transfer(transer_item: ManualTransferItem,
         # 查询历史记录
         history: TransferHistory = TransferHistory.get(db, transer_item.logid)
         if not history:
-            return schemas.Response(success=False, message=f"整理记录不存在，ID：{transer_item.logid}")
+            return schemas.Response(
+                success=False, message=f"整理记录不存在，ID：{transer_item.logid}"
+            )
         # 强制转移
         force = True
         downloader = history.downloader
@@ -118,21 +127,38 @@ def manual_transfer(transer_item: ManualTransferItem,
                 dest_fileitem = FileItem(**history.dest_fileitem)
                 state = StorageChain().delete_media_file(dest_fileitem)
                 if not state:
-                    return schemas.Response(success=False, message=f"{dest_fileitem.path} 删除失败")
+                    return schemas.Response(
+                        success=False, message=f"{dest_fileitem.path} 删除失败"
+                    )
 
         # 从历史数据获取信息
         if transer_item.from_history:
-            transer_item.type_name = history.type if history.type else transer_item.type_name
-            transer_item.tmdbid = int(history.tmdbid) if history.tmdbid else transer_item.tmdbid
-            transer_item.doubanid = str(history.doubanid) if history.doubanid else transer_item.doubanid
-            transer_item.season = int(str(history.seasons).replace("S", "")) if history.seasons else transer_item.season
-            transer_item.episode_group = history.episode_group or transer_item.episode_group
+            transer_item.type_name = (
+                history.type if history.type else transer_item.type_name
+            )
+            transer_item.tmdbid = (
+                int(history.tmdbid) if history.tmdbid else transer_item.tmdbid
+            )
+            transer_item.doubanid = (
+                str(history.doubanid) if history.doubanid else transer_item.doubanid
+            )
+            transer_item.season = (
+                int(str(history.seasons).replace("S", ""))
+                if history.seasons
+                else transer_item.season
+            )
+            transer_item.episode_group = (
+                history.episode_group or transer_item.episode_group
+            )
             if history.episodes:
                 if "-" in str(history.episodes):
                     # E01-E03多集合并
                     episode_start, episode_end = str(history.episodes).split("-")
                     episode_list: list[int] = []
-                    for i in range(int(episode_start.replace("E", "")), int(episode_end.replace("E", "")) + 1):
+                    for i in range(
+                        int(episode_start.replace("E", "")),
+                        int(episode_end.replace("E", "")) + 1,
+                    ):
                         episode_list.append(i)
                     transer_item.episode_detail = ",".join(str(e) for e in episode_list)
                 else:
@@ -151,11 +177,17 @@ def manual_transfer(transer_item: ManualTransferItem,
         try:
             mtype = MediaType(type_name)
         except ValueError:
-            return schemas.Response(success=False, message=f"不支持的媒体类型：{type_name}")
+            return schemas.Response(
+                success=False, message=f"不支持的媒体类型：{type_name}"
+            )
     # 自定义格式
     epformat = None
-    if transer_item.episode_offset or transer_item.episode_part \
-            or transer_item.episode_detail or transer_item.episode_format:
+    if (
+        transer_item.episode_offset
+        or transer_item.episode_part
+        or transer_item.episode_detail
+        or transer_item.episode_format
+    ):
         epformat = schemas.EpisodeFormat(
             format=transer_item.episode_format,
             detail=transer_item.episode_detail,

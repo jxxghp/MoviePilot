@@ -33,35 +33,32 @@ def list_exposed_tools():
     获取 MCP 可见工具列表
     """
     return [
-        tool for tool in moviepilot_tool_manager.list_tools()
+        tool
+        for tool in moviepilot_tool_manager.list_tools()
         if tool.name not in MCP_HIDDEN_TOOLS
     ]
 
 
-def create_jsonrpc_response(request_id: Union[str, int, None], result: Any) -> Dict[str, Any]:
+def create_jsonrpc_response(
+    request_id: Union[str, int, None], result: Any
+) -> Dict[str, Any]:
     """
     创建 JSON-RPC 成功响应
     """
-    response = {
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "result": result
-    }
+    response = {"jsonrpc": "2.0", "id": request_id, "result": result}
     return response
 
 
-def create_jsonrpc_error(request_id: Union[str, int, None], code: int, message: str, data: Any = None) -> Dict[
-    str, Any]:
+def create_jsonrpc_error(
+    request_id: Union[str, int, None], code: int, message: str, data: Any = None
+) -> Dict[str, Any]:
     """
     创建 JSON-RPC 错误响应
     """
     error = {
         "jsonrpc": "2.0",
         "id": request_id,
-        "error": {
-            "code": code,
-            "message": message
-        }
+        "error": {"code": code, "message": message},
     }
     if data is not None:
         error["error"]["data"] = data
@@ -70,12 +67,11 @@ def create_jsonrpc_error(request_id: Union[str, int, None], code: int, message: 
 
 @router.post("", summary="MCP JSON-RPC 端点", response_model=None)
 async def mcp_jsonrpc(
-        request: Request,
-        _: Annotated[str, Depends(verify_apikey)] = None
+    request: Request, _: Annotated[str, Depends(verify_apikey)] = None
 ) -> Union[JSONResponse, Response]:
     """
     MCP 标准 JSON-RPC 2.0 端点
-    
+
     处理所有 MCP 协议消息（初始化、工具列表、工具调用等）
     """
     try:
@@ -84,14 +80,14 @@ async def mcp_jsonrpc(
         logger.error(f"解析请求体失败: {e}")
         return JSONResponse(
             status_code=400,
-            content=create_jsonrpc_error(None, -32700, "Parse error", str(e))
+            content=create_jsonrpc_error(None, -32700, "Parse error", str(e)),
         )
 
     # 验证 JSON-RPC 格式
     if not isinstance(body, dict) or body.get("jsonrpc") != "2.0":
         return JSONResponse(
             status_code=400,
-            content=create_jsonrpc_error(body.get("id"), -32600, "Invalid Request")
+            content=create_jsonrpc_error(body.get("id"), -32600, "Invalid Request"),
         )
 
     method = body.get("method")
@@ -114,7 +110,7 @@ async def mcp_jsonrpc(
             else:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "initialized must be a notification"}
+                    content={"error": "initialized must be a notification"},
                 )
 
         # 处理工具列表请求
@@ -134,20 +130,22 @@ async def mcp_jsonrpc(
         # 未知方法
         else:
             return JSONResponse(
-                content=create_jsonrpc_error(request_id, -32601, f"Method not found: {method}")
+                content=create_jsonrpc_error(
+                    request_id, -32601, f"Method not found: {method}"
+                )
             )
 
     except ValueError as e:
         logger.warning(f"MCP 请求参数错误: {e}")
         return JSONResponse(
             status_code=400,
-            content=create_jsonrpc_error(request_id, -32602, "Invalid params", str(e))
+            content=create_jsonrpc_error(request_id, -32602, "Invalid params", str(e)),
         )
     except Exception as e:
         logger.error(f"处理 MCP 请求失败: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content=create_jsonrpc_error(request_id, -32603, "Internal error", str(e))
+            content=create_jsonrpc_error(request_id, -32603, "Internal error", str(e)),
         )
 
 
@@ -158,7 +156,9 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
     protocol_version = params.get("protocolVersion")
     client_info = params.get("clientInfo", {})
 
-    logger.info(f"MCP 初始化请求: 客户端={client_info.get('name')}, 协议版本={protocol_version}")
+    logger.info(
+        f"MCP 初始化请求: 客户端={client_info.get('name')}, 协议版本={protocol_version}"
+    )
 
     # 版本协商：选择客户端和服务器都支持的版本
     negotiated_version = MCP_PROTOCOL_VERSION
@@ -168,7 +168,9 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"使用客户端协议版本: {negotiated_version}")
     else:
         # 客户端版本不支持，使用服务器默认版本
-        logger.warning(f"协议版本不匹配: 客户端={protocol_version}, 使用服务器版本={negotiated_version}")
+        logger.warning(
+            f"协议版本不匹配: 客户端={protocol_version}, 使用服务器版本={negotiated_version}"
+        )
 
     return {
         "protocolVersion": negotiated_version,
@@ -176,14 +178,14 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
             "tools": {
                 "listChanged": False  # 暂不支持工具列表变更通知
             },
-            "logging": {}
+            "logging": {},
         },
         "serverInfo": {
             "name": "MoviePilot",
             "version": APP_VERSION,
             "description": "MoviePilot MCP Server - 电影自动化管理工具",
         },
-        "instructions": "MoviePilot MCP 服务器，提供媒体管理、订阅、下载等工具。"
+        "instructions": "MoviePilot MCP 服务器，提供媒体管理、订阅、下载等工具。",
     }
 
 
@@ -199,13 +201,11 @@ async def handle_tools_list() -> Dict[str, Any]:
         mcp_tool = {
             "name": tool.name,
             "description": tool.description,
-            "inputSchema": tool.input_schema
+            "inputSchema": tool.input_schema,
         }
         mcp_tools.append(mcp_tool)
 
-    return {
-        "tools": mcp_tools
-    }
+    return {"tools": mcp_tools}
 
 
 async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -224,30 +224,18 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
 
         result_text = await moviepilot_tool_manager.call_tool(tool_name, arguments)
 
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": result_text
-                }
-            ]
-        }
+        return {"content": [{"type": "text", "text": result_text}]}
     except Exception as e:
         logger.error(f"工具调用失败: {tool_name}, 错误: {e}", exc_info=True)
         return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"错误: {str(e)}"
-                }
-            ],
-            "isError": True
+            "content": [{"type": "text", "text": f"错误: {str(e)}"}],
+            "isError": True,
         }
 
 
 @router.delete("", summary="终止 MCP 会话", response_model=None)
 async def delete_mcp_session(
-        _: Annotated[str, Depends(verify_apikey)] = None
+    _: Annotated[str, Depends(verify_apikey)] = None,
 ) -> Union[JSONResponse, Response]:
     """
     终止 MCP 会话（无状态模式下仅返回成功）
@@ -257,13 +245,12 @@ async def delete_mcp_session(
 
 # ==================== 兼容的 RESTful API 端点 ====================
 
+
 @router.get("/tools", summary="列出所有可用工具", response_model=List[Dict[str, Any]])
-async def list_tools(
-        _: Annotated[str, Depends(verify_apikey)]
-) -> Any:
+async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     获取所有可用的工具列表
-    
+
     返回每个工具的名称、描述和参数定义
     """
     try:
@@ -276,7 +263,7 @@ async def list_tools(
             tool_dict = {
                 "name": tool.name,
                 "description": tool.description,
-                "inputSchema": tool.input_schema
+                "inputSchema": tool.input_schema,
             }
             tools_list.append(tool_dict)
 
@@ -288,12 +275,11 @@ async def list_tools(
 
 @router.post("/tools/call", summary="调用工具", response_model=schemas.ToolCallResponse)
 async def call_tool(
-        request: schemas.ToolCallRequest,
-        _: Annotated[str, Depends(verify_apikey)] = None
+    request: schemas.ToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None
 ) -> Any:
     """
     调用指定的工具
-        
+
     Returns:
         工具执行结果
     """
@@ -301,28 +287,23 @@ async def call_tool(
         if request.tool_name in MCP_HIDDEN_TOOLS:
             raise ValueError(f"工具 '{request.tool_name}' 未找到")
 
-        result_text = await moviepilot_tool_manager.call_tool(request.tool_name, request.arguments)
-
-        return schemas.ToolCallResponse(
-            success=True,
-            result=result_text
+        result_text = await moviepilot_tool_manager.call_tool(
+            request.tool_name, request.arguments
         )
+
+        return schemas.ToolCallResponse(success=True, result=result_text)
     except Exception as e:
         logger.error(f"调用工具 {request.tool_name} 失败: {e}", exc_info=True)
-        return schemas.ToolCallResponse(
-            success=False,
-            error=f"调用工具失败: {str(e)}"
-        )
+        return schemas.ToolCallResponse(success=False, error=f"调用工具失败: {str(e)}")
 
 
 @router.get("/tools/{tool_name}", summary="获取工具详情", response_model=Dict[str, Any])
 async def get_tool_info(
-        tool_name: str,
-        _: Annotated[str, Depends(verify_apikey)]
+    tool_name: str, _: Annotated[str, Depends(verify_apikey)]
 ) -> Any:
     """
     获取指定工具的详细信息
-        
+
     Returns:
         工具的详细信息，包括名称、描述和参数定义
     """
@@ -336,7 +317,7 @@ async def get_tool_info(
                 return {
                     "name": tool.name,
                     "description": tool.description,
-                    "inputSchema": tool.input_schema
+                    "inputSchema": tool.input_schema,
                 }
 
         raise HTTPException(status_code=404, detail=f"工具 '{tool_name}' 未找到")
@@ -347,14 +328,17 @@ async def get_tool_info(
         raise HTTPException(status_code=500, detail=f"获取工具信息失败: {str(e)}")
 
 
-@router.get("/tools/{tool_name}/schema", summary="获取工具参数Schema", response_model=Dict[str, Any])
+@router.get(
+    "/tools/{tool_name}/schema",
+    summary="获取工具参数Schema",
+    response_model=Dict[str, Any],
+)
 async def get_tool_schema(
-        tool_name: str,
-        _: Annotated[str, Depends(verify_apikey)]
+    tool_name: str, _: Annotated[str, Depends(verify_apikey)]
 ) -> Any:
     """
     获取指定工具的参数Schema（JSON Schema格式）
-        
+
     Returns:
         工具的JSON Schema定义
     """

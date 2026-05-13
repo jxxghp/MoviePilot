@@ -1,6 +1,5 @@
 import asyncio
 import json
-import time
 import uuid
 from typing import AsyncIterator, List, Optional
 
@@ -11,9 +10,12 @@ from app import schemas
 from app.api.endpoints.openai import (
     MODEL_ID,
     _CollectingMoviePilotAgent,
-    _error_response as _openai_error_response,
 )
-from app.api.openai_utils import build_anthropic_messages, build_prompt, build_session_id
+from app.api.openai_utils import (
+    build_anthropic_messages,
+    build_prompt,
+    build_session_id,
+)
 from app.core.config import settings
 from app.core.security import anthropic_api_key_header
 from app.schemas.types import MessageChannel
@@ -91,7 +93,11 @@ async def _stream_anthropic_response(
                 pass
 
 
-@router.post("/messages", summary="Anthropic compatible messages", response_model=schemas.AnthropicMessagesResponse)
+@router.post(
+    "/messages",
+    summary="Anthropic compatible messages",
+    response_model=schemas.AnthropicMessagesResponse,
+)
 async def messages(
     payload: schemas.AnthropicMessagesRequest,
     x_api_key: Optional[str] = Security(anthropic_api_key_header),

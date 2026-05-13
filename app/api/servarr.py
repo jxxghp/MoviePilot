@@ -16,7 +16,7 @@ from app.schemas import RadarrMovie, SonarrSeries
 from app.schemas.types import MediaType
 from version import APP_VERSION
 
-arr_router = APIRouter(tags=['servarr'])
+arr_router = APIRouter(tags=["servarr"])
 
 
 @arr_router.get("/system/status", summary="系统状态")
@@ -51,7 +51,7 @@ async def arr_system_status(_: Annotated[str, Depends(verify_apikey)]) -> Any:
             "build": 0,
             "revision": 0,
             "majorRevision": 0,
-            "minorRevision": 0
+            "minorRevision": 0,
         },
         "authentication": "none",
         "migrationVersion": 0,
@@ -62,14 +62,14 @@ async def arr_system_status(_: Annotated[str, Depends(verify_apikey)]) -> Any:
             "build": 0,
             "revision": 0,
             "majorRevision": 0,
-            "minorRevision": 0
+            "minorRevision": 0,
         },
         "runtimeName": "",
         "startTime": "",
         "packageVersion": "",
         "packageAuthor": "jxxghp",
         "packageUpdateMechanism": "builtIn",
-        "packageUpdateMechanismMessage": ""
+        "packageUpdateMechanismMessage": "",
     }
 
 
@@ -92,24 +92,15 @@ async def arr_qualityProfile(_: Annotated[str, Depends(verify_apikey)]) -> Any:
                         "id": 0,
                         "name": "默认",
                         "source": "0",
-                        "resolution": 0
+                        "resolution": 0,
                     },
-                    "items": [
-                        "string"
-                    ],
-                    "allowed": True
+                    "items": ["string"],
+                    "allowed": True,
                 }
             ],
             "minFormatScore": 0,
             "cutoffFormatScore": 0,
-            "formatItems": [
-                {
-                    "id": 0,
-                    "format": 0,
-                    "name": "默认",
-                    "score": 0
-                }
-            ]
+            "formatItems": [{"id": 0, "format": 0, "name": "默认", "score": 0}],
         }
     ]
 
@@ -125,7 +116,7 @@ async def arr_rootfolder(_: Annotated[str, Depends(verify_apikey)]) -> Any:
             "path": "/",
             "accessible": True,
             "freeSpace": 0,
-            "unmappedFolders": []
+            "unmappedFolders": [],
         }
     ]
 
@@ -135,12 +126,7 @@ async def arr_tag(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr标签
     """
-    return [
-        {
-            "id": 1,
-            "label": "默认"
-        }
-    ]
+    return [{"id": 1, "label": "默认"}]
 
 
 @arr_router.get("/languageprofile", summary="语言")
@@ -148,29 +134,25 @@ async def arr_languageprofile(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     模拟Radarr、Sonarr语言
     """
-    return [{
-        "id": 1,
-        "name": "默认",
-        "upgradeAllowed": True,
-        "cutoff": {
+    return [
+        {
             "id": 1,
-            "name": "默认"
-        },
-        "languages": [
-            {
-                "id": 1,
-                "language": {
-                    "id": 1,
-                    "name": "默认"
-                },
-                "allowed": True
-            }
-        ]
-    }]
+            "name": "默认",
+            "upgradeAllowed": True,
+            "cutoff": {"id": 1, "name": "默认"},
+            "languages": [
+                {"id": 1, "language": {"id": 1, "name": "默认"}, "allowed": True}
+            ],
+        }
+    ]
 
 
-@arr_router.get("/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie])
-async def arr_movies(_: Annotated[str, Depends(verify_apikey)], db: AsyncSession = Depends(get_async_db)) -> Any:
+@arr_router.get(
+    "/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie]
+)
+async def arr_movies(
+    _: Annotated[str, Depends(verify_apikey)], db: AsyncSession = Depends(get_async_db)
+) -> Any:
     """
     查询Rardar电影
     """
@@ -245,23 +227,29 @@ async def arr_movies(_: Annotated[str, Depends(verify_apikey)], db: AsyncSession
     for subscribe in subscribes:
         if subscribe.type != MediaType.MOVIE.value:
             continue
-        result.append(RadarrMovie(
-            id=subscribe.id,
-            title=subscribe.name,
-            year=subscribe.year,
-            isAvailable=True,
-            monitored=True,
-            tmdbId=subscribe.tmdbid,
-            imdbId=subscribe.imdbid,
-            profileId=1,
-            qualityProfileId=1,
-            hasFile=False
-        ))
+        result.append(
+            RadarrMovie(
+                id=subscribe.id,
+                title=subscribe.name,
+                year=subscribe.year,
+                isAvailable=True,
+                monitored=True,
+                tmdbId=subscribe.tmdbid,
+                imdbId=subscribe.imdbid,
+                profileId=1,
+                qualityProfileId=1,
+                hasFile=False,
+            )
+        )
     return result
 
 
-@arr_router.get("/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie])
-def arr_movie_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
+@arr_router.get(
+    "/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie]
+)
+def arr_movie_lookup(
+    term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)
+) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
     存在和不存在均不能返回错误
@@ -290,25 +278,32 @@ def arr_movie_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: S
         subid = None
         monitored = False
 
-    return [RadarrMovie(
-        id=subid,
-        title=mediainfo.title,
-        year=mediainfo.year,
-        isAvailable=True,
-        monitored=monitored,
-        tmdbId=mediainfo.tmdb_id,
-        imdbId=mediainfo.imdb_id,
-        titleSlug=mediainfo.original_title,
-        folderName=mediainfo.title_year,
-        profileId=1,
-        qualityProfileId=1,
-        hasFile=hasfile
-    )]
+    return [
+        RadarrMovie(
+            id=subid,
+            title=mediainfo.title,
+            year=mediainfo.year,
+            isAvailable=True,
+            monitored=monitored,
+            tmdbId=mediainfo.tmdb_id,
+            imdbId=mediainfo.imdb_id,
+            titleSlug=mediainfo.original_title,
+            folderName=mediainfo.title_year,
+            profileId=1,
+            qualityProfileId=1,
+            hasFile=hasfile,
+        )
+    ]
 
 
-@arr_router.get("/movie/{mid}", summary="电影订阅详情", response_model=schemas.RadarrMovie)
-async def arr_movie(mid: int, _: Annotated[str, Depends(verify_apikey)],
-                    db: AsyncSession = Depends(get_async_db)) -> Any:
+@arr_router.get(
+    "/movie/{mid}", summary="电影订阅详情", response_model=schemas.RadarrMovie
+)
+async def arr_movie(
+    mid: int,
+    _: Annotated[str, Depends(verify_apikey)],
+    db: AsyncSession = Depends(get_async_db),
+) -> Any:
     """
     查询Rardar电影订阅
     """
@@ -324,49 +319,47 @@ async def arr_movie(mid: int, _: Annotated[str, Depends(verify_apikey)],
             imdbId=subscribe.imdbid,
             profileId=1,
             qualityProfileId=1,
-            hasFile=False
+            hasFile=False,
         )
     else:
-        raise HTTPException(
-            status_code=404,
-            detail="未找到该电影！"
-        )
+        raise HTTPException(status_code=404, detail="未找到该电影！")
 
 
 @arr_router.post("/movie", summary="新增电影订阅")
-async def arr_add_movie(_: Annotated[str, Depends(verify_apikey)],
-                        movie: RadarrMovie,
-                        db: AsyncSession = Depends(get_async_db)
-                        ) -> Any:
+async def arr_add_movie(
+    _: Annotated[str, Depends(verify_apikey)],
+    movie: RadarrMovie,
+    db: AsyncSession = Depends(get_async_db),
+) -> Any:
     """
     新增Rardar电影订阅
     """
     # 检查订阅是否已存在
     subscribe = await Subscribe.async_get_by_tmdbid(db, movie.tmdbId)
     if subscribe:
-        return {
-            "id": subscribe.id
-        }
+        return {"id": subscribe.id}
     # 添加订阅
-    sid, message = await SubscribeChain().async_add(title=movie.title,
-                                                    year=movie.year,
-                                                    mtype=MediaType.MOVIE,
-                                                    tmdbid=movie.tmdbId,
-                                                    username="Seerr")
+    sid, message = await SubscribeChain().async_add(
+        title=movie.title,
+        year=movie.year,
+        mtype=MediaType.MOVIE,
+        tmdbid=movie.tmdbId,
+        username="Seerr",
+    )
     if sid:
-        return {
-            "id": sid
-        }
+        return {"id": sid}
     else:
-        raise HTTPException(
-            status_code=500,
-            detail=f"添加订阅失败：{message}"
-        )
+        raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
 
 
-@arr_router.delete("/movie/{mid}", summary="删除电影订阅", response_model=schemas.Response)
-async def arr_remove_movie(mid: int, _: Annotated[str, Depends(verify_apikey)],
-                           db: AsyncSession = Depends(get_async_db)) -> Any:
+@arr_router.delete(
+    "/movie/{mid}", summary="删除电影订阅", response_model=schemas.Response
+)
+async def arr_remove_movie(
+    mid: int,
+    _: Annotated[str, Depends(verify_apikey)],
+    db: AsyncSession = Depends(get_async_db),
+) -> Any:
     """
     删除Rardar电影订阅
     """
@@ -375,14 +368,15 @@ async def arr_remove_movie(mid: int, _: Annotated[str, Depends(verify_apikey)],
         await subscribe.async_delete(db, mid)
         return schemas.Response(success=True)
     else:
-        raise HTTPException(
-            status_code=404,
-            detail="未找到该电影！"
-        )
+        raise HTTPException(status_code=404, detail="未找到该电影！")
 
 
-@arr_router.get("/series", summary="所有剧集", response_model=List[schemas.SonarrSeries])
-async def arr_series(_: Annotated[str, Depends(verify_apikey)], db: AsyncSession = Depends(get_async_db)) -> Any:
+@arr_router.get(
+    "/series", summary="所有剧集", response_model=List[schemas.SonarrSeries]
+)
+async def arr_series(
+    _: Annotated[str, Depends(verify_apikey)], db: AsyncSession = Depends(get_async_db)
+) -> Any:
     """
     查询Sonarr剧集
     """
@@ -494,31 +488,37 @@ async def arr_series(_: Annotated[str, Depends(verify_apikey)], db: AsyncSession
     for subscribe in subscribes:
         if subscribe.type != MediaType.TV.value:
             continue
-        result.append(SonarrSeries(
-            id=subscribe.id,
-            title=subscribe.name,
-            seasonCount=1,
-            seasons=[{
-                "seasonNumber": subscribe.season,
-                "monitored": True,
-            }],
-            remotePoster=subscribe.poster,
-            year=subscribe.year,
-            tmdbId=subscribe.tmdbid,
-            tvdbId=subscribe.tvdbid,
-            imdbId=subscribe.imdbid,
-            profileId=1,
-            languageProfileId=1,
-            qualityProfileId=1,
-            isAvailable=True,
-            monitored=True,
-            hasFile=False
-        ))
+        result.append(
+            SonarrSeries(
+                id=subscribe.id,
+                title=subscribe.name,
+                seasonCount=1,
+                seasons=[
+                    {
+                        "seasonNumber": subscribe.season,
+                        "monitored": True,
+                    }
+                ],
+                remotePoster=subscribe.poster,
+                year=subscribe.year,
+                tmdbId=subscribe.tmdbid,
+                tvdbId=subscribe.tvdbid,
+                imdbId=subscribe.imdbid,
+                profileId=1,
+                languageProfileId=1,
+                qualityProfileId=1,
+                isAvailable=True,
+                monitored=True,
+                hasFile=False,
+            )
+        )
     return result
 
 
 @arr_router.get("/series/lookup", summary="查询剧集")
-def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)) -> Any:
+def arr_series_lookup(
+    term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)
+) -> Any:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
@@ -542,13 +542,19 @@ def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: 
             continue
 
         # 季信息(只取默认季类型，排除特别季)
-        sea_num = len([season for season in tvdbinfo.get('seasons') if
-                       season['type']['id'] == tvdbinfo.get('defaultSeasonType') and season['number'] > 0])
+        sea_num = len(
+            [
+                season
+                for season in tvdbinfo.get("seasons")
+                if season["type"]["id"] == tvdbinfo.get("defaultSeasonType")
+                and season["number"] > 0
+            ]
+        )
         if sea_num:
             seas = list(range(1, int(sea_num) + 1))
 
         # 根据TVDB查询媒体信息
-        meta = MetaInfo(tvdbinfo.get('name'))
+        meta = MetaInfo(tvdbinfo.get("name"))
         meta.type = MediaType.TV
         mediainfo = MediaChain().recognize_by_meta(
             meta,
@@ -573,24 +579,30 @@ def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: 
             sub_seas = [sub.season for sub in subscribes]
             for sea in seas:
                 if sea in sub_seas:
-                    seasons.append({
-                        "seasonNumber": sea,
-                        "monitored": True,
-                    })
+                    seasons.append(
+                        {
+                            "seasonNumber": sea,
+                            "monitored": True,
+                        }
+                    )
                 else:
-                    seasons.append({
-                        "seasonNumber": sea,
-                        "monitored": False,
-                    })
+                    seasons.append(
+                        {
+                            "seasonNumber": sea,
+                            "monitored": False,
+                        }
+                    )
             subid = subscribes[-1].id
         else:
             subid = None
             monitored = False
             for sea in seas:
-                seasons.append({
-                    "seasonNumber": sea,
-                    "monitored": False,
-                })
+                seasons.append(
+                    {
+                        "seasonNumber": sea,
+                        "monitored": False,
+                    }
+                )
         sonarr_series = SonarrSeries(
             id=subid,
             title=mediainfo.title,
@@ -612,8 +624,11 @@ def arr_series_lookup(term: str, _: Annotated[str, Depends(verify_apikey)], db: 
 
 
 @arr_router.get("/series/{tid}", summary="剧集详情")
-async def arr_serie(tid: int, _: Annotated[str, Depends(verify_apikey)],
-                    db: AsyncSession = Depends(get_async_db)) -> Any:
+async def arr_serie(
+    tid: int,
+    _: Annotated[str, Depends(verify_apikey)],
+    db: AsyncSession = Depends(get_async_db),
+) -> Any:
     """
     查询Sonarr剧集
     """
@@ -623,10 +638,12 @@ async def arr_serie(tid: int, _: Annotated[str, Depends(verify_apikey)],
             id=subscribe.id,
             title=subscribe.name,
             seasonCount=1,
-            seasons=[{
-                "seasonNumber": subscribe.season,
-                "monitored": True,
-            }],
+            seasons=[
+                {
+                    "seasonNumber": subscribe.season,
+                    "monitored": True,
+                }
+            ],
             year=subscribe.year,
             remotePoster=subscribe.poster,
             tmdbId=subscribe.tmdbid,
@@ -637,61 +654,58 @@ async def arr_serie(tid: int, _: Annotated[str, Depends(verify_apikey)],
             qualityProfileId=1,
             isAvailable=True,
             monitored=True,
-            hasFile=False
+            hasFile=False,
         )
     else:
-        raise HTTPException(
-            status_code=404,
-            detail="未找到该电视剧！"
-        )
+        raise HTTPException(status_code=404, detail="未找到该电视剧！")
 
 
 @arr_router.post("/series", summary="新增剧集订阅")
-async def arr_add_series(tv: schemas.SonarrSeries,
-                         _: Annotated[str, Depends(verify_apikey)],
-                         db: AsyncSession = Depends(get_async_db)) -> Any:
+async def arr_add_series(
+    tv: schemas.SonarrSeries,
+    _: Annotated[str, Depends(verify_apikey)],
+    db: AsyncSession = Depends(get_async_db),
+) -> Any:
     """
     新增Sonarr剧集订阅
     """
     # 检查订阅是否存在
     left_seasons = []
     for season in tv.seasons:
-        subscribe = await Subscribe.async_get_by_tmdbid(db, tmdbid=tv.tmdbId,
-                                                        season=season.get("seasonNumber"))
+        subscribe = await Subscribe.async_get_by_tmdbid(
+            db, tmdbid=tv.tmdbId, season=season.get("seasonNumber")
+        )
         if subscribe:
             continue
         left_seasons.append(season)
     # 全部已存在订阅
     if not left_seasons:
-        return {
-            "id": 1
-        }
+        return {"id": 1}
     # 剩下的添加订阅
     sid = 0
     message = ""
     for season in left_seasons:
         if not season.get("monitored"):
             continue
-        sid, message = await SubscribeChain().async_add(title=tv.title,
-                                                        year=tv.year,
-                                                        season=season.get("seasonNumber"),
-                                                        tmdbid=tv.tmdbId,
-                                                        mtype=MediaType.TV,
-                                                        username="Seerr")
+        sid, message = await SubscribeChain().async_add(
+            title=tv.title,
+            year=tv.year,
+            season=season.get("seasonNumber"),
+            tmdbid=tv.tmdbId,
+            mtype=MediaType.TV,
+            username="Seerr",
+        )
 
     if sid:
-        return {
-            "id": sid
-        }
+        return {"id": sid}
     else:
-        raise HTTPException(
-            status_code=500,
-            detail=f"添加订阅失败：{message}"
-        )
+        raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
 
 
 @arr_router.put("/series", summary="更新剧集订阅")
-async def arr_update_series(tv: schemas.SonarrSeries, _: Annotated[str, Depends(verify_apikey)]) -> Any:
+async def arr_update_series(
+    tv: schemas.SonarrSeries, _: Annotated[str, Depends(verify_apikey)]
+) -> Any:
     """
     更新Sonarr剧集订阅
     """
@@ -699,8 +713,11 @@ async def arr_update_series(tv: schemas.SonarrSeries, _: Annotated[str, Depends(
 
 
 @arr_router.delete("/series/{tid}", summary="删除剧集订阅")
-async def arr_remove_series(tid: int, _: Annotated[str, Depends(verify_apikey)],
-                            db: AsyncSession = Depends(get_async_db)) -> Any:
+async def arr_remove_series(
+    tid: int,
+    _: Annotated[str, Depends(verify_apikey)],
+    db: AsyncSession = Depends(get_async_db),
+) -> Any:
     """
     删除Sonarr剧集订阅
     """
@@ -709,7 +726,4 @@ async def arr_remove_series(tid: int, _: Annotated[str, Depends(verify_apikey)],
         await subscribe.async_delete(db, tid)
         return schemas.Response(success=True)
     else:
-        raise HTTPException(
-            status_code=404,
-            detail="未找到该电视剧！"
-        )
+        raise HTTPException(status_code=404, detail="未找到该电视剧！")

@@ -18,15 +18,15 @@ router = APIRouter()
 
 @router.post("/access-token", summary="获取token", response_model=schemas.Token)
 def login_access_token(
-        form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-        otp_password: Annotated[str | None, Form()] = None
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    otp_password: Annotated[str | None, Form()] = None,
 ) -> Any:
     """
     获取认证Token
     """
-    success, user_or_message = UserChain().user_authenticate(username=form_data.username,
-                                                             password=form_data.password,
-                                                             mfa_code=otp_password)
+    success, user_or_message = UserChain().user_authenticate(
+        username=form_data.username, password=form_data.password, mfa_code=otp_password
+    )
 
     if not success:
         # 如果是需要MFA验证，返回特殊标识
@@ -34,21 +34,24 @@ def login_access_token(
             raise HTTPException(
                 status_code=401,
                 detail="需要双重验证，请提供验证码或使用通行密钥",
-                headers={"X-MFA-Required": "true"}
+                headers={"X-MFA-Required": "true"},
             )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
     # 用户等级
     level = SitesHelper().auth_level
     # 是否显示配置向导
-    show_wizard = not SystemConfigOper().get(SystemConfigKey.SetupWizardState) and not settings.ADVANCED_MODE
+    show_wizard = (
+        not SystemConfigOper().get(SystemConfigKey.SetupWizardState)
+        and not settings.ADVANCED_MODE
+    )
     return schemas.Token(
         access_token=security.create_access_token(
             userid=user_or_message.id,
             username=user_or_message.name,
             super_user=user_or_message.is_superuser,
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-            level=level
+            level=level,
         ),
         token_type="bearer",
         super_user=user_or_message.is_superuser,
@@ -57,7 +60,7 @@ def login_access_token(
         avatar=user_or_message.avatar,
         level=level,
         permissions=user_or_message.permissions or {},
-        wizard=show_wizard
+        wizard=show_wizard,
     )
 
 
@@ -68,10 +71,7 @@ def wallpaper() -> Any:
     """
     url = WallpaperHelper().get_wallpaper()
     if url:
-        return schemas.Response(
-            success=True,
-            message=url
-        )
+        return schemas.Response(success=True, message=url)
     return schemas.Response(success=False)
 
 

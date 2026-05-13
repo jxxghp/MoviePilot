@@ -30,8 +30,11 @@ def start_message_chain(body: Any, form: Any, args: Any):
 
 
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
-async def user_message(background_tasks: BackgroundTasks, request: Request,
-                       _: schemas.TokenPayload = Depends(verify_apitoken)):
+async def user_message(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    _: schemas.TokenPayload = Depends(verify_apitoken),
+):
     """
     用户消息响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
     """
@@ -106,10 +109,12 @@ async def web_message(
 
 
 @router.get("/web", summary="获取WEB消息", response_model=List[dict])
-async def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
-                          db: AsyncSession = Depends(get_async_db),
-                          page: Optional[int] = 1,
-                          count: Optional[int] = 20):
+async def get_web_message(
+    _: schemas.TokenPayload = Depends(verify_token),
+    db: AsyncSession = Depends(get_async_db),
+    page: Optional[int] = 1,
+    count: Optional[int] = 20,
+):
     """
     获取WEB消息列表
     """
@@ -124,8 +129,13 @@ async def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
     return ret_messages
 
 
-def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], nonce: str,
-                  source: Optional[str] = None) -> Any:
+def wechat_verify(
+    echostr: str,
+    msg_signature: str,
+    timestamp: Union[str, int],
+    nonce: str,
+    source: Optional[str] = None,
+) -> Any:
     """
     微信验证响应
     """
@@ -133,21 +143,31 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
     client_configs = ServiceConfigHelper.get_notification_configs()
     if not client_configs:
         return "未找到对应的消息配置"
-    client_config = next((config for config in client_configs if
-                          config.type == "wechat"
-                          and config.enabled
-                          and config.config.get("WECHAT_MODE", "app") != "bot"
-                          and (not source or config.name == source)), None)
+    client_config = next(
+        (
+            config
+            for config in client_configs
+            if config.type == "wechat"
+            and config.enabled
+            and config.config.get("WECHAT_MODE", "app") != "bot"
+            and (not source or config.name == source)
+        ),
+        None,
+    )
     if not client_config:
         return "未找到对应的消息配置"
     try:
-        wxcpt = WXBizMsgCrypt(sToken=client_config.config.get('WECHAT_TOKEN'),
-                              sEncodingAESKey=client_config.config.get('WECHAT_ENCODING_AESKEY'),
-                              sReceiveId=client_config.config.get('WECHAT_CORPID'))
-        ret, sEchoStr = wxcpt.VerifyURL(sMsgSignature=msg_signature,
-                                        sTimeStamp=timestamp,
-                                        sNonce=nonce,
-                                        sEchoStr=echostr)
+        wxcpt = WXBizMsgCrypt(
+            sToken=client_config.config.get("WECHAT_TOKEN"),
+            sEncodingAESKey=client_config.config.get("WECHAT_ENCODING_AESKEY"),
+            sReceiveId=client_config.config.get("WECHAT_CORPID"),
+        )
+        ret, sEchoStr = wxcpt.VerifyURL(
+            sMsgSignature=msg_signature,
+            sTimeStamp=timestamp,
+            sNonce=nonce,
+            sEchoStr=echostr,
+        )
         if ret == 0:
             # 验证URL成功，将sEchoStr返回给企业号
             return PlainTextResponse(sEchoStr)
@@ -165,21 +185,35 @@ def vocechat_verify() -> Any:
 
 
 @router.get("/", summary="回调请求验证")
-def incoming_verify(token: Optional[str] = None, echostr: Optional[str] = None, msg_signature: Optional[str] = None,
-                    timestamp: Union[str, int] = None, nonce: Optional[str] = None, source: Optional[str] = None,
-                    _: schemas.TokenPayload = Depends(verify_apitoken)) -> Any:
+def incoming_verify(
+    token: Optional[str] = None,
+    echostr: Optional[str] = None,
+    msg_signature: Optional[str] = None,
+    timestamp: Union[str, int] = None,
+    nonce: Optional[str] = None,
+    source: Optional[str] = None,
+    _: schemas.TokenPayload = Depends(verify_apitoken),
+) -> Any:
     """
     微信/VoceChat等验证响应
     """
-    logger.info(f"收到验证请求: token={token}, echostr={echostr}, "
-                f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}")
+    logger.info(
+        f"收到验证请求: token={token}, echostr={echostr}, "
+        f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}"
+    )
     if echostr and msg_signature and timestamp and nonce:
         return wechat_verify(echostr, msg_signature, timestamp, nonce, source)
     return vocechat_verify()
 
 
-@router.post("/webpush/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)
-async def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)):
+@router.post(
+    "/webpush/subscribe",
+    summary="客户端webpush通知订阅",
+    response_model=schemas.Response,
+)
+async def subscribe(
+    subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)
+):
     """
     客户端webpush通知订阅
     """
@@ -190,8 +224,13 @@ async def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload 
     return schemas.Response(success=True)
 
 
-@router.post("/webpush/send", summary="发送webpush通知", response_model=schemas.Response)
-def send_notification(payload: schemas.SubscriptionMessage, _: schemas.TokenPayload = Depends(verify_token)):
+@router.post(
+    "/webpush/send", summary="发送webpush通知", response_model=schemas.Response
+)
+def send_notification(
+    payload: schemas.SubscriptionMessage,
+    _: schemas.TokenPayload = Depends(verify_token),
+):
     """
     发送webpush通知
     """
@@ -201,9 +240,7 @@ def send_notification(payload: schemas.SubscriptionMessage, _: schemas.TokenPayl
                 subscription_info=sub,
                 data=json.dumps(payload.model_dump()),
                 vapid_private_key=settings.VAPID.get("privateKey"),
-                vapid_claims={
-                    "sub": settings.VAPID.get("subject")
-                },
+                vapid_claims={"sub": settings.VAPID.get("subject")},
             )
         except WebPushException as err:
             logger.error(f"WebPush发送失败: {str(err)}")

@@ -3,7 +3,6 @@ import asyncio
 import json
 import tempfile
 import unittest
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import ANY, MagicMock, patch
 
@@ -21,15 +20,20 @@ if "Pinyin2Hanzi" not in sys.modules:
 from app.modules.feishu import FeishuModule
 from app.modules.feishu.feishu import Feishu
 from app.schemas import Notification
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager, MessageResponse
+from app.schemas.message import (
+    ChannelCapability,
+    ChannelCapabilityManager,
+    MessageResponse,
+)
 from app.schemas.types import MessageChannel, NotificationType
 
 
 class TestFeishu(unittest.TestCase):
     @staticmethod
     def _build_client(**kwargs) -> Feishu:
-        with patch.object(Feishu, "_build_api_client", return_value=MagicMock()), patch.object(
-            Feishu, "_start_ws_client"
+        with (
+            patch.object(Feishu, "_build_api_client", return_value=MagicMock()),
+            patch.object(Feishu, "_start_ws_client"),
         ):
             return Feishu(
                 FEISHU_APP_ID="cli_test_app_id",
@@ -64,7 +68,21 @@ class TestFeishu(unittest.TestCase):
         return response
 
     @staticmethod
-    def _build_message_api(create_response=None, patch_response=None, reply_response=None, reaction_create_response=None, reaction_delete_response=None, card_create_response=None, card_settings_response=None, card_content_response=None, image_create_response=None, file_create_response=None, image_get_response=None, file_get_response=None, message_resource_response=None):
+    def _build_message_api(
+        create_response=None,
+        patch_response=None,
+        reply_response=None,
+        reaction_create_response=None,
+        reaction_delete_response=None,
+        card_create_response=None,
+        card_settings_response=None,
+        card_content_response=None,
+        image_create_response=None,
+        file_create_response=None,
+        image_get_response=None,
+        file_get_response=None,
+        message_resource_response=None,
+    ):
         message_api = SimpleNamespace(
             create=MagicMock(return_value=create_response),
             patch=MagicMock(return_value=patch_response),
@@ -111,7 +129,11 @@ class TestFeishu(unittest.TestCase):
         return api_client, message_api
 
     @staticmethod
-    def _resource_response(content: bytes, file_name: str = "resource.bin", content_type: str = "application/octet-stream"):
+    def _resource_response(
+        content: bytes,
+        file_name: str = "resource.bin",
+        content_type: str = "application/octet-stream",
+    ):
         response = MagicMock()
         response.code = 0
         response.file = MagicMock()
@@ -169,9 +191,11 @@ class TestFeishu(unittest.TestCase):
         class _Builder:
             def __getattr__(self, name):
                 if name.startswith("register_"):
+
                     def _register(handler):
                         registered.append(name)
                         return self
+
                     return _register
                 raise AttributeError(name)
 
@@ -181,7 +205,10 @@ class TestFeishu(unittest.TestCase):
         client = self._build_client()
         fake_builder = _Builder()
 
-        with patch("app.modules.feishu.feishu.lark.EventDispatcherHandler.builder", return_value=fake_builder):
+        with patch(
+            "app.modules.feishu.feishu.lark.EventDispatcherHandler.builder",
+            return_value=fake_builder,
+        ):
             handler = client._build_event_handler()
 
         self.assertEqual(handler, "handler")
@@ -190,15 +217,20 @@ class TestFeishu(unittest.TestCase):
         self.assertIn("register_p2_im_message_reaction_created_v1", registered)
         self.assertIn("register_p2_im_message_reaction_deleted_v1", registered)
         self.assertIn("register_p2_im_message_recalled_v1", registered)
-        self.assertIn("register_p2_im_chat_access_event_bot_p2p_chat_entered_v1", registered)
+        self.assertIn(
+            "register_p2_im_chat_access_event_bot_p2p_chat_entered_v1", registered
+        )
         self.assertIn("register_p2_card_action_trigger", registered)
 
     def test_parse_message_blocks_non_admin_command(self):
         client = self._build_client(FEISHU_ADMINS="ou_admin")
 
-        with patch("app.modules.feishu.feishu.UserOper.get_name", return_value=None), patch.object(
-            client, "send_text", return_value={"success": True}
-        ) as send_text:
+        with (
+            patch("app.modules.feishu.feishu.UserOper.get_name", return_value=None),
+            patch.object(
+                client, "send_text", return_value={"success": True}
+            ) as send_text,
+        ):
             result = client.parse_message(
                 {
                     "type": "message",
@@ -223,7 +255,10 @@ class TestFeishu(unittest.TestCase):
     def test_parse_message_maps_feishu_ids_to_moviepilot_username(self):
         client = self._build_client()
 
-        with patch("app.modules.feishu.feishu.UserOper.get_name", return_value="moviepilot-user") as get_name:
+        with patch(
+            "app.modules.feishu.feishu.UserOper.get_name",
+            return_value="moviepilot-user",
+        ) as get_name:
             result = client.parse_message(
                 {
                     "type": "message",
@@ -317,7 +352,9 @@ class TestFeishu(unittest.TestCase):
         self.assertEqual(image_element["img_key"], "img_v2_remote")
         self.assertEqual(content["body"]["elements"][1]["margin"], "12px 12px 0px 12px")
         self.assertEqual(content["body"]["elements"][2]["margin"], "4px 12px 12px 12px")
-        self.assertEqual(content["body"]["elements"][-1]["margin"], "0px 12px 12px 12px")
+        self.assertEqual(
+            content["body"]["elements"][-1]["margin"], "0px 12px 12px 12px"
+        )
         self.assertEqual(content["body"]["elements"][-1]["tag"], "column_set")
 
     def test_send_notification_supports_user_id_target(self):
@@ -390,25 +427,33 @@ class TestFeishu(unittest.TestCase):
             reaction_delete_response=self._success_response(),
         )
 
-        reaction_id = client.add_message_reaction("om_origin", Feishu.PROCESSING_REACTION_EMOJI)
+        reaction_id = client.add_message_reaction(
+            "om_origin", Feishu.PROCESSING_REACTION_EMOJI
+        )
         deleted = client.delete_message_reaction("om_origin", "reaction_1")
 
         self.assertEqual(reaction_id, "reaction_1")
         self.assertTrue(deleted)
-        create_request = client._api_client.im.v1.message_reaction.create.call_args.args[0]
+        create_request = (
+            client._api_client.im.v1.message_reaction.create.call_args.args[0]
+        )
         self.assertEqual(create_request.message_id, "om_origin")
         self.assertEqual(
             create_request.request_body.reaction_type.emoji_type,
             Feishu.PROCESSING_REACTION_EMOJI,
         )
-        delete_request = client._api_client.im.v1.message_reaction.delete.call_args.args[0]
+        delete_request = (
+            client._api_client.im.v1.message_reaction.delete.call_args.args[0]
+        )
         self.assertEqual(delete_request.message_id, "om_origin")
         self.assertEqual(delete_request.reaction_id, "reaction_1")
 
     def test_send_notification_uses_streaming_card_for_agent_text(self):
         client = self._build_client()
         client._api_client, message_api = self._build_message_api(
-            create_response=self._success_response(message_id="om_stream", chat_id="oc_stream"),
+            create_response=self._success_response(
+                message_id="om_stream", chat_id="oc_stream"
+            ),
             card_create_response=self._card_create_success_response("card_stream"),
         )
 
@@ -422,21 +467,31 @@ class TestFeishu(unittest.TestCase):
         )
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["metadata"]["feishu_streaming"]["card_id"], "card_stream")
+        self.assertEqual(
+            result["metadata"]["feishu_streaming"]["card_id"], "card_stream"
+        )
         self.assertEqual(result["metadata"]["feishu_streaming"]["sequence"], 0)
         card_request = client._api_client.cardkit.v1.card.create.call_args.args[0]
         self.assertEqual(card_request.request_body.type, "card_json")
         card_payload = json.loads(card_request.request_body.data)
         self.assertTrue(card_payload["config"]["streaming_mode"])
-        self.assertEqual(card_payload["body"]["elements"][-1]["element_id"], Feishu.STREAM_CARD_BODY_ELEMENT_ID)
+        self.assertEqual(
+            card_payload["body"]["elements"][-1]["element_id"],
+            Feishu.STREAM_CARD_BODY_ELEMENT_ID,
+        )
         message_request = message_api.create.call_args.args[0]
         self.assertEqual(message_request.request_body.msg_type, "interactive")
-        self.assertEqual(json.loads(message_request.request_body.content)["data"]["card_id"], "card_stream")
+        self.assertEqual(
+            json.loads(message_request.request_body.content)["data"]["card_id"],
+            "card_stream",
+        )
 
     def test_send_notification_replies_with_streaming_card_for_agent_text(self):
         client = self._build_client()
         client._api_client, message_api = self._build_message_api(
-            reply_response=self._success_response(message_id="om_reply", chat_id="oc_stream"),
+            reply_response=self._success_response(
+                message_id="om_reply", chat_id="oc_stream"
+            ),
             card_create_response=self._card_create_success_response("card_stream"),
         )
 
@@ -455,7 +510,10 @@ class TestFeishu(unittest.TestCase):
         reply_request = message_api.reply.call_args.args[0]
         self.assertEqual(reply_request.message_id, "om_origin")
         self.assertEqual(reply_request.request_body.msg_type, "interactive")
-        self.assertEqual(json.loads(reply_request.request_body.content)["data"]["card_id"], "card_stream")
+        self.assertEqual(
+            json.loads(reply_request.request_body.content)["data"]["card_id"],
+            "card_stream",
+        )
         self.assertEqual(result["metadata"]["feishu_streaming"]["sequence"], 0)
 
     def test_edit_replied_streaming_card_uses_first_increment_sequence(self):
@@ -479,7 +537,9 @@ class TestFeishu(unittest.TestCase):
 
         self.assertTrue(success)
         message_api.patch.assert_not_called()
-        content_request = client._api_client.cardkit.v1.card_element.content.call_args.args[0]
+        content_request = (
+            client._api_client.cardkit.v1.card_element.content.call_args.args[0]
+        )
         self.assertEqual(content_request.request_body.sequence, 1)
 
     def test_edit_message_uses_cardkit_content_for_streaming_card(self):
@@ -504,7 +564,9 @@ class TestFeishu(unittest.TestCase):
         self.assertTrue(success)
         client._api_client.cardkit.v1.card_element.content.assert_called_once()
         message_api.patch.assert_not_called()
-        content_request = client._api_client.cardkit.v1.card_element.content.call_args.args[0]
+        content_request = (
+            client._api_client.cardkit.v1.card_element.content.call_args.args[0]
+        )
         self.assertEqual(content_request.card_id, "card_stream")
         self.assertEqual(content_request.element_id, Feishu.STREAM_CARD_BODY_ELEMENT_ID)
         self.assertEqual(content_request.request_body.sequence, 1)
@@ -545,7 +607,12 @@ class TestFeishu(unittest.TestCase):
                 {
                     "type": "message",
                     "text": "",
-                    "files": [{"ref": "feishu://file/file_key/report.pdf", "name": "report.pdf"}],
+                    "files": [
+                        {
+                            "ref": "feishu://file/file_key/report.pdf",
+                            "name": "report.pdf",
+                        }
+                    ],
                     "message_id": "om_file",
                     "chat_id": "oc_chat",
                     "sender": {
@@ -567,14 +634,18 @@ class TestFeishu(unittest.TestCase):
             message_type="image",
             content=json.dumps({"image_key": "img_v2_evt"}),
         )
-        sender = SimpleNamespace(sender_id=SimpleNamespace(open_id="ou_user_evt", user_id=None))
+        sender = SimpleNamespace(
+            sender_id=SimpleNamespace(open_id="ou_user_evt", user_id=None)
+        )
         event = SimpleNamespace(sender=sender, message=message)
 
         with patch.object(client, "_forward_to_message_chain") as forward:
             client._on_message(SimpleNamespace(event=event))
 
         payload = forward.call_args.args[0]
-        self.assertEqual(payload["images"][0]["ref"], "feishu://image/om_img_evt/img_v2_evt")
+        self.assertEqual(
+            payload["images"][0]["ref"], "feishu://image/om_img_evt/img_v2_evt"
+        )
 
     def test_on_message_wraps_feishu_audio_ref_with_message_id(self):
         client = self._build_client()
@@ -583,16 +654,23 @@ class TestFeishu(unittest.TestCase):
             chat_id="oc_chat_evt",
             chat_type="p2p",
             message_type="audio",
-            content=json.dumps({"file_key": "file_audio_evt", "file_name": "voice.opus"}),
+            content=json.dumps(
+                {"file_key": "file_audio_evt", "file_name": "voice.opus"}
+            ),
         )
-        sender = SimpleNamespace(sender_id=SimpleNamespace(open_id="ou_user_evt", user_id=None))
+        sender = SimpleNamespace(
+            sender_id=SimpleNamespace(open_id="ou_user_evt", user_id=None)
+        )
         event = SimpleNamespace(sender=sender, message=message)
 
         with patch.object(client, "_forward_to_message_chain") as forward:
             client._on_message(SimpleNamespace(event=event))
 
         payload = forward.call_args.args[0]
-        self.assertEqual(payload["audio_refs"], ["feishu://file/om_audio_evt/file_audio_evt/voice.opus"])
+        self.assertEqual(
+            payload["audio_refs"],
+            ["feishu://file/om_audio_evt/file_audio_evt/voice.opus"],
+        )
 
     def test_feishu_channel_capabilities_enable_images_and_files(self):
         self.assertTrue(
@@ -650,9 +728,12 @@ class TestFeishu(unittest.TestCase):
             file_create_response=file_upload_response,
         )
 
-        with tempfile.NamedTemporaryFile(suffix=".txt") as fp, patch.object(
-            client, "send_text", return_value={"success": True}
-        ) as send_text:
+        with (
+            tempfile.NamedTemporaryFile(suffix=".txt") as fp,
+            patch.object(
+                client, "send_text", return_value={"success": True}
+            ) as send_text,
+        ):
             fp.write(b"text-bytes")
             fp.flush()
             result = client.send_file(
@@ -666,7 +747,9 @@ class TestFeishu(unittest.TestCase):
         client._api_client.im.v1.file.create.assert_called_once()
         request = message_api.create.call_args.args[0]
         self.assertEqual(request.request_body.msg_type, "file")
-        self.assertEqual(json.loads(request.request_body.content)["file_key"], "file_doc")
+        self.assertEqual(
+            json.loads(request.request_body.content)["file_key"], "file_doc"
+        )
         send_text.assert_called_once()
 
     def test_send_voice_uploads_audio_file_and_optionally_sends_caption(self):
@@ -682,7 +765,9 @@ class TestFeishu(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".opus") as fp:
             fp.write(b"opus-bytes")
             fp.flush()
-            with patch.object(client, "send_text", return_value={"success": True}) as send_text:
+            with patch.object(
+                client, "send_text", return_value={"success": True}
+            ) as send_text:
                 result = client.send_voice(
                     voice_path=fp.name,
                     userid="ou_user_8",
@@ -692,20 +777,30 @@ class TestFeishu(unittest.TestCase):
         self.assertTrue(result["success"])
         request = message_api.create.call_args.args[0]
         self.assertEqual(request.request_body.msg_type, "audio")
-        self.assertEqual(json.loads(request.request_body.content)["file_key"], "file_audio")
+        self.assertEqual(
+            json.loads(request.request_body.content)["file_key"], "file_audio"
+        )
         send_text.assert_called_once()
 
     def test_download_helpers_return_bytes_and_data_url(self):
         client = self._build_client()
         client._api_client, _ = self._build_message_api(
-            image_get_response=self._resource_response(b"image-bytes", file_name="poster.png", content_type="image/png"),
-            file_get_response=self._resource_response(b"file-bytes", file_name="report.txt", content_type="text/plain"),
-            message_resource_response=self._resource_response(b"resource-bytes", file_name="voice.opus", content_type="audio/ogg"),
+            image_get_response=self._resource_response(
+                b"image-bytes", file_name="poster.png", content_type="image/png"
+            ),
+            file_get_response=self._resource_response(
+                b"file-bytes", file_name="report.txt", content_type="text/plain"
+            ),
+            message_resource_response=self._resource_response(
+                b"resource-bytes", file_name="voice.opus", content_type="audio/ogg"
+            ),
         )
 
         image_download = client.download_image_bytes("img_v2_test")
         file_download = client.download_file_bytes("file_test")
-        resource_download = client.download_message_resource_bytes("om_test", "file_test", "audio")
+        resource_download = client.download_message_resource_bytes(
+            "om_test", "file_test", "audio"
+        )
 
         self.assertEqual(image_download[0], b"image-bytes")
         self.assertEqual(file_download[0], b"file-bytes")
@@ -722,9 +817,11 @@ class TestFeishu(unittest.TestCase):
             "chat_id": "oc_789",
         }
 
-        with patch.object(module, "get_configs", return_value={"feishu-main": conf}), patch.object(
-            module, "check_message", return_value=True
-        ), patch.object(module, "get_instance", return_value=client):
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
             response = module.send_direct_message(
                 Notification(
                     targets={
@@ -757,14 +854,25 @@ class TestFeishu(unittest.TestCase):
             created_loops.append(loop)
             return loop
 
-        with patch("app.modules.feishu.feishu.lark_ws_client_module.loop", original_loop), patch(
-            "app.modules.feishu.feishu.lark_ws_client_module._select",
-            new=MagicMock(return_value=None),
-        ), patch("app.modules.feishu.feishu.asyncio.new_event_loop", side_effect=_new_loop), patch(
-            "app.modules.feishu.feishu.lark.ws.Client", return_value=fake_ws_client
-        ), patch.object(
-            fake_ws_client, "start", side_effect=lambda: None
-        ) as mock_start:
+        with (
+            patch(
+                "app.modules.feishu.feishu.lark_ws_client_module.loop", original_loop
+            ),
+            patch(
+                "app.modules.feishu.feishu.lark_ws_client_module._select",
+                new=MagicMock(return_value=None),
+            ),
+            patch(
+                "app.modules.feishu.feishu.asyncio.new_event_loop",
+                side_effect=_new_loop,
+            ),
+            patch(
+                "app.modules.feishu.feishu.lark.ws.Client", return_value=fake_ws_client
+            ),
+            patch.object(
+                fake_ws_client, "start", side_effect=lambda: None
+            ) as mock_start,
+        ):
             client._run_ws_client()
 
         self.assertIsNone(client._ws_loop)
@@ -784,7 +892,10 @@ class TestFeishu(unittest.TestCase):
         future = MagicMock()
         future.result.return_value = None
 
-        with patch("app.modules.feishu.feishu.asyncio.run_coroutine_threadsafe", return_value=future) as runner:
+        with patch(
+            "app.modules.feishu.feishu.asyncio.run_coroutine_threadsafe",
+            return_value=future,
+        ) as runner:
             client.stop()
 
         runner.assert_called_once()
@@ -795,13 +906,24 @@ class TestFeishu(unittest.TestCase):
         client = MagicMock()
         client.download_image_bytes.return_value = (b"image", "poster.png", "image/png")
         client.download_file_bytes.return_value = (b"file", "note.txt", "text/plain")
-        client.download_message_resource_bytes.return_value = (b"image", "poster.png", "image/png")
+        client.download_message_resource_bytes.return_value = (
+            b"image",
+            "poster.png",
+            "image/png",
+        )
 
-        with patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main")), patch.object(
-            module, "get_instance", return_value=client
+        with (
+            patch.object(
+                module, "get_config", return_value=SimpleNamespace(name="feishu-main")
+            ),
+            patch.object(module, "get_instance", return_value=client),
         ):
-            data_url = module.download_feishu_image_to_data_url("feishu://image/om_msg/img_v2_xxx", "feishu-main")
-            file_bytes = module.download_feishu_file_bytes("feishu://file/file_xxx/note.txt", "feishu-main")
+            data_url = module.download_feishu_image_to_data_url(
+                "feishu://image/om_msg/img_v2_xxx", "feishu-main"
+            )
+            file_bytes = module.download_feishu_file_bytes(
+                "feishu://file/file_xxx/note.txt", "feishu-main"
+            )
             audio_bytes = module.download_feishu_file_bytes(
                 "feishu://file/om_audio/file_audio/voice.opus",
                 "feishu-main",
@@ -827,11 +949,18 @@ class TestFeishu(unittest.TestCase):
         client.add_message_reaction.return_value = "reaction_2"
         client.delete_message_reaction.return_value = True
 
-        with patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main")), patch.object(
-            module, "get_instance", return_value=client
+        with (
+            patch.object(
+                module, "get_config", return_value=SimpleNamespace(name="feishu-main")
+            ),
+            patch.object(module, "get_instance", return_value=client),
         ):
-            reaction_id = module.add_feishu_message_reaction("om_x", "GLANCE", "feishu-main")
-            deleted = module.delete_feishu_message_reaction("om_x", "reaction_2", "feishu-main")
+            reaction_id = module.add_feishu_message_reaction(
+                "om_x", "GLANCE", "feishu-main"
+            )
+            deleted = module.delete_feishu_message_reaction(
+                "om_x", "reaction_2", "feishu-main"
+            )
 
         self.assertEqual(reaction_id, "reaction_2")
         self.assertTrue(deleted)
@@ -842,8 +971,11 @@ class TestFeishu(unittest.TestCase):
         client = MagicMock()
         client.close_streaming_card.return_value = True
 
-        with patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main")), patch.object(
-            module, "get_instance", return_value=client
+        with (
+            patch.object(
+                module, "get_config", return_value=SimpleNamespace(name="feishu-main")
+            ),
+            patch.object(module, "get_instance", return_value=client),
         ):
             success = module.finalize_message(
                 MessageResponse(
@@ -862,18 +994,35 @@ class TestFeishu(unittest.TestCase):
             )
 
         self.assertTrue(success)
-        client.close_streaming_card.assert_called_once_with(card_id="card_stream", sequence=3)
+        client.close_streaming_card.assert_called_once_with(
+            card_id="card_stream", sequence=3
+        )
 
     def test_module_post_message_prefers_file_and_voice_paths(self):
         module = FeishuModule()
         conf = SimpleNamespace(name="feishu-main")
         client = MagicMock()
 
-        with patch.object(module, "get_configs", return_value={"feishu-main": conf}), patch.object(
-            module, "check_message", return_value=True
-        ), patch.object(module, "get_instance", return_value=client):
-            module.post_message(Notification(file_path="/tmp/demo.txt", text="说明", title="标题", userid="ou_user"))
-            module.post_message(Notification(voice_path="/tmp/demo.opus", voice_caption="语音说明", userid="ou_user"))
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
+            module.post_message(
+                Notification(
+                    file_path="/tmp/demo.txt",
+                    text="说明",
+                    title="标题",
+                    userid="ou_user",
+                )
+            )
+            module.post_message(
+                Notification(
+                    voice_path="/tmp/demo.opus",
+                    voice_caption="语音说明",
+                    userid="ou_user",
+                )
+            )
 
         client.send_file.assert_called_once()
         client.send_voice.assert_called_once()
@@ -883,9 +1032,11 @@ class TestFeishu(unittest.TestCase):
         conf = SimpleNamespace(name="feishu-main")
         client = MagicMock()
 
-        with patch.object(module, "get_configs", return_value={"feishu-main": conf}), patch.object(
-            module, "check_message", return_value=True
-        ), patch.object(module, "get_instance", return_value=client):
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
             module.post_message(
                 Notification(
                     file_path="/tmp/demo.txt",
@@ -917,9 +1068,11 @@ class TestFeishu(unittest.TestCase):
         }
         client.send_file.return_value = {"success": True, "message_id": "om_file"}
 
-        with patch.object(module, "get_configs", return_value={"feishu-main": conf}), patch.object(
-            module, "check_message", return_value=True
-        ), patch.object(module, "get_instance", return_value=client):
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
             response = module.send_direct_message(
                 Notification(
                     channel=MessageChannel.Feishu,
@@ -943,9 +1096,11 @@ class TestFeishu(unittest.TestCase):
         conf = SimpleNamespace(name="feishu-main")
         client = MagicMock()
 
-        with patch.object(module, "get_configs", return_value={"feishu-main": conf}), patch.object(
-            module, "check_message", return_value=True
-        ), patch.object(module, "get_instance", return_value=client):
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
             module.post_message(
                 Notification(
                     title="标题",
