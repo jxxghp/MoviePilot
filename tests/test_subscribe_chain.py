@@ -279,6 +279,7 @@ class SubscribeChainTest(TestCase):
             "name": "Test Show",
             "season": 1,
             "best_version": 1,
+            "best_version_mode": None,
             "type": MediaType.TV.value,
             "start_episode": 1,
             "total_episode": 3,
@@ -310,6 +311,14 @@ class SubscribeChainTest(TestCase):
             torrent_info=SimpleNamespace(pri_order=priority),
             selected_episodes=selected_episodes,
             meta_info=SimpleNamespace(episode_list=meta_episodes or []),
+        )
+
+    @staticmethod
+    def _build_context(episodes=None, priority=100):
+        return SimpleNamespace(
+            meta_info=SimpleNamespace(episode_list=episodes or []),
+            torrent_info=SimpleNamespace(pri_order=priority),
+            media_info=SimpleNamespace(type=MediaType.TV),
         )
 
     def test_get_episode_priority_falls_back_to_current_priority(self):
@@ -380,6 +389,75 @@ class SubscribeChainTest(TestCase):
                 subscribe=subscribe,
             )
         )
+
+    def test_whole_context_requires_full_target_range(self):
+        subscribe = self._build_subscribe(total_episode=3)
+
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_best_version_whole_context(
+                subscribe,
+                self._build_context(episodes=[]),
+            )
+        )
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_best_version_whole_context(
+                subscribe,
+                self._build_context(episodes=[1, 2, 3]),
+            )
+        )
+        self.assertFalse(
+            SubscribeChain._SubscribeChain__is_best_version_whole_context(
+                subscribe,
+                self._build_context(episodes=[1, 2]),
+            )
+        )
+
+    def test_whole_only_rejects_partial_episode_context(self):
+        subscribe = self._build_subscribe(best_version_mode="whole_only", total_episode=3)
+
+        self.assertFalse(
+            SubscribeChain._SubscribeChain__is_best_version_context_allowed(
+                subscribe,
+                self._build_context(episodes=[2]),
+            )
+        )
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_best_version_context_allowed(
+                subscribe,
+                self._build_context(episodes=[1, 2, 3]),
+            )
+        )
+
+    def test_episode_mode_downloads_whole_context_before_episode_fallback(self):
+        subscribe = self._build_subscribe(best_version_mode="episode", total_episode=3)
+        whole_context = self._build_context(episodes=[1, 2, 3])
+        episode_context = self._build_context(episodes=[1])
+        no_exists = {
+            1: {
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[1, 2, 3],
+                    total_episode=3,
+                    start_episode=1,
+                )
+            }
+        }
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain") as download_chain_cls:
+            download_chain = download_chain_cls.return_value
+            download_chain.batch_download.return_value = ([whole_context], {})
+
+            downloads, _ = SubscribeChain._SubscribeChain__batch_download_best_version(
+                subscribe=subscribe,
+                contexts=[episode_context, whole_context],
+                no_exists=no_exists,
+            )
+
+        self.assertEqual(downloads, [whole_context])
+        call_contexts = download_chain.batch_download.call_args.kwargs["contexts"]
+        call_no_exists = download_chain.batch_download.call_args.kwargs["no_exists"]
+        self.assertEqual(call_contexts, [whole_context])
+        self.assertEqual(call_no_exists[1][1].episodes, [])
 
     def test_update_subscribe_priority_uses_selected_episodes(self):
         subscribe = self._build_subscribe(

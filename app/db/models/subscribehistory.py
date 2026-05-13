@@ -60,6 +60,8 @@ class SubscribeHistory(Base):
     sites = Column(JSON)
     # 是否洗版
     best_version = Column(Integer, default=0)
+    # 洗版模式：episode 分集（优先全集），whole_only 仅全集
+    best_version_mode = Column(String)
     # 洗版时已下载剧集的优先级状态，格式：{"1": 90, "2": 100}
     episode_priority = Column(JSON)
     # 保存路径

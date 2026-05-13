@@ -2,6 +2,8 @@ from typing import Optional, List, Dict, Any
 
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.types import BestVersionMode
+
 
 class Subscribe(BaseModel):
     id: Optional[int] = None
@@ -59,6 +61,8 @@ class Subscribe(BaseModel):
     downloader: Optional[str] = None
     # 是否洗版
     best_version: Optional[int] = 0
+    # 洗版模式：episode 分集（优先全集），whole_only 仅全集
+    best_version_mode: Optional[BestVersionMode] = None
     # 当前优先级
     current_priority: Optional[int] = None
     # 洗版时已下载剧集的优先级状态
@@ -78,7 +82,7 @@ class Subscribe(BaseModel):
     # 剧集组
     episode_group: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class SubscribeShare(BaseModel):

@@ -10,7 +10,7 @@ from app.core.event import eventmanager
 from app.db import AsyncSessionFactory
 from app.db.models.subscribe import Subscribe
 from app.log import logger
-from app.schemas.types import EventType
+from app.schemas.types import BestVersionMode, EventType
 
 
 class UpdateSubscribeInput(BaseModel):
@@ -74,6 +74,10 @@ class UpdateSubscribeInput(BaseModel):
         None,
         description="Whether to upgrade to best version: 0 for no, 1 for yes (optional)",
     )
+    best_version_mode: Optional[str] = Field(
+        None,
+        description="Best-version mode for TV subscriptions: episode or whole_only (optional)",
+    )
     custom_words: Optional[str] = Field(
         None, description="Custom recognition words (optional)"
     )
@@ -115,6 +119,8 @@ class UpdateSubscribeTool(MoviePilotTool):
             fields_updated.append("站点")
         if kwargs.get("downloader"):
             fields_updated.append("下载器")
+        if kwargs.get("best_version_mode"):
+            fields_updated.append("洗版模式")
 
         if fields_updated:
             return f"更新订阅 #{subscribe_id}: {', '.join(fields_updated)}"
@@ -140,6 +146,7 @@ class UpdateSubscribeTool(MoviePilotTool):
         downloader: Optional[str] = None,
         save_path: Optional[str] = None,
         best_version: Optional[int] = None,
+        best_version_mode: Optional[str] = None,
         custom_words: Optional[str] = None,
         media_category: Optional[str] = None,
         episode_group: Optional[str] = None,
@@ -230,6 +237,17 @@ class UpdateSubscribeTool(MoviePilotTool):
                     subscribe_dict["save_path"] = save_path
                 if best_version is not None:
                     subscribe_dict["best_version"] = best_version
+                if best_version_mode is not None:
+                    valid_best_version_modes = [*BestVersionMode.values(), ""]
+                    if best_version_mode not in valid_best_version_modes:
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "message": f"无效的洗版模式: {best_version_mode}，有效模式: episode, whole_only",
+                            },
+                            ensure_ascii=False,
+                        )
+                    subscribe_dict["best_version_mode"] = BestVersionMode.normalize(best_version_mode)
 
                 # 其他配置
                 if custom_words is not None:

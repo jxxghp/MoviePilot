@@ -30,6 +30,26 @@ def media_type_to_agent(value) -> Optional[str]:
     return None
 
 
+# 订阅洗版模式，控制电视剧洗版时分集推进与全集收口的取舍。
+class BestVersionMode(str, Enum):
+    EPISODE = "episode"  # 分集洗版，遇到覆盖目标范围的全集时优先下载全集
+    WHOLE_ONLY = "whole_only"  # 仅接受全集或完整覆盖目标范围的资源
+
+    @classmethod
+    def values(cls) -> set[str]:
+        """返回可写入订阅配置和数据库字段的洗版模式值集合。"""
+        return {mode.value for mode in cls}
+
+    @classmethod
+    def normalize(cls, value: Optional[str]) -> Optional[str]:
+        """归一化洗版模式，仅接受当前对外暴露的模式值。"""
+        if isinstance(value, cls):
+            return value.value
+        if value in cls.values():
+            return value
+        return None
+
+
 # 排序类型枚举
 class SortType(Enum):
     TIME = "time"  # 按时间排序

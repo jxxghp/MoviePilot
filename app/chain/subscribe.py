@@ -38,8 +38,8 @@ from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import MediaRecognizeConvertEventData
-from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
-    ContentType
+from app.schemas.types import BestVersionMode, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, \
+    ChainEventType, ContentType
 
 
 subscribe_interaction_manager = SlashInteractionManager()
@@ -292,6 +292,126 @@ class SubscribeChain(ChainBase):
                 interested.append(episode_num)
         return sorted(set(interested))
 
+    @classmethod
+    def __get_best_version_mode(cls, subscribe: Subscribe) -> str:
+        """
+        获取 TV 洗版模式，旧订阅或非法值统一回落到分集洗版。
+        """
+        mode = subscribe.best_version_mode
+        if not mode:
+            mode = cls.__get_default_subscribe_config(MediaType.TV, "best_version_mode")
+        return BestVersionMode.normalize(mode) or BestVersionMode.EPISODE.value
+
+    @classmethod
+    def __is_best_version_whole_context(cls, subscribe: Subscribe, context: Context) -> bool:
+        """
+        判断候选是否可作为全集洗版资源，避免仅凭单集命中就进入全集优先分支。
+        """
+        if subscribe.type != MediaType.TV.value:
+            return False
+
+        meta = context.meta_info if context else None
+        episodes = meta.episode_list if meta else []
+        if not episodes:
+            # 无明确集数时沿用现有约定，按合集或整季包处理。
+            return True
+
+        target_episodes = cls.__get_best_version_target_episodes(subscribe)
+        if not target_episodes:
+            return False
+        return set(target_episodes).issubset(set(episodes))
+
+    @classmethod
+    def __is_best_version_context_allowed(cls, subscribe: Subscribe, context: Context) -> bool:
+        """
+        按洗版模式判断 TV 候选是否允许进入后续优先级过滤。
+        """
+        if subscribe.type != MediaType.TV.value:
+            return True
+
+        mode = cls.__get_best_version_mode(subscribe)
+        if mode == BestVersionMode.WHOLE_ONLY.value:
+            return cls.__is_best_version_whole_context(subscribe, context)
+        return cls._is_episode_range_covered(meta=context.meta_info, subscribe=subscribe)
+
+    @classmethod
+    def __build_whole_best_version_no_exists(
+            cls,
+            subscribe: Subscribe,
+            mediakey: Union[int, str],
+    ) -> Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]:
+        """
+        构造全集洗版下载使用的缺失信息，强制 DownloadChain 先按整季资源处理。
+        """
+        return {
+            mediakey: {
+                subscribe.season: schemas.NotExistMediaInfo(
+                    season=subscribe.season,
+                    episodes=[],
+                    total_episode=subscribe.total_episode,
+                    start_episode=subscribe.start_episode or 1,
+                )
+            }
+        }
+
+    @classmethod
+    def __batch_download_best_version(
+            cls,
+            subscribe: Subscribe,
+            contexts: List[Context],
+            no_exists: Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]],
+            username: Optional[str] = None,
+            save_path: Optional[str] = None,
+            downloader: Optional[str] = None,
+            source: Optional[str] = None,
+    ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]]:
+        """
+        对 TV 洗版应用分集洗版/仅全集策略，分集模式下优先尝试全集资源。
+        """
+        if not subscribe.best_version or subscribe.type != MediaType.TV.value:
+            return DownloadChain().batch_download(
+                contexts=contexts,
+                no_exists=no_exists,
+                username=username,
+                save_path=save_path,
+                downloader=downloader,
+                source=source,
+            )
+
+        mode = cls.__get_best_version_mode(subscribe)
+        whole_contexts = [
+            context for context in contexts
+            if cls.__is_best_version_whole_context(subscribe, context)
+        ]
+        if whole_contexts:
+            mediakey = subscribe.tmdbid or subscribe.doubanid
+            whole_no_exists = cls.__build_whole_best_version_no_exists(
+                subscribe=subscribe,
+                mediakey=mediakey,
+            )
+            downloads, lefts = DownloadChain().batch_download(
+                contexts=whole_contexts,
+                no_exists=whole_no_exists,
+                username=username,
+                save_path=save_path,
+                downloader=downloader,
+                source=source,
+            )
+            if downloads or mode == BestVersionMode.WHOLE_ONLY.value:
+                return downloads, lefts
+
+        if mode == BestVersionMode.WHOLE_ONLY.value:
+            return [], no_exists
+
+        return DownloadChain().batch_download(
+            contexts=contexts,
+            no_exists=no_exists,
+            username=username,
+            save_path=save_path,
+            downloader=downloader,
+            source=source,
+        )
+
     @staticmethod
     def __get_event_media(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
         """
@@ -356,6 +476,8 @@ class SubscribeChain(ChainBase):
                 "exclude") else kwargs.get("exclude"),
             'best_version': self.__get_default_subscribe_config(mtype, "best_version") if not kwargs.get(
                 "best_version") else kwargs.get("best_version"),
+            'best_version_mode': self.__get_default_subscribe_config(mtype, "best_version_mode") if not kwargs.get(
+                "best_version_mode") else kwargs.get("best_version_mode"),
             'search_imdbid': self.__get_default_subscribe_config(mtype, "search_imdbid") if not kwargs.get(
                 "search_imdbid") else kwargs.get("search_imdbid"),
             'sites': self.__get_default_subscribe_config(mtype, "sites") or None if not kwargs.get(
@@ -855,8 +977,8 @@ class SubscribeChain(ChainBase):
                                     # 洗版时，不符合订阅集数的不要
                                     if (
                                         torrent_mediainfo.type == MediaType.TV
-                                        and not self._is_episode_range_covered(
-                                            meta=torrent_meta, subscribe=subscribe
+                                        and not self.__is_best_version_context_allowed(
+                                            subscribe=subscribe, context=context
                                         )
                                     ):
                                         logger.info(
@@ -900,7 +1022,8 @@ class SubscribeChain(ChainBase):
                             continue
 
                         # 自动下载
-                        downloads, lefts = DownloadChain().batch_download(
+                        downloads, lefts = self.__batch_download_best_version(
+                            subscribe=subscribe,
                             contexts=matched_contexts,
                             no_exists=no_exists,
                             username=subscribe.username,
@@ -1345,9 +1468,9 @@ class SubscribeChain(ChainBase):
                                     # 洗版时，不符合订阅集数的不要
                                     if (
                                         meta.type == MediaType.TV
-                                        and not self._is_episode_range_covered(
-                                            meta=torrent_meta,
+                                        and not self.__is_best_version_context_allowed(
                                             subscribe=subscribe,
+                                            context=_context,
                                         )
                                     ):
                                         logger.debug(
@@ -1416,14 +1539,15 @@ class SubscribeChain(ChainBase):
 
                     # 开始批量择优下载
                     logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
-                    downloads, lefts = DownloadChain().batch_download(contexts=_match_context,
-                                                                      no_exists=no_exists,
-                                                                      username=subscribe.username,
-                                                                      save_path=subscribe.save_path,
-                                                                      downloader=subscribe.downloader,
-                                                                      source=self.get_subscribe_source_keyword(
-                                                                          subscribe)
-                                                                      )
+                    downloads, lefts = self.__batch_download_best_version(
+                        subscribe=subscribe,
+                        contexts=_match_context,
+                        no_exists=no_exists,
+                        username=subscribe.username,
+                        save_path=subscribe.save_path,
+                        downloader=subscribe.downloader,
+                        source=self.get_subscribe_source_keyword(subscribe),
+                    )
 
                     # 同步外部修改，更新订阅信息
                     subscribe = SubscribeOper().get(subscribe.id)
