@@ -310,7 +310,7 @@ class SubscribeChainTest(TestCase):
         return SimpleNamespace(
             torrent_info=SimpleNamespace(pri_order=priority),
             selected_episodes=selected_episodes,
-            meta_info=SimpleNamespace(episode_list=meta_episodes or []),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=meta_episodes or []),
         )
 
     def test_get_episode_priority_falls_back_to_current_priority(self):
@@ -408,6 +408,196 @@ class SubscribeChainTest(TestCase):
             )
         )
 
+    def test_episode_best_version_downloads_full_pack_before_episode_fallback(self):
+        subscribe = self._build_subscribe(best_version_full=0, total_episode=3)
+        full_pack_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=90),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[]),
+        )
+        episode_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=90),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[2]),
+        )
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+            }
+        }
+        calls = []
+
+        class _FakeDownloadChain:
+            """记录批量下载调用，用于验证分集洗版会先尝试全集资源。"""
+
+            def batch_download(self, **kwargs):
+                calls.append(kwargs)
+                return [full_pack_context], {}
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _FakeDownloadChain):
+            downloads, lefts = SubscribeChain()._SubscribeChain__download_best_version_with_full_pack_first(
+                contexts=[episode_context, full_pack_context],
+                no_exists=no_exists,
+                subscribe=subscribe,
+                mediakey="media-key",
+                username="user",
+                save_path="/downloads",
+                downloader="qb",
+                source="subscribe",
+            )
+
+        self.assertEqual(downloads, [full_pack_context])
+        self.assertEqual(lefts, {})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["contexts"], [full_pack_context])
+        self.assertEqual(calls[0]["no_exists"]["media-key"][1].episodes, [])
+
+    def test_episode_best_version_falls_back_when_full_pack_not_downloaded(self):
+        subscribe = self._build_subscribe(best_version_full=0, total_episode=3)
+        full_pack_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=90),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[]),
+        )
+        episode_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=90),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[2]),
+        )
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+            }
+        }
+        calls = []
+
+        class _FakeDownloadChain:
+            """模拟全集下载失败，验证后续会回退到按集下载。"""
+
+            def batch_download(self, **kwargs):
+                calls.append(kwargs)
+                if len(calls) == 1:
+                    return [], kwargs["no_exists"]
+                return [episode_context], {}
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _FakeDownloadChain):
+            downloads, lefts = SubscribeChain()._SubscribeChain__download_best_version_with_full_pack_first(
+                contexts=[episode_context, full_pack_context],
+                no_exists=no_exists,
+                subscribe=subscribe,
+                mediakey="media-key",
+            )
+
+        self.assertEqual(downloads, [episode_context])
+        self.assertEqual(lefts, {})
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["contexts"], [full_pack_context])
+        self.assertIs(calls[1]["no_exists"], no_exists)
+
+    def test_episode_best_version_skips_full_pack_first_when_pack_priority_equals_existing_episode(self):
+        """验证全集优先级等于目标分集时回退到分集下载。"""
+        subscribe = self._build_subscribe(
+            best_version_full=0,
+            total_episode=3,
+            episode_priority={"1": 80, "2": 80, "3": 80},
+            current_priority=80,
+        )
+        full_pack_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=80),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[]),
+        )
+        episode_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=90),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[2]),
+        )
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+            }
+        }
+        calls = []
+
+        class _FakeDownloadChain:
+            """记录回退下载调用，确保全集候选仍可参与拆包匹配。"""
+
+            def batch_download(self, **kwargs):
+                calls.append(kwargs)
+                return [episode_context], {}
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _FakeDownloadChain):
+            downloads, lefts = SubscribeChain()._SubscribeChain__download_best_version_with_full_pack_first(
+                contexts=[episode_context, full_pack_context],
+                no_exists=no_exists,
+                subscribe=subscribe,
+                mediakey="media-key",
+            )
+
+        self.assertEqual(downloads, [episode_context])
+        self.assertEqual(lefts, {})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["contexts"], [episode_context, full_pack_context])
+        self.assertIs(calls[0]["no_exists"], no_exists)
+
+    def test_episode_best_version_skips_full_pack_first_when_pack_priority_below_one_episode(self):
+        """验证全集低于任一目标分集优先级时不会整包优先。"""
+        subscribe = self._build_subscribe(
+            best_version_full=0,
+            total_episode=3,
+            episode_priority={"1": 90, "2": 80, "3": 80},
+            current_priority=80,
+        )
+        full_pack_context = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=85),
+            media_info=SimpleNamespace(type=MediaType.TV),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[]),
+        )
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+            }
+        }
+        calls = []
+
+        class _FakeDownloadChain:
+            """记录回退下载调用，验证低优先级全集不进入整包优先分支。"""
+
+            def batch_download(self, **kwargs):
+                calls.append(kwargs)
+                return [], kwargs["no_exists"]
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _FakeDownloadChain):
+            downloads, lefts = SubscribeChain()._SubscribeChain__download_best_version_with_full_pack_first(
+                contexts=[full_pack_context],
+                no_exists=no_exists,
+                subscribe=subscribe,
+                mediakey="media-key",
+            )
+
+        self.assertEqual(downloads, [])
+        self.assertIs(lefts, no_exists)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["contexts"], [full_pack_context])
+        self.assertIs(calls[0]["no_exists"], no_exists)
+
+    def test_full_pack_priority_check_uses_current_priority_fallback(self):
+        """验证旧订阅没有分集状态时使用 current_priority 兜底判断。"""
+        subscribe = self._build_subscribe(total_episode=3, current_priority=80, episode_priority=None)
+
+        self.assertFalse(
+            SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
+                subscribe=subscribe,
+                priority=80,
+            )
+        )
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
+                subscribe=subscribe,
+                priority=81,
+            )
+        )
+
     def test_update_subscribe_priority_uses_selected_episodes(self):
         subscribe = self._build_subscribe(
             total_episode=4,
@@ -485,6 +675,39 @@ class SubscribeChainTest(TestCase):
     def test_full_best_version_updates_all_episodes_when_pack_has_no_episode_metadata(self):
         subscribe = self._build_subscribe(
             best_version_full=1,
+            total_episode=3,
+            episode_priority={"1": 80, "2": 80, "3": 80},
+            current_priority=80,
+            lack_episode=3,
+        )
+        download = self._build_download(priority=100, selected_episodes=[], meta_episodes=[])
+        chain = SubscribeChain()
+        meta = SimpleNamespace()
+        mediainfo = SimpleNamespace(title_year="Test Show (2026)")
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, patch.object(
+            SubscribeChain,
+            "_SubscribeChain__finish_subscribe",
+        ) as finish_mock:
+            subscribe_oper = subscribe_oper_cls.return_value
+            subscribe_oper.update.return_value = None
+
+            chain.update_subscribe_priority(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                downloads=[download],
+            )
+
+        payload = subscribe_oper.update.call_args.args[1]
+        self.assertEqual(payload["episode_priority"], {"1": 100, "2": 100, "3": 100})
+        self.assertEqual(payload["current_priority"], 100)
+        self.assertEqual(payload["lack_episode"], 0)
+        finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
+
+    def test_episode_best_version_updates_all_episodes_when_full_pack_has_no_episode_metadata(self):
+        subscribe = self._build_subscribe(
+            best_version_full=0,
             total_episode=3,
             episode_priority={"1": 80, "2": 80, "3": 80},
             current_priority=80,
