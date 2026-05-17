@@ -511,6 +511,20 @@ class DownloadChain(ChainBase):
                 return 9999
             return no_exist[season].total_episode
 
+        def __apply_allowed_episodes(_need_episodes, _context: Context) -> Set[int]:
+            """
+            根据候选携带的允许集裁剪 need_episodes，返回真正可下载的剧集集合。
+
+            语义：allowed_episodes 为 None 表示调用方未约束，沿用 need_episodes；
+            非空集合则与 need_episodes 取交集；空集合（显式拒绝）会被交集自然消解为空。
+            调用方根据返回集合是否为空决定是否跳过当前候选。
+            """
+            effective = set(_need_episodes)
+            allowed = _context.allowed_episodes
+            if allowed is not None:
+                effective &= set(allowed)
+            return effective
+
         # 发送资源选择事件，允许外部修改上下文数据
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
@@ -695,10 +709,8 @@ class DownloadChain(ChainBase):
                             # 整季的不处理
                             if not torrent_episodes:
                                 continue
-                            # 上游对本候选施加的允许集（如洗版按集允许列表），在标题和种子文件两次集匹配前先与本季 need_episodes 取交集
-                            effective_need = set(need_episodes)
-                            if context.allowed_episodes is not None:
-                                effective_need &= set(context.allowed_episodes)
+                            # 上游对本候选施加的允许集（如洗版按集允许列表）裁剪本季缺集，得到真正可下载范围。
+                            effective_need = __apply_allowed_episodes(need_episodes, context)
                             if not effective_need:
                                 continue
                             # 为需要集的子集则下载
@@ -762,10 +774,8 @@ class DownloadChain(ChainBase):
                         # 没有需要集后退出
                         if not need_episodes:
                             break
-                        # 上游对本候选施加的允许集（如洗版按集允许列表），在标题和种子文件两次集匹配前先与本季 need_episodes 取交集
-                        effective_need = set(need_episodes)
-                        if context.allowed_episodes is not None:
-                            effective_need &= set(context.allowed_episodes)
+                        # 上游对本候选施加的允许集（如洗版按集允许列表）裁剪本季缺集，得到真正可下载范围。
+                        effective_need = __apply_allowed_episodes(need_episodes, context)
                         if not effective_need:
                             continue
                         # 选中一个单季整季的或单季包括需要的所有集的

@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Set
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -827,8 +827,8 @@ class Context:
     candidate_recognized: bool = False
     # 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
     media_info_is_target: bool = False
-    # 调用方对本候选允许下载的剧集集合，None 表示不限制。
-    allowed_episodes: Optional[set] = None
+    # 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
+    allowed_episodes: Optional[Set[int]] = None
 
     def to_dict(self):
         """
@@ -843,5 +843,6 @@ class Context:
             "match_source": self.match_source,
             "candidate_recognized": self.candidate_recognized,
             "media_info_is_target": self.media_info_is_target,
-            "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes else None,
+            # 保留 None / 空集 / 非空集 三态语义，避免下游误把"显式拒绝"当成"不限制"。
+            "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes is not None else None,
         }
