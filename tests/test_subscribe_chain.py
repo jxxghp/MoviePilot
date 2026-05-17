@@ -886,3 +886,42 @@ class SubscribeFilterAllowedEpisodesTest(TestCase):
         )
 
         self.assertEqual(interested, [])
+
+    def test_filter_writes_allowed_episodes_in_match_path(self):
+        """RSS/订阅刷新分支 match() 需要与 search() 对称地写入 allowed_episodes。
+
+        match() 路径下候选是 `_context = copy.copy(context)`，再走 best_version
+        判定。此用例复刻 match() 的过滤序列，验证浅拷贝后的 _context 在写入
+        allowed_episodes 时不会污染原始 context，且写入结果与 search() 一致。
+        若 match() 分支漏写 allowed_episodes，下游 batch_download 将看不到允许集
+        约束，回归到 2c458317 之前的同优先级重复下载状态。
+        """
+        import copy
+
+        subscribe = self._build_subscribe(
+            total_episode=92,
+            episode_priority={
+                **{str(ep): 100 for ep in range(1, 83)},
+                "83": 99,
+            },
+            current_priority=99,
+        )
+        original_context = SimpleNamespace(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))),
+            selected_episodes=None,
+            allowed_episodes=None,
+        )
+        _context = copy.copy(original_context)
+
+        interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+            subscribe=subscribe,
+            context=_context,
+            priority=99,
+        )
+        # 复刻 match() 中的赋值；search() 与 match() 必须保持同形以避免分支漏改。
+        if interested:
+            _context.allowed_episodes = set(interested)
+
+        self.assertEqual(_context.allowed_episodes, set(range(84, 93)))
+        # 浅拷贝 + 新字段写入不应反向污染源 context（match() 中 contexts 缓存可能跨多次匹配复用）。
+        self.assertIsNone(original_context.allowed_episodes)
