@@ -827,6 +827,8 @@ class Context:
     candidate_recognized: bool = False
     # 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
     media_info_is_target: bool = False
+    # 调用方对本候选允许下载的剧集集合，None 表示不限制。
+    allowed_episodes: Optional[set] = None
 
     def to_dict(self):
         """
@@ -841,4 +843,5 @@ class Context:
             "match_source": self.match_source,
             "candidate_recognized": self.candidate_recognized,
             "media_info_is_target": self.media_info_is_target,
+            "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes else None,
         }

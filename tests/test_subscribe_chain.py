@@ -773,3 +773,116 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(subscribe.total_episode, 5)
         self.assertEqual(subscribe.lack_episode, 2)
         self.assertEqual(subscribe.current_priority, 0)
+
+    def test_best_version_interested_episodes_excludes_same_priority(self):
+        """同 pri_order 的候选不应再把已达到该优先级的集列为可升级集。
+
+        回归场景：E2 已记录在 episode_priority 中为 99，候选种子标题覆盖 E2/E3 且
+        其 pri_order=99；E2 不应进入 interested 集合，E3（None）则应进入。这是
+        洗版重复下载链路的源头判定，必须保持"严格大于"语义。
+        """
+        subscribe = self._build_subscribe(
+            total_episode=3,
+            episode_priority={"1": 100, "2": 99},
+            current_priority=100,
+        )
+        context = SimpleNamespace(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[2, 3]),
+            selected_episodes=None,
+        )
+
+        interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+            subscribe=subscribe,
+            context=context,
+            priority=99,
+        )
+
+        self.assertEqual(interested, [3])
+
+    def test_best_version_interested_episodes_uses_title_episode_list_for_full_pack(self):
+        """整包候选（标题展开的集列表）只把仍可提升优先级的集纳入 interested。
+
+        防回归场景：标题显示"第53-104集"，实际目标范围只有 1..92，episode_priority
+        已经把 1..82 升到 100，E83 已经记到 99。同 pri_order=99 的同一资源再来时，
+        interested 应只剩 [84..92]，绝不能含 E83，否则后续下载层会再下一次同优先级。
+        """
+        subscribe = self._build_subscribe(
+            total_episode=92,
+            episode_priority={
+                **{str(ep): 100 for ep in range(1, 83)},
+                "83": 99,
+            },
+            current_priority=99,
+        )
+        context = SimpleNamespace(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))),
+            selected_episodes=None,
+        )
+
+        interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+            subscribe=subscribe,
+            context=context,
+            priority=99,
+        )
+
+        self.assertEqual(interested, list(range(84, 93)))
+
+
+class SubscribeFilterAllowedEpisodesTest(TestCase):
+    """验证洗版过滤循环会把 interested 集合落到 context.allowed_episodes 上。
+
+    这条用例直接覆盖回归点：当 __get_best_version_interested_episodes 返回非空
+    集合时，候选必须带着允许集进入下载层，下游 batch_download 才能在标题元数据
+    与实际种子文件错位时做出正确取舍。
+    """
+
+    def _build_subscribe(self, **overrides):
+        return SubscribeChainTest()._build_subscribe(**overrides)
+
+    def test_filter_writes_allowed_episodes_to_context(self):
+        subscribe = self._build_subscribe(
+            total_episode=92,
+            episode_priority={
+                **{str(ep): 100 for ep in range(1, 83)},
+                "83": 99,
+            },
+            current_priority=99,
+        )
+        context = SimpleNamespace(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))),
+            selected_episodes=None,
+        )
+
+        interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+            subscribe=subscribe,
+            context=context,
+            priority=99,
+        )
+        # 复刻 subscribe.py 过滤循环中的赋值，确认结果作为允许集传递。
+        context.allowed_episodes = set(interested) if interested else None
+
+        self.assertIsNotNone(context.allowed_episodes)
+        self.assertEqual(context.allowed_episodes, set(range(84, 93)))
+        # 关键回归点：E83 已达到 99，不在允许集内；下游交集后即不会再下 E83。
+        self.assertNotIn(83, context.allowed_episodes)
+
+    def test_filter_leaves_allowed_episodes_none_when_no_upgrade(self):
+        """同 pri_order 且目标集均已达到该优先级时，候选不应被放行，
+        相应地也不会有 allowed_episodes 被写入。"""
+        subscribe = self._build_subscribe(
+            total_episode=3,
+            episode_priority={"1": 100, "2": 99, "3": 99},
+            current_priority=99,
+        )
+        context = SimpleNamespace(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=[2, 3]),
+            selected_episodes=None,
+        )
+
+        interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+            subscribe=subscribe,
+            context=context,
+            priority=99,
+        )
+
+        self.assertEqual(interested, [])

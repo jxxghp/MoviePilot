@@ -1027,17 +1027,19 @@ class SubscribeChain(ChainBase):
                                         )
                                         continue
                                     # 洗版时，只保留至少能提升一集优先级的资源
-                                    if (
-                                        torrent_mediainfo.type == MediaType.TV
-                                        and not self.__get_best_version_interested_episodes(
+                                    if torrent_mediainfo.type == MediaType.TV:
+                                        interested_episodes = self.__get_best_version_interested_episodes(
                                             subscribe=subscribe,
                                             context=context,
                                             priority=torrent_info.pri_order,
                                         )
-                                    ):
-                                        logger.info(
-                                            f'{subscribe.name} 正在洗版，{torrent_info.title} 不包含可提升优先级的剧集')
-                                        continue
+                                        if not interested_episodes:
+                                            logger.info(
+                                                f'{subscribe.name} 正在洗版，{torrent_info.title} 不包含可提升优先级的剧集')
+                                            continue
+                                        # 将"本候选实际能升级到的集"作为允许下载集合下传到下载层，
+                                        # 防止标题元数据与实际种子文件错位导致同优先级集被重复下载。
+                                        context.allowed_episodes = set(interested_episodes)
                                     if (
                                         torrent_mediainfo.type != MediaType.TV
                                         and subscribe.current_priority

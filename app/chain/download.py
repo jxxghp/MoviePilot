@@ -695,8 +695,14 @@ class DownloadChain(ChainBase):
                             # 整季的不处理
                             if not torrent_episodes:
                                 continue
+                            # 上游对本候选施加的允许集（如洗版按集允许列表），在标题和种子文件两次集匹配前先与本季 need_episodes 取交集
+                            effective_need = set(need_episodes)
+                            if context.allowed_episodes is not None:
+                                effective_need &= set(context.allowed_episodes)
+                            if not effective_need:
+                                continue
                             # 为需要集的子集则下载
-                            if torrent_episodes.issubset(set(need_episodes)):
+                            if torrent_episodes.issubset(effective_need):
                                 # 下载
                                 logger.info(f"开始下载 {meta.title} ...")
                                 download_id = self.download_single(context, save_path=save_path,
@@ -756,10 +762,16 @@ class DownloadChain(ChainBase):
                         # 没有需要集后退出
                         if not need_episodes:
                             break
+                        # 上游对本候选施加的允许集（如洗版按集允许列表），在标题和种子文件两次集匹配前先与本季 need_episodes 取交集
+                        effective_need = set(need_episodes)
+                        if context.allowed_episodes is not None:
+                            effective_need &= set(context.allowed_episodes)
+                        if not effective_need:
+                            continue
                         # 选中一个单季整季的或单季包括需要的所有集的
                         if (media.tmdb_id == need_mid or media.douban_id == need_mid) \
                                 and (not meta.episode_list
-                                     or set(meta.episode_list).intersection(set(need_episodes))) \
+                                     or set(meta.episode_list).intersection(effective_need)) \
                                 and len(meta.season_list) == 1 \
                                 and meta.season_list[0] == need_season:
                             # 检查种子看是否有需要的集
@@ -775,7 +787,7 @@ class DownloadChain(ChainBase):
                             torrent_episodes = TorrentHelper().get_torrent_episodes(torrent_files)
                             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{torrent_episodes}")
                             # 选中的集
-                            selected_episodes = set(torrent_episodes).intersection(set(need_episodes))
+                            selected_episodes = set(torrent_episodes).intersection(effective_need)
                             if not selected_episodes:
                                 logger.info(f"{torrent.site_name} - {torrent.title} 没有需要的集，跳过...")
                                 continue
