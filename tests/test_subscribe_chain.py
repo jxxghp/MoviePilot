@@ -1036,50 +1036,40 @@ class SubscribeNoteTrackingTest(TestCase):
             "note must not be touched when downloads is empty",
         )
 
-    def test_get_downloaded_unions_note_with_completed_episodes(self):
-        """__get_downloaded 在洗版分支应当返回 priority==100 完成集 ∪ note。
+    def test_get_downloaded_best_version_returns_only_completed_episodes(self):
+        """关键回归：洗版分支不得把 note 合并进 __get_downloaded 返回值。
 
-        现实场景：E83 已经被下到 priority=99（HDR），note 也已经记录了 E83；
-        episode_priority 仅含 E1..E82=100；__get_downloaded 应该把这些都返回，
-        让订阅下次刷新构造 no_exists 时把 E83 从缺失列表里减掉。
+        否则 check_and_handle_existing_media → __get_subscribe_no_exits 会把
+        priority<100 但已下载的集从 pending no_exists 中减掉，配合 force=True 但
+        __is_best_version_complete=False 的 finish_subscribe_or_not，会让订阅每轮
+        都跳过搜索却又永远不完成。__get_downloaded 在洗版下的语义是"无需再处理的
+        集"，只有 priority==100 才满足该语义。
         """
         subscribe = self._build_subscribe(
             best_version=1,
-            total_episode=92,
-            episode_priority={str(ep): 100 for ep in range(1, 83)},
-            note=[83],
+            total_episode=3,
+            episode_priority={"1": 100, "2": 100, "3": 99},
+            note=[1, 2, 3],
         )
 
         downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
 
-        self.assertEqual(downloaded, list(range(1, 84)))
+        # E3 priority=99 仍是 pending，绝对不能合并到 downloaded 里
+        self.assertEqual(downloaded, [1, 2])
+        self.assertNotIn(3, downloaded)
 
-    def test_get_downloaded_falls_back_to_note_only_when_priority_empty(self):
-        """迁移场景：用户把洗版关闭再开启、或全新洗版尚未写出 priority 时，note 仍是事实源。
-
-        覆盖 episode_priority 为空但 note 非空的情况，确保 __get_downloaded 不返回空集。
+    def test_get_downloaded_non_best_version_reads_note_after_wash_migration(self):
+        """迁移场景：洗版期间 finish_subscribe_or_not 把下载集写入 note；
+        用户随后把 best_version 关掉，订阅切回普通模式时 __get_downloaded
+        从非洗版分支读取 note，旧洗版集仍能作为"已下载"被识别，避免重新匹配。
         """
         subscribe = self._build_subscribe(
-            best_version=1,
-            total_episode=12,
-            episode_priority=None,
-            current_priority=None,
+            best_version=0,
+            total_episode=5,
+            episode_priority={"1": 100, "2": 99},  # 旧洗版残留，普通分支不读
             note=[1, 2, 3],
         )
 
         downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
 
         self.assertEqual(downloaded, [1, 2, 3])
-
-    def test_get_downloaded_ignores_non_numeric_note_entries(self):
-        """note 历史上可能混入非数字条目（旧版本写入或电影项），洗版分支必须健壮跳过。"""
-        subscribe = self._build_subscribe(
-            best_version=1,
-            total_episode=5,
-            episode_priority={"1": 100},
-            note=[1, "invalid", None, 2],
-        )
-
-        downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
-
-        self.assertEqual(downloaded, [1, 2])

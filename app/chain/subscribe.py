@@ -1861,29 +1861,21 @@ class SubscribeChain(ChainBase):
         """
         获取已下载过的集数或电影。
 
-        洗版分支以"洗到顶（priority==100）"为完成判据，但实际下载过、还没洗到顶的
-        集（如 priority=99 的 HDR 档）也应当算作"曾经下载过"，否则订阅刷新时它们
-        会留在 no_exists 中被反复匹配。这里把 episode_priority 完成集与 subscribe.note
-        合并返回，保证：
-        - 洗版迁移后再切回普通订阅时，note 里记录的旧下载集仍能从这里读出来；
-        - 洗版进行中，priority<100 但已经在下载器里的集不会被订阅链路当成"还没下"。
+        重要：洗版分支返回的是"无需在本轮搜索/匹配中再处理"的集合，下游会用它
+        从 pending no_exists 中减去；只有"已洗到顶（priority==100）"才满足这个语义。
+        洗版进行中处于 priority<100 的集（例如 HDR 档 99）虽然已经下载过，但仍要
+        继续被搜索以寻找更高优先级版本——绝对不能把 note 合并进来减 pending，否则
+        check_and_handle_existing_media 会以 exist_flag=True 跳过整轮搜索，订阅卡死。
+
+        note 在洗版下的价值是"将来用户切回普通订阅时的下载历史事实源"，由非 best_version
+        分支自然消费；本分支只读 episode_priority。
         """
         if subscribe.best_version:
             if subscribe.type == MediaType.TV.value:
                 completed = SubscribeChain.__get_best_version_completed_episodes(subscribe)
-                # 合并历史下载记录：episode_priority==100 的完成集 ∪ subscribe.note 中持久化的下载集。
-                downloaded_episodes = set(completed)
-                for episode in subscribe.note or []:
-                    try:
-                        downloaded_episodes.add(int(episode))
-                    except (TypeError, ValueError):
-                        continue
-                downloaded = sorted(downloaded_episodes)
-                if downloaded:
-                    logger.info(
-                        f'订阅 {subscribe.name} 第{subscribe.season}季 已下载剧集（洗版完成 + note 历史）：{downloaded}'
-                    )
-                return downloaded
+                if completed:
+                    logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已完成洗版剧集：{completed}')
+                return completed
             return []
         note = subscribe.note or []
         if not note:
