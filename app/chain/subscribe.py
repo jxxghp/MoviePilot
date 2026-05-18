@@ -1189,11 +1189,14 @@ class SubscribeChain(ChainBase):
         mediakey = subscribe.tmdbid or subscribe.doubanid
         # 是否有剩余集
         no_lefts = not lefts or not lefts.get(mediakey)
+        # 不论是否洗版，只要本轮有下载产生就要把集数追加进 subscribe.note，
+        # 保证"已下载过哪些集"这条事实在所有订阅模式下都有可靠落点；洗版分支
+        # 之前只写 episode_priority，导致用户切回普通订阅时丢失下载历史，并让
+        # __get_downloaded 在洗版下无法从 note 拿到 priority 未达 100 但实际下过的集。
+        if downloads:
+            self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
         # 是否完成订阅
         if not subscribe.best_version:
-            # 订阅存在待定策略，不管是否已完成，均需更新订阅信息
-            # 更新订阅已下载信息
-            self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
             # 更新订阅剩余集数和时间
             self.__update_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo,
                                         update_date=bool(downloads))
@@ -1856,14 +1859,31 @@ class SubscribeChain(ChainBase):
     @staticmethod
     def __get_downloaded(subscribe: Subscribe) -> List[int]:
         """
-        获取已下载过的集数或电影
+        获取已下载过的集数或电影。
+
+        洗版分支以"洗到顶（priority==100）"为完成判据，但实际下载过、还没洗到顶的
+        集（如 priority=99 的 HDR 档）也应当算作"曾经下载过"，否则订阅刷新时它们
+        会留在 no_exists 中被反复匹配。这里把 episode_priority 完成集与 subscribe.note
+        合并返回，保证：
+        - 洗版迁移后再切回普通订阅时，note 里记录的旧下载集仍能从这里读出来；
+        - 洗版进行中，priority<100 但已经在下载器里的集不会被订阅链路当成"还没下"。
         """
         if subscribe.best_version:
             if subscribe.type == MediaType.TV.value:
                 completed = SubscribeChain.__get_best_version_completed_episodes(subscribe)
-                if completed:
-                    logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已完成洗版剧集：{completed}')
-                return completed
+                # 合并历史下载记录：episode_priority==100 的完成集 ∪ subscribe.note 中持久化的下载集。
+                downloaded_episodes = set(completed)
+                for episode in subscribe.note or []:
+                    try:
+                        downloaded_episodes.add(int(episode))
+                    except (TypeError, ValueError):
+                        continue
+                downloaded = sorted(downloaded_episodes)
+                if downloaded:
+                    logger.info(
+                        f'订阅 {subscribe.name} 第{subscribe.season}季 已下载剧集（洗版完成 + note 历史）：{downloaded}'
+                    )
+                return downloaded
             return []
         note = subscribe.note or []
         if not note:

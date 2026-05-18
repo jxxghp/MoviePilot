@@ -925,3 +925,161 @@ class SubscribeFilterAllowedEpisodesTest(TestCase):
         self.assertEqual(_context.allowed_episodes, set(range(84, 93)))
         # 浅拷贝 + 新字段写入不应反向污染源 context（match() 中 contexts 缓存可能跨多次匹配复用）。
         self.assertIsNone(original_context.allowed_episodes)
+
+
+class SubscribeNoteTrackingTest(TestCase):
+    """覆盖洗版与非洗版下 subscribe.note 的下载历史追踪。
+
+    回归目标：finish_subscribe_or_not 必须在所有订阅模式下都把本轮下载的集数追加进
+    subscribe.note；__get_downloaded 在洗版分支必须把 note 与 episode_priority==100
+    的完成集合并返回，避免迁移或低优先级下载场景下已下集被误判为"未下载"。
+    """
+
+    def _build_subscribe(self, **overrides):
+        return SubscribeChainTest()._build_subscribe(**overrides)
+
+    @staticmethod
+    def _build_download_context(episodes):
+        """构造一个最小化下载 context：只携带 finish_subscribe_or_not / __update_subscribe_note 路径会读到的字段。"""
+        return SimpleNamespace(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=list(episodes)),
+            media_info=SimpleNamespace(
+                type=MediaType.TV,
+                tmdb_id=1,
+                douban_id=None,
+            ),
+            torrent_info=SimpleNamespace(pri_order=99, title="fake-torrent"),
+            selected_episodes=list(episodes),
+        )
+
+    def test_finish_subscribe_writes_note_for_best_version_downloads(self):
+        """洗版分支若产生 downloads，subscribe.note 必须被追加，不再被 best_version 标志拦截。
+
+        旧逻辑只在非洗版分支调用 __update_subscribe_note，导致 best_version=1 时
+        下载历史只落在 episode_priority；用户切回普通订阅或排障对账时缺失"下过哪些集"
+        的事实源。这条用例验证修复后两个分支都会写 note。
+        """
+        subscribe = self._build_subscribe(
+            best_version=1,
+            total_episode=92,
+            episode_priority={"1": 100},
+            note=[1],
+        )
+        chain = SubscribeChain()
+        downloads = [self._build_download_context([83])]
+
+        captured_updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                captured_updates.append((subscribe_id, payload))
+
+            def get(self, *args, **kwargs):
+                return subscribe
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+            SubscribeChain,
+            "update_subscribe_priority",
+        ), patch.object(
+            SubscribeChain,
+            "_SubscribeChain__finish_subscribe",
+        ):
+            chain.finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.TV),
+                mediainfo=SimpleNamespace(title_year="Test Show (2026)", type=MediaType.TV,
+                                          tmdb_id=1, douban_id=None),
+                downloads=downloads,
+                lefts=None,
+            )
+
+        # note 更新必然发生在 SubscribeOper.update 上，定位"note" 键的最近一次写入。
+        note_writes = [payload["note"] for _, payload in captured_updates if "note" in payload]
+        self.assertTrue(note_writes, "best_version downloads should still trigger note update")
+        self.assertIn(83, note_writes[-1])
+        self.assertIn(1, note_writes[-1])  # 既有 note 保留
+
+    def test_finish_subscribe_skips_note_when_no_downloads(self):
+        """没有 downloads 时不应触碰 note，避免空写入或误清除。"""
+        subscribe = self._build_subscribe(best_version=1, total_episode=92, note=[1, 2])
+        chain = SubscribeChain()
+
+        captured_updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                captured_updates.append((subscribe_id, payload))
+
+            def get(self, *args, **kwargs):
+                return subscribe
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+            SubscribeChain,
+            "_SubscribeChain__is_best_version_complete",
+            return_value=False,
+        ), patch.object(
+            SubscribeChain,
+            "_SubscribeChain__finish_subscribe",
+        ):
+            chain.finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.TV),
+                mediainfo=SimpleNamespace(title_year="Test Show (2026)", type=MediaType.TV,
+                                          tmdb_id=1, douban_id=None),
+                downloads=None,
+                lefts=None,
+            )
+
+        # 无下载时不应该有 note 写入。
+        self.assertFalse(
+            [payload for _, payload in captured_updates if "note" in payload],
+            "note must not be touched when downloads is empty",
+        )
+
+    def test_get_downloaded_unions_note_with_completed_episodes(self):
+        """__get_downloaded 在洗版分支应当返回 priority==100 完成集 ∪ note。
+
+        现实场景：E83 已经被下到 priority=99（HDR），note 也已经记录了 E83；
+        episode_priority 仅含 E1..E82=100；__get_downloaded 应该把这些都返回，
+        让订阅下次刷新构造 no_exists 时把 E83 从缺失列表里减掉。
+        """
+        subscribe = self._build_subscribe(
+            best_version=1,
+            total_episode=92,
+            episode_priority={str(ep): 100 for ep in range(1, 83)},
+            note=[83],
+        )
+
+        downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
+
+        self.assertEqual(downloaded, list(range(1, 84)))
+
+    def test_get_downloaded_falls_back_to_note_only_when_priority_empty(self):
+        """迁移场景：用户把洗版关闭再开启、或全新洗版尚未写出 priority 时，note 仍是事实源。
+
+        覆盖 episode_priority 为空但 note 非空的情况，确保 __get_downloaded 不返回空集。
+        """
+        subscribe = self._build_subscribe(
+            best_version=1,
+            total_episode=12,
+            episode_priority=None,
+            current_priority=None,
+            note=[1, 2, 3],
+        )
+
+        downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
+
+        self.assertEqual(downloaded, [1, 2, 3])
+
+    def test_get_downloaded_ignores_non_numeric_note_entries(self):
+        """note 历史上可能混入非数字条目（旧版本写入或电影项），洗版分支必须健壮跳过。"""
+        subscribe = self._build_subscribe(
+            best_version=1,
+            total_episode=5,
+            episode_priority={"1": 100},
+            note=[1, "invalid", None, 2],
+        )
+
+        downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
+
+        self.assertEqual(downloaded, [1, 2])
