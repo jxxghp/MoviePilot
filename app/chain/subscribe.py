@@ -1861,14 +1861,9 @@ class SubscribeChain(ChainBase):
         """
         获取已下载过的集数或电影。
 
-        重要：洗版分支返回的是"无需在本轮搜索/匹配中再处理"的集合，下游会用它
-        从 pending no_exists 中减去；只有"已洗到顶（priority==100）"才满足这个语义。
-        洗版进行中处于 priority<100 的集（例如 HDR 档 99）虽然已经下载过，但仍要
-        继续被搜索以寻找更高优先级版本——绝对不能把 note 合并进来减 pending，否则
-        check_and_handle_existing_media 会以 exist_flag=True 跳过整轮搜索，订阅卡死。
-
-        note 在洗版下的价值是"将来用户切回普通订阅时的下载历史事实源"，由非 best_version
-        分支自然消费；本分支只读 episode_priority。
+        洗版分支只返回 priority==100 的完成集；priority<100 的集仍要继续搜索更高
+        优先级版本，不能并入返回值（会让下游把 pending 减空、订阅卡死）。
+        note 由非洗版分支消费，用于洗版关闭后的迁移读取。
         """
         if subscribe.best_version:
             if subscribe.type == MediaType.TV.value:
