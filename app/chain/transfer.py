@@ -26,6 +26,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
+from app.helper.episode_format import EpisodeFormatRuleHelper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
@@ -818,6 +819,21 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             True
             if not min_filesize or (fileitem.size or 0) > min_filesize * 1024 * 1024
             else False
+        )
+
+    @staticmethod
+    def __is_hidden_or_recycle_path(file_path: Optional[str]) -> bool:
+        """
+        判断是否隐藏或回收站路径
+        """
+        if not file_path:
+            return False
+        normalized_path = file_path.replace("\\", "/")
+        return (
+            "/@Recycle/" in normalized_path
+            or "/#recycle/" in normalized_path
+            or "/." in normalized_path
+            or "/@eaDir" in normalized_path
         )
 
     def __default_callback(
@@ -1651,6 +1667,94 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :return: 重命名后的名称（含目录）
         """
         return self.run_module("recommend_name", meta=meta, mediainfo=mediainfo)
+
+    def recommend_episode_format(
+            self,
+            fileitem: FileItem,
+    ) -> Tuple[bool, str, Optional[dict]]:
+        """
+        根据目录样本推荐集数定位模板
+        """
+        if not fileitem or not fileitem.path:
+            logger.warn("推荐集数定位模板失败：缺少目录参数")
+            return False, "缺少目录参数", None
+
+        directory = self.__resolve_episode_format_directory(fileitem)
+        if not directory or directory.type != "dir":
+            logger.warn(f"推荐集数定位模板失败：目录不存在 - {fileitem.path}")
+            return False, "目录不存在", None
+
+        rules = self.__get_episode_format_rules()
+        sample_files = self.__get_episode_format_sample_files(directory)
+        logger.info(
+            f"开始匹配集数定位规则：{directory.path}，规则数 {len(rules)}，样本数 {len(sample_files)}"
+        )
+        state, errmsg, data = EpisodeFormatRuleHelper().recommend(
+            rules=rules,
+            sample_files=sample_files,
+        )
+        if not state:
+            logger.warn(f"集数定位模板推荐失败：{directory.path} - {errmsg}")
+            return state, errmsg, data
+        logger.info(
+            f"集数定位模板推荐成功：{directory.path} - 规则 {data.get('rule_name') if data else None}"
+        )
+        return state, errmsg, data
+
+    @staticmethod
+    def __get_episode_format_rules() -> List[schemas.EpisodeFormatRule]:
+        """
+        获取启用的集数定位规则
+        """
+        rule_items = SystemConfigOper().get(SystemConfigKey.EpisodeFormatRuleTable) or []
+        rules: List[schemas.EpisodeFormatRule] = []
+        for item in rule_items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                rule = schemas.EpisodeFormatRule(**item)
+            except Exception as err:
+                logger.warn(f"忽略无效的集数定位规则：{err}")
+                continue
+            if rule.enabled:
+                rules.append(rule)
+        return sorted(rules, key=lambda item: item.order)
+
+    def __resolve_episode_format_directory(
+            self, fileitem: FileItem
+    ) -> Optional[FileItem]:
+        """
+        将文件或目录入参归一化为目录对象
+        """
+        storage_chain = StorageChain()
+        if fileitem.type == "dir":
+            return storage_chain.get_item(fileitem)
+        source_path = Path(fileitem.path)
+        parent_item = FileItem(
+            storage=fileitem.storage,
+            path=source_path.parent.as_posix(),
+            type="dir",
+            name=source_path.parent.name,
+        )
+        return storage_chain.get_item(parent_item)
+
+    def __get_episode_format_sample_files(
+            self, directory: FileItem
+    ) -> List[FileItem]:
+        """
+        获取目录下可参与模板推荐的媒体文件
+        """
+        file_items = StorageChain().list_files(directory, recursion=False) or []
+        sample_files: List[FileItem] = []
+        for item in file_items:
+            if not item or item.type != "file":
+                continue
+            if not self.__is_media_file(item):
+                continue
+            if self.__is_hidden_or_recycle_path(item.path):
+                continue
+            sample_files.append(item)
+        return sample_files
 
     def process(self) -> bool:
         """

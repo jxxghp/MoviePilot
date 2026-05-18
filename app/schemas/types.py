@@ -198,6 +198,8 @@ class SystemConfigKey(Enum):
     Customization = "Customization"
     # 自定义识别词
     CustomIdentifiers = "CustomIdentifiers"
+    # 集数定位规则词表
+    EpisodeFormatRuleTable = "EpisodeFormatRuleTable"
     # 转移屏蔽词
     TransferExcludeWords = "TransferExcludeWords"
     # 种子优先级规则

@@ -166,6 +166,24 @@ class EpisodeFormat(BaseModel):
     offset: Optional[str] = None
 
 
+class EpisodeFormatRule(BaseModel):
+    """
+    集数定位规则
+    """
+    name: str
+    enabled: bool = True
+    order: int = 0
+    pattern: str
+    min_file_size_mb: int = 0
+
+
+class EpisodeFormatRecommendItem(BaseModel):
+    """
+    集数定位推荐请求
+    """
+    fileitem: FileItem
+
+
 class ManualTransferItem(BaseModel):
     # 文件项
     fileitem: FileItem = None

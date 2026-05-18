@@ -62,6 +62,10 @@ SYSTEMCONFIG_SETTING_METADATA = {
         "group": "custom_identifiers",
         "label": "自定义识别词",
     },
+    SystemConfigKey.EpisodeFormatRuleTable.value: {
+        "group": "transfer",
+        "label": "集数定位规则词表",
+    },
     SystemConfigKey.CustomReleaseGroups.value: {
         "group": "customization",
         "label": "自定义制作组/字幕组",

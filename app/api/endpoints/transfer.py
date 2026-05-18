@@ -15,7 +15,13 @@ from app.db.models import User
 from app.db.models.transferhistory import TransferHistory
 from app.db.user_oper import get_current_active_superuser
 from app.helper.directory import DirectoryHelper
-from app.schemas import MediaType, FileItem, ManualTransferItem
+from app.log import logger
+from app.schemas import (
+    MediaType,
+    FileItem,
+    ManualTransferItem,
+    EpisodeFormatRecommendItem,
+)
 
 router = APIRouter()
 
@@ -231,6 +237,34 @@ def manual_transfer(
     if transer_item.preview:
         return schemas.Response(success=True, data=errormsg or {})
     return schemas.Response(success=True)
+
+
+@router.post(
+    "/episode-format/recommend",
+    summary="推荐集数定位模板",
+    response_model=schemas.Response,
+)
+def recommend_episode_format(
+    recommend_item: EpisodeFormatRecommendItem,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    根据目录样本推荐集数定位模板
+    :param recommend_item: 推荐请求
+    :param _: Token校验
+    """
+    target_path = recommend_item.fileitem.path if recommend_item.fileitem else None
+    logger.info(f"开始推荐集数定位模板：{target_path}")
+    state, errmsg, data = TransferChain().recommend_episode_format(
+        fileitem=recommend_item.fileitem
+    )
+    if not state:
+        logger.warn(f"推荐集数定位模板失败：{target_path} - {errmsg}")
+        return schemas.Response(success=False, message=errmsg)
+    logger.info(
+        f"推荐集数定位模板成功：{target_path} - 规则 {data.get('rule_name') if data else None}"
+    )
+    return schemas.Response(success=True, data=data)
 
 
 @router.get("/now", summary="立即执行下载器文件整理", response_model=schemas.Response)
