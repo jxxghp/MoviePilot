@@ -1,3 +1,5 @@
+from configparser import ConfigParser as _ConfigParser
+
 from alembic.command import upgrade
 from alembic.config import Config
 
@@ -24,6 +26,7 @@ def update_db():
     script_location = settings.ROOT_PATH / 'database'
     try:
         alembic_cfg = Config()
+        alembic_cfg.file_config = _ConfigParser(interpolation=None)
         alembic_cfg.set_main_option('script_location', str(script_location))
         
         # 根据数据库类型设置不同的URL
