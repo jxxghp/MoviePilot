@@ -72,7 +72,7 @@ class EpisodeFormatRuleHelper:
         for item in sample_files:
             if rule.min_file_size_mb and (item.size or 0) < rule.min_file_size_mb * 1024 * 1024:
                 continue
-            match_result = compiled_pattern.match(item.name or "")
+            match_result = compiled_pattern.search(item.name or "")
             if not match_result or "ep" not in match_result.groupdict():
                 continue
             matched_samples.append((item, match_result))
@@ -94,7 +94,7 @@ class EpisodeFormatRuleHelper:
         if not group_items or not any(group_name == "ep" for _, _, group_name in group_items):
             return None
 
-        group_items.sort(key=lambda item: item[0])
+        group_items.sort(key=lambda item: (item[0], -(item[1] - item[0])))
         template_parts: List[str] = []
         cursor = 0
         for start, end, group_name in group_items:
