@@ -232,6 +232,8 @@ class TorrentInfo(BaseModel):
     labels: Optional[list] = Field(default_factory=list)
     # 种子优先级
     pri_order: Optional[int] = 0
+    # 种子分类 电影/电视剧
+    category: Optional[str] = None
     # 促销
     volume_factor: Optional[str] = None
     # 剩余免费时间
