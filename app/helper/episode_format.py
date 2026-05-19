@@ -82,8 +82,8 @@ class EpisodeFormatRuleHelper:
             try:
                 result = anitopy.parse(file_name)
                 episode_number = result.get("episode_number")
-            except Exception:
-                pass
+            except Exception as err:
+                logger.warn(f"anitopy 解析失败：{file_name} - {err}")
             if not episode_number:
                 episode_number = self._extract_episode_fallback(file_name)
             if not episode_number:
@@ -143,7 +143,7 @@ class EpisodeFormatRuleHelper:
                 allowed_extensions.add(ext.lower().lstrip("."))
         candidates: List[FileItem] = []
         for item in files:
-            ext = (item.extension or "").lower()
+            ext = (item.extension or "").lower().lstrip(".")
             if ext not in allowed_extensions:
                 continue
             if ext not in SIZE_CHECK_EXEMPT_EXTENSIONS:
@@ -168,9 +168,10 @@ class EpisodeFormatRuleHelper:
             if m.group(1) == episode_value:
                 return m.span(1)
 
-        idx = file_name.rfind(episode_value)
-        if idx >= 0:
-            return (idx, idx + len(episode_value))
+        pattern = re.compile(rf"(?<!\d){re.escape(episode_value)}(?!\d)")
+        matches = list(pattern.finditer(file_name))
+        if matches:
+            return matches[-1].span()
 
         return None
 
