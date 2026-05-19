@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Match, Optional, Tuple
 
 import anitopy
+import parse
 
 from app.core.config import settings
 from app.helper.format import FormatParser
@@ -97,13 +98,13 @@ class EpisodeFormatRuleHelper:
         if not valid_samples:
             return False, "无匹配自定义定位规则，智能生成失败", None
 
-        if len(valid_samples) > 10:
-            valid_samples = valid_samples[:10]
-
         file_names = [name for name, _ in valid_samples]
         ep_spans = [span for _, span in valid_samples]
 
         majority_names, majority_spans = self._select_base_file(file_names, ep_spans)
+        if len(majority_names) > 10:
+            majority_names = majority_names[:10]
+            majority_spans = majority_spans[:10]
 
         episode_format = self._build_ep_only_template(
             majority_names, majority_spans, use_majority=False
@@ -259,10 +260,9 @@ class EpisodeFormatRuleHelper:
         template = self._build_ep_template_from_file(file_names[0], ep_spans[0])
         placeholders = ["a", "b", "c"]
         placeholder_idx = 0
-        remaining_names = list(file_names)
 
-        while remaining_names and placeholder_idx < len(placeholders):
-            failed = self._find_unmatched(template, remaining_names)
+        while placeholder_idx < len(placeholders):
+            failed = self._find_unmatched(template, file_names)
             if not failed:
                 break
 
@@ -300,53 +300,154 @@ class EpisodeFormatRuleHelper:
         if ep_pos < 0:
             return template
 
+        current_after_ep_template = template[ep_pos + len(ep_marker):]
         base_after_ep = after_ep_list[0]
-
-        first_failed = ""
-        for name, after_ep in zip(all_file_names, after_ep_list):
-            if name in failed_files:
-                first_failed = after_ep
-                break
-
-        if not first_failed:
+        existing_spans = self._collect_placeholder_spans(
+            current_after_ep_template, base_after_ep
+        )
+        failed_after_ep_list = [
+            after_ep
+            for name, after_ep in zip(all_file_names, after_ep_list)
+            if name in failed_files
+        ]
+        next_span = self._find_next_variable_span(
+            base_after_ep, failed_after_ep_list, existing_spans
+        )
+        if next_span is None:
             return template
 
-        diff_start = self._first_diff_index(base_after_ep, first_failed)
-        diff_end = self._last_diff_index(base_after_ep, first_failed)
+        updated_spans = existing_spans + [(next_span[0], next_span[1], placeholder)]
+        before_ep = template[:ep_pos]
+        return before_ep + ep_marker + self._render_after_ep_template(
+            base_after_ep, updated_spans
+        )
 
-        lcp_raw = base_after_ep[:diff_start]
-        lcs_raw = base_after_ep[diff_end:] if diff_end < len(base_after_ep) else ""
+    @staticmethod
+    def _collect_placeholder_spans(
+        after_ep_template: str,
+        base_after_ep: str,
+    ) -> List[Tuple[int, int, str]]:
+        if not after_ep_template or "{" not in after_ep_template:
+            return []
+        result = parse.parse(after_ep_template, base_after_ep)
+        if not result:
+            return []
+        spans: List[Tuple[int, int, str]] = []
+        for name, span in result.spans.items():
+            spans.append((span[0], span[1], name))
+        spans.sort(key=lambda item: item[0])
+        return spans
 
-        variable_candidates = [base_after_ep]
-        for name, after_ep in zip(all_file_names, after_ep_list):
-            if name in failed_files:
-                variable_candidates.append(after_ep)
+    def _find_next_variable_span(
+        self,
+        base_after_ep: str,
+        failed_after_ep_list: List[str],
+        existing_spans: List[Tuple[int, int, str]],
+    ) -> Optional[Tuple[int, int]]:
+        cursor = 0
+        literal_gaps: List[Tuple[int, int]] = []
+        for start, end, _ in existing_spans:
+            if cursor < start:
+                literal_gaps.append((cursor, start))
+            cursor = end
+        if cursor < len(base_after_ep):
+            literal_gaps.append((cursor, len(base_after_ep)))
 
-        variable_parts = []
-        for ae in variable_candidates:
-            end_pos = len(ae) - (len(base_after_ep) - diff_end)
-            if end_pos > diff_start:
-                variable_parts.append(ae[diff_start:end_pos])
-            else:
-                variable_parts.append("")
+        for gap_start, gap_end in literal_gaps:
+            if gap_start >= gap_end:
+                continue
+            probe_template = self._render_after_ep_template(
+                base_after_ep,
+                existing_spans + [(gap_start, gap_end, "probe")],
+            )
+            probe_values: List[str] = []
+            base_gap = base_after_ep[gap_start:gap_end]
+            for failed_after_ep in failed_after_ep_list:
+                result = parse.parse(probe_template, failed_after_ep)
+                if not result:
+                    continue
+                probe_value = result.named.get("probe")
+                if probe_value is None or probe_value == base_gap:
+                    continue
+                probe_values.append(probe_value)
+            if not probe_values:
+                continue
+
+            relative_span = self._calculate_variable_span(base_gap, probe_values)
+            if relative_span is None:
+                continue
+            return gap_start + relative_span[0], gap_start + relative_span[1]
+        return None
+
+    def _calculate_variable_span(
+        self,
+        base_text: str,
+        compare_texts: List[str],
+    ) -> Optional[Tuple[int, int]]:
+        candidates = [base_text] + compare_texts
+        prefix_len = self._common_prefix_length(candidates)
+        suffix_len = self._common_suffix_length(candidates, prefix_len)
+
+        variable_parts = [
+            text[prefix_len: len(text) - suffix_len if suffix_len else len(text)]
+            for text in candidates
+        ]
+        while prefix_len > 0 and any(not part for part in variable_parts):
+            prefix_len -= 1
+            variable_parts = [
+                text[prefix_len: len(text) - suffix_len if suffix_len else len(text)]
+                for text in candidates
+            ]
 
         if any(not part for part in variable_parts):
-            while diff_start > 0 and any(not part for part in variable_parts):
-                diff_start -= 1
-                lcp_raw = lcp_raw[:-1]
-                variable_parts = []
-                for ae in variable_candidates:
-                    end_pos = len(ae) - (len(base_after_ep) - diff_end)
-                    if end_pos > diff_start:
-                        variable_parts.append(ae[diff_start:end_pos])
-                    else:
-                        variable_parts.append("")
+            return None
 
-        before_ep = template[:ep_pos]
-        lcp_escaped = self._escape_literal(lcp_raw)
-        lcs_escaped = self._escape_literal(lcs_raw) if lcs_raw else ""
+        end_pos = len(base_text) - suffix_len
+        if prefix_len >= end_pos:
+            return None
+        return prefix_len, end_pos
 
-        return before_ep + ep_marker + lcp_escaped + f"{{{placeholder}}}" + lcs_escaped
+    @staticmethod
+    def _common_prefix_length(texts: List[str]) -> int:
+        if not texts:
+            return 0
+        min_len = min(len(text) for text in texts)
+        prefix_len = 0
+        while prefix_len < min_len:
+            current_char = texts[0][prefix_len]
+            if any(text[prefix_len] != current_char for text in texts[1:]):
+                break
+            prefix_len += 1
+        return prefix_len
+
+    @staticmethod
+    def _common_suffix_length(texts: List[str], prefix_len: int = 0) -> int:
+        if not texts:
+            return 0
+        suffix_len = 0
+        min_len = min(len(text) for text in texts)
+        while suffix_len < min_len - prefix_len:
+            current_char = texts[0][-suffix_len - 1]
+            if any(text[-suffix_len - 1] != current_char for text in texts[1:]):
+                break
+            suffix_len += 1
+        return suffix_len
+
+    def _render_after_ep_template(
+        self,
+        base_after_ep: str,
+        spans: List[Tuple[int, int, str]],
+    ) -> str:
+        template_parts: List[str] = []
+        cursor = 0
+        for start, end, name in sorted(spans, key=lambda item: item[0]):
+            if start < cursor or end <= start:
+                continue
+            template_parts.append(self._escape_literal(base_after_ep[cursor:start]))
+            template_parts.append(f"{{{name}}}")
+            cursor = end
+        template_parts.append(self._escape_literal(base_after_ep[cursor:]))
+        return "".join(template_parts)
 
     @staticmethod
     def _first_diff_index(a: str, b: str) -> int:
