@@ -35,6 +35,49 @@ class TransHandler:
         pass
 
     @staticmethod
+    def __normalize_disc_folder_name(value: Optional[str]) -> Optional[str]:
+        """
+        从 Disc/Disk/DVD/CD 标识中提取盘号并统一为 Disc N。
+        """
+        if not value:
+            return None
+        match = re.search(
+            r"(?:disc|disk|dvd|cd)[\s._-]*0*(\d{1,3})",
+            value,
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        return f"Disc {int(match.group(1))}"
+
+    @classmethod
+    def __get_tv_bluray_dir_path(
+            cls,
+            rendered_path: Path,
+            source_item: FileItem,
+            meta: MetaBase,
+    ) -> Path:
+        """
+        电视剧原盘目录没有单集文件名，保留季目录并追加盘片目录。
+        """
+        disc_folder = cls.__normalize_disc_folder_name(getattr(meta, "part", None))
+        if not disc_folder and source_item:
+            source_name = source_item.name or Path(source_item.path).name
+            disc_folder = cls.__normalize_disc_folder_name(source_name)
+            if not disc_folder:
+                match = re.search(
+                    r"(?:^|[^A-Za-z0-9])S\d{1,3}D0*(\d{1,3})(?:[^A-Za-z0-9]|$)",
+                    source_name,
+                    re.IGNORECASE,
+                )
+                if match:
+                    disc_folder = f"Disc {int(match.group(1))}"
+            if not disc_folder:
+                disc_folder = source_name
+
+        return rendered_path.parent / (disc_folder or "Disc")
+
+    @staticmethod
     def __update_result(result: TransferInfo, **kwargs):
         """
         更新结果
@@ -156,7 +199,7 @@ class TransHandler:
             if fileitem.type == "dir":
                 # 整理整个目录，一般为蓝光原盘
                 if need_rename:
-                    new_path = self.get_rename_path(
+                    rendered_path = self.get_rename_path(
                         path=target_path,
                         template_string=rename_format,
                         rename_dict=self.get_naming_dict(
@@ -165,9 +208,16 @@ class TransHandler:
                         source_path=fileitem.path,
                         source_item=fileitem,
                     )
-                    new_path = DirectoryHelper.get_media_root_path(
-                        rename_format, rename_path=new_path
-                    )
+                    if mediainfo.type == MediaType.TV:
+                        new_path = self.__get_tv_bluray_dir_path(
+                            rendered_path=rendered_path,
+                            source_item=fileitem,
+                            meta=in_meta,
+                        )
+                    else:
+                        new_path = DirectoryHelper.get_media_root_path(
+                            rename_format, rename_path=rendered_path
+                        )
                     if not new_path:
                         self.__update_result(
                             result=result,

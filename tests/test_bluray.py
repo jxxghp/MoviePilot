@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 from pathlib import Path
+import sys
+from types import ModuleType
 from typing import Optional
 from unittest import TestCase
 from unittest.mock import patch
+
+sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
+setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app import schemas
 from app.chain.media import MediaChain
@@ -174,7 +179,7 @@ class BluRayTest(TestCase):
         # 刮削电影目录
         __test_scrape_metadata("/FOLDER", excepted_nfo_count=2)
 
-    @patch("app.chain.ChainBase.metadata_img", return_value=None)  # 避免获取图片
+    @patch("app.chain.media.MediaChain.metadata_img", return_value=None)  # 避免获取图片
     @patch("app.chain.ChainBase.__init__", return_value=None)  # 避免不必要的模块初始化
     @patch("app.db.transferhistory_oper.TransferHistoryOper.get_by_src")
     @patch("app.chain.storage.StorageChain.list_files")
