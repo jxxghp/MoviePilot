@@ -3157,6 +3157,7 @@ class SubscribeChain(ChainBase):
             'year': subscribe.year,
             'type': subscribe.type,
             'season': subscribe.season,
+            'episode_group': subscribe.episode_group,
             'tmdbid': subscribe.tmdbid,
             'imdbid': subscribe.imdbid,
             'tvdbid': subscribe.tvdbid,
