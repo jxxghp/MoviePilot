@@ -126,7 +126,10 @@ class FormatParser(object):
         if not ret or not ret.__contains__(self._key):
             return None, None
         episodes = ret.__getitem__(self._key)
-        if not re.compile(r"^(EP)?(\d{1,4})(-(EP)?(\d{1,4}))?$", re.IGNORECASE).match(episodes):
+        if not re.compile(
+            r"^([Ee][Pp]?)?(\d{1,4})(-([Ee][Pp]?)?(\d{1,4}))?$",
+            re.IGNORECASE,
+        ).match(episodes):
             return None, None
         episode_splits = list(filter(lambda x: re.compile(r'[a-zA-Z]*\d{1,4}', re.IGNORECASE).match(x),
                                      re.split(r'%s' % self._split_chars, episodes)))

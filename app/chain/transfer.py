@@ -1819,14 +1819,22 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self, directory: FileItem
     ) -> List[FileItem]:
         """
-        获取目录下可参与模板推荐的媒体文件
+        获取目录下可参与模板推荐的样本文件。
+
+        推荐结果最终会在手动整理链路中作为 `episode_format`
+        交由 `FormatParser` 过滤主视频、字幕和外挂音频，因此这里需要把
+        同目录下的主视频、字幕和外挂音频一起纳入推荐流程。
         """
         file_items = StorageChain().list_files(directory, recursion=False) or []
         sample_files: List[FileItem] = []
         for item in file_items:
             if not item or item.type != "file":
                 continue
-            if not self.__is_media_file(item):
+            if not (
+                    self.__is_media_file(item)
+                    or self.__is_subtitle_file(item)
+                    or self.__is_audio_file(item)
+            ):
                 continue
             if self.__is_hidden_or_recycle_path(item.path):
                 continue
