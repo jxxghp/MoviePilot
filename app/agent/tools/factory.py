@@ -77,6 +77,7 @@ from app.agent.tools.impl.query_custom_identifiers import QueryCustomIdentifiers
 from app.agent.tools.impl.update_custom_identifiers import UpdateCustomIdentifiersTool
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
+from app.agent.tools.impl.submit_feedback_issue import SubmitFeedbackIssueTool
 from app.agent.llm.capability import AgentCapabilityManager
 from app.core.plugin import PluginManager
 from app.log import logger
@@ -223,6 +224,7 @@ class MoviePilotToolFactory:
             UpdateCustomIdentifiersTool,
             QuerySystemSettingsTool,
             UpdateSystemSettingsTool,
+            SubmitFeedbackIssueTool,
         ]
         if MoviePilotToolFactory._should_enable_choice_tool(channel):
             tool_definitions.append(AskUserChoiceTool)
