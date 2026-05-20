@@ -154,6 +154,8 @@ class ChainEventType(Enum):
     CommandRegister = "command.register"
     # 整理重命名
     TransferRename = "transfer.rename"
+    # 整理重命名上下文构建
+    TransferRenameBuild = "transfer.rename.build"
     # 整理拦截
     TransferIntercept = "transfer.intercept"
     # 整理覆盖检查

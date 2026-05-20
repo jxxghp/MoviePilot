@@ -20,6 +20,7 @@ from app.schemas import (
     FileItem,
     TransferInterceptEventData,
     TransferOverwriteCheckEventData,
+    TransferRenameBuildEventData,
     TransferRenameEventData,
 )
 from app.schemas.types import MediaType, ChainEventType
@@ -1142,6 +1143,19 @@ class TransHandler:
         :param source_item: 源文件信息，即待整理的文件信息
         :return: 生成的完整路径
         """
+        # 渲染前先发事件，让插件有机会往 rename_dict 写字段
+        build_event_data = TransferRenameBuildEventData(
+            template_string=template_string,
+            rename_dict=rename_dict,
+            source_path=source_path,
+            source_item=source_item,
+        )
+        build_event = eventmanager.send_event(
+            ChainEventType.TransferRenameBuild, build_event_data
+        )
+        if build_event and build_event.event_data:
+            rename_dict = build_event.event_data.rename_dict
+
         # 创建jinja2模板对象
         template = Template(template_string)
         # 渲染生成的字符串

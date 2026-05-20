@@ -183,6 +183,44 @@ class CommandRegisterEventData(ChainEventData):
     source: str = Field(default="未知拦截源", description="拦截源")
 
 
+class TransferRenameBuildEventData(ChainEventData):
+    """
+    TransferRenameBuild 事件的数据模型
+
+    在 ``transhandler.get_rename_path`` 渲染文件名之前发出，给插件一次往
+    ``rename_dict`` 写字段的机会。典型用法是通过 ffprobe 或外部接口探测源文件，
+    把分辨率、视频/音频编码、HDR 等字段写入 ``rename_dict``，主程序下一步渲染时
+    就能直接用到这些字段，不需要插件事后再渲染一次去覆盖结果。
+
+    与 ``TransferRenameEventData`` 的分工：
+    - 本事件负责"往 ``rename_dict`` 里写字段"，没有输出参数；
+    - ``TransferRename`` 在渲染之后触发，负责对已渲染好的字符串再做改写（大小写、
+      词替换、模板覆盖等），由智能重命名一类插件使用。
+
+    使用约定：
+    - 只往 ``rename_dict`` 写字段，不要在这里改写已经渲染好的字符串；
+    - ``source_path`` / ``source_item`` 为空时（如重命名预览场景），需要源文件
+      才能工作的插件请直接 return；
+    - ``rename_dict`` 中以双下划线开头的键（``__meta__`` / ``__mediainfo__`` 等）
+      存放的是原始对象引用，只读使用，不要修改这些对象本身。
+
+    Attributes:
+        template_string (str): Jinja2 模板字符串
+        rename_dict (Dict[str, Any]): 渲染上下文，可直接修改
+        source_path (Optional[str]): 源文件路径，即待整理的文件路径
+        source_item (Optional[FileItem]): 源文件信息，即待整理的文件信息
+    """
+
+    template_string: str = Field(..., description="模板字符串")
+    rename_dict: Dict[str, Any] = Field(..., description="渲染上下文")
+    source_path: Optional[str] = Field(
+        None, description="源文件路径，即待整理的文件路径"
+    )
+    source_item: Optional[FileItem] = Field(
+        None, description="源文件信息，即待整理的文件信息"
+    )
+
+
 class TransferRenameEventData(ChainEventData):
     """
     TransferRename 事件的数据模型
