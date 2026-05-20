@@ -14,12 +14,14 @@ import asyncio
 import json
 import unittest
 from unittest.mock import patch
+from urllib.parse import quote
 
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.submit_feedback_issue import (
     FEEDBACK_REPO,
     MAX_LOGS_CHARS,
     MAX_TITLE_CHARS,
+    MAX_URL_LOGS_CHARS,
     SubmitFeedbackIssueTool,
 )
 from app.core.config import settings
@@ -84,6 +86,25 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
         self.assertNotIn("hunter2", out)
         self.assertNotIn("secret123", out)
         self.assertIn("<REDACTED>", out)
+
+    def test_redact_logs_preserves_original_separator(self):
+        # gemini-code-assist review 提醒：原始分隔符（``:`` 或 ``=``）必须保留
+        self.assertIn("api_key=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("api_key=xxx"))
+        self.assertIn("api_key: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("api_key: xxx"))
+        self.assertIn("password: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("password: xxx"))
+        self.assertIn("token=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("token=xxx"))
+
+    def test_sanitize_logs_caps_to_limit_and_redacts(self):
+        result = SubmitFeedbackIssueTool._sanitize_logs(
+            "Cookie: secret\n" + "A" * 5000, limit=1024
+        )
+        self.assertNotIn("Cookie: secret", result)
+        self.assertIn("Cookie: <REDACTED>", result)
+        self.assertLessEqual(len(result), 1024)
+
+    def test_sanitize_logs_returns_empty_for_blank_input(self):
+        self.assertEqual(SubmitFeedbackIssueTool._sanitize_logs(None, 1024), "")
+        self.assertEqual(SubmitFeedbackIssueTool._sanitize_logs("   \n  ", 1024), "")
 
     def test_build_issue_body_contains_all_sections(self):
         body = SubmitFeedbackIssueTool._build_issue_body(
@@ -157,6 +178,25 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
         self.assertNotIn("+", url.split("?", 1)[1])
         # 必须带 template 参数才会进入 Issue Forms 表单
         self.assertIn("template=bug_report.yml", url)
+
+    def test_build_prefill_url_redacts_and_caps_logs(self):
+        # gemini-code-assist HIGH 反馈：预填 URL 必须脱敏 + 截断到 3KB
+        sensitive_logs = "Cookie: leak_me\n" + ("A" * (MAX_URL_LOGS_CHARS + 5000))
+        url = SubmitFeedbackIssueTool._build_prefill_url(
+            title="t",
+            version="v2.12.2",
+            environment="Docker",
+            issue_type="主程序运行问题",
+            description="d",
+            logs=sensitive_logs,
+        )
+        # Cookie 必须不出现在 URL 里
+        self.assertNotIn(quote("leak_me", safe=""), url)
+        self.assertIn(quote("<REDACTED>", safe=""), url)
+        # 总 URL 长度可控（其它字段都很短，所以主要由 logs 决定）
+        # logs 的 percent-encoding 膨胀比 ~3x（每个 ASCII A 是 1 byte，不膨胀；
+        # 但 marker / 中文会膨胀），用 1.5x 余量验证
+        self.assertLess(len(url), MAX_URL_LOGS_CHARS * 2)
 
     def test_classify_failure_handles_main_branches(self):
         self.assertEqual(SubmitFeedbackIssueTool._classify_failure(401), "no_permission")

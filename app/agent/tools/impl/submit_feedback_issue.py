@@ -54,6 +54,9 @@ ALLOWED_ISSUE_TYPES = ("主程序运行问题", "插件问题", "其他问题")
 MAX_TITLE_CHARS = 256
 MAX_BODY_CHARS = 60 * 1024
 MAX_LOGS_CHARS = 8 * 1024
+# 预填 URL 走 GET，浏览器 / Chat 平台对 URL 长度通常限制在 4-8KB；
+# logs 在 URL 路径下需要更严格的上限，给其它必填字段留余量。
+MAX_URL_LOGS_CHARS = 3 * 1024
 
 # 防止 agent 重复触发提交：60 秒内同 title+body 哈希命中视为重复。
 DEDUP_TTL_SECONDS = 60
@@ -68,11 +71,13 @@ _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
         r"\1\2 <REDACTED>",
     ),
     (
+        # 捕获原始分隔符（``:`` 或 ``=``）并在替换中保留，避免把 ``key: val``
+        # 强制改成 ``key=<REDACTED>`` 破坏日志阅读体验
         re.compile(
             r"(?i)\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|"
-            r"passkey|password|secret|token)\s*[:=]\s*['\"]?[^\s'\"&\r\n]+"
+            r"passkey|password|secret|token)(\s*[:=]\s*)['\"]?[^\s'\"&\r\n]+"
         ),
-        r"\1=<REDACTED>",
+        r"\1\2<REDACTED>",
     ),
 )
 
@@ -201,6 +206,17 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         return text[: max(0, limit - len(marker))] + marker
 
     @classmethod
+    def _sanitize_logs(cls, logs: Optional[str], limit: int) -> str:
+        """两条管道（API body / prefill URL）共用的日志清洗：先脱敏再截断。
+
+        在两处都调用同一个入口，避免任何一条路径漏掉脱敏或长度兜底——这是
+        来自 review 的 high-priority 反馈：预填 URL 之前直接吃了原始 logs，
+        会通过浏览器历史、消息渠道日志泄漏凭据。"""
+        if not logs or not logs.strip():
+            return ""
+        return cls._truncate(cls._redact_logs(logs.strip()), limit)
+
+    @classmethod
     def _build_issue_body(
         cls,
         version: str,
@@ -216,11 +232,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         - 日志字段为空时显式标注，避免上游误以为是漏填。
         - 对 logs 做二次脱敏与长度截断，对整段 body 做最终长度兜底。
         """
-        if logs and logs.strip():
-            redacted = cls._redact_logs(logs.strip())
-            log_block = cls._truncate(redacted, MAX_LOGS_CHARS)
-        else:
-            log_block = "会话中未捕获到相关后端日志。"
+        log_block = cls._sanitize_logs(logs, MAX_LOGS_CHARS) or "会话中未捕获到相关后端日志。"
         body = (
             "### 确认\n\n"
             "- [x] 我的版本是最新版本，我的版本号与 "
@@ -241,8 +253,9 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         )
         return cls._truncate(body, MAX_BODY_CHARS)
 
-    @staticmethod
+    @classmethod
     def _build_prefill_url(
+        cls,
         title: str,
         version: str,
         environment: str,
@@ -254,6 +267,10 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
 
         字段名与 bug_report.yml 的 ``id`` 一一对应；统一使用 ``quote`` 做严格
         URL-encode（空格 → %20、换行 → %0A），避免 ``+`` 被解释成空格。
+
+        Logs 字段在 URL 路径下走更严格的清洗：先做与 body 同源的脱敏，再截断到
+        ``MAX_URL_LOGS_CHARS``（3KB）以防 URL 超长（浏览器 / Chat 平台对 GET
+        URL 通常限制在 4-8KB）。这是来自 review 的 high-priority 反馈。
         """
         params = {
             "template": FEEDBACK_ISSUE_TEMPLATE,
@@ -262,7 +279,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
             "environment": environment,
             "type": issue_type,
             "what-happened": description,
-            "logs": logs or "",
+            "logs": cls._sanitize_logs(logs, MAX_URL_LOGS_CHARS),
         }
         encoded = "&".join(
             f"{quote(k, safe='')}={quote(v, safe='')}" for k, v in params.items()
