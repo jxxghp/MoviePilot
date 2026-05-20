@@ -62,6 +62,34 @@ MAX_URL_LOGS_CHARS = 3 * 1024
 # 防止 agent 重复触发提交：60 秒内同 title+body 哈希命中视为重复。
 DEDUP_TTL_SECONDS = 60
 
+# Per-user rate limit：
+# - 任意两次提交之间至少 30 分钟冷却（哪怕 title/body 不同），杜绝快速刷屏
+# - 24 小时滚动窗口内每用户最多 10 个 Issue，杜绝长期大量灌水
+# 两者叠加：``require_admin`` 限制了谁能提，rate limit 限制了能提多少。
+USER_COOLDOWN_SECONDS = 30 * 60
+USER_DAILY_QUOTA = 10
+USER_DAILY_WINDOW_SECONDS = 24 * 60 * 60
+
+# 内容质量门槛：阻止「测试 issue」「abc」等明显无意义提交。AI 在 SKILL.md
+# 中已经被要求"先筛"，这里是 defense-in-depth 工具层硬门槛。
+MIN_TITLE_BODY_CHARS = 8     # ``[错误报告]: `` 前缀外，标题至少 8 字
+MIN_DESCRIPTION_CHARS = 50   # description 整体至少 50 字
+TITLE_PREFIX = "[错误报告]:"
+
+# 黑词单：title 或 description 命中即拒。匹配为字面包含（大小写不敏感）。
+# 不用正则避免误伤合法 bug 描述。条目专注于"明显的占位 / 测试 / 乱码"。
+_QUALITY_BLOCKLIST = (
+    "测试issue", "测试 issue", "test issue",
+    "test123", "testtest", "测试测试",
+    "asdf", "qwer", "qwerty",
+    "占位", "占个坑", "随便", "随便写",
+    "abcabc", "xxxxxx", "xxx xxx",
+    "hello world", "你好世界",
+)
+
+# 检测乱码 / 重复字符行：连续 8 个或以上**相同**字符视为乱码。
+_REPEAT_GIBBERISH = re.compile(r"(.)\1{7,}", re.UNICODE)
+
 # 日志二次脱敏正则：作为 defense-in-depth，避免 agent 漏脱敏时把凭据直接
 # 写进公网 issue。SKILL.md 要求 agent 主动脱敏，这里只兜最常见的高危模式。
 _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
@@ -164,6 +192,12 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
     # 提交同一问题，但低能力模型仍可能误触；在工具层做 60 秒 hash 去重作为
     # 兜底，避免上游 issue 列表被重复条目污染。
     _recent_submissions: ClassVar[dict[str, float]] = {}
+
+    # Per-user rate-limit 状态：{username: [timestamp, ...]}。
+    # 列表按时间顺序追加，每次检查时同步过滤掉 24h 之前的条目。仅在 admin
+    # 范围内有效（require_admin 已限定调用者必须是 superuser），所以条目
+    # 数量上限可控（即便所有用户都在刷，单条记录也只多到 quota+1 就被拒）。
+    _user_submissions: ClassVar[dict[str, list]] = {}
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """侧边消息：让用户知道 Agent 正在帮他向上游提交反馈。"""
@@ -345,6 +379,94 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         ).hexdigest()
         cls._recent_submissions[key] = time.time()
 
+    @classmethod
+    def _check_user_rate_limit(cls, username: str) -> Optional[str]:
+        """检查 per-user rate limit：30 分钟冷却 + 24h 滚动配额 10 条。
+
+        命中冷却时间窗或日配额时返回拒绝消息（含本地化时长描述），未命中则
+        返回 None。本方法不修改状态，仅读；记录由 ``_record_user_submission``
+        在真正发起 API 调用前完成。"""
+        if not username:
+            # 没有用户名识别走不下去，但 _enforce_superuser 早已拦截过；
+            # 双重保险下若到此处仍无用户名直接拒绝
+            return "无法识别调用用户身份，rate limit 拒绝以防误用。"
+        now = time.time()
+        timestamps = cls._user_submissions.get(username, [])
+        # 同步清理过期条目（> 24h），保持列表短小
+        active = [ts for ts in timestamps if now - ts < USER_DAILY_WINDOW_SECONDS]
+        if active != timestamps:
+            cls._user_submissions[username] = active
+        # 30 分钟冷却
+        if active:
+            since_last = now - active[-1]
+            if since_last < USER_COOLDOWN_SECONDS:
+                remaining = int(USER_COOLDOWN_SECONDS - since_last)
+                minutes, seconds = divmod(remaining, 60)
+                return (
+                    f"为避免给上游刷屏，同一管理员两次提交之间至少间隔 "
+                    f"{USER_COOLDOWN_SECONDS // 60} 分钟。请等 "
+                    f"{minutes} 分 {seconds} 秒后再试。"
+                )
+        # 24h 配额
+        if len(active) >= USER_DAILY_QUOTA:
+            oldest = active[0]
+            recover_in = int(USER_DAILY_WINDOW_SECONDS - (now - oldest))
+            hours, remainder = divmod(recover_in, 3600)
+            minutes = remainder // 60
+            return (
+                f"你今日已提交 {USER_DAILY_QUOTA} 个 Issue，已达 24 小时配额上限。"
+                f"最早一条将在 {hours} 小时 {minutes} 分钟后过期，请到时再提。"
+            )
+        return None
+
+    @classmethod
+    def _record_user_submission(cls, username: str) -> None:
+        """把本次提交时间戳记入 per-user 状态，供下次 rate limit 检查使用。"""
+        if not username:
+            return
+        cls._user_submissions.setdefault(username, []).append(time.time())
+
+    @classmethod
+    def _check_content_quality(cls, title: str, description: str) -> Optional[str]:
+        """内容质量门槛：长度 + 黑词单 + 乱码三重过滤。
+
+        命中任一规则即拒绝，附带具体原因。该检查在 _enforce_superuser /
+        rate_limit 之后、`_build_issue_body` 之前调用，避免无意义 issue 浪费
+        上游 maintainer 的 triage 时间。"""
+        # 1) title 长度（剔除 ``[错误报告]: `` 前缀后）
+        title_body = title.strip()
+        if title_body.startswith(TITLE_PREFIX):
+            title_body = title_body[len(TITLE_PREFIX):].strip()
+        if len(title_body) < MIN_TITLE_BODY_CHARS:
+            return (
+                f"标题正文太短（剔除 {TITLE_PREFIX!r} 前缀后只有 {len(title_body)} 字，"
+                f"至少 {MIN_TITLE_BODY_CHARS} 字）。请用一句完整的话概括症状，"
+                "例如「订阅刷新时 TMDB 识别返回 500」。"
+            )
+        # 2) description 长度
+        desc_stripped = description.strip()
+        if len(desc_stripped) < MIN_DESCRIPTION_CHARS:
+            return (
+                f"问题描述太短（{len(desc_stripped)} 字，至少 {MIN_DESCRIPTION_CHARS} 字）。"
+                "请补充：现象 / 复现步骤 / 期望行为，让 maintainer 能理解问题。"
+            )
+        # 3) 黑词单
+        haystack = (title + "\n" + description).lower()
+        for phrase in _QUALITY_BLOCKLIST:
+            if phrase.lower() in haystack:
+                return (
+                    f"标题或描述命中明显占位/测试关键词「{phrase}」，已拒绝提交。"
+                    "如果是真实问题，请用正常的中文描述具体现象。"
+                )
+        # 4) 乱码：连续 8 个相同字符
+        match = _REPEAT_GIBBERISH.search(title) or _REPEAT_GIBBERISH.search(description)
+        if match:
+            return (
+                f"标题或描述里出现疑似乱码片段「{match.group(0)[:12]}…」，"
+                "请用正常文字描述问题。"
+            )
+        return None
+
     async def _enforce_superuser(self) -> Optional[str]:
         """强校验当前调用者必须是系统 superuser。
 
@@ -478,7 +600,55 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         # 2) 兜底硬约束：title 长度截断，避免超出 GitHub 256 字符限制
         title = self._truncate(title, MAX_TITLE_CHARS, marker="…")
 
-        # 3) 同会话内 60 秒去重，防止 agent 多次触发提交同一问题
+        # 3) 内容质量门槛：长度 + 黑词单 + 乱码。命中表示「明显的无意义提交」，
+        #    直接拒绝**不给** prefill_url——纵容也是放任，这类内容不应该被
+        #    打开手动提交的旁路。
+        quality_err = self._check_content_quality(title, description)
+        if quality_err:
+            logger.info(
+                f"拒绝低质量提交：username={self._username!r} reason={quality_err[:40]}…"
+            )
+            return self._result_payload(
+                success=False,
+                reason="rejected_quality",
+                message=quality_err,
+            )
+
+        # 4) Per-user rate limit：30 分钟冷却 + 24h 配额 10 条。命中后**仍**
+        #    给 prefill_url，避免误伤"短时间内确实有第二个真 bug 要报"的
+        #    场景——让管理员可以走浏览器手动提，但 Agent 不会代理刷上游。
+        rate_err = self._check_user_rate_limit(self._username or "")
+        if rate_err:
+            prefill_url = self._build_prefill_url(
+                title=title,
+                version=version,
+                environment=environment,
+                issue_type=issue_type,
+                description=description,
+                logs=logs,
+            )
+            pushed = await self._push_url_to_user(
+                url=prefill_url,
+                title="问题反馈 - 已达提交频率上限",
+                hint=rate_err + "\n\n如果确实是另一个真实问题，可点击下方链接到 GitHub 手动提交。",
+            )
+            logger.warning(
+                f"submit_feedback_issue 触发 rate limit：username={self._username!r}"
+            )
+            return self._result_payload(
+                success=False,
+                reason="rate_limited_user",
+                url_delivered=pushed,
+                prefill_url=None if pushed else prefill_url,
+                message=(
+                    rate_err + "（已通过独立消息把手动提交的预填链接发给用户）"
+                    if pushed
+                    else
+                    rate_err + "（独立消息推送失败，请把 prefill_url 原样转给用户）"
+                ),
+            )
+
+        # 5) 同会话内 60 秒去重，防止 agent 多次触发提交同一问题
         body_preview = self._build_issue_body(
             version=version,
             environment=environment,
@@ -500,7 +670,12 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 ),
             )
 
-        # 4) 始终先生成兜底 URL，无论后面走哪条路径都能用上
+        # 通过所有前置校验，记录一次「该管理员发起了一次提交」到 rate-limit
+        # 状态。**包括** no_token 兜底场景——避免管理员通过反复触发兜底来无
+        # 限次刷预填 URL 给自己。
+        self._record_user_submission(self._username or "")
+
+        # 6) 始终先生成兜底 URL，无论后面走哪条路径都能用上
         prefill_url = self._build_prefill_url(
             title=title,
             version=version,
@@ -510,7 +685,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
             logs=logs,
         )
 
-        # 5) 没有 token 时直接降级到 URL 兜底
+        # 7) 没有 token 时直接降级到 URL 兜底
         if not settings.GITHUB_TOKEN:
             logger.warning(
                 "未配置 GITHUB_TOKEN，feedback issue 降级到预填 URL 通道"
@@ -542,7 +717,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 ),
             )
 
-        # 6) 调 GitHub REST API。POST /issues 必须带 Bearer Token；
+        # 8) 调 GitHub REST API。POST /issues 必须带 Bearer Token；
         #    GITHUB_HEADERS 已经填好 Authorization & UA，再补 Content-Type
         #    与 Accept 以满足 GitHub 推荐头规范。复用 body_preview，避免
         #    重新构造一次（_build_issue_body 已经做了脱敏与长度兜底）。
@@ -559,9 +734,10 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
             "labels": ["bug"],
         }
 
-        # 在真正发起 API 调用前先 record，确保后续任何结果（成功 / 失败 /
-        # 网络异常）都会被纳入 60 秒去重窗口，避免 agent 因 LLM loop 在短
-        # 时间内反复触发提交。
+        # 在真正发起 API 调用前先 record 一次内容哈希，确保后续任何结果
+        # （成功 / 失败 / 网络异常）都会被纳入 60 秒去重窗口，避免 agent
+        # 因 LLM loop 或网络重试在短时间内反复触发提交。per-user rate-limit
+        # 状态已经在前置校验通过后记录，这里不再重复。
         self._record_submission(title, body)
 
         try:

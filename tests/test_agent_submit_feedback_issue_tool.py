@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import unittest
 from unittest.mock import patch
 from urllib.parse import quote
@@ -258,12 +259,15 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
     """``run()`` 主流程测试；外部 HTTP / send_tool_message 全部 mock。"""
 
     def setUp(self):
-        # 每个用例独立清空进程级去重缓存
+        # 每个用例独立清空进程级去重缓存与 per-user rate limit 状态
         SubmitFeedbackIssueTool._recent_submissions.clear()
+        SubmitFeedbackIssueTool._user_submissions.clear()
         # 默认无 token，避免误打真实 GitHub API
         self._token_backup = settings.GITHUB_TOKEN
         settings.GITHUB_TOKEN = None
         self.tool = SubmitFeedbackIssueTool(session_id="s", user_id="u")
+        # rate-limit 校验依赖 username；默认给一个合法 admin，单独的测试可覆盖
+        self.tool._username = "admin"
         self.push_calls = []
 
         async def fake_send(_self, text, title="", image=None):
@@ -289,13 +293,26 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         settings.GITHUB_TOKEN = self._token_backup
 
     def _good_kwargs(self, **overrides):
+        """构造一份能通过 enum / 质量 / rate-limit 全部检查的合规 payload。
+
+        默认 admin username 由 _enforce_superuser mock 放行，但 rate-limit
+        和 quality gate 是独立检查，必须用 ≥50 字的真实样式 description 与
+        非黑词单 title。"""
         kwargs = dict(
-            explanation="user authorized",
-            title="[错误报告]: 测试 issue",
+            explanation="user authorized to submit a feedback issue upstream",
+            title="[错误报告]: 订阅刷新接口返回 500 错误码",
             version="v2.12.2",
             environment="Docker",
             issue_type="主程序运行问题",
-            description="## 现象\n- demo",
+            description=(
+                "## 现象\n"
+                "- 订阅刷新接口持续返回 500，调用 /api/v1/subscribe/refresh\n"
+                "## 复现\n"
+                "1. 在 WebUI 触发刷新订阅\n"
+                "2. 后端日志出现 RecognizeError，前端弹出 500\n"
+                "## 期望\n"
+                "正常完成订阅刷新流程，无 500 错误。"
+            ),
         )
         kwargs.update(overrides)
         return kwargs
@@ -413,6 +430,10 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
             new=fake_post,
         ):
             first = _run(self.tool.run(**self._good_kwargs()))
+            # 第二次同 payload 应被 60s dedup 拦下；rate-limit 窗口比 dedup 窗口大，
+            # 测试想验证的是 dedup，所以手动清掉 per-user rate-limit 状态避免被
+            # 先一步 rate-limited（rate-limit 优先级在 dedup 之前）。
+            SubmitFeedbackIssueTool._user_submissions.clear()
             second = _run(self.tool.run(**self._good_kwargs()))
 
         d1 = json.loads(first)
@@ -517,6 +538,8 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
             new=fake_post,
         ):
             first = _run(self.tool.run(**self._good_kwargs()))
+            # 与 success 测试同理：清掉 rate-limit 状态，验证 dedup 独立生效
+            SubmitFeedbackIssueTool._user_submissions.clear()
             second = _run(self.tool.run(**self._good_kwargs()))
 
         d1 = json.loads(first)
@@ -524,6 +547,91 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         self.assertEqual(d1["reason"], "github_unavailable")
         # 即便首次失败也应进入 dedup 窗口，避免 LLM loop 不断重试同一提交
         self.assertEqual(d2["reason"], "duplicate")
+
+    # ------------------------------------------------------------------
+    # 内容质量门槛
+    # ------------------------------------------------------------------
+    def test_rejects_short_description(self):
+        result = _run(self.tool.run(**self._good_kwargs(description="只有这么几个字")))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertIn("问题描述太短", data["message"])
+
+    def test_rejects_short_title(self):
+        result = _run(self.tool.run(**self._good_kwargs(title="[错误报告]: 短")))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertIn("标题正文太短", data["message"])
+
+    def test_rejects_blocklisted_phrase_in_title(self):
+        result = _run(self.tool.run(**self._good_kwargs(
+            title="[错误报告]: 这是一个测试 issue 看看"
+        )))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertIn("测试 issue", data["message"])
+
+    def test_rejects_gibberish_repeat_pattern(self):
+        # 用不在黑词单里的字符做 ≥8 连重复（"为" * 9），避免先命中 blocklist
+        result = _run(self.tool.run(**self._good_kwargs(
+            description="为为为为为为为为为 后面还有用以凑够 50 字的正常文字 lorem ipsum dolor sit amet"
+                        " consectetur adipiscing elit sed do eiusmod"
+        )))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertIn("乱码", data["message"])
+
+    def test_quality_reject_does_not_emit_prefill_url(self):
+        # 质量拒绝必须**不**返回 prefill_url——不能给"测试 issue"留旁路
+        result = _run(self.tool.run(**self._good_kwargs(description="x")))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertNotIn("prefill_url", data)
+        self.assertEqual(self.push_calls, [])
+
+    # ------------------------------------------------------------------
+    # Per-user rate limit
+    # ------------------------------------------------------------------
+    def test_rate_limit_cooldown_kicks_in_after_first_submission(self):
+        # 第一次走 no_token 兜底就会 _record_user_submission；第二次立即重试
+        # 应该被 30 分钟冷却挡掉
+        self.tool._username = "admin1"
+        first = _run(self.tool.run(**self._good_kwargs()))
+        d1 = json.loads(first)
+        self.assertEqual(d1["reason"], "no_token")
+
+        # 紧接着第二次（不同标题，绕过 dedup）
+        second_kwargs = self._good_kwargs(
+            title="[错误报告]: 另一个完全不同的后端报错"
+        )
+        second = _run(self.tool.run(**second_kwargs))
+        d2 = json.loads(second)
+        self.assertEqual(d2["reason"], "rate_limited_user")
+        # rate limit 命中后仍要推送 prefill_url 让用户有手动路径
+        self.assertTrue(d2["url_delivered"])
+        self.assertIn("30 分钟", d2["message"])
+
+    def test_rate_limit_daily_quota_exhausts_after_n_submissions(self):
+        self.tool._username = "admin1"
+        # 直接灌满 quota：手动写入 10 条 24h 内的时间戳（绕过冷却需要把它们
+        # 设成都 > 30 分钟前，让冷却放行但 quota 已满）
+        long_ago = time.time() - (40 * 60)  # 40 分钟前，绕过 30 分钟冷却
+        SubmitFeedbackIssueTool._user_submissions["admin1"] = [
+            long_ago - i for i in range(10)
+        ]
+        result = _run(self.tool.run(**self._good_kwargs()))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rate_limited_user")
+        self.assertIn("24 小时配额", data["message"])
+
+    def test_rate_limit_resets_for_different_user(self):
+        # 即使一个用户被限流，另一个 admin 不应受影响
+        SubmitFeedbackIssueTool._user_submissions["admin1"] = [time.time()]
+        self.tool._username = "admin2"
+        result = _run(self.tool.run(**self._good_kwargs()))
+        data = json.loads(result)
+        # admin2 没用过额度，走 no_token 兜底而不是 rate_limited
+        self.assertEqual(data["reason"], "no_token")
 
 
 class TestSubmitFeedbackIssueFactoryRegistration(unittest.TestCase):
