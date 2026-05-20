@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.core.config import settings
+from app.db.user_oper import UserOper
 from app.log import logger
 from app.utils.http import AsyncRequestUtils
 
@@ -344,6 +345,46 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         ).hexdigest()
         cls._recent_submissions[key] = time.time()
 
+    async def _enforce_superuser(self) -> Optional[str]:
+        """强校验当前调用者必须是系统 superuser。
+
+        Why: 框架的 ``MoviePilotTool._check_permission`` 仅在 9 个内置渠道
+        映射 + 渠道配置齐全时才真正生效；Web 渠道、未识别渠道、缺配置等情
+        况下会静默放行（见 ``app/agent/tools/base.py`` 的多条 ``return None``
+        分支）。``submit_feedback_issue`` 触发的是不可逆的上游写操作，**这
+        里必须独立做一道硬校验**，不能依赖框架那套渠道映射，否则任意能登
+        录 MoviePilot 的用户都能向上游刷 issue。
+
+        返回 None 表示放行；返回字符串则为拒绝原因（直接作为 LLM 可见的
+        message）。"""
+        username = self._username or ""
+        if not username:
+            return (
+                "submit_feedback_issue 拒绝：当前会话没有绑定 MoviePilot 用户身份，"
+                "无法确认调用者是否为系统管理员。"
+            )
+        try:
+            user = await UserOper().async_get_by_name(username)
+        except Exception as e:  # noqa: BLE001 — DB 查询异常不能放行
+            logger.error(f"submit_feedback_issue 校验 superuser 时数据库异常: {e}")
+            return (
+                "submit_feedback_issue 拒绝：校验用户身份时发生数据库异常，"
+                "出于安全考虑本次提交被中止。请稍后重试或联系管理员。"
+            )
+        if not user:
+            return (
+                f"submit_feedback_issue 拒绝：未在 MoviePilot 中找到用户 "
+                f"{username!r}，无法确认是否为系统管理员。"
+            )
+        if not user.is_superuser:
+            return (
+                "submit_feedback_issue 拒绝：只有系统管理员（superuser）才能"
+                "向上游 MoviePilot 仓库提交问题反馈，避免任意用户通过对话"
+                "代理给上游刷 Issue。请联系管理员代为提交，或自行登录管理员"
+                "账号后再试。"
+            )
+        return None
+
     @staticmethod
     def _safe_response_dict(response) -> dict:
         """安全解析 HTTP 响应体为 dict。
@@ -406,6 +447,20 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
             f"执行工具: {self.name}, 标题: {title!r}, 版本: {version!r}, "
             f"环境: {environment!r}, 类型: {issue_type!r}"
         )
+
+        # 0) 硬校验调用者必须是系统 superuser。框架的 _check_permission 在
+        #    Web / 未识别渠道下会静默放行；本工具触发不可逆的上游写动作，
+        #    必须独立确认调用者身份，不能依赖渠道映射。
+        deny = await self._enforce_superuser()
+        if deny:
+            logger.warning(
+                f"submit_feedback_issue 拒绝非管理员调用：username={self._username!r}"
+            )
+            return self._result_payload(
+                success=False,
+                reason="forbidden",
+                message=deny,
+            )
 
         # 1) 入参枚举校验：失败直接拒绝，不消耗 GitHub 调用次数
         for value, allowed, field_name in (

@@ -274,7 +274,17 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         )
         self._push_patcher.start()
 
+        # 默认放行 superuser 校验，单独的拒绝用例会覆盖这个 stub
+        async def fake_enforce(_self):
+            return None
+
+        self._enforce_patcher = patch.object(
+            SubmitFeedbackIssueTool, "_enforce_superuser", new=fake_enforce
+        )
+        self._enforce_patcher.start()
+
     def tearDown(self):
+        self._enforce_patcher.stop()
         self._push_patcher.stop()
         settings.GITHUB_TOKEN = self._token_backup
 
@@ -289,6 +299,64 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         )
         kwargs.update(overrides)
         return kwargs
+
+    def test_rejects_non_superuser_caller(self):
+        # 关闭默认放行 stub，让真正的 _enforce_superuser 走 UserOper 路径
+        self._enforce_patcher.stop()
+
+        class _NonAdminUser:
+            is_superuser = False
+
+        async def fake_get(_self, name):
+            return _NonAdminUser()
+
+        with patch(
+            "app.agent.tools.impl.submit_feedback_issue.UserOper.async_get_by_name",
+            new=fake_get,
+        ):
+            self.tool._username = "regular-user"
+            result = _run(self.tool.run(**self._good_kwargs()))
+
+        # 重启动 enforce stub 给 tearDown 用
+        self._enforce_patcher.start()
+
+        data = json.loads(result)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["reason"], "forbidden")
+        # 不应执行任何下游副作用
+        self.assertEqual(self.push_calls, [])
+        self.assertEqual(SubmitFeedbackIssueTool._recent_submissions, {})
+
+    def test_rejects_when_username_missing(self):
+        self._enforce_patcher.stop()
+        self.tool._username = ""
+        result = _run(self.tool.run(**self._good_kwargs()))
+        self._enforce_patcher.start()
+
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "forbidden")
+        self.assertIn("没有绑定", data["message"])
+
+    def test_allows_superuser(self):
+        self._enforce_patcher.stop()
+
+        class _Admin:
+            is_superuser = True
+
+        async def fake_get(_self, name):
+            return _Admin()
+
+        with patch(
+            "app.agent.tools.impl.submit_feedback_issue.UserOper.async_get_by_name",
+            new=fake_get,
+        ):
+            self.tool._username = "admin-user"
+            result = _run(self.tool.run(**self._good_kwargs()))
+
+        self._enforce_patcher.start()
+        data = json.loads(result)
+        # superuser 放行后会落到 no_token 兜底（settings.GITHUB_TOKEN=None）
+        self.assertEqual(data["reason"], "no_token")
 
     def test_rejects_invalid_environment_before_calling_api(self):
         result = _run(self.tool.run(**self._good_kwargs(environment="linux")))
