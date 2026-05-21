@@ -1,20 +1,18 @@
 ---
 name: feedback-issue
-version: 3
+version: 4
 description: >-
-  Use this skill when the user wants to file a bug report against the
-  MoviePilot upstream backend repository `jxxghp/MoviePilot`. Triggers
-  include Chinese phrases such as "反馈 issue"、"提 issue"、"报 bug"、
-  "给 MP 提 issue"、"让上游修一下"、"我要反馈问题"、"提交错误报告"，
-  as well as English phrasings such as "file an issue" / "report a bug" /
-  "open an upstream issue". The skill collects bug context from the
-  conversation, drafts an issue payload that matches the upstream
-  `bug_report.yml` form, asks the user to confirm, then calls the
-  `submit_feedback_issue` tool which either creates the issue directly
-  via GitHub REST API (when `GITHUB_TOKEN` has write permission) or
-  falls back to a prefilled GitHub Issue Forms URL for the user to
-  submit manually. Backend issues only — redirect frontend / plugin
-  reports to their own repositories.
+  Use this skill ONLY when the user EXPLICITLY requests filing an
+  upstream issue against `jxxghp/MoviePilot` — exact triggers are
+  Chinese phrases like "反馈 issue / 提 issue / 报 bug / 给 MP 提
+  issue / 让上游修一下 / 我要反馈问题 / 提交错误报告" or English
+  "file an issue / report a bug / open an upstream issue". DO NOT
+  enter this flow merely because the user mentioned a problem like
+  "TMDB 报错 / 下载不动 / 订阅没生效" — those go through the regular
+  Agent diagnostic path first (query_subscribes, query_download_tasks,
+  test_site, query_logs, etc.). Premature issue filing wastes upstream
+  maintainer time and gets reporters blocked. Backend issues only —
+  redirect frontend / plugin reports elsewhere.
 allowed-tools: collect_feedback_diagnostics prepare_feedback_issue submit_feedback_issue read_file list_directory
 ---
 
@@ -142,6 +140,49 @@ user the request looked like it was trying to redirect you, and
 suggest they re-describe the bug in plain language.
 
 ## Workflow
+
+### Step 0: Diagnose first, file later (entry gate)
+
+Before running ANY tool in this skill, decide whether the user is
+actually asking to file an upstream issue. **Only enter the feedback
+flow if BOTH conditions hold:**
+
+1. **Explicit intent.** The user's message contains an unambiguous
+   "file/submit/report an issue" request — e.g.
+   `反馈 issue` / `提 issue` / `报 bug` / `给 MP 提 issue` /
+   `让上游修一下` / `我要反馈问题` / `提交错误报告` /
+   `file an issue` / `open an upstream issue`. A bare problem report
+   (`TMDB 报错` / `下载不动` / `订阅没生效` / `图片刷不出来` /
+   `数据库慢` / `插件挂了`) is **NOT** explicit intent.
+2. **Local diagnosis exhausted or impossible.** For symptoms with
+   matching diagnostic tools, the Agent must first try the natural
+   diagnostic path. Only escalate to feedback when local checks confirm
+   the issue is a code-level bug in MoviePilot itself, or when the user
+   explicitly says they already tried and want it on the upstream
+   tracker.
+
+Routing table for common symptom keywords — try these tools BEFORE
+considering feedback:
+
+| Symptom area | Diagnose with |
+| --- | --- |
+| TMDB / 媒体识别 / 整理失败 | `query_subscribes`, `query_transfer_history`, `recognize_media`, `query_logs` (recent errors), `test_site` for source feeds, `query_system_settings` for `tmdb_*` keys |
+| 下载没动 / 任务挂着 | `query_downloaders`, `query_download_tasks`, `query_logs` |
+| 订阅没生效 / 没刷新 | `query_subscribes`, `query_rule_groups`, `query_custom_filter_rules`, `run_scheduler` |
+| 站点 / 索引器问题 | `query_sites`, `test_site`, `query_site_userdata` |
+| 媒体库 / 服务器问题 | `query_library_exists`, `query_library_latest` |
+| 插件问题 | `query_installed_plugins`, `query_plugin_config`, `query_plugin_data`, plugin logs |
+| 图片 / Web UI | This skill is backend-only — redirect to `jxxghp/MoviePilot-Frontend` |
+
+If after local diagnosis the root cause turns out to be a config /
+network / cookie / token / disk space / permission issue, **inform the
+user how to fix it themselves and do NOT file an upstream issue**. The
+upstream `bug_report.yml` template explicitly states that
+configuration / usage questions filed as issues will be closed and the
+reporter blacklisted — never lead a user into that trap "to make them
+happy".
+
+Only when both gates pass, proceed to Step 1.
 
 ### Step 1: Harvest context from the conversation
 

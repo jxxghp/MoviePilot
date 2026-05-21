@@ -931,6 +931,107 @@ class TestCollectFeedbackDiagnosticsFiltering(unittest.TestCase):
         self.assertEqual(out, [])
 
 
+class TestCollectFeedbackDiagnosticsIntentGate(unittest.TestCase):
+    """入口意图门：用户原话没有"反馈/提 issue"等明确意图时，工具必须拒绝。
+
+    防止 Agent 在用户随口提到「TMDB 报错」「下载没动」时擅自跳过本地诊断、
+    直接跳进反馈流程刷上游 Issue 列表。"""
+
+    def setUp(self):
+        from app.agent.tools.impl.feedback_issue_state import feedback_issue_state_store
+
+        feedback_issue_state_store.clear()
+
+    def _build_tool(self):
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool,
+        )
+
+        return CollectFeedbackDiagnosticsTool(session_id="s", user_id="42")
+
+    def test_has_explicit_feedback_intent_recognizes_chinese_phrases(self):
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool as T,
+        )
+
+        for explicit in (
+            "今天 TMDB 一直在报错，反馈这个问题",  # 含"反馈"
+            "TMDB 出错了，帮我提 issue",
+            "给 MP 提个 bug，下载没动",
+            "让上游修一下这个错",
+            "submit an issue: telegram bot keeps disconnecting",
+            "请提交问题反馈：scrape 总失败",
+        ):
+            self.assertTrue(
+                T._has_explicit_feedback_intent(explicit),
+                msg=f"应识别为明确反馈意图: {explicit!r}",
+            )
+
+    def test_has_explicit_feedback_intent_rejects_plain_complaints(self):
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool as T,
+        )
+
+        for plain in (
+            "TMDB 一直在报错",  # 仅描述问题、没要求反馈
+            "下载没动了，怎么办",
+            "订阅没生效",
+            "图片刷不出来",
+            "数据库响应比较慢",
+            "TMDB API failing today",
+        ):
+            self.assertFalse(
+                T._has_explicit_feedback_intent(plain),
+                msg=f"不应识别为反馈意图: {plain!r}",
+            )
+
+    def test_run_refuses_without_explicit_intent(self):
+        tool = self._build_tool()
+        result = asyncio.run(
+            tool.run(
+                explanation="x",
+                original_user_request="TMDB 报错了",
+                keywords=["TMDB"],
+            )
+        )
+        data = json.loads(result)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["reason"], "no_explicit_feedback_intent")
+        # 引导回归本地诊断路径
+        self.assertIn("query_subscribes", data["message"])
+
+    def test_run_allows_with_explicit_intent(self):
+        # 配上路径 stub 让真实路径不读磁盘
+        from datetime import datetime
+        from pathlib import Path
+        from app.agent.tools.impl import collect_feedback_diagnostics as cfd
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_text = f"【ERROR】{now_str},000 - tmdb - TMDB lookup failed"
+
+        tool = self._build_tool()
+        with patch.object(
+            cfd.CollectFeedbackDiagnosticsTool,
+            "_read_tail",
+            return_value=log_text,
+        ), patch.object(
+            cfd.CollectFeedbackDiagnosticsTool,
+            "_candidate_log_files",
+            return_value=[Path("/fake/moviepilot.log")],
+        ):
+            result = asyncio.run(
+                tool.run(
+                    explanation="x",
+                    original_user_request="TMDB 报错，反馈 issue",
+                    keywords=["TMDB"],
+                )
+            )
+        data = json.loads(result)
+        # 走完正常路径
+        self.assertTrue(data["success"])
+        self.assertIn("diagnostics_id", data)
+
+
 class TestCollectFeedbackDiagnosticsResponse(unittest.TestCase):
     """``collect_feedback_diagnostics`` 必须把日志只缓存到 state store，
     不能把日志正文回流到 LLM 上下文里。曾经返回完整 logs，导致 LLM 在下
@@ -976,7 +1077,9 @@ class TestCollectFeedbackDiagnosticsResponse(unittest.TestCase):
             result = asyncio.run(
                 tool.run(
                     explanation="x",
-                    original_user_request="something is broken",
+                    # 必须带明确反馈意图，否则被入口门拦下；这里同时验
+                    # 证日志正文不会回流到 LLM。
+                    original_user_request="something is broken，帮我提 issue",
                     keywords=["ERROR"],
                 )
             )

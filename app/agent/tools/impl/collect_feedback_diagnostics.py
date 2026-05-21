@@ -41,6 +41,52 @@ _VAGUE_KEYWORDS = frozenset({
     "日志", "问题", "bug", "log", "logs",
 })
 
+# 入口意图门：``original_user_request`` 里必须能同时命中"动作"+"目标"，
+# 工具才允许进入反馈流程。Agent 在用户随口提到「报错」「不工作」时自作
+# 主张调用本工具，就会被这里硬挡住——把反馈通道留给真正想给上游提
+# Issue 的请求。
+#
+# 当前威胁模型是「模型过度归因到 upstream bug」，不是「对抗性绕过」；
+# 用户用近义词意图明显时（如「能不能给上游提 issue」），SKILL.md 引导
+# Agent 在原话里至少保留 ``反馈/提交/上游/issue`` 之一；如果保留不下来，
+# Agent 应该回退到本地诊断而不是强行触发反馈。
+#
+# 第一组动作词（必须出现至少一个）：
+_FEEDBACK_VERB_PHRASES: tuple[str, ...] = (
+    "反馈", "提交", "上报", "汇报",
+    "提 issue", "提issue", "提 bug", "提bug",
+    "报 bug", "报bug", "报告 bug", "报告bug",
+    "新建 issue", "新建issue", "开 issue", "开issue",
+    "让上游", "给上游",
+    "file an issue", "report a bug", "open an upstream issue",
+    "submit an issue", "raise an issue", "report this upstream",
+    "report upstream",
+)
+# 第二组目标词（动作命中后再校验目标存在）：英文 phrase 自带目标可绕过这里。
+_FEEDBACK_TARGET_TOKENS: tuple[str, ...] = (
+    "issue", "bug", "问题", "错误报告",
+    "上游", "mp", "moviepilot",
+)
+# 自带目标语义的完整短语：命中后直接放行，不再校验目标词。
+_FEEDBACK_STANDALONE_PHRASES: tuple[str, ...] = (
+    "file an issue", "report a bug", "open an upstream issue",
+    "submit an issue", "raise an issue", "report this upstream",
+    "report upstream",
+    "新建 issue", "新建issue", "开 issue", "开issue",
+    "提 issue", "提issue", "提 bug", "提bug",
+    "报 bug", "报bug", "报告 bug", "报告bug",
+    "让上游", "给上游",
+)
+# 中文里常见"动词 + 量词/介词 + 目标"模式，用正则承接（最多容忍 6 字符
+# 间隔，覆盖"给 MP 提个 bug"、"反馈这个问题"、"报告一个 issue"）：
+_FEEDBACK_REGEX_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"提.{0,6}(bug|issue|问题|错误报告)", re.IGNORECASE),
+    re.compile(r"报.{0,6}(bug|issue|错误报告)", re.IGNORECASE),
+    re.compile(r"反馈.{0,8}(issue|bug|问题|上游|错误)", re.IGNORECASE),
+    re.compile(r"开.{0,4}(issue|bug)", re.IGNORECASE),
+    re.compile(r"上报.{0,6}(bug|issue|问题|错误)", re.IGNORECASE),
+)
+
 
 class CollectFeedbackDiagnosticsInput(BaseModel):
     """反馈诊断日志收集工具输入。"""
@@ -137,6 +183,36 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
         return normalized
 
     @staticmethod
+    def _has_explicit_feedback_intent(original_user_request: str) -> bool:
+        """判断用户原话里是否出现了"明确要求提 Issue"的意图。
+
+        Why: Agent 在 deepseek 这类强模型里会主动归因——用户只说"TMDB 报
+        错"或"下载没动"，Agent 就跳过本地诊断、直接进入反馈流程。本工具
+        是反馈流程的入口，硬挡一道意图门，迫使 Agent 回到 SKILL.md Step 0
+        要求的"先排查、再反馈"路径。
+
+        判定规则（先放行更具体的、再回落到组合）：
+        1. 命中 ``_FEEDBACK_STANDALONE_PHRASES`` 任一短语 → 放行。
+           这些短语已经把"动作 + 目标"打包在一起（如 ``提 issue``、
+           ``file an issue``），无需再二次校验。
+        2. 同时命中一个 ``_FEEDBACK_VERB_PHRASES`` 动作词和一个
+           ``_FEEDBACK_TARGET_TOKENS`` 目标词 → 放行。能覆盖"反馈这个
+           问题"、"提交个 bug"、"把这个反馈给上游"等自然中文。
+        3. 否则视为没有明确意图，拒绝。
+        """
+        if not original_user_request:
+            return False
+        normalized = original_user_request.lower().strip()
+
+        if any(phrase in normalized for phrase in _FEEDBACK_STANDALONE_PHRASES):
+            return True
+        if any(p.search(normalized) for p in _FEEDBACK_REGEX_PATTERNS):
+            return True
+        has_verb = any(phrase in normalized for phrase in _FEEDBACK_VERB_PHRASES)
+        has_target = any(token in normalized for token in _FEEDBACK_TARGET_TOKENS)
+        return has_verb and has_target
+
+    @staticmethod
     def _normalize_window(time_window_minutes: int) -> int:
         """把传入的时间窗 clamp 到 [5, 1440] 区间。"""
         try:
@@ -221,7 +297,36 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
         Issue #5806 暴露的两个数据准确性问题在这里一并修：
         1. 时间窗：默认只看最近 30 分钟，杜绝历史无关日志混入。
         2. 关键词过滤收紧：剔除"错误/异常/失败"等几乎每行都命中的通用词。
+
+        反馈入口意图门（用户反馈）：``original_user_request`` 里必须有
+        明确"我要提 Issue / 反馈 issue / file an issue"之类的短语；
+        Agent 自作主张把"TMDB 报错"理解成"反馈" 时直接拒绝，引导回归
+        本地诊断路径，避免给上游刷 Issue。
         """
+        if not self._has_explicit_feedback_intent(original_user_request):
+            logger.info(
+                "collect_feedback_diagnostics 拒绝：原始请求里没有明确"
+                "反馈意图。原话=%r",
+                (original_user_request or "")[:120],
+            )
+            return json.dumps(
+                {
+                    "success": False,
+                    "reason": "no_explicit_feedback_intent",
+                    "message": (
+                        "用户原话里没有明确要求向上游反馈 Issue 的短语，"
+                        "不应直接进入反馈流程。请回到常规诊断路径，使用"
+                        "query_subscribes / query_download_tasks / "
+                        "query_logs / test_site 等工具先排查；仅当用户"
+                        "在排查后明确要求把问题转给上游（例如说出 "
+                        "「反馈 issue / 提 issue / 报 bug / 让上游修一下」"
+                        "之类的原话），才能再次调用本工具。"
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+
         try:
             normalized_max_lines = min(max(int(max_lines or 80), 20), 200)
         except (TypeError, ValueError):
