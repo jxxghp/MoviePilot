@@ -133,6 +133,39 @@ class TestAgentInteraction(unittest.TestCase):
         self.assertIn("质量门槛拒绝", result)
         async_post_message.assert_not_awaited()
 
+    def test_choice_tool_blocks_after_feedback_preview_pending(self):
+        """#5807 回归：prepare_feedback_issue 发完按钮后，agent 不应再叠 ask_user_choice。
+
+        否则用户会收到两个确认按钮、点两次、agent 跑两轮 → 同一条成功
+        文案在 TG 里重复 3 次。"""
+        tool = AskUserChoiceTool(session_id="session-feedback", user_id="10001")
+        tool.set_message_attr(
+            channel=MessageChannel.Telegram.value,
+            source="telegram-test",
+            username="tester",
+        )
+        tool.set_agent_context(
+            agent_context={"reply_mode": "feedback_issue_confirmation"}
+        )
+
+        with patch(
+            "app.agent.tools.impl.ask_user_choice.ToolChain.async_post_message",
+            new=AsyncMock(),
+        ) as async_post_message:
+            result = asyncio.run(
+                tool.run(
+                    message="已准备 ISSUE，请确认是否提交到上游仓库？",
+                    options=[
+                        UserChoiceOptionInput(label="确认提交", value="确认提交"),
+                        UserChoiceOptionInput(label="取消", value="取消"),
+                    ],
+                )
+            )
+
+        # 工具应该自我拒绝，不再发第二个按钮卡片
+        self.assertIn("prepare_feedback_issue", result)
+        async_post_message.assert_not_awaited()
+
     def test_agent_interaction_callback_routes_selected_value_back_to_agent(self):
         chain = MessageChain()
         request = agent_interaction_manager.create_request(
