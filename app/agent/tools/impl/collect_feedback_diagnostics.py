@@ -34,6 +34,46 @@ _MAX_TIME_WINDOW_MINUTES = 24 * 60
 _LOG_TIMESTAMP_RE = re.compile(r"(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})")
 _LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+# 提取日志行的源模块名，用于过滤"Agent 自身 meta-noise"。
+_LOG_MODULE_RE = re.compile(
+    r"^【[^】]+】\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2},\d+\s+-\s+([^\s][^\-]*?)\s+-\s+"
+)
+
+# 这些模块产出的日志属于 Agent 自身运行 / 框架内务，对用户面故障定位毫无
+# 价值——反而经常把诊断段污染成"反馈流程的回声"：tool args dump 里塞着
+# ``database / 推荐 / 豆包`` 等关键字，让 keyword 过滤命中一堆 noise，
+# 真正的 RateLimitError / Traceback 反而被挤掉（参见 #5808 实战）。
+#
+# 包含两类：
+# 1) 反馈流程自己的工具与框架（绝对要排除，否则永远在自我反射）
+# 2) 通用 Agent 框架噪音：tool dispatch / event bus / streaming callback /
+#    通知发送 / activity log 等
+_META_NOISE_MODULES = frozenset({
+    # 反馈流程
+    "collect_feedback_diagnostics.py",
+    "prepare_feedback_issue.py",
+    "submit_feedback_issue.py",
+    "ask_user_choice.py",
+    # Agent 框架
+    "base.py",          # tool framework: Executing tool / Tool ... executed
+    "agent",            # agent runtime: Agent推理 / 流式输出
+    "factory.py",       # tool factory creation
+    "callback",         # streaming callback
+    "prompt",           # 提示词加载
+    "memory.py",        # 会话记忆
+    "activity_log.py",  # activity 日志
+    # 消息/事件总线（往往把 issue 预览全文 dump 进日志）
+    "message.py",
+    "event.py",
+    "chain",            # chain - 请求系统模块执行：xxx
+    # 渠道适配层噪音
+    "discord",
+    "telegram",
+    "telegram.py",
+    # 命令执行（agent 自己跑过的 shell 命令 echo）
+    "execute_command.py",
+})
+
 # 不允许使用的模糊关键词：通用到几乎每条 log 都会命中、对定位本次问题
 # 没有价值。当 keyword 列表只剩这些时退回到「按时间窗口取尾部」。
 _VAGUE_KEYWORDS = frozenset({
@@ -232,6 +272,17 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
         except ValueError:
             return None
 
+    @staticmethod
+    def _is_meta_noise(line: str) -> bool:
+        """判断一行日志是否来自"Agent 自身 meta-noise"模块。
+
+        命中即排除。续行（无模块名）由调用方按"跟随父行"语义处理。
+        """
+        match = _LOG_MODULE_RE.match(line)
+        if not match:
+            return False
+        return match.group(1).strip() in _META_NOISE_MODULES
+
     @classmethod
     def _filter_lines(
         cls,
@@ -250,18 +301,24 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
         """
         candidates: list[str] = []
         last_seen_in_window: Optional[bool] = None
+        last_seen_was_meta: bool = False
         for line in text.splitlines():
             if not line.strip():
                 continue
             ts = cls._parse_line_timestamp(line)
             if ts is not None:
                 in_window = ts >= window_start
-                last_seen_in_window = in_window
-                if in_window:
+                # Meta-noise 行（agent/tool framework 自己的日志）即便落在窗口
+                # 内也直接丢；它们对用户面故障定位没有价值，反而会因为带有
+                # ``database / 推荐 / 豆包`` 之类关键字让诊断段灌满 noise。
+                is_meta = cls._is_meta_noise(line)
+                last_seen_was_meta = is_meta
+                last_seen_in_window = in_window and not is_meta
+                if in_window and not is_meta:
                     candidates.append(line)
             else:
-                # 续行：跟随上一条时间戳的窗口判断；起始连续无时间戳行直接丢
-                if last_seen_in_window:
+                # 续行：跟随上一条时间戳行的去留（meta-noise 父行的续行也丢）
+                if last_seen_in_window and not last_seen_was_meta:
                     candidates.append(line)
 
         if not candidates:

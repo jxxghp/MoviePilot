@@ -103,7 +103,8 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
     def test_redact_logs_strips_extended_credentials(self):
         # 扩充后的脱敏需要覆盖：bare GitHub PAT、IM webhook、PT passkey、
         # 邮箱、公网 IP、用户家目录、Windows 用户路径、X-Api-Key 头部、
-        # 厂商常见字段（client_secret / corp_secret / webhook 等）
+        # 厂商常见字段（client_secret / corp_secret / webhook 等）、
+        # 以及用户身份字段（#5808 教训：userid / username）。
         cases = [
             ("plain bare ghp_xxxxxxxxxxxxxxxxxxxxxx", "ghp_xxxxxxxxxxxxxxxxxxxxxx"),
             ("xoxb-xxxxxxxxxxxx", "xoxb-xxxxxxxxxxxx"),
@@ -119,6 +120,16 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
             ("Path /home/bob/.config/foo", "/home/bob/"),
             (r"Path C:\Users\Charlie\AppData", r"C:\Users\Charlie\\"),
             ("rsskey=abcd1234efgh", "rsskey=abcd1234efgh"),
+            # 用户身份 PII
+            ("userid=1234567890, username=fake_user", "1234567890"),
+            ("userid=1234567890, username=fake_user", "fake_user"),
+            ("user_id: 11111111", "11111111"),
+            ("open_id=ou_abcdef", "ou_abcdef"),
+            ("union_id=on_xxx123", "on_xxx123"),
+            # MoviePilot 会话 ID（embed userid）
+            ("Agent推理 session_id=user_1234567890_1779337335 input=...", "1234567890_1779337335"),
+            ("session_id=user_1234567890_1779337335 fired", "user_1234567890_1779337335"),
+            ("session_id=arbitrary_string_value", "arbitrary_string_value"),
         ]
         for sample, secret_fragment in cases:
             out = SubmitFeedbackIssueTool._redact_logs(sample)
@@ -910,6 +921,41 @@ class TestCollectFeedbackDiagnosticsFiltering(unittest.TestCase):
         self.assertNotIn("历史", joined)
         # Traceback 续行紧跟在窗口内的 ERROR 行后面，应保留
         self.assertIn("Traceback", joined)
+
+    def test_filter_lines_drops_agent_meta_noise(self):
+        """#5808 教训：诊断段几乎全是 agent 自身 tool dispatch / 消息推送日志，
+        真正的 RateLimitError 被挤掉。filter 必须把 meta-noise 模块剔除。"""
+        from datetime import datetime, timedelta
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool,
+        )
+
+        now = datetime.now()
+        recent = (now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+        text = "\n".join([
+            f"【DEBUG】{recent},100 - base.py - Executing tool collect_feedback_diagnostics ...",
+            f"【INFO】{recent},110 - agent - Agent推理: input=大模型出错",
+            f"【INFO】{recent},120 - message.py - 发送消息：{{'title': '确认提交问题反馈'...}}",
+            f"【DEBUG】{recent},130 - chain - 请求系统模块执行：post_message",
+            f"【DEBUG】{recent},140 - telegram - 收到来自 TG.v2 的Telegram消息",
+            f"【ERROR】{recent},200 - app.modules.openai - RateLimitError 429",
+            "    Traceback (most recent call last):",
+            f"【WARNING】{recent},300 - app.chain.recommend - 推荐接口降级",
+        ])
+        out = CollectFeedbackDiagnosticsTool._filter_lines(
+            text, keywords=["大模型", "RateLimitError"], max_lines=80,
+            window_start=now - timedelta(minutes=30),
+        )
+        joined = "\n".join(out)
+        # meta-noise 全部丢弃
+        for noise in ("Executing tool", "Agent推理", "发送消息", "post_message",
+                      "TG.v2 的Telegram消息"):
+            self.assertNotIn(noise, joined, msg=f"agent meta-noise 漏过: {noise}")
+        # 真实信号保留
+        self.assertIn("RateLimitError", joined)
+        self.assertIn("Traceback", joined)
+        # WARNING 行不命中 keywords 但属于真实模块——这里不强求保留
+        # （keyword 过滤逻辑不改）
 
     def test_filter_lines_drops_orphan_continuations_outside_window(self):
         # 续行所属的最近一条时间戳在窗口外时不应被错误收入

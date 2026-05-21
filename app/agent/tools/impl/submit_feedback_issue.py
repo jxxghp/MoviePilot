@@ -152,6 +152,11 @@ _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
     (re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"), _REDACTED),
     (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), _REDACTED),
     (re.compile(r"\b(sk|xoxb|xoxp|xoxa)-[A-Za-z0-9-]{12,}\b"), _REDACTED),
+    # ---- MoviePilot 会话 ID（``user_<userid>_<timestamp>``）：嵌入了 userid
+    # 即便上下文里没出现 ``session_id=`` 前缀也得脱敏，否则 agent 模块虽被
+    # meta-noise 过滤掉，其它非 noise 模块也可能在 traceback 里 echo 出这个
+    # 字面值（见 #5808 教训）。
+    (re.compile(r"\buser_\d{4,}_\d+\b"), _REDACTED),
     # ---- 站点 PT passkey / RSS / IM webhook --------------------------------
     (re.compile(r"(?i)\b(passkey|rsskey|authkey|access_key)=[A-Za-z0-9]{8,}"), rf"\1={_REDACTED}"),
     (
@@ -161,7 +166,11 @@ _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
         ),
         rf"\1/{_REDACTED}",
     ),
-    # ---- 通用 key=value / key: value 凭据（保留原始分隔符）-----------------
+    # ---- 通用 key=value / key: value 凭据 + 用户身份 PII（保留原始分隔符）---
+    # 用户标识字段在 #5808 实战里被发现混进 logs（Telegram numeric userid /
+    # GitHub-style username）。即便 meta-noise 过滤会丢掉大多数 agent
+    # framework 日志，仍可能有非 noise 模块（如 plugin / hook）打印这些
+    # 字段，所以此处把"用户身份"也纳入脱敏。
     (
         re.compile(
             r"(?i)\b("
@@ -169,8 +178,11 @@ _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
             r"client[_-]?secret|client[_-]?id|app[_-]?secret|app[_-]?key|"
             r"corp[_-]?secret|corp[_-]?id|agent[_-]?id|"
             r"password|secret|token|auth|credential|"
-            r"chat[_-]?id|webhook|api[_-]?token|bot[_-]?token"
-            r")(\s*[:=]\s*)['\"]?[^\s'\"&\r\n]{4,}"
+            r"chat[_-]?id|webhook|api[_-]?token|bot[_-]?token|"
+            r"user[_-]?id|userid|username|user[_-]?name|"
+            r"session[_-]?id|sessionid|"
+            r"open[_-]?id|openid|union[_-]?id|unionid"
+            r")(\s*[:=]\s*)['\"]?[^\s'\"&\r\n]{2,}"
         ),
         rf"\1\2{_REDACTED}",
     ),
