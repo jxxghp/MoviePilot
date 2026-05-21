@@ -237,6 +237,45 @@ class TestAgentInteraction(unittest.TestCase):
         )
         self.assertIsNotNone(consumed)
 
+    def test_state_store_active_confirmation_helpers(self):
+        # find_active_confirmation 应只返回 confirmed_at=None 的记录
+        rec1 = feedback_issue_state_store.create_confirmation(
+            session_id="s1", user_id="u1", username=None,
+            draft_hash="h1", diagnostics_id="d1",
+        )
+        rec2 = feedback_issue_state_store.create_confirmation(
+            session_id="s1", user_id="u2", username=None,
+            draft_hash="h2", diagnostics_id="d2",
+        )
+        # 跨用户隔离
+        self.assertEqual(
+            feedback_issue_state_store.find_active_confirmation(
+                session_id="s1", user_id="u1"
+            ).confirmation_token,
+            rec1.confirmation_token,
+        )
+        # 标记为已确认后不应再被 active 检索返回
+        feedback_issue_state_store.mark_confirmed(
+            rec1.confirmation_token, session_id="s1", user_id="u1"
+        )
+        self.assertIsNone(
+            feedback_issue_state_store.find_active_confirmation(
+                session_id="s1", user_id="u1"
+            )
+        )
+        # invalidate_active_confirmations 只清掉当前会话+用户的 pending 记录
+        dropped = feedback_issue_state_store.invalidate_active_confirmations(
+            session_id="s1", user_id="u2"
+        )
+        self.assertEqual(dropped, 1)
+        self.assertIsNone(
+            feedback_issue_state_store.find_active_confirmation(
+                session_id="s1", user_id="u2"
+            )
+        )
+        # 已 confirmed 的 rec1 不应该被这次 invalidate 误删
+        self.assertIn(rec1.confirmation_token, feedback_issue_state_store._confirmations)
+
     def test_legacy_agent_choice_callback_still_supported(self):
         chain = MessageChain()
         request = agent_interaction_manager.create_request(

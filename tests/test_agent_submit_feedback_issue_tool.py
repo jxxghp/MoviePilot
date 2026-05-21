@@ -100,6 +100,38 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
         self.assertIn("password: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("password: xxxx"))
         self.assertIn("token=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("token=xxxx"))
 
+    def test_redact_logs_strips_extended_credentials(self):
+        # 扩充后的脱敏需要覆盖：bare GitHub PAT、IM webhook、PT passkey、
+        # 邮箱、公网 IP、用户家目录、Windows 用户路径、X-Api-Key 头部、
+        # 厂商常见字段（client_secret / corp_secret / webhook 等）
+        cases = [
+            ("plain bare ghp_xxxxxxxxxxxxxxxxxxxxxx", "ghp_xxxxxxxxxxxxxxxxxxxxxx"),
+            ("xoxb-xxxxxxxxxxxx", "xoxb-xxxxxxxxxxxx"),
+            ("github_pat_xxxxxxxxxxxxxxxxxxxxxx", "github_pat_xxxxxxxxxxxxxxxxxxxxxx"),
+            ("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc123", "key=abc123"),
+            ("https://hooks.slack.com/services/T0/B0/abcdef", "abcdef"),
+            ("X-Api-Key: secret-xyz-123", "secret-xyz-123"),
+            ("client_secret=topsecret_value", "topsecret_value"),
+            ("corp_secret: corp_topsecret", "corp_topsecret"),
+            ("user@example.com login failed", "user@example.com"),
+            ("Connected to 203.0.113.45", "203.0.113.45"),
+            ("Path /Users/alice/Library/...", "/Users/alice/"),
+            ("Path /home/bob/.config/foo", "/home/bob/"),
+            (r"Path C:\Users\Charlie\AppData", r"C:\Users\Charlie\\"),
+            ("rsskey=abcd1234efgh", "rsskey=abcd1234efgh"),
+        ]
+        for sample, secret_fragment in cases:
+            out = SubmitFeedbackIssueTool._redact_logs(sample)
+            self.assertNotIn(secret_fragment, out, msg=f"未脱敏: {sample!r} → {out!r}")
+
+    def test_redact_logs_preserves_private_ipv4_addresses(self):
+        # 私网地址不脱敏，方便 maintainer 理解部署拓扑
+        out = SubmitFeedbackIssueTool._redact_logs(
+            "Local 127.0.0.1; LAN 192.168.1.10; container 10.244.5.6; mgmt 172.16.0.1"
+        )
+        for keep in ("127.0.0.1", "192.168.1.10", "10.244.5.6", "172.16.0.1"):
+            self.assertIn(keep, out, msg=f"私网地址被错误脱敏: {keep}")
+
     def test_sanitize_logs_caps_to_limit_and_redacts(self):
         result = SubmitFeedbackIssueTool._sanitize_logs(
             "Cookie: secret\n" + "A" * 5000, limit=1024
@@ -332,11 +364,15 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         self.tool._username = "admin"
         self.push_calls = []
 
-        async def fake_send(_self, text, title="", image=None):
-            self.push_calls.append({"text": text, "title": title})
+        # _push_url_to_user 现在直接走 ToolChain().async_post_message 并
+        # 关闭网页预览（修复 #5806 一次提交渲染 3 张预览卡的问题）。测试
+        # 用 mock 直接替换该方法，捕获 url/title/hint 三元组即可。
+        async def fake_push(_self, url, title, hint):
+            self.push_calls.append({"text": f"{hint}\n\n{url}", "title": title, "url": url})
+            return True
 
         self._push_patcher = patch.object(
-            SubmitFeedbackIssueTool, "send_tool_message", new=fake_send
+            SubmitFeedbackIssueTool, "_push_url_to_user", new=fake_push
         )
         self._push_patcher.start()
 
@@ -829,6 +865,72 @@ class TestSubmitFeedbackIssueFactoryRegistration(unittest.TestCase):
         self.assertIn("submit_feedback_issue", tool_names)
 
 
+class TestCollectFeedbackDiagnosticsFiltering(unittest.TestCase):
+    """``_normalize_keywords`` / ``_filter_lines`` 的纯函数测试。"""
+
+    def test_normalize_keywords_drops_vague_terms(self):
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool,
+        )
+
+        out = CollectFeedbackDiagnosticsTool._normalize_keywords(
+            "今天 TMDB 一直在报错，反馈这个问题",
+            ["TMDB", "错误", "异常", "scrape_metadata", "x"],  # x 太短
+        )
+        # 通用词被剔除，具体词保留
+        self.assertIn("TMDB", out)
+        self.assertIn("scrape_metadata", out)
+        self.assertNotIn("错误", out)
+        self.assertNotIn("异常", out)
+        self.assertNotIn("x", out)
+
+    def test_filter_lines_excludes_history_outside_time_window(self):
+        from datetime import datetime, timedelta
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool,
+        )
+
+        now = datetime.now()
+        old = now - timedelta(hours=3)
+        recent = now - timedelta(minutes=5)
+        text = "\n".join([
+            f"【INFO】{old.strftime('%Y-%m-%d %H:%M:%S')},123 - tmdb - TMDB lookup failed (历史)",
+            f"【ERROR】{recent.strftime('%Y-%m-%d %H:%M:%S')},123 - tmdb - TMDB lookup failed (当前)",
+            "    Traceback (most recent call last):",
+            "      File 'x.py', line 1, in <module>",
+        ])
+        out = CollectFeedbackDiagnosticsTool._filter_lines(
+            text,
+            keywords=["TMDB"],
+            max_lines=80,
+            window_start=now - timedelta(minutes=30),
+        )
+        joined = "\n".join(out)
+        self.assertIn("当前", joined)
+        self.assertNotIn("历史", joined)
+        # Traceback 续行紧跟在窗口内的 ERROR 行后面，应保留
+        self.assertIn("Traceback", joined)
+
+    def test_filter_lines_drops_orphan_continuations_outside_window(self):
+        # 续行所属的最近一条时间戳在窗口外时不应被错误收入
+        from datetime import datetime, timedelta
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool,
+        )
+
+        now = datetime.now()
+        old = now - timedelta(hours=3)
+        text = "\n".join([
+            f"【ERROR】{old.strftime('%Y-%m-%d %H:%M:%S')},000 - tmdb - 历史报错",
+            "    Traceback (历史续行)",
+        ])
+        out = CollectFeedbackDiagnosticsTool._filter_lines(
+            text, keywords=["TMDB"], max_lines=80,
+            window_start=now - timedelta(minutes=30),
+        )
+        self.assertEqual(out, [])
+
+
 class TestCollectFeedbackDiagnosticsResponse(unittest.TestCase):
     """``collect_feedback_diagnostics`` 必须把日志只缓存到 state store，
     不能把日志正文回流到 LLM 上下文里。曾经返回完整 logs，导致 LLM 在下
@@ -852,10 +954,15 @@ class TestCollectFeedbackDiagnosticsResponse(unittest.TestCase):
         )
 
     def test_run_does_not_return_raw_log_text(self):
+        from datetime import datetime
         from pathlib import Path
         from app.agent.tools.impl import collect_feedback_diagnostics as cfd
 
-        big_log = "ERROR something\n" * 500  # ~ 8000 字节
+        # 用近 1 分钟内的时间戳，确保通过时间窗过滤
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        big_log = "\n".join(
+            f"【ERROR】{now_str},000 - mod{i} - ERROR something" for i in range(500)
+        )
         tool = self._build_tool()
         with patch.object(
             cfd.CollectFeedbackDiagnosticsTool,

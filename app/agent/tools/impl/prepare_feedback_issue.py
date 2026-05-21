@@ -164,6 +164,46 @@ class PrepareFeedbackIssueTool(MoviePilotTool):
             logs=logs,
             diagnostics_id=diagnostics_id,
         )
+
+        # 同会话/用户已经发过预览且尚未被用户点击确认：拒绝重复发预览。
+        # Why: Issue #5806 实测中 agent 在一次用户输入里连续调用了两次
+        # prepare_feedback_issue，导致 TG 里出现两份「确认提交」按钮，用户
+        # 点击两次后才进入提交。这里直接挡住重复预览：草稿一致就复用旧
+        # token，草稿变了则要求 Agent 自己撤销旧 token 再发新预览（以免
+        # 残留按钮指向过期内容）。
+        active = feedback_issue_state_store.find_active_confirmation(
+            session_id=self._session_id,
+            user_id=self._user_id,
+        )
+        if active is not None:
+            if active.draft_hash == draft_hash:
+                logger.info(
+                    "feedback issue preview deduped: session_id=%s reuse token=%s",
+                    self._session_id,
+                    active.confirmation_token[:8],
+                )
+                self._agent_context["user_reply_sent"] = True
+                self._agent_context["reply_mode"] = "feedback_issue_confirmation"
+                return self._result_payload(
+                    success=True,
+                    deduped=True,
+                    confirmation_token=active.confirmation_token,
+                    diagnostics_id=diagnostics_id,
+                    message=(
+                        "上一份相同内容的反馈预览仍在等待用户点击确认，"
+                        "未重复发送按钮。请勿再次调用 prepare_feedback_issue。"
+                    ),
+                )
+            logger.info(
+                "feedback issue preview superseded: session_id=%s drop_token=%s",
+                self._session_id,
+                active.confirmation_token[:8],
+            )
+            feedback_issue_state_store.invalidate_active_confirmations(
+                session_id=self._session_id,
+                user_id=self._user_id,
+            )
+
         confirmation = feedback_issue_state_store.create_confirmation(
             session_id=self._session_id,
             user_id=self._user_id,

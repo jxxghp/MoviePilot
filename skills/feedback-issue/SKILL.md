@@ -192,6 +192,17 @@ instance:
    what was found, base the description on the user's symptom and the
    `source_files` list — not on log content (which the Agent does not
    have).
+4. **Pick specific keywords, not vague ones.** The tool drops
+   `错误 / 异常 / 失败 / error / exception` automatically because they
+   match nearly every log line and produce useless "current incident"
+   captures (Issue #5806 — TMDB-related historical logs from days
+   earlier ended up attached to a brand-new TMDB report). Use
+   plugin id, media title, exception class name, downloader name,
+   site domain, scheduler name, etc.
+5. **Time window matters.** Diagnostics defaults to the last 30
+   minutes; pass `time_window_minutes` larger only when the user
+   explicitly says "yesterday / last night / this morning". Do NOT
+   widen the window just to catch more keyword hits.
 4. **Optionally grep source for localization**. When the diagnostics
    point at
    a specific function name, module, or API path, the Agent **may**
@@ -357,6 +368,14 @@ If the user cancels or asks for edits, revise the draft and call
 `prepare_feedback_issue` again. A changed draft needs a fresh
 confirmation token.
 
+**Do NOT call `prepare_feedback_issue` more than once for the same
+draft.** The tool deduplicates by `draft_hash` and returns
+`deduped=true` when the previous preview is still pending — that flag
+is the signal to STOP, not to retry. Sending the user two identical
+"confirm submission" button cards (as observed in #5806) is a UX bug.
+If you notice the previous user turn already triggered a preview,
+just wait for their button click; do not re-send.
+
 ### Step 4: Call `submit_feedback_issue`
 
 > **MANDATORY: every `submit_feedback_issue` call must include all
@@ -410,7 +429,7 @@ Parse the JSON and branch on `success` + `reason`:
 
 | Result shape | Meaning | How to respond to the user |
 | --- | --- | --- |
-| `success=true`, `url_delivered=true` | API channel succeeded and the issue URL has already been pushed to the user channel as a separate notification. | Acknowledge briefly: "Issue 已提交到上游，等待 maintainer 跟进。" **Do NOT repeat or paraphrase the URL** — the user already received it as a clickable link. |
+| `success=true`, `url_delivered=true` | API channel succeeded and the issue URL has already been pushed to the user channel as a separate notification. | Acknowledge with a single short sentence such as "Issue 已提交，等待 maintainer 跟进。" **Do NOT repeat or paraphrase the URL, do NOT include the issue number, do NOT mention `jxxghp/MoviePilot#NNNN`.** The dedicated notification already shows the clickable link; restating it in your text reply produces a second auto-rendered preview card and a confusing "3-message storm" (#5806). |
 | `success=false`, `reason=no_token`, `url_delivered=true` | Instance has no `GITHUB_TOKEN`; prefill URL has been pushed to the user. | Acknowledge briefly: "我没有自动提交权限，已把预填链接单独发给你，点击即可提交。" Optionally remind the admin once to configure a token with `public_repo` scope for next time. **Do NOT repeat the URL.** |
 | `success=false`, `reason=no_permission`, `url_delivered=true` | Token lacks write scope; prefill URL pushed. | Acknowledge briefly and remind the admin to regenerate the token with `public_repo` / `repo` scope. **Do NOT repeat the URL.** |
 | `success=false`, `reason=rate_limited`, `url_delivered=true` | GitHub returned 403 with `X-RateLimit-Remaining: 0`. Prefill URL pushed. | Ask the user to retry later or click the link that was pushed separately. **Do NOT** tell them to reconfigure the token — this is rate limit, not permission. **Do NOT repeat the URL.** |

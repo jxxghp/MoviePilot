@@ -26,7 +26,8 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.base import MoviePilotTool, ToolChain
+from app.schemas import Notification
 from app.agent.tools.impl.feedback_issue_state import (
     build_feedback_draft_hash,
     feedback_issue_state_store,
@@ -124,24 +125,74 @@ _DESCRIPTION_REQUIRED_SIGNALS = (
 # 不应该被判为乱码。
 _REPEAT_GIBBERISH = re.compile(r"([^\s=\-_*#~`./\\+|])\1{7,}", re.UNICODE)
 
-# 日志二次脱敏正则：作为 defense-in-depth，避免 agent 漏脱敏时把凭据直接
-# 写进公网 issue。SKILL.md 要求 agent 主动脱敏，这里只兜最常见的高危模式。
+# 日志脱敏：服务端唯一的脱敏入口（``_sanitize_logs``）。Agent 不再做客户端
+# 脱敏，日志也不进入 LLM 上下文，所以这里是日志写入公网 Issue 之前的最后
+# 一道防线，必须尽量覆盖 MoviePilot 本身和常见社区插件可能打印的高危凭据
+# 与 PII 模式。规则按"先匹配更具体的形式、再匹配通用 key=value"的顺序排列，
+# 避免通用规则吞掉特定上下文。
+#
+# 当前威胁模型仍是「失控 LLM / 无意 spam / 日志意外漏出」，不是「对抗攻击」；
+# 全角变体 / 同形 unicode 绕过不在防护范围内。
+_REDACTED = "<REDACTED>"
+_REDACTED_PATH = "/<USER>/"
+_REDACTED_EMAIL = "<EMAIL>"
+_REDACTED_IP = "<IP>"
+
 _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
-    (re.compile(r"(?i)(Cookie\s*:\s*)[^\r\n]+"), r"\1<REDACTED>"),
-    (re.compile(r"(?i)(Set-Cookie\s*:\s*)[^\r\n]+"), r"\1<REDACTED>"),
+    # ---- HTTP 头部凭据 ----------------------------------------------------
+    (re.compile(r"(?i)(Cookie\s*:\s*)[^\r\n]+"), rf"\1{_REDACTED}"),
+    (re.compile(r"(?i)(Set-Cookie\s*:\s*)[^\r\n]+"), rf"\1{_REDACTED}"),
     (
         re.compile(r"(?i)(Authorization\s*:\s*)(Bearer|Basic|Token)\s+\S+"),
-        r"\1\2 <REDACTED>",
+        rf"\1\2 {_REDACTED}",
     ),
+    (re.compile(r"(?i)(X-(?:Api-Key|Auth-Token|Access-Token)\s*:\s*)\S+"), rf"\1{_REDACTED}"),
+    # ---- GitHub / 通用 token 字面前缀（即使没有 key= 上下文也覆盖）---------
+    (re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"), _REDACTED),
+    (re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"), _REDACTED),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), _REDACTED),
+    (re.compile(r"\b(sk|xoxb|xoxp|xoxa)-[A-Za-z0-9-]{12,}\b"), _REDACTED),
+    # ---- 站点 PT passkey / RSS / IM webhook --------------------------------
+    (re.compile(r"(?i)\b(passkey|rsskey|authkey|access_key)=[A-Za-z0-9]{8,}"), rf"\1={_REDACTED}"),
     (
-        # 捕获原始分隔符（``:`` 或 ``=``）并在替换中保留，避免把 ``key: val``
-        # 强制改成 ``key=<REDACTED>`` 破坏日志阅读体验
         re.compile(
-            r"(?i)\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|"
-            r"passkey|password|secret|token)(\s*[:=]\s*)['\"]?[^\s'\"&\r\n]+"
+            r"https?://(qyapi\.weixin\.qq\.com|oapi\.dingtalk\.com|open\.feishu\.cn|"
+            r"hooks\.slack\.com|discord(?:app)?\.com/api/webhooks)/\S+"
         ),
-        r"\1\2<REDACTED>",
+        rf"\1/{_REDACTED}",
     ),
+    # ---- 通用 key=value / key: value 凭据（保留原始分隔符）-----------------
+    (
+        re.compile(
+            r"(?i)\b("
+            r"api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|"
+            r"client[_-]?secret|client[_-]?id|app[_-]?secret|app[_-]?key|"
+            r"corp[_-]?secret|corp[_-]?id|agent[_-]?id|"
+            r"password|secret|token|auth|credential|"
+            r"chat[_-]?id|webhook|api[_-]?token|bot[_-]?token"
+            r")(\s*[:=]\s*)['\"]?[^\s'\"&\r\n]{4,}"
+        ),
+        rf"\1\2{_REDACTED}",
+    ),
+    # ---- PII：邮箱 ----------------------------------------------------------
+    (
+        re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"),
+        _REDACTED_EMAIL,
+    ),
+    # ---- PII：公网 IPv4（保留 127/8、10/8、172.16/12、192.168/16 私网）------
+    (
+        re.compile(
+            r"\b(?!(?:127|10)\.)"
+            r"(?!172\.(?:1[6-9]|2\d|3[01])\.)"
+            r"(?!192\.168\.)"
+            r"(?:\d{1,3}\.){3}\d{1,3}\b"
+        ),
+        _REDACTED_IP,
+    ),
+    # ---- 文件路径里的用户名段 ---------------------------------------------
+    (re.compile(r"/Users/[^/\s]+/"), _REDACTED_PATH),
+    (re.compile(r"/home/[^/\s]+/"), _REDACTED_PATH),
+    (re.compile(r"C:\\Users\\[^\\\s]+\\", re.IGNORECASE), r"C:\\Users\\<USER>\\"),
 )
 
 
@@ -691,10 +742,35 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         Why: TG/飞书等渠道下 LLM 转述 1KB+ 长 URL 极易出现字节翻转（低精度量化
         模型尤其常见），导致 GitHub 拒绝预填链接。直接走 ToolChain 推送可以
         让 URL 经由消息系统原文落地，跳过 LLM 转述链路。
+
+        Issue #5806 暴露的副作用：``send_tool_message`` 默认不抑制 TG 网页
+        预览，导致一条 GitHub URL 通知会自动渲染出 "GitHub" 预览卡片；之后
+        Agent 又用文本复述了一次 URL，TG 再渲染一次 → 一次提交在 TG 里展开
+        成 3 条卡片。这里直接走 ``ToolChain().async_post_message`` 并显式
+        ``disable_web_page_preview=True`` 关闭预览卡片，配合 SKILL.md 里
+        "Acknowledge briefly, do NOT repeat the URL" 让最终用户只看到一条
+        干净的链接消息。
         """
+        if not self._channel or not self._source:
+            # 没有可回传消息的会话上下文（典型：后台 capture），直接当推送失败处理
+            logger.debug(
+                "feedback issue 链接推送跳过：当前无可用消息渠道 / 来源"
+            )
+            return False
+
+        text = f"{hint}\n\n{url}" if hint else url
         try:
-            text = f"{hint}\n\n{url}" if hint else url
-            await self.send_tool_message(text, title=title)
+            await ToolChain().async_post_message(
+                Notification(
+                    channel=self._channel,
+                    source=self._source,
+                    userid=self._user_id,
+                    username=self._username,
+                    title=title,
+                    text=text,
+                    disable_web_page_preview=True,
+                )
+            )
             return True
         except Exception as e:  # noqa: BLE001 — 推送失败不应该让整个工具崩溃
             logger.warning(

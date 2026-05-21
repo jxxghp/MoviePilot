@@ -138,6 +138,51 @@ class FeedbackIssueStateStore:
                 return None
             return record
 
+    def find_active_confirmation(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+    ) -> Optional[FeedbackConfirmationRecord]:
+        """查找当前会话/用户尚未消费、且未点击确认的预览 token。
+
+        prepare_feedback_issue 会用它判断「上一份预览还挂着，不该再发一份」，
+        避免 #5806 实测里发了两次同样的确认按钮、用户点了两次的情况。"""
+        with self._lock:
+            self._cleanup_locked()
+            for record in self._confirmations.values():
+                if (
+                    record.session_id == session_id
+                    and record.user_id == str(user_id)
+                    and record.confirmed_at is None
+                ):
+                    return record
+            return None
+
+    def invalidate_active_confirmations(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+    ) -> int:
+        """作废当前会话所有未确认的预览 token，返回作废数量。
+
+        用户在 prepare 之后修改草稿、重新调 prepare 时调用；旧 token 失效
+        后即便残留消息里的按钮被点击，``mark_confirmed`` 也会因找不到记录
+        而返回 False，避免脏数据驱动提交。"""
+        with self._lock:
+            self._cleanup_locked()
+            to_drop = [
+                token
+                for token, record in self._confirmations.items()
+                if record.session_id == session_id
+                and record.user_id == str(user_id)
+                and record.confirmed_at is None
+            ]
+            for token in to_drop:
+                self._confirmations.pop(token, None)
+            return len(to_drop)
+
     def create_confirmation(
         self,
         *,

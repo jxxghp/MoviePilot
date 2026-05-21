@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Type
 
@@ -18,6 +20,27 @@ from app.log import logger
 _MAX_READ_BYTES = 512 * 1024
 _MAX_DIAGNOSTIC_LOG_CHARS = 6 * 1024
 
+# 默认时间窗：仅收集最近 30 分钟的日志。
+# Why: 用户说「今天 TMDB 一直在报错」时，期望看到的是这次会话前后真实
+# 触发的报错，而不是几天前历史日志里所有出现 "TMDB" 的行。Issue #5806
+# 实战中就发生了：关键词命中了几天前的测试日志，日志段完全对不上当前问题。
+_DEFAULT_TIME_WINDOW_MINUTES = 30
+_MIN_TIME_WINDOW_MINUTES = 5
+_MAX_TIME_WINDOW_MINUTES = 24 * 60
+
+# MoviePilot 主日志行首格式：``【LEVEL】YYYY-MM-DD HH:MM:SS,ms - module - msg``
+# 用第一个时间戳判断行属于哪一刻；匹配不到时把行算到「无法判断时间」桶，
+# 默认保留（行内可能是 Traceback 续行，不能丢）。
+_LOG_TIMESTAMP_RE = re.compile(r"(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})")
+_LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# 不允许使用的模糊关键词：通用到几乎每条 log 都会命中、对定位本次问题
+# 没有价值。当 keyword 列表只剩这些时退回到「按时间窗口取尾部」。
+_VAGUE_KEYWORDS = frozenset({
+    "错误", "异常", "失败", "error", "exception", "failed", "warn", "warning",
+    "日志", "问题", "bug", "log", "logs",
+})
+
 
 class CollectFeedbackDiagnosticsInput(BaseModel):
     """反馈诊断日志收集工具输入。"""
@@ -32,11 +55,24 @@ class CollectFeedbackDiagnosticsInput(BaseModel):
     )
     keywords: Optional[list[str]] = Field(
         default=None,
-        description="Short keywords to filter logs, e.g. media title, module name, TMDB, error text",
+        description=(
+            "Short keywords to filter logs. Should be SPECIFIC tokens: media title, "
+            "plugin id, exception class name, downloader name, etc. Vague terms like "
+            "'错误'/'异常'/'失败'/'error' are ignored because they match almost every log line."
+        ),
     )
     max_lines: int = Field(
         default=80,
         description="Maximum matched log lines to return; default 80",
+    )
+    time_window_minutes: int = Field(
+        default=_DEFAULT_TIME_WINDOW_MINUTES,
+        description=(
+            "Only include log lines whose timestamp falls within the last N minutes "
+            "(default 30, range 5-1440). Older lines are dropped regardless of keyword "
+            "match so the diagnostic snapshot reflects the current incident, not "
+            "historical noise."
+        ),
     )
 
 
@@ -84,45 +120,115 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
         original_user_request: str,
         keywords: Optional[list[str]],
     ) -> list[str]:
-        """合并用户原话和显式关键词，生成保守的日志过滤词。"""
+        """合并用户原话和显式关键词，生成保守的日志过滤词。
+
+        Issue #5806 教训：把 "错误 / 异常 / 失败 / TMDB" 这种通用词当关键词
+        会让几乎所有日志行命中，过滤等于没过滤。这里只保留**显式且足够具体**
+        （≥2 字符且不在 ``_VAGUE_KEYWORDS`` 里）的关键词。"""
         normalized: list[str] = []
         for item in keywords or []:
             item = str(item or "").strip()
-            if len(item) >= 2 and item not in normalized:
+            if len(item) < 2:
+                continue
+            if item.lower() in _VAGUE_KEYWORDS:
+                continue
+            if item not in normalized:
                 normalized.append(item)
-        for marker in ("TMDB", "tmdb", "识别", "整理", "失败", "错误", "异常"):
-            if marker in original_user_request and marker not in normalized:
-                normalized.append(marker)
         return normalized
 
     @staticmethod
-    def _filter_lines(text: str, keywords: list[str], max_lines: int) -> list[str]:
-        """按关键词筛选日志行；没有关键词时取尾部行。"""
-        lines = [line for line in text.splitlines() if line.strip()]
+    def _normalize_window(time_window_minutes: int) -> int:
+        """把传入的时间窗 clamp 到 [5, 1440] 区间。"""
+        try:
+            window = int(time_window_minutes or _DEFAULT_TIME_WINDOW_MINUTES)
+        except (TypeError, ValueError):
+            window = _DEFAULT_TIME_WINDOW_MINUTES
+        return max(_MIN_TIME_WINDOW_MINUTES, min(_MAX_TIME_WINDOW_MINUTES, window))
+
+    @staticmethod
+    def _parse_line_timestamp(line: str) -> Optional[datetime]:
+        """从一行日志开头提取时间戳；提取不到返回 None。"""
+        match = _LOG_TIMESTAMP_RE.search(line[:64])
+        if not match:
+            return None
+        try:
+            return datetime.strptime(match.group(1), _LOG_TIMESTAMP_FORMAT)
+        except ValueError:
+            return None
+
+    @classmethod
+    def _filter_lines(
+        cls,
+        text: str,
+        keywords: list[str],
+        max_lines: int,
+        window_start: datetime,
+    ) -> list[str]:
+        """按时间窗 + 关键词筛日志。
+
+        - 行能解析到时间戳：在 ``window_start`` 之前的丢弃；之后的进入候选。
+        - 行解析不到时间戳（Traceback 续行等）：跟随**最近一条已知时间戳行**
+          的归属，没有上下文时按"近期"对待，避免把异常堆栈截断。
+        - 在候选行里再按关键词过滤；无关键词或全部行都不命中时退回到时间
+          窗内的尾部行，保证返回有意义的内容而不是空集。
+        """
+        candidates: list[str] = []
+        last_seen_in_window: Optional[bool] = None
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            ts = cls._parse_line_timestamp(line)
+            if ts is not None:
+                in_window = ts >= window_start
+                last_seen_in_window = in_window
+                if in_window:
+                    candidates.append(line)
+            else:
+                # 续行：跟随上一条时间戳的窗口判断；起始连续无时间戳行直接丢
+                if last_seen_in_window:
+                    candidates.append(line)
+
+        if not candidates:
+            return []
         if keywords:
             lowered_keywords = [item.lower() for item in keywords]
-            matched = [
-                line
-                for line in lines
-                if any(keyword in line.lower() for keyword in lowered_keywords)
-            ]
+            # 关键字过滤需要按"时间戳行块"为单位：命中的 ERROR 行带着它的
+            # Traceback 续行一起保留，避免把异常堆栈截掉一半反而更难定位。
+            matched: list[str] = []
+            keep_block = False
+            for line in candidates:
+                has_ts = cls._parse_line_timestamp(line) is not None
+                if has_ts:
+                    keep_block = any(kw in line.lower() for kw in lowered_keywords)
+                    if keep_block:
+                        matched.append(line)
+                elif keep_block:
+                    matched.append(line)
             if matched:
                 return matched[-max_lines:]
-        return lines[-max_lines:]
+        return candidates[-max_lines:]
 
     async def run(
         self,
         original_user_request: str,
         keywords: Optional[list[str]] = None,
         max_lines: int = 80,
+        time_window_minutes: int = _DEFAULT_TIME_WINDOW_MINUTES,
         **kwargs,
     ) -> str:
-        """读取、筛选、脱敏并缓存本次反馈相关日志。"""
+        """读取、筛选、脱敏并缓存本次反馈相关日志。
+
+        Issue #5806 暴露的两个数据准确性问题在这里一并修：
+        1. 时间窗：默认只看最近 30 分钟，杜绝历史无关日志混入。
+        2. 关键词过滤收紧：剔除"错误/异常/失败"等几乎每行都命中的通用词。
+        """
         try:
             normalized_max_lines = min(max(int(max_lines or 80), 20), 200)
         except (TypeError, ValueError):
             normalized_max_lines = 80
 
+        window_minutes = self._normalize_window(time_window_minutes)
+        window_start = datetime.now() - timedelta(minutes=window_minutes)
         normalized_keywords = self._normalize_keywords(original_user_request, keywords)
         collected: list[str] = []
         source_files: list[str] = []
@@ -131,7 +237,9 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
             text = self._read_tail(path)
             if not text:
                 continue
-            lines = self._filter_lines(text, normalized_keywords, normalized_max_lines)
+            lines = self._filter_lines(
+                text, normalized_keywords, normalized_max_lines, window_start
+            )
             if not lines:
                 continue
             source_files.append(str(path))
