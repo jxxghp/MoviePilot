@@ -1,4 +1,5 @@
 import sys
+import asyncio
 import unittest
 from types import ModuleType
 from unittest.mock import patch
@@ -10,6 +11,7 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 sys.modules.setdefault("psutil", ModuleType("psutil"))
 
 from app.chain.message import MessageChain
+from app.helper.message import MessageQueueManager
 from app.schemas import Notification
 from app.utils.identity import (
     SYSTEM_INTERNAL_USER_ID,
@@ -64,6 +66,29 @@ class TestSystemNotificationDispatch(unittest.TestCase):
 
         sent_message = run_module.call_args.kwargs["message"]
         self.assertIsNone(sent_message.userid)
+
+    def test_async_send_message_uses_executor_for_immediate_send(self):
+        """异步立即发送不能在事件循环里直接执行同步渠道回调。"""
+
+        class _FakeLoop:
+            def __init__(self):
+                self.called = False
+
+            async def run_in_executor(self, executor, func):
+                self.called = True
+                func()
+
+        async def _run():
+            manager = MessageQueueManager()
+            fake_loop = _FakeLoop()
+            with patch("asyncio.get_running_loop", return_value=fake_loop), patch.object(
+                manager, "_send"
+            ) as send:
+                await manager.async_send_message("payload", immediately=True)
+            self.assertTrue(fake_loop.called)
+            send.assert_called_once_with("payload")
+
+        asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 import queue
 import re
@@ -711,7 +712,10 @@ class MessageQueueManager(metaclass=SingletonClass):
         """
         immediately = kwargs.pop("immediately", False)
         if immediately or self._is_in_scheduled_time(datetime.now()):
-            self._send(*args, **kwargs)
+            # _send 会执行具体渠道回调，可能包含网络 IO；放到 executor
+            # 避免 async 调用方所在事件循环被同步发送阻塞。
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: self._send(*args, **kwargs))
             return
         self.queue.put({
             "args": args,

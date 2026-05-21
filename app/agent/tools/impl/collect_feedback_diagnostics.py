@@ -395,8 +395,9 @@ class CollectFeedbackDiagnosticsTool(MoviePilotTool):
         collected: list[str] = []
         source_files: list[str] = []
 
-        for path in self._candidate_log_files():
-            text = self._read_tail(path)
+        log_files = await self.run_blocking("default", self._candidate_log_files)
+        for path in log_files:
+            text = await self.run_blocking("default", self._read_tail, path)
             if not text:
                 continue
             lines = self._filter_lines(
