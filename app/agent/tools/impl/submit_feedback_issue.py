@@ -1115,9 +1115,11 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 # send 失败才把 URL 退给 LLM 转述兜底
                 issue_url=None if pushed else html_url,
                 message=(
-                    f"Issue 已成功提交到 {FEEDBACK_REPO}#{number}，并通过独立"
-                    "消息把链接推给用户，请在对话中简短告知用户提交成功并"
-                    "请其等待 maintainer 回复。"
+                    "Issue 已成功提交，并通过独立通知卡片把链接发给用户。"
+                    "**本轮对话只允许输出一句中文简短确认**，例如「Issue 已"
+                    "提交，等待 maintainer 跟进。」——禁止重复 issue 编号 / "
+                    "仓库名 / URL，禁止说「提交链接已通过通知通道发送」"
+                    "之类的实现细节。通知卡片已经把全部信息展示给用户。"
                     if pushed
                     else
                     f"Issue 已成功提交到 {FEEDBACK_REPO}#{number}。"

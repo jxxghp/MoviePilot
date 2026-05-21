@@ -275,5 +275,11 @@ class PrepareFeedbackIssueTool(MoviePilotTool):
             success=True,
             confirmation_token=confirmation.confirmation_token,
             diagnostics_id=diagnostics_id,
-            message="已发送 Issue 预览和确认按钮。用户点击确认前，submit_feedback_issue 会拒绝提交。",
+            message=(
+                "已通过独立通知卡片发送 Issue 预览和「确认提交 / 取消提交」"
+                "按钮给用户。**本轮对话不要再生成任何额外文字回复**——按钮"
+                "卡片已经完整表达了 Issue 草稿和操作引导，复述「已生成 "
+                "Issue 预览，请点击确认按钮」会和卡片重复并让用户困惑。"
+                "请直接结束本轮，等待用户点击按钮触发下一轮。"
+            ),
         )

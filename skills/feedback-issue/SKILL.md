@@ -427,6 +427,16 @@ is the signal to STOP, not to retry. Sending the user two identical
 If you notice the previous user turn already triggered a preview,
 just wait for their button click; do not re-send.
 
+**After `prepare_feedback_issue` returns successfully, do NOT emit
+any further text reply in the same turn.** The tool already sent a
+dedicated notification with the issue preview and the
+"确认提交 / 取消提交" buttons. Adding a narrating sentence like
+"已生成 Issue 预览，请点击确认按钮提交到上游 MoviePilot 仓库" duplicates
+the card content, clutters the chat, and confuses the user about
+whether further action is needed beyond clicking the button. The
+ideal text reply in this turn is **empty** — let the button card
+speak for itself.
+
 ### Step 4: Call `submit_feedback_issue`
 
 > **MANDATORY: every `submit_feedback_issue` call must include all
