@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -26,6 +27,10 @@ from urllib.parse import quote
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.impl.feedback_issue_state import (
+    build_feedback_draft_hash,
+    feedback_issue_state_store,
+)
 from app.core.config import settings
 from app.db.user_oper import UserOper
 from app.log import logger
@@ -69,6 +74,9 @@ DEDUP_TTL_SECONDS = 60
 USER_COOLDOWN_SECONDS = 30 * 60
 USER_DAILY_QUOTA = 10
 USER_DAILY_WINDOW_SECONDS = 24 * 60 * 60
+# 防止 _user_submissions 字典在 username 拼写漂移（"admin" / "Admin" /
+# "admin "）或恶意输入下无限增长。超过此上限时按 LRU 淘汰最久未活跃的桶。
+MAX_USER_SUBMISSIONS_BUCKETS = 200
 
 # 内容质量门槛：阻止「测试 issue」「abc」等明显无意义提交。AI 在 SKILL.md
 # 中已经被要求"先筛"，这里是 defense-in-depth 工具层硬门槛。
@@ -78,17 +86,43 @@ TITLE_PREFIX = "[错误报告]:"
 
 # 黑词单：title 或 description 命中即拒。匹配为字面包含（大小写不敏感）。
 # 不用正则避免误伤合法 bug 描述。条目专注于"明显的占位 / 测试 / 乱码"。
+# 注：仅做字面字符串匹配；专业对抗者可以用全角 / 同形 unicode 绕过——
+# 当前威胁模型是「失控 LLM / 无意 spam」而非「对抗攻击」，可接受。
 _QUALITY_BLOCKLIST = (
     "测试issue", "测试 issue", "test issue",
     "test123", "testtest", "测试测试",
-    "asdf", "qwer", "qwerty",
+    "测试一下", "测试提交", "测试请求", "测试反馈",
+    "看能否跑通", "能否跑通", "跑通流程", "链路测试",
+    "模拟问题", "模拟问题描述", "模拟描述", "模拟 bug", "模拟bug",
+    "编造", "虚假 bug", "虚假bug",
+    "asdf", "asdfasdf", "qwer", "qwerty", "qweqwe",
     "占位", "占个坑", "随便", "随便写",
     "abcabc", "xxxxxx", "xxx xxx",
     "hello world", "你好世界",
+    "lorem ipsum", "dolor sit amet",
+)
+
+# logs 字段只能承载真实日志；这类短语说明 Agent 把叙述性占位内容塞进了日志。
+_FABRICATED_LOG_PHRASES = (
+    "无相关日志", "没有相关日志", "未捕获到相关日志",
+    "这是模拟", "模拟问题", "模拟描述", "用户反馈",
+)
+
+# 结构化描述信号：工具层不做复杂语义理解，但至少要求 Agent 提交的正文
+# 已经区分现象、复现和期望，避免把"用户反馈某模块异常，请协助排查"这类
+# 无法复现的泛泛描述伪装成正式 Issue。
+_DESCRIPTION_REQUIRED_SIGNALS = (
+    ("现象", ("现象", "报错", "错误", "无法", "失败", "异常")),
+    ("复现步骤", ("复现", "步骤", "触发", "操作", "调用", "点击")),
+    ("期望行为", ("期望", "应该", "预期", "正常")),
 )
 
 # 检测乱码 / 重复字符行：连续 8 个或以上**相同**字符视为乱码。
-_REPEAT_GIBBERISH = re.compile(r"(.)\1{7,}", re.UNICODE)
+# **排除**常见 Markdown / 日志分隔符：空白、`=`、`-`、`_`、`*`、`#`、
+# `~`、`` ` ``、`.`、`/`、`\`、`+`、`|`。这些字符大量重复在合法日志（如
+# `========`、`---- separator ----`）或 Markdown 横线（`---`）里常见，
+# 不应该被判为乱码。
+_REPEAT_GIBBERISH = re.compile(r"([^\s=\-_*#~`./\\+|])\1{7,}", re.UNICODE)
 
 # 日志二次脱敏正则：作为 defense-in-depth，避免 agent 漏脱敏时把凭据直接
 # 写进公网 issue。SKILL.md 要求 agent 主动脱敏，这里只兜最常见的高危模式。
@@ -153,14 +187,33 @@ class SubmitFeedbackIssueInput(BaseModel):
         ...,
         description=(
             "Markdown-formatted bug description, including 现象 / 复现步骤 / "
-            "期望行为 / 已定位或推测 / 已尝试的处理 等结构化小节。"
+            "期望行为 / 已定位或推测 / 已尝试的处理 等结构化小节。Must be "
+            "based on a real user-observed symptom; do not fabricate or "
+            "rewrite placeholder/test requests into real-looking bugs."
         ),
     )
-    logs: Optional[str] = Field(
-        default=None,
+    original_user_request: str = Field(
+        ...,
         description=(
-            "Raw backend logs related to the bug. Leave empty if not captured; "
-            "do NOT fabricate."
+            "Verbatim original user request that triggered issue filing. "
+            "Must not be summarized or rewritten. The tool uses this field "
+            "to reject test/pipeline-validation intent such as 测试 ISSUE or 看能否跑通."
+        ),
+    )
+    diagnostics_id: str = Field(
+        ...,
+        description=(
+            "diagnostics_id returned by collect_feedback_diagnostics. Required; logs are "
+            "fetched from the server-side state store using this id. Do NOT pass log text "
+            "as a separate argument — it has been removed from the schema on purpose to "
+            "stop the LLM from re-transmitting multi-KB log payloads between tool calls."
+        ),
+    )
+    confirmation_token: str = Field(
+        ...,
+        description=(
+            "confirmation_token returned by prepare_feedback_issue after the user clicks the "
+            "confirmation button. Do not invent this value."
         ),
     )
 
@@ -170,6 +223,17 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
 
     require_admin=True：避免任意 TG/飞书用户通过 Bot 触发后给上游刷 Issue。
     Skill 层会在 dry-run 阶段做用户确认，本工具再做枚举校验与凭据降级。
+
+    **状态持久化与并发说明**：
+    - ``_recent_submissions`` 与 ``_user_submissions`` 都是 ``ClassVar``
+      进程级缓存，**MoviePilot 重启后清零**。一个失控管理员只要重启容器
+      就可绕过冷却 / 配额。如果将来需要更强保护，可改为持久化到
+      ``SystemConfigOper`` 或 DB 表里。当前威胁模型是「失误 / 失控 LLM」
+      而非「专业对抗」，可接受。
+    - 这两份缓存的读写依赖 Agent 在同一事件循环里串行执行单个工具
+      调用——asyncio 单线程协程模型下安全。**严禁**在多线程 /
+      multiprocessing 场景下直接复用本工具实例；如有此需求，需加
+      ``asyncio.Lock`` 守护写入。
     """
 
     name: str = "submit_feedback_issue"
@@ -379,6 +443,32 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         ).hexdigest()
         cls._recent_submissions[key] = time.time()
 
+    @staticmethod
+    def _normalize_username(username: str) -> str:
+        """归一化 username 作为 rate-limit 桶 key。
+
+        防止 ``"admin"`` / ``"Admin"`` / ``" admin "`` 这种拼写漂移把同一个
+        管理员散到多个桶里、绕过冷却。统一小写 + 去前后空白。空串原样返回，
+        由调用方判定。"""
+        return (username or "").strip().lower()
+
+    @classmethod
+    def _evict_user_submissions_if_needed(cls) -> None:
+        """``_user_submissions`` 字典 key 数量上限保护。
+
+        按桶内"最近一次提交时间戳"做 LRU，超过 ``MAX_USER_SUBMISSIONS_BUCKETS``
+        时淘汰最久未活跃的桶，避免恶意 / 漂移输入把字典撑爆。"""
+        if len(cls._user_submissions) <= MAX_USER_SUBMISSIONS_BUCKETS:
+            return
+        # 按桶内最新时间戳升序排序，前 N 个最旧的淘汰
+        excess = len(cls._user_submissions) - MAX_USER_SUBMISSIONS_BUCKETS
+        oldest_keys = sorted(
+            cls._user_submissions.items(),
+            key=lambda kv: kv[1][-1] if kv[1] else 0,
+        )[:excess]
+        for key, _ in oldest_keys:
+            cls._user_submissions.pop(key, None)
+
     @classmethod
     def _check_user_rate_limit(cls, username: str) -> Optional[str]:
         """检查 per-user rate limit：30 分钟冷却 + 24h 滚动配额 10 条。
@@ -386,16 +476,22 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         命中冷却时间窗或日配额时返回拒绝消息（含本地化时长描述），未命中则
         返回 None。本方法不修改状态，仅读；记录由 ``_record_user_submission``
         在真正发起 API 调用前完成。"""
-        if not username:
+        key = cls._normalize_username(username)
+        if not key:
             # 没有用户名识别走不下去，但 _enforce_superuser 早已拦截过；
             # 双重保险下若到此处仍无用户名直接拒绝
             return "无法识别调用用户身份，rate limit 拒绝以防误用。"
         now = time.time()
-        timestamps = cls._user_submissions.get(username, [])
+        timestamps = cls._user_submissions.get(key, [])
         # 同步清理过期条目（> 24h），保持列表短小
         active = [ts for ts in timestamps if now - ts < USER_DAILY_WINDOW_SECONDS]
         if active != timestamps:
-            cls._user_submissions[username] = active
+            if active:
+                cls._user_submissions[key] = active
+            else:
+                # 全部过期，直接把桶清掉，避免 _user_submissions 长期堆积
+                # 长尾用户的空 list
+                cls._user_submissions.pop(key, None)
         # 30 分钟冷却
         if active:
             since_last = now - active[-1]
@@ -422,17 +518,34 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
     @classmethod
     def _record_user_submission(cls, username: str) -> None:
         """把本次提交时间戳记入 per-user 状态，供下次 rate limit 检查使用。"""
-        if not username:
+        key = cls._normalize_username(username)
+        if not key:
             return
-        cls._user_submissions.setdefault(username, []).append(time.time())
+        cls._user_submissions.setdefault(key, []).append(time.time())
+        cls._evict_user_submissions_if_needed()
 
     @classmethod
-    def _check_content_quality(cls, title: str, description: str) -> Optional[str]:
+    def _check_content_quality(
+        cls,
+        title: str,
+        description: str,
+        original_user_request: str,
+    ) -> Optional[str]:
         """内容质量门槛：长度 + 黑词单 + 乱码三重过滤。
 
         命中任一规则即拒绝，附带具体原因。该检查在 _enforce_superuser /
         rate_limit 之后、`_build_issue_body` 之前调用，避免无意义 issue 浪费
-        上游 maintainer 的 triage 时间。"""
+        上游 maintainer 的 triage 时间。
+
+        注：``logs`` 字段已从 Agent 入参里移除，日志改为通过 ``diagnostics_id``
+        在 state store 里流转，Agent 无法伪造其内容，因此这里不再对 logs
+        做黑词单 / 伪造检查；脱敏仍由 ``_sanitize_logs`` 在服务端兜底。"""
+        original_stripped = (original_user_request or "").strip()
+        if not original_stripped:
+            return (
+                "缺少原始用户请求，无法判断本次提交是否来自真实故障。"
+                "请传入触发反馈的用户原话，不能只传改写后的 Issue 草稿。"
+            )
         # 1) title 长度（剔除 ``[错误报告]: `` 前缀后）
         title_body = title.strip()
         if title_body.startswith(TITLE_PREFIX):
@@ -450,16 +563,37 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 f"问题描述太短（{len(desc_stripped)} 字，至少 {MIN_DESCRIPTION_CHARS} 字）。"
                 "请补充：现象 / 复现步骤 / 期望行为，让 maintainer 能理解问题。"
             )
-        # 3) 黑词单
-        haystack = (title + "\n" + description).lower()
+        # 3) 结构信号。SKILL.md 要求 Agent 在正文里分清现象、复现、期望；
+        # 工具层用关键词做保守兜底，拦住"为了跑通流程编的泛泛一句话"。
+        missing_signals = [
+            label
+            for label, choices in _DESCRIPTION_REQUIRED_SIGNALS
+            if not any(choice in desc_stripped for choice in choices)
+        ]
+        if missing_signals:
+            return (
+                "问题描述缺少可复现 bug 所需的结构信息："
+                f"{' / '.join(missing_signals)}。请补充真实现象、触发步骤和期望行为，"
+                "不要用模拟或泛泛描述跑通提交流程。"
+            )
+        # 4) 黑词单。同时检查原始用户请求 + 标题 + 描述，防止 Agent 把
+        # "测试 ISSUE / 看能否跑通" 改写成真实样式 title/description 后绕过。
+        haystack = "\n".join(
+            part for part in (title, description, original_stripped) if part
+        ).lower()
         for phrase in _QUALITY_BLOCKLIST:
             if phrase.lower() in haystack:
                 return (
-                    f"标题或描述命中明显占位/测试关键词「{phrase}」，已拒绝提交。"
+                    f"原始请求、标题或描述命中明显占位/测试关键词「{phrase}」，"
+                    "已拒绝提交。"
                     "如果是真实问题，请用正常的中文描述具体现象。"
                 )
-        # 4) 乱码：连续 8 个相同字符
-        match = _REPEAT_GIBBERISH.search(title) or _REPEAT_GIBBERISH.search(description)
+        # 5) 乱码：连续 8 个相同字符
+        match = (
+            _REPEAT_GIBBERISH.search(title)
+            or _REPEAT_GIBBERISH.search(description)
+            or _REPEAT_GIBBERISH.search(original_stripped)
+        )
         if match:
             return (
                 f"标题或描述里出现疑似乱码片段「{match.group(0)[:12]}…」，"
@@ -485,10 +619,27 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 "submit_feedback_issue 拒绝：当前会话没有绑定 MoviePilot 用户身份，"
                 "无法确认调用者是否为系统管理员。"
             )
-        try:
-            user = await UserOper().async_get_by_name(username)
-        except Exception as e:  # noqa: BLE001 — DB 查询异常不能放行
-            logger.error(f"submit_feedback_issue 校验 superuser 时数据库异常: {e}")
+        # 两次尝试：DB 偶发抖动场景下短暂退避 100ms 后再试一次，避免单次失败
+        # 直接卡死管理员。仍保持 fail-close：第二次还失败就拒绝。
+        user = None
+        last_err: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                user = await UserOper().async_get_by_name(username)
+                last_err = None
+                break
+            except Exception as e:  # noqa: BLE001 — DB 查询异常不能放行
+                last_err = e
+                logger.warning(
+                    f"submit_feedback_issue 校验 superuser 时数据库异常 "
+                    f"(attempt {attempt + 1}/2): {e}"
+                )
+                if attempt == 0:
+                    await asyncio.sleep(0.1)
+        if last_err is not None:
+            logger.error(
+                f"submit_feedback_issue 校验 superuser 重试后仍失败: {last_err}"
+            )
             return (
                 "submit_feedback_issue 拒绝：校验用户身份时发生数据库异常，"
                 "出于安全考虑本次提交被中止。请稍后重试或联系管理员。"
@@ -562,9 +713,16 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         environment: str,
         issue_type: str,
         description: str,
-        logs: Optional[str] = None,
+        original_user_request: str,
+        diagnostics_id: str = "",
+        confirmation_token: str = "",
         **kwargs,
     ) -> str:
+        """执行反馈 Issue 提交流程。
+
+        所有入参都应来自已确认的真实问题草稿；工具层会再次校验质量、结构、
+        管理员身份和提交频率，避免 Agent 绕过 skill 预筛后把测试内容提交到
+        上游。"""
         logger.info(
             f"执行工具: {self.name}, 标题: {title!r}, 版本: {version!r}, "
             f"环境: {environment!r}, 类型: {issue_type!r}"
@@ -603,18 +761,79 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         # 3) 内容质量门槛：长度 + 黑词单 + 乱码。命中表示「明显的无意义提交」，
         #    直接拒绝**不给** prefill_url——纵容也是放任，这类内容不应该被
         #    打开手动提交的旁路。
-        quality_err = self._check_content_quality(title, description)
+        quality_err = self._check_content_quality(
+            title=title,
+            description=description,
+            original_user_request=original_user_request,
+        )
         if quality_err:
             logger.info(
                 f"拒绝低质量提交：username={self._username!r} reason={quality_err[:40]}…"
             )
+            # 质量门槛已经明确拒绝后，同一轮对话不应再通过 ask_user_choice
+            # 引导用户把测试 / 占位内容改写成“真实问题”。这里写入共享
+            # tool context，给后续消息型工具一个硬拦截信号，避免模型不遵守
+            # SKILL.md 时继续发按钮。
+            self._agent_context["feedback_issue_rejected_quality"] = True
+            self._agent_context["feedback_issue_rejected_quality_reason"] = quality_err
             return self._result_payload(
                 success=False,
                 reason="rejected_quality",
                 message=quality_err,
             )
 
-        # 4) Per-user rate limit：30 分钟冷却 + 24h 配额 10 条。命中后**仍**
+        # 4) 反馈提交前必须先由专用工具收集诊断日志。即便日志里没有命中
+        #    相关片段，也要携带 collect_feedback_diagnostics 返回的
+        #    diagnostics_id，证明 Agent 没有跳过日志排查。
+        diagnostics = feedback_issue_state_store.get_diagnostics(
+            diagnostics_id,
+            session_id=self._session_id,
+            user_id=self._user_id,
+        )
+        if not diagnostics:
+            return self._result_payload(
+                success=False,
+                reason="diagnostics_required",
+                message=(
+                    "提交前必须先调用 collect_feedback_diagnostics 收集本地日志。"
+                    "如果没有找到相关日志，也需要携带该工具返回的 diagnostics_id。"
+                ),
+            )
+        # 日志固定从服务端 state store 拉取，模型不允许通过参数注入日志，
+        # 避免动辄数 KB 的日志在 LLM 上下文中重复流转造成响应缓慢。
+        logs = diagnostics.logs
+
+        # 5) 反馈提交前必须先发送预览并等待用户真实点击确认。确认 token 由
+        #    prepare_feedback_issue 创建、按钮 callback 标记 confirmed；模型
+        #    自行声称“用户已确认”不会通过这里。
+        draft_hash = build_feedback_draft_hash(
+            title=title,
+            version=version,
+            environment=environment,
+            issue_type=issue_type,
+            description=description,
+            original_user_request=original_user_request,
+            logs=logs,
+            diagnostics_id=diagnostics_id,
+        )
+        confirmation = feedback_issue_state_store.consume_confirmed(
+            confirmation_token,
+            session_id=self._session_id,
+            user_id=self._user_id,
+            draft_hash=draft_hash,
+        )
+        if not confirmation:
+            return self._result_payload(
+                success=False,
+                reason="confirmation_required",
+                message=(
+                    "提交前必须先调用 prepare_feedback_issue 发送预览，并等待用户"
+                    "点击确认按钮；当前 confirmation_token 无效、未确认或草稿"
+                    "内容已被修改。"
+                ),
+            )
+
+        # 6) Per-user rate limit：30 分钟冷却 + 24h 配额 10 条。命中后**仍**
         #    给 prefill_url，避免误伤"短时间内确实有第二个真 bug 要报"的
         #    场景——让管理员可以走浏览器手动提，但 Agent 不会代理刷上游。
         rate_err = self._check_user_rate_limit(self._username or "")
@@ -641,14 +860,14 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 url_delivered=pushed,
                 prefill_url=None if pushed else prefill_url,
                 message=(
-                    rate_err + "（已通过独立消息把手动提交的预填链接发给用户）"
+                    rate_err + " （已通过独立消息把手动提交的预填链接发给用户。）"
                     if pushed
                     else
-                    rate_err + "（独立消息推送失败，请把 prefill_url 原样转给用户）"
+                    rate_err + " （独立消息推送失败，请把 prefill_url 原样转给用户。）"
                 ),
             )
 
-        # 5) 同会话内 60 秒去重，防止 agent 多次触发提交同一问题
+        # 7) 同会话内 60 秒去重，防止 agent 多次触发提交同一问题
         body_preview = self._build_issue_body(
             version=version,
             environment=environment,
@@ -675,7 +894,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
         # 限次刷预填 URL 给自己。
         self._record_user_submission(self._username or "")
 
-        # 6) 始终先生成兜底 URL，无论后面走哪条路径都能用上
+        # 8) 始终先生成兜底 URL，无论后面走哪条路径都能用上
         prefill_url = self._build_prefill_url(
             title=title,
             version=version,
@@ -685,7 +904,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
             logs=logs,
         )
 
-        # 7) 没有 token 时直接降级到 URL 兜底
+        # 9) 没有 token 时直接降级到 URL 兜底
         if not settings.GITHUB_TOKEN:
             logger.warning(
                 "未配置 GITHUB_TOKEN，feedback issue 降级到预填 URL 通道"
@@ -717,7 +936,7 @@ class SubmitFeedbackIssueTool(MoviePilotTool):
                 ),
             )
 
-        # 8) 调 GitHub REST API。POST /issues 必须带 Bearer Token；
+        # 10) 调 GitHub REST API。POST /issues 必须带 Bearer Token；
         #    GITHUB_HEADERS 已经填好 Authorization & UA，再补 Content-Type
         #    与 Accept 以满足 GitHub 推荐头规范。复用 body_preview，避免
         #    重新构造一次（_build_issue_body 已经做了脱敏与长度兜底）。

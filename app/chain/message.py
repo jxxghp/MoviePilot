@@ -656,6 +656,19 @@ class MessageChain(ChainBase):
 
         request, option = resolved
         selected_text = option.value
+        if selected_text.startswith("__feedback_issue_confirm__:"):
+            from app.agent.tools.impl.feedback_issue_state import (
+                FEEDBACK_CONFIRM_VALUE_PREFIX,
+                feedback_issue_state_store,
+            )
+
+            token = selected_text[len(FEEDBACK_CONFIRM_VALUE_PREFIX):].strip()
+            feedback_issue_state_store.mark_confirmed(
+                token,
+                session_id=request.session_id,
+                user_id=str(userid),
+            )
+            selected_text = f"确认提交问题反馈，confirmation_token: {token}"
         self._update_interaction_message_feedback(
             channel=channel,
             source=source,

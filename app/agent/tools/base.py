@@ -279,7 +279,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """
         设置与当前 Agent 共享的上下文。
         """
-        self._agent_context = agent_context or {}
+        # 空 dict 也是合法共享上下文；不能用 ``or {}``，否则每个工具会拿到
+        # 独立的新 dict，跨工具状态（例如质量门槛拒绝标记）无法传播。
+        self._agent_context = {} if agent_context is None else agent_context
 
     async def _check_permission(self) -> Optional[str]:
         """

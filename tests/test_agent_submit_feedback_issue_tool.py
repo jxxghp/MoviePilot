@@ -23,7 +23,12 @@ from app.agent.tools.impl.submit_feedback_issue import (
     MAX_LOGS_CHARS,
     MAX_TITLE_CHARS,
     MAX_URL_LOGS_CHARS,
+    USER_DAILY_WINDOW_SECONDS as USER_DAILY_WINDOW_SECONDS_TEST,
     SubmitFeedbackIssueTool,
+)
+from app.agent.tools.impl.feedback_issue_state import (
+    build_feedback_draft_hash,
+    feedback_issue_state_store,
 )
 from app.core.config import settings
 
@@ -90,10 +95,10 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
 
     def test_redact_logs_preserves_original_separator(self):
         # gemini-code-assist review 提醒：原始分隔符（``:`` 或 ``=``）必须保留
-        self.assertIn("api_key=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("api_key=xxx"))
-        self.assertIn("api_key: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("api_key: xxx"))
-        self.assertIn("password: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("password: xxx"))
-        self.assertIn("token=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("token=xxx"))
+        self.assertIn("api_key=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("api_key=xxx_yy"))
+        self.assertIn("api_key: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("api_key: xxxxxx"))
+        self.assertIn("password: <REDACTED>", SubmitFeedbackIssueTool._redact_logs("password: xxxx"))
+        self.assertIn("token=<REDACTED>", SubmitFeedbackIssueTool._redact_logs("token=xxxx"))
 
     def test_sanitize_logs_caps_to_limit_and_redacts(self):
         result = SubmitFeedbackIssueTool._sanitize_logs(
@@ -199,6 +204,62 @@ class TestSubmitFeedbackIssueStaticHelpers(unittest.TestCase):
         # 但 marker / 中文会膨胀），用 1.5x 余量验证
         self.assertLess(len(url), MAX_URL_LOGS_CHARS * 2)
 
+    def test_repeat_gibberish_does_not_false_positive_on_separators(self):
+        # 修复 review #1：横线 / 等号 / 井号 等 Markdown 分隔符大量重复
+        # 不应被判作乱码（合法 description 里很常见）
+        from app.agent.tools.impl.submit_feedback_issue import _REPEAT_GIBBERISH
+        for legitimate in ("========", "----------", "____", "########",
+                           "******", "~~~~~~~~", "```python```",
+                           "..........", "//////", "++++++"):
+            self.assertIsNone(_REPEAT_GIBBERISH.search(legitimate),
+                              msg=f"误判分隔符：{legitimate!r}")
+        # 但真正的字母/汉字重复应该照样命中
+        for gibberish in ("aaaaaaaa", "为为为为为为为为", "11111111"):
+            self.assertIsNotNone(_REPEAT_GIBBERISH.search(gibberish),
+                                 msg=f"应判作乱码：{gibberish!r}")
+
+    def test_check_content_quality_empty_title_after_prefix(self):
+        # title 完全只有 ``[错误报告]:`` 前缀、正文为空也应被拒
+        err = SubmitFeedbackIssueTool._check_content_quality(
+            title="[错误报告]:",
+            description="正常长度的描述，包含现象和复现步骤，行行行行行行行" * 3,
+            original_user_request="用户反馈订阅刷新接口返回 500，希望提交上游 Issue",
+        )
+        self.assertIsNotNone(err)
+        self.assertIn("标题正文太短", err)
+
+    def test_normalize_username_handles_drift(self):
+        # 修复 review #3：username 拼写漂移要被归一化到同一个桶
+        self.assertEqual(SubmitFeedbackIssueTool._normalize_username("Admin"), "admin")
+        self.assertEqual(SubmitFeedbackIssueTool._normalize_username("  admin "), "admin")
+        self.assertEqual(SubmitFeedbackIssueTool._normalize_username("ADMIN"), "admin")
+        self.assertEqual(SubmitFeedbackIssueTool._normalize_username(""), "")
+        self.assertEqual(SubmitFeedbackIssueTool._normalize_username(None), "")
+
+    def test_user_submissions_eviction_keeps_dict_bounded(self):
+        # 修复 review #3：恶意 / 漂移 username 不应该把 _user_submissions 撑爆
+        from app.agent.tools.impl.submit_feedback_issue import (
+            MAX_USER_SUBMISSIONS_BUCKETS,
+        )
+        SubmitFeedbackIssueTool._user_submissions.clear()
+        # 灌入超过上限的不同 username
+        for i in range(MAX_USER_SUBMISSIONS_BUCKETS + 50):
+            SubmitFeedbackIssueTool._record_user_submission(f"user{i}")
+        self.assertLessEqual(
+            len(SubmitFeedbackIssueTool._user_submissions),
+            MAX_USER_SUBMISSIONS_BUCKETS,
+        )
+
+    def test_check_user_rate_limit_clears_fully_expired_bucket(self):
+        # 修复 review：24h 之前的桶应该被清掉而不是留个空 list 永驻
+        SubmitFeedbackIssueTool._user_submissions.clear()
+        SubmitFeedbackIssueTool._user_submissions["staleuser"] = [
+            time.time() - (USER_DAILY_WINDOW_SECONDS_TEST + 60),
+        ]
+        result = SubmitFeedbackIssueTool._check_user_rate_limit("staleuser")
+        self.assertIsNone(result)
+        self.assertNotIn("staleuser", SubmitFeedbackIssueTool._user_submissions)
+
     def test_classify_failure_handles_main_branches(self):
         self.assertEqual(SubmitFeedbackIssueTool._classify_failure(401), "no_permission")
         self.assertEqual(SubmitFeedbackIssueTool._classify_failure(404), "no_permission")
@@ -262,6 +323,7 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         # 每个用例独立清空进程级去重缓存与 per-user rate limit 状态
         SubmitFeedbackIssueTool._recent_submissions.clear()
         SubmitFeedbackIssueTool._user_submissions.clear()
+        feedback_issue_state_store.clear()
         # 默认无 token，避免误打真实 GitHub API
         self._token_backup = settings.GITHUB_TOKEN
         settings.GITHUB_TOKEN = None
@@ -304,6 +366,7 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
             version="v2.12.2",
             environment="Docker",
             issue_type="主程序运行问题",
+            original_user_request="订阅刷新接口返回 500，帮我提交上游 Issue",
             description=(
                 "## 现象\n"
                 "- 订阅刷新接口持续返回 500，调用 /api/v1/subscribe/refresh\n"
@@ -315,6 +378,40 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
             ),
         )
         kwargs.update(overrides)
+        diagnostics = feedback_issue_state_store.create_diagnostics(
+            session_id=self.tool._session_id,
+            user_id=self.tool._user_id,
+            username=self.tool._username,
+            logs=kwargs.get("logs") or "ERROR demo feedback diagnostics",
+            source_files=["/tmp/moviepilot.log"],
+            found=True,
+        )
+        kwargs.setdefault("diagnostics_id", diagnostics.diagnostics_id)
+        draft_hash = build_feedback_draft_hash(
+            title=SubmitFeedbackIssueTool._truncate(
+                kwargs["title"], MAX_TITLE_CHARS, marker="…"
+            ),
+            version=kwargs["version"],
+            environment=kwargs["environment"],
+            issue_type=kwargs["issue_type"],
+            description=kwargs["description"],
+            original_user_request=kwargs["original_user_request"],
+            logs=kwargs.get("logs") if kwargs.get("logs") is not None else diagnostics.logs,
+            diagnostics_id=kwargs["diagnostics_id"],
+        )
+        confirmation = feedback_issue_state_store.create_confirmation(
+            session_id=self.tool._session_id,
+            user_id=self.tool._user_id,
+            username=self.tool._username,
+            draft_hash=draft_hash,
+            diagnostics_id=kwargs["diagnostics_id"],
+        )
+        feedback_issue_state_store.mark_confirmed(
+            confirmation.confirmation_token,
+            session_id=self.tool._session_id,
+            user_id=self.tool._user_id,
+        )
+        kwargs.setdefault("confirmation_token", confirmation.confirmation_token)
         return kwargs
 
     def test_rejects_non_superuser_caller(self):
@@ -387,6 +484,22 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         data = json.loads(result)
         self.assertFalse(data["success"])
         self.assertEqual(data["reason"], "invalid_input")
+
+    def test_rejects_without_diagnostics_record(self):
+        kwargs = self._good_kwargs()
+        kwargs["diagnostics_id"] = "missing-diagnostics"
+        result = _run(self.tool.run(**kwargs))
+        data = json.loads(result)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["reason"], "diagnostics_required")
+
+    def test_rejects_without_confirmed_preview_token(self):
+        kwargs = self._good_kwargs()
+        kwargs["confirmation_token"] = "not-confirmed"
+        result = _run(self.tool.run(**kwargs))
+        data = json.loads(result)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["reason"], "confirmation_required")
 
     def test_no_token_branch_pushes_prefill_url_and_hides_it_from_llm(self):
         result = _run(self.tool.run(**self._good_kwargs()))
@@ -571,11 +684,76 @@ class TestSubmitFeedbackIssueRun(unittest.TestCase):
         self.assertEqual(data["reason"], "rejected_quality")
         self.assertIn("测试 issue", data["message"])
 
-    def test_rejects_gibberish_repeat_pattern(self):
-        # 用不在黑词单里的字符做 ≥8 连重复（"为" * 9），避免先命中 blocklist
+    def test_rejects_pipeline_test_intent_phrases(self):
+        # "我是开发者，反馈一个测试 ISSUE，看能否跑通" 这类口语化请求
+        # 不能被 Agent 改写成真实样式 Issue 后提交到上游。
+        for phrase in ("看能否跑通", "跑通流程", "链路测试", "测试提交"):
+            with self.subTest(phrase=phrase):
+                result = _run(self.tool.run(**self._good_kwargs(
+                    title=f"[错误报告]: 订阅刷新接口异常{phrase}",
+                )))
+                data = json.loads(result)
+                self.assertEqual(data["reason"], "rejected_quality")
+                self.assertIn(phrase, data["message"])
+
+    def test_rejects_pipeline_test_intent_from_original_request(self):
+        # 即使 title/description 被 Agent 改写成真实样式，只要原始用户请求
+        # 暴露了"测试 ISSUE / 看能否跑通"意图，也必须在工具层拒绝。
+        context = {}
+        self.tool.set_agent_context(context)
         result = _run(self.tool.run(**self._good_kwargs(
-            description="为为为为为为为为为 后面还有用以凑够 50 字的正常文字 lorem ipsum dolor sit amet"
-                        " consectetur adipiscing elit sed do eiusmod"
+            title="[错误报告]: TMDB识别错误，将《吞噬星空》识别为其他作品",
+            original_user_request="我是开发者，为我反馈一个测试 ISSUE，看能否跑通",
+            description=(
+                "## 现象\n"
+                "TMDB识别错误，将动画《吞噬星空》识别为其他作品。\n\n"
+                "## 复现步骤\n"
+                "1. 搜索或订阅《吞噬星空》\n"
+                "2. 系统尝试识别该媒体\n"
+                "3. 识别结果错误，匹配到其他作品\n\n"
+                "## 期望行为\n"
+                "正确识别《吞噬星空》并匹配正确的TMDB ID。"
+            ),
+        )))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertIn("测试 issue", data["message"])
+        self.assertTrue(context.get("feedback_issue_rejected_quality"))
+        self.assertIn("测试 issue", context.get("feedback_issue_rejected_quality_reason", ""))
+
+    def test_submit_schema_rejects_logs_parameter(self):
+        # 日志已经从 Agent 入参中移除：现在通过 diagnostics_id 在服务端 state
+        # store 流转。pydantic schema 不应再声明 logs 字段，确保 LangChain
+        # 在调用 _arun 时校验失败，挡住"agent 试图传 logs"的回归。
+        from app.agent.tools.impl.submit_feedback_issue import (
+            SubmitFeedbackIssueInput,
+        )
+        self.assertNotIn("logs", SubmitFeedbackIssueInput.model_fields)
+        from app.agent.tools.impl.prepare_feedback_issue import (
+            PrepareFeedbackIssueInput,
+        )
+        self.assertNotIn("logs", PrepareFeedbackIssueInput.model_fields)
+
+    def test_rejects_unstructured_synthetic_description(self):
+        # 截图里的第二次路径会把一句泛泛的"用户反馈..."提交成正式 Issue；
+        # 工具层应要求至少包含现象 / 复现 / 期望信号，防止伪造问题跑通链路。
+        result = _run(self.tool.run(**self._good_kwargs(
+            title="[错误报告]: 下载任务完成后无法自动移动文件",
+            description=(
+                "用户反馈在下载任务完成后，系统无法按照配置的规则自动将文件移动到"
+                "媒体库目录。请协助排查转移模块与下载器之间的联动是否存在异常。"
+            ),
+        )))
+        data = json.loads(result)
+        self.assertEqual(data["reason"], "rejected_quality")
+        self.assertIn("结构信息", data["message"])
+
+    def test_rejects_gibberish_repeat_pattern(self):
+        # 用不在黑词单里的字符做 ≥8 连重复（"为" * 9），并搭配足够长的中文
+        # 正文凑过 50 字门槛但不踩 lorem/test 等黑词
+        result = _run(self.tool.run(**self._good_kwargs(
+            description="为为为为为为为为为 这里再写一段足够长的正文描述实际问题"
+                        "包含现象与复现步骤以及预期行为，方便维护者跟进"
         )))
         data = json.loads(result)
         self.assertEqual(data["reason"], "rejected_quality")
@@ -646,7 +824,76 @@ class TestSubmitFeedbackIssueFactoryRegistration(unittest.TestCase):
             )
 
         tool_names = {tool.name for tool in tools}
+        self.assertIn("collect_feedback_diagnostics", tool_names)
+        self.assertIn("prepare_feedback_issue", tool_names)
         self.assertIn("submit_feedback_issue", tool_names)
+
+
+class TestCollectFeedbackDiagnosticsResponse(unittest.TestCase):
+    """``collect_feedback_diagnostics`` 必须把日志只缓存到 state store，
+    不能把日志正文回流到 LLM 上下文里。曾经返回完整 logs，导致 LLM 在下
+    一步把 6KB 日志重新当 args 传给 prepare 工具，单轮延迟到分钟级。
+    这个保护用 unit test 钉死。"""
+
+    def setUp(self):
+        from app.agent.tools.impl.feedback_issue_state import feedback_issue_state_store
+
+        feedback_issue_state_store.clear()
+        self._state_store = feedback_issue_state_store
+
+    def _build_tool(self):
+        from app.agent.tools.impl.collect_feedback_diagnostics import (
+            CollectFeedbackDiagnosticsTool,
+        )
+
+        return CollectFeedbackDiagnosticsTool(
+            session_id="sess",
+            user_id="42",
+        )
+
+    def test_run_does_not_return_raw_log_text(self):
+        from pathlib import Path
+        from app.agent.tools.impl import collect_feedback_diagnostics as cfd
+
+        big_log = "ERROR something\n" * 500  # ~ 8000 字节
+        tool = self._build_tool()
+        with patch.object(
+            cfd.CollectFeedbackDiagnosticsTool,
+            "_read_tail",
+            return_value=big_log,
+        ), patch.object(
+            cfd.CollectFeedbackDiagnosticsTool,
+            "_candidate_log_files",
+            return_value=[Path("/fake/moviepilot.log")],
+        ):
+            result = asyncio.run(
+                tool.run(
+                    explanation="x",
+                    original_user_request="something is broken",
+                    keywords=["ERROR"],
+                )
+            )
+
+        data = json.loads(result)
+        # 关键不变量：返回值不含 logs 字段，也不含任何日志正文片段
+        self.assertNotIn("logs", data)
+        for key, value in data.items():
+            if isinstance(value, str):
+                self.assertNotIn(
+                    "ERROR something",
+                    value,
+                    msg=f"字段 {key} 泄漏了日志正文：{value[:80]!r}",
+                )
+        # 必带的摘要字段
+        self.assertIn("diagnostics_id", data)
+        self.assertIn("log_bytes", data)
+        self.assertIn("log_lines", data)
+        # 日志确实进了 state store
+        record = self._state_store.get_diagnostics(
+            data["diagnostics_id"], session_id="sess", user_id="42"
+        )
+        self.assertIsNotNone(record)
+        self.assertIn("ERROR something", record.logs)
 
 
 if __name__ == "__main__":

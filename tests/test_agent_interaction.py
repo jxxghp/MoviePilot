@@ -8,6 +8,11 @@ from app.agent.tools.impl.ask_user_choice import (
     AskUserChoiceTool,
     UserChoiceOptionInput,
 )
+from app.agent.tools.impl.feedback_issue_state import (
+    FEEDBACK_CONFIRM_VALUE_PREFIX,
+    build_feedback_draft_hash,
+    feedback_issue_state_store,
+)
 from app.helper.interaction import (
     AgentInteractionOption,
     agent_interaction_manager,
@@ -19,6 +24,7 @@ from app.schemas.types import MessageChannel
 class TestAgentInteraction(unittest.TestCase):
     def tearDown(self):
         agent_interaction_manager.clear()
+        feedback_issue_state_store.clear()
 
     def test_prompt_injects_choice_tool_hint_only_for_button_channels(self):
         telegram_prompt = prompt_manager.get_agent_prompt(
@@ -93,6 +99,40 @@ class TestAgentInteraction(unittest.TestCase):
         _, option = resolved
         self.assertEqual(option.value, "继续下载")
 
+    def test_choice_tool_blocks_after_feedback_quality_rejection(self):
+        tool = AskUserChoiceTool(session_id="session-feedback", user_id="10001")
+        tool.set_message_attr(
+            channel=MessageChannel.Telegram.value,
+            source="telegram-test",
+            username="tester",
+        )
+        tool.set_agent_context(
+            agent_context={"feedback_issue_rejected_quality": True}
+        )
+
+        with patch(
+            "app.agent.tools.impl.ask_user_choice.ToolChain.async_post_message",
+            new=AsyncMock(),
+        ) as async_post_message:
+            result = asyncio.run(
+                tool.run(
+                    message="测试ISSUE提交被系统质量校验拦截，请选择：",
+                    options=[
+                        UserChoiceOptionInput(
+                            label="提供真实问题描述重新提交",
+                            value="提供真实问题描述重新提交",
+                        ),
+                        UserChoiceOptionInput(
+                            label="取消测试，了解原因",
+                            value="取消测试，了解原因",
+                        ),
+                    ],
+                )
+            )
+
+        self.assertIn("质量门槛拒绝", result)
+        async_post_message.assert_not_awaited()
+
     def test_agent_interaction_callback_routes_selected_value_back_to_agent(self):
         chain = MessageChain()
         request = agent_interaction_manager.create_request(
@@ -138,6 +178,64 @@ class TestAgentInteraction(unittest.TestCase):
         self.assertEqual(kwargs["session_id"], "session-choice")
         message_put.assert_called_once()
         message_add.assert_called_once()
+
+    def test_feedback_confirmation_callback_marks_token_confirmed(self):
+        draft_hash = build_feedback_draft_hash(
+            title="[错误报告]: 订阅刷新接口返回 500 错误码",
+            version="v2.12.2",
+            environment="Docker",
+            issue_type="主程序运行问题",
+            description="## 现象\n错误\n## 复现步骤\n点击刷新\n## 期望行为\n正常刷新",
+            original_user_request="订阅刷新接口返回 500",
+            logs="ERROR demo",
+            diagnostics_id="diag-1",
+        )
+        confirmation = feedback_issue_state_store.create_confirmation(
+            session_id="session-feedback",
+            user_id="10001",
+            username="tester",
+            draft_hash=draft_hash,
+            diagnostics_id="diag-1",
+        )
+        request = agent_interaction_manager.create_request(
+            session_id="session-feedback",
+            user_id="10001",
+            channel=MessageChannel.Telegram.value,
+            source="telegram-test",
+            username="tester",
+            title="确认提交问题反馈",
+            prompt="请确认",
+            options=[
+                AgentInteractionOption(
+                    label="确认提交",
+                    value=f"{FEEDBACK_CONFIRM_VALUE_PREFIX}{confirmation.confirmation_token}",
+                )
+            ],
+        )
+        chain = MessageChain()
+
+        with patch.object(chain, "_handle_ai_message") as handle_ai_message, patch.object(
+            chain.messagehelper, "put"
+        ), patch.object(chain.messageoper, "add"), patch.object(
+            chain, "edit_message", return_value=True
+        ):
+            chain._handle_callback(
+                text=f"CALLBACK:agent_interaction:choice:{request.request_id}:1",
+                channel=MessageChannel.Telegram,
+                source="telegram-test",
+                userid="10001",
+                username="tester",
+            )
+
+        kwargs = handle_ai_message.call_args.kwargs
+        self.assertIn("confirmation_token", kwargs["text"])
+        consumed = feedback_issue_state_store.consume_confirmed(
+            confirmation.confirmation_token,
+            session_id="session-feedback",
+            user_id="10001",
+            draft_hash=draft_hash,
+        )
+        self.assertIsNotNone(consumed)
 
     def test_legacy_agent_choice_callback_still_supported(self):
         chain = MessageChain()
