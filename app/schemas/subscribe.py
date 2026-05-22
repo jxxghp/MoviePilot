@@ -2,6 +2,8 @@ from typing import Optional, List, Dict, Any
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
+from app.schemas.types import MediaType
+
 
 class Subscribe(BaseModel):
     id: Optional[int] = None
@@ -94,14 +96,16 @@ class Subscribe(BaseModel):
             # 调用方显式提供过的值不覆盖
             return self
         total_episode = self.total_episode or 0
-        if self.type != "电视剧" or not total_episode:
+        if self.type != MediaType.TV.value or not total_episode:
             return self
         start_episode = self.start_episode or 1
         if not self.best_version:
             lack = self.lack_episode or 0
             self.completed_episode = max(total_episode - lack, 0)
             return self
-        # 洗版口径：起始集前视为逻辑完成 + [start, total] 范围内 priority==100 命中
+        # 洗版口径：起始集前视为逻辑完成 + [start, total] 范围内 priority==100 命中。
+        # ``start_episode > total_episode`` 属于异常配置，需把 "起始集前" 偏移截断到 total，
+        # 防止 completed_episode 越过分母 total_episode。
         episode_priority = self.episode_priority or {}
         priority_completed = sum(
             1
@@ -110,7 +114,7 @@ class Subscribe(BaseModel):
             and start_episode <= int(ep_key) <= total_episode
             and priority == 100
         )
-        self.completed_episode = max(start_episode - 1, 0) + priority_completed
+        self.completed_episode = min(max(start_episode - 1, 0), total_episode) + priority_completed
         return self
 
 

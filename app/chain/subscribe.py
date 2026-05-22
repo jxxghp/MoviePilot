@@ -163,7 +163,9 @@ class SubscribeChain(ChainBase):
             lack = subscribe.lack_episode or 0
             return max(total_episode - lack, 0)
 
-        # 洗版口径：start 之前的集视为已完成 + 范围内 priority==100 命中
+        # 洗版口径：start 之前的集视为已完成 + 范围内 priority==100 命中。
+        # ``start_episode > total_episode`` 是异常配置，需把"起始集前"偏移截断到 total，
+        # 避免 completed 越过分母 total_episode。
         episode_priority = subscribe.episode_priority or {}
         priority_completed = sum(
             1
@@ -172,7 +174,7 @@ class SubscribeChain(ChainBase):
             and start_episode <= int(ep_key) <= total_episode
             and priority == 100
         )
-        return max(start_episode - 1, 0) + priority_completed
+        return min(max(start_episode - 1, 0), total_episode) + priority_completed
 
     @classmethod
     def get_best_version_current_priority(
