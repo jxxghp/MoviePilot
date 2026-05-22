@@ -116,6 +116,8 @@ async def update_subscribe(
     subscribe_dict = subscribe_in.model_dump()
     if subscribe_in.episode_priority is None:
         subscribe_dict.pop("episode_priority", None)
+    # completed_episode 是响应派生字段，禁止写入持久层
+    subscribe_dict.pop("completed_episode", None)
     if not subscribe_in.lack_episode:
         # 没有缺失集数时，缺失集数清空，避免更新为0
         subscribe_dict.pop("lack_episode")

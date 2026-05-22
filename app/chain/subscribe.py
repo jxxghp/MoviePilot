@@ -139,17 +139,40 @@ class SubscribeChain(ChainBase):
         return cls.__get_pending_best_version_episodes_with_priority(subscribe)
 
     @classmethod
-    def get_best_version_lack_episode(
-            cls,
-            subscribe: Subscribe,
-            episode_priority: Optional[dict] = None,
-    ) -> int:
+    def compute_completed_episode(cls, subscribe: Subscribe) -> Optional[int]:
         """
-        获取洗版订阅当前剩余待洗剧集数。
+        计算订阅"已完成"集数派生值，仅用于响应填充，不入库。
+
+        语义：
+        - 普通订阅 (best_version=0)：``max(total_episode - lack_episode, 0)``，即媒体库已入库集数。
+        - 洗版订阅 (best_version=1，含分集与全集洗版)：
+          ``(start_episode - 1) + (episode_priority 中 priority==100 且 ep ∈ [start, total] 的命中数)``。
+          start_episode 之前的集不在订阅范围内，视为"逻辑上已完成"，与主文案分母 total_episode 对齐。
+
+        - 入参：完整 Subscribe ORM/Schema 对象，需至少包含 best_version、type、start_episode、
+          total_episode、lack_episode、episode_priority 字段。
+        - 返回：完成集数；电影或缺少 total_episode 时返回 None。
         """
-        if not subscribe.best_version or subscribe.type != MediaType.TV.value:
-            return subscribe.lack_episode or 0
-        return len(cls.__get_pending_best_version_episodes_with_priority(subscribe, episode_priority))
+        total_episode = subscribe.total_episode or 0
+        if subscribe.type != MediaType.TV.value or not total_episode:
+            return None
+
+        start_episode = subscribe.start_episode or 1
+
+        if not subscribe.best_version:
+            lack = subscribe.lack_episode or 0
+            return max(total_episode - lack, 0)
+
+        # 洗版口径：start 之前的集视为已完成 + 范围内 priority==100 命中
+        episode_priority = subscribe.episode_priority or {}
+        priority_completed = sum(
+            1
+            for ep_key, priority in episode_priority.items()
+            if str(ep_key).isdigit()
+            and start_episode <= int(ep_key) <= total_episode
+            and priority == 100
+        )
+        return max(start_episode - 1, 0) + priority_completed
 
     @classmethod
     def get_best_version_current_priority(
@@ -1141,18 +1164,16 @@ class SubscribeChain(ChainBase):
                 return
 
             current_priority = self.get_best_version_current_priority(subscribe, episode_priority)
-            lack_episode = self.get_best_version_lack_episode(subscribe, episode_priority)
+            # lack_episode 由 finish_subscribe_or_not -> __update_lack_episodes 按媒体库实况维护，本处不写
             update_data: Dict[str, Any] = {
                 "episode_priority": episode_priority,
                 "last_update": now,
                 "current_priority": current_priority,
-                "lack_episode": lack_episode,
             }
 
             SubscribeOper().update(subscribe.id, update_data)
             subscribe.episode_priority = episode_priority
             subscribe.current_priority = current_priority
-            subscribe.lack_episode = lack_episode
             subscribe.last_update = now
 
             completed_episodes = self.__get_best_version_completed_episodes(subscribe)
@@ -1197,26 +1218,28 @@ class SubscribeChain(ChainBase):
             self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
         # 是否完成订阅
         if not subscribe.best_version:
-            # 更新订阅剩余集数和时间
+            # 普通订阅：先按 lefts 写 lack，再判断完成
             self.__update_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo,
                                         update_date=bool(downloads))
-            # 判断是否需要完成订阅
             if ((no_lefts and meta.type == MediaType.TV)
                     or (downloads and meta.type == MediaType.MOVIE)
                     or force):
                 self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
             else:
-                # 未下载到内容且不完整
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
-        elif downloads:
-            # 洗版下载到了内容，更新资源优先级
+            return
+
+        # 洗版订阅：本轮若有下载先更新 episode_priority / current_priority，让 __update_lack_episodes
+        # 读取到包含本轮新下载的集；否则 lack 会慢一个搜索周期才反映新下载。
+        if downloads:
             self.update_subscribe_priority(subscribe=subscribe, meta=meta,
                                            mediainfo=mediainfo, downloads=downloads)
-        elif self.__is_best_version_complete(subscribe):
+        self.__update_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo,
+                                    update_date=bool(downloads))
+        if self.__is_best_version_complete(subscribe):
             # 洗版完成
             self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
-        else:
-            # 洗版，未下载到内容
+        elif not downloads:
             logger.info(f'{mediainfo.title_year} 继续洗版 ...')
 
     def refresh(self):
@@ -1662,26 +1685,24 @@ class SubscribeChain(ChainBase):
             current_priority = None
             if not subscribe.manual_total_episode and len(episodes):
                 total_episode = len(episodes)
+                # 总集数增长按 delta 同步抬升 lack
+                lack_episode = (subscribe.lack_episode or 0) + (total_episode - (subscribe.total_episode or 0))
                 if subscribe.best_version and subscribe.type == MediaType.TV.value:
+                    # 为新增集补齐 episode_priority 初始项（priority=0）
                     old_total_episode = subscribe.total_episode or 0
                     episode_priority = self.__get_episode_priority(subscribe)
                     for episode in range(old_total_episode + 1, total_episode + 1):
                         episode_priority.setdefault(str(episode), 0)
                     subscribe.total_episode = total_episode
                     subscribe.episode_priority = episode_priority
-                    lack_episode = self.get_best_version_lack_episode(subscribe, episode_priority)
                     current_priority = self.get_best_version_current_priority(subscribe, episode_priority)
-                else:
-                    lack_episode = subscribe.lack_episode + (total_episode - subscribe.total_episode)
                 logger.info(
                     f'订阅 {subscribe.name} 总集数变化，更新总集数为{total_episode}，缺失集数为{lack_episode} ...')
             else:
                 total_episode = subscribe.total_episode
+                lack_episode = subscribe.lack_episode
                 if subscribe.best_version and subscribe.type == MediaType.TV.value:
-                    lack_episode = self.get_best_version_lack_episode(subscribe)
                     current_priority = self.get_best_version_current_priority(subscribe)
-                else:
-                    lack_episode = subscribe.lack_episode
             # 更新TMDB信息
             update_data = {
                 "name": mediainfo.title,
@@ -1891,21 +1912,23 @@ class SubscribeChain(ChainBase):
                                mediainfo: MediaInfo,
                                update_date: Optional[bool] = False):
         """
-        更新订阅剩余集数及时间
+        写入订阅 lack_episode，可选同时刷新 last_update。
+
+        lack 统一语义为"订阅范围内尚未下载到任何版本的集数"。
+        - 普通订阅：lack 从 ``lefts`` 提取（lefts 已在 ``__get_subscribe_no_exits`` 里扣过 note）
+        - 洗版订阅：lack = ``[start, total]`` 范围内既不在 note 也不在 episode_priority(>0) 命中的集数。
+          洗版的 lefts 由 ``check_and_handle_existing_media`` 按 priority<100 构造，承担"搜索目标"职责，
+          与"未下载"维度并不同义——若复用会把"已下载但待升级"的集错算成 lack。
         """
         update_data = {}
         if update_date:
             update_data["last_update"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        if subscribe.best_version and subscribe.type == MediaType.TV.value:
-            lack_episode = len(SubscribeChain._get_pending_best_version_episodes(subscribe))
-            logger.info(f"{mediainfo.title_year} 季 {subscribe.season} 剩余待洗剧集数为{lack_episode} ...")
-            update_data["lack_episode"] = lack_episode
-            if update_data:
-                SubscribeOper().update(subscribe.id, update_data)
-            return
         if subscribe.type == MediaType.TV.value:
-            if not lefts:
-                # 如果 lefts 为空，表示没有缺失集数，直接设置 lack_episode 为 0
+            if subscribe.best_version:
+                lack_episode = SubscribeChain.__compute_best_version_lack_episode(subscribe)
+                logger.info(f"{mediainfo.title_year} 季 {subscribe.season} 剩余未下载剧集数为{lack_episode} ...")
+            elif not lefts:
+                # lefts 为空：媒体库实缺为 0
                 lack_episode = 0
                 logger.info(f'{mediainfo.title_year} 没有缺失集数，直接更新为 0 ...')
             else:
@@ -1927,6 +1950,36 @@ class SubscribeChain(ChainBase):
         # 更新数据库
         if update_data:
             SubscribeOper().update(subscribe.id, update_data)
+
+    @staticmethod
+    def __compute_best_version_lack_episode(subscribe: Subscribe) -> int:
+        """
+        计算洗版订阅"未下载集数"：在 ``[start, total]`` 范围内排除已在 ``note`` 或
+        ``episode_priority`` (>0) 中记账的集。priority<100 但 >0 的集视为"已下载、待升级"，
+        不计入 lack——与 UI 上"已下载 = total - lack"展示口径一致。
+        """
+        total_episode = subscribe.total_episode or 0
+        if not total_episode:
+            return 0
+        start_episode = subscribe.start_episode or 1
+        if total_episode < start_episode:
+            return 0
+        target_episodes = set(range(start_episode, total_episode + 1))
+        downloaded: set = set()
+        for ep in (subscribe.note or []):
+            try:
+                downloaded.add(int(ep))
+            except (TypeError, ValueError):
+                continue
+        for ep_str, priority in (subscribe.episode_priority or {}).items():
+            if not str(ep_str).isdigit():
+                continue
+            try:
+                if float(priority) > 0:
+                    downloaded.add(int(ep_str))
+            except (TypeError, ValueError):
+                continue
+        return len(target_episodes - downloaded)
 
     def __finish_subscribe(self, subscribe: Subscribe, mediainfo: MediaInfo, meta: MetaBase):
         """

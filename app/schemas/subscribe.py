@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class Subscribe(BaseModel):
@@ -45,6 +45,8 @@ class Subscribe(BaseModel):
     start_episode: Optional[int] = 0
     # 缺失集数
     lack_episode: Optional[int] = 0
+    # 已完成集数
+    completed_episode: Optional[int] = None
     # 附加信息
     note: Optional[Any] = None
     # 状态：N-新建， R-订阅中
@@ -81,6 +83,35 @@ class Subscribe(BaseModel):
     episode_group: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _fill_completed_episode(self) -> "Subscribe":
+        """
+        填充 ``completed_episode`` 派生字段。电视剧订阅按 best_version 分支计算，
+        电影或缺少 total_episode 时保持 None。
+        """
+        if self.completed_episode is not None:
+            # 调用方显式提供过的值不覆盖
+            return self
+        total_episode = self.total_episode or 0
+        if self.type != "电视剧" or not total_episode:
+            return self
+        start_episode = self.start_episode or 1
+        if not self.best_version:
+            lack = self.lack_episode or 0
+            self.completed_episode = max(total_episode - lack, 0)
+            return self
+        # 洗版口径：起始集前视为逻辑完成 + [start, total] 范围内 priority==100 命中
+        episode_priority = self.episode_priority or {}
+        priority_completed = sum(
+            1
+            for ep_key, priority in episode_priority.items()
+            if str(ep_key).isdigit()
+            and start_episode <= int(ep_key) <= total_episode
+            and priority == 100
+        )
+        self.completed_episode = max(start_episode - 1, 0) + priority_completed
+        return self
 
 
 class SubscribeShare(BaseModel):
