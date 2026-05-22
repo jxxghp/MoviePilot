@@ -1723,33 +1723,46 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def recommend_episode_format(
             self,
             fileitem: FileItem,
+            fileitems: Optional[List[FileItem]] = None,
     ) -> Tuple[bool, str, Optional[dict]]:
         """
         根据目录样本推荐集数定位模板
         """
-        if not fileitem or not fileitem.path:
+        if not fileitem and not fileitems:
             logger.warn("推荐集数定位模板失败：缺少目录参数")
             return False, "缺少目录参数", None
 
-        directory = self.__resolve_episode_format_directory(fileitem)
-        if not directory or directory.type != "dir":
-            logger.warn(f"推荐集数定位模板失败：目录不存在 - {fileitem.path}")
-            return False, "目录不存在", None
-
         rules = self.__get_episode_format_rules()
-        sample_files = self.__get_episode_format_sample_files(directory)
+        if fileitems:
+            state, errmsg, sample_files = self.__get_selected_episode_format_sample_files(
+                fileitems
+            )
+            if not state:
+                logger.warn(f"推荐集数定位模板失败：{errmsg}")
+                return False, errmsg, None
+            target_path = sample_files[0].path if sample_files else None
+        else:
+            if not fileitem or not fileitem.path:
+                logger.warn("推荐集数定位模板失败：缺少目录参数")
+                return False, "缺少目录参数", None
+            directory = self.__resolve_episode_format_directory(fileitem)
+            if not directory or directory.type != "dir":
+                logger.warn(f"推荐集数定位模板失败：目录不存在 - {fileitem.path}")
+                return False, "目录不存在", None
+            sample_files = self.__get_episode_format_sample_files(directory)
+            target_path = directory.path
         logger.info(
-            f"开始匹配集数定位规则：{directory.path}，规则数 {len(rules)}，样本数 {len(sample_files)}"
+            f"开始匹配集数定位规则：{target_path}，规则数 {len(rules)}，样本数 {len(sample_files)}"
         )
         state, errmsg, data = EpisodeFormatRuleHelper().recommend(
             rules=rules,
             sample_files=sample_files,
         )
         if not state:
-            logger.warn(f"集数定位模板推荐失败：{directory.path} - {errmsg}")
+            logger.warn(f"集数定位模板推荐失败：{target_path} - {errmsg}")
             return state, errmsg, data
         logger.info(
-            f"集数定位模板推荐成功：{directory.path} - 规则 {data.get('rule_name') if data else None}"
+            f"集数定位模板推荐成功：{target_path} - 规则 {data.get('rule_name') if data else None}"
         )
         return state, errmsg, data
 
@@ -1789,6 +1802,50 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             name=source_path.parent.name,
         )
         return storage_chain.get_item(parent_item)
+
+    def __get_selected_episode_format_sample_files(
+            self, fileitems: List[FileItem]
+    ) -> Tuple[bool, str, List[FileItem]]:
+        """
+        获取当前选择文件中可参与模板推荐的样本文件。
+        """
+        if not fileitems:
+            return False, "没有可用于识别的样本文件", []
+
+        expected_dir_key: Optional[Tuple[str, str]] = None
+        selected_files: List[FileItem] = []
+        seen_files = set()
+        for item in fileitems:
+            if not item or not item.path or item.type != "file":
+                return False, "当前选择不满足智能识别条件", []
+
+            dir_key = (
+                item.storage or "local",
+                Path(item.path).parent.as_posix(),
+            )
+            if expected_dir_key is None:
+                expected_dir_key = dir_key
+            elif dir_key != expected_dir_key:
+                return False, "当前选择不满足智能识别条件", []
+
+            file_key = (item.storage or "local", item.path)
+            if file_key in seen_files:
+                continue
+            seen_files.add(file_key)
+
+            if not (
+                    self.__is_media_file(item)
+                    or self.__is_subtitle_file(item)
+                    or self.__is_audio_file(item)
+            ):
+                continue
+            if self.__is_hidden_or_recycle_path(item.path):
+                continue
+            selected_files.append(item)
+
+        if not selected_files:
+            return False, "没有可用于识别的样本文件", []
+        return True, "", selected_files
 
     def __get_episode_format_sample_files(
             self, directory: FileItem
@@ -2359,6 +2416,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if preview:
             # 预览模式始终同步执行，避免进入异步队列
             background = False
+        manual_single_file = bool(manual and fileitem and fileitem.type == "file")
 
         # 自定义格式
         formaterHandler = (
@@ -2462,8 +2520,20 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             """
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
+            is_extra_file = self.__is_subtitle_file(item) or self.__is_audio_file(item)
+            # 手动单文件整理时，前端可能把同目录文件拆成多个根文件提交；
+            # 此时应优先信任用户显式选择的根文件，并允许附加文件进入后续同媒体匹配流程，
+            # 避免仅因模板未覆盖字幕/音轨后缀而被提前过滤。
+            should_bypass_epformat_match = (
+                (manual_single_file and item.path == fileitem.path)
+                or (sync_extra_files and is_extra_file)
+            )
             # 有集自定义格式，过滤文件
-            if formaterHandler and not formaterHandler.match(item.name):
+            if (
+                    formaterHandler
+                    and not should_bypass_epformat_match
+                    and not formaterHandler.match(item.name)
+            ):
                 return False
             # 过滤后缀和大小（蓝光目录、附加文件不过滤）
             if (
@@ -3031,6 +3101,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             downloader: Optional[str] = None,
             download_hash: Optional[str] = None,
             preview: Optional[bool] = False,
+            sync_extra_files: Optional[bool] = True,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -3053,6 +3124,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param downloader: 下载器名称
         :param download_hash: 下载任务哈希
         :param preview: 是否仅预览
+        :param sync_extra_files: 是否同步整理同媒体附加文件
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         if tmdbid or doubanid:
@@ -3092,6 +3164,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 downloader=downloader,
                 download_hash=download_hash,
                 preview=preview,
+                sync_extra_files=sync_extra_files,
             )
             if not state:
                 return False, errmsg
@@ -3117,6 +3190,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 downloader=downloader,
                 download_hash=download_hash,
                 preview=preview,
+                sync_extra_files=sync_extra_files,
             )
             return state, errmsg
 

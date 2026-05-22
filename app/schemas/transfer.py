@@ -181,12 +181,15 @@ class EpisodeFormatRecommendItem(BaseModel):
     """
     集数定位推荐请求
     """
-    fileitem: FileItem
+    fileitem: Optional[FileItem] = None
+    fileitems: Optional[List[FileItem]] = None
 
 
 class ManualTransferItem(BaseModel):
     # 文件项
     fileitem: FileItem = None
+    # 文件项列表（前端多选时传入）
+    fileitems: Optional[List[FileItem]] = None
     # 日志ID
     logid: Optional[int] = None
     # 目标存储

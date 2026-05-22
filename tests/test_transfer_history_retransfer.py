@@ -6,8 +6,8 @@ import sys
 sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
 setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
-from app.api.endpoints.transfer import manual_transfer
-from app.schemas import ManualTransferItem
+from app.api.endpoints.transfer import manual_transfer, recommend_episode_format
+from app.schemas import ManualTransferItem, EpisodeFormatRecommendItem
 
 
 def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
@@ -52,3 +52,206 @@ def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
     assert captured["download_hash"] == "abc123"
     assert captured["episode_group"] == "WEB-DL"
     assert captured["season"] == 1
+
+
+def test_manual_transfer_preview_uses_explicit_fileitems_instead_of_directory(monkeypatch):
+    dir_item = {
+        "storage": "local",
+        "path": "/downloads/Test Show/",
+        "name": "Test Show",
+        "type": "dir",
+    }
+    file_paths = [
+        "/downloads/Test Show/Test.Show.S01E01.mkv",
+        "/downloads/Test Show/Test.Show.S01E02.mkv",
+        "/downloads/Test Show/Test.Show.S01E03.mkv",
+    ]
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": file_path,
+            "name": file_path.rsplit("/", 1)[-1],
+            "type": "file",
+        }
+        for file_path in file_paths
+    ]
+    captured = []
+
+    class FakeTransferChain:
+        def manual_transfer(self, **kwargs):
+            captured.append(kwargs)
+            fileitem = kwargs["fileitem"]
+            return True, {
+                "summary": {"total": 1, "success": 1, "failed": 0},
+                "items": [
+                    {
+                        "source": fileitem.path,
+                        "target": f"/library/{fileitem.name}",
+                        "target_dir": "/library",
+                        "success": True,
+                        "message": "",
+                        "type": "电视剧",
+                        "title": "Test Show (2026)",
+                        "season": 1,
+                        "episode": 1,
+                        "episode_end": None,
+                        "part": None,
+                    }
+                ],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    resp = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=dir_item,
+            fileitems=selected_fileitems,
+            preview=True,
+        ),
+        background=False,
+        db=object(),
+        _="token",
+    )
+
+    assert resp.success is True
+    assert len(captured) == 3
+    assert [item["fileitem"].path for item in captured] == file_paths
+    assert all(item["sync_extra_files"] is False for item in captured)
+    assert resp.data["summary"] == {"total": 3, "success": 3, "failed": 0}
+    assert [item["source"] for item in resp.data["items"]] == file_paths
+
+
+def test_manual_transfer_preview_multi_select_collects_failures(monkeypatch):
+    file_paths = [
+        "/downloads/Test Show/Test.Show.S01E01.mkv",
+        "/downloads/Test Show/Test.Show.S01E02.mkv",
+    ]
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": file_path,
+            "name": file_path.rsplit("/", 1)[-1],
+            "type": "file",
+        }
+        for file_path in file_paths
+    ]
+
+    class FakeTransferChain:
+        def manual_transfer(self, **kwargs):
+            fileitem = kwargs["fileitem"]
+            if fileitem.path.endswith("E02.mkv"):
+                return False, f"{fileitem.name} 没有找到可整理的媒体文件"
+            return True, {
+                "summary": {"total": 1, "success": 1, "failed": 0},
+                "items": [
+                    {
+                        "source": fileitem.path,
+                        "target": f"/library/{fileitem.name}",
+                        "target_dir": "/library",
+                        "success": True,
+                        "message": "",
+                        "type": "电视剧",
+                        "title": "Test Show (2026)",
+                        "season": 1,
+                        "episode": 1,
+                        "episode_end": None,
+                        "part": None,
+                    }
+                ],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    resp = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitems=selected_fileitems,
+            preview=True,
+        ),
+        background=False,
+        db=object(),
+        _="token",
+    )
+
+    assert resp.success is True
+    assert resp.data["summary"] == {"total": 2, "success": 1, "failed": 1}
+    assert [item["source"] for item in resp.data["items"]] == file_paths
+    assert resp.data["items"][1]["success"] is False
+
+
+def test_recommend_episode_format_passes_selected_fileitems(monkeypatch):
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": "/downloads/Test Show/Test.Show.S01E01.mkv",
+            "name": "Test.Show.S01E01.mkv",
+            "type": "file",
+        },
+        {
+            "storage": "local",
+            "path": "/downloads/Test Show/Test.Show.S01E02.mkv",
+            "name": "Test.Show.S01E02.mkv",
+            "type": "file",
+        },
+    ]
+    captured = {}
+
+    class FakeTransferChain:
+        def recommend_episode_format(self, **kwargs):
+            captured.update(kwargs)
+            return True, "", {"episode_format": "Show.S01E{ep}.mkv"}
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    resp = recommend_episode_format(
+        recommend_item=EpisodeFormatRecommendItem(
+            fileitem=selected_fileitems[0],
+            fileitems=selected_fileitems,
+        ),
+        _="token",
+    )
+
+    assert resp.success is True
+    assert captured["fileitem"].path == selected_fileitems[0]["path"]
+    assert [item.path for item in captured["fileitems"]] == [
+        item["path"] for item in selected_fileitems
+    ]
+
+
+def test_recommend_episode_format_accepts_fileitems_without_fileitem(monkeypatch):
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": "/downloads/Test Show/Test.Show.S01E01.mkv",
+            "name": "Test.Show.S01E01.mkv",
+            "type": "file",
+        },
+        {
+            "storage": "local",
+            "path": "/downloads/Test Show/Test.Show.S01E02.mkv",
+            "name": "Test.Show.S01E02.mkv",
+            "type": "file",
+        },
+    ]
+    captured = {}
+
+    class FakeTransferChain:
+        def recommend_episode_format(self, **kwargs):
+            captured.update(kwargs)
+            return True, "", {"episode_format": "Show.S01E{ep}.mkv"}
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    resp = recommend_episode_format(
+        recommend_item=EpisodeFormatRecommendItem(
+            fileitems=selected_fileitems,
+        ),
+        _="token",
+    )
+
+    assert resp.success is True
+    assert captured["fileitem"] is None
+    assert [item.path for item in captured["fileitems"]] == [
+        item["path"] for item in selected_fileitems
+    ]

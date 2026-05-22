@@ -485,6 +485,101 @@ def test_transfer_chain_recommend_episode_format_passes_helper_data(monkeypatch)
     assert data == helper_data
 
 
+def test_transfer_chain_recommend_episode_format_uses_selected_fileitems(monkeypatch):
+    chain = object.__new__(TransferChain)
+    monkeypatch.setattr(chain, "_media_exts", [".mkv", ".mp4"], raising=False)
+    monkeypatch.setattr(chain, "_subtitle_exts", [".ass", ".ssa"], raising=False)
+    monkeypatch.setattr(chain, "_audio_exts", [".mka", ".aac"], raising=False)
+    selected_fileitems = [
+        FileItem(
+            storage="local",
+            path="/downloads/Show/Show - 01.mkv",
+            type="file",
+            name="Show - 01.mkv",
+            extension="mkv",
+        ),
+        FileItem(
+            storage="local",
+            path="/downloads/Show/Show - 01.ass",
+            type="file",
+            name="Show - 01.ass",
+            extension="ass",
+        ),
+    ]
+    helper_data = {
+        "rule_name": "智能分析",
+        "episode_format": "Show - {ep}.{a}",
+        "sample_file": "Show - 01.mkv",
+        "pattern": None,
+        "sample_count": 2,
+        "majority_count": 2,
+        "confidence": "high",
+        "size_filter_relaxed": False,
+        "native_verified_count": 0,
+        "native_fallback_count": 0,
+        "native_conflict_count": 0,
+        "reason": "selected_samples",
+        "reasons": ["selected_samples"],
+        "message": "已基于选中文件生成集数定位模板",
+    }
+
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_episode_format_rules",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.EpisodeFormatRuleHelper.recommend",
+        lambda self, rules, sample_files: (True, "", {
+            **helper_data,
+            "received_samples": [item.name for item in sample_files],
+        }),
+    )
+
+    state, errmsg, data = TransferChain.recommend_episode_format(
+        chain,
+        fileitem=None,
+        fileitems=selected_fileitems,
+    )
+
+    assert state is True
+    assert errmsg == ""
+    assert data["received_samples"] == [item.name for item in selected_fileitems]
+
+
+def test_transfer_chain_recommend_episode_format_rejects_invalid_selected_fileitems():
+    chain = object.__new__(TransferChain)
+    chain._media_exts = [".mkv", ".mp4"]
+    chain._subtitle_exts = [".ass", ".ssa"]
+    chain._audio_exts = [".mka", ".aac"]
+    selected_fileitems = [
+        FileItem(
+            storage="local",
+            path="/downloads/Show/Show - 01.mkv",
+            type="file",
+            name="Show - 01.mkv",
+            extension="mkv",
+        ),
+        FileItem(
+            storage="local",
+            path="/downloads/Other/Show - 02.mkv",
+            type="file",
+            name="Show - 02.mkv",
+            extension="mkv",
+        ),
+    ]
+
+    state, errmsg, data = TransferChain.recommend_episode_format(
+        chain,
+        fileitem=None,
+        fileitems=selected_fileitems,
+    )
+
+    assert state is False
+    assert errmsg == "当前选择不满足智能识别条件"
+    assert data is None
+
+
 def test_transfer_chain_episode_format_samples_include_extra_files(monkeypatch):
     chain = object.__new__(TransferChain)
     directory = FileItem(

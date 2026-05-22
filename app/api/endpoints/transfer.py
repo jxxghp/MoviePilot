@@ -109,6 +109,7 @@ def manual_transfer(
     force = False
     downloader = None
     download_hash = None
+    src_fileitems: List[FileItem] = []
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
     if transer_item.logid:
         # 查询历史记录
@@ -123,10 +124,10 @@ def manual_transfer(
         download_hash = history.download_hash
         if history.status and ("move" in history.mode):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
-            src_fileitem = FileItem(**history.dest_fileitem)
+            src_fileitems = [FileItem(**history.dest_fileitem)]
         else:
             # 源路径
-            src_fileitem = FileItem(**history.src_fileitem)
+            src_fileitems = [FileItem(**history.src_fileitem)]
             # 目的路径
             if history.dest_fileitem and not transer_item.preview:
                 # 删除旧的已整理文件
@@ -171,10 +172,28 @@ def manual_transfer(
                     # E01单集
                     transer_item.episode_detail = str(history.episodes).replace("E", "")
 
+    elif transer_item.fileitems:
+        src_fileitems = [fileitem for fileitem in transer_item.fileitems if fileitem]
     elif transer_item.fileitem:
-        src_fileitem = transer_item.fileitem
+        src_fileitems = [transer_item.fileitem]
     else:
         return schemas.Response(success=False, message=f"缺少参数")
+
+    dedup_fileitems: List[FileItem] = []
+    seen_paths = set()
+    for current_fileitem in src_fileitems:
+        storage = current_fileitem.storage or "local"
+        path = current_fileitem.path
+        if not path:
+            continue
+        key = (storage, path)
+        if key in seen_paths:
+            continue
+        seen_paths.add(key)
+        dedup_fileitems.append(current_fileitem)
+    src_fileitems = dedup_fileitems
+    if not src_fileitems:
+        return schemas.Response(success=False, message="缺少参数")
 
     # 类型（“自动/auto/none”按未指定处理）
     mtype = None
@@ -200,6 +219,117 @@ def manual_transfer(
             part=transer_item.episode_part,
             offset=transer_item.episode_offset,
         )
+    explicit_selected_files = bool(transer_item.fileitems)
+
+    def _build_failure_preview_item(file_item: FileItem, message: str) -> dict:
+        return {
+            "source": file_item.path if file_item else None,
+            "target": None,
+            "target_dir": None,
+            "success": False,
+            "message": message,
+            "type": None,
+            "title": None,
+            "season": None,
+            "episode": None,
+            "episode_end": None,
+            "part": None,
+        }
+
+    def _merge_messages(messages: List[str]) -> str:
+        valid_messages = [msg for msg in messages if msg]
+        if not valid_messages:
+            return ""
+        return "、".join(valid_messages[:2]) + (
+            f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
+        )
+
+    # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
+    if explicit_selected_files:
+        preview_items: List[dict] = []
+        error_messages: List[str] = []
+        all_success = True
+        for src_fileitem in src_fileitems:
+            state, errormsg = TransferChain().manual_transfer(
+                fileitem=src_fileitem,
+                target_storage=transer_item.target_storage,
+                target_path=target_path,
+                tmdbid=transer_item.tmdbid,
+                doubanid=transer_item.doubanid,
+                mtype=mtype,
+                season=transer_item.season,
+                episode_group=transer_item.episode_group,
+                transfer_type=transer_item.transfer_type,
+                epformat=epformat,
+                min_filesize=transer_item.min_filesize,
+                scrape=transer_item.scrape,
+                library_type_folder=transer_item.library_type_folder,
+                library_category_folder=transer_item.library_category_folder,
+                force=force,
+                background=background,
+                downloader=downloader,
+                download_hash=download_hash,
+                preview=transer_item.preview,
+                sync_extra_files=False,
+            )
+            if transer_item.preview:
+                if isinstance(errormsg, dict):
+                    preview_items.extend(errormsg.get("items") or [])
+                    if errormsg.get("message"):
+                        error_messages.append(errormsg.get("message"))
+                    if not state:
+                        all_success = False
+                else:
+                    if errormsg:
+                        error_messages.append(str(errormsg))
+                    preview_items.append(
+                        _build_failure_preview_item(src_fileitem, str(errormsg))
+                    )
+                    all_success = False
+            elif not state:
+                all_success = False
+                if isinstance(errormsg, list):
+                    error_messages.extend([str(msg) for msg in errormsg if msg])
+                elif errormsg:
+                    error_messages.append(str(errormsg))
+
+        if transer_item.preview:
+            merged_preview_items: List[dict] = []
+            seen_sources = set()
+            for preview_item in preview_items:
+                source = preview_item.get("source")
+                if source in seen_sources:
+                    continue
+                seen_sources.add(source)
+                merged_preview_items.append(preview_item)
+            merged_message = _merge_messages(error_messages)
+            preview_data = {
+                "summary": {
+                    "total": len(merged_preview_items),
+                    "success": len(
+                        [item for item in merged_preview_items if item.get("success")]
+                    ),
+                    "failed": len(
+                        [item for item in merged_preview_items if not item.get("success")]
+                    ),
+                },
+                "items": merged_preview_items,
+                "message": merged_message,
+            }
+            return schemas.Response(
+                success=True,
+                message=merged_message or None,
+                data=preview_data,
+            )
+
+        if not all_success:
+            return schemas.Response(
+                success=False,
+                message=_merge_messages(error_messages),
+            )
+        return schemas.Response(success=True)
+
+    src_fileitem = src_fileitems[0]
     # 开始转移
     state, errormsg = TransferChain().manual_transfer(
         fileitem=src_fileitem,
@@ -221,6 +351,7 @@ def manual_transfer(
         downloader=downloader,
         download_hash=download_hash,
         preview=transer_item.preview,
+        sync_extra_files=True,
     )
     # 失败
     if not state:
@@ -256,7 +387,8 @@ def recommend_episode_format(
     target_path = recommend_item.fileitem.path if recommend_item.fileitem else None
     logger.info(f"开始推荐集数定位模板：{target_path}")
     state, errmsg, data = TransferChain().recommend_episode_format(
-        fileitem=recommend_item.fileitem
+        fileitem=recommend_item.fileitem,
+        fileitems=recommend_item.fileitems,
     )
     if not state:
         logger.warn(f"推荐集数定位模板失败：{target_path} - {errmsg}")
