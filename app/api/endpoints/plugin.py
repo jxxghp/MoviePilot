@@ -325,10 +325,13 @@ def plugin_form(
     render_mode, _ = plugin_instance.get_render_mode()
     try:
         conf, model = plugin_instance.get_form()
+        stored_config = plugin_manager.get_plugin_config(plugin_id)
+        # Merge stored config with defaults so all keys exist for v-show evaluation
+        merged_model = {**model, **(stored_config or {})}
         return {
             "render_mode": render_mode,
             "conf": conf,
-            "model": plugin_manager.get_plugin_config(plugin_id) or model,
+            "model": merged_model,
         }
     except Exception as e:
         logger.error(f"插件 {plugin_id} 调用方法 get_form 出错: {str(e)}")
