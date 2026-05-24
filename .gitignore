@@ -22,6 +22,7 @@ config/user.db*
 config/sites/**
 config/agent/
 config/logs/
+config/plugins/
 config/temp/
 config/cache/
 .runtime/
