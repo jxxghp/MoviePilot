@@ -165,9 +165,9 @@ class SecurityUtils:
     def _is_allowed_private_hostname(
         hostname: str,
         allowed_private_ranges: Optional[Iterable[str]],
-    ) -> bool:
+    ) -> Optional[tuple[List[ipaddress._BaseAddress], List[ipaddress._BaseNetwork]]]:
         """
-        判断主机名是否全部解析到显式允许的非公网网段。
+        返回主机名命中的显式允许非公网地址和网段。
 
         该能力只用于图片代理的受控例外，例如 TUN fake-ip 或内网 CDN。必须由
         `is_safe_url` 先完成域名 allowlist 校验后再调用，避免把任意用户 URL
@@ -175,16 +175,22 @@ class SecurityUtils:
         """
         networks = SecurityUtils._parse_ip_networks(allowed_private_ranges)
         if not networks:
-            return False
+            return None
         addresses = SecurityUtils._hostname_addresses(hostname)
         if not addresses:
-            return False
+            return None
         if all(address.is_global for address in addresses):
-            return False
-        return all(
-            any(address in network for network in networks)
-            for address in addresses
-        )
+            return None
+
+        matched_networks = []
+        for address in addresses:
+            matched_for_address = [
+                network for network in networks if address in network
+            ]
+            if not matched_for_address:
+                return None
+            matched_networks.extend(matched_for_address)
+        return addresses, list(dict.fromkeys(matched_networks))
 
     @staticmethod
     def _url_signature_payload(url: str, expires_at: int, purpose: str) -> bytes:
@@ -341,8 +347,16 @@ class SecurityUtils:
 
             hostname = parsed_url.hostname or ""
             if block_private and not SecurityUtils._is_global_hostname(hostname):
-                if SecurityUtils._is_allowed_private_hostname(hostname, allowed_private_ranges):
-                    logger.debug(f"图片代理允许访问配置的非公网网段: {url}")
+                private_match = SecurityUtils._is_allowed_private_hostname(
+                    hostname, allowed_private_ranges
+                )
+                if private_match:
+                    addresses, matched_networks = private_match
+                    logger.debug(
+                        "图片代理允许访问配置的非公网网段: "
+                        f"url={url}, ips={','.join(map(str, addresses))}, "
+                        f"ranges={','.join(map(str, matched_networks))}"
+                    )
                     return True
                 return False
 

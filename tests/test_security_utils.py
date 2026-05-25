@@ -178,7 +178,7 @@ class SecurityUtilsTest(TestCase):
                     ("198.18.16.96", 0),
                 )
             ],
-        ), patch("app.utils.security.logger.debug"):
+        ), patch("app.utils.security.logger.debug") as debug_log:
             self.assertTrue(
                 SecurityUtils.is_safe_url(
                     "https://img1.doubanio.com/poster.webp",
@@ -187,6 +187,9 @@ class SecurityUtilsTest(TestCase):
                     allowed_private_ranges=["198.18.0.0/15"],
                 )
             )
+            debug_message = debug_log.call_args.args[0]
+            self.assertIn("ips=198.18.16.96", debug_message)
+            self.assertIn("ranges=198.18.0.0/15", debug_message)
 
     def test_is_safe_url_blocks_configured_private_range_without_domain_match(self):
         """
