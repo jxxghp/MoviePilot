@@ -210,7 +210,11 @@ class SecurityUtils:
     def _release_inflight_lock(hostname: str, lock: asyncio.Lock) -> None:
         """
         请求结束后清理 in-flight 锁，避免长期持有大量已闲置的 `asyncio.Lock`。
-        只有当前 lock 仍是字典里登记的那把、且没有其它协程在等待时才删除。
+
+        仅当字典中登记的仍是当前 lock，且 `lock.locked()` 为 False 时才删除。
+        `asyncio.Lock` 公平 FIFO：持有者释放后若仍有等待者，锁会立刻被下一个
+        等待者接走、`locked()` 重新变为 True，因此该守卫可同时排除"仍有持有者"
+        与"刚被等待者接走"两种情况，避免误删后续协程仍在使用的字典条目。
         """
         with _dns_inflight_meta_lock:
             current = _dns_inflight_locks.get(hostname)
@@ -258,7 +262,7 @@ class SecurityUtils:
                 return addresses
         finally:
             # 必须在 `async with` 释放锁之后再清理字典：`_release_inflight_lock`
-            # 通过 `lock.locked()` 判断是否仍有持锁/等待者，锁未释放时清理会被跳过。
+            # 以 `not lock.locked()` 为清理守卫，持锁状态下调用会跳过 pop。
             SecurityUtils._release_inflight_lock(hostname, lock)
 
     @staticmethod
