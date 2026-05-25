@@ -510,6 +510,8 @@ class ConfigModel(BaseModel):
             "qpic.cn",
         ]
     )
+    # 图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果
+    IMAGE_PROXY_ALLOWED_PRIVATE_RANGES: list = Field(default=[])
     # 允许的图片文件后缀格式
     SECURITY_IMAGE_SUFFIXES: list = Field(
         default=[".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"]

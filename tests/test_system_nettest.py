@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import sys
 import unittest
 from types import ModuleType, SimpleNamespace
@@ -133,6 +134,47 @@ class NettestSecurityTest(unittest.TestCase):
             )
 
         self.assertIsNone(resp)
+
+    def test_fetch_image_allows_configured_private_range_after_domain_match(self):
+        """
+        图片代理在域名白名单命中后，可按配置放行指定非公网解析网段。
+        """
+        image_helper = Mock()
+        image_helper.async_fetch_image = AsyncMock(return_value=b"image-bytes")
+
+        with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
+            system_endpoint.HashUtils, "md5", return_value="etag", create=True
+        ), patch.object(
+            system_endpoint.RequestUtils, "generate_cache_headers", return_value={}, create=True
+        ), patch.object(
+            system_endpoint.SecurityUtils,
+            "_is_global_hostname",
+            return_value=False,
+        ), patch.object(
+            system_endpoint.SecurityUtils,
+            "_hostname_addresses",
+            return_value=[ipaddress.ip_address("198.18.16.96")],
+        ), patch.object(
+            system_endpoint.settings,
+            "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
+            ["198.18.0.0/15"],
+        ), patch(
+            "app.utils.security.logger.debug",
+        ):
+            resp = asyncio.run(
+                system_endpoint.fetch_image(
+                    url="https://img1.doubanio.com/poster.webp",
+                    allowed_domains={"doubanio.com"},
+                )
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        image_helper.async_fetch_image.assert_awaited_once_with(
+            url="https://img1.doubanio.com/poster.webp",
+            proxy=None,
+            use_cache=False,
+            cookies=None,
+        )
 
     def test_fetch_image_blocks_tampered_signed_private_url(self):
         """

@@ -162,3 +162,110 @@ class SecurityUtilsTest(TestCase):
                     block_private=True,
                 )
             )
+
+    def test_is_safe_url_allows_configured_private_range_after_domain_match(self):
+        """
+        图片域名命中 allowlist 后，可通过配置允许 TUN fake-ip 等特定非公网网段。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    0,
+                    "",
+                    ("198.18.16.96", 0),
+                )
+            ],
+        ), patch("app.utils.security.logger.debug"):
+            self.assertTrue(
+                SecurityUtils.is_safe_url(
+                    "https://img1.doubanio.com/poster.webp",
+                    {"doubanio.com"},
+                    block_private=True,
+                    allowed_private_ranges=["198.18.0.0/15"],
+                )
+            )
+
+    def test_is_safe_url_blocks_configured_private_range_without_domain_match(self):
+        """
+        非公网网段例外必须依附域名白名单，不能单独放行任意用户 URL。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    0,
+                    "",
+                    ("198.18.16.96", 0),
+                )
+            ],
+        ):
+            self.assertFalse(
+                SecurityUtils.is_safe_url(
+                    "https://attacker.example.com/poster.webp",
+                    {"doubanio.com"},
+                    block_private=True,
+                    allowed_private_ranges=["198.18.0.0/15"],
+                )
+            )
+
+    def test_is_safe_url_blocks_private_result_outside_configured_range(self):
+        """
+        仅允许显式配置的非公网网段，其它内网解析结果仍按 SSRF 风险拦截。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    0,
+                    "",
+                    ("10.0.0.8", 0),
+                )
+            ],
+        ):
+            self.assertFalse(
+                SecurityUtils.is_safe_url(
+                    "https://assets.example.com/poster.jpg",
+                    {"example.com"},
+                    block_private=True,
+                    allowed_private_ranges=["198.18.0.0/15"],
+                )
+            )
+
+    def test_is_safe_url_blocks_mixed_allowed_and_disallowed_private_results(self):
+        """
+        同一域名的解析结果必须全部落在允许网段内，避免部分安全结果掩盖风险地址。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    0,
+                    "",
+                    ("198.18.16.96", 0),
+                ),
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    0,
+                    "",
+                    ("10.0.0.8", 0),
+                ),
+            ],
+        ):
+            self.assertFalse(
+                SecurityUtils.is_safe_url(
+                    "https://assets.example.com/poster.jpg",
+                    {"example.com"},
+                    block_private=True,
+                    allowed_private_ranges=["198.18.0.0/15"],
+                )
+            )

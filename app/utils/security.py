@@ -4,7 +4,7 @@ import socket
 import time
 from hashlib import sha256
 from pathlib import Path
-from typing import List, Optional, Set, Union
+from typing import Iterable, List, Optional, Set, Union
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from anyio import Path as AsyncPath
@@ -113,6 +113,80 @@ class SecurityUtils:
         return True
 
     @staticmethod
+    def _parse_ip_networks(ranges: Optional[Iterable[str]]) -> List[ipaddress._BaseNetwork]:
+        """
+        解析用户配置的 IP/CIDR 网段。
+
+        配置错误的条目会被忽略并写入 debug 日志，避免单个无效值导致所有图片代理
+        校验失败。调用方仍然需要先完成域名白名单匹配，不能单独依赖该网段放行。
+        """
+        networks = []
+        for value in ranges or []:
+            if not value:
+                continue
+            try:
+                networks.append(ipaddress.ip_network(str(value).strip(), strict=False))
+            except ValueError:
+                logger.debug(f"忽略无效的图片代理允许网段配置: {value}")
+        return networks
+
+    @staticmethod
+    def _hostname_addresses(hostname: str) -> Optional[List[ipaddress._BaseAddress]]:
+        """
+        解析主机名并返回全部 IP 地址。
+
+        字面量 IP 直接返回自身；DNS 解析失败或结果异常时返回 None，让上层按
+        不安全目标处理。
+        """
+        if not hostname:
+            return None
+        try:
+            return [ipaddress.ip_address(hostname)]
+        except ValueError:
+            pass
+
+        try:
+            address_infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            return None
+
+        if not address_infos:
+            return None
+
+        addresses = []
+        for address_info in address_infos:
+            try:
+                addresses.append(ipaddress.ip_address(address_info[4][0]))
+            except ValueError:
+                return None
+        return addresses
+
+    @staticmethod
+    def _is_allowed_private_hostname(
+        hostname: str,
+        allowed_private_ranges: Optional[Iterable[str]],
+    ) -> bool:
+        """
+        判断主机名是否全部解析到显式允许的非公网网段。
+
+        该能力只用于图片代理的受控例外，例如 TUN fake-ip 或内网 CDN。必须由
+        `is_safe_url` 先完成域名 allowlist 校验后再调用，避免把任意用户 URL
+        变成 SSRF 绕过入口。
+        """
+        networks = SecurityUtils._parse_ip_networks(allowed_private_ranges)
+        if not networks:
+            return False
+        addresses = SecurityUtils._hostname_addresses(hostname)
+        if not addresses:
+            return False
+        if all(address.is_global for address in addresses):
+            return False
+        return all(
+            any(address in network for network in networks)
+            for address in addresses
+        )
+
+    @staticmethod
     def _url_signature_payload(url: str, expires_at: int, purpose: str) -> bytes:
         """
         构造 URL 签名载荷。
@@ -215,6 +289,7 @@ class SecurityUtils:
         allowed_domains: Union[Set[str], List[str]],
         strict: bool = False,
         block_private: bool = False,
+        allowed_private_ranges: Optional[Iterable[str]] = None,
     ) -> bool:
         """
         验证URL是否在允许的域名列表中，包括带有端口的域名
@@ -223,6 +298,7 @@ class SecurityUtils:
         :param allowed_domains: 允许的域名集合，域名可以包含端口
         :param strict: 是否严格匹配一级域名（默认为 False，允许多级域名）
         :param block_private: 是否拦截解析到非公网地址的 URL，防止 SSRF
+        :param allowed_private_ranges: 域名命中后额外允许的非公网 IP/CIDR 网段
         :return: 如果URL合法且在允许的域名列表中，返回 True；否则返回 False
         """
         try:
@@ -242,11 +318,9 @@ class SecurityUtils:
             if not netloc:
                 return False
 
-            if block_private and not SecurityUtils._is_global_hostname(parsed_url.hostname or ""):
-                return False
-
             # 检查每个允许的域名
             allowed_domains = {d.lower() for d in allowed_domains}
+            domain_allowed = False
             for domain in allowed_domains:
                 parsed_allowed_url = urlparse(domain)
                 allowed_netloc = parsed_allowed_url.netloc or parsed_allowed_url.path
@@ -254,13 +328,25 @@ class SecurityUtils:
                 if strict:
                     # 严格模式下，要求完全匹配域名和端口
                     if netloc == allowed_netloc:
-                        return True
+                        domain_allowed = True
+                        break
                 else:
                     # 非严格模式下，允许子域名匹配
                     if netloc == allowed_netloc or netloc.endswith('.' + allowed_netloc):
-                        return True
+                        domain_allowed = True
+                        break
 
-            return False
+            if not domain_allowed:
+                return False
+
+            hostname = parsed_url.hostname or ""
+            if block_private and not SecurityUtils._is_global_hostname(hostname):
+                if SecurityUtils._is_allowed_private_hostname(hostname, allowed_private_ranges):
+                    logger.debug(f"图片代理允许访问配置的非公网网段: {url}")
+                    return True
+                return False
+
+            return True
         except Exception as e:
             logger.debug(f"Error occurred while validating URL: {e}")
             return False
