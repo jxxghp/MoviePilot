@@ -238,26 +238,28 @@ class SecurityUtils:
             return value
 
         lock = SecurityUtils._get_inflight_lock(hostname)
-        async with lock:
-            # 等到锁后再查一次缓存，前一个持锁者可能已经回填结果
-            hit, value = SecurityUtils._cache_lookup(hostname)
-            if hit:
-                SecurityUtils._release_inflight_lock(hostname, lock)
-                return value
+        try:
+            async with lock:
+                # 等到锁后再查一次缓存，前一个持锁者可能已经回填结果
+                hit, value = SecurityUtils._cache_lookup(hostname)
+                if hit:
+                    return value
 
-            loop = asyncio.get_running_loop()
-            try:
-                address_infos = await loop.getaddrinfo(
-                    hostname, None, type=socket.SOCK_STREAM
-                )
-            except socket.gaierror:
-                SecurityUtils._cache_store(hostname, None)
-                SecurityUtils._release_inflight_lock(hostname, lock)
-                return None
-            addresses = _resolve_addrinfo_to_ips(address_infos)
-            SecurityUtils._cache_store(hostname, addresses)
-        SecurityUtils._release_inflight_lock(hostname, lock)
-        return addresses
+                loop = asyncio.get_running_loop()
+                try:
+                    address_infos = await loop.getaddrinfo(
+                        hostname, None, type=socket.SOCK_STREAM
+                    )
+                except socket.gaierror:
+                    SecurityUtils._cache_store(hostname, None)
+                    return None
+                addresses = _resolve_addrinfo_to_ips(address_infos)
+                SecurityUtils._cache_store(hostname, addresses)
+                return addresses
+        finally:
+            # 必须在 `async with` 释放锁之后再清理字典：`_release_inflight_lock`
+            # 通过 `lock.locked()` 判断是否仍有持锁/等待者，锁未释放时清理会被跳过。
+            SecurityUtils._release_inflight_lock(hostname, lock)
 
     @staticmethod
     def _addresses_all_global(
