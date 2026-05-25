@@ -360,7 +360,7 @@ async def fetch_image(
 
     fetch_url = SecurityUtils.strip_url_signature(url)
     # 验证URL安全性
-    if not SecurityUtils.is_safe_url(
+    if not await SecurityUtils.is_safe_url_async(
         url,
         allowed_domains,
         block_private=True,
