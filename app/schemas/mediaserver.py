@@ -34,6 +34,8 @@ class NotExistMediaInfo(BaseModel):
     total_episode: Optional[int] = 0
     # 开始集
     start_episode: Optional[int] = 0
+    # 候选资源须完整覆盖目标范围
+    require_complete_coverage: Optional[bool] = False
 
 
 class RefreshMediaItem(BaseModel):

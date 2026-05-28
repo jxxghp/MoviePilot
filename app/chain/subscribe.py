@@ -3081,7 +3081,9 @@ class SubscribeChain(ChainBase):
                                 season=subscribe.season,
                                 episodes=pending_episodes,
                                 total_episode=subscribe.total_episode,
-                                start_episode=subscribe.start_episode or 1)
+                                start_episode=subscribe.start_episode or 1,
+                                # 完整覆盖约束会影响整季文件探测、显式集列表匹配和多集拆包降级。
+                                require_complete_coverage=self.__is_full_best_version_enabled(subscribe))
                         }
                     }
                 else:

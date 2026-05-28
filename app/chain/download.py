@@ -492,7 +492,8 @@ class DownloadChain(ChainBase):
                     season=not_exist.season,
                     episodes=need,
                     total_episode=not_exist.total_episode,
-                    start_episode=not_exist.start_episode
+                    start_episode=not_exist.start_episode,
+                    require_complete_coverage=not_exist.require_complete_coverage
                 )
             else:
                 no_exists[_mid].pop(_sea)
@@ -510,6 +511,34 @@ class DownloadChain(ChainBase):
             if not no_exist.get(season):
                 return 9999
             return no_exist[season].total_episode
+
+        def __get_no_exist_media(_mid: Union[int, str], season: int) -> Optional[NotExistMediaInfo]:
+            """
+            获取指定媒体和季的缺失信息。
+            """
+            if not no_exists or not no_exists.get(_mid):
+                return None
+            return no_exists.get(_mid).get(season)
+
+        def __get_required_episodes(_mid: Union[int, str], season: int) -> Set[int]:
+            """
+            获取整季候选必须覆盖的目标集范围。
+            """
+            tv = __get_no_exist_media(_mid, season)
+            if not tv:
+                return set()
+            if not tv.total_episode:
+                return set()
+            start = tv.start_episode or 1
+            return set(range(start, tv.total_episode + 1))
+
+        def __requires_complete_coverage(_tv: Optional[NotExistMediaInfo]) -> bool:
+            """
+            判断当前缺失范围是否要求候选资源完整覆盖目标范围。
+            """
+            if not _tv:
+                return False
+            return bool(_tv.require_complete_coverage)
 
         def __apply_allowed_episodes(_need_episodes, _context: Context) -> Set[int]:
             """
@@ -616,13 +645,23 @@ class DownloadChain(ChainBase):
                                 logger.info(f"{meta.org_string} 解析种子文件集数为 {torrent_episodes}")
                                 if not torrent_episodes:
                                     continue
+                                torrent_episodes_set = set(torrent_episodes)
                                 # 更新集数范围
                                 begin_ep = min(torrent_episodes)
                                 end_ep = max(torrent_episodes)
                                 meta.set_episodes(begin=begin_ep, end=end_ep)
-                                # 需要总集数
+                                # 需要目标集范围；完整覆盖场景必须覆盖范围内每一集，不能只按数量判断。
+                                need_tv_info = __get_no_exist_media(need_mid, torrent_season[0])
+                                required_episodes = __get_required_episodes(need_mid, torrent_season[0]) \
+                                    if __requires_complete_coverage(need_tv_info) else set()
                                 need_total = __get_season_episodes(need_mid, torrent_season[0])
-                                if len(torrent_episodes) < need_total:
+                                if required_episodes and not required_episodes.issubset(torrent_episodes_set):
+                                    missing_episodes = sorted(required_episodes.difference(torrent_episodes_set))
+                                    logger.info(
+                                        f"{meta.org_string} 解析文件集数未覆盖目标范围，"
+                                        f"缺少 {StringUtils.format_ep(missing_episodes)}，先放弃这个种子")
+                                    continue
+                                if not required_episodes and need_total and len(torrent_episodes) < need_total:
                                     logger.info(
                                         f"{meta.org_string} 解析文件集数发现不是完整合集，先放弃这个种子")
                                     continue
@@ -713,8 +752,15 @@ class DownloadChain(ChainBase):
                             effective_need = __apply_allowed_episodes(need_episodes, context)
                             if not effective_need:
                                 continue
-                            # 为需要集的子集则下载
-                            if torrent_episodes.issubset(effective_need):
+                            if __requires_complete_coverage(tv):
+                                # 完整覆盖任务要求候选集数覆盖目标范围，允许资源包含范围外的额外集。
+                                required_episodes = __get_required_episodes(need_mid, need_season)
+                                match_episodes = required_episodes.issubset(torrent_episodes) \
+                                    if required_episodes else False
+                            else:
+                                # 普通缺集下载保持原语义：候选自身必须是所需集的子集。
+                                match_episodes = torrent_episodes.issubset(effective_need)
+                            if match_episodes:
                                 # 下载
                                 logger.info(f"开始下载 {meta.title} ...")
                                 download_id = self.download_single(context, save_path=save_path,
@@ -752,6 +798,8 @@ class DownloadChain(ChainBase):
                     need_season = sea
                     # 当前需要集
                     need_episodes = tv.episodes
+                    if __requires_complete_coverage(tv):
+                        continue
                     # 没有集的不处理
                     if not need_episodes:
                         continue
