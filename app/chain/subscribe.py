@@ -1701,8 +1701,7 @@ class SubscribeChain(ChainBase):
                     total_episode, season=subscribe.season, mediainfo=mediainfo,
                     tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
                     subscribe_id=subscribe.id, scene="refresh")
-                # 总集数增长按 delta 同步抬升 lack
-                lack_episode = (subscribe.lack_episode or 0) + (total_episode - (subscribe.total_episode or 0))
+                lack_episode = max((subscribe.lack_episode or 0) + (total_episode - (subscribe.total_episode or 0)), 0)
                 if subscribe.best_version and subscribe.type == MediaType.TV.value:
                     # 为新增集补齐 episode_priority 初始项（priority=0）
                     old_total_episode = subscribe.total_episode or 0
