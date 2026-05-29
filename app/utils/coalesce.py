@@ -72,8 +72,10 @@ class EventCoalescer:
     - 窗口到期：取出 bucket，若 `count > 1` 则触发 `on_flush(summary)`；
       `count == 1` 时认为单次事件已被首条 EMIT 完整表达，不再补摘要。
 
-    线程模型：所有公开方法均为 `async`，仅设计在单个事件循环内使用；
-    内部使用 `asyncio.Lock` 保护 bucket 字典。
+    线程模型：所有公开方法均为 `async`，仅设计在单个事件循环内使用。
+    bucket 字典的读写均落在不含 `await` 的同步段内，靠事件循环的协作式调度
+    天然原子，因此不需要显式锁；也避免了模块级实例化的 `asyncio.Lock` 在
+    跨事件循环复用时可能触发的 `RuntimeError`。
     """
 
     def __init__(
@@ -94,7 +96,6 @@ class EventCoalescer:
         self._on_flush = on_flush
         self._source = source
         self._buckets: Dict[Hashable, _BucketState] = {}
-        self._lock = asyncio.Lock()
         self._is_flush_async = inspect.iscoroutinefunction(on_flush)
 
     @property
@@ -117,18 +118,17 @@ class EventCoalescer:
         :return: `EMIT` 表示调用方应立即输出原事件；`SUPPRESS` 表示窗口
             内已合并，调用方应静默
         """
-        async with self._lock:
-            bucket = self._buckets.get(key)
-            if bucket is None:
-                handle = self._schedule_flush(key)
-                self._buckets[key] = _BucketState(
-                    first_payload=payload,
-                    count=1,
-                    flush_handle=handle,
-                )
-                return CoalesceDecision.EMIT
-            bucket.count += 1
-            return CoalesceDecision.SUPPRESS
+        bucket = self._buckets.get(key)
+        if bucket is None:
+            handle = self._schedule_flush(key)
+            self._buckets[key] = _BucketState(
+                first_payload=payload,
+                count=1,
+                flush_handle=handle,
+            )
+            return CoalesceDecision.EMIT
+        bucket.count += 1
+        return CoalesceDecision.SUPPRESS
 
     async def close(self) -> None:
         """
@@ -138,9 +138,8 @@ class EventCoalescer:
         会被取消，避免在事件循环关闭后再被触发；count>1 的 bucket 同步
         调用 `on_flush`（async on_flush 会被 await）。
         """
-        async with self._lock:
-            buckets = list(self._buckets.items())
-            self._buckets.clear()
+        buckets = list(self._buckets.items())
+        self._buckets.clear()
         for key, bucket in buckets:
             if bucket.flush_handle is not None:
                 bucket.flush_handle.cancel()
@@ -171,8 +170,7 @@ class EventCoalescer:
         """
         窗口到期后的实际 flush 路径：取出 bucket 并按需调用 `on_flush`。
         """
-        async with self._lock:
-            bucket = self._buckets.pop(key, None)
+        bucket = self._buckets.pop(key, None)
         if bucket is None:
             return
         await self._emit_summary_if_needed(key, bucket)
