@@ -549,3 +549,71 @@ class StorageOperSelectionEventData(ChainEventData):
 
     # 输出参数
     storage_oper: Optional[Callable] = Field(default=None, description="存储操作对象")
+
+
+class SubscribeEpisodesRefreshEventData(ChainEventData):
+    """
+    SubscribeEpisodesRefresh 事件的数据模型
+
+    主程序在推算订阅某季总集数时发出，携带按 TMDB 季集数算出的默认值，外部可据自身策略覆盖total_episode（如待定集数）
+
+    Attributes:
+        # 输入参数
+        tmdbid (Optional[int]): TMDB ID
+        doubanid (Optional[str]): 豆瓣 ID
+        season (Optional[int]): 季号
+        mediainfo (Any): 媒体信息
+        current_total_episode (int): 主程序按 TMDB 季集数算出的默认总集数
+        subscribe_id (Optional[int]): 订阅 ID；订阅创建场景下尚未入库，为空
+        scene (Optional[str]): 触发场景，create/refresh/precheck
+
+        # 输出参数
+        updated (bool): 外部是否覆盖了总集数，默认 False
+        total_episode (Optional[int]): 覆盖后的总集数，仅在 updated=True 时生效
+        source (str): 覆盖来源
+        reason (str): 覆盖原因
+    """
+
+    # 输入参数
+    tmdbid: Optional[int] = Field(default=None, description="TMDB ID")
+    doubanid: Optional[str] = Field(default=None, description="豆瓣 ID")
+    season: Optional[int] = Field(default=None, description="季号")
+    mediainfo: Any = Field(default=None, description="媒体信息")
+    current_total_episode: int = Field(default=0, description="按 TMDB 季集数算出的默认总集数")
+    subscribe_id: Optional[int] = Field(default=None, description="订阅 ID；创建场景为空")
+    scene: Optional[str] = Field(default=None, description="触发场景：create/refresh/precheck")
+
+    # 输出参数
+    updated: bool = Field(default=False, description="外部是否覆盖了总集数")
+    total_episode: Optional[int] = Field(default=None, description="覆盖后的总集数")
+    source: str = Field(default="未知来源", description="覆盖来源")
+    reason: str = Field(default="", description="覆盖原因")
+
+
+class SubscribeCompletionCheckEventData(ChainEventData):
+    """
+    SubscribeCompletionCheck 事件的数据模型
+
+    在订阅被自动判定完成、即将收口（写历史并删除）之前发出，允许外部据完结策略否决本次完成
+
+    Attributes:
+        # 输入参数
+        subscribe (Any): 订阅对象
+        mediainfo (Any): 媒体信息
+        meta (Any): 元数据
+
+        # 输出参数
+        cancel (bool): 是否否决本次完成，默认 False
+        source (str): 否决来源
+        reason (str): 否决原因
+    """
+
+    # 输入参数
+    subscribe: Any = Field(default=None, description="订阅对象")
+    mediainfo: Any = Field(default=None, description="媒体信息")
+    meta: Any = Field(default=None, description="元数据")
+
+    # 输出参数
+    cancel: bool = Field(default=False, description="是否否决本次完成")
+    source: str = Field(default="未知来源", description="否决来源")
+    reason: str = Field(default="", description="否决原因")

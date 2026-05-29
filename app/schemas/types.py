@@ -179,6 +179,10 @@ class ChainEventType(Enum):
     StorageOperSelection = "storage.operation"
     # Agent LLM 供应商选择
     AgentLLMProvider = "agent.llm.provider"
+    # 订阅总集数刷新
+    SubscribeEpisodesRefresh = "subscribe.episodes.refresh"
+    # 订阅完成检查
+    SubscribeCompletionCheck = "subscribe.completion.check"
 
 
 # 系统配置Key字典

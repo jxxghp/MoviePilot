@@ -37,7 +37,8 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.server import MoviePilotServerHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import MediaRecognizeConvertEventData
+from app.schemas import (MediaRecognizeConvertEventData, SubscribeEpisodesRefreshEventData,
+                         SubscribeCompletionCheckEventData)
 from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
     ContentType
 
@@ -640,6 +641,10 @@ class SubscribeChain(ChainBase):
                         logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
                         return None, "媒体信息中没有季集信息"
                 total_episode = len(mediainfo.seasons.get(season) or [])
+                # 允许外部覆盖按 TMDB 算出的总集数（如待定集数）
+                total_episode = self.__apply_episodes_refresh(
+                    total_episode, season=season, mediainfo=mediainfo,
+                    tmdbid=mediainfo.tmdb_id, doubanid=mediainfo.douban_id, scene="create")
                 if not total_episode:
                     logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}, doubanid：{doubanid}')
                     return None, f"未获取到第 {season} 季的总集数"
@@ -821,6 +826,10 @@ class SubscribeChain(ChainBase):
                         logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
                         return None, "媒体信息中没有季集信息"
                 total_episode = len(mediainfo.seasons.get(season) or [])
+                # 允许外部覆盖按 TMDB 算出的总集数（如待定集数）
+                total_episode = await self.__async_apply_episodes_refresh(
+                    total_episode, season=season, mediainfo=mediainfo,
+                    tmdbid=mediainfo.tmdb_id, doubanid=mediainfo.douban_id, scene="create")
                 if not total_episode:
                     logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}, doubanid：{doubanid}')
                     return None, f"未获取到第 {season} 季的总集数"
@@ -1687,6 +1696,11 @@ class SubscribeChain(ChainBase):
             current_priority = None
             if not subscribe.manual_total_episode and len(episodes):
                 total_episode = len(episodes)
+                # 允许外部覆盖按 TMDB 算出的总集数（如待定集数）
+                total_episode = self.__apply_episodes_refresh(
+                    total_episode, season=subscribe.season, mediainfo=mediainfo,
+                    tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
+                    subscribe_id=subscribe.id, scene="refresh")
                 # 总集数增长按 delta 同步抬升 lack
                 lack_episode = (subscribe.lack_episode or 0) + (total_episode - (subscribe.total_episode or 0))
                 if subscribe.best_version and subscribe.type == MediaType.TV.value:
@@ -1990,6 +2004,15 @@ class SubscribeChain(ChainBase):
         # 如果订阅状态为待定（P），说明订阅信息尚未完全更新，无法完成订阅
         if subscribe.state == "P":
             return
+        # 发送订阅完成判定事件，在写入 DB 前，允许外部据完结策略否决本次自动完成
+        completion_event = eventmanager.send_event(
+            ChainEventType.SubscribeCompletionCheck,
+            SubscribeCompletionCheckEventData(subscribe=subscribe, mediainfo=mediainfo, meta=meta))
+        if completion_event and completion_event.event_data:
+            completion_data: SubscribeCompletionCheckEventData = completion_event.event_data
+            if completion_data.cancel:
+                logger.info(f'{mediainfo.title_year} 完成被 [{completion_data.source}] 否决：{completion_data.reason}')
+                return
         # 完成订阅
         msgstr = "订阅" if not subscribe.best_version else "洗版"
         logger.info(f'{mediainfo.title_year} 完成{msgstr}')
@@ -3124,7 +3147,52 @@ class SubscribeChain(ChainBase):
         return False, no_exists
 
     @staticmethod
-    def __refresh_total_episode_before_completion(subscribe: Subscribe, mediainfo: MediaInfo):
+    def __apply_episodes_refresh(current_total: int, season: Optional[int], *,
+                                 mediainfo: Optional[MediaInfo] = None,
+                                 tmdbid: Optional[int] = None,
+                                 doubanid: Optional[str] = None,
+                                 subscribe_id: Optional[int] = None,
+                                 scene: Optional[str] = None) -> int:
+        """
+        发送订阅总集数推算事件，允许外部据自身策略覆盖按 TMDB 季集数算出的总集数。
+
+        用途：插件在"待定集数"等场景经事件注入 total_episode
+        无监听者或外部未覆盖时返回入参原值，保证零行为变更。
+        :param current_total: 主程序按 TMDB 季集数算出的默认总集数
+        :param season: 季号
+        :return: 最终采用的总集数
+        """
+        event_data = SubscribeEpisodesRefreshEventData(
+            tmdbid=tmdbid, doubanid=doubanid, season=season, mediainfo=mediainfo,
+            current_total_episode=current_total, subscribe_id=subscribe_id, scene=scene)
+        event = eventmanager.send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
+        if event and event.event_data:
+            result: SubscribeEpisodesRefreshEventData = event.event_data
+            if result.updated and result.total_episode:
+                return result.total_episode
+        return current_total
+
+    @staticmethod
+    async def __async_apply_episodes_refresh(current_total: int, season: Optional[int], *,
+                                             mediainfo: Optional[MediaInfo] = None,
+                                             tmdbid: Optional[int] = None,
+                                             doubanid: Optional[str] = None,
+                                             subscribe_id: Optional[int] = None,
+                                             scene: Optional[str] = None) -> int:
+        """
+        __apply_episodes_refresh 的异步版本
+        """
+        event_data = SubscribeEpisodesRefreshEventData(
+            tmdbid=tmdbid, doubanid=doubanid, season=season, mediainfo=mediainfo,
+            current_total_episode=current_total, subscribe_id=subscribe_id, scene=scene)
+        event = await eventmanager.async_send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
+        if event and event.event_data:
+            result: SubscribeEpisodesRefreshEventData = event.event_data
+            if result.updated and result.total_episode:
+                return result.total_episode
+        return current_total
+
+    def __refresh_total_episode_before_completion(self, subscribe: Subscribe, mediainfo: MediaInfo):
         """
         在完成判断前，按最新识别结果兜底修正订阅总集数，防止旧总集数导致误完成。
         """
@@ -3136,6 +3204,11 @@ class SubscribeChain(ChainBase):
             return
 
         new_total_episode = len((mediainfo.seasons or {}).get(subscribe.season) or [])
+        # 允许外部覆盖按 TMDB 算出的总集数（如待定集数），后续“只增不减”仍作用于覆盖后的结果，避免误减导致提前完成。
+        new_total_episode = self.__apply_episodes_refresh(
+            new_total_episode, season=subscribe.season, mediainfo=mediainfo,
+            tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
+            subscribe_id=subscribe.id, scene="precheck")
         old_total_episode = subscribe.total_episode or 0
         if not new_total_episode or new_total_episode <= old_total_episode:
             return
