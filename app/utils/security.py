@@ -3,6 +3,8 @@ import hmac
 import ipaddress
 import socket
 import threading
+from dataclasses import dataclass, field
+from enum import Enum
 from hashlib import sha256
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Union
@@ -13,6 +15,11 @@ from cachetools import TTLCache
 
 from app.core.config import settings
 from app.log import logger
+from app.utils.coalesce import (
+    CoalesceDecision,
+    CoalesceSummary,
+    EventCoalescer,
+)
 
 
 # DNS 解析结果缓存。
@@ -34,6 +41,50 @@ _dns_cache_lock = threading.Lock()
 # 后续并发请求 await 同一把锁，避免对同一目标重复发起 `getaddrinfo`。
 _dns_inflight_locks: Dict[str, asyncio.Lock] = {}
 _dns_inflight_meta_lock = threading.Lock()
+
+
+class UrlSafetyReason(str, Enum):
+    """
+    `evaluate_url_safety` 返回的诊断原因枚举。
+
+    成员值为稳定的小写蛇形字符串，可直接作为日志字段或告警标签使用，
+    扩展枚举时保留既有成员的取值，避免破坏下游聚合系统对原因的归类。
+    """
+
+    # 通过全部校验，URL 可被请求
+    ALLOWED = "allowed"
+    # 协议非 http/https，或 netloc 无效，或域名不在允许列表内
+    DOMAIN_NOT_ALLOWED = "domain_not_allowed"
+    # 已通过域名 allowlist，但 DNS 解析失败（无返回或抛错）
+    DNS_RESOLUTION_FAILED = "dns_resolution_failed"
+    # DNS 解析到至少一个非公网地址，且未配置 `allowed_private_ranges`
+    NON_GLOBAL_DNS_RESULT = "non_global_dns_result"
+    # 配置了 `allowed_private_ranges`，但仍存在不在允许网段内的解析结果
+    MIXED_OR_DISALLOWED_PRIVATE_RESULT = "mixed_or_disallowed_private_result"
+
+
+@dataclass(frozen=True)
+class UrlSafetyDiagnosis:
+    """
+    URL 安全校验的结构化诊断结果，由 `evaluate_url_safety(_async)` 返回。
+
+    `is_safe_url` 仅使用 `allowed` 字段；日志、告警、运维诊断需要细分原因或
+    解析 IP 时通过本对象消费。字段约束：
+    - `host` 仅在通过域名 allowlist 后才被填充；DOMAIN_NOT_ALLOWED 场景为 None。
+    - `ips` 仅在执行过 DNS 阶段后才可能非空；不含纯字符串协议失败场景。
+    - `matched_private_ranges` 仅在通过 `allowed_private_ranges` 放行时填充。
+    """
+
+    # 是否放行
+    allowed: bool
+    # 放行/拦截的具体原因
+    reason: UrlSafetyReason
+    # 通过 allowlist 后从 URL 解析出的 hostname，未通过时为 None
+    host: Optional[str] = None
+    # DNS 解析结果（含命中或未命中私网放行的 IP），格式化为字符串
+    ips: List[str] = field(default_factory=list)
+    # 命中允许放行的非公网网段，仅 `ALLOWED` 且走私网放行分支时非空
+    matched_private_ranges: List[str] = field(default_factory=list)
 
 
 def _resolve_addrinfo_to_ips(
@@ -546,36 +597,26 @@ class SecurityUtils:
         allowed_private_ranges: Optional[Iterable[str]] = None,
     ) -> bool:
         """
-        验证URL是否在允许的域名列表中，包括带有端口的域名（同步版本）
+        验证 URL 是否在允许的域名列表中，包括带有端口的域名（同步版本）。
 
         :param url: 需要验证的 URL
         :param allowed_domains: 允许的域名集合，域名可以包含端口
-        :param strict: 是否严格匹配一级域名（默认为 False，允许多级域名）
+        :param strict: 是否严格匹配一级域名（默认 False，允许多级域名）
         :param block_private: 是否拦截解析到非公网地址的 URL，防止 SSRF
         :param allowed_private_ranges: 域名命中后额外允许的非公网 IP/CIDR 网段
-        :return: 如果URL合法且在允许的域名列表中，返回 True；否则返回 False
+        :return: URL 合法且通过安全校验时返回 True，否则返回 False
 
-        注意：`block_private=True` 时会同步调用 `getaddrinfo`；async 上下文请改用
-        `is_safe_url_async`。
+        校验细节与失败原因由 `evaluate_url_safety` 返回；本方法只暴露布尔结果，
+        作为只关心通过/拒绝判断的调用方的最薄入口。`block_private=True` 时会
+        同步调用 `getaddrinfo`；async 上下文请改用 `is_safe_url_async`。
         """
-        try:
-            hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
-            if hostname is None:
-                return False
-
-            if block_private and not SecurityUtils._is_global_hostname(hostname):
-                private_match = SecurityUtils._is_allowed_private_hostname(
-                    hostname, allowed_private_ranges
-                )
-                if private_match:
-                    SecurityUtils._log_private_range_allowed(url, private_match)
-                    return True
-                return False
-
-            return True
-        except Exception as e:
-            logger.debug(f"Error occurred while validating URL: {e}")
-            return False
+        return SecurityUtils.evaluate_url_safety(
+            url,
+            allowed_domains,
+            strict=strict,
+            block_private=block_private,
+            allowed_private_ranges=allowed_private_ranges,
+        ).allowed
 
     @staticmethod
     async def is_safe_url_async(
@@ -586,30 +627,194 @@ class SecurityUtils:
         allowed_private_ranges: Optional[Iterable[str]] = None,
     ) -> bool:
         """
-        `is_safe_url` 的异步版本，参数与返回值含义不变。
+        判定 URL 是否在允许的域名列表中，包括带有端口的域名。
 
-        DNS 解析通过事件循环线程池执行，并复用 TTL 缓存。
+        DNS 解析通过事件循环线程池执行，并复用 TTL 缓存，不阻塞调用方所在的
+        事件循环。参数与返回值含义同 `is_safe_url`；需要失败原因/解析 IP
+        等结构化信息时调用 `evaluate_url_safety_async`。
+        """
+        diagnosis = await SecurityUtils.evaluate_url_safety_async(
+            url,
+            allowed_domains,
+            strict=strict,
+            block_private=block_private,
+            allowed_private_ranges=allowed_private_ranges,
+        )
+        return diagnosis.allowed
+
+    @staticmethod
+    def evaluate_url_safety(
+        url: str,
+        allowed_domains: Union[Set[str], List[str]],
+        strict: bool = False,
+        block_private: bool = False,
+        allowed_private_ranges: Optional[Iterable[str]] = None,
+    ) -> "UrlSafetyDiagnosis":
+        """
+        在 `is_safe_url` 的判定路径上输出结构化诊断结果（同步版本）。
+
+        与 `is_safe_url` 共用同一套校验顺序：协议/域名 allowlist → 可选 DNS 解析
+        → 可选非公网放行匹配；本方法额外返回失败原因、解析到的 IP 列表和命中的
+        私网网段，供日志与告警渲染消费。校验中遇到未预期异常时按默认拒绝原则
+        归类为 `DOMAIN_NOT_ALLOWED`，避免任何解析路径漏过 SSRF 校验。
         """
         try:
             hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
             if hostname is None:
-                return False
-
-            if block_private and not await SecurityUtils._is_global_hostname_async(
-                hostname
-            ):
-                private_match = await SecurityUtils._is_allowed_private_hostname_async(
-                    hostname, allowed_private_ranges
+                return UrlSafetyDiagnosis(
+                    allowed=False,
+                    reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
                 )
-                if private_match:
-                    SecurityUtils._log_private_range_allowed(url, private_match)
-                    return True
-                return False
-
-            return True
-        except Exception as e:
+            if not block_private:
+                return UrlSafetyDiagnosis(
+                    allowed=True,
+                    reason=UrlSafetyReason.ALLOWED,
+                    host=hostname,
+                )
+            addresses = SecurityUtils._hostname_addresses(hostname)
+            return SecurityUtils._diagnose_resolved_addresses(
+                url, hostname, addresses, allowed_private_ranges
+            )
+        except Exception as e:  # noqa: BLE001 - 默认拒绝，避免漏过 SSRF 校验
             logger.debug(f"Error occurred while validating URL: {e}")
-            return False
+            return UrlSafetyDiagnosis(
+                allowed=False,
+                reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
+            )
+
+    @staticmethod
+    async def evaluate_url_safety_async(
+        url: str,
+        allowed_domains: Union[Set[str], List[str]],
+        strict: bool = False,
+        block_private: bool = False,
+        allowed_private_ranges: Optional[Iterable[str]] = None,
+    ) -> "UrlSafetyDiagnosis":
+        """
+        输出与 `evaluate_url_safety` 完全一致的结构化诊断结果。
+
+        DNS 解析通过事件循环线程池执行，并复用 TTL 缓存，不阻塞调用方所在的
+        事件循环；校验顺序、字段含义、异常归类均与同步版本相同。
+        """
+        try:
+            hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
+            if hostname is None:
+                return UrlSafetyDiagnosis(
+                    allowed=False,
+                    reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
+                )
+            if not block_private:
+                return UrlSafetyDiagnosis(
+                    allowed=True,
+                    reason=UrlSafetyReason.ALLOWED,
+                    host=hostname,
+                )
+            addresses = await SecurityUtils._hostname_addresses_async(hostname)
+            return SecurityUtils._diagnose_resolved_addresses(
+                url, hostname, addresses, allowed_private_ranges
+            )
+        except Exception as e:  # noqa: BLE001 - 默认拒绝，避免漏过 SSRF 校验
+            logger.debug(f"Error occurred while validating URL: {e}")
+            return UrlSafetyDiagnosis(
+                allowed=False,
+                reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
+            )
+
+    @staticmethod
+    async def is_safe_image_url_async(
+        url: str,
+        allowed_domains: Union[Set[str], List[str]],
+        allowed_private_ranges: Optional[Iterable[str]] = None,
+    ) -> bool:
+        """
+        判定 URL 是否可作为图片代理请求目标。
+
+        校验顺序：协议 + 域名 allowlist + DNS SSRF 拦截 + 非公网放行匹配；标准
+        校验失败时再用 `verify_signed_url` 兜底，允许后端预签名的媒体服务器
+        URL 跳过私网拦截。两者皆失败才视为拒绝。
+
+        拒绝路径会输出结构化阻断日志：单次拦截立即打印一条 warning，同
+        `(host, reason)` 的连续命中在 `_IMAGE_PROXY_BLOCK_LOG_WINDOW_SECONDS`
+        窗口内合并为一条聚合摘要，避免媒体详情页一次请求把日志刷爆。日志字段
+        范围严格限定为 URL、host、reason、解析 IP 与允许网段配置；cookies、
+        签名串、token、请求头等敏感材料一律不进入日志。
+        """
+        diagnosis = await SecurityUtils.evaluate_url_safety_async(
+            url,
+            allowed_domains,
+            block_private=True,
+            allowed_private_ranges=allowed_private_ranges,
+        )
+        if diagnosis.allowed:
+            return True
+        if SecurityUtils.verify_signed_url(url) is not None:
+            return True
+        await _emit_image_proxy_block_warning(
+            url=url,
+            diagnosis=diagnosis,
+            signature_carried=_url_carries_signature(url),
+            allowed_private_ranges=allowed_private_ranges,
+        )
+        return False
+
+    @staticmethod
+    def _diagnose_resolved_addresses(
+        url: str,
+        hostname: str,
+        addresses: Optional[List[ipaddress._BaseAddress]],
+        allowed_private_ranges: Optional[Iterable[str]],
+    ) -> "UrlSafetyDiagnosis":
+        """
+        对已完成 DNS 解析的地址列表执行非公网放行判断，并归一化诊断结果。
+
+        - 地址列表为空/None：视为 DNS 不可信，拒绝并标记 `DNS_RESOLUTION_FAILED`。
+        - 全部公网地址：直接放行。
+        - 存在非公网地址且未配置允许网段：拒绝并标记 `NON_GLOBAL_DNS_RESULT`，
+          供日志附带"如使用 fake-ip 需要配置 IMAGE_PROXY_ALLOWED_PRIVATE_RANGES"
+          的提示。
+        - 存在非公网地址且配置了允许网段但未全部命中：拒绝并标记
+          `MIXED_OR_DISALLOWED_PRIVATE_RESULT`，提示存在不允许的解析结果。
+        - 全部命中允许网段：放行并附带命中的 IP 与网段，由
+          `_log_private_range_allowed` 输出排查日志。
+        """
+        if not addresses:
+            return UrlSafetyDiagnosis(
+                allowed=False,
+                reason=UrlSafetyReason.DNS_RESOLUTION_FAILED,
+                host=hostname,
+            )
+        if SecurityUtils._addresses_all_global(addresses):
+            return UrlSafetyDiagnosis(
+                allowed=True,
+                reason=UrlSafetyReason.ALLOWED,
+                host=hostname,
+                ips=[str(addr) for addr in addresses],
+            )
+        networks = SecurityUtils._parse_ip_networks(allowed_private_ranges)
+        if not networks:
+            return UrlSafetyDiagnosis(
+                allowed=False,
+                reason=UrlSafetyReason.NON_GLOBAL_DNS_RESULT,
+                host=hostname,
+                ips=[str(addr) for addr in addresses],
+            )
+        match = SecurityUtils._match_private_addresses(addresses, networks)
+        if match is None:
+            return UrlSafetyDiagnosis(
+                allowed=False,
+                reason=UrlSafetyReason.MIXED_OR_DISALLOWED_PRIVATE_RESULT,
+                host=hostname,
+                ips=[str(addr) for addr in addresses],
+            )
+        matched_addresses, matched_networks = match
+        SecurityUtils._log_private_range_allowed(url, match)
+        return UrlSafetyDiagnosis(
+            allowed=True,
+            reason=UrlSafetyReason.ALLOWED,
+            host=hostname,
+            ips=[str(addr) for addr in matched_addresses],
+            matched_private_ranges=[str(net) for net in matched_networks],
+        )
 
     @staticmethod
     def sanitize_url_path(url: str, max_length: int = 120) -> str:
@@ -636,3 +841,134 @@ class SecurityUtils:
             safe_path = f"compressed_{hash_value}{file_extension}"
 
         return safe_path
+
+
+# 图片代理阻断日志聚合窗口（秒）。媒体详情页一次请求会批量触发同 host/同原因的拦截，
+# 按 (host, reason) 合并后只输出首条 warning + 窗口结束的聚合摘要，避免日志刷屏。
+_IMAGE_PROXY_BLOCK_LOG_WINDOW_SECONDS = 60.0
+
+# fake-ip / 旁路 DNS 用户最常因 IMAGE_PROXY_ALLOWED_PRIVATE_RANGES 未配置而踩坑，
+# 在 reason=NON_GLOBAL_DNS_RESULT 且当前未配置允许网段时随 warning 一起输出，指向正确的修复开关。
+_IMAGE_PROXY_FAKEIP_HINT = (
+    "提示：若使用 fake-ip / 旁路 DNS（常见网段 198.18.0.0/15、100.64.0.0/10），"
+    "请将对应网段加入 IMAGE_PROXY_ALLOWED_PRIVATE_RANGES"
+)
+
+# URL fragment 中实际携带代理签名但校验失败时附在 reason 末尾的标记。
+# 仅起标识作用，签名串本身不写入日志，避免泄露签名材料。
+_INVALID_SIGNATURE_TAG = "invalid_signature"
+
+
+def _url_carries_signature(url: str) -> bool:
+    """
+    判断 URL 是否在 fragment 中显式携带代理签名参数 `mp_sig`。
+
+    仅做轻量字符串匹配，避免对普通图片 URL 跑完整签名校验路径；未携带签名
+    的外链不会触发 `invalid_signature` 标记，避免阻断日志误导未签名调用方。
+    """
+    if not url:
+        return False
+    fragment_start = url.find("#")
+    if fragment_start < 0:
+        return False
+    return "mp_sig=" in url[fragment_start + 1:]
+
+
+def _format_image_proxy_block_warning(
+    *,
+    url: str,
+    reason: str,
+    host: Optional[str],
+    ips: List[str],
+    allowed_private_ranges: List[str],
+    hint: Optional[str],
+) -> str:
+    """
+    渲染图片代理首条阻断 warning 文案。
+
+    字段范围严格限定为 URL、host、reason、IP 与允许网段配置；hint 仅在
+    reason 与配置缺失同时满足时由调用方填充。其余敏感材料（cookies、签名
+    串、token、请求头）不允许进入该日志路径。
+    """
+    fields = [
+        f"url={url}",
+        f"reason={reason}",
+        f"host={host or ''}",
+        f"ips={','.join(ips)}",
+        f"allowed_private_ranges={','.join(allowed_private_ranges)}",
+    ]
+    line = "Blocked unsafe image URL: " + ", ".join(fields)
+    if hint:
+        line = f"{line} | {hint}"
+    return line
+
+
+def _log_image_proxy_block_summary(summary: CoalesceSummary) -> None:
+    """
+    图片代理阻断日志聚合窗口到期回调，输出窗口内的命中计数与首条样例。
+
+    summary.key 由 `_emit_image_proxy_block_warning` 固定构造为
+    `(host, reason_label)` 二元组；摘要保留首条事件的 URL 与解析 IP，
+    避免运维只看到 count 而无法定位是哪批请求被合并。
+    """
+    host, reason = summary.key
+    payload = summary.first_payload or {}
+    sample_ips = ",".join(payload.get("ips") or [])
+    logger.warn(
+        "Blocked unsafe image URL (aggregated): "
+        f"host={host or ''}, reason={reason}, "
+        f"count={summary.count}, window={summary.window_seconds:g}s, "
+        f"sample_url={payload.get('url', '')}, sample_ips={sample_ips}"
+    )
+
+
+# 图片代理阻断日志聚合器。同 (host, reason) 高频拦截在窗口内合并为一条聚合摘要，避免媒体详情页一次请求把日志刷爆；
+# 放行 debug 日志与诊断布尔结果不受聚合影响。
+_image_proxy_block_log_coalescer = EventCoalescer(
+    window_seconds=_IMAGE_PROXY_BLOCK_LOG_WINDOW_SECONDS,
+    on_flush=_log_image_proxy_block_summary,
+    source="image_proxy",
+)
+
+
+async def _emit_image_proxy_block_warning(
+    *,
+    url: str,
+    diagnosis: "UrlSafetyDiagnosis",
+    signature_carried: bool,
+    allowed_private_ranges: Optional[Iterable[str]],
+) -> None:
+    """
+    把诊断结果转写为结构化阻断 warning，并交由 coalescer 决定是否实际输出。
+
+    `signature_carried=True` 表示请求 URL 在 fragment 里实际携带了代理签名但
+    校验失败，此时在 reason 末尾追加 `invalid_signature` 标记，便于区分
+    "未签名外链直接撞 allowlist"与"签名 URL 已失效"两种排查路径。
+    """
+    # reason_label 既作为 warning 字段，也作为 coalescer 桶键的一部分；签名
+    # 标记拼接到同一字符串里是为了让"带签名失败"的命中与"裸 URL 失败"分桶，
+    # 各自独立计数与摘要，不要在不引入新桶维度的情况下拆开。
+    reason_label = diagnosis.reason.value
+    if signature_carried:
+        reason_label = f"{reason_label}+{_INVALID_SIGNATURE_TAG}"
+    allowed_ranges = [str(r) for r in (allowed_private_ranges or [])]
+    hint = (
+        _IMAGE_PROXY_FAKEIP_HINT
+        if diagnosis.reason is UrlSafetyReason.NON_GLOBAL_DNS_RESULT
+        and not allowed_ranges
+        else None
+    )
+    key = (diagnosis.host or "", reason_label)
+    payload = {"url": url, "ips": list(diagnosis.ips)}
+    decision = await _image_proxy_block_log_coalescer.record(key=key, payload=payload)
+    if decision is CoalesceDecision.EMIT:
+        logger.warn(
+            _format_image_proxy_block_warning(
+                url=url,
+                reason=reason_label,
+                host=diagnosis.host,
+                ips=list(diagnosis.ips),
+                allowed_private_ranges=allowed_ranges,
+                hint=hint,
+            )
+        )

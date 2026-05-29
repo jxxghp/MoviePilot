@@ -360,13 +360,11 @@ async def fetch_image(
 
     fetch_url = SecurityUtils.strip_url_signature(url)
     # 验证URL安全性
-    if not await SecurityUtils.is_safe_url_async(
+    if not await SecurityUtils.is_safe_image_url_async(
         url,
         allowed_domains,
-        block_private=True,
         allowed_private_ranges=settings.IMAGE_PROXY_ALLOWED_PRIVATE_RANGES,
-    ) and not (fetch_url := SecurityUtils.verify_signed_url(url)):
-        logger.warn(f"Blocked unsafe image URL: {url}")
+    ):
         return None
 
     content = await ImageHelper().async_fetch_image(

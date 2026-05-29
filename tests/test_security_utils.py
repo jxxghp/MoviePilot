@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 from app.utils.security import (
     SecurityUtils,
+    UrlSafetyDiagnosis,
+    UrlSafetyReason,
     _dns_inflight_locks,
     _dns_negative_cache,
     _dns_positive_cache,
@@ -681,3 +683,171 @@ class SecurityUtilsTest(TestCase):
             _dns_inflight_locks,
             "并发等待者全部退出后必须释放 in-flight 锁字典条目",
         )
+
+
+class UrlSafetyDiagnosisTest(TestCase):
+    """
+    覆盖 `evaluate_url_safety(_async)` 的结构化诊断结果，确保每条
+    `UrlSafetyReason` 分支返回的字段满足日志渲染契约。
+    """
+
+    def setUp(self) -> None:
+        _dns_positive_cache.clear()
+        _dns_negative_cache.clear()
+        _dns_inflight_locks.clear()
+
+    def test_domain_not_allowed_returns_reason_and_no_host(self):
+        """
+        协议或 allowlist 校验未通过时，诊断返回 DOMAIN_NOT_ALLOWED，
+        且不暴露 host/ips 字段。
+        """
+        diag = SecurityUtils.evaluate_url_safety(
+            "https://attacker.example.com/x.jpg",
+            {"image.tmdb.org"},
+        )
+
+        self.assertIsInstance(diag, UrlSafetyDiagnosis)
+        self.assertFalse(diag.allowed)
+        self.assertIs(diag.reason, UrlSafetyReason.DOMAIN_NOT_ALLOWED)
+        self.assertIsNone(diag.host)
+        self.assertEqual(diag.ips, [])
+        self.assertEqual(diag.matched_private_ranges, [])
+
+    def test_allowed_without_block_private_skips_dns(self):
+        """
+        未启用 block_private 时直接放行，不发起 DNS 解析，ips 保持为空。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            side_effect=AssertionError("不应触发 DNS 解析"),
+        ):
+            diag = SecurityUtils.evaluate_url_safety(
+                "https://image.tmdb.org/t/p/w500/x.jpg",
+                {"image.tmdb.org"},
+            )
+
+        self.assertTrue(diag.allowed)
+        self.assertIs(diag.reason, UrlSafetyReason.ALLOWED)
+        self.assertEqual(diag.host, "image.tmdb.org")
+        self.assertEqual(diag.ips, [])
+
+    def test_dns_resolution_failed_carries_host_without_ips(self):
+        """
+        `block_private=True` 下 DNS 抛错时返回 DNS_RESOLUTION_FAILED，
+        附带 host 便于排查但不携带 ips。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            side_effect=socket.gaierror,
+        ):
+            diag = SecurityUtils.evaluate_url_safety(
+                "https://image.tmdb.org/t/p/w500/x.jpg",
+                {"image.tmdb.org"},
+                block_private=True,
+            )
+
+        self.assertFalse(diag.allowed)
+        self.assertIs(diag.reason, UrlSafetyReason.DNS_RESOLUTION_FAILED)
+        self.assertEqual(diag.host, "image.tmdb.org")
+        self.assertEqual(diag.ips, [])
+
+    def test_non_global_dns_result_lists_resolved_ips(self):
+        """
+        命中 allowlist 但 DNS 解析到非公网且未配置允许网段时，诊断标记
+        NON_GLOBAL_DNS_RESULT 并把解析到的 IP 列出来，供日志附带 fake-ip 提示。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
+            ],
+        ):
+            diag = SecurityUtils.evaluate_url_safety(
+                "https://image.tmdb.org/t/p/w500/x.jpg",
+                {"image.tmdb.org"},
+                block_private=True,
+            )
+
+        self.assertFalse(diag.allowed)
+        self.assertIs(diag.reason, UrlSafetyReason.NON_GLOBAL_DNS_RESULT)
+        self.assertEqual(diag.host, "image.tmdb.org")
+        self.assertEqual(diag.ips, ["198.18.16.96"])
+        self.assertEqual(diag.matched_private_ranges, [])
+
+    def test_mixed_private_and_public_with_ranges_reports_mixed_reason(self):
+        """
+        配置了 allowed_private_ranges 但解析结果存在公网或不在允许网段内的私网
+        地址时，诊断必须标记 MIXED_OR_DISALLOWED_PRIVATE_RESULT，避免与"未配置
+        允许网段"场景混淆。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
+                (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.8", 0)),
+            ],
+        ):
+            diag = SecurityUtils.evaluate_url_safety(
+                "https://image.tmdb.org/t/p/w500/x.jpg",
+                {"image.tmdb.org"},
+                block_private=True,
+                allowed_private_ranges=["198.18.0.0/15"],
+            )
+
+        self.assertFalse(diag.allowed)
+        self.assertIs(
+            diag.reason, UrlSafetyReason.MIXED_OR_DISALLOWED_PRIVATE_RESULT
+        )
+        self.assertEqual(diag.ips, ["198.18.16.96", "10.0.0.8"])
+
+    def test_allowed_via_configured_private_range_reports_matched_networks(self):
+        """
+        通过 allowed_private_ranges 放行时返回 ALLOWED，同时把命中的 IP 与
+        网段填入诊断对象，便于排查日志确认放行依据。
+        """
+        with patch(
+            "app.utils.security.socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
+            ],
+        ):
+            diag = SecurityUtils.evaluate_url_safety(
+                "https://image.tmdb.org/t/p/w500/x.jpg",
+                {"image.tmdb.org"},
+                block_private=True,
+                allowed_private_ranges=["198.18.0.0/15"],
+            )
+
+        self.assertTrue(diag.allowed)
+        self.assertIs(diag.reason, UrlSafetyReason.ALLOWED)
+        self.assertEqual(diag.ips, ["198.18.16.96"])
+        self.assertEqual(diag.matched_private_ranges, ["198.18.0.0/15"])
+
+    def test_async_evaluation_returns_same_diagnosis(self):
+        """
+        异步版本走事件循环线程池但应保持与同步版本一致的诊断结果。
+        """
+        import asyncio
+
+        async def fake_getaddrinfo(host, *_args, **_kwargs):
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
+            ]
+
+        async def run():
+            with patch.object(
+                asyncio.get_running_loop(),
+                "getaddrinfo",
+                side_effect=fake_getaddrinfo,
+                create=True,
+            ):
+                return await SecurityUtils.evaluate_url_safety_async(
+                    "https://image.tmdb.org/x.jpg",
+                    {"image.tmdb.org"},
+                    block_private=True,
+                )
+
+        diag = asyncio.run(run())
+        self.assertFalse(diag.allowed)
+        self.assertIs(diag.reason, UrlSafetyReason.NON_GLOBAL_DNS_RESULT)
+        self.assertEqual(diag.ips, ["198.18.16.96"])
