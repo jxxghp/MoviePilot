@@ -8,7 +8,6 @@ from unittest.mock import ANY, MagicMock, patch
 
 
 sys.modules.setdefault("psutil", ModuleType("psutil"))
-sys.modules.setdefault("cn2an", ModuleType("cn2an"))
 sys.modules.setdefault("dateparser", ModuleType("dateparser"))
 
 if "Pinyin2Hanzi" not in sys.modules:
