@@ -5,7 +5,6 @@ from typing import Optional
 from unittest import TestCase
 from unittest.mock import patch
 
-# 注：app.helper.sites 缺失时的垫片由 tests/conftest.py 统一补充（CI / 全新环境无该动态拉取模块）。
 from app import schemas
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
