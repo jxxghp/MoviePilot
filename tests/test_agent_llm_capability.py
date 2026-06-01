@@ -1,31 +1,22 @@
-import sys
 import unittest
-import importlib.util
 from base64 import b64encode
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-sys.modules.setdefault("psutil", Mock())
-sys.modules.setdefault("pyquery", Mock())
-
 from app.core.config import settings
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import MessageChannel
 
-module_path = Path(__file__).resolve().parents[1] / "app" / "agent" / "llm" / "capability.py"
-spec = importlib.util.spec_from_file_location("test_agent_llm_capability_module", module_path)
-capability_module = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-sys.modules[spec.name] = capability_module
-spec.loader.exec_module(capability_module)
-
-AgentCapabilityManager = capability_module.AgentCapabilityManager
-MiMoAudioProvider = capability_module.MiMoAudioProvider
-MiniMaxAudioProvider = capability_module.MiniMaxAudioProvider
-OpenAIChatAudioProvider = capability_module.OpenAIChatAudioProvider
-OpenAIAudioProvider = capability_module.OpenAIAudioProvider
+from app.agent.llm import capability as capability_module
+from app.agent.llm.capability import (
+    AgentCapabilityManager,
+    MiMoAudioProvider,
+    MiniMaxAudioProvider,
+    OpenAIChatAudioProvider,
+    OpenAIAudioProvider,
+)
 
 
 class AgentCapabilityManagerTest(unittest.TestCase):
