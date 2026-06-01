@@ -1,25 +1,9 @@
-import importlib.util
-import sys
 import unittest
-from pathlib import Path
-from types import ModuleType
+from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-
-def _stub_module(name: str, **attrs):
-    module = sys.modules.get(name)
-    if module is None:
-        module = ModuleType(name)
-        sys.modules[name] = module
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-class _DummyLogger:
-    def __getattr__(self, _name):
-        return lambda *args, **kwargs: None
+from app.agent.llm import helper as llm_module
 
 
 def _build_tool_call(name: str = "search", arguments: str = "{}"):
@@ -65,34 +49,16 @@ class _FakeChatDeepSeek:
 _ORIGINAL_GET_REQUEST_PAYLOAD = _FakeChatDeepSeek._get_request_payload
 
 
-sys.modules.pop("app.agent.llm.helper", None)
-_stub_module(
-    "app.core.config",
-    settings=ModuleType("settings"),
-)
-sys.modules["app.core.config"].settings.LLM_PROVIDER = "deepseek"
-sys.modules["app.core.config"].settings.LLM_MODEL = "deepseek-v4-pro"
-sys.modules["app.core.config"].settings.LLM_API_KEY = "sk-test"
-sys.modules["app.core.config"].settings.LLM_BASE_URL = "https://api.deepseek.com"
-sys.modules["app.core.config"].settings.LLM_THINKING_LEVEL = None
-sys.modules["app.core.config"].settings.LLM_TEMPERATURE = 0.1
-sys.modules["app.core.config"].settings.LLM_MAX_CONTEXT_TOKENS = 64
-sys.modules["app.core.config"].settings.PROXY_HOST = None
-_stub_module("app.log", logger=_DummyLogger())
-_stub_module("langchain_deepseek", ChatDeepSeek=_FakeChatDeepSeek)
-
-module_path = Path(__file__).resolve().parents[1] / "app" / "agent" / "llm" / "helper.py"
-spec = importlib.util.spec_from_file_location("test_llm_module_for_deepseek_compat", module_path)
-llm_module = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(llm_module)
-
-
 class DeepSeekCompatPatchTest(unittest.TestCase):
     def setUp(self):
         _FakeChatDeepSeek._get_request_payload = _ORIGINAL_GET_REQUEST_PAYLOAD
         if hasattr(_FakeChatDeepSeek, "_moviepilot_reasoning_content_patched"):
             delattr(_FakeChatDeepSeek, "_moviepilot_reasoning_content_patched")
+        # helper 的修补函数内部 `from langchain_deepseek import ChatDeepSeek`，
+        # 这里临时把该名指向假类，使修补作用到 _FakeChatDeepSeek；patch 在用例结束自动还原。
+        patcher = patch("langchain_deepseek.ChatDeepSeek", _FakeChatDeepSeek)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         llm_module._patch_deepseek_reasoning_content_support()
 
     def test_injects_reasoning_content_for_assistant_tool_calls(self):
