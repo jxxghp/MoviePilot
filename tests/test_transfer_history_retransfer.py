@@ -1,10 +1,5 @@
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
-# app.helper.sites 由独立仓库动态拉取，CI / 全新环境无该模块；
-# 下方 endpoint 的 import 链在 import 期依赖它，故补一个最小垫片保证可导入。
-sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
-setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app.api.endpoints.transfer import (
     manual_transfer,

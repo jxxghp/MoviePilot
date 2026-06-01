@@ -1,12 +1,9 @@
 import asyncio
-import sys
 import time
 import unittest
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
-setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app.agent import AgentManager, _MessageTask, _async_start_processing_status
 from app.chain.message import MessageChain

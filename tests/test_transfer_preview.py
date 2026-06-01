@@ -1,11 +1,5 @@
-import sys
 from pathlib import Path
-from types import ModuleType
 
-# app.helper.sites 由独立仓库动态拉取，CI / 全新环境无该模块；
-# 下方 app.modules / app.core 在 import 期依赖它，故补一个最小垫片保证可导入。
-sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
-setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
