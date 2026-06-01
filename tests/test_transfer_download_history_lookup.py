@@ -122,7 +122,11 @@ class TransferDownloadHistoryLookupTest(unittest.TestCase):
             histories_by_hash={"hash1": expected},
             files_by_savepath={
                 "/downloads": [
-                    SimpleNamespace(download_hash="hash1", filepath="Other.Show.mkv"),
+                    SimpleNamespace(
+                        download_hash="hash1",
+                        fullpath="/downloads/Other.Show.mkv",
+                        filepath="Other.Show.mkv",
+                    ),
                 ]
             },
         )
@@ -152,7 +156,11 @@ class TransferDownloadHistoryLookupTest(unittest.TestCase):
             histories_by_hash={"hash1": expected},
             files_by_savepath={
                 "/downloads": [
-                    SimpleNamespace(download_hash="hash1", filepath="Ghost.Concert.mkv"),
+                    SimpleNamespace(
+                        download_hash="hash1",
+                        fullpath="/downloads/Ghost.Concert.mkv",
+                        filepath="Ghost.Concert.mkv",
+                    ),
                 ]
             },
         )
