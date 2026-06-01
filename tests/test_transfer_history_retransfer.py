@@ -1,10 +1,7 @@
-from types import ModuleType, SimpleNamespace
-import sys
+from types import SimpleNamespace
 
 # The endpoint import pulls in a wide plugin/helper graph. Some optional modules are
 # not present in this test environment, so stub them before importing the endpoint.
-sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
-setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app.api.endpoints.transfer import (
     manual_transfer,

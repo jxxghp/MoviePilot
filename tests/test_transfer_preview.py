@@ -1,9 +1,5 @@
 from pathlib import Path
-import sys
-from types import ModuleType
 
-sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
-setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase

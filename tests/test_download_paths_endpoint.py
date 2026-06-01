@@ -1,45 +1,5 @@
-import sys
 import unittest
-from types import ModuleType
 from unittest.mock import patch
-
-
-def _stub_module(name: str, **attrs):
-    module = sys.modules.get(name)
-    if module is None:
-        module = ModuleType(name)
-        sys.modules[name] = module
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-class _Dummy:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def __getattr__(self, _name):
-        return lambda *args, **kwargs: None
-
-
-for _module_name in ("pillow_avif", "aiofiles", "psutil"):
-    _stub_module(_module_name)
-
-_stub_module("app.chain.download", DownloadChain=_Dummy)
-_stub_module("app.chain.media", MediaChain=_Dummy)
-_stub_module("app.core.context", MediaInfo=_Dummy, Context=_Dummy, TorrentInfo=_Dummy)
-_stub_module("app.core.metainfo", MetaInfo=_Dummy)
-_stub_module("app.core.security", verify_token=_Dummy)
-_stub_module("app.db.models.user", User=_Dummy)
-_stub_module("app.db.systemconfig_oper", SystemConfigOper=_Dummy)
-_stub_module("app.db.user_oper", get_current_active_user=_Dummy)
-_stub_module(
-    "app.log",
-    logger=_Dummy(),
-    log_settings=_Dummy(),
-    LogConfigModel=type("LogConfigModel", (), {}),
-)
-_stub_module("version", APP_VERSION="test")
 
 from app.api.endpoints import download as download_endpoint
 
