@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 from pathlib import Path
-import sys
-from types import ModuleType
 from typing import Optional
 from unittest import TestCase
 from unittest.mock import patch
-
-sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
-setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app import schemas
 from app.chain.media import MediaChain
