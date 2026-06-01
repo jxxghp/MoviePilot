@@ -1,72 +1,14 @@
 import asyncio
-import importlib.util
-import sys
 import unittest
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-
-def _stub_module(name: str, **attrs):
-    module = sys.modules.get(name)
-    if module is None:
-        module = ModuleType(name)
-        sys.modules[name] = module
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-class _DummyLogger:
-    def __getattr__(self, _name):
-        return lambda *args, **kwargs: None
-
-
-class _DummySystemConfigOper:
-    def get(self, _key):
-        return {}
-
-    async def async_set(self, _key, _value):
-        return None
-
-
-for _module_name in ("aiofiles", "jwt"):
-    _stub_module(_module_name)
-
-_stub_module(
-    "app.core.config",
-    settings=SimpleNamespace(
-        TEMP_PATH="/tmp",
-        PROXY_HOST=None,
-        LLM_MAX_CONTEXT_TOKENS=64,
-        RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME=True,
-        RMT_MEDIAEXT=[".mkv", ".mp4"],
-        RMT_SUBEXT=[".srt"],
-        RMT_AUDIOEXT=[".flac"],
-    ),
+from app.agent.llm import provider as provider_module
+from app.agent.llm.provider import (
+    LLMProviderError,
+    LLMProviderManager,
+    PendingAuthSession,
 )
-_stub_module("app.db.systemconfig_oper", SystemConfigOper=_DummySystemConfigOper)
-_stub_module("app.log", logger=_DummyLogger())
-_stub_module(
-    "app.schemas.types",
-    SystemConfigKey=SimpleNamespace(
-        AIAgentConfig="agent",
-        CustomReleaseGroups="custom_release_groups",
-        Customization="customization",
-        CustomIdentifiers="custom_identifiers",
-    ),
-)
-
-provider_path = Path(__file__).resolve().parents[1] / "app" / "agent" / "llm" / "provider.py"
-spec = importlib.util.spec_from_file_location("test_llm_provider_module", provider_path)
-provider_module = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-sys.modules[spec.name] = provider_module
-spec.loader.exec_module(provider_module)
-
-LLMProviderError = provider_module.LLMProviderError
-LLMProviderManager = provider_module.LLMProviderManager
-PendingAuthSession = provider_module.PendingAuthSession
 
 
 class LlmProviderRegistryTest(unittest.TestCase):
