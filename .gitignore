@@ -41,3 +41,6 @@ pylint-report.json
 .claude/
 !.claude/*.json
 .claude/settings.local.json
+
+# Superpowers 设计/计划文档（本地协作产物，不纳入仓库）
+docs/superpowers/
