@@ -1,37 +1,4 @@
-import sys
 import unittest
-from enum import Enum
-from types import ModuleType
-
-
-def _stub_module(name: str, **attrs):
-    module = sys.modules.get(name)
-    if module is None:
-        module = ModuleType(name)
-        sys.modules[name] = module
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-class _DummyLogger:
-    def __getattr__(self, _name):
-        return lambda *args, **kwargs: None
-
-
-_stub_module(
-    "app.log",
-    logger=_DummyLogger(),
-    log_settings=_DummyLogger(),
-    LogConfigModel=type("LogConfigModel", (), {}),
-)
-_stub_module("psutil")
-_schemas_module = _stub_module(
-    "app.schemas", MediaType=Enum("MediaType", {"Movie": "Movie", "TV": "TV"})
-)
-_schemas_module.__getattr__ = lambda name: type(name, (), {})
-_stub_module("version", APP_VERSION="test")
-
 
 from app.core.config import Settings
 
@@ -67,7 +34,8 @@ class PostgreSQLSocketConfigTests(unittest.TestCase):
         )
 
         self.assertTrue(settings.DB_POSTGRESQL_SOCKET_MODE)
-        self.assertIsNone(settings.DB_POSTGRESQL_PORT_VALUE)
+        # socket 模式下不带端口：未显式设置时 DB_POSTGRESQL_PORT 为空串
+        self.assertEqual(settings.DB_POSTGRESQL_PORT, "")
         self.assertEqual(
             settings.DB_POSTGRESQL_URL(),
             "postgresql://user:pass@/moviepilot?host=%2Fvar%2Frun%2Fpostgresql",
