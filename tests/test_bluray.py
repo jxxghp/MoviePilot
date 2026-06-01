@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Optional
 from unittest import TestCase
 from unittest.mock import patch
+
+# app.helper.sites 由独立仓库动态拉取，CI / 全新环境无该模块；
+# 这些 app.chain.* 在 import 期依赖它，故补一个最小垫片保证可导入。
+sys.modules.setdefault("app.helper.sites", ModuleType("app.helper.sites"))
+setattr(sys.modules["app.helper.sites"], "SitesHelper", object)
 
 from app import schemas
 from app.chain.media import MediaChain
