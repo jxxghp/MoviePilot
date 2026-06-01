@@ -3,16 +3,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 # ruff: noqa: E402
-sys.modules['app.helper.sites'] = MagicMock()
-sys.modules['app.db.systemconfig_oper'] = MagicMock()
-sys.modules['app.db.systemconfig_oper'].SystemConfigOper.return_value.get.return_value = None
+from app.testing import stub_modules
 
-from app import schemas
-from app.chain.media import MediaChain, ScrapingConfig, ScrapingOption
-from app.core.context import MediaInfo
-from app.core.event import Event
-from app.core.metainfo import MetaInfo
-from app.schemas.types import EventType, MediaType, ScrapingTarget, ScrapingMetadata, ScrapingPolicy
+# 仅在 import 期用假模块替换依赖，退出 with 后还原，避免污染后续测试的 sys.modules
+_systemconfig_stub = MagicMock()
+_systemconfig_stub.SystemConfigOper.return_value.get.return_value = None
+with stub_modules({
+    'app.helper.sites': MagicMock(),
+    'app.db.systemconfig_oper': _systemconfig_stub,
+}):
+    from app import schemas
+    from app.chain.media import MediaChain, ScrapingConfig, ScrapingOption
+    from app.core.context import MediaInfo
+    from app.core.event import Event
+    from app.core.metainfo import MetaInfo
+    from app.schemas.types import EventType, MediaType, ScrapingTarget, ScrapingMetadata, ScrapingPolicy
 
 
 def reset_media_chain_singleton():
