@@ -1,8 +1,4 @@
-import importlib.util
-import sqlite3
-import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,94 +7,12 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-if "psutil" not in sys.modules:
-    sys.modules["psutil"] = types.ModuleType("psutil")
-
-if "aiosqlite" not in sys.modules:
-    aiosqlite_module = types.ModuleType("aiosqlite")
-    for attr in (
-        "DatabaseError",
-        "Error",
-        "IntegrityError",
-        "InterfaceError",
-        "InternalError",
-        "NotSupportedError",
-        "OperationalError",
-        "ProgrammingError",
-        "sqlite_version",
-        "sqlite_version_info",
-    ):
-        setattr(aiosqlite_module, attr, getattr(sqlite3, attr))
-    aiosqlite_module.connect = sqlite3.connect
-    aiosqlite_module.paramstyle = "qmark"
-    aiosqlite_module.threadsafety = sqlite3.threadsafety
-    sys.modules["aiosqlite"] = aiosqlite_module
-
-if "app.log" not in sys.modules:
-    log_module = types.ModuleType("app.log")
-
-    class _Logger:
-        def info(self, *_args, **_kwargs):
-            return None
-
-        def debug(self, *_args, **_kwargs):
-            return None
-
-        def warning(self, *_args, **_kwargs):
-            return None
-
-        def error(self, *_args, **_kwargs):
-            return None
-
-    log_module.logger = _Logger()
-    log_module.log_settings = SimpleNamespace()
-    log_module.LogConfigModel = type("LogConfigModel", (), {})
-    sys.modules["app.log"] = log_module
-
 from app import schemas
+from app.chain import mediaserver as MEDIA_SERVER_CHAIN_MODULE
+from app.chain.mediaserver import MediaServerChain
 from app.db import Base
 from app.db.mediaserver_oper import MediaServerOper
 from app.db.models.mediaserver import MediaServerItem
-
-
-def _load_mediaserver_chain_class():
-    """隔离加载 MediaServerChain，避免测试依赖完整运行时环境。"""
-    module_name = "_test_mediaserver_chain"
-    if module_name in sys.modules:
-        module = sys.modules[module_name]
-        return module, module.MediaServerChain
-
-    if "app.chain" not in sys.modules:
-        chain_module = types.ModuleType("app.chain")
-        chain_module.ChainBase = type("ChainBase", (), {})
-        sys.modules["app.chain"] = chain_module
-
-    if "app.core.config" not in sys.modules:
-        config_module = types.ModuleType("app.core.config")
-        config_module.global_vars = SimpleNamespace(is_system_stopped=False)
-        sys.modules["app.core.config"] = config_module
-
-    if "app.helper.service" not in sys.modules:
-        service_module = types.ModuleType("app.helper.service")
-
-        class _ServiceConfigHelper:
-            @staticmethod
-            def get_mediaserver_configs():
-                return []
-
-        service_module.ServiceConfigHelper = _ServiceConfigHelper
-        sys.modules["app.helper.service"] = service_module
-
-    mediaserver_path = Path(__file__).resolve().parents[1] / "app" / "chain" / "mediaserver.py"
-    spec = importlib.util.spec_from_file_location(module_name, mediaserver_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    assert spec and spec.loader
-    spec.loader.exec_module(module)
-    return module, module.MediaServerChain
-
-
-MEDIA_SERVER_CHAIN_MODULE, MediaServerChain = _load_mediaserver_chain_class()
 
 
 class MediaServerIncrementalSyncTest(unittest.TestCase):

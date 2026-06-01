@@ -1,91 +1,13 @@
 import unittest
 from unittest.mock import patch
-import importlib.util
-import sys
-import types
-from pathlib import Path
 
 from app import schemas
+from app.modules.ugreen.ugreen import Ugreen
 
 try:
     from app.api.endpoints import dashboard as dashboard_endpoint
 except Exception:
     dashboard_endpoint = None
-
-
-def _load_ugreen_class():
-    """
-    在测试中动态加载 Ugreen，避免受可选依赖（如 pyquery/sqlalchemy）影响。
-    """
-    module_name = "_test_ugreen_module"
-    if module_name in sys.modules:
-        return sys.modules[module_name].Ugreen
-
-    # 轻量日志桩
-    if "app.log" not in sys.modules:
-        log_module = types.ModuleType("app.log")
-
-        class _Logger:
-            def info(self, *_args, **_kwargs):
-                pass
-
-            def warning(self, *_args, **_kwargs):
-                pass
-
-            def error(self, *_args, **_kwargs):
-                pass
-
-            def debug(self, *_args, **_kwargs):
-                pass
-
-        log_module.logger = _Logger()
-        sys.modules["app.log"] = log_module
-
-    # SystemConfigOper 桩
-    if "app.db.systemconfig_oper" not in sys.modules:
-        db_module = types.ModuleType("app.db.systemconfig_oper")
-
-        class _SystemConfigOper:
-            @staticmethod
-            def get(_key):
-                return {}
-
-            @staticmethod
-            def set(_key, _value):
-                return None
-
-        db_module.SystemConfigOper = _SystemConfigOper
-        sys.modules["app.db.systemconfig_oper"] = db_module
-
-    # app.modules / app.modules.ugreen / app.modules.ugreen.api 桩
-    if "app.modules" not in sys.modules:
-        pkg = types.ModuleType("app.modules")
-        pkg.__path__ = []
-        sys.modules["app.modules"] = pkg
-    if "app.modules.ugreen" not in sys.modules:
-        subpkg = types.ModuleType("app.modules.ugreen")
-        subpkg.__path__ = []
-        sys.modules["app.modules.ugreen"] = subpkg
-    if "app.modules.ugreen.api" not in sys.modules:
-        api_module = types.ModuleType("app.modules.ugreen.api")
-
-        class _Api:
-            host = ""
-            token = None
-
-        api_module.Api = _Api
-        sys.modules["app.modules.ugreen.api"] = api_module
-
-    ugreen_path = Path(__file__).resolve().parents[1] / "app" / "modules" / "ugreen" / "ugreen.py"
-    spec = importlib.util.spec_from_file_location(module_name, ugreen_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    assert spec and spec.loader
-    spec.loader.exec_module(module)
-    return module.Ugreen
-
-
-Ugreen = _load_ugreen_class()
 
 
 class _FakeUgreenApi:
@@ -205,7 +127,7 @@ class UgreenReconnectTest(unittest.TestCase):
         ugreen._userinfo = None
 
         with patch.object(Ugreen, "_Ugreen__restore_persisted_session", return_value=False), patch(
-            "_test_ugreen_module.Api", return_value=_FakeReconnectApi()
+            "app.modules.ugreen.ugreen.Api", return_value=_FakeReconnectApi()
         ), patch.object(Ugreen, "_Ugreen__save_persisted_session", return_value=None), patch.object(
             Ugreen, "disconnect", wraps=ugreen.disconnect
         ), patch.object(Ugreen, "get_librarys") as mocked_get_librarys:

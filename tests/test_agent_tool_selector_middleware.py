@@ -1,43 +1,11 @@
 import asyncio
-import importlib.util
-import sys
 import unittest
-from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from langchain_core.messages import HumanMessage
 
-
-def _stub_module(name: str, **attrs):
-    module = sys.modules.get(name)
-    if module is None:
-        module = ModuleType(name)
-        sys.modules[name] = module
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-sys.modules.pop("app.agent.middleware.tool_selection", None)
-_stub_module(
-    "app.log",
-    logger=SimpleNamespace(debug=lambda *args, **kwargs: None),
-    log_settings=lambda *args, **kwargs: None,
-    LogConfigModel=type("LogConfigModel", (), {}),
-)
-
-module_path = (
-    Path(__file__).resolve().parents[1]
-    / "app"
-    / "agent"
-    / "middleware"
-    / "tool_selection.py"
-)
-spec = importlib.util.spec_from_file_location("test_tool_selector_module", module_path)
-tool_selector_module = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(tool_selector_module)
+from app.agent.middleware import tool_selection as tool_selector_module
 
 
 class _FakeBoundModel:
