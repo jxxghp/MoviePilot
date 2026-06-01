@@ -219,8 +219,9 @@ class WechatClawBotTest(unittest.TestCase):
         with patch("app.modules.wechatclawbot.wechatclawbot.RequestUtils.post", return_value=response):
             ok, message = client.test_connection()
 
+        # `ilink_user_id required` 仅表示自检接口缺少额外参数，不代表连接失败：视为连接正常
         self.assertTrue(ok)
-        self.assertIn("iLink 自检接口要求额外的 ilink_user_id", message)
+        self.assertEqual(message, "连接正常")
 
     def test_wechatclawbot_send_msg_uses_plain_text_payload(self):
         state = {

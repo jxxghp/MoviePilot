@@ -103,7 +103,8 @@ class TestExecuteCommandTool(unittest.TestCase):
 
         payload = json.loads(result)
         self.assertEqual(payload["status"], "error")
-        self.assertIn("禁止使用", payload["error"])
+        # rm -rf / 命中删除根目录防护；断言拒绝原因点明 rm 根目录，避免锁死单一文案
+        self.assertIn("不允许使用 rm", payload["error"])
 
 
 class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
