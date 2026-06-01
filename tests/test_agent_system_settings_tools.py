@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.core.config import settings
 
 
 class TestAgentSystemSettingsTools(unittest.TestCase):
@@ -102,8 +103,11 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
     def test_update_system_settings_updates_basic_settings(self):
         tool = UpdateSystemSettingsTool(session_id="session-1", user_id="10001")
 
-        with patch(
-            "app.agent.tools.impl.update_system_settings.settings.update_setting",
+        # settings 是 pydantic 模型实例，不能直接 patch 其实例方法（__setattr__ 会拦截），
+        # 改 patch 类上的方法；经实例调用时不带 self，断言参数不受影响。
+        with patch.object(
+            type(settings),
+            "update_setting",
             return_value=(True, ""),
         ) as update_setting, patch.object(
             UpdateSystemSettingsTool,
