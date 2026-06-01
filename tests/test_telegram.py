@@ -3,6 +3,7 @@
 Telegram模块单元测试
 """
 import unittest
+from unittest.mock import MagicMock, patch
 
 from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
@@ -13,13 +14,23 @@ from app.schemas.types import MediaType
 class TestTelegram(unittest.TestCase):
 
     def setUp(self):
-        """测试前准备"""
-        # 创建Telegram实例，使用虚假的token和chat_id防止真实发送
-        self.telegram = Telegram(TELEGRAM_TOKEN='', TELEGRAM_CHAT_ID='')
+        """测试前准备。
+
+        模拟 telebot.TeleBot 以避免真实 API 调用：空 token 会让 Telegram.__init__ 提前返回、
+        属性未初始化导致 send_* 抛错；这里用假 bot 让初始化完整且消息发送走内存桩。
+        """
+        self.telebot_patcher = patch("app.modules.telegram.telegram.TeleBot")
+        mock_telebot_cls = self.telebot_patcher.start()
+        self.mock_bot_instance = MagicMock()
+        # get_me 用于初始化 bot 用户名，需返回带 username 的对象
+        self.mock_bot_instance.get_me.return_value = MagicMock(username="test_bot")
+        mock_telebot_cls.return_value = self.mock_bot_instance
+
+        self.telegram = Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
 
     def tearDown(self):
-        """测试后清理"""
-        pass
+        """测试后清理：停止 TeleBot 打桩。"""
+        self.telebot_patcher.stop()
 
     def test_send_msg_success(self):
         """测试发送普通消息成功"""
@@ -30,7 +41,7 @@ class TestTelegram(unittest.TestCase):
         )
 
         # 验证返回值
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
     def test_send_msg_with_longtext(self):
         """测试发送长消息"""
@@ -65,7 +76,7 @@ class TestTelegram(unittest.TestCase):
             title="推荐媒体列表"
         )
 
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
     def test_send_medias_msg_without_vote_average(self):
         """测试发送无评分的媒体列表消息"""
@@ -83,7 +94,7 @@ class TestTelegram(unittest.TestCase):
             title="推荐媒体列表"
         )
 
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
     def test_send_medias_msg_with_link_and_buttons(self):
         """测试发送带链接和按钮的媒体列表消息"""
@@ -108,7 +119,7 @@ class TestTelegram(unittest.TestCase):
             buttons=buttons
         )
 
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
 
 
@@ -145,7 +156,7 @@ class TestTelegram(unittest.TestCase):
             title="种子列表"
         )
 
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
     def test_send_torrents_msg_with_link_and_buttons(self):
         """测试发送带链接和按钮的种子列表消息"""
@@ -185,7 +196,7 @@ class TestTelegram(unittest.TestCase):
             buttons=buttons
         )
 
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
     def test_send_msg_with_buttons_and_link(self):
         """测试发送带按钮和链接的消息"""
@@ -201,7 +212,7 @@ class TestTelegram(unittest.TestCase):
         )
 
         # 验证返回值
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
     def test_send_msg_with_url_buttons(self):
         """测试发送带URL按钮的消息"""
@@ -216,7 +227,7 @@ class TestTelegram(unittest.TestCase):
         )
 
         # 验证返回值
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
 
     def test_send_msg_markdown_escaping(self):
@@ -227,7 +238,7 @@ class TestTelegram(unittest.TestCase):
         )
 
         # 验证返回值
-        self.assertTrue(result is True)
+        self.assertTrue(result)
 
 if __name__ == '__main__':
     unittest.main()
