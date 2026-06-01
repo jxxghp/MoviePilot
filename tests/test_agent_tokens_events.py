@@ -2,11 +2,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from langchain_core.messages import AIMessage
 
 from app.agent import MoviePilotAgent
 from app.agent.memory import memory_manager
-from app.plugins.agenttokens import AgentTokens
+# agenttokens 为动态安装插件（app/plugins/** 被 gitignore，CI / 全新环境无此插件），
+# 缺失时跳过本模块，避免 collection 阶段 ImportError。
+AgentTokens = pytest.importorskip("app.plugins.agenttokens").AgentTokens
 from app.schemas.types import ChainEventType, EventType
 
 
