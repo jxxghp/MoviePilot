@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Any, Tuple, Optional, Set
+from typing import List, Dict, Any, Tuple, Optional, Set, ClassVar
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -809,6 +809,72 @@ class MediaInfo:
 
 
 @dataclass
+class EpisodeLocation:
+    """
+    候选资源标题集数与订阅目标季内集数之间的定位结果。
+    """
+
+    # 定位模式：absolute_to_season 表示同季累计总集编号映射为订阅季内集数。
+    MODE_ABSOLUTE_TO_SEASON: ClassVar[str] = "absolute_to_season"
+    # 置信度：high 表示可直接用于订阅过滤和下载匹配；low 仅作为未来种子文件确认前的弱提示预留。
+    CONFIDENCE_HIGH: ClassVar[str] = "high"
+    CONFIDENCE_LOW: ClassVar[str] = "low"
+
+    # 标题或副标题中解析出的原始集数，例如累计总集编号 57-82
+    source_episodes: List[int] = field(default_factory=list)
+    # 映射到订阅目标季内的集数，例如第 5 季的 1-26
+    target_episodes: List[int] = field(default_factory=list)
+    # 定位模式，当前有效值：absolute_to_season。
+    mode: str = MODE_ABSOLUTE_TO_SEASON
+    # 定位置信度，当前消费值：high；low 预留给只允许进入种子文件确认的弱定位。
+    confidence: str = CONFIDENCE_HIGH
+
+    @classmethod
+    def locate(
+            cls,
+            meta: MetaBase,
+            target_season: Optional[int],
+            target_episodes: List[int],
+            episodes: Optional[List[int]] = None,
+    ) -> Optional["EpisodeLocation"]:
+        """
+        识别候选标题集数与订阅目标季内集数之间的确定性映射关系。
+        """
+        if not meta:
+            return None
+
+        raw_episodes = episodes if episodes is not None else meta.episode_list
+        if not raw_episodes or not target_episodes:
+            return None
+
+        try:
+            source_episodes = sorted(set(int(episode) for episode in raw_episodes))
+        except (TypeError, ValueError):
+            return None
+
+        if set(source_episodes).intersection(set(target_episodes)):
+            return None
+
+        season_list = meta.season_list or []
+        if target_season is None or len(season_list or []) != 1 or season_list[0] != target_season:
+            return None
+
+        if len(source_episodes) != len(target_episodes):
+            return None
+        if source_episodes != list(range(source_episodes[0], source_episodes[-1] + 1)):
+            return None
+
+        # 累计总集编号通常表现为 Sxx + 连续高位区间，例如 S05 的 57-82；
+        # 只有当候选区间完整覆盖订阅目标长度时才定位，避免部分分集包被误当全集。
+        return cls(
+            source_episodes=source_episodes,
+            target_episodes=target_episodes,
+            mode=cls.MODE_ABSOLUTE_TO_SEASON,
+            confidence=cls.CONFIDENCE_HIGH,
+        )
+
+
+@dataclass
 class Context:
     """
     上下文对象
@@ -832,6 +898,22 @@ class Context:
     media_info_is_target: bool = False
     # 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
     allowed_episodes: Optional[Set[int]] = None
+    # 调用方完成高置信集数定位后写入的目标季内集数集合，None 表示未定位或不应放大候选范围。
+    located_episodes: Optional[Set[int]] = None
+
+    def locate_episode(
+            self,
+            target_season: Optional[int],
+            target_episodes: List[int],
+    ) -> Optional[EpisodeLocation]:
+        """
+        根据当前候选元数据和订阅目标范围计算集数定位结果。
+        """
+        return EpisodeLocation.locate(
+            meta=self.meta_info,
+            target_season=target_season,
+            target_episodes=target_episodes,
+        )
 
     def to_dict(self):
         """
@@ -848,4 +930,5 @@ class Context:
             "media_info_is_target": self.media_info_is_target,
             # 保留 None / 空集 / 非空集 三态语义，避免下游误把"显式拒绝"当成"不限制"。
             "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes is not None else None,
+            "located_episodes": sorted(self.located_episodes) if self.located_episodes is not None else None,
         }

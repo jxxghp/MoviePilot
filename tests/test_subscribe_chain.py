@@ -13,8 +13,7 @@ def _load_subscribe_chain_class():
     """隔离加载 SubscribeChain，避免测试依赖完整运行时环境。"""
     module_name = "_test_subscribe_chain"
     if module_name in sys.modules:
-        module = sys.modules[module_name]
-        return module, module.SubscribeChain
+        return sys.modules[module_name], sys.modules[module_name].SubscribeChain
 
     original_modules = {}
 
@@ -73,6 +72,33 @@ def _load_subscribe_chain_class():
     context_module.TorrentInfo = SimpleNamespace
     context_module.Context = SimpleNamespace
     context_module.MediaInfo = SimpleNamespace
+
+    class _EpisodeLocation(SimpleNamespace):
+        CONFIDENCE_HIGH = "high"
+        CONFIDENCE_LOW = "low"
+        MODE_ABSOLUTE_TO_SEASON = "absolute_to_season"
+
+        @classmethod
+        def locate(cls, meta, target_season, target_episodes, episodes=None):
+            raw_episodes = episodes if episodes is not None else meta.episode_list
+            source_episodes = sorted(set(int(episode) for episode in raw_episodes))
+            if set(source_episodes).intersection(set(target_episodes)):
+                return None
+            season_list = meta.season_list or []
+            if target_season is None or len(season_list) != 1 or season_list[0] != target_season:
+                return None
+            if len(source_episodes) != len(target_episodes):
+                return None
+            if source_episodes != list(range(source_episodes[0], source_episodes[-1] + 1)):
+                return None
+            return cls(
+                source_episodes=source_episodes,
+                target_episodes=target_episodes,
+                mode=cls.MODE_ABSOLUTE_TO_SEASON,
+                confidence=cls.CONFIDENCE_HIGH,
+            )
+
+    context_module.EpisodeLocation = _EpisodeLocation
 
     event_module = ensure_module("app.core.event", types.ModuleType("app.core.event"))
 
@@ -158,6 +184,14 @@ def _load_subscribe_chain_class():
             self.convert_type = kwargs.get("convert_type")
             self.media_dict = kwargs.get("media_dict")
 
+    class _SubscribeEpisodesRefreshEventData:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _SubscribeCompletionCheckEventData:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
     schemas_module.Notification = _Notification
     schemas_module.Subscribe = _SubscribeSchema
     schemas_module.NotExistMediaInfo = _NotExistMediaInfo
@@ -166,6 +200,8 @@ def _load_subscribe_chain_class():
     schemas_module.SubscribeDownloadFileInfo = _SubscribeDownloadFileInfo
     schemas_module.SubscribeLibraryFileInfo = _SubscribeLibraryFileInfo
     schemas_module.MediaRecognizeConvertEventData = _MediaRecognizeConvertEventData
+    schemas_module.SubscribeEpisodesRefreshEventData = _SubscribeEpisodesRefreshEventData
+    schemas_module.SubscribeCompletionCheckEventData = _SubscribeCompletionCheckEventData
 
     logger_module = ensure_module("app.log", types.ModuleType("app.log"))
 
@@ -306,6 +342,25 @@ def _load_subscribe_chain_class():
 SUBSCRIBE_CHAIN_MODULE, SubscribeChain = _load_subscribe_chain_class()
 
 
+def _build_context(meta_info, selected_episodes=None, allowed_episodes=None):
+    """构造带集数定位能力的最小候选上下文。"""
+
+    class _ContextStub(SimpleNamespace):
+        def locate_episode(self, target_season, target_episodes):
+            return SUBSCRIBE_CHAIN_MODULE.EpisodeLocation.locate(
+                meta=self.meta_info,
+                target_season=target_season,
+                target_episodes=target_episodes,
+            )
+
+    return _ContextStub(
+        meta_info=meta_info,
+        selected_episodes=selected_episodes,
+        allowed_episodes=allowed_episodes,
+        located_episodes=None,
+    )
+
+
 class SubscribeChainTest(TestCase):
     def _build_subscribe(self, **overrides):
         data = {
@@ -344,6 +399,7 @@ class SubscribeChainTest(TestCase):
         return SimpleNamespace(
             torrent_info=SimpleNamespace(pri_order=priority),
             selected_episodes=selected_episodes,
+            located_episodes=None,
             meta_info=SimpleNamespace(season_list=[1], episode_list=meta_episodes or []),
         )
 
@@ -481,6 +537,32 @@ class SubscribeChainTest(TestCase):
             )
         )
 
+        absolute_subscribe = self._build_subscribe(
+            season=5,
+            total_episode=26,
+            episode_priority={},
+        )
+        self.assertTrue(
+            SubscribeChain._is_episode_range_covered(
+                meta=SimpleNamespace(
+                    season_list=[5],
+                    episode_list=list(range(57, 83)),
+                    total_episode=26,
+                ),
+                subscribe=absolute_subscribe,
+            )
+        )
+        self.assertFalse(
+            SubscribeChain._is_episode_range_covered(
+                meta=SimpleNamespace(
+                    season_list=[5],
+                    episode_list=list(range(57, 61)),
+                    total_episode=4,
+                ),
+                subscribe=absolute_subscribe,
+            )
+        )
+
     def test_full_best_version_rejects_episode_resource(self):
         subscribe = self._build_subscribe(best_version_full=1, total_episode=3)
 
@@ -506,6 +588,333 @@ class SubscribeChainTest(TestCase):
                 subscribe=subscribe,
             )
         )
+
+    def test_full_best_version_accepts_absolute_numbered_full_pack(self):
+        """同季全集资源使用累计总集编号时，洗版判断应按订阅季内集数定位。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            season=5,
+            total_episode=26,
+            episode_priority={},
+        )
+        meta = SimpleNamespace(
+            season_list=[5],
+            episode_list=list(range(57, 83)),
+            total_episode=26,
+        )
+        context = _build_context(meta_info=meta)
+
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_full_season_best_version_resource(
+                meta=meta,
+                subscribe=subscribe,
+            )
+        )
+        self.assertTrue(
+            SubscribeChain._is_episode_range_covered(
+                meta=meta,
+                subscribe=subscribe,
+            )
+        )
+        self.assertEqual(
+            SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+                subscribe=subscribe,
+                context=context,
+                priority=100,
+            ),
+            list(range(1, 27)),
+        )
+
+    def test_low_confidence_episode_location_does_not_drive_best_version_filter(self):
+        """低置信定位不能直接参与洗版过滤，只能作为后续弱提示保留。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            season=5,
+            total_episode=26,
+            episode_priority={},
+        )
+        meta = SimpleNamespace(
+            season_list=[1],
+            episode_list=list(range(57, 83)),
+            total_episode=26,
+        )
+        context = _build_context(meta_info=meta)
+        low_location = SUBSCRIBE_CHAIN_MODULE.EpisodeLocation(
+            source_episodes=list(range(57, 83)),
+            target_episodes=list(range(1, 27)),
+            mode=SUBSCRIBE_CHAIN_MODULE.EpisodeLocation.MODE_ABSOLUTE_TO_SEASON,
+            confidence=SUBSCRIBE_CHAIN_MODULE.EpisodeLocation.CONFIDENCE_LOW,
+        )
+
+        self.assertFalse(
+            SubscribeChain._is_episode_range_covered(
+                meta=meta,
+                subscribe=subscribe,
+                episode_location=low_location,
+            )
+        )
+        self.assertEqual(
+            SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
+                subscribe=subscribe,
+                context=context,
+                priority=100,
+                episode_location=low_location,
+            ),
+            [],
+        )
+
+    def test_full_best_version_rejects_partial_absolute_numbered_pack(self):
+        """累计总集编号只有完整覆盖订阅目标长度时才可按整包洗版处理。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            season=5,
+            total_episode=26,
+            episode_priority={},
+        )
+        meta = SimpleNamespace(
+            season_list=[5],
+            episode_list=list(range(57, 61)),
+            total_episode=4,
+        )
+
+        self.assertFalse(
+            SubscribeChain._SubscribeChain__is_full_season_best_version_resource(
+                meta=meta,
+                subscribe=subscribe,
+            )
+        )
+        self.assertFalse(
+            SubscribeChain._is_episode_range_covered(
+                meta=meta,
+                subscribe=subscribe,
+            )
+        )
+
+    def test_full_best_version_rejects_absolute_numbered_pack_without_season_match(self):
+        """累计总集编号缺少同季信号时不自动映射，避免跨季合集误匹配。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            season=5,
+            total_episode=26,
+            episode_priority={},
+        )
+        meta = SimpleNamespace(
+            season_list=[1],
+            episode_list=list(range(57, 83)),
+            total_episode=26,
+        )
+
+        self.assertFalse(
+            SubscribeChain._SubscribeChain__is_full_season_best_version_resource(
+                meta=meta,
+                subscribe=subscribe,
+            )
+        )
+
+    def test_full_season_resource_matches_legacy_metainfo_cases(self):
+        """保留 #5648 覆盖过的真实标题合集识别样本，避免 MetaInfo 集成回归。"""
+        import app.core.metainfo as metainfo_module
+        from app.core.metainfo import MetaInfo
+
+        class _SystemConfigOper:
+            """提供空系统配置，避免真实 MetaInfo 解析依赖测试数据库。"""
+
+            def get(self, *args, **kwargs):
+                return None
+
+        cases = [
+            {
+                "title": "Cherry Season S01 2014 2160p 60fps WEB-DL H265 AAC-XXX",
+                "subtitle": "",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 51},
+                "expected": True,
+            },
+            {
+                "title": "【爪爪字幕组】★7月新番[欢迎来到实力至上主义的教室 第二季/Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e S2][11][1080p][HEVC][GB][MP4][招募翻译校对]",
+                "subtitle": "",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 13},
+                "expected": False,
+            },
+            {
+                "title": "[秋叶原冥途战争][Akiba Maid Sensou][2022][WEB-DL][1080][TV Series][第01话][LeagueWEB]",
+                "subtitle": "",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 12},
+                "expected": False,
+            },
+            {
+                "title": "Qi Refining for 3000 Years S01E06 2022 1080p B-Blobal WEB-DL X264 AAC-AnimeS@AdWeb",
+                "subtitle": "",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 16},
+                "expected": False,
+            },
+            {
+                "title": "The Heart of Genius S01 13-14 2022 1080p WEB-DL H264 AAC",
+                "subtitle": "",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 34},
+                "expected": False,
+            },
+            {
+                "title": "[xyx98]传颂之物/Utawarerumono/うたわれるもの[BDrip][1920x1080][TV 01-26 Fin][hevc-yuv420p10 flac_ac3][ENG PGS]",
+                "subtitle": "",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 26},
+                "expected": True,
+            },
+            {
+                "title": "I Woke Up a Vampire S02 2023 2160p NF WEB-DL DDP5.1 Atmos H 265-HHWEB",
+                "subtitle": "醒来变成吸血鬼 第二季 | 全8集 | 4K | 类型: 喜剧/家庭/奇幻 | 导演: TommyLynch | 主演: NikoCeci/ZebastinBorjeau/安娜·阿劳约/KaileenAngelicChang/KrisSiddiqi",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 8},
+                "expected": True,
+            },
+            {
+                "title": "Shadows of the Void S01 2024 1080p WEB-DL H264 AAC-HHWEB",
+                "subtitle": "虚无边境 | 第01-02集 | 1080p | 类型: 动画 | 导演: 巴西 | 主演: 山新/周一菡/皇贞季/Kenz/李佳怡 [内嵌中字]",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 13},
+                "expected": False,
+            },
+            {
+                "title": "Mai Xiang S01 2019 2160p WEB-DL H.265 DDP2.0-HHWEB",
+                "subtitle": "麦香 | 全36集 | 4K | 类型:剧情/爱情/家庭 | 主演:傅晶/章呈赫/王伟/沙景昌/何音",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 36},
+                "expected": True,
+            },
+            {
+                "title": "Jigokuraku S01E14-E25 2023 1080p CR WEB-DL x264 AAC-Nest@ADWeb",
+                "subtitle": "地狱乐 / 地獄楽 / Hell’s Paradise [14-25Fin] [中日双语字幕]",
+                "subscribe": {"season": None, "start_episode": 14, "total_episode": 25},
+                "expected": True,
+            },
+            {
+                "title": "Jigokuraku S01 2023 1080p BluRay Remux AVC FLAC 2.0-AnimeF@ADE",
+                "subtitle": "地狱乐/Hell's Paradise: Jigokuraku [01-13Fin] [中日双语字幕]",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 13},
+                "expected": True,
+            },
+            {
+                "title": "Jigokuraku S02E12 2026 1080p NF WEB-DL x264 AAC-ADWeb",
+                "subtitle": "地狱乐 第二季 地獄楽 第二期 第12集 | 类型: 动画",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 12},
+                "expected": False,
+            },
+            {
+                "title": "Jigokuraku S02E05-E07 2026 1080p NF WEB-DL x264 AAC-ADWeb",
+                "subtitle": "地狱乐 第二季 地獄楽 第二期 第05-07集 | 类型: 动画",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 12},
+                "expected": False,
+            },
+            {
+                "title": "Bungo Stray Dogs S01 2016 1080p KKTV WEB-DL x264 AAC-ADWeb",
+                "subtitle": "文豪野犬 文豪ストレイドッグス 又名: 文豪Stray Dogs 第一季 全12集 | 类型: 剧情 / 动作 / 动画 主演: 上村祐翔 / 宫野真守 / 细谷佳正 *内嵌繁体字幕*",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 12},
+                "expected": True,
+            },
+            {
+                "title": "Bungou Stray Dogs S1+S2+S3+OAD 1080p BDRip HEVC FLAC-Snow-Raws",
+                "subtitle": "文豪野犬 第1-3季",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 36},
+                "expected": True,
+            },
+            {
+                "title": "Bungou Stray Dogs S1+S2+S3+OAD 1080p BDRip HEVC FLAC-Snow-Raws",
+                "subtitle": "文豪野犬 第1-3季",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 60},
+                "expected": True,
+            },
+            {
+                "title": "Fu Gui S01 2005 2160p WEB-DL H265 AAC-HHWEB",
+                "subtitle": "福贵 | 全33集 | 4K | 类型: 剧情/家庭 | 导演: 朱正/袁进 | 主演: 陈创/刘敏涛/李丁/张鹰/温玉娟",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 33},
+                "expected": True,
+            },
+            {
+                "title": "The Story of Ming Lan S01 2018 2160p WEB-DL CHDWEB",
+                "subtitle": "知否知否应是绿肥红瘦 全78集 | 2160p | 国语/中字 | 60帧高码TV版 | 类型:剧情/爱情/古装 | 主演:赵丽颖/冯绍峰/朱一龙/施诗/张佳宁",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 78},
+                "expected": True,
+            },
+            {
+                "title": "Love Beyond the Grave S01 2026 2160p WEB-DL H265 AAC-HHWEB",
+                "subtitle": "白日提灯 / 慕胥辞 | 第18集 | 4K | 类型: 剧情 | 导演: 秦榛 | 主演: 迪丽热巴/陈飞宇/魏哲鸣/张俪/高鹤元",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 40},
+                "expected": False,
+            },
+            {
+                "title": "The Long Ballad S01 2021 2160p WEB-DL H265 AAC-HHWEB",
+                "subtitle": "长歌行 | 全49集 | 4K | 类型: 剧情/爱情/古装 | 主演: 迪丽热巴/吴磊/刘宇宁/赵露思/方逸伦",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 49},
+                "expected": True,
+            },
+            {
+                "title": "The Long Ballad S01E01-E04 2021 2160p WEB-DL H265 AAC-HHWEB",
+                "subtitle": "长歌行 | 第01-04集 | 4K | 类型: 剧情/爱情/古装 | 主演: 迪丽热巴/吴磊/刘宇宁/赵露思/方逸伦",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 49},
+                "expected": False,
+            },
+            {
+                "title": "Spy x Family S02 2023 1080p Baha WEB-DL x264 AAC-ADWeb",
+                "subtitle": "间谍过家家 第二季 / SPY×FAMILY Season 2 [01-12Fin] [简繁内封字幕]",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 12},
+                "expected": True,
+            },
+            {
+                "title": "Spy x Family S02E03-E07 2023 1080p Baha WEB-DL x264 AAC-ADWeb",
+                "subtitle": "间谍过家家 第二季 / SPY×FAMILY Season 2 第03-07集 [简繁内封字幕]",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 12},
+                "expected": False,
+            },
+            {
+                "title": "Naruto Shippuden S01-S21 Complete 1080p BluRay x264 AAC-ADWeb",
+                "subtitle": "火影忍者 疾风传 全500集 [1080p][简中字幕]",
+                "subscribe": {"season": None, "start_episode": 1, "total_episode": 500},
+                "expected": True,
+            },
+            {
+                "title": "Naruto Shippuden S01-S21 Complete 1080p BluRay x264 AAC-ADWeb",
+                "subtitle": "火影忍者 疾风传 第01-500集 [1080p][简中字幕]",
+                "subscribe": {"season": None, "start_episode": 201, "total_episode": 500},
+                "expected": True,
+            },
+            {
+                "title": "Immortality S05 2025 2160p WEB-DL HDR H265 AAC-ADWeb",
+                "subtitle": "永生 第五季 全26集 总第57-82集 / 永生之太元仙府 / 永生 新篇章 / Immortality: Taiyuan Immortal Mansion [Bilibili大陆] | 类型：动作 动画 奇幻",
+                "subscribe": {"season": 5, "start_episode": 1, "total_episode": 26},
+                "expected": True,
+            },
+            {
+                "title": "Immortality S05 2025 2160p WEB-DL HDR H265 AAC-ADWeb",
+                "subtitle": "永生 第五季 第57-60集 / 永生之太元仙府",
+                "subscribe": {"season": 5, "start_episode": 1, "total_episode": 26},
+                "expected": False,
+            },
+        ]
+
+        metainfo_module._rust_default_parse_options.cache_clear()
+        metainfo_module._rust_custom_parse_options.cache_clear()
+        with patch("app.db.systemconfig_oper.SystemConfigOper", _SystemConfigOper), patch(
+            "app.core.meta.releasegroup.SystemConfigOper", _SystemConfigOper
+        ), patch(
+            "app.core.meta.words.SystemConfigOper", _SystemConfigOper
+        ), patch(
+            "app.core.meta.customization.SystemConfigOper", _SystemConfigOper
+        ):
+            for case in cases:
+                meta = MetaInfo(
+                    title=case["title"], subtitle=case["subtitle"], custom_words=["#"]
+                )
+                subscribe = self._build_subscribe(
+                    best_version_full=1,
+                    episode_priority={},
+                    current_priority=0,
+                    **case["subscribe"],
+                )
+
+                with self.subTest(title=case["title"], subtitle=case["subtitle"]):
+                    self.assertEqual(
+                        SubscribeChain._SubscribeChain__is_full_season_resource(
+                            meta=meta,
+                            subscribe=subscribe,
+                        ),
+                        case["expected"],
+                    )
 
     def test_episode_best_version_downloads_full_pack_before_episode_fallback(self):
         subscribe = self._build_subscribe(best_version_full=0, total_episode=3)
@@ -773,6 +1182,49 @@ class SubscribeChainTest(TestCase):
         self.assertNotIn("lack_episode", payload)
         finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
 
+    def test_update_subscribe_priority_normalizes_absolute_numbered_full_pack(self):
+        """累计总集编号整包下载完成后，应按订阅季内集数更新洗版状态。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            season=5,
+            total_episode=26,
+            episode_priority={},
+            current_priority=0,
+            lack_episode=26,
+        )
+        download = SimpleNamespace(
+            torrent_info=SimpleNamespace(pri_order=100),
+            selected_episodes=None,
+            located_episodes=None,
+            meta_info=SimpleNamespace(
+                season_list=[5],
+                episode_list=list(range(57, 83)),
+                total_episode=26,
+            ),
+        )
+        chain = SubscribeChain()
+        meta = SimpleNamespace()
+        mediainfo = SimpleNamespace(title_year="Immortality (2025)")
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, patch.object(
+            SubscribeChain,
+            "_SubscribeChain__finish_subscribe",
+        ) as finish_mock:
+            subscribe_oper = subscribe_oper_cls.return_value
+            subscribe_oper.update.return_value = None
+
+            chain.update_subscribe_priority(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                downloads=[download],
+            )
+
+        payload = subscribe_oper.update.call_args.args[1]
+        self.assertEqual(payload["episode_priority"], {str(ep): 100 for ep in range(1, 27)})
+        self.assertEqual(payload["current_priority"], 100)
+        finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
+
     def test_full_best_version_updates_all_episodes_when_pack_has_no_episode_metadata(self):
         subscribe = self._build_subscribe(
             best_version_full=1,
@@ -887,10 +1339,7 @@ class SubscribeChainTest(TestCase):
             episode_priority={"1": 100, "2": 99},
             current_priority=100,
         )
-        context = SimpleNamespace(
-            meta_info=SimpleNamespace(season_list=[1], episode_list=[2, 3]),
-            selected_episodes=None,
-        )
+        context = _build_context(meta_info=SimpleNamespace(season_list=[1], episode_list=[2, 3]))
 
         interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
             subscribe=subscribe,
@@ -915,10 +1364,7 @@ class SubscribeChainTest(TestCase):
             },
             current_priority=99,
         )
-        context = SimpleNamespace(
-            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))),
-            selected_episodes=None,
-        )
+        context = _build_context(meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))))
 
         interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
             subscribe=subscribe,
@@ -949,10 +1395,7 @@ class SubscribeFilterAllowedEpisodesTest(TestCase):
             },
             current_priority=99,
         )
-        context = SimpleNamespace(
-            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))),
-            selected_episodes=None,
-        )
+        context = _build_context(meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))))
 
         interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
             subscribe=subscribe,
@@ -975,10 +1418,7 @@ class SubscribeFilterAllowedEpisodesTest(TestCase):
             episode_priority={"1": 100, "2": 99, "3": 99},
             current_priority=99,
         )
-        context = SimpleNamespace(
-            meta_info=SimpleNamespace(season_list=[1], episode_list=[2, 3]),
-            selected_episodes=None,
-        )
+        context = _build_context(meta_info=SimpleNamespace(season_list=[1], episode_list=[2, 3]))
 
         interested = SubscribeChain._SubscribeChain__get_best_version_interested_episodes(
             subscribe=subscribe,
@@ -1007,10 +1447,8 @@ class SubscribeFilterAllowedEpisodesTest(TestCase):
             },
             current_priority=99,
         )
-        original_context = SimpleNamespace(
-            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105))),
-            selected_episodes=None,
-            allowed_episodes=None,
+        original_context = _build_context(
+            meta_info=SimpleNamespace(season_list=[1], episode_list=list(range(53, 105)))
         )
         _context = copy.copy(original_context)
 

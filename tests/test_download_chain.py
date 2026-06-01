@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import app.chain.download as download_module
 from app.chain.download import DownloadChain
 from app.core.context import Context, MediaInfo, TorrentInfo
-from app.core.metainfo import MetaInfo
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import MediaType
 
@@ -59,7 +58,7 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     chain.post_message = MagicMock()
 
     context = Context(
-        meta_info=MetaInfo("Demo Movie 2024"),
+        meta_info=SimpleNamespace(episode_list=[], season=None, episode=None),
         media_info=MediaInfo(
             type=MediaType.MOVIE,
             title="Demo Movie",
@@ -129,6 +128,7 @@ def _build_tv_context(episode_list=None):
         ),
         torrent_info=SimpleNamespace(title="Test Show S01 2160p", site_name="TestSite"),
         allowed_episodes=None,
+        located_episodes=None,
     )
 
 
@@ -325,3 +325,73 @@ def test_batch_download_keeps_count_check_without_complete_coverage(monkeypatch)
     assert downloads == [context]
     assert lefts == {}
     chain.download_single.assert_called_once()
+
+
+def test_batch_download_checks_files_for_located_absolute_numbered_full_pack(monkeypatch):
+    """
+    普通订阅可借助集数定位把累计总集编号候选放入整包检查，再由种子文件确认季内集数覆盖。
+    """
+    _FakeBatchTorrentHelper.episodes = list(range(1, 27))
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context(episode_list=list(range(57, 83)))
+    context.meta_info.season_list = [5]
+    context.located_episodes = set(range(1, 27))
+    no_exists = {
+        1: {
+            5: NotExistMediaInfo(
+                season=5,
+                episodes=[],
+                total_episode=26,
+                start_episode=1,
+            )
+        }
+    }
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == [context]
+    assert lefts == {}
+    chain.download_torrent.assert_called_once()
+    chain.download_single.assert_called_once()
+
+
+def test_batch_download_selects_needed_files_for_located_absolute_numbered_pack(monkeypatch):
+    """
+    分集洗版可借助集数定位进入拆包检查，并只选择订阅仍需要的季内集数。
+    """
+    _FakeBatchTorrentHelper.episodes = list(range(1, 27))
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context(episode_list=list(range(57, 83)))
+    context.meta_info.season_list = [5]
+    context.allowed_episodes = {1, 2}
+    context.located_episodes = set(range(1, 27))
+    no_exists = {
+        1: {
+            5: NotExistMediaInfo(
+                season=5,
+                episodes=[1, 2],
+                total_episode=26,
+                start_episode=1,
+            )
+        }
+    }
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == [context]
+    assert lefts == {}
+    chain.download_torrent.assert_called_once()
+    chain.download_single.assert_called_once()
+    assert chain.download_single.call_args.kwargs["episodes"] == {1, 2}

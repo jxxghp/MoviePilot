@@ -554,6 +554,14 @@ class DownloadChain(ChainBase):
                 effective &= set(allowed)
             return effective
 
+        def __get_located_target_episodes(_context: Context) -> Set[int]:
+            """
+            返回集数定位后的目标季内集数；缺失定位不扩大候选范围。
+            """
+            if not _context.located_episodes:
+                return set()
+            return set(_context.located_episodes)
+
         # 发送资源选择事件，允许外部修改上下文数据
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
@@ -621,8 +629,9 @@ class DownloadChain(ChainBase):
                     # 没有季的默认为第1季
                     if not torrent_season:
                         torrent_season = [1]
-                    # 种子有集的不要
-                    if meta.episode_list:
+                    # 常规标题带集数的资源不走整季路径；已完成高置信集数定位的候选仍需打开种子文件确认。
+                    located_target_episodes = __get_located_target_episodes(context)
+                    if meta.episode_list and not located_target_episodes:
                         continue
                     # 匹配TMDBID
                     if need_mid == media.tmdb_id or need_mid == media.douban_id:
@@ -743,8 +752,9 @@ class DownloadChain(ChainBase):
                             # 只处理单季含集的种子
                             if len(torrent_season) != 1 or torrent_season[0] != need_season:
                                 continue
-                            # 种子集列表
-                            torrent_episodes = set(meta.episode_list)
+                            # 种子集列表；累计总集编号等场景优先使用订阅阶段定位出的季内目标集。
+                            located_target_episodes = __get_located_target_episodes(context)
+                            torrent_episodes = located_target_episodes or set(meta.episode_list)
                             # 整季的不处理
                             if not torrent_episodes:
                                 continue
@@ -826,10 +836,12 @@ class DownloadChain(ChainBase):
                         effective_need = __apply_allowed_episodes(need_episodes, context)
                         if not effective_need:
                             continue
+                        located_target_episodes = __get_located_target_episodes(context)
+                        match_episode_candidates = located_target_episodes or set(meta.episode_list)
                         # 选中一个单季整季的或单季包括需要的所有集的
                         if (media.tmdb_id == need_mid or media.douban_id == need_mid) \
-                                and (not meta.episode_list
-                                     or set(meta.episode_list).intersection(effective_need)) \
+                                and (not match_episode_candidates
+                                     or match_episode_candidates.intersection(effective_need)) \
                                 and len(meta.season_list) == 1 \
                                 and meta.season_list[0] == need_season:
                             # 检查种子看是否有需要的集

@@ -24,7 +24,7 @@ from app.helper.interaction import (
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings, global_vars
-from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.context import TorrentInfo, Context, MediaInfo, EpisodeLocation
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.meta.words import WordsMatcher
@@ -283,6 +283,7 @@ class SubscribeChain(ChainBase):
             subscribe: Subscribe,
             context: Context,
             priority: int,
+            episode_location: Optional[EpisodeLocation] = None,
     ) -> List[int]:
         """
         获取当前资源中仍值得继续洗版的剧集。
@@ -296,7 +297,11 @@ class SubscribeChain(ChainBase):
 
         selected_episodes = getattr(context, "selected_episodes", None)
         if selected_episodes is None:
-            selected_episodes = context.meta_info.episode_list if context.meta_info else []
+            if episode_location is None:
+                episode_location = cls.__locate_context_episodes(context=context, subscribe=subscribe)
+            selected_episodes = episode_location.target_episodes \
+                if cls.__is_high_confidence_episode_location(episode_location) \
+                else (context.meta_info.episode_list if context.meta_info else [])
         if not selected_episodes:
             episode_priority = cls.__get_episode_priority(subscribe)
             return sorted([
@@ -319,6 +324,59 @@ class SubscribeChain(ChainBase):
         return sorted(set(interested))
 
     @classmethod
+    def __normalize_best_version_resource_episodes(
+            cls,
+            meta: MetaBase,
+            subscribe: Subscribe,
+            episodes: Optional[List[int]] = None,
+    ) -> List[int]:
+        """
+        将同季累计总集编号映射为订阅季内集数。
+        """
+        raw_episodes = episodes if episodes is not None else (meta.episode_list if meta else [])
+        if not raw_episodes:
+            return []
+
+        try:
+            resource_episodes = sorted(set(int(episode) for episode in raw_episodes))
+        except (TypeError, ValueError):
+            return list(raw_episodes)
+
+        episode_location = EpisodeLocation.locate(
+            meta=meta,
+            target_season=subscribe.season,
+            target_episodes=cls.__get_best_version_target_episodes(subscribe),
+            episodes=resource_episodes,
+        )
+        if episode_location:
+            return episode_location.target_episodes
+        return resource_episodes
+
+    @classmethod
+    def __locate_context_episodes(cls, context: Context, subscribe: Subscribe) -> Optional[EpisodeLocation]:
+        """
+        为候选上下文缓存集数定位结果，供订阅过滤和下载链保持同一套集数语义。
+        """
+        if not context or not context.meta_info:
+            return None
+
+        episode_location = context.locate_episode(
+            target_season=subscribe.season,
+            target_episodes=cls.__get_best_version_target_episodes(subscribe),
+        )
+        # located_episodes 是面向后续流程的目标季内集数视图，只接受可直接参与匹配的高置信定位结果。
+        context.located_episodes = set(episode_location.target_episodes) \
+            if episode_location and episode_location.confidence == EpisodeLocation.CONFIDENCE_HIGH else None
+        return episode_location
+
+    @staticmethod
+    def __is_high_confidence_episode_location(episode_location: Optional[EpisodeLocation]) -> bool:
+        """
+        判断集数定位结果是否可直接参与订阅过滤与状态更新。
+        """
+        return bool(episode_location and episode_location.confidence == EpisodeLocation.CONFIDENCE_HIGH)
+
+    @classmethod
     def __is_full_best_version_enabled(cls, subscribe: Subscribe) -> bool:
         """
         判断当前订阅是否启用了电视剧全集洗版。
@@ -330,17 +388,24 @@ class SubscribeChain(ChainBase):
         )
 
     @classmethod
-    def __is_full_season_resource(cls, meta: MetaBase, subscribe: Subscribe) -> bool:
+    def __is_full_season_resource(
+            cls,
+            meta: MetaBase,
+            subscribe: Subscribe,
+            episode_location: Optional[EpisodeLocation] = None,
+    ) -> bool:
         """
         判断候选资源是否覆盖订阅目标全集范围。
         """
         season_list = meta.season_list or [1]
-        if len(season_list) != 1:
-            return False
-        if subscribe.season is not None and season_list[0] != subscribe.season:
-            return False
+        if subscribe.season is not None:
+            if len(season_list) != 1:
+                return False
+            if season_list[0] != subscribe.season:
+                return False
 
-        episodes = meta.episode_list
+        episodes = episode_location.target_episodes if cls.__is_high_confidence_episode_location(episode_location) \
+            else cls.__normalize_best_version_resource_episodes(meta=meta, subscribe=subscribe)
         if not episodes:
             # 资源未标出单集时按整季包处理，后续下载前仍会解析种子文件确认完整性。
             return True
@@ -351,14 +416,23 @@ class SubscribeChain(ChainBase):
         return target_episodes.issubset(set(episodes))
 
     @classmethod
-    def __is_full_season_best_version_resource(cls, meta: MetaBase, subscribe: Subscribe) -> bool:
+    def __is_full_season_best_version_resource(
+            cls,
+            meta: MetaBase,
+            subscribe: Subscribe,
+            episode_location: Optional[EpisodeLocation] = None,
+    ) -> bool:
         """
         判断候选资源是否符合全集洗版资源约束。
         """
         if not cls.__is_full_best_version_enabled(subscribe):
             return True
 
-        return cls.__is_full_season_resource(meta=meta, subscribe=subscribe)
+        return cls.__is_full_season_resource(
+            meta=meta,
+            subscribe=subscribe,
+            episode_location=episode_location,
+        )
 
     @classmethod
     def __is_full_season_priority_higher_than_all_targets(cls, subscribe: Subscribe, priority: int) -> bool:
@@ -1036,13 +1110,21 @@ class SubscribeChain(ChainBase):
                                 torrent_meta = context.meta_info
                                 torrent_info = context.torrent_info
                                 torrent_mediainfo = context.media_info
+                                episode_location = None
+                                if torrent_mediainfo.type == MediaType.TV:
+                                    episode_location = self.__locate_context_episodes(
+                                        context=context,
+                                        subscribe=subscribe,
+                                    )
 
                                 # 洗版
                                 if subscribe.best_version:
                                     if (
                                         torrent_mediainfo.type == MediaType.TV
                                         and not self.__is_full_season_best_version_resource(
-                                            meta=torrent_meta, subscribe=subscribe
+                                            meta=torrent_meta,
+                                            subscribe=subscribe,
+                                            episode_location=episode_location,
                                         )
                                     ):
                                         logger.info(
@@ -1053,7 +1135,9 @@ class SubscribeChain(ChainBase):
                                     if (
                                         torrent_mediainfo.type == MediaType.TV
                                         and not self._is_episode_range_covered(
-                                            meta=torrent_meta, subscribe=subscribe
+                                            meta=torrent_meta,
+                                            subscribe=subscribe,
+                                            episode_location=episode_location,
                                         )
                                     ):
                                         logger.info(
@@ -1066,6 +1150,7 @@ class SubscribeChain(ChainBase):
                                             subscribe=subscribe,
                                             context=context,
                                             priority=torrent_info.pri_order,
+                                            episode_location=episode_location,
                                         )
                                         if not interested_episodes:
                                             logger.info(
@@ -1158,7 +1243,15 @@ class SubscribeChain(ChainBase):
             updated = False
             for download in downloads:
                 download_priority = download.torrent_info.pri_order
-                downloaded_episodes = self.__get_downloaded_episodes([download])
+                if download.located_episodes:
+                    downloaded_episodes = sorted(download.located_episodes)
+                else:
+                    downloaded_episodes = self.__get_downloaded_episodes([download])
+                    downloaded_episodes = self.__normalize_best_version_resource_episodes(
+                        meta=download.meta_info,
+                        subscribe=subscribe,
+                        episodes=downloaded_episodes,
+                    )
                 if not downloaded_episodes and self.__is_full_season_resource(download.meta_info, subscribe):
                     # 整包下载时资源标题常不携带集数，视为覆盖当前订阅的全部目标集。
                     downloaded_episodes = self.__get_best_version_target_episodes(subscribe)
@@ -1519,6 +1612,7 @@ class SubscribeChain(ChainBase):
 
                             # 如果是电视剧
                             if torrent_mediainfo.type == MediaType.TV:
+                                episode_location = self.__locate_context_episodes(context=_context, subscribe=subscribe)
                                 # 有多季的不要
                                 if len(torrent_meta.season_list) > 1:
                                     logger.debug(f'{torrent_info.title} 有多季，不处理')
@@ -1538,20 +1632,24 @@ class SubscribeChain(ChainBase):
                                         # 缺失集
                                         no_exists_info = no_exists.get(mediakey).get(subscribe.season)
                                         if no_exists_info:
+                                            torrent_episodes = episode_location.target_episodes \
+                                                if self.__is_high_confidence_episode_location(episode_location) \
+                                                else torrent_meta.episode_list
                                             # 是否有交集
                                             if no_exists_info.episodes and \
-                                                    torrent_meta.episode_list and \
+                                                    torrent_episodes and \
                                                     not set(no_exists_info.episodes).intersection(
-                                                        set(torrent_meta.episode_list)
+                                                        set(torrent_episodes)
                                                     ):
                                                 logger.debug(
-                                                    f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集'
+                                                    f'{torrent_info.title} 对应剧集 {torrent_episodes} 未包含缺失的剧集'
                                                 )
                                                 continue
                                 else:
                                     if not self.__is_full_season_best_version_resource(
                                         meta=torrent_meta,
                                         subscribe=subscribe,
+                                        episode_location=episode_location,
                                     ):
                                         logger.debug(
                                             f"{subscribe.name} 正在全集洗版，{torrent_info.title} 不是全集资源"
@@ -1563,6 +1661,7 @@ class SubscribeChain(ChainBase):
                                         and not self._is_episode_range_covered(
                                             meta=torrent_meta,
                                             subscribe=subscribe,
+                                            episode_location=episode_location,
                                         )
                                     ):
                                         logger.debug(
@@ -1598,6 +1697,7 @@ class SubscribeChain(ChainBase):
                                         subscribe=subscribe,
                                         context=_context,
                                         priority=torrent_info.pri_order,
+                                        episode_location=episode_location,
                                     )
                                     if not interested_episodes:
                                         logger.info(
@@ -3228,11 +3328,17 @@ class SubscribeChain(ChainBase):
         )
 
     @classmethod
-    def _is_episode_range_covered(cls, meta: MetaBase, subscribe: Subscribe) -> bool:
+    def _is_episode_range_covered(
+            cls,
+            meta: MetaBase,
+            subscribe: Subscribe,
+            episode_location: Optional[EpisodeLocation] = None,
+    ) -> bool:
         """
         判断种子是否覆盖当前仍需洗版的剧集范围。
         """
-        episodes = meta.episode_list
+        episodes = episode_location.target_episodes if cls.__is_high_confidence_episode_location(episode_location) \
+            else cls.__normalize_best_version_resource_episodes(meta=meta, subscribe=subscribe)
         if not episodes:
             # 没有剧集信息，表示该种子为合集
             return True
