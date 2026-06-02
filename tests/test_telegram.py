@@ -19,8 +19,11 @@ class TestTelegram(unittest.TestCase):
         模拟 telebot.TeleBot 以避免真实 API 调用：空 token 会让 Telegram.__init__ 提前返回、
         属性未初始化导致 send_* 抛错；这里用假 bot 让初始化完整且消息发送走内存桩。
         """
-        self.telebot_patcher = patch("app.modules.telegram.telegram.TeleBot")
-        mock_telebot_cls = self.telebot_patcher.start()
+        # 用 addCleanup 注册停桩：即使下方 Telegram(...) 初始化抛错、setUp 未跑完，
+        # 已启动的 patcher 也会被清理，杜绝 patch 泄漏污染后续用例（tearDown 在 setUp 失败时不执行）。
+        telebot_patcher = patch("app.modules.telegram.telegram.TeleBot")
+        mock_telebot_cls = telebot_patcher.start()
+        self.addCleanup(telebot_patcher.stop)
         self.mock_bot_instance = MagicMock()
         # get_me 用于初始化 bot 用户名，需返回带 username 的对象
         self.mock_bot_instance.get_me.return_value = MagicMock(username="test_bot")
@@ -28,16 +31,12 @@ class TestTelegram(unittest.TestCase):
 
         # send_medias/send_msg 发图时会经 ImageHelper().fetch_image 按 poster_path 真实下载海报，
         # 单测必须打桩，否则对 raw.githubusercontent.com 等外链发起真实 HTTP（外部 IO 不可接受且拖慢用例）。
-        self.image_patcher = patch("app.modules.telegram.telegram.ImageHelper")
-        mock_image_cls = self.image_patcher.start()
+        image_patcher = patch("app.modules.telegram.telegram.ImageHelper")
+        mock_image_cls = image_patcher.start()
+        self.addCleanup(image_patcher.stop)
         mock_image_cls.return_value.fetch_image.return_value = b"fake-image-bytes"
 
         self.telegram = Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
-
-    def tearDown(self):
-        """测试后清理：停止 TeleBot 与 ImageHelper 打桩。"""
-        self.telebot_patcher.stop()
-        self.image_patcher.stop()
 
     def test_send_msg_success(self):
         """测试发送普通消息成功"""

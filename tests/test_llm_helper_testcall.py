@@ -174,8 +174,12 @@ class _OfflineProviderManager:
             base_url_preset_id=None,
             user_agent=None,
             use_proxy=None,
+            **kwargs,
     ):
-        """按 provider 返回离线运行时结构，全程不触发网络请求。"""
+        """按 provider 返回离线运行时结构，全程不触发网络请求。
+
+        **kwargs 吸收未来真实 resolve_runtime 可能新增的关键字参数，避免签名扩展时替身抛 TypeError。
+        """
         normalized = (provider_id or "").strip().lower()
         return {
             "provider_id": normalized,

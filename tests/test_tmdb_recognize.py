@@ -75,8 +75,14 @@ def setUpModule():
         patch.object(MoviePilotServerHelper, "report_recognize_share", new=MagicMock(return_value=None)),
         patch.object(MoviePilotServerHelper, "query_recognize_share", new=MagicMock(return_value=None)),
     ])
-    for patcher in _PATCHERS:
-        patcher.start()
+    try:
+        for patcher in _PATCHERS:
+            patcher.start()
+    except Exception:
+        # 任一 patcher.start() 失败（如重构致类/方法改名）时回滚已启动的桩并清空，
+        # 避免半启动状态泄漏到其它测试模块。
+        tearDownModule()
+        raise
 
 
 def tearDownModule():

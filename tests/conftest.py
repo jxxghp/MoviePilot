@@ -10,7 +10,21 @@ from types import ModuleType
 if not os.environ.get("CONFIG_DIR"):
     _isolated_config_dir = tempfile.mkdtemp(prefix="mp-test-config-")
     os.environ["CONFIG_DIR"] = _isolated_config_dir
-    atexit.register(shutil.rmtree, _isolated_config_dir, ignore_errors=True)
+
+    def _cleanup_isolated_config_dir():
+        """进程退出时先释放 SQLite 连接池再删临时目录。
+
+        Windows 下 Engine 若仍持有 user.db 的文件锁，直接 rmtree 会因占用而静默失败
+        （ignore_errors=True）、残留临时目录；先 dispose 释放连接再删可规避。
+        """
+        try:
+            from app.db import Engine
+            Engine.dispose()
+        except Exception:
+            pass
+        shutil.rmtree(_isolated_config_dir, ignore_errors=True)
+
+    atexit.register(_cleanup_isolated_config_dir)
 
 # app.helper.sites 由独立仓库动态拉取（CI / 全新环境无该模块），而众多 app.chain.* /
 # app.modules.* 在 import 期依赖它。在此统一补一个最小垫片，省去各测试文件各自打桩；

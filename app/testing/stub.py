@@ -50,7 +50,9 @@ def snapshot_modules(prefix: Optional[str] = None) -> Dict[str, Any]:
     """
     if prefix is None:
         return dict(sys.modules)
-    return {k: v for k, v in sys.modules.items() if k == prefix.rstrip(".") or k.startswith(prefix)}
+    # 归一去掉末尾点后按"精确父模块或其子模块路径"匹配，避免 prefix="app" 误配到 "apple"
+    parent = prefix.rstrip(".")
+    return {k: v for k, v in sys.modules.items() if k == parent or k.startswith(parent + ".")}
 
 
 def restore_modules(snapshot: Dict[str, Any], prefix: Optional[str] = None) -> None:
@@ -65,7 +67,8 @@ def restore_modules(snapshot: Dict[str, Any], prefix: Optional[str] = None) -> N
         in_scope = lambda name: True  # noqa: E731
     else:
         head = prefix.rstrip(".")
-        in_scope = lambda name: name == head or name.startswith(prefix)  # noqa: E731
+        # 同 snapshot_modules：精确父模块或其子模块路径，避免 prefix="app" 误配 "apple"
+        in_scope = lambda name: name == head or name.startswith(head + ".")  # noqa: E731
     # 移除范围内、快照中没有的新增项（通常是测试塞入的假桩）
     for name in [n for n in sys.modules if in_scope(n) and n not in snapshot]:
         sys.modules.pop(name, None)
