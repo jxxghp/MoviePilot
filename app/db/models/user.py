@@ -31,6 +31,8 @@ class User(Base):
     permissions = Column(JSON, default=dict)
     # 用户个性化设置 json
     settings = Column(JSON, default=dict)
+    # OpenID Connect Subject ID，来自IdP的唯一标识
+    openid_sub = Column(String, index=True, nullable=True)
 
     @classmethod
     @db_query
@@ -107,3 +109,26 @@ class User(Base):
             })
             return True
         return False
+
+    @classmethod
+    @db_query
+    def get_by_openid_sub(cls, db: Session, openid_sub: str):
+        """
+        根据 OpenID Subject ID 查询用户
+        :param openid_sub: OIDC Provider 返回的唯一标识
+        :return: 用户对象，未找到返回 None
+        """
+        return db.query(cls).filter(cls.openid_sub == openid_sub).first()
+
+    @classmethod
+    @async_db_query
+    async def async_get_by_openid_sub(cls, db: AsyncSession, openid_sub: str):
+        """
+        异步根据 OpenID Subject ID 查询用户
+        :param openid_sub: OIDC Provider 返回的唯一标识
+        :return: 用户对象，未找到返回 None
+        """
+        result = await db.execute(
+            select(cls).filter(cls.openid_sub == openid_sub)
+        )
+        return result.scalars().first()

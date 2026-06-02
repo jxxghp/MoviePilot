@@ -153,3 +153,19 @@ class UserOper(DbOper):
                     if user_setting.get(k) == str(v):
                         return user.name
         return None
+
+    def get_by_openid_sub(self, openid_sub: str) -> Optional[User]:
+        """
+        根据 OpenID Subject ID 查询用户
+        :param openid_sub: OIDC Provider 返回的唯一标识
+        :return: 用户对象，未找到返回 None
+        """
+        return User.get_by_openid_sub(self._db, openid_sub)
+
+    async def async_get_by_openid_sub(self, openid_sub: str) -> Optional[User]:
+        """
+        异步根据 OpenID Subject ID 查询用户
+        :param openid_sub: OIDC Provider 返回的唯一标识
+        :return: 用户对象，未找到返回 None
+        """
+        return await User.async_get_by_openid_sub(self._db, openid_sub)

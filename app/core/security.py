@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import traceback
 from datetime import timedelta
 from typing import Any, Union, Annotated, Optional
@@ -419,3 +420,178 @@ def nexusphp_encrypt(data_str: str, key: bytes) -> str:
 
     # 对 JSON 字符串进行 Base64 编码
     return base64.b64encode(json_str.encode()).decode()
+
+
+# ==================== OIDC 相关方法 ====================
+
+# OIDC state 缓存（state -> user_id，绑定流程时关联用户）
+_oidc_state_cache: dict[str, Optional[int]] = {}
+
+
+def is_oidc_enabled() -> bool:
+    """
+    判断 OIDC 登录是否已启用
+    :return: OIDC_ENABLE 开关启用且 OIDC_ISSUER 有值时返回 True
+    """
+    return settings.OIDC_ENABLE and bool(settings.OIDC_ISSUER)
+
+
+async def get_oidc_discovery() -> dict:
+    """
+    获取 OIDC Provider 的发现文档
+    :return: 发现文档字典，包含 authorization_endpoint、token_endpoint、userinfo_endpoint 等
+    :raises HTTPException: 获取失败时抛出异常
+    """
+    issuer = settings.OIDC_ISSUER.rstrip("/")
+    # 如果用户已填写完整的发现文档 URL，直接使用
+    if issuer.endswith("/.well-known/openid-configuration"):
+        discovery_url = issuer
+    else:
+        discovery_url = f"{issuer}/.well-known/openid-configuration"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(discovery_url)
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        logger.error(f"获取 OIDC 发现文档失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取 OIDC 发现文档失败: {e}",
+        )
+
+
+def generate_oidc_state() -> str:
+    """
+    生成 OIDC state 参数（防 CSRF）
+    :return: 随机 state 字符串
+    """
+    return secrets.token_urlsafe(32)
+
+
+def store_oidc_state(state: str, user_id: Optional[int] = None, action: str = "login", **kwargs) -> None:
+    """
+    存储 OIDC state 及关联的数据
+    :param state: OIDC state 字符串
+    :param user_id: 关联的用户ID，登录流程时为 None，绑定时为当前用户ID
+    :param action: 操作类型，"login" 或 "bind"
+    """
+    _oidc_state_cache[state] = {"user_id": user_id, "action": action}
+    # 清理过期的 state（5分钟前的）
+    _cleanup_oidc_states()
+
+
+def pop_oidc_state(state: str) -> Optional[dict]:
+    """
+    取出并删除 OIDC state 关联的数据
+    :param state: OIDC state 字符串
+    :return: 关联的数据字典 {"user_id": ..., "action": ...}，不存在时返回 None
+    """
+    return _oidc_state_cache.pop(state, None)
+
+
+def _cleanup_oidc_states() -> None:
+    """
+    清理过多的 OIDC state 缓存（防止内存泄漏）
+    """
+    if len(_oidc_state_cache) > 1000:
+        # 保留后 500 个
+        keys = list(_oidc_state_cache.keys())
+        for key in keys[:500]:
+            _oidc_state_cache.pop(key, None)
+
+
+async def build_oidc_authorize_url(redirect_uri: str, state: str) -> str:
+    """
+    构建 OIDC 授权跳转 URL
+    :param redirect_uri: 回调地址
+    :param state: CSRF 防护 state
+    :return: 完整的授权 URL
+    """
+    discovery = await get_oidc_discovery()
+    authorization_endpoint = discovery.get("authorization_endpoint")
+    if not authorization_endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OIDC 发现文档中缺少 authorization_endpoint",
+        )
+    params = {
+        "client_id": settings.OIDC_CLIENT_ID,
+        "response_type": "code",
+        "scope": settings.OIDC_SCOPES,
+        "redirect_uri": redirect_uri,
+        "state": state,
+    }
+    from urllib.parse import urlencode
+    return f"{authorization_endpoint}?{urlencode(params)}"
+
+
+async def oidc_exchange_code(code: str, redirect_uri: str) -> dict:
+    """
+    使用授权码换取 Token
+    :param code: OIDC 授权码
+    :param redirect_uri: 回调地址
+    :return: Token 响应，包含 access_token、id_token 等
+    :raises HTTPException: 换取失败时抛出异常
+    """
+    discovery = await get_oidc_discovery()
+    token_endpoint = discovery.get("token_endpoint")
+    if not token_endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OIDC 发现文档中缺少 token_endpoint",
+        )
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                token_endpoint,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "client_id": settings.OIDC_CLIENT_ID,
+                    "client_secret": settings.OIDC_CLIENT_SECRET,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        logger.error(f"OIDC 授权码换取 Token 失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"OIDC 授权码换取 Token 失败: {e}",
+        )
+
+
+async def oidc_get_userinfo(access_token: str) -> dict:
+    """
+    使用 Access Token 获取用户信息
+    :param access_token: OIDC Access Token
+    :return: 用户信息字典，包含 sub、preferred_username、email 等
+    :raises HTTPException: 获取失败时抛出异常
+    """
+    discovery = await get_oidc_discovery()
+    userinfo_endpoint = discovery.get("userinfo_endpoint")
+    if not userinfo_endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OIDC 发现文档中缺少 userinfo_endpoint",
+        )
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                userinfo_endpoint,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        logger.error(f"获取 OIDC 用户信息失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"获取 OIDC 用户信息失败: {e}",
+        )

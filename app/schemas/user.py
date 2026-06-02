@@ -21,6 +21,8 @@ class UserBase(BaseModel):
     permissions: Optional[dict] = Field(default_factory=dict)
     # 个性化设置
     settings: Optional[dict] = Field(default_factory=dict)
+    # OpenID Connect Subject ID
+    openid_sub: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

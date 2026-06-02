@@ -103,6 +103,20 @@ class ConfigModel(BaseModel):
     # 用户认证站点
     AUTH_SITE: str = ""
 
+    # ==================== OIDC 配置 ====================
+    # OIDC 登录开关，启用后可使用 OIDC 账号登录
+    OIDC_ENABLE: bool = False
+    # OIDC 签发者 URL
+    OIDC_ISSUER: Optional[str] = None
+    # OIDC 客户端 ID
+    OIDC_CLIENT_ID: Optional[str] = None
+    # OIDC 客户端密钥
+    OIDC_CLIENT_SECRET: Optional[str] = None
+    # OIDC 请求的 scopes
+    OIDC_SCOPES: str = "openid profile email"
+    # OIDC 回调地址，留空则自动根据请求地址生成
+    OIDC_REDIRECT_URI: Optional[str] = None
+
     # ==================== 数据库配置 ====================
     # 数据库类型，支持 sqlite 和 postgresql，默认使用 sqlite
     DB_TYPE: str = "sqlite"

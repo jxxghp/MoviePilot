@@ -2,10 +2,12 @@ import base64
 import re
 from typing import Annotated, Any, List, Union
 
-from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
+from app.core import security
 from app.core.security import get_password_hash
 from app.db import get_async_db
 from app.db.models.user import User
@@ -13,8 +15,12 @@ from app.db.user_oper import (
     get_current_active_superuser_async,
     get_current_active_user_async,
     get_current_active_user,
+    UserOper,
 )
 from app.db.userconfig_oper import UserConfigOper
+from app.core.config import settings
+from app.log import logger
+from app.helper.sites import SitesHelper  # noqa
 
 router = APIRouter()
 
@@ -195,3 +201,98 @@ async def read_user_by_name(
     if not current_user.is_superuser:
         raise HTTPException(status_code=400, detail="用户权限不足")
     return user
+
+
+# ==================== OIDC 绑定/解绑端点 ====================
+
+
+@router.get("/oidc/status", summary="查询 OIDC 绑定状态")
+async def oidc_status(
+    current_user: User = Depends(get_current_active_user_async),
+) -> Any:
+    """
+    查询当前用户 OIDC 绑定状态
+    """
+    return schemas.Response(
+        success=True,
+        data={
+            "bound": bool(current_user.openid_sub),
+            "enabled": security.is_oidc_enabled(),
+        },
+    )
+
+
+@router.get("/oidc/bind/authorize", summary="OIDC 绑定授权跳转")
+async def oidc_bind_authorize(
+    request: Request,
+    db: AsyncSession = Depends(get_async_db),
+    access_token: str = None,
+):
+    """
+    发起 OIDC 绑定，生成 state（关联当前用户ID）并重定向到 IdP 授权页面
+
+    支持通过 access_token 查询参数传入 JWT（弹窗场景下无法携带 Authorization 头部）
+    绑定流程复用登录回调地址 /login/oidc/callback，通过 state 中的 action 区分
+    """
+    current_user = None
+
+    if access_token:
+        # 弹窗场景：通过 query 参数传入 JWT
+        try:
+            import jwt as jwt_lib
+            from app.core.security import ALGORITHM
+            payload = jwt_lib.decode(access_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+            token_payload = schemas.TokenPayload(**payload)
+            if token_payload.purpose != "authentication":
+                raise HTTPException(status_code=403, detail="令牌用途不匹配")
+            user = await User.async_get(db, rid=token_payload.sub)
+            if not user:
+                raise HTTPException(status_code=403, detail="用户不存在")
+            if not user.is_active:
+                raise HTTPException(status_code=403, detail="用户未激活")
+            current_user = user
+        except jwt_lib.DecodeError:
+            raise HTTPException(status_code=401, detail="无效的访问令牌")
+        except jwt_lib.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="无效的访问令牌")
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not security.is_oidc_enabled():
+        raise HTTPException(status_code=400, detail="OIDC 未启用")
+
+    if current_user.openid_sub:
+        raise HTTPException(status_code=400, detail="当前用户已绑定 OIDC 账号")
+
+    # 生成 state 并标记为绑定操作，关联当前用户ID
+    state = security.generate_oidc_state()
+    security.store_oidc_state(state, user_id=current_user.id, action="bind")
+
+    # 复用登录回调地址，通过 state 区分登录和绑定
+    redirect_uri = settings.OIDC_REDIRECT_URI or str(request.url_for("oidc_callback"))
+
+    # 构建授权 URL 并重定向
+    authorize_url = await security.build_oidc_authorize_url(
+        redirect_uri=redirect_uri, state=state
+    )
+    return RedirectResponse(url=authorize_url)
+
+
+
+
+@router.post("/oidc/unbind", summary="解绑 OIDC 账号", response_model=schemas.Response)
+async def oidc_unbind(
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_active_user_async),
+) -> Any:
+    """
+    解绑当前用户的 OIDC 账号
+    """
+    if not current_user.openid_sub:
+        return schemas.Response(success=False, message="当前用户未绑定 OIDC 账号")
+
+    user_name = current_user.name
+    await current_user.async_update(db, {"openid_sub": None})
+    logger.info(f"用户 {user_name} 已解绑 OIDC 账号")
+    return schemas.Response(success=True)
