@@ -5,7 +5,6 @@ from typing import Union, Optional, Tuple
 
 from Crypto import Random
 from Crypto.Cipher import AES
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding, rsa
 
@@ -63,11 +62,10 @@ class RSAUtils:
             private_key_bytes = base64.b64decode(private_key)
 
             # 加载公钥
-            public_key = serialization.load_der_public_key(public_key_bytes, backend=default_backend())
+            public_key = serialization.load_der_public_key(public_key_bytes)
 
             # 加载私钥
-            private_key = serialization.load_der_private_key(private_key_bytes, password=None,
-                                                             backend=default_backend())
+            private_key = serialization.load_der_private_key(private_key_bytes, password=None)
 
             # 测试加解密
             message = b'test'
