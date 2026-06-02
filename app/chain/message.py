@@ -839,8 +839,9 @@ class MessageChain(ChainBase):
             source_path = src_fileitem.get("path") if isinstance(src_fileitem, dict) else ""
             source_path = source_path or his.src or ""
             season_episode = f"{his.seasons or ''}{his.episodes or ''}".strip()
+            # 键名必须与 System Tasks.yaml 中 manual_transfer_redo 模板的占位符一致
             template_context = {
-                "his_id": his.id,
+                "history_id": his.id,
                 "current_status": "success" if his.status else "failed",
                 "recognized_title": his.title or "unknown",
                 "media_type": his.type or "unknown",
