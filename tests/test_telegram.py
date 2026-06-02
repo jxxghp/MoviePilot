@@ -26,11 +26,18 @@ class TestTelegram(unittest.TestCase):
         self.mock_bot_instance.get_me.return_value = MagicMock(username="test_bot")
         mock_telebot_cls.return_value = self.mock_bot_instance
 
+        # send_medias/send_msg 发图时会经 ImageHelper().fetch_image 按 poster_path 真实下载海报，
+        # 单测必须打桩，否则对 raw.githubusercontent.com 等外链发起真实 HTTP（外部 IO 不可接受且拖慢用例）。
+        self.image_patcher = patch("app.modules.telegram.telegram.ImageHelper")
+        mock_image_cls = self.image_patcher.start()
+        mock_image_cls.return_value.fetch_image.return_value = b"fake-image-bytes"
+
         self.telegram = Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
 
     def tearDown(self):
-        """测试后清理：停止 TeleBot 打桩。"""
+        """测试后清理：停止 TeleBot 与 ImageHelper 打桩。"""
         self.telebot_patcher.stop()
+        self.image_patcher.stop()
 
     def test_send_msg_success(self):
         """测试发送普通消息成功"""
@@ -100,7 +107,7 @@ class TestTelegram(unittest.TestCase):
         """测试发送带链接和按钮的媒体列表消息"""
         media1 = MediaInfo()
         media1.type = MediaType.MOVIE
-        media1.title = "测试*-|\.电影1"
+        media1.title = r"测试*-|\.电影1"
         media1.year = "2023"
         media1.vote_average = 8.5
         media1.poster_path = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Frontend/refs/heads/v2/public/logo.png"
@@ -133,7 +140,7 @@ class TestTelegram(unittest.TestCase):
         media_info.poster_path = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Frontend/refs/heads/v2/public/logo.png"
 
         torrent_info = TorrentInfo()
-        torrent_info.site_name = "测试*-|\.站点"
+        torrent_info.site_name = r"测试*-|\.站点"
         torrent_info.title = "唐朝诡事录"
         torrent_info.description = "唐朝诡事录之长安3 / 唐朝诡事录3 / 唐朝诡事录 第三部 / 唐朝诡事录·长安 / 唐诡3 / Horror Stories of Tang Dynasty Ⅲ / Strange Legend of Tang Dynasty Ⅲ 第3季 第31-32集 | 主演: 杨旭文 杨志刚 郜思雯 [内封简繁英多国软字幕] 【去头尾广告纯享版】[非伪去头] *发现未去净的广告或片头片尾，奖励魔力1W"
         torrent_info.page_url = "http://example.com/torrent"

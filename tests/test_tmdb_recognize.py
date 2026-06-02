@@ -1,11 +1,89 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import json
+from copy import deepcopy
+from pathlib import Path
 from unittest import TestCase
+from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from app.core.metainfo import MetaInfo
 from app.chain import ChainBase
+from app.helper.server import MoviePilotServerHelper
 from app.modules.themoviedb import TheMovieDbModule
+from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
 from app.schemas.types import MediaType
+
+# 离线 TMDB 响应回放：识别测试断言的是 tmdbid 优先/电影电视消歧/类型推断等逻辑，
+# 这些逻辑需要真实结构的 TMDB 响应才有意义，但直连 api.themoviedb.org 属于不可接受的
+# 外部 IO（CI 冷缓存下单文件 ~75s 且 flaky）。这里用一次性录制的真实响应 cassette 回放
+# TMDb 的 HTTP 出入口，既保持识别逻辑被真实数据驱动，又彻底离线。重新录制见提交说明。
+_CASSETTE_PATH = Path(__file__).resolve().parent / "fixtures" / "tmdb_recognize_cassette.json"
+_CASSETTE: dict = json.loads(_CASSETTE_PATH.read_text(encoding="utf-8"))
+# 响应快照标记键，与 TMDb._snapshot_response 写入的结构保持一致
+_MARKER = TMDb._RESPONSE_SNAPSHOT_MARKER
+
+
+def _cassette_key(url: str) -> str:
+    """把 TMDB 请求 URL 归一化为 cassette 键：剥离易变的 api_key，其余 query 排序。
+
+    `_build_url` 生成形如 `/3/movie/23155?api_key=...&append_to_response=...&language=zh`，
+    剥离 api_key 后键在不同环境/不同 key 下保持稳定。
+    """
+    parts = urlsplit(url)
+    query = sorted((k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "api_key")
+    return f"{parts.path}?{urlencode(query)}"
+
+
+def _replay(url: str) -> dict:
+    """按归一化键回放录制的响应快照；未命中即报错提示重新录制，避免静默漏过新请求。"""
+    key = _cassette_key(url)
+    if key not in _CASSETTE:
+        raise AssertionError(
+            f"TMDB cassette 未命中：{key}；如识别流程新增请求，请重新录制 "
+            f"tests/fixtures/tmdb_recognize_cassette.json"
+        )
+    # headers 置空：识别只消费 json，丢弃录制头可规避限流/ETag 等无关分支
+    return {_MARKER: True, "headers": {}, "json": deepcopy(_CASSETTE[key])}
+
+
+def _replay_request(self, method, url, data, json=None, **kwargs):  # noqa: A002 - 对齐被替换方法签名
+    """TMDb.request 的离线替身（同步）。"""
+    return _replay(url)
+
+
+async def _replay_async_request(self, method, url, data, json=None, **kwargs):  # noqa: A002 - 同上
+    """TMDb.async_request 的离线替身（异步）。"""
+    return _replay(url)
+
+
+_PATCHERS: list = []
+
+
+def setUpModule():
+    """整文件生效：离线化 TMDB HTTP 与共享识别 API，确保零真实请求。
+
+    ChainBase.async_recognize_media 在识别成功后会经 MoviePilotServerHelper 向
+    MP 服务器（movie-pilot.org）的「共享识别 API」上报/查询；识别失败时还会反向
+    查询。这两条链路与 TMDB 目录无关，必须一并打桩，否则 Chain 端到端用例仍会真发请求。
+    """
+    _PATCHERS.extend([
+        patch.object(TMDb, "request", _replay_request),
+        patch.object(TMDb, "async_request", _replay_async_request),
+        patch.object(MoviePilotServerHelper, "async_report_recognize_share", new=AsyncMock(return_value=None)),
+        patch.object(MoviePilotServerHelper, "async_query_recognize_share", new=AsyncMock(return_value=None)),
+        patch.object(MoviePilotServerHelper, "report_recognize_share", new=MagicMock(return_value=None)),
+        patch.object(MoviePilotServerHelper, "query_recognize_share", new=MagicMock(return_value=None)),
+    ])
+    for patcher in _PATCHERS:
+        patcher.start()
+
+
+def tearDownModule():
+    """还原 TMDb HTTP 出口打桩，避免影响其它测试模块。"""
+    for patcher in _PATCHERS:
+        patcher.stop()
+    _PATCHERS.clear()
 
 
 class TmdbRecognizeModuleTest(TestCase):

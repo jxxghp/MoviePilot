@@ -172,13 +172,12 @@ class NettestSecurityTest(unittest.TestCase):
         ), patch.object(
             system_endpoint.RequestUtils, "generate_cache_headers", return_value={}, create=True
         ), patch.object(
+            # is_safe_image_url_async 经 evaluate_url_safety_async 走异步解析
+            # _hostname_addresses_async（loop.getaddrinfo）；必须 mock 异步版本，
+            # 否则真实 DNS 逃逸到 img1.doubanio.com，且私网放行分支根本不会被执行到。
             system_endpoint.SecurityUtils,
-            "_is_global_hostname",
-            return_value=False,
-        ), patch.object(
-            system_endpoint.SecurityUtils,
-            "_hostname_addresses",
-            return_value=[ipaddress.ip_address("198.18.16.96")],
+            "_hostname_addresses_async",
+            new=AsyncMock(return_value=[ipaddress.ip_address("198.18.16.96")]),
         ), patch.object(
             system_endpoint.settings,
             "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
