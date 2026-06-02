@@ -41,6 +41,10 @@ Before executing any task, identify the domain and load the corresponding docume
 * **Primary Reference:** `docs/rules/11-quality-and-security.md`
 * **Required Constraints:** All code changes must pass the relevant pytest tests and pylint checks. Dependency changes require a passing safety scan.
 
+### Testing
+* **Primary Reference:** `docs/testing.md`
+* **Required Constraints:** pytest is the only runner; `tests/conftest.py` isolates each run to a temporary `CONFIG_DIR`. Tests must not touch the real database, network, or external services (TMDB, LLM catalogs, downloaders, media servers, MP server) — mock at the boundary or replay recorded responses; the bar is zero real outbound traffic. Tests must restore any process-level state they stub (`sys.modules`, singletons, caches, settings). New tests must be pytest-native (function + `assert` + fixtures); do not add new `unittest.TestCase`. Convert existing `TestCase` files to pytest-native opportunistically when you modify them.
+
 ### Commands and Development Workflow
 * **Primary Reference:** `docs/rules/03-commands.md`
 * **Required Constraints:** Only suggest or execute commands documented in that file. Do not assume tool defaults or global flags.
