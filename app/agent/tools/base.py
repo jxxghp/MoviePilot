@@ -132,7 +132,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         super().__init__(**kwargs)
         self._session_id = session_id
         self._user_id = user_id
-        self._require_admin = getattr(self.__class__, "require_admin", False)
+        # require_admin 在各工具子类以 pydantic 字段声明，pydantic v2 不在类对象上暴露字段值
+        # （getattr(cls, ...) 取不到），必须经实例读取——super().__init__() 已按字段默认填充实例；
+        # getattr 兜底兼容未声明该字段的工具，缺省按非管理员（False）处理。
+        self._require_admin = getattr(self, "require_admin", False)
         self.tags = self._build_tool_tags()
 
     @staticmethod
