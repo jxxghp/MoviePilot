@@ -76,7 +76,3 @@ class MediaServerImageSigningTest(unittest.TestCase):
         result = chain.get_latest_wallpapers()
 
         self.assertEqual(SecurityUtils.verify_signed_url(result[0]), wallpaper)
-
-
-if __name__ == "__main__":
-    unittest.main()

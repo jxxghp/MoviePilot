@@ -510,7 +510,3 @@ class TestAgentToolStreaming(unittest.TestCase):
         synthesize_speech.assert_not_called()
         self.assertEqual(notification.text, "你好")
         self.assertIsNone(notification.voice_path)
-
-
-if __name__ == "__main__":
-    unittest.main()

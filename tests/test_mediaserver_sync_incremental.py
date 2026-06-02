@@ -151,7 +151,3 @@ class MediaServerIncrementalSyncTest(unittest.TestCase):
         self.assertEqual(items[0].title, "New Title")
         self.assertEqual(items[0].path, "/media/new.mkv")
         self.assertNotEqual(items[0].lst_mod_date, old_sync_time)
-
-
-if __name__ == "__main__":
-    unittest.main()

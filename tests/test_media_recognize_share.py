@@ -437,7 +437,3 @@ class TestMediaRecognizeShare(unittest.TestCase):
         self.assertIs(result, mediainfo)
         recognize_mock.assert_awaited_once()
         obtain_images_mock.assert_not_awaited()
-
-
-if __name__ == "__main__":
-    unittest.main()

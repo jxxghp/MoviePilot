@@ -373,7 +373,3 @@ class WechatClawBotTest(unittest.TestCase):
             mime_type="text/plain",
             context_token=None,
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

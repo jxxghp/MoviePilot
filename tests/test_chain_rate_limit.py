@@ -89,7 +89,3 @@ class ChainRateLimitTest(unittest.TestCase):
         self.assertIsNone(result)
         chain.messagehelper.put.assert_not_called()
         chain.eventmanager.send_event.assert_not_called()
-
-
-if __name__ == "__main__":
-    unittest.main()

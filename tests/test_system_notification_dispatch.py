@@ -89,7 +89,3 @@ class TestSystemNotificationDispatch(unittest.TestCase):
             send.assert_called_once_with("payload")
 
         asyncio.run(_run())
-
-
-if __name__ == "__main__":
-    unittest.main()

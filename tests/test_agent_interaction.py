@@ -220,7 +220,3 @@ class TestAgentInteraction(unittest.TestCase):
             )
 
         handle_ai_message.assert_called_once()
-
-
-if __name__ == "__main__":
-    unittest.main()

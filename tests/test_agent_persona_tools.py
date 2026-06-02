@@ -116,7 +116,3 @@ class TestAgentPersonaTools(unittest.TestCase):
         self.assertEqual(created_persona.label, "分析型")
         self.assertIn("推理", created_persona.aliases)
         self.assertIn("analytical and structured", created_persona.text)
-
-
-if __name__ == "__main__":
-    unittest.main()

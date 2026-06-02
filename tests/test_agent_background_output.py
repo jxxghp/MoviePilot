@@ -461,7 +461,3 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ReplyMode.CAPTURE_ONLY, captured["reply_mode"])
         self.assertFalse(captured["allow_message_tools"])
         self.assertEqual(SYSTEM_INTERNAL_USER_ID, captured["user_id"])
-
-
-if __name__ == "__main__":
-    unittest.main()

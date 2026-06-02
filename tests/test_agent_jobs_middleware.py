@@ -76,7 +76,3 @@ status: pending
             jobs = await _alist_jobs(AsyncPath(str(root)))
 
         self.assertEqual(["a-job", "m-job", "z-job"], [job["id"] for job in jobs])
-
-
-if __name__ == "__main__":
-    unittest.main()

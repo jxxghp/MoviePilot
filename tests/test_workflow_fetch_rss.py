@@ -41,7 +41,3 @@ class FetchRssActionTest(unittest.TestCase):
         self.assertIsNone(torrent_info.category)
         self.assertTrue(callable(getattr(torrent_info, "to_dict", None)))
         self.assertEqual("2026-05-19 08:30:00", torrent_info.pubdate)
-
-
-if __name__ == "__main__":
-    unittest.main()

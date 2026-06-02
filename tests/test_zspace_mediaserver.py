@@ -142,7 +142,3 @@ class ZSpaceMediaServerTest(unittest.TestCase):
             client._ZSpace__get_local_image_by_id("item-id"),
             "http://zspace.local/emby/Items/item-id/Images/Primary?api_key=zspace-token",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

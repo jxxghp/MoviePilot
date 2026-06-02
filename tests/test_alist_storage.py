@@ -137,7 +137,3 @@ class AlistStorageTest(unittest.TestCase):
         self.assertEqual("alist", target.storage)
         self.assertEqual("file", target.type)
         self.assertEqual(1024, target.size)
-
-
-if __name__ == "__main__":
-    unittest.main()

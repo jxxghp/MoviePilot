@@ -265,7 +265,3 @@ class TestAgentPluginTools(unittest.TestCase):
         self.assertIn("data_preview", payload)
         self.assertNotIn("data", payload)
         self.assertIn("已截断", payload["data_preview"])
-
-
-if __name__ == "__main__":
-    unittest.main()

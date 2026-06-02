@@ -110,7 +110,3 @@ class CliAutoUpdateTests(unittest.TestCase):
         command = run_mock.call_args.args[0]
         self.assertEqual(command[1:5], [str(module._repo_root() / "scripts" / "local_setup.py"), "update", "all", "--ref"])
         self.assertNotIn("--frontend-version", command)
-
-
-if __name__ == "__main__":
-    unittest.main()

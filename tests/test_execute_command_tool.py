@@ -225,7 +225,3 @@ class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("started", read_payload["output"])
         self.assertIn(kill_payload["status"], {"killed", "exited"})
-
-
-if __name__ == "__main__":
-    unittest.main()

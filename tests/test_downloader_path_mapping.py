@@ -359,7 +359,3 @@ class TransmissionPathMappingTest(unittest.TestCase):
             Path("/mnt/raid5/home_lt999lt/video/downloads/movie/Movie"),
             "tr",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

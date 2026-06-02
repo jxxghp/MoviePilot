@@ -397,7 +397,3 @@ class TestMessageChannelPermissions(unittest.TestCase):
         client.send_msg.assert_called_once_with(
             title="只有管理员才有权限执行此命令", userid="normal-user"
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

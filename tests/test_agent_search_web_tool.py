@@ -153,7 +153,3 @@ class TestAgentSearchWebTool(unittest.TestCase):
 
         self.assertEqual("http://proxy.example.com:7890", ddgs_kwargs["proxy"])
         self.assertEqual(1, len(results))
-
-
-if __name__ == "__main__":
-    unittest.main()

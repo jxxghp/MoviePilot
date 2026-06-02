@@ -73,7 +73,3 @@ class UvPipCompatTests(unittest.TestCase):
 
         self.assertEqual(["pip", "sync", "--python", argv[3], "requirements.txt"], argv)
         self.assertTrue(argv[3].endswith("/venv/bin/python"))
-
-
-if __name__ == "__main__":
-    unittest.main()

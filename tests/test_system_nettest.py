@@ -384,7 +384,3 @@ class NettestSecurityTest(unittest.TestCase):
 
         self.assertFalse(resp.success)
         self.assertIn("PIP加速代理", resp.message)
-
-
-if __name__ == "__main__":
-    unittest.main()

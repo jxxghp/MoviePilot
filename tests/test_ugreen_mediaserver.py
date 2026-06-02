@@ -195,7 +195,3 @@ class DashboardStatisticTest(unittest.TestCase):
         self.assertEqual(ret.tv_count, 22)
         self.assertEqual(ret.user_count, 3)
         self.assertEqual(ret.episode_count, 6)
-
-
-if __name__ == "__main__":
-    unittest.main()

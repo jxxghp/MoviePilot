@@ -99,7 +99,3 @@ class TemplateContextBuilderConcurrencyTest(unittest.TestCase):
 
         self.assertEqual(context.get("videoCodec"), "x265 10bit")
         self.assertEqual(context.get("videoBit"), "10bit")
-
-
-if __name__ == "__main__":
-    unittest.main()

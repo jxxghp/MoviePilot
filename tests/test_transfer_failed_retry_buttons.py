@@ -117,7 +117,3 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             post_message.call_args_list[0].args[0].title,
             "已将整理记录 #34 交给智能助手处理",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

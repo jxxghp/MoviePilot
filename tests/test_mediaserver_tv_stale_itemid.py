@@ -223,7 +223,3 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
         self.assertEqual(item_id, "new-series-id")
         self.assertEqual(episodes, {1: [1]})
         client._TrimeMedia__get_series_id_by_name.assert_called_once_with("测试剧集", "2026")
-
-
-if __name__ == "__main__":
-    unittest.main()

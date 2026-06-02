@@ -161,7 +161,3 @@ class LocalSetupUninstallTests(unittest.TestCase):
         self.assertTrue(result["config_deleted"])
         self.assertFalse(config_dir.exists())
         self.assertFalse(install_env_file.exists())
-
-
-if __name__ == "__main__":
-    unittest.main()

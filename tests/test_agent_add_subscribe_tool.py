@@ -85,7 +85,3 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
 
         self.assertEqual(async_add.await_args.kwargs["username"], "moviepilot-user")
         self.assertIn("成功添加订阅：The Matrix (1999)", result)
-
-
-if __name__ == "__main__":
-    unittest.main()

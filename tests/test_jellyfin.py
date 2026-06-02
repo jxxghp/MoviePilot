@@ -158,7 +158,3 @@ class JellyfinUserResolutionTest(unittest.TestCase):
             "http://jellyfin.local:8096/Users/user-id/Views",
             {"api_key": "api-key"},
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

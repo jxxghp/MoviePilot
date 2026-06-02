@@ -1476,7 +1476,3 @@ class TestFeishu(unittest.TestCase):
             client.send_notification.call_args.kwargs["original_message_id"],
             "om_source",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

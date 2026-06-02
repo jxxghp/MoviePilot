@@ -883,6 +883,3 @@ class TestMediaScrapeEvents(unittest.TestCase):
                 fileitem=fileitem
             )
             mock_logger.assert_called_with(f"{Path(fileitem.path)} 无法识别文件媒体信息！")
-
-if __name__ == "__main__":
-    unittest.main()

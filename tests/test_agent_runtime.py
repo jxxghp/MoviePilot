@@ -177,7 +177,3 @@ class TestAgentRuntimeConfig(unittest.TestCase):
                 for warning in runtime_config.warnings
             )
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

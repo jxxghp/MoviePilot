@@ -397,7 +397,3 @@ class AgentCapabilityManagerTest(unittest.TestCase):
             provider._decode_audio_payload(b64encode(b"opus-bytes").decode("utf-8")),
             b"opus-bytes",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

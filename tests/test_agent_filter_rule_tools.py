@@ -62,7 +62,3 @@ class TestAgentFilterRuleTools(unittest.TestCase):
             "SPECSUB & CNVOI & 4K & !BLU",
             parsed["levels"][0]["expression"],
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

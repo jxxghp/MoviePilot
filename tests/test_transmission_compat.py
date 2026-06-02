@@ -119,7 +119,3 @@ class TestTransmissionCompat(unittest.TestCase):
 
         self.assertIs(downloader.trc, fake_client)
         fake_client.set_session.assert_not_called()
-
-
-if __name__ == "__main__":
-    unittest.main()

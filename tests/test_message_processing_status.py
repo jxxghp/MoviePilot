@@ -175,7 +175,3 @@ class TestDiscordTypingLifecycle(IsolatedAsyncioTestCase):
         self.assertTrue(stopped)
         channel.trigger_typing.assert_not_called()
         self.assertNotIn("chat:30003", discord_client._typing_tasks)
-
-
-if __name__ == "__main__":
-    unittest.main()

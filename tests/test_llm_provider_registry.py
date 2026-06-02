@@ -588,7 +588,3 @@ class LlmProviderRegistryTest(unittest.TestCase):
 
         self.assertNotIn("session-old", manager._pending_sessions)
         self.assertNotIn("state-old", manager._oauth_state_index)
-
-
-if __name__ == "__main__":
-    unittest.main()

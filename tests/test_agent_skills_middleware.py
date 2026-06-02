@@ -31,7 +31,3 @@ description: test
             ["a-skill", "m-skill", "z-skill"],
             [skill["id"] for skill in skills],
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -55,7 +55,3 @@ class PlexImageLookupTest(unittest.TestCase):
             image_url,
             "http://192.168.8.254:32400/library/metadata/29242/art/1?X-Plex-Token=plex-token",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

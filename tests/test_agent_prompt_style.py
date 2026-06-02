@@ -289,7 +289,3 @@ class TestAgentPromptStyle(unittest.TestCase):
         self.assertIn("Do NOT interrupt the current task", MEMORY_ONBOARDING_PROMPT)
         self.assertIn("Do NOT proactively greet warmly", MEMORY_ONBOARDING_PROMPT)
         self.assertNotIn("greet the user warmly", MEMORY_ONBOARDING_PROMPT)
-
-
-if __name__ == "__main__":
-    unittest.main()

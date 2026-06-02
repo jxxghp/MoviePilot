@@ -1323,6 +1323,3 @@ class AgentImageSupportTest(unittest.TestCase):
                 )
 
         client.send_file.assert_called_once()
-
-if __name__ == "__main__":
-    unittest.main()

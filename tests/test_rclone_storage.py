@@ -212,7 +212,3 @@ class RcloneStorageTest(unittest.TestCase):
         self.assertIn("/C", rclone_module._folder_locks)
         self.assertIsNot(first_lock, third_lock)
         self.assertIs(second_lock, rclone_module._folder_locks["/B"])
-
-
-if __name__ == "__main__":
-    unittest.main()

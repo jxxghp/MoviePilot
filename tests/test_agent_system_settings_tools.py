@@ -145,7 +145,3 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         payload = json.loads(result)
         self.assertIn("error", payload)
         self.assertIn("系统管理员", payload["error"])
-
-
-if __name__ == "__main__":
-    unittest.main()

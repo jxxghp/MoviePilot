@@ -50,7 +50,3 @@ class TestQueryWorkflowsTool(unittest.TestCase):
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["name"], "demo")
         self.assertNotIn("result", payload[0])
-
-
-if __name__ == "__main__":
-    unittest.main()

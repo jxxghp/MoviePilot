@@ -55,7 +55,3 @@ class WebPushSubscriptionTest(unittest.TestCase):
                 SimpleNamespace(response=SimpleNamespace(status_code=500))
             )
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

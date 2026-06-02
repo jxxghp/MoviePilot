@@ -490,7 +490,3 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             )
 
         asyncio.run(_run())
-
-
-if __name__ == "__main__":
-    unittest.main()

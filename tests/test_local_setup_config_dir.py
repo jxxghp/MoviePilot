@@ -87,7 +87,3 @@ class LocalSetupConfigDirTests(unittest.TestCase):
             [str(venv_pip), "install", "-r", str(module.ROOT / "requirements.txt")]
         )
         install_browser.assert_called_once_with(venv_python)
-
-
-if __name__ == "__main__":
-    unittest.main()

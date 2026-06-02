@@ -89,7 +89,3 @@ class UgreenCryptoTest(unittest.TestCase):
         }
         decoded = self.crypto.decrypt_response(resp, req.aes_key)
         self.assertEqual(decoded, server_payload)
-
-
-if __name__ == "__main__":
-    unittest.main()

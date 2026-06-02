@@ -315,7 +315,3 @@ class TestPrepareAndSubmitScripts(FeedbackIssueScriptTestCase):
 
         self.assertEqual(result["reason"], "rate_limited_user")
         self.assertIn("30 分钟", result["message"])
-
-
-if __name__ == "__main__":
-    unittest.main()

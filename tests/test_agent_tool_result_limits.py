@@ -45,7 +45,3 @@ class TestAgentToolResultLimits(unittest.TestCase):
         self.assertEqual(payload["cookie"], "uid=abc; token=secret")
         self.assertEqual(payload["nested"]["api_key"], "secret-key")
         self.assertEqual(payload["nested"]["plugin_author"], "MoviePilot")
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -145,7 +145,3 @@ class TestMediaInteraction(unittest.TestCase):
         notification = post_medias_message.call_args.args[0]
         self.assertEqual(notification.original_message_id, 123)
         self.assertEqual(notification.original_chat_id, "456")
-
-
-if __name__ == "__main__":
-    unittest.main()

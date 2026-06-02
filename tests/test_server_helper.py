@@ -150,7 +150,3 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         with patch.object(MoviePilotServerHelper, "get_github_user", return_value="user"), \
                 patch.object(MoviePilotServerHelper, "user_permissions", return_value=response):
             self.assertFalse(MoviePilotServerHelper.is_admin_user())
-
-
-if __name__ == "__main__":
-    unittest.main()

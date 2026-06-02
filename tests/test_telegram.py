@@ -246,6 +246,3 @@ class TestTelegram(unittest.TestCase):
 
         # 验证返回值
         self.assertTrue(result)
-
-if __name__ == '__main__':
-    unittest.main()

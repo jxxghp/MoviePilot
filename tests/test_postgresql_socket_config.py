@@ -63,7 +63,3 @@ class PostgreSQLSocketConfigTests(unittest.TestCase):
             settings.DB_POSTGRESQL_TARGET,
             "socket /var/run/postgresql (port 5432)",
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

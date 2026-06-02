@@ -89,7 +89,3 @@ class BrowserHelperTests(unittest.TestCase):
             )
 
         self.assertEqual(source, "<html>ok</html>")
-
-
-if __name__ == "__main__":
-    unittest.main()

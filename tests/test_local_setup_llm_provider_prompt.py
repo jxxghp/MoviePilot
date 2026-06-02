@@ -315,7 +315,3 @@ class LocalSetupLlmProviderPromptTests(unittest.TestCase):
             base_url_preset="minimax-cn-coding",
             runtime_python=None,
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

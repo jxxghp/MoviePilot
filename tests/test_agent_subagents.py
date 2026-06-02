@@ -270,7 +270,3 @@ class TestSubAgentTaskControlMiddleware(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual("cancelled", status_payload["tasks"][0]["status"])
-
-
-if __name__ == "__main__":
-    unittest.main()

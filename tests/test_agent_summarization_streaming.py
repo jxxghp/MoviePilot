@@ -193,7 +193,3 @@ class TestAgentSummarizationStreaming(unittest.TestCase):
         self.assertFalse(
             any(type(middleware).__name__ == "AgentHooksMiddleware" for middleware in captured["middleware"])
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

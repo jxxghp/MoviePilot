@@ -68,7 +68,3 @@ class LocalSetupFrontendVersionTests(unittest.TestCase):
         self.assertIsNone(install_args.version)
         self.assertIsNone(setup_args.frontend_version)
         self.assertIsNone(update_args.frontend_version)
-
-
-if __name__ == "__main__":
-    unittest.main()

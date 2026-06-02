@@ -1113,6 +1113,3 @@ class TransferJobManagerTest(unittest.TestCase):
             ["/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv"],
             event_data["file_list"],
         )
-
-if __name__ == "__main__":
-    unittest.main()

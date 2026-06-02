@@ -135,7 +135,3 @@ class TransferRenameBuildEventTest(unittest.TestCase):
 
         self.assertIsNone(captured["source_path"])
         self.assertIsNone(captured["source_item"])
-
-
-if __name__ == "__main__":
-    unittest.main()

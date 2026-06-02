@@ -221,7 +221,3 @@ class ToolSelectorMiddlewareTest(unittest.TestCase):
         normalized = middleware._normalize_selection_response(response)
 
         self.assertEqual(normalized, {"tools": ["search"]})
-
-
-if __name__ == "__main__":
-    unittest.main()

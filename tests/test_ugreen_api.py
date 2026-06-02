@@ -107,7 +107,3 @@ class UgreenApiVerifySslTest(unittest.TestCase):
         self.assertEqual(fake_session.calls[0][1].get("verify"), False)
         self.assertEqual(fake_session.calls[1][1].get("verify"), False)
         self.assertEqual(fake_session.calls[2][1].get("verify"), False)
-
-
-if __name__ == "__main__":
-    unittest.main()

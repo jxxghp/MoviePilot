@@ -475,7 +475,3 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("ask_user_choice", tool_names)
         self.assertNotIn("send_local_file", tool_names)
         self.assertNotIn("send_voice_message", tool_names)
-
-
-if __name__ == "__main__":
-    unittest.main()

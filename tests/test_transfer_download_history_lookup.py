@@ -211,7 +211,3 @@ class TransferDownloadHistoryLookupTest(unittest.TestCase):
             )
 
         self.assertIsNone(history)
-
-
-if __name__ == "__main__":
-    unittest.main()

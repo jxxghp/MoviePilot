@@ -83,7 +83,3 @@ class TestPatchToolCallsMiddleware(unittest.TestCase):
 
         patched_messages = result["messages"].value
         self.assertEqual([msg.type for msg in patched_messages], ["human", "ai", "tool"])
-
-
-if __name__ == "__main__":
-    unittest.main()

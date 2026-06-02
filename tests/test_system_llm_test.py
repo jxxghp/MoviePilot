@@ -318,7 +318,3 @@ class LlmTestEndpointTest(unittest.TestCase):
         self.assertNotIn("sk-secret", resp.message)
         self.assertNotIn("Authorization: Bearer", resp.message)
         self.assertIn("***", resp.message)
-
-
-if __name__ == "__main__":
-    unittest.main()

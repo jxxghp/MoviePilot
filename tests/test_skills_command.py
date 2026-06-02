@@ -715,7 +715,3 @@ class TestSkillsCommand(unittest.TestCase):
             buttons=buttons,
         )
         post_message.assert_not_called()
-
-
-if __name__ == "__main__":
-    unittest.main()

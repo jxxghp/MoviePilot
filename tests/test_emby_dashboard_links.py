@@ -141,7 +141,3 @@ class EmbyDashboardLinksTest(unittest.TestCase):
         self.assertEqual(response.data["item_id"], "emby-item-id")
         self.assertEqual(response.data["server_id"], "server-id")
         self.assertEqual(response.data["server_type"], "emby")
-
-
-if __name__ == "__main__":
-    unittest.main()
