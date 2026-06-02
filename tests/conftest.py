@@ -27,30 +27,3 @@ if "app.helper.sites" not in sys.modules:
 from app.db.init import init_db  # noqa: E402
 
 init_db()
-
-
-import pytest as _pytest
-
-
-@_pytest.fixture(autouse=True)
-def _reset_meta_caches():
-    """每个用例后重置识别相关的进程级单例与 lru 缓存，避免测试间污染。
-
-    WordsMatcher/CustomizationMatcher/ReleaseGroupsMatcher 等为 Singleton，
-    自定义识别词正则走 lru_cache；测试若用不同 custom_words 调用，会让后续
-    测试命中被污染的单例状态或缓存，导致识别结果错乱。这里在每个用例后清理。
-    """
-    yield
-    try:
-        from app.core.meta.words import _compile_custom_word_regex
-        _compile_custom_word_regex.cache_clear()
-    except Exception:
-        pass
-    try:
-        from app.utils.singleton import Singleton
-        for _cls in list(Singleton._instances):
-            name = getattr(_cls, "__name__", "")
-            if name in ("WordsMatcher", "CustomizationMatcher", "ReleaseGroupsMatcher", "StreamingPlatforms"):
-                Singleton._instances.pop(_cls, None)
-    except Exception:
-        pass
