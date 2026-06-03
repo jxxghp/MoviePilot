@@ -43,16 +43,17 @@ def isolate_config_dir() -> str:
     os.environ["CONFIG_DIR"] = tmp
     _isolated_config_dir = tmp
 
-    def _cleanup(path: str = tmp, rmtree=shutil.rmtree) -> None:
+    def _cleanup(path: str = tmp, rmtree=shutil.rmtree, sys_mod=sys) -> None:
         """进程退出时释放 SQLite 连接池再删临时目录。
 
-        默认参数绑定 ``rmtree``/``path``：解释器关停期标准库模块可能已被回收为 ``None``，
+        默认参数绑定 ``rmtree``/``path``/``sys_mod``：解释器关停期标准库模块可能已被回收为 ``None``，
         绑定后仍可安全调用。先 ``Engine.dispose`` 释放 ``user.db`` 连接，规避 Windows 下
         文件锁导致 ``rmtree`` 静默失败（``ignore_errors``）、残留临时目录。
         """
         try:
-            from app.db import Engine
-            Engine.dispose()
+            db_mod = sys_mod.modules.get("app.db")
+            if db_mod is not None:
+                db_mod.Engine.dispose()
         except Exception:
             pass
         rmtree(path, ignore_errors=True)
@@ -151,15 +152,17 @@ def prepare_v1_backend(plugins_repo: Path) -> None:
 def mark_plugin_generation(items, pytest_module) -> None:
     """按用例所在目录自动给其打 ``v1`` / ``v2`` marker，供按代筛选与分会话运行。
 
-    用「不带前导斜杠」的子串匹配（``tests/v2/`` / ``tests/v1/``），兼容相对路径与绝对路径两种
-    运行方式：以 ``pytest tests/v2`` 等相对路径运行时 ``item.fspath`` 可能不含前导斜杠。
+    优先读取 pytest 7+ 的 ``item.path``，旧版 pytest 缺失该属性时回退到 ``item.fspath``。用
+    「不带前导斜杠」的子串匹配（``tests/v2/`` / ``tests/v1/``），兼容相对路径与绝对路径两种
+    运行方式：以 ``pytest tests/v2`` 等相对路径运行时收集路径可能不含前导斜杠。
     ``pytest`` 模块由各仓 conftest 传入，避免本模块在非测试态强依赖 pytest。
 
     :param items: pytest 收集到的用例集合
     :param pytest_module: 调用方传入的 ``pytest`` 模块对象
     """
     for item in items:
-        path = str(item.fspath).replace("\\", "/")
+        item_path = getattr(item, "path", None)
+        path = str(item_path if item_path is not None else item.fspath).replace("\\", "/")
         if "tests/v2/" in path:
             item.add_marker(pytest_module.mark.v2)
         elif "tests/v1/" in path:
