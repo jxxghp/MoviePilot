@@ -131,14 +131,15 @@ class PluginHelperTest(TestCase):
             self.skipTest(f"missing dependency: {exc}")
 
         module_names = ["app.plugins.dynamicwechat.helper", "Crypto.Cipher._mode_cbc"]
-        previous_modules = {name: sys.modules.get(name) for name in module_names}
 
         def fake_execute(_cmd):
             for module_name in module_names:
                 sys.modules[module_name] = ModuleType(module_name)
             return True, "ok"
 
-        try:
+        # patch.dict 进入时快照 sys.modules、退出时整体还原，替代手写逐项 save/restore；
+        # 保证 fake_execute 在安装窗口注入的运行态模块在用例结束后被清理、不污染其他用例
+        with patch.dict(sys.modules):
             with tempfile.TemporaryDirectory() as temp_dir:
                 requirements_file = Path(temp_dir) / "requirements.txt"
                 requirements_file.write_text("demo-package\n", encoding="utf-8")
@@ -149,12 +150,6 @@ class PluginHelperTest(TestCase):
             self.assertEqual("ok", message)
             for module_name in module_names:
                 self.assertIn(module_name, sys.modules)
-        finally:
-            for module_name, previous_module in previous_modules.items():
-                if previous_module is None:
-                    sys.modules.pop(module_name, None)
-                else:
-                    sys.modules[module_name] = previous_module
 
     def test_pip_install_serializes_concurrent_calls(self):
         """

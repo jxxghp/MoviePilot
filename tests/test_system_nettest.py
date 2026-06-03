@@ -1,25 +1,18 @@
 import asyncio
 import ipaddress
-import sys
 import unittest
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+from app.testing import stub_modules
 
-_ORIGINAL_STUBBED_MODULES = {}
 
-
-def _stub_module(name: str, **attrs):
-    """
-    安装临时 stub 模块，并记录原模块用于导入后恢复。
-    """
-    if name not in _ORIGINAL_STUBBED_MODULES:
-        _ORIGINAL_STUBBED_MODULES[name] = sys.modules.get(name)
+def _stub(name: str, **attrs) -> tuple:
+    """构造带指定属性的占位模块，返回 ``(模块名, 模块)`` 供 :func:`stub_modules` 使用。"""
     module = ModuleType(name)
     for key, value in attrs.items():
         setattr(module, key, value)
-    sys.modules[name] = module
-    return module
+    return name, module
 
 
 class _Dummy:
@@ -36,67 +29,42 @@ class _DummyError(Exception):
         self.duration_ms = duration_ms
 
 
-for _module_name in ("pillow_avif", "aiofiles", "psutil"):
-    _stub_module(_module_name)
+# 在 import 期用占位模块替换重依赖/外部模块，import 完由 stub_modules 精确还原，避免污染其它用例
+_STUB_MODULES = dict([
+    _stub("pillow_avif"),
+    _stub("aiofiles"),
+    _stub("psutil"),
+    _stub("app.helper.sites", SitesHelper=_Dummy),
+    _stub("app.chain.media", MediaChain=_Dummy),
+    _stub("app.chain.mediaserver", MediaServerChain=_Dummy),
+    _stub("app.chain.search", SearchChain=_Dummy),
+    _stub("app.chain.system", SystemChain=_Dummy),
+    _stub("app.core.event", eventmanager=_Dummy(), Event=_Dummy, EventManager=_Dummy),
+    _stub("app.core.metainfo", MetaInfo=_Dummy),
+    _stub("app.core.module", ModuleManager=_Dummy),
+    _stub("app.core.security", verify_apitoken=_Dummy, verify_resource_token=_Dummy, verify_token=_Dummy),
+    _stub("app.db.models", User=_Dummy),
+    _stub("app.db.systemconfig_oper", SystemConfigOper=_Dummy),
+    _stub("app.db.user_oper", get_current_active_superuser=_Dummy,
+          get_current_active_superuser_async=_Dummy, get_current_active_user_async=_Dummy),
+    _stub("app.helper.llm", LLMHelper=_Dummy, LLMTestError=_DummyError, LLMTestTimeout=_DummyError),
+    _stub("app.helper.mediaserver", MediaServerHelper=_Dummy),
+    _stub("app.helper.message", MessageHelper=_Dummy),
+    _stub("app.helper.progress", ProgressHelper=_Dummy),
+    _stub("app.helper.rule", RuleHelper=_Dummy),
+    _stub("app.helper.server", MoviePilotServerHelper=_Dummy),
+    _stub("app.helper.system", SystemHelper=_Dummy),
+    _stub("app.helper.image", ImageHelper=_Dummy),
+    _stub("app.scheduler", Scheduler=_Dummy),
+    _stub("app.log", logger=_Dummy(), log_settings=_Dummy(),
+          LogConfigModel=type("LogConfigModel", (), {})),
+    _stub("app.utils.crypto", HashUtils=_Dummy),
+    _stub("app.utils.http", RequestUtils=_Dummy, AsyncRequestUtils=_Dummy),
+    _stub("version", APP_VERSION="test", FRONTEND_VERSION="frontend-test"),
+])
 
-_stub_module("app.helper.sites", SitesHelper=_Dummy)
-_stub_module("app.chain.media", MediaChain=_Dummy)
-_stub_module("app.chain.mediaserver", MediaServerChain=_Dummy)
-_stub_module("app.chain.search", SearchChain=_Dummy)
-_stub_module("app.chain.system", SystemChain=_Dummy)
-_stub_module(
-    "app.core.event",
-    eventmanager=_Dummy(),
-    Event=_Dummy,
-    EventManager=_Dummy,
-)
-_stub_module("app.core.metainfo", MetaInfo=_Dummy)
-_stub_module("app.core.module", ModuleManager=_Dummy)
-_stub_module(
-    "app.core.security",
-    verify_apitoken=_Dummy,
-    verify_resource_token=_Dummy,
-    verify_token=_Dummy,
-)
-_stub_module("app.db.models", User=_Dummy)
-_stub_module("app.db.systemconfig_oper", SystemConfigOper=_Dummy)
-_stub_module(
-    "app.db.user_oper",
-    get_current_active_superuser=_Dummy,
-    get_current_active_superuser_async=_Dummy,
-    get_current_active_user_async=_Dummy,
-)
-_stub_module(
-    "app.helper.llm",
-    LLMHelper=_Dummy,
-    LLMTestError=_DummyError,
-    LLMTestTimeout=_DummyError,
-)
-_stub_module("app.helper.mediaserver", MediaServerHelper=_Dummy)
-_stub_module("app.helper.message", MessageHelper=_Dummy)
-_stub_module("app.helper.progress", ProgressHelper=_Dummy)
-_stub_module("app.helper.rule", RuleHelper=_Dummy)
-_stub_module("app.helper.server", MoviePilotServerHelper=_Dummy)
-_stub_module("app.helper.system", SystemHelper=_Dummy)
-_stub_module("app.helper.image", ImageHelper=_Dummy)
-_stub_module("app.scheduler", Scheduler=_Dummy)
-_stub_module(
-    "app.log",
-    logger=_Dummy(),
-    log_settings=_Dummy(),
-    LogConfigModel=type("LogConfigModel", (), {}),
-)
-_stub_module("app.utils.crypto", HashUtils=_Dummy)
-_stub_module("app.utils.http", RequestUtils=_Dummy, AsyncRequestUtils=_Dummy)
-_stub_module("version", APP_VERSION="test", FRONTEND_VERSION="frontend-test")
-
-from app.api.endpoints import system as system_endpoint
-
-for _module_name, _module in _ORIGINAL_STUBBED_MODULES.items():
-    if _module is None:
-        sys.modules.pop(_module_name, None)
-    else:
-        sys.modules[_module_name] = _module
+with stub_modules(_STUB_MODULES):
+    from app.api.endpoints import system as system_endpoint
 
 
 class NettestSecurityTest(unittest.TestCase):
