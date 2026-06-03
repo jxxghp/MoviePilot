@@ -1,0 +1,29 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每6小时检查一次
+  workflow_dispatch:        # 支持手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync v2 branch
+        run: |
+          git remote add upstream https://github.com/jxxghp/MoviePilot.git
+          git fetch upstream
+          git checkout v2
+          git merge upstream/v2 --no-edit
+          git push
+
+      - name: Sync feature/oidc-login branch
+        run: |
+          git checkout feature/oidc-login
+          git merge upstream/v2 --no-edit
+          git push
