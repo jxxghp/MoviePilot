@@ -1,19 +1,16 @@
-import sys
 import asyncio
 import json
 import tempfile
 import unittest
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock, patch
 
+from app.testing.bootstrap import ensure_optional_stub
 
-sys.modules.setdefault("psutil", ModuleType("psutil"))
-sys.modules.setdefault("dateparser", ModuleType("dateparser"))
-
-if "Pinyin2Hanzi" not in sys.modules:
-    pinyin_module = ModuleType("Pinyin2Hanzi")
-    setattr(pinyin_module, "is_pinyin", lambda value: False)
-    sys.modules["Pinyin2Hanzi"] = pinyin_module
+# 可选三方依赖在 CI / 全新环境可能未安装，补占位避免 app.modules.feishu 导入失败
+ensure_optional_stub("psutil")
+ensure_optional_stub("dateparser")
+ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
 from app.modules.feishu import FeishuModule
 from app.modules.feishu.feishu import Feishu

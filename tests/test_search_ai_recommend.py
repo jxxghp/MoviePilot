@@ -1,28 +1,15 @@
 import asyncio
 import importlib.machinery
-import sys
 import unittest
 from types import SimpleNamespace
-from types import ModuleType
 from unittest.mock import AsyncMock, patch
 
+from app.testing.bootstrap import ensure_optional_stub
 
-def _stub_module(name: str, **attrs):
-    module = sys.modules.get(name)
-    if module is None:
-        module = ModuleType(name)
-        sys.modules[name] = module
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-_stub_module("qbittorrentapi", TorrentFilesList=list)
-_stub_module("transmission_rpc", File=object)
-_stub_module(
-    "psutil",
-    __spec__=importlib.machinery.ModuleSpec("psutil", loader=None),
-)
+# 可选三方依赖在 CI / 全新环境可能未安装，补占位（带用例所需属性）避免导入失败
+ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
+ensure_optional_stub("transmission_rpc", File=object)
+ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent import ReplyMode
