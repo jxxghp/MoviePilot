@@ -213,11 +213,18 @@ async def oidc_status(
     """
     查询当前用户 OIDC 绑定状态
     """
+    # 脱敏显示：前4位 + ***
+    masked_sub = None
+    if current_user.openid_sub:
+        sub = current_user.openid_sub
+        masked_sub = (sub[:6] + "***") if len(sub) > 6 else (sub + "***")
+
     return schemas.Response(
         success=True,
         data={
             "bound": bool(current_user.openid_sub),
             "enabled": security.is_oidc_enabled(),
+            "masked_sub": masked_sub,
         },
     )
 
@@ -231,17 +238,25 @@ async def oidc_bind_authorize(
     """
     发起 OIDC 绑定，生成 state（关联当前用户ID）并重定向到 IdP 授权页面
 
-    支持通过 access_token 查询参数传入 JWT（弹窗场景下无法携带 Authorization 头部）
+    支持通过 access_token 查询参数或 Authorization: Bearer 头部传入 JWT
     绑定流程复用登录回调地址 /login/oidc/callback，通过 state 中的 action 区分
     """
     current_user = None
 
-    if access_token:
-        # 弹窗场景：通过 query 参数传入 JWT
+    # 优先从 Authorization: Bearer 头部获取令牌
+    auth_header = request.headers.get("Authorization", "")
+    bearer_token = None
+    if auth_header.startswith("Bearer "):
+        bearer_token = auth_header[7:]
+
+    token = bearer_token or access_token
+
+    if token:
+        # 弹窗场景：通过 query 参数或 Bearer 头传入 JWT
         try:
             import jwt as jwt_lib
             from app.core.security import ALGORITHM
-            payload = jwt_lib.decode(access_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt_lib.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
             token_payload = schemas.TokenPayload(**payload)
             if token_payload.purpose != "authentication":
                 raise HTTPException(status_code=403, detail="令牌用途不匹配")
@@ -270,7 +285,7 @@ async def oidc_bind_authorize(
     security.store_oidc_state(state, user_id=current_user.id, action="bind")
 
     # 复用登录回调地址，通过 state 区分登录和绑定
-    redirect_uri = settings.OIDC_REDIRECT_URI or str(request.url_for("oidc_callback"))
+    redirect_uri = settings.OIDC_REDIRECT_URI or settings.MP_DOMAIN("/api/v1/login/oidc/callback") or str(request.url_for("oidc_callback"))
 
     # 构建授权 URL 并重定向
     authorize_url = await security.build_oidc_authorize_url(

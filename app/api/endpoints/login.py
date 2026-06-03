@@ -86,8 +86,8 @@ async def oidc_authorize(request: Request):
     state = security.generate_oidc_state()
     security.store_oidc_state(state, user_id=None, action="login")
 
-    # 构建回调地址：优先使用配置的 OIDC_REDIRECT_URI，否则自动根据请求生成
-    redirect_uri = settings.OIDC_REDIRECT_URI or str(request.url_for("oidc_callback"))
+    # 构建回调地址：优先使用配置的 OIDC_REDIRECT_URI，其次使用 MP_DOMAIN，最后自动根据请求生成
+    redirect_uri = settings.OIDC_REDIRECT_URI or settings.MP_DOMAIN("/api/v1/login/oidc/callback") or str(request.url_for("oidc_callback"))
 
     # 构建授权 URL 并重定向
     authorize_url = await security.build_oidc_authorize_url(
@@ -132,7 +132,8 @@ async def oidc_callback(
         if state:
             state_data = security.pop_oidc_state(state)
 
-        if not state_data and not code:
+        if not state_data:
+            # state 无效或已过期，立即拒绝请求（防 CSRF）
             result["error"] = "oidc_invalid_state"
             result["message"] = "无效的授权状态"
             return _oidc_callback_html(result)
@@ -147,7 +148,7 @@ async def oidc_callback(
             return _oidc_callback_html(result)
 
         # 用 code 换 token（回调地址须与授权时一致）
-        redirect_uri = settings.OIDC_REDIRECT_URI or str(request.url_for("oidc_callback"))
+        redirect_uri = settings.OIDC_REDIRECT_URI or settings.MP_DOMAIN("/api/v1/login/oidc/callback") or str(request.url_for("oidc_callback"))
         token_response = await security.oidc_exchange_code(code=code, redirect_uri=redirect_uri)
         oidc_access_token = token_response.get("access_token")
         if not oidc_access_token:
@@ -192,7 +193,7 @@ def _handle_oidc_login(result: dict, openid_sub: str) -> HTMLResponse:
     if not user:
         logger.info(f"OIDC 用户 {openid_sub} 未绑定系统用户")
         result["error"] = "oidc_unbound"
-        result["message"] = "该 OIDC 账号未绑定系统用户"
+        result["message"] = "该 OIDC 账号未绑定用户"
         return _oidc_callback_html(result)
 
     if not user.is_active:
@@ -328,15 +329,22 @@ def _oidc_callback_html(result: dict) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@router.get("/oidc/test", summary="测试 OIDC 连接")
-async def oidc_test(_: schemas.TokenPayload = Depends(security.verify_token)):
+@router.post("/oidc/test", summary="测试 OIDC 连接")
+async def oidc_test(
+    body: dict = None,
+    _: schemas.TokenPayload = Depends(security.verify_token),
+):
     """
-    测试 OIDC 提供商连接，获取发现文档并验证必要端点
+    测试 OIDC 提供商连接，获取发现文档并验证必要端点。
+    支持前端传入待测试的配置参数（无需先保存即可测试），
+    若未传参则使用已保存的配置。
     """
-    if not settings.OIDC_ISSUER:
+    # 优先使用前端传入的参数，否则使用已保存的配置
+    issuer = (body or {}).get("issuer") or settings.OIDC_ISSUER
+    if not issuer:
         return schemas.Response(success=False, message="OIDC 签发者 URL 未配置")
     try:
-        discovery = await security.get_oidc_discovery()
+        discovery = await security.get_oidc_discovery(issuer=issuer)
         if not discovery.get("authorization_endpoint") or not discovery.get("token_endpoint"):
             return schemas.Response(success=False, message="发现文档缺少必要的端点（authorization_endpoint 或 token_endpoint）")
         return schemas.Response(success=True, message="OIDC 连接测试成功")

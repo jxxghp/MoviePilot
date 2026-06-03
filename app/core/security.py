@@ -424,8 +424,11 @@ def nexusphp_encrypt(data_str: str, key: bytes) -> str:
 
 # ==================== OIDC 相关方法 ====================
 
-# OIDC state 缓存（state -> user_id，绑定流程时关联用户）
-_oidc_state_cache: dict[str, Optional[int]] = {}
+# OIDC state 缓存（state -> {"user_id": ..., "action": ..., "created_at": ...}）
+_oidc_state_cache: dict[str, dict] = {}
+
+# OIDC state 有效期（秒）
+OIDC_STATE_TTL = 300
 
 
 def is_oidc_enabled() -> bool:
@@ -436,21 +439,27 @@ def is_oidc_enabled() -> bool:
     return settings.OIDC_ENABLE and bool(settings.OIDC_ISSUER)
 
 
-async def get_oidc_discovery() -> dict:
+async def get_oidc_discovery(issuer: str = None) -> dict:
     """
     获取 OIDC Provider 的发现文档
+    :param issuer: 可选的 issuer URL，不传则使用 settings.OIDC_ISSUER
     :return: 发现文档字典，包含 authorization_endpoint、token_endpoint、userinfo_endpoint 等
     :raises HTTPException: 获取失败时抛出异常
     """
-    issuer = settings.OIDC_ISSUER.rstrip("/")
+    _issuer = (issuer or settings.OIDC_ISSUER or "").rstrip("/")
+    if not _issuer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OIDC 签发者 URL 未配置",
+        )
     # 如果用户已填写完整的发现文档 URL，直接使用
-    if issuer.endswith("/.well-known/openid-configuration"):
-        discovery_url = issuer
+    if _issuer.endswith("/.well-known/openid-configuration"):
+        discovery_url = _issuer
     else:
-        discovery_url = f"{issuer}/.well-known/openid-configuration"
+        discovery_url = f"{_issuer}/.well-known/openid-configuration"
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, proxy=settings.PROXY_HOST) as client:
             resp = await client.get(discovery_url)
             resp.raise_for_status()
             return resp.json()
@@ -477,26 +486,44 @@ def store_oidc_state(state: str, user_id: Optional[int] = None, action: str = "l
     :param user_id: 关联的用户ID，登录流程时为 None，绑定时为当前用户ID
     :param action: 操作类型，"login" 或 "bind"
     """
-    _oidc_state_cache[state] = {"user_id": user_id, "action": action}
-    # 清理过期的 state（5分钟前的）
+    _oidc_state_cache[state] = {
+        "user_id": user_id,
+        "action": action,
+        "created_at": datetime.datetime.now(datetime.UTC).timestamp(),
+    }
+    # 清理过期的 state
     _cleanup_oidc_states()
 
 
 def pop_oidc_state(state: str) -> Optional[dict]:
     """
-    取出并删除 OIDC state 关联的数据
+    取出并删除 OIDC state 关联的数据，同时验证是否过期
     :param state: OIDC state 字符串
-    :return: 关联的数据字典 {"user_id": ..., "action": ...}，不存在时返回 None
+    :return: 关联的数据字典 {"user_id": ..., "action": ...}，不存在或已过期时返回 None
     """
-    return _oidc_state_cache.pop(state, None)
+    data = _oidc_state_cache.pop(state, None)
+    if data is None:
+        return None
+    # 验证是否过期
+    created_at = data.get("created_at", 0)
+    if datetime.datetime.now(datetime.UTC).timestamp() - created_at > OIDC_STATE_TTL:
+        return None
+    return data
 
 
 def _cleanup_oidc_states() -> None:
     """
-    清理过多的 OIDC state 缓存（防止内存泄漏）
+    清理过期的 OIDC state 缓存（防止内存泄漏）
     """
+    now = datetime.datetime.now(datetime.UTC).timestamp()
+    expired_keys = [
+        key for key, data in _oidc_state_cache.items()
+        if now - data.get("created_at", 0) > OIDC_STATE_TTL
+    ]
+    for key in expired_keys:
+        _oidc_state_cache.pop(key, None)
+    # 兜底：如果清理后仍然过多，删除最早的
     if len(_oidc_state_cache) > 1000:
-        # 保留后 500 个
         keys = list(_oidc_state_cache.keys())
         for key in keys[:500]:
             _oidc_state_cache.pop(key, None)
@@ -544,7 +571,7 @@ async def oidc_exchange_code(code: str, redirect_uri: str) -> dict:
         )
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, proxy=settings.PROXY_HOST) as client:
             resp = await client.post(
                 token_endpoint,
                 data={
@@ -582,7 +609,7 @@ async def oidc_get_userinfo(access_token: str) -> dict:
         )
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, proxy=settings.PROXY_HOST) as client:
             resp = await client.get(
                 userinfo_endpoint,
                 headers={"Authorization": f"Bearer {access_token}"},
