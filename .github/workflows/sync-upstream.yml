@@ -12,17 +12,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: v2
           fetch-depth: 0
 
-      - name: Sync upstream
+      - name: Sync v2 branch
         run: |
           git remote add upstream https://github.com/jxxghp/MoviePilot.git
           git fetch upstream
+          git checkout v2
           git merge upstream/v2 --no-edit
           git push
 
-      - name: Sync feature branch
+      - name: Sync feature/oidc-login branch
         run: |
           git checkout feature/oidc-login
           git merge upstream/v2 --no-edit
