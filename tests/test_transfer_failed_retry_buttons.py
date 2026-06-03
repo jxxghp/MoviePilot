@@ -95,11 +95,16 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             errmsg="未识别到媒体信息",
         )
 
+        def _close_pending_coro(coro, *args, **kwargs):
+            """关闭被调度的协程：测试中事件循环未运行，不关闭会残留 never-awaited 警告。"""
+            coro.close()
+
         with patch.object(settings, "AI_AGENT_ENABLE", True):
             with patch(
                 "app.chain.message.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain.message.asyncio.run_coroutine_threadsafe"
+                "app.chain.message.asyncio.run_coroutine_threadsafe",
+                side_effect=_close_pending_coro,
             ) as run_task:
                 history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "post_message") as post_message:
