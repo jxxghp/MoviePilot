@@ -5,6 +5,9 @@ on:
     - cron: '0 */6 * * *'  # 每6小时检查一次
   workflow_dispatch:        # 支持手动触发
 
+permissions:
+  contents: write           # 允许推送代码
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -13,6 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync v2 branch
         run: |
