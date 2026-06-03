@@ -1,4 +1,3 @@
-
 # MoviePilot
 
 简体中文 | [English](README_EN.md)
@@ -12,66 +11,56 @@
 ![Docker Pulls V2](https://img.shields.io/docker/pulls/jxxghp/moviepilot-v2?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Synology-blue?style=for-the-badge)
 
-
 基于 [NAStool](https://github.com/NAStool/nas-tools) 部分代码重新设计，聚焦自动化核心需求，减少问题同时更易于扩展和维护。
 
 # 仅用于学习交流使用，请勿在任何国内平台宣传该项目！
 
 发布频道：https://t.me/moviepilot_channel
 
-
 ## 主要特性
 
-- 前后端分离，基于FastApi + Vue3。
-- 聚焦核心需求，简化功能和设置，部分设置项可直接使用默认值。
-- 重新设计了用户界面，更加美观易用。
-
+- 聚焦影视自动化的核心流程：订阅、搜索、下载、整理、刮削、媒体库刷新与消息通知。
+- 前后端分离，后端基于 FastAPI，前端基于 Vue 3，部署和扩展边界更清晰。
+- 支持下载器、媒体服务器、元数据源、消息渠道、插件、工作流和 AI Agent 等能力组合。
+- 更完整的功能介绍、截图和使用入口见官网：https://movie-pilot.org
 
 ## 安装使用
 
-官方Wiki：https://wiki.movie-pilot.org
+推荐优先使用 Docker 部署，常用镜像包括 `jxxghp/moviepilot-v2` 和 `jxxghp/moviepilot`。Compose 示例、环境变量、目录映射和升级方式以官方 Wiki 为准：
 
+- 官方 Wiki：https://wiki.movie-pilot.org
+- PostgreSQL 部署说明：[docs/postgresql-setup.md](docs/postgresql-setup.md)
 
-## 本地 CLI
-
-一键安装运行脚本：
+也可以使用本地 CLI 以源码模式安装和管理 MoviePilot：
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
 ```
 
-使用 `moviepilot` 命令管理MoviePilot，完整 CLI 文档：[`docs/cli.md`](docs/cli.md)
+安装完成后使用 `moviepilot` 命令完成初始化、启动、停止、更新和配置查看。完整命令见 [docs/cli.md](docs/cli.md)。
 
+## Agent
 
-## 为 AI Agent 添加 Skills
-```shell
-npx skills add https://github.com/jxxghp/MoviePilot
-```
+1. MoviePilot 自带智能体能力，可在完成模型配置后，通过自然语言调用系统工具，辅助完成搜索、订阅、下载、整理、排障等管理任务。
+2. 其它智能体可以导入本仓库的 `skills/` 目录以获得 MoviePilot 操作能力；支持 `skills` CLI 的环境可使用：
+
+   ```shell
+   npx skills add https://github.com/jxxghp/MoviePilot
+   ```
+
+   内置 Skills 列表见 [skills/](skills/)，自定义 Skill 可参考 [skills/create-moviepilot-skill/SKILL.md](skills/create-moviepilot-skill/SKILL.md)。
+3. 其它 MCP 客户端可以通过 MoviePilot 的 MCP 端点 `/api/v1/mcp` 调用工具，认证方式、客户端配置和工具 API 见 [docs/mcp-api.md](docs/mcp-api.md)。
+
 
 ## 参与开发
 
-API文档：https://api.movie-pilot.org
+开发前请先阅读仓库规则和本地环境说明，保持变更聚焦，通过测试后再提交 PR。常用入口：
 
-MCP工具API文档：详见 [docs/mcp-api.md](docs/mcp-api.md)
-
-开发环境准备与本地源码运行说明：[`docs/development-setup.md`](docs/development-setup.md)
-
-本地开发默认通过 PyPI 依赖安装 Rust 加速扩展；扩展未安装或 `RUST_ACCEL=false` 时会自动使用 Python 实现：
-
-```shell
-python -m pip install moviepilot-rust
-python -c "from app.utils import rust_accel; print(rust_accel.is_available())"
-```
-
-如果输出 `True`，说明当前开发环境已经加载 `moviepilot_rust`。Rust 源码和打包发布流程在 [MoviePilot-Rust](https://github.com/jxxghp/MoviePilot-Rust) 仓库维护。
-
-需要本地评估 Rust 加速效果时，可运行：
-
-```shell
-python scripts/benchmark_rust_accel.py --loops 20 --repeat 5
-```
-
-插件开发说明：<https://wiki.movie-pilot.org/zh/plugindev>
+- 文档规则入口：[docs/rules/README.md](docs/rules/README.md)
+- 开发环境与本地源码运行：[docs/development-setup.md](docs/development-setup.md)
+- 测试说明：[docs/testing.md](docs/testing.md)
+- REST API 文档：https://api.movie-pilot.org
+- 插件开发说明：https://wiki.movie-pilot.org/zh/plugindev
 
 ## 相关项目
 
@@ -79,6 +68,7 @@ python scripts/benchmark_rust_accel.py --loops 20 --repeat 5
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
 - [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server)
+- [MoviePilot-Rust](https://github.com/jxxghp/MoviePilot-Rust)
 - [MoviePilot-Wiki](https://github.com/jxxghp/MoviePilot-Wiki)
 
 ## 免责申明

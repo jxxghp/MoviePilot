@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from lxml import etree
 
@@ -10,6 +11,10 @@ from app.utils.string import StringUtils
 
 
 class NexusPhpSiteUserInfo(SiteParserBase):
+    """
+    NexusPHP 站点用户信息解析器。
+    """
+
     schema = SiteSchema.NexusPhp
 
     def _parse_site_page(self, html_text: str):
@@ -111,7 +116,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             has_ucoin, self.bonus = self._parse_ucoin(html)
             if has_ucoin:
                 return
-            tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html else None
+            tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html is not None else None
             if tmps:
                 bonus_text = str(tmps[0]).strip()
                 bonus_match = re.search(r"([\d,.]+)", bonus_text)
@@ -233,13 +238,33 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
             # fix up page url
             if next_page:
-                if self.userid not in next_page:
-                    next_page = f'{next_page}&userid={self.userid}&type=seeding'
+                next_page = self._fixup_next_page_url(next_page, self.userid)
         finally:
             if html is not None:
                 del html
 
         return next_page
+
+    @staticmethod
+    def _fixup_next_page_url(next_page: str, userid: Optional[str]) -> Optional[str]:
+        """
+        修正做种下一页地址，无法补齐用户 ID 时停止翻页。
+
+        :param next_page: 页面中解析出的下一页地址
+        :param userid: 当前站点用户 ID
+        :return: 修正后的下一页地址，无法构造时返回 None
+        """
+        parsed_url = urlsplit(next_page)
+        query_params = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
+
+        if query_params.get("userid"):
+            return next_page
+        if not userid:
+            return None
+
+        query_params["userid"] = userid
+        query_params.setdefault("type", "seeding")
+        return urlunsplit(parsed_url._replace(query=urlencode(query_params)))
 
     def _parse_user_detail_info(self, html_text: str):
         """

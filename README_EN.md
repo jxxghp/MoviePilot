@@ -17,44 +17,49 @@ Redesigned from parts of [NAStool](https://github.com/NAStool/nas-tools), with a
 
 Release channel: https://t.me/moviepilot_channel
 
-
 ## Key Features
 
-- Frontend/backend separation based on FastApi + Vue3.
-- Focuses on core needs, simplifies features and settings, and allows some options to work well with sensible defaults.
-- Reworked user interface for a cleaner and more practical experience.
+- Focuses on the core media automation flow: subscriptions, search, downloads, file organization, scraping, media server refresh, and notifications.
+- Uses a separated backend/frontend architecture: FastAPI for the backend and Vue 3 for the frontend.
+- Connects download clients, media servers, metadata providers, message channels, plugins, workflows, and AI Agent capabilities.
+- For feature details, screenshots, and product entry points, see https://movie-pilot.org
 
+## Installation and Usage
 
-## Installation
+Docker is the recommended deployment model. Common images include `jxxghp/moviepilot-v2` and `jxxghp/moviepilot`. Compose examples, environment variables, volume mappings, and upgrade notes are maintained in the official wiki:
 
-Official wiki: https://wiki.movie-pilot.org
+- Official wiki: https://wiki.movie-pilot.org
+- PostgreSQL setup: [docs/postgresql-setup.md](docs/postgresql-setup.md)
 
-
-## Local CLI
-
-One-command bootstrap script:
+MoviePilot can also be installed and managed from source with the local CLI:
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
 ```
 
-Manage MoviePilot with the `moviepilot` command. Full CLI documentation: [`docs/cli.md`](docs/cli.md)
+After installation, use the `moviepilot` command for initialization, service management, updates, and configuration. See [docs/cli.md](docs/cli.md) for the full command reference.
 
+## Agent
 
-## Add Skills for AI Agents
-```shell
-npx skills add https://github.com/jxxghp/MoviePilot
-```
+1. MoviePilot includes a built-in AI Agent. After model configuration, it can call system tools through natural language to help with search, subscriptions, downloads, organization, diagnostics, and other management tasks.
+2. Other agents can import the repository `skills/` directory to gain MoviePilot operation capabilities. Environments that support the `skills` CLI can use:
+
+   ```shell
+   npx skills add https://github.com/jxxghp/MoviePilot
+   ```
+
+   Built-in skills live in [skills/](skills/). For custom skill authoring, see [skills/create-moviepilot-skill/SKILL.md](skills/create-moviepilot-skill/SKILL.md).
+3. Other MCP clients can call MoviePilot tools through `/api/v1/mcp`. Authentication, client configuration, and tool APIs are documented in [docs/mcp-api.md](docs/mcp-api.md).
 
 ## Development
 
-API documentation: https://api.movie-pilot.org
+Before contributing, read the repository rules and local environment guide, keep changes focused, and validate them before opening a PR. Useful entry points:
 
-MCP tool API documentation: see [docs/mcp-api.md](docs/mcp-api.md)
-
-Development environment setup and local source-run guide: [`docs/development-setup.md`](docs/development-setup.md)
-
-Plugin development guide: <https://wiki.movie-pilot.org/zh/plugindev>
+- Rule index: [docs/rules/README.md](docs/rules/README.md)
+- Development setup and local source run: [docs/development-setup.md](docs/development-setup.md)
+- Testing guide: [docs/testing.md](docs/testing.md)
+- REST API documentation: https://api.movie-pilot.org
+- Plugin development guide: https://wiki.movie-pilot.org/zh/plugindev
 
 ## Related Projects
 
@@ -62,6 +67,7 @@ Plugin development guide: <https://wiki.movie-pilot.org/zh/plugindev>
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
 - [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server)
+- [MoviePilot-Rust](https://github.com/jxxghp/MoviePilot-Rust)
 - [MoviePilot-Wiki](https://github.com/jxxghp/MoviePilot-Wiki)
 
 ## Disclaimer

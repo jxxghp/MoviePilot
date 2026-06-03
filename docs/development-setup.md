@@ -82,7 +82,16 @@ pip install pip-tools
    pip install -r requirements.txt
    ```
 
-### 3. 运行安全检查
+### 3. 准备资源与插件目录
+
+本地源码开发时，主程序需要读取资源文件和插件源码。相关文件需要放到主程序实际加载的目录下：
+
+- **资源文件**：将 [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources) 仓库中 `resources.v2/` 下的文件同步到本仓库的 `app/helper/` 目录下。CLI 安装和 Docker 构建流程也会按这个位置准备资源。
+- **插件源码**：需要开发或调试的插件放到本仓库的 `app/plugins/` 目录下，例如 `app/plugins/<插件目录>/`。主程序运行时从该目录加载插件，独立插件仓库只是源码来源。
+
+如果资源文件没有放到 `app/helper/`，站点索引、规则和内置资源相关能力可能无法按本地开发预期工作；如果插件没有放到 `app/plugins/`，主程序也不会在本地运行时发现该插件。
+
+### 4. 运行安全检查
 
 我们使用 `safety` 工具来检查依赖项中是否存在已知的安全漏洞。请确保在每次更新依赖项后都运行安全检查，以确保项目的安全性。
 
@@ -104,7 +113,7 @@ safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report
 
 这将生成一个名为 `safety_report.txt` 的报告文件，您可以查看其中的漏洞报告并进行相应处理。
 
-### 4. 提交代码前的检查
+### 5. 提交代码前的检查
 
 在提交代码之前，请确保完成以下步骤：
 
@@ -118,7 +127,9 @@ safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report
    pytest
    ```
 
-### 5. 参考资源
+### 6. 参考资源
 
 - [pip-tools 官方文档](https://github.com/jazzband/pip-tools)
 - [safety 官方文档](https://pyup.io/safety/)
+- [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
+- [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)

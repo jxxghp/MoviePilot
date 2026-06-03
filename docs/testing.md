@@ -129,6 +129,8 @@ def test_recognize_prefers_explicit_id(sample_meta, monkeypatch):
 - **测试间污染（测不准）**：定位被改而未还原的进程级状态（单例 / `lru_cache` / `sys.modules` / 环境变量 / `settings`），按「自隔离」补还原。
 - **怀疑用例空过**：用变异验证——临时打断对应生产逻辑（让它返回错误值），跑该用例应**失败**；若仍通过，说明断言没真正覆盖该逻辑。
 
-## CI
+## CI 与 PR
 
-CI 以 pytest 运行 `tests`。建议 CI 与本地复现都用仅安装 `requirements.in` 的干净环境，保证可选扩展、动态模块的存在性与 CI 一致。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v2` 的 `pull_request` / `push` 及手动触发时，用 `python tests/run.py` 跑全量单测。
+- **PR**：`python tests/run.py` 确认全绿、且 socket 探针零真实出站，避免把红的改动推上去空耗门禁。
+- 复现 CI 用仅安装 `requirements.in` 的干净环境（含 pytest 与可选扩展），保证可选扩展、动态模块的存在性与 CI 一致。

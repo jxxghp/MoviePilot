@@ -453,7 +453,8 @@ class AgentImageSupportTest(unittest.TestCase):
         ) as prepare_files, patch(
             "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
         ) as process_message, patch(
-            "app.chain.message.asyncio.run_coroutine_threadsafe"
+            "app.chain.message.asyncio.run_coroutine_threadsafe",
+            side_effect=lambda coro, _loop: coro.close(),
         ) as run_coroutine_threadsafe:
             chain._handle_ai_message(
                 text="/ai 帮我看看这张图",
@@ -486,7 +487,7 @@ class AgentImageSupportTest(unittest.TestCase):
             "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
-            side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
+            side_effect=lambda coro, _loop: coro.close(),
         ):
             chain._handle_ai_message(
                 text="帮我推荐一部电影",

@@ -298,6 +298,20 @@ class MessageChain(ChainBase):
             )
             return bool(processing_status)
 
+        if text.lower().startswith("/ai"):
+            return self._handle_ai_message(
+                text=text,
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                original_message_id=original_message_id,
+                original_chat_id=original_chat_id,
+                images=images,
+                files=files,
+                has_audio_input=has_audio_input,
+            )
+
         latest_slash_interaction = self._get_latest_slash_interaction(userid)
         if latest_slash_interaction == "sites":
             if SiteChain().handle_text_interaction(
@@ -338,20 +352,6 @@ class MessageChain(ChainBase):
                     text=text,
             ):
                 return False
-
-        if text.lower().startswith("/ai"):
-            return self._handle_ai_message(
-                text=text,
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=username,
-                original_message_id=original_message_id,
-                original_chat_id=original_chat_id,
-                images=images,
-                files=files,
-                has_audio_input=has_audio_input,
-            )
 
         if (
                 settings.AI_AGENT_ENABLE
