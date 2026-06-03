@@ -116,7 +116,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             has_ucoin, self.bonus = self._parse_ucoin(html)
             if has_ucoin:
                 return
-            tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html else None
+            tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html is not None else None
             if tmps:
                 bonus_text = str(tmps[0]).strip()
                 bonus_match = re.search(r"([\d,.]+)", bonus_text)
