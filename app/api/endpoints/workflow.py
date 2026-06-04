@@ -22,6 +22,10 @@ from app.schemas.types import EventType, EVENT_TYPE_NAMES
 
 router = APIRouter()
 
+WORKFLOW_TRIGGER_TIMER = "timer"
+WORKFLOW_TRIGGER_EVENT = "event"
+WORKFLOW_TRIGGER_MANUAL = "manual"
+
 
 @router.get("/", summary="所有工作流", response_model=List[schemas.Workflow])
 async def list_workflows(
@@ -148,16 +152,20 @@ async def workflow_fork(
     except json.JSONDecodeError:
         return schemas.Response(success=False, message="context字段JSON格式错误")
 
+    try:
+        event_conditions = json.loads(workflow.event_conditions or "{}") if workflow.event_conditions else {}
+    except json.JSONDecodeError:
+        return schemas.Response(success=False, message="event_conditions字段JSON格式错误")
+
+    share_id = workflow.id
     # 创建工作流
     workflow_dict = {
         "name": workflow.name,
         "description": workflow.description,
         "timer": workflow.timer,
-        "trigger_type": workflow.trigger_type or "timer",
+        "trigger_type": workflow.trigger_type or WORKFLOW_TRIGGER_TIMER,
         "event_type": workflow.event_type,
-        "event_conditions": json.loads(workflow.event_conditions or "{}")
-        if workflow.event_conditions
-        else {},
+        "event_conditions": event_conditions,
         "actions": actions,
         "flows": flows,
         "context": context,
@@ -170,11 +178,11 @@ async def workflow_fork(
         return schemas.Response(success=False, message="已存在相同名称的工作流")
 
     # 创建新工作流
-    workflow = await Workflow(**workflow_dict).async_create(db)
+    workflow_obj = await Workflow(**workflow_dict).async_create(db)
 
     # 更新复用次数
-    if workflow:
-        await MoviePilotServerHelper.async_workflow_fork_by_id(share_id=workflow.id)
+    if workflow_obj and share_id:
+        await MoviePilotServerHelper.async_workflow_fork_by_id(share_id=share_id)
 
     return schemas.Response(success=True, message="复用成功")
 
@@ -225,14 +233,23 @@ def start_workflow(
     workflow = WorkflowOper(db).get(workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
-    if not workflow.trigger_type or workflow.trigger_type == "timer":
+    trigger_type = workflow.trigger_type or WORKFLOW_TRIGGER_TIMER
+    if trigger_type == WORKFLOW_TRIGGER_TIMER and not workflow.timer:
+        return schemas.Response(success=False, message="定时工作流缺少定时器配置")
+    if trigger_type not in {
+        WORKFLOW_TRIGGER_TIMER,
+        WORKFLOW_TRIGGER_EVENT,
+        WORKFLOW_TRIGGER_MANUAL,
+    }:
+        return schemas.Response(success=False, message="工作流触发类型不支持")
+    # 先更新状态，事件触发注册会重新读取工作流并跳过暂停状态。
+    workflow.update_state(db, workflow_id, "W")
+    if trigger_type == WORKFLOW_TRIGGER_TIMER:
         # 添加定时任务
         Scheduler().update_workflow_job(workflow)
-    else:
+    elif trigger_type == WORKFLOW_TRIGGER_EVENT:
         # 事件触发：添加到事件触发器
         WorkFlowManager().load_workflow_events(workflow_id)
-    # 更新状态
-    workflow.update_state(db, workflow_id, "W")
     return schemas.Response(success=True)
 
 
@@ -251,10 +268,10 @@ def pause_workflow(
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
     # 根据触发类型进行不同处理
-    if workflow.trigger_type == "timer":
+    if workflow.trigger_type == WORKFLOW_TRIGGER_TIMER:
         # 定时触发：移除定时任务
         Scheduler().remove_workflow_job(workflow)
-    elif workflow.trigger_type == "event":
+    elif workflow.trigger_type == WORKFLOW_TRIGGER_EVENT:
         # 事件触发：从事件触发器中移除
         WorkFlowManager().remove_workflow_event(workflow_id, workflow.event_type)
     # 停止工作流
@@ -319,8 +336,11 @@ def update_workflow(
     wf.update(db, workflow.model_dump())
     # 更新后的工作流对象
     updated_workflow = workflow_oper.get(workflow.id)
-    # 更新定时任务
-    Scheduler().update_workflow_job(updated_workflow)
+    scheduler = Scheduler()
+    scheduler.remove_workflow_job(updated_workflow)
+    if not updated_workflow.trigger_type or updated_workflow.trigger_type == WORKFLOW_TRIGGER_TIMER:
+        if updated_workflow.timer:
+            scheduler.update_workflow_job(updated_workflow)
     # 更新事件注册
     WorkFlowManager().update_workflow_event(updated_workflow)
     return schemas.Response(success=True, message="更新成功")
@@ -338,10 +358,10 @@ def delete_workflow(
     workflow = WorkflowOper(db).get(workflow_id)
     if not workflow:
         return schemas.Response(success=False, message="工作流不存在")
-    if not workflow.trigger_type or workflow.trigger_type == "timer":
+    if not workflow.trigger_type or workflow.trigger_type == WORKFLOW_TRIGGER_TIMER:
         # 定时触发：删除定时任务
         Scheduler().remove_workflow_job(workflow)
-    else:
+    elif workflow.trigger_type == WORKFLOW_TRIGGER_EVENT:
         # 事件触发：从事件触发器中移除
         WorkFlowManager().remove_workflow_event(workflow_id, workflow.event_type)
     # 删除工作流

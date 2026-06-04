@@ -91,11 +91,17 @@ class WorkflowOper(DbOper):
         """
         return Workflow.fail(self._db, wid, result)
 
-    def step(self, wid: int, action_id: str, context: dict) -> bool:
+    def step(self, wid: int, action_id: str, context: dict, execution_state: Optional[dict] = None) -> bool:
         """
         步进
         """
-        return Workflow.update_current_action(self._db, wid, action_id, context)
+        return Workflow.update_current_action(
+            self._db,
+            wid,
+            action_id,
+            context,
+            execution_state=execution_state
+        )
 
     def reset(self, wid: int, reset_count: bool = False) -> bool:
         """

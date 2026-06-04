@@ -3,7 +3,7 @@ from typing import Union
 
 from app.chain import ChainBase
 from app.db.systemconfig_oper import SystemConfigOper
-from app.schemas import ActionContext, ActionParams
+from app.schemas import ActionContext, ActionParams, ActionResult
 
 
 class ActionChain(ChainBase):
@@ -26,6 +26,8 @@ class BaseAction(ABC):
 
     def __init__(self, action_id: str):
         self._action_id = action_id
+        self._done_flag = False
+        self._message = ""
         self.systemconfigoper = SystemConfigOper()
 
     @classmethod
@@ -92,9 +94,12 @@ class BaseAction(ABC):
         workflow_cache = self.systemconfigoper.get(workflow_key) or {}
         action_cache = workflow_cache.get(self._action_id) or []
         if isinstance(data, list):
-            action_cache.extend(data)
+            for item in data:
+                if item not in action_cache:
+                    action_cache.append(item)
         else:
-            action_cache.append(data)
+            if data not in action_cache:
+                action_cache.append(data)
         workflow_cache[self._action_id] = action_cache
         self.systemconfigoper.set(workflow_key, workflow_cache)
 
@@ -104,3 +109,16 @@ class BaseAction(ABC):
         执行动作
         """
         raise NotImplementedError
+
+    def execute_with_inputs(self, workflow_id: int, params: ActionParams, inputs: dict,
+                            runtime: dict, context: ActionContext) -> ActionResult:
+        """
+        使用显式输入与运行期信息执行动作。
+        """
+        _ = inputs, runtime
+        result_context = self.execute(workflow_id, params, context)
+        return ActionResult(
+            success=self.success,
+            message=self.message,
+            context=result_context
+        )

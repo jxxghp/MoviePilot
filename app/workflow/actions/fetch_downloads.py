@@ -43,12 +43,19 @@ class FetchDownloadsAction(BaseAction):
         """
         更新downloads中的下载任务状态
         """
-        __all_complete = False
+        self._downloads = context.downloads or []
+        if not self._downloads:
+            self.job_done("无下载任务")
+            return context
+
         for download in self._downloads:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
             logger.info(f"获取下载任务 {download.download_id} 状态 ...")
-            torrents = ActionChain().list_torrents(hashs=[download.download_id])
+            torrents = ActionChain().list_torrents(
+                hashs=[download.download_id],
+                downloader=download.downloader,
+            )
             if not torrents:
                 download.completed = True
                 continue
@@ -61,5 +68,5 @@ class FetchDownloadsAction(BaseAction):
                     logger.info(f"下载任务 {download.download_id} 未完成")
                     download.completed = False
         if all([d.completed for d in self._downloads]):
-            self.job_done()
+            self.job_done("下载任务已全部完成")
         return context
