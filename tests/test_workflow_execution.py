@@ -67,6 +67,66 @@ class _FakeWorkflowManager:
         return self.contracts.get(action_type) or {}
 
 
+class _FakeWorkflowOper:
+    """记录工作流持久化调用。"""
+
+    def __init__(self, workflow):
+        self.workflow = workflow
+        self.steps = []
+        self.started = False
+        self.failed_result = None
+        self.succeeded = False
+
+    def reset(self, wid):
+        """模拟重置工作流。"""
+        _ = wid
+        return True
+
+    def get(self, wid):
+        """返回预置工作流。"""
+        _ = wid
+        return self.workflow
+
+    def start(self, wid):
+        """记录启动调用。"""
+        _ = wid
+        self.started = True
+        return True
+
+    def step(self, wid, action_id, context, execution_state=None):
+        """记录步骤持久化数据。"""
+        self.steps.append(
+            {
+                "wid": wid,
+                "action_id": action_id,
+                "context": context,
+                "execution_state": execution_state,
+            }
+        )
+        return True
+
+    def fail(self, wid, result):
+        """记录失败结果。"""
+        _ = wid
+        self.failed_result = result
+        return True
+
+    def success(self, wid, result=None):
+        """记录成功结果。"""
+        _ = wid, result
+        self.succeeded = True
+        return True
+
+
+class _OpaqueValue:
+    """模拟无法直接 JSON 序列化的值。"""
+
+    __slots__ = ()
+
+    def __str__(self):
+        return "opaque-value"
+
+
 def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
     """恢复执行时应释放已完成节点的后继节点。"""
     calls = []
@@ -86,6 +146,31 @@ def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
     assert calls == ["B"]
     assert executor.success is True
     assert executor.context.progress == 100
+
+
+def test_workflow_executor_restores_structured_context(monkeypatch):
+    """恢复执行时应兼容新版结构化上下文存储格式。"""
+    calls = []
+    fake_manager = _FakeWorkflowManager(calls)
+    workflow = _build_workflow(
+        current_action="A",
+        context={
+            "workflow_context": {"trace_id": "wf-1"},
+            "node_outputs": {"A": {"items": ["movie"]}},
+            "progress": 50,
+        },
+    )
+
+    monkeypatch.setattr(workflow_module, "WorkFlowManager", lambda: fake_manager)
+    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+
+    executor = workflow_module.WorkflowExecutor(workflow)
+    executor.execute()
+
+    assert calls == ["B"]
+    assert executor.context.workflow_context["trace_id"] == "wf-1"
+    assert executor.context.node_outputs["A"]["items"] == ["movie"]
 
 
 def test_workflow_executor_reports_incremental_progress(monkeypatch):
@@ -447,6 +532,74 @@ def test_workflow_executor_restores_outputs_from_execution_state(monkeypatch):
 
     assert calls == ["B"]
     assert executor.context.node_outputs["A"]["torrents"] == ["movie"]
+
+
+def test_workflow_executor_keeps_execution_state_dict_for_non_json_leaf(monkeypatch):
+    """结构化状态遇到不可序列化叶子节点时仍应保持字典结构。"""
+    calls = []
+    states = []
+    fake_manager = _FakeWorkflowManager(
+        calls,
+        results={
+            "A": lambda action, context: ActionResult(
+                success=True,
+                message=f"{action.name}完成",
+                context=context,
+                outputs={"opaque": _OpaqueValue()}
+            )
+        }
+    )
+
+    monkeypatch.setattr(workflow_module, "WorkFlowManager", lambda: fake_manager)
+    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+
+    executor = workflow_module.WorkflowExecutor(
+        _build_workflow(actions=[{"id": "A", "type": "FakeAction", "name": "动作A", "data": {}}], flows=[]),
+        step_callback=lambda action, context, execution_state, completed: states.append(execution_state),
+    )
+    executor.execute()
+
+    assert isinstance(states[-1], dict)
+    assert states[-1]["outputs"]["A"]["opaque"] == "opaque-value"
+
+
+def test_workflow_chain_process_serializes_circular_context(monkeypatch):
+    """工作流步骤持久化应清洗循环引用和不可序列化上下文。"""
+    calls = []
+
+    def run_action(action, context):
+        """构造包含循环引用的上下文。"""
+        context.workflow_context["self"] = context.workflow_context
+        context.workflow_context["opaque"] = _OpaqueValue()
+        return ActionResult(success=True, message=f"{action.name}完成", context=context)
+
+    fake_manager = _FakeWorkflowManager(calls, results={"A": run_action})
+    workflow = _build_workflow(
+        actions=[{"id": "A", "type": "FakeAction", "name": "动作A", "data": {}}],
+        flows=[{"id": "flow-end", "source": "A", "target": "END", "animated": True}],
+    )
+    fake_oper = _FakeWorkflowOper(workflow)
+
+    monkeypatch.setattr(workflow_module, "WorkFlowManager", lambda: fake_manager)
+    monkeypatch.setattr(workflow_module, "WorkflowOper", lambda: fake_oper)
+    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+
+    success, message = workflow_module.WorkflowChain.process(workflow_id=1)
+
+    assert success is True
+    assert message == ""
+    assert fake_oper.succeeded is True
+    saved_workflow_context = fake_oper.steps[-1]["context"]["workflow_context"]
+    saved_self = saved_workflow_context["self"]
+
+    assert saved_workflow_context["opaque"] == "opaque-value"
+    if isinstance(saved_self, dict):
+        assert saved_self["self"] == workflow_module.CIRCULAR_REFERENCE_PLACEHOLDER
+        assert saved_self["opaque"] == "opaque-value"
+    else:
+        assert saved_self == workflow_module.CIRCULAR_REFERENCE_PLACEHOLDER
 
 
 def test_workflow_executor_concurrency_key_serializes_parallel_nodes(monkeypatch):

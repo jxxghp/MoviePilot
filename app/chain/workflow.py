@@ -6,11 +6,11 @@ import pickle
 import threading
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from time import sleep
 from typing import Any, Callable, List, Optional, Tuple
 
-from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
 
 from app.chain import ChainBase
 from app.core.config import global_vars
@@ -22,9 +22,64 @@ from app.schemas import ActionContext, ActionFlow, Action, ActionExecution, Acti
 from app.schemas.types import EventType
 from app.workflow import WorkFlowManager
 
-
 ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "subscribes"}
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
+CIRCULAR_REFERENCE_PLACEHOLDER = "[Circular]"
+
+
+def _serialize_workflow_key(key: Any) -> Any:
+    """将映射键转换为 JSON 安全值。"""
+    if key is None or isinstance(key, (str, int, float, bool)):
+        return key
+    return str(key)
+
+
+def _serialize_workflow_value(value: Any, stack: Optional[set[int]] = None) -> Any:
+    """把工作流上下文和值转换为可持久化的 JSON 结构。"""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+
+    stack = stack or set()
+    object_id = id(value)
+    if object_id in stack:
+        return CIRCULAR_REFERENCE_PLACEHOLDER
+
+    if isinstance(value, BaseModel):
+        stack.add(object_id)
+        try:
+            return {
+                field_name: _serialize_workflow_value(getattr(value, field_name, None), stack)
+                for field_name in value.__class__.model_fields
+            }
+        finally:
+            stack.remove(object_id)
+
+    if isinstance(value, dict):
+        stack.add(object_id)
+        try:
+            return {
+                _serialize_workflow_key(key): _serialize_workflow_value(item, stack)
+                for key, item in value.items()
+            }
+        finally:
+            stack.remove(object_id)
+
+    if isinstance(value, (list, tuple, set)):
+        stack.add(object_id)
+        try:
+            return [_serialize_workflow_value(item, stack) for item in value]
+        finally:
+            stack.remove(object_id)
+
+    return str(value)
+
+
+def _serialize_workflow_context(context: ActionContext) -> dict:
+    """构建可写入数据库的工作流上下文字典。"""
+    serialized = _serialize_workflow_value(context)
+    return serialized if isinstance(serialized, dict) else {}
 
 
 class WorkflowCancelToken:
@@ -185,13 +240,16 @@ class WorkflowExecutor:
         恢复工作流上下文，兼容旧版 Base64 Pickle 存储格式。
         """
         context = ActionContext()
-        if self.workflow.current_action and self.workflow.context:
-            logger.info(f"工作流已执行动作：{self.workflow.current_action}")
+        if self.workflow.context:
+            if self.workflow.current_action:
+                logger.info(f"工作流已执行动作：{self.workflow.current_action}")
             try:
-                decoded_data = base64.b64decode(self.workflow.context["content"])
-                context = pickle.loads(decoded_data)
-            except Exception as err:
-                logger.error(f"工作流上下文恢复失败: {str(err)}")
+                if isinstance(self.workflow.context, dict) and self.workflow.context.get("content"):
+                    decoded_data = base64.b64decode(self.workflow.context["content"])
+                    context = pickle.loads(decoded_data)
+                elif isinstance(self.workflow.context, dict):
+                    context = ActionContext.model_validate(self.workflow.context)
+            except Exception:
                 context = ActionContext()
         outputs = self.restored_execution_state.get("outputs") if isinstance(self.restored_execution_state, dict) else {}
         if outputs and not getattr(context, "node_outputs", None):
@@ -247,23 +305,14 @@ class WorkflowExecutor:
         构建可持久化的结构化执行状态。
         """
         self.update_runtime_state()
-        return self.make_json_safe({
+        execution_state = _serialize_workflow_value({
             "version": 1,
             "nodes": self.node_metadata,
             "outputs": self.context.node_outputs,
             "errors": self.errors,
             "runtime": self.context.runtime_state,
         })
-
-    @staticmethod
-    def make_json_safe(value: Any) -> Any:
-        """
-        将运行期对象转换为可写入 JSON 列的数据。
-        """
-        try:
-            return jsonable_encoder(value)
-        except Exception:
-            return str(value)
+        return execution_state if isinstance(execution_state, dict) else {}
 
     def execute(self) -> None:
         """
@@ -588,7 +637,8 @@ class WorkflowExecutor:
             "runtime_state": self.context.runtime_state,
         }
 
-    def ensure_result_context_partitions(self, context: ActionContext) -> None:
+    @staticmethod
+    def ensure_result_context_partitions(context: ActionContext) -> None:
         """
         确保动作返回上下文具备新版分区字段。
         """
@@ -690,13 +740,19 @@ class WorkflowExecutor:
             return outputs_config
         return self.get_action_contract(action).get("outputs") or {}
 
-    def get_default_merge_policy(self, action: Action, key: str, value: Any) -> str:
+    @staticmethod
+    def get_default_merge_policy(action: Action, key: str, value: Any) -> str:
         """
         获取输出默认合并策略。
         """
-        if action.type in ("FilterTorrentsAction", "FilterMediasAction", "FetchDownloadsAction"):
-            return "replace"
         if isinstance(value, list):
+            action_type = action.type or ""
+            action_name = action.name or ""
+            if key in ARTIFACT_FIELDS and (
+                action_type.startswith("Filter")
+                or action_name.startswith("过滤")
+            ):
+                return "replace"
             return "append_unique"
         if isinstance(value, dict):
             return "merge_dict"
@@ -741,12 +797,11 @@ class WorkflowExecutor:
         获取列表元素去重身份。
         """
         if not identity:
-            identity_value = self.make_json_safe(item)
-            return self.make_hashable_identity(identity_value)
+            return self.make_hashable_identity(item)
         value = item
         for part in identity.split("."):
             value = self.read_value(value, int(part) if part.isdigit() else part)
-        return self.make_hashable_identity(self.make_json_safe(value))
+        return self.make_hashable_identity(item)
 
     @staticmethod
     def make_hashable_identity(value: Any) -> Any:
@@ -1087,17 +1142,11 @@ class WorkflowChain(ChainBase):
             """
             保存上下文到数据库
             """
-            # 序列化数据
-            serialized_data = pickle.dumps(context)
-            # 使用Base64编码字节流
-            encoded_data = base64.b64encode(serialized_data).decode('utf-8')
             WorkflowOper().step(
                 workflow_id,
                 action_id=action.id if completed else "",
-                context={
-                    "content": encoded_data
-                },
-                execution_state=execution_state
+                context=_serialize_workflow_context(context),
+                execution_state=_serialize_workflow_value(execution_state)
             )
 
         # 重置工作流

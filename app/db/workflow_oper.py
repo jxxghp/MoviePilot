@@ -100,7 +100,7 @@ class WorkflowOper(DbOper):
             wid,
             action_id,
             context,
-            execution_state=execution_state
+            execution_state
         )
 
     def reset(self, wid: int, reset_count: bool = False) -> bool:
