@@ -1,5 +1,7 @@
+import hashlib
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from app.modules.filemanager.storages import alist as alist_module
@@ -137,3 +139,47 @@ class AlistStorageTest(unittest.TestCase):
         self.assertEqual("alist", target.storage)
         self.assertEqual("file", target.type)
         self.assertEqual(1024, target.size)
+
+    def test_upload_sends_hash_headers_for_rapid_upload(self):
+        """
+        OpenList 上传应附带文件哈希头，供服务端尝试秒传。
+        """
+        with TemporaryDirectory() as temp_dir:
+            local_path = Path(temp_dir) / "rapid.bin"
+            content = b"moviepilot-openlist-rapid-upload"
+            local_path.write_bytes(content)
+            upload_dir = FileItem(
+                storage="alist",
+                type="dir",
+                path="/library/",
+                name="library",
+                basename="library",
+            )
+            uploaded_item = FileItem(
+                storage="alist",
+                type="file",
+                path="/library/rapid.bin",
+                name="rapid.bin",
+                basename="rapid",
+                extension="bin",
+                size=len(content),
+            )
+            request_utils = MagicMock()
+            request_utils.put_res.return_value = _FakeResponse(
+                {"code": 200, "message": "success", "data": None}
+            )
+
+            with patch.object(Alist, "get_conf", return_value={"url": "http://openlist.test", "token": "token"}):
+                with patch.object(alist_module, "RequestUtils", return_value=request_utils) as request_utils_factory:
+                    with patch.object(self.storage, "_delay_get_item", return_value=uploaded_item):
+                        result = self.storage.upload(upload_dir, local_path)
+
+        self.assertEqual(uploaded_item, result)
+        request_utils.put_res.assert_called_once()
+        headers = request_utils_factory.call_args.kwargs["headers"]
+        self.assertEqual(hashlib.md5(content).hexdigest(), headers["X-File-Md5"])
+        self.assertEqual(hashlib.sha1(content).hexdigest(), headers["X-File-Sha1"])
+        self.assertEqual(hashlib.sha256(content).hexdigest(), headers["X-File-Sha256"])
+        self.assertEqual(str(len(content)), headers["Content-Length"])
+        self.assertEqual("application/octet-stream", headers["Content-Type"])
+        self.assertEqual("/library/rapid.bin", headers["File-Path"])

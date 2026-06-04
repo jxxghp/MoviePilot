@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 from datetime import datetime
@@ -708,6 +709,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             # 获取文件大小
             target_name = new_name or path.name
             target_path = Path(fileitem.path) / target_name
+            stat = path.stat()
 
             # 初始化进度回调
             progress_callback = transfer_process(path.as_posix())
@@ -718,6 +720,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             headers.setdefault("Content-Type", "application/octet-stream")
             headers.setdefault("As-Task", str(task).lower())
             headers.setdefault("File-Path", encoded_path)
+            headers.setdefault("Content-Length", str(stat.st_size))
+            headers.setdefault("Last-Modified", str(int(stat.st_mtime * 1000)))
+            headers.update(self.__get_upload_hash_headers(path))
 
             # 创建自定义的文件流，支持进度回调
             class ProgressFileReader:
@@ -782,6 +787,28 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             logger.error(f"【OpenList】上传文件 {path} 失败：{e}")
             return None
+
+    @staticmethod
+    def __get_upload_hash_headers(path: Path) -> dict:
+        """
+        计算 OpenList 秒传所需的文件哈希请求头。
+        """
+        md5_hash = hashlib.md5()
+        sha1_hash = hashlib.sha1()
+        sha256_hash = hashlib.sha256()
+        with open(path, "rb") as file_handler:
+            while True:
+                chunk = file_handler.read(1024 * 1024)
+                if not chunk:
+                    break
+                md5_hash.update(chunk)
+                sha1_hash.update(chunk)
+                sha256_hash.update(chunk)
+        return {
+            "X-File-Md5": md5_hash.hexdigest(),
+            "X-File-Sha1": sha1_hash.hexdigest(),
+            "X-File-Sha256": sha256_hash.hexdigest(),
+        }
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
