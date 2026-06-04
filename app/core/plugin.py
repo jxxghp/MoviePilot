@@ -950,6 +950,47 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 })
         return remotes
 
+    def get_plugin_auth_providers(self) -> List[Dict[str, Any]]:
+        """
+        聚合插件声明的登录认证提供方。
+
+        :return: 插件认证入口列表
+        """
+        providers: List[Dict[str, Any]] = []
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
+            if not plugin.get_state():
+                continue
+            if not hasattr(plugin, "get_auth_providers") or not ObjectUtils.check_method(plugin.get_auth_providers):
+                continue
+            try:
+                plugin_providers = plugin.get_auth_providers() or []
+            except Exception as e:
+                logger.error(f"获取插件 {plugin_id} 登录认证提供方出错：{str(e)}")
+                continue
+            render_mode = None
+            dist_path = None
+            if hasattr(plugin, "get_render_mode"):
+                render_mode, dist_path = plugin.get_render_mode()
+            for raw_provider in plugin_providers:
+                if not raw_provider or not isinstance(raw_provider, dict):
+                    continue
+                provider = raw_provider.copy()
+                provider["type"] = "plugin"
+                provider["plugin_id"] = plugin_id
+                provider.setdefault("id", f"plugin:{plugin_id}")
+                provider.setdefault("name", plugin.plugin_name)
+                provider.setdefault("enabled", True)
+                if render_mode == "vue" and dist_path:
+                    provider.setdefault("component", "AuthPage")
+                    provider["remote"] = {
+                        "id": plugin_id,
+                        "url": self.get_plugin_remote_entry(plugin_id, dist_path),
+                        "name": plugin.plugin_name,
+                    }
+                providers.append(provider)
+        return providers
+
     def get_plugin_sidebar_nav(self) -> List[Dict[str, Any]]:
         """
         聚合所有已启用 Vue 插件的侧栏导航项（get_sidebar_nav）。

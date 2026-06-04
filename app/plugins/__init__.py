@@ -174,6 +174,21 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_auth_providers(self) -> List[Dict[str, Any]]:
+        """
+        声明插件提供的登录认证入口。
+
+        返回示例：
+        [{
+            "id": "oidc",
+            "name": "OIDC 登录",
+            "icon": "mdi-openid",
+            "component": "AuthPage",
+            "enabled": True
+        }]
+        """
+        pass
+
     def get_module(self) -> Dict[str, Any]:
         """
         获取插件模块声明，用于胁持系统模块实现（方法名：方法实现）

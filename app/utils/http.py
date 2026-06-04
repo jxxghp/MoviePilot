@@ -70,6 +70,8 @@ _DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 _DEFAULT_MAX_CONNECTIONS = 40
 # 默认的 keep-alive 连接过期时间（秒）
 _DEFAULT_KEEPALIVE_EXPIRY = 30
+# 同步 requests.Session 复用连接时，遇到对端或代理关闭 keep-alive 后允许重试的方法
+_REQUESTS_RETRY_IDEMPOTENT_METHODS = ("GET", "HEAD", "OPTIONS")
 # 持有 LRU 淘汰后正在异步关闭的 transport task，避免 fire-and-forget 被 GC 警告
 _pending_eviction_tasks: set[asyncio.Task] = set()
 
@@ -344,14 +346,47 @@ class RequestUtils:
         kwargs.setdefault("timeout", self._timeout)
         kwargs.setdefault("verify", False)
         kwargs.setdefault("stream", False)
+        method_upper = method.upper()
         try:
             return req_method(method, url, **kwargs)
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+            requests.exceptions.ReadTimeout,
+        ) as e:
+            if (
+                self._session is not None
+                and method_upper in _REQUESTS_RETRY_IDEMPOTENT_METHODS
+            ):
+                logger.debug(f"keep-alive 连接已失效，同步幂等请求重试一次: {e!r}")
+                try:
+                    self._session.close()
+                    return req_method(method, url, **kwargs)
+                except requests.exceptions.RequestException as retry_error:
+                    error_msg = (
+                        str(retry_error)
+                        if str(retry_error)
+                        else f"未知网络错误 (URL: {url}, Method: {method_upper})"
+                    )
+                    logger.debug(f"重试后同步请求仍失败: {error_msg}")
+                    if raise_exception:
+                        raise
+                    return None
+            error_msg = (
+                str(e)
+                if str(e)
+                else f"未知网络错误 (URL: {url}, Method: {method_upper})"
+            )
+            logger.debug(f"同步请求失败(不重试): {error_msg}")
+            if raise_exception:
+                raise
+            return None
         except requests.exceptions.RequestException as e:
             # 获取更详细的错误信息
             error_msg = (
                 str(e)
                 if str(e)
-                else f"未知网络错误 (URL: {url}, Method: {method.upper()})"
+                else f"未知网络错误 (URL: {url}, Method: {method_upper})"
             )
             logger.debug(f"请求失败: {error_msg}")
             if raise_exception:

@@ -81,7 +81,7 @@ def ensure_sites_stub() -> None:
         return
     try:
         import app.helper.sites  # noqa: F401  本地已拉取时用真实模块
-    except ModuleNotFoundError:
+    except (ModuleNotFoundError, ImportError):
         from types import ModuleType
         stub = ModuleType("app.helper.sites")
         stub.SitesHelper = object

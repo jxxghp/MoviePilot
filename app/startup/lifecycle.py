@@ -3,6 +3,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+# urllib3-future 覆盖 urllib3 命名空间后删除了 format_header_param，导致 telebot 崩溃，需在加载模块前打补丁
+try:
+    import urllib3.fields as _urllib3_fields
+
+    if not hasattr(_urllib3_fields, "format_header_param") and hasattr(
+        _urllib3_fields, "format_header_param_rfc2231"
+    ):
+        _urllib3_fields.format_header_param = (
+            _urllib3_fields.format_header_param_rfc2231
+        )
+except Exception:
+    pass
+
 from app.chain.system import SystemChain
 from app.core.config import global_vars
 from app.helper.server import MoviePilotServerHelper
@@ -12,7 +25,11 @@ from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
 from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
 from app.startup.routers_initializer import init_routers
-from app.startup.scheduler_initializer import stop_scheduler, init_scheduler, init_plugin_scheduler
+from app.startup.scheduler_initializer import (
+    stop_scheduler,
+    init_scheduler,
+    init_plugin_scheduler,
+)
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.utils.http import aclose_shared_async_transports
 
