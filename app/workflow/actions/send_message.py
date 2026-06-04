@@ -20,6 +20,8 @@ class SendMessageAction(BaseAction):
     发送消息
     """
 
+    contract = {}
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
 

@@ -20,6 +20,8 @@ class InvokePluginAction(BaseAction):
     调用插件
     """
 
+    contract = {}
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._success = False

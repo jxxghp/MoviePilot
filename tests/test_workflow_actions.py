@@ -1,10 +1,14 @@
 from types import SimpleNamespace
 
 from app.schemas import ActionContext, DownloadTask, FileItem
+from app.schemas.workflow import ActionResult
+from app.workflow.actions import BaseAction
 from app.workflow.actions import fetch_downloads as fetch_downloads_module
 from app.workflow.actions import scrape_file as scrape_file_module
 from app.workflow.actions.fetch_downloads import FetchDownloadsAction
 from app.workflow.actions.scrape_file import ScrapeFileAction
+from app.workflow.actions.fetch_rss import FetchRssAction
+from app.workflow import WorkFlowManager
 
 
 def test_fetch_downloads_updates_context_downloads(monkeypatch):
@@ -78,3 +82,80 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
     assert result is context
     assert result.fileitems[0].path == "/library/movie.mkv"
     assert scraped == [("/library/movie.mkv", "meta", "media")]
+
+
+def test_execute_with_inputs_maps_contract_inputs_outputs_and_runtime(monkeypatch):
+    """新版动作桥接方法应按契约映射输入、输出和运行期信息。"""
+
+    class ContractAction(BaseAction):
+        """测试动作契约桥接。"""
+
+        contract = {
+            "inputs": [{"name": "torrents", "label": "资源", "kind": "list"}],
+            "outputs": [{"name": "downloads", "label": "下载任务", "kind": "list"}],
+        }
+
+        @classmethod
+        @property
+        def name(cls) -> str:
+            return "契约动作"
+
+        @classmethod
+        @property
+        def description(cls) -> str:
+            return "测试契约动作"
+
+        @classmethod
+        @property
+        def data(cls) -> dict:
+            return {}
+
+        @property
+        def success(self) -> bool:
+            return True
+
+        def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+            """执行测试动作。"""
+            _ = workflow_id, params
+            context.downloads = [
+                DownloadTask(download_id=f"{item}-hash", downloader="qbittorrent")
+                for item in context.torrents
+            ]
+            self.job_done("完成")
+            return context
+
+    result = ContractAction("contract").execute_with_inputs(
+        workflow_id=1,
+        params={},
+        inputs={"torrents": ["movie"]},
+        runtime={"attempt": 1, "max_attempts": 1, "cancel_token": object()},
+        context=ActionContext(),
+    )
+
+    assert isinstance(result, ActionResult)
+    assert result.outputs["downloads"][0].download_id == "movie-hash"
+    assert result.context.runtime_state["current_action_runtime"] == {
+        "attempt": 1,
+        "max_attempts": 1,
+    }
+
+    path_result = ContractAction("contract").execute_with_inputs(
+        workflow_id=1,
+        params={},
+        inputs={"outputs.FetchRssAction.torrents": ["legacy"]},
+        runtime={},
+        context=ActionContext(),
+    )
+
+    assert path_result.outputs["downloads"][0].download_id == "legacy-hash"
+
+
+def test_workflow_manager_list_actions_exposes_contract():
+    """动作列表应返回固定输入输出契约。"""
+    manager = object.__new__(WorkFlowManager)
+    manager._actions = {"FetchRssAction": FetchRssAction}
+
+    actions = manager.list_actions()
+
+    assert actions[0]["contract"]["outputs"][0]["name"] == "torrents"
+    assert actions[0]["contract"]["condition_fields"][0]["label"] == "资源"

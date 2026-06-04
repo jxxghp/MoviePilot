@@ -19,6 +19,11 @@ class AddSubscribeAction(BaseAction):
     添加订阅
     """
 
+    contract = {
+        "inputs": [{"name": "medias", "label": "媒体", "kind": "list"}],
+        "outputs": [{"name": "subscribes", "label": "订阅", "kind": "list"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._added_subscribes = []

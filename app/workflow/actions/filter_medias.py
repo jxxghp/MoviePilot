@@ -22,6 +22,11 @@ class FilterMediasAction(BaseAction):
     过滤媒体数据
     """
 
+    contract = {
+        "inputs": [{"name": "medias", "label": "媒体", "kind": "list"}],
+        "outputs": [{"name": "medias", "label": "媒体", "kind": "list", "merge": "replace"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._medias = []

@@ -24,6 +24,10 @@ class ScanFileAction(BaseAction):
     整理文件
     """
 
+    contract = {
+        "outputs": [{"name": "fileitems", "label": "文件", "kind": "list"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._fileitems = []

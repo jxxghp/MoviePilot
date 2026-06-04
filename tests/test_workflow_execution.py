@@ -40,9 +40,10 @@ def _encoded_context(context: ActionContext) -> dict:
 class _FakeWorkflowManager:
     """记录执行动作的工作流管理器。"""
 
-    def __init__(self, calls, results=None):
+    def __init__(self, calls, results=None, contracts=None):
         self.calls = calls
         self.results = results or {}
+        self.contracts = contracts or {}
         self.received_inputs = []
 
     def execute(self, workflow_id, action, context=None, inputs=None, runtime=None, cancel_token=None):
@@ -60,6 +61,10 @@ class _FakeWorkflowManager:
         """兼容历史执行方法。"""
         result = self.execute(workflow_id, action, context)
         return result.success, result.message, result.context
+
+    def get_action_contract(self, action_type):
+        """获取伪动作契约。"""
+        return self.contracts.get(action_type) or {}
 
 
 def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
@@ -344,6 +349,44 @@ def test_workflow_executor_passes_declared_inputs(monkeypatch):
         "A.torrents": ["a", "b"],
         "outputs.A.torrents.count": 2,
     }
+
+
+def test_workflow_executor_uses_contract_inputs(monkeypatch):
+    """未手写输入声明时应按动作契约读取上下文字段。"""
+    calls = []
+    fake_manager = _FakeWorkflowManager(
+        calls,
+        contracts={
+            "NeedsTorrentsAction": {
+                "inputs": [{"name": "torrents", "label": "资源", "kind": "list"}],
+                "outputs": [],
+            }
+        },
+        results={
+            "A": lambda action, context: ActionResult(
+                success=True,
+                message=f"{action.name}完成",
+                context=context,
+                outputs={"torrents": ["a", "b"]}
+            )
+        }
+    )
+    workflow = _build_workflow(
+        actions=[
+            {"id": "A", "type": "FakeAction", "name": "动作A", "data": {}},
+            {"id": "B", "type": "NeedsTorrentsAction", "name": "动作B", "data": {}},
+        ],
+    )
+
+    monkeypatch.setattr(workflow_module, "WorkFlowManager", lambda: fake_manager)
+    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+
+    executor = workflow_module.WorkflowExecutor(workflow)
+    executor.execute()
+
+    b_inputs = [item for action_id, item, _, _ in fake_manager.received_inputs if action_id == "B"][0]
+    assert b_inputs == {"torrents": ["a", "b"]}
 
 
 def test_workflow_executor_persists_structured_state(monkeypatch):

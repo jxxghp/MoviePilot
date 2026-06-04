@@ -26,6 +26,15 @@ class TransferFileAction(BaseAction):
     整理文件
     """
 
+    contract = {
+        "inputs": [
+            {"name": "downloads", "label": "下载任务", "kind": "list"},
+            {"name": "fileitems", "label": "文件", "kind": "list"},
+        ],
+        "outputs": [{"name": "fileitems", "label": "文件", "kind": "list"}],
+        "concurrency_key": "transfer",
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._fileitems = []

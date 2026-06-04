@@ -7,6 +7,8 @@ class NoteAction(BaseAction):
     备注
     """
 
+    contract = {}
+
     @classmethod
     @property
     def name(cls) -> str: # noqa

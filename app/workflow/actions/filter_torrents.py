@@ -27,6 +27,11 @@ class FilterTorrentsAction(BaseAction):
     过滤资源数据
     """
 
+    contract = {
+        "inputs": [{"name": "torrents", "label": "资源", "kind": "list"}],
+        "outputs": [{"name": "torrents", "label": "资源", "kind": "list", "merge": "replace"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._torrents = []

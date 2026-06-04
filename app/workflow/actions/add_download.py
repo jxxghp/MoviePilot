@@ -26,6 +26,12 @@ class AddDownloadAction(BaseAction):
     添加下载资源
     """
 
+    contract = {
+        "inputs": [{"name": "torrents", "label": "资源", "kind": "list"}],
+        "outputs": [{"name": "downloads", "label": "下载任务", "kind": "list"}],
+        "concurrency_key": "download",
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._added_downloads = []

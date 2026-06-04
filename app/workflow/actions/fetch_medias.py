@@ -27,6 +27,10 @@ class FetchMediasAction(BaseAction):
     获取媒体数据
     """
 
+    contract = {
+        "outputs": [{"name": "medias", "label": "媒体", "kind": "list"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
 

@@ -555,12 +555,27 @@ class WorkflowExecutor:
         根据动作输入声明读取上游节点输出。
         """
         inputs = {}
-        input_paths = action.inputs or self.get_action_data_value(action, "inputs") or []
+        input_paths = action.inputs or self.get_action_data_value(action, "inputs")
+        if not input_paths:
+            input_paths = [
+                field["name"] for field in self.get_action_contract(action).get("inputs") or []
+            ]
         if isinstance(input_paths, str):
             input_paths = [item.strip() for item in input_paths.splitlines() if item.strip()]
         for input_path in input_paths:
-            inputs[input_path] = self.resolve_context_path(input_path)
+            inputs[input_path] = self.resolve_action_input(input_path)
         return inputs
+
+    def resolve_action_input(self, input_path: str) -> Any:
+        """
+        解析动作输入声明。
+        """
+        if input_path in ActionContext.model_fields:
+            value = getattr(self.context, input_path, None)
+            if value not in (None, "", [], {}):
+                return value
+            return self.context.artifacts.get(input_path) if self.context.artifacts else value
+        return self.resolve_context_path(input_path)
 
     def build_action_runtime(self, action: Action) -> dict:
         """
@@ -588,9 +603,14 @@ class WorkflowExecutor:
         根据动作输出声明整理当前节点输出。
         """
         outputs = action_result.outputs or self.extract_context_outputs(result_context)
-        declared_outputs = action.outputs or self.get_action_data_value(action, "outputs")
+        declared_outputs = self.get_action_output_declarations(action)
         if isinstance(declared_outputs, list):
-            return {key: outputs.get(key) for key in declared_outputs if outputs.get(key) not in (None, "", [], {})}
+            normalized_outputs = {}
+            for item in declared_outputs:
+                key = item.get("name") if isinstance(item, dict) else item
+                if key and outputs.get(key) not in (None, "", [], {}):
+                    normalized_outputs[key] = outputs.get(key)
+            return normalized_outputs or outputs
         if isinstance(declared_outputs, dict):
             return {
                 key: outputs.get(key)
@@ -648,11 +668,27 @@ class WorkflowExecutor:
         """
         获取动作输出声明配置。
         """
-        outputs_config = action.outputs or self.get_action_data_value(action, "outputs") or {}
+        outputs_config = self.get_action_output_declarations(action)
         if isinstance(outputs_config, dict):
             value = outputs_config.get(output_key) or {}
             return value if isinstance(value, dict) else {}
+        if isinstance(outputs_config, list):
+            for item in outputs_config:
+                if isinstance(item, dict) and item.get("name") == output_key:
+                    return {
+                        key: value for key, value in item.items()
+                        if key not in ("name", "label", "kind") and value not in (None, "", [], {})
+                    }
         return {}
+
+    def get_action_output_declarations(self, action: Action) -> Any:
+        """
+        获取动作输出声明，优先使用节点显式配置，其次使用动作固定契约。
+        """
+        outputs_config = action.outputs or self.get_action_data_value(action, "outputs")
+        if outputs_config:
+            return outputs_config
+        return self.get_action_contract(action).get("outputs") or {}
 
     def get_default_merge_policy(self, action: Action, key: str, value: Any) -> str:
         """
@@ -796,7 +832,20 @@ class WorkflowExecutor:
         """
         获取动作并发互斥键。
         """
-        return action.concurrency_key or self.get_action_data_value(action, "concurrency_key")
+        return (
+            action.concurrency_key
+            or self.get_action_data_value(action, "concurrency_key")
+            or self.get_action_contract(action).get("concurrency_key")
+        )
+
+    def get_action_contract(self, action: Action) -> dict:
+        """
+        获取动作固定输入输出契约。
+        """
+        get_contract = getattr(self.workflowmanager, "get_action_contract", None)
+        if not get_contract:
+            return {}
+        return get_contract(action.type) or {}
 
     def get_flow_condition(self, flow: ActionFlow) -> Optional[str]:
         """

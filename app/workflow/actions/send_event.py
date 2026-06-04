@@ -16,6 +16,8 @@ class SendEventAction(BaseAction):
     发送事件
     """
 
+    contract = {}
+
     @classmethod
     @property
     def name(cls) -> str: # noqa

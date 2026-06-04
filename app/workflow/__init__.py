@@ -242,12 +242,22 @@ class WorkFlowManager(metaclass=Singleton):
                 "type": key,
                 "name": action.name,
                 "description": action.description,
+                "contract": action.get_contract(),
                 "data": {
                     "label": action.name,
                     **action.data
                 }
             } for key, action in self._actions.items()
         ]
+
+    def get_action_contract(self, action_type: str) -> dict:
+        """
+        获取动作输入输出契约。
+        """
+        action = self._actions.get(action_type)
+        if not action or not hasattr(action, "get_contract"):
+            return {}
+        return action.get_contract()
 
     def update_workflow_event(self, workflow: Workflow):
         """

@@ -18,6 +18,11 @@ class ScrapeFileAction(BaseAction):
     刮削文件
     """
 
+    contract = {
+        "inputs": [{"name": "fileitems", "label": "文件", "kind": "list"}],
+        "outputs": [{"name": "fileitems", "label": "文件", "kind": "list"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._scraped_files = []

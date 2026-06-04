@@ -16,6 +16,12 @@ class FetchDownloadsAction(BaseAction):
     获取下载任务
     """
 
+    contract = {
+        "inputs": [{"name": "downloads", "label": "下载任务", "kind": "list"}],
+        "outputs": [{"name": "downloads", "label": "下载任务", "kind": "list", "merge": "replace"}],
+        "concurrency_key": "download",
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._downloads = []

@@ -30,6 +30,10 @@ class FetchRssAction(BaseAction):
     获取RSS资源列表
     """
 
+    contract = {
+        "outputs": [{"name": "torrents", "label": "资源", "kind": "list"}],
+    }
+
     def __init__(self, action_id: str):
         super().__init__(action_id)
         self._rss_torrents = []
