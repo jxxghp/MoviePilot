@@ -92,6 +92,9 @@ def _get_shared_async_transport(
     会话级状态由调用方在外层 AsyncClient(transport=...) 实例化时单独配置，
     每次调用用完即销毁，因此天然无 jar 累积串扰。
     """
+    # 规范化代理：拒绝空字符串等非法值，防止 httpx 抛出 Unknown scheme for proxy URL
+    if proxy is not None and (not proxy or not proxy.strip()):
+        proxy = None
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -899,14 +902,14 @@ class AsyncRequestUtils:
 
         # 如果已经是字符串格式，直接返回
         if isinstance(proxies, str):
-            return proxies
+            return proxies.strip() or None
 
         # 如果是字典格式，提取http或https代理
         if isinstance(proxies, dict):
             # 优先使用https代理，如果没有则使用http代理
             proxy_url = proxies.get("https") or proxies.get("http")
-            if proxy_url:
-                return proxy_url
+            if proxy_url and proxy_url.strip():
+                return proxy_url.strip()
 
         return None
 

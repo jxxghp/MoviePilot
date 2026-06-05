@@ -9,10 +9,10 @@ import sys
 import threading
 from asyncio import AbstractEventLoop
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_origin, get_args
 from urllib.parse import quote, urlencode, urlparse
 
-from dotenv import set_key
+from dotenv import set_key, unset_key
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -690,6 +690,16 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         if isinstance(value, str):
             value = value.strip()
 
+        # 处理 Optional 类型：当值为空字符串且类型允许 None 时，转为 None
+        origin = get_origin(expected_type)
+        if (
+            origin is Union
+            and type(None) in get_args(expected_type)
+            and isinstance(value, str)
+            and not value
+        ):
+            return default, str(default) != str(original_value)
+
         try:
             if expected_type is bool:
                 if isinstance(value, bool):
@@ -812,13 +822,20 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             logger.warning(message)
             return False, message
         else:
+            # 当值为 None 时，从 env 文件中删除该键，恢复为默认值
+            if converted_value is None:
+                unset_key(
+                    dotenv_path=SystemUtils.get_env_path(),
+                    key_to_unset=field_name,
+                    quote_mode="always",
+                )
+                logger.info(f"配置项 '{field_name}' 已清空，从 'app.env' 中移除")
+                return True, message
             # 如果是列表、字典或集合类型，将其转换为JSON字符串
             if isinstance(converted_value, (list, dict, set)):
                 value_to_write = json.dumps(converted_value)
             else:
-                value_to_write = (
-                    str(converted_value) if converted_value is not None else ""
-                )
+                value_to_write = str(converted_value)
 
             set_key(
                 dotenv_path=SystemUtils.get_env_path(),
@@ -967,7 +984,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
 
     @property
     def PROXY(self):
-        if self.PROXY_HOST:
+        if self.PROXY_HOST and self.PROXY_HOST.strip():
             return {
                 "http": self.PROXY_HOST,
                 "https": self.PROXY_HOST,
@@ -1009,7 +1026,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
 
     @property
     def PROXY_SERVER(self):
-        if self.PROXY_HOST:
+        if self.PROXY_HOST and self.PROXY_HOST.strip():
             try:
                 parsed = urlparse(self.PROXY_HOST)
                 if not parsed.scheme:
