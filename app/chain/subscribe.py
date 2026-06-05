@@ -2785,9 +2785,16 @@ class SubscribeChain(ChainBase):
                 # 更新剧集列表、开始集数、总集数
                 if not episode_list:
                     # 整季缺失
-                    episodes = []
                     start_episode = start_episode or start
                     total_episode = total_episode or total
+                    original_start = start if start is not None else 1
+                    # 空集列表会被下载链解释为整季下载；当订阅开始集裁掉季初范围时，需要转成显式集数。
+                    if start_episode and total_episode and start_episode > original_start:
+                        episodes = list(range(start_episode, total_episode + 1))
+                        if not episodes:
+                            return True, {}
+                    else:
+                        episodes = []
                 else:
                     # 部分缺失
                     if not start_episode \

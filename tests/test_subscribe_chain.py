@@ -456,6 +456,69 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(SubscribeChain.get_best_version_current_priority(subscribe), 100)
         self.assertTrue(SubscribeChain.is_best_version_complete(subscribe))
 
+    def test_get_subscribe_no_exists_expands_whole_missing_when_custom_start_skips_existing_range(self):
+        """自定义开始集跳过季初集数时，缺失整季需要转成显式目标集。"""
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(season=1, episodes=[], total_episode=48, start_episode=1)
+            }
+        }
+
+        exist_flag, result = SubscribeChain._SubscribeChain__get_subscribe_no_exits(
+            subscribe_name="主角 S01",
+            no_exists=no_exists,
+            mediakey="media-key",
+            begin_season=1,
+            total_episode=48,
+            start_episode=44,
+        )
+
+        self.assertFalse(exist_flag)
+        self.assertEqual(result["media-key"][1].episodes, [44, 45, 46, 47, 48])
+        self.assertEqual(result["media-key"][1].start_episode, 44)
+        self.assertEqual(result["media-key"][1].total_episode, 48)
+
+    def test_get_subscribe_no_exists_keeps_whole_missing_when_custom_start_matches_original_start(self):
+        """自定义开始集没有缩小范围时，仍保留空集列表表示整季缺失。"""
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(season=1, episodes=[], total_episode=48, start_episode=1)
+            }
+        }
+
+        exist_flag, result = SubscribeChain._SubscribeChain__get_subscribe_no_exits(
+            subscribe_name="主角 S01",
+            no_exists=no_exists,
+            mediakey="media-key",
+            begin_season=1,
+            total_episode=48,
+            start_episode=1,
+        )
+
+        self.assertFalse(exist_flag)
+        self.assertEqual(result["media-key"][1].episodes, [])
+        self.assertEqual(result["media-key"][1].start_episode, 1)
+        self.assertEqual(result["media-key"][1].total_episode, 48)
+
+    def test_best_version_full_pack_first_keeps_whole_missing_for_custom_start_episode(self):
+        """分集洗版优先全集时，空集列表仍表示下载链按整季资源处理。"""
+        subscribe = self._build_subscribe(
+            best_version=1,
+            best_version_full=0,
+            start_episode=44,
+            total_episode=48,
+            episode_priority={str(episode): 80 for episode in range(44, 49)},
+        )
+
+        result = SubscribeChain._SubscribeChain__build_full_pack_first_no_exists(
+            subscribe=subscribe,
+            mediakey="media-key",
+        )
+
+        self.assertEqual(result["media-key"][1].episodes, [])
+        self.assertEqual(result["media-key"][1].start_episode, 44)
+        self.assertEqual(result["media-key"][1].total_episode, 48)
+
     def test_is_episode_range_covered_matches_pending_episodes(self):
         subscribe = self._build_subscribe(
             total_episode=12,
