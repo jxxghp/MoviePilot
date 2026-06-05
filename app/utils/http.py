@@ -907,9 +907,14 @@ class AsyncRequestUtils:
         # 如果是字典格式，提取http或https代理
         if isinstance(proxies, dict):
             # 优先使用https代理，如果没有则使用http代理
-            proxy_url = proxies.get("https") or proxies.get("http")
-            if proxy_url and proxy_url.strip():
-                return proxy_url.strip()
+            # 先各自 strip，避免空白字符串阻断裂合取或回退到 http 代理
+            https_proxy = proxies.get("https")
+            http_proxy = proxies.get("http")
+            https_proxy = https_proxy.strip() if isinstance(https_proxy, str) else None
+            http_proxy = http_proxy.strip() if isinstance(http_proxy, str) else None
+            proxy_url = https_proxy or http_proxy
+            if proxy_url:
+                return proxy_url
 
         return None
 
