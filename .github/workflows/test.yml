@@ -11,6 +11,13 @@ on:
   # 允许手动触发
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
