@@ -12,7 +12,7 @@ class TorrentLeech:
     _proxy = None
     _size = 100
     _searchurl = "%storrents/browse/list/query/%s"
-    _browseurl = "%storrents/browse/list/page/2%s"
+    _browseurl = "%storrents/browse/list/page/%s"
     _downloadurl = "%sdownload/%s/%s"
     _pageurl = "%storrent/%s"
     _timeout = 15
