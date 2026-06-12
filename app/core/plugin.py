@@ -360,7 +360,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 if runtime_pid:
                     last_sync_time = self._recent_local_sync.get(runtime_pid)
                     if last_sync_time and time.time() - last_sync_time < 2:
-                        logger.debug(f"忽略本地插件同步产生的运行目录变化：{runtime_pid}")
                         continue
                     # 运行目录变化只重载，不能反向触发本地同步。
                     plugins_to_reload.add(runtime_pid)

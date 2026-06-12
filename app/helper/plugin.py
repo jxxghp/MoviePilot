@@ -528,9 +528,10 @@ class PluginHelper(metaclass=WeakSingleton):
         else:
             logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
 
-        # 2. 决定安装方式（release 或 文件列表）并执行统一安装流程
+        # 2. 决定安装方式（release 或文件列表）并执行统一安装流程。
         meta = self.__get_plugin_meta(pid, repo_url, package_version)
-        # 是否release打包
+        # 是否使用 Release 打包。Release 缺失或资产不可用时仍保留文件列表兜底，
+        # 避免索引先发布、Actions 打包滞后导致插件短时间无法安装。
         is_release = meta.get("release")
         # 插件版本号
         plugin_version = meta.get("version")
@@ -547,13 +548,15 @@ class PluginHelper(metaclass=WeakSingleton):
 
             # 使用 release 进行安装
             def prepare_release() -> Tuple[bool, str]:
-                return self.__install_from_release(
-                    pid, user_repo, release_tag
-                )
+                ok, msg = self.__install_from_release(pid, user_repo, release_tag)
+                if ok:
+                    return True, msg
+                logger.warn(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
 
             return self.__install_flow_sync(pid, force_install, prepare_release, repo_url)
         else:
-            # 如果 release_tag 不存在，说明插件没有发布版本，使用文件列表方式安装
+            # 未声明 release 打包的插件继续使用文件列表方式安装。
             def prepare_filelist() -> Tuple[bool, str]:
                 return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
 
@@ -2281,9 +2284,9 @@ class PluginHelper(metaclass=WeakSingleton):
         else:
             logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
 
-        # 2. 统一异步安装流程（release 或 文件列表）
+        # 2. 统一异步安装流程（release 或文件列表）。
         meta = await self.__async_get_plugin_meta(pid, repo_url, package_version)
-        # 是否release打包
+        # 是否使用 Release 打包；失败时兜底文件列表，保持同步/异步安装语义一致。
         is_release = meta.get("release")
         # 插件版本号
         plugin_version = meta.get("version")
@@ -2300,13 +2303,15 @@ class PluginHelper(metaclass=WeakSingleton):
 
             # 使用 release 进行安装
             async def prepare_release() -> Tuple[bool, str]:
-                return await self.__async_install_from_release(
-                    pid, user_repo, release_tag
-                )
+                ok, msg = await self.__async_install_from_release(pid, user_repo, release_tag)
+                if ok:
+                    return True, msg
+                logger.warn(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
             return await self.__install_flow_async(pid, force_install, prepare_release, repo_url)
         else:
-            # 如果没有 release_tag，则使用文件列表安装方式
+            # 未声明 release 打包的插件继续使用文件列表方式安装。
             async def prepare_filelist() -> Tuple[bool, str]:
                 return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
