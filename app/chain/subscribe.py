@@ -1188,10 +1188,7 @@ class SubscribeChain(ChainBase):
             subscribe.last_update = now
 
             completed_episodes = self.__get_best_version_completed_episodes(subscribe)
-            if self.__is_best_version_complete(subscribe):
-                logger.info(f'{mediainfo.title_year} 洗版完成，已完成剧集：{completed_episodes}')
-                self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
-            else:
+            if not self.__is_best_version_complete(subscribe):
                 logger.info(
                     f'{mediainfo.title_year} 正在洗版，更新剧集优先级为 {priority}，已完成剧集：{completed_episodes}'
                 )
@@ -1204,10 +1201,7 @@ class SubscribeChain(ChainBase):
         })
         subscribe.current_priority = priority
         subscribe.last_update = now
-        if priority == 100:
-            # 洗版完成
-            self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
-        else:
+        if priority != 100:
             # 正在洗版，更新资源优先级
             logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级为 {priority}')
 

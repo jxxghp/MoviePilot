@@ -347,7 +347,8 @@ class SubscribeChainTest(TestCase):
         return SimpleNamespace(
             torrent_info=SimpleNamespace(pri_order=priority),
             selected_episodes=selected_episodes,
-            meta_info=SimpleNamespace(season_list=[1], episode_list=meta_episodes or []),
+            meta_info=SimpleNamespace(season_list=[1], episode_list=meta_episodes or selected_episodes or []),
+            media_info=SimpleNamespace(type=MediaType.TV, tmdb_id=1, douban_id=None),
         )
 
     def test_match_title_fallback_calls_torrent_match_from_class(self):
@@ -803,7 +804,7 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(subscribe.lack_episode, 3)
         finish_mock.assert_not_called()
 
-    def test_update_subscribe_priority_marks_complete_when_all_target_episodes_done(self):
+    def test_update_subscribe_priority_updates_all_target_episodes_without_finishing(self):
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 90, "3": 80},
@@ -821,7 +822,7 @@ class SubscribeChainTest(TestCase):
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, patch.object(
             SubscribeChain,
             "_SubscribeChain__finish_subscribe",
-        ) as finish_mock:
+        ) as finish_mock, patch.object(SUBSCRIBE_CHAIN_MODULE, "logger") as logger_mock:
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.update.return_value = None
 
@@ -835,9 +836,13 @@ class SubscribeChainTest(TestCase):
         payload = subscribe_oper.update.call_args.args[1]
         self.assertEqual(payload["episode_priority"], {"1": 100, "2": 100, "3": 100})
         self.assertEqual(payload["current_priority"], 100)
-        # 完成判定仍由 __is_best_version_complete 走 episode_priority 字典做出，lack_episode 不参与
+        # 完成判定仍由 finish_subscribe_or_not 统一处理，避免优先级更新和流程尾部重复完成
         self.assertNotIn("lack_episode", payload)
-        finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
+        finish_mock.assert_not_called()
+        self.assertFalse(
+            [call for call in logger_mock.info.call_args_list if "洗版完成" in call.args[0]],
+            "update_subscribe_priority should not emit completion logs before finish_subscribe_or_not finishes",
+        )
 
     def test_full_best_version_updates_all_episodes_when_pack_has_no_episode_metadata(self):
         subscribe = self._build_subscribe(
@@ -870,7 +875,7 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(payload["episode_priority"], {"1": 100, "2": 100, "3": 100})
         self.assertEqual(payload["current_priority"], 100)
         self.assertNotIn("lack_episode", payload)
-        finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
+        finish_mock.assert_not_called()
 
     def test_episode_best_version_updates_all_episodes_when_full_pack_has_no_episode_metadata(self):
         subscribe = self._build_subscribe(
@@ -903,6 +908,39 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(payload["episode_priority"], {"1": 100, "2": 100, "3": 100})
         self.assertEqual(payload["current_priority"], 100)
         self.assertNotIn("lack_episode", payload)
+        finish_mock.assert_not_called()
+
+    def test_finish_subscribe_or_not_does_not_finish_best_version_twice_after_download_completion(self):
+        """洗版订阅本轮下载已触发完成时，流程尾部不应对同一订阅再次完成。"""
+        subscribe = self._build_subscribe(
+            total_episode=3,
+            episode_priority={"1": 100, "2": 90, "3": 90},
+            current_priority=90,
+            lack_episode=2,
+        )
+        downloads = [
+            self._build_download(priority=100, selected_episodes=[2]),
+            self._build_download(priority=100, selected_episodes=[3]),
+        ]
+        chain = SubscribeChain()
+        meta = SimpleNamespace(type=MediaType.TV)
+        mediainfo = SimpleNamespace(title_year="Test Show (2026)")
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, patch.object(
+            SubscribeChain,
+            "_SubscribeChain__finish_subscribe",
+        ) as finish_mock:
+            subscribe_oper = subscribe_oper_cls.return_value
+            subscribe_oper.update.return_value = None
+
+            chain.finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                downloads=downloads,
+                lefts={},
+            )
+
         finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
 
     def test_check_resets_current_priority_when_new_episodes_expand_target_range(self):
