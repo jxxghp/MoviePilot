@@ -30,6 +30,7 @@ public/
 .moviepilot.env
 *.pyc
 *.log
+.coverage
 .vscode
 venv
 

@@ -551,7 +551,8 @@ class PluginHelper(metaclass=WeakSingleton):
                 ok, msg = self.__install_from_release(pid, user_repo, release_tag)
                 if ok:
                     return True, msg
-                logger.warn(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                self.__remove_old_plugin(pid)
                 return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
 
             return self.__install_flow_sync(pid, force_install, prepare_release, repo_url)
@@ -2306,14 +2307,15 @@ class PluginHelper(metaclass=WeakSingleton):
                 ok, msg = await self.__async_install_from_release(pid, user_repo, release_tag)
                 if ok:
                     return True, msg
-                logger.warn(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
-                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
+                logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                await self.__async_remove_old_plugin(pid)
+                return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
 
             return await self.__install_flow_async(pid, force_install, prepare_release, repo_url)
         else:
             # 未声明 release 打包的插件继续使用文件列表方式安装。
             async def prepare_filelist() -> Tuple[bool, str]:
-                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
+                return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
 
             return await self.__install_flow_async(pid, force_install, prepare_filelist, repo_url)
 

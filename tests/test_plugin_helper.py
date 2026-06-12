@@ -543,7 +543,7 @@ class TestPluginHelper:
 
     def test_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
-        release 标记存在但 tag 或 zip 尚未生成时回退文件列表安装。
+        release 标记存在但 tag 或 zip 尚未生成时，清理可能残留的安装目录后回退文件列表安装。
         """
         try:
             from app.helper.plugin import PluginHelper
@@ -563,11 +563,11 @@ class TestPluginHelper:
 
         assert success
         assert "" == message
-        assert ["remove", "release", "filelist", "refresh"] == calls
+        assert ["remove", "release", "remove", "filelist", "refresh"] == calls
 
     def test_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
-        release 和文件列表都不可用时返回最终文件列表错误，便于定位真实安装阻断点。
+        release 和文件列表都不可用时返回最终文件列表错误，并在每次写入前后保持目录可回滚。
         """
         try:
             from app.helper.plugin import PluginHelper
@@ -587,7 +587,7 @@ class TestPluginHelper:
 
         assert not success
         assert "获取文件列表失败" == message
-        assert ["remove", "release", "filelist", "remove"] == calls
+        assert ["remove", "release", "remove", "filelist", "remove"] == calls
 
     def test_install_uses_filelist_when_release_flag_is_disabled(self, monkeypatch):
         """
@@ -749,7 +749,7 @@ class TestPluginHelper:
 
     def test_install_release_download_failure_falls_back_to_filelist(self, monkeypatch):
         """
-        release tag 存在但 zip 下载失败时仍可回退文件列表安装。
+        release tag 存在但 zip 下载失败时清理可能残留的目录，再回退文件列表安装。
         """
         try:
             from app.helper.plugin import PluginHelper
@@ -769,7 +769,7 @@ class TestPluginHelper:
 
         assert success
         assert "" == message
-        assert ["remove", "release", "filelist", "refresh"] == calls
+        assert ["remove", "release", "remove", "filelist", "refresh"] == calls
 
     def test_async_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
@@ -799,7 +799,7 @@ class TestPluginHelper:
 
     def test_async_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
-        异步安装路径在 release tag 或 zip 未生成时回退文件列表安装。
+        异步安装路径在 release tag 或 zip 未生成时，清理可能残留的安装目录后回退文件列表安装。
         """
         try:
             from app.helper.plugin import PluginHelper
@@ -821,12 +821,12 @@ class TestPluginHelper:
 
         assert success
         assert "" == message
-        assert calls[:3] == ["remove", "release", "filelist"]
-        assert calls[3][0] == "to_thread"
+        assert calls[:4] == ["remove", "release", "remove", "filelist"]
+        assert calls[4][0] == "to_thread"
 
     def test_async_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
-        异步安装路径在 release 与文件列表都失败时返回文件列表错误。
+        异步安装路径在 release 与文件列表都失败时返回文件列表错误，并保持失败清理顺序稳定。
         """
         try:
             from app.helper.plugin import PluginHelper
@@ -848,7 +848,73 @@ class TestPluginHelper:
 
         assert not success
         assert "获取文件列表失败" == message
-        assert calls == ["remove", "release", "filelist", "remove"]
+        assert calls == ["remove", "release", "remove", "filelist", "remove"]
+
+    def test_async_install_release_fallback_uses_lowercase_filelist_pid(self, monkeypatch):
+        """
+        异步 release 回退文件列表安装时使用小写插件 ID，保持 GitHub 目录查询与同步路径一致。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        filelist_pids = []
+        _patch_async_remote_install(
+            helper,
+            monkeypatch,
+            {"release": True, "version": "1.2.3"},
+            (False, "获取 Release 信息失败：404"),
+            (True, ""),
+        )
+
+        async def fake_filelist(pid, _user_repo, _package_version):
+            filelist_pids.append(pid)
+            return True, ""
+
+        monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_async", fake_filelist)
+
+        success, message = asyncio.run(
+            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        )
+
+        assert success
+        assert "" == message
+        assert ["demoplugin"] == filelist_pids
+
+    def test_async_install_non_release_uses_lowercase_filelist_pid(self, monkeypatch):
+        """
+        异步文件列表直装使用小写插件 ID，避免大小写插件 ID 影响远端目录匹配。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        filelist_pids = []
+        _patch_async_remote_install(
+            helper,
+            monkeypatch,
+            {"release": False, "version": "1.2.3"},
+            (False, "release should not be called"),
+            (True, ""),
+        )
+
+        async def fake_filelist(pid, _user_repo, _package_version):
+            filelist_pids.append(pid)
+            return True, ""
+
+        monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_async", fake_filelist)
+
+        success, message = asyncio.run(
+            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        )
+
+        assert success
+        assert "" == message
+        assert ["demoplugin"] == filelist_pids
 
     def test_install_from_release_reports_missing_tag(self, monkeypatch):
         """
