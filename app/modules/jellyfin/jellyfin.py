@@ -502,18 +502,17 @@ class Jellyfin:
         try:
             res = RequestUtils(timeout=10).get_res(url, params)
             if res:
-                images = res.json().get("Images")
+                images = res.json().get("Images") or []
                 for image in images:
                     if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
                         return image.get("Url")
-                # return images[0].get("Url") # 首选无则返回第一张
+                # TMDB 无匹配时回退本地图片
+                logger.info(f"未找到 TMDB {image_type}，回退本地图片")
             else:
                 logger.info(f"Items/RemoteImages 未获取到返回数据，采用本地图片")
-                return self.generate_image_link(item_id, image_type, True)
         except Exception as e:
             logger.error(f"连接Items/Id/RemoteImages出错：" + str(e))
-            return None
-        return None
+        return self.generate_image_link(item_id, image_type, True)
 
     def get_item_path_by_id(self, item_id: str) -> Optional[str]:
         """
