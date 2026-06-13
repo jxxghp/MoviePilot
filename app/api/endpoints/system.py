@@ -1,7 +1,11 @@
 import asyncio
+import io
 import json
+import re
+import zipfile
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional, Union, Annotated
 from urllib.parse import urljoin, urlparse
 
@@ -62,6 +66,8 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
     )
 }
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
+_LOG_DOWNLOAD_LIMIT = 10
+_LOG_DOWNLOAD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _match_nettest_prefix(url: str, prefix: str) -> bool:
@@ -283,6 +289,98 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
             },
         )
     return rules
+
+
+def _collect_named_log_files(name: str) -> list[Path]:
+    """
+    根据前端传入的日志标识收集可下载日志文件。
+
+    `moviepilot` 固定表示主程序日志，其余标识按插件 ID 处理并映射到
+    `plugins/<plugin_id>.log*`。这里不接收路径或后缀，避免下载入口变成任意
+    日志文件选择器；滚动日志按当前文件优先、备份文件按修改时间倒序补足。
+    """
+    normalized_name = (name or "").strip().lower()
+    if not normalized_name or not _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized_name):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    log_root = settings.LOG_PATH
+    if normalized_name == "moviepilot":
+        log_dir = log_root
+        log_prefix = "moviepilot.log"
+    else:
+        log_dir = log_root / "plugins"
+        log_prefix = f"{normalized_name}.log"
+
+    if not log_dir.exists() or not log_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    current_log = log_dir / log_prefix
+    backup_logs = [
+        item
+        for item in log_dir.iterdir()
+        if item.is_file() and item.name.startswith(f"{log_prefix}.")
+    ]
+    backup_logs.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+
+    log_files = []
+    if current_log.exists() and current_log.is_file():
+        log_files.append(current_log)
+    log_files.extend(backup_logs)
+    return log_files[:_LOG_DOWNLOAD_LIMIT]
+
+
+def _verify_log_resource_superuser(
+    token_payload: schemas.TokenPayload = Depends(verify_resource_token),
+) -> schemas.TokenPayload:
+    """
+    校验日志资源访问权限。
+
+    日志接口通过浏览器新窗口和 EventSource 访问，不能依赖普通 API 请求头；
+    因此这里复用资源 Cookie 完成身份识别，再额外要求管理员身份，避免普通
+    登录用户读取可能包含敏感信息的日志。
+    """
+    if not token_payload.super_user:
+        raise HTTPException(status_code=403, detail="用户权限不足")
+    return token_payload
+
+
+async def _build_log_zip_response(name: str) -> StreamingResponse:
+    """
+    将指定日志标识对应的日志文件打包为 zip 响应。
+
+    打包前逐个校验文件仍位于日志根目录内，避免符号链接或并发文件变更绕过
+    `name` 到固定目录的映射约束。zip 内使用日志根目录相对路径，便于区分
+    主程序日志与插件日志。
+    """
+    log_files = _collect_named_log_files(name)
+    if not log_files:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    log_root = settings.LOG_PATH
+    async_log_root = AsyncPath(log_root)
+    zip_buffer = io.BytesIO()
+    filename_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    safe_name = (name or "logs").strip().lower() or "logs"
+    zip_stem = f"{safe_name}-logs-{filename_time}"
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for log_file in log_files:
+            if not await SecurityUtils.async_is_safe_path(
+                base_path=async_log_root,
+                user_path=AsyncPath(log_file),
+            ):
+                raise HTTPException(status_code=404, detail="Not Found")
+            arcname = f"{zip_stem}/{log_file.name}"
+            archive.write(log_file, arcname)
+
+    zip_buffer.seek(0)
+    headers = {
+        "Content-Disposition": f'attachment; filename="{zip_stem}.zip"'
+    }
+    return StreamingResponse(
+        iter([zip_buffer.getvalue()]),
+        media_type="application/zip",
+        headers=headers,
+    )
 
 
 def _validate_nettest_url(url: str) -> Optional[str]:
@@ -705,7 +803,7 @@ async def get_logging(
     request: Request,
     length: Optional[int] = 50,
     logfile: Optional[str] = "moviepilot.log",
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: schemas.TokenPayload = Depends(_verify_log_resource_superuser),
 ):
     """
     实时获取系统日志
@@ -812,6 +910,17 @@ async def get_logging(
     else:
         # 返回SSE流响应
         return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+
+@router.get("/logging/download/{name}", summary="下载日志")
+async def download_logging(
+    name: str,
+    _: schemas.TokenPayload = Depends(_verify_log_resource_superuser),
+):
+    """
+    按日志标识下载主程序或插件滚动日志，返回 zip 文件。
+    """
+    return await _build_log_zip_response(name)
 
 
 @router.get(
