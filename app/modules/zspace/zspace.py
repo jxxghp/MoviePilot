@@ -15,6 +15,9 @@ from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
 
 
+DEFAULT_ITEMS_PAGE_SIZE = 100
+
+
 class ZSpace:
     _host: Optional[str] = None
     _playhost: Optional[str] = None
@@ -826,30 +829,53 @@ class ZSpace:
         if not parent or not self._host or not self._apikey or not self.user:
             return None
         url = f"{self._host}emby/Users/{self.user}/Items"
-        params = {
-            "ParentId": parent,
-            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId"
-        }
-        if limit is not None and limit != -1:
-            params.update({
-                "StartIndex": start_index,
-                "Limit": limit
-            })
-        try:
-            res = self.__request_utils().get_res(url, params=params)
-            if not res or res.status_code != 200:
-                return None
-            items = res.json().get("Items") or []
-            for item in items:
-                if not item:
-                    continue
-                if "Folder" in item.get("Type"):
-                    for sub_item in self.get_items(parent=item.get('Id')) or []:
-                        yield sub_item
-                elif item.get("Type") in ["Movie", "Series"]:
+        fetch_all = limit is None or limit == -1
+        page_size = DEFAULT_ITEMS_PAGE_SIZE if fetch_all else limit
+        current_start_index = max(start_index or 0, 0)
+        while True:
+            params = {
+                "ParentId": parent,
+                "Recursive": "true",
+                "StartIndex": current_start_index,
+                "Limit": page_size,
+                "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,"
+                          "UserDataPlayCount,UserDataLastPlayedDate,ParentId"
+            }
+            try:
+                res = self.__request_utils().get_res(url, params=params)
+                if not res or res.status_code != 200:
+                    return None
+                result = res.json() or {}
+                items = result.get("Items") or []
+                for item in items:
+                    if not item or item.get("Type") not in ["Movie", "Series"]:
+                        continue
+                    provider_ids = item.get("ProviderIds") or {}
+                    needs_detail = (
+                        not provider_ids.get("Tmdb")
+                        or not item.get("ProductionYear")
+                        or not item.get("Path")
+                    )
+                    if needs_detail and item.get("Id"):
+                        detail_item = self.get_iteminfo(item.get("Id"))
+                        if detail_item:
+                            yield detail_item
+                            continue
                     yield self.__format_item_info(item)
-        except Exception as e:
-            logger.error(f"连接Users/Items出错：{e}")
+            except Exception as e:
+                logger.error(f"连接Users/Items出错：{e}")
+                return None
+
+            if not fetch_all:
+                break
+            current_start_index += len(items)
+            total_count = result.get("TotalRecordCount")
+            if not items or (
+                    total_count is not None and current_start_index >= total_count
+            ) or (
+                    total_count is None and len(items) < page_size
+            ):
+                break
         return None
 
     def get_webhook_message(self, form: Any, args: dict) -> Optional[schemas.WebhookEventInfo]:
