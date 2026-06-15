@@ -419,18 +419,23 @@ class WeChat:
             media_type=media_type,
         )
         try:
+            # Read file content into memory to avoid file handle issues
             with media_path.open("rb") as media_file:
-                response = RequestUtils(timeout=60).request(
-                    method="post",
-                    url=req_url,
-                    files={
-                        "media": (
-                            media_path.name,
-                            media_file,
-                            "voice/amr" if media_type == "voice" else "application/octet-stream",
-                        )
-                    },
-                )
+                file_content = media_file.read()
+
+            # Use RequestUtils with Accept header to avoid Content-Type conflicts
+            response = RequestUtils(timeout=60).request(
+                method="post",
+                url=req_url,
+                headers={"Accept": "application/json"},
+                files={
+                    "media": (
+                        media_path.name,
+                        file_content,
+                        "voice/amr" if media_type == "voice" else "application/octet-stream",
+                    )
+                },
+            )
         except Exception as err:
             logger.error(f"上传企业微信临时素材失败：{err}")
             return None
