@@ -10,6 +10,7 @@ from typing import Any, Optional, Union, Annotated
 from urllib.parse import urljoin, urlparse
 
 import aiofiles
+import anyio
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from anyio import Path as AsyncPath
 from app.helper.sites import SitesHelper  # noqa  # noqa
@@ -444,35 +445,45 @@ async def _build_log_zip_response(name: str) -> StreamingResponse:
     `name` 到固定目录的映射约束。zip 内使用日志根目录相对路径，便于区分
     主程序日志与插件日志。
     """
+    zip_data, zip_stem = await anyio.to_thread.run_sync(_build_log_zip_data, name)
+    headers = {
+        "Content-Disposition": f'attachment; filename="{zip_stem}.zip"'
+    }
+    return StreamingResponse(
+        iter([zip_data]),
+        media_type="application/zip",
+        headers=headers,
+    )
+
+
+def _build_log_zip_data(name: str) -> tuple[bytes, str]:
+    """
+    同步生成日志 zip 内容和文件名前缀。
+
+    日志收集、路径解析、文件读取和压缩都属于可能阻塞的本地 I/O；调用方需要
+    将本函数放到 worker thread 中执行，避免日志下载占用 ASGI 事件循环。
+    """
     log_files = _collect_named_log_files(name)
     if not log_files:
         raise HTTPException(status_code=404, detail="Not Found")
 
     log_root = settings.LOG_PATH
-    async_log_root = AsyncPath(log_root)
     zip_buffer = io.BytesIO()
     filename_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     safe_name = (name or "logs").strip().lower() or "logs"
     zip_stem = f"{safe_name}-logs-{filename_time}"
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         for log_file in log_files:
-            if not await SecurityUtils.async_is_safe_path(
-                base_path=async_log_root,
-                user_path=AsyncPath(log_file),
+            if not SecurityUtils.is_safe_path(
+                base_path=log_root,
+                user_path=log_file,
             ):
                 raise HTTPException(status_code=404, detail="Not Found")
             arcname = f"{zip_stem}/{log_file.name}"
             archive.write(log_file, arcname)
 
     zip_buffer.seek(0)
-    headers = {
-        "Content-Disposition": f'attachment; filename="{zip_stem}.zip"'
-    }
-    return StreamingResponse(
-        iter([zip_buffer.getvalue()]),
-        media_type="application/zip",
-        headers=headers,
-    )
+    return zip_buffer.getvalue(), zip_stem
 
 
 def _validate_nettest_url(url: str) -> Optional[str]:

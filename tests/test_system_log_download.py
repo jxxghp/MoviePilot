@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import threading
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -109,6 +110,34 @@ def test_download_plugin_logs_packages_plugin_files_only(isolated_log_path):
     assert "plugins/demoplugin.log" not in names
     assert "plugins/other.log" not in names
     assert "moviepilot.log" not in names
+
+
+def test_download_log_zip_generation_runs_outside_event_loop_thread(monkeypatch, isolated_log_path):
+    """日志压缩 I/O 必须离开事件循环线程执行，避免大日志下载阻塞其他请求。"""
+    (isolated_log_path / "moviepilot.log").write_text("current", encoding="utf-8")
+    event_loop_thread = threading.current_thread().name
+    write_threads = []
+    original_write = zipfile.ZipFile.write
+
+    def capture_write_thread(self, filename, arcname=None, compress_type=None, compresslevel=None):
+        """记录实际 zip 写入线程，并保持原始 ZipFile.write 行为。"""
+        write_threads.append(threading.current_thread().name)
+        return original_write(
+            self,
+            filename,
+            arcname=arcname,
+            compress_type=compress_type,
+            compresslevel=compresslevel,
+        )
+
+    monkeypatch.setattr(zipfile.ZipFile, "write", capture_write_thread)
+
+    response = asyncio.run(system_endpoint.download_logging(name="moviepilot", _=SimpleNamespace()))
+    body = asyncio.run(_read_streaming_body(response))
+
+    assert body
+    assert write_threads
+    assert all(thread_name != event_loop_thread for thread_name in write_threads)
 
 
 async def _read_streaming_body(response) -> bytes:
