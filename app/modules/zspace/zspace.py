@@ -848,7 +848,14 @@ class ZSpace:
                 result = res.json() or {}
                 items = result.get("Items") or []
                 for item in items:
-                    if not item or item.get("Type") not in ["Movie", "Series"]:
+                    if not item:
+                        continue
+                    if item.get("Type") == "BoxSet" and item.get("Id"):
+                        for sub_item in self.get_items(parent=item.get("Id")):
+                            if sub_item:
+                                yield sub_item
+                        continue
+                    if item.get("Type") not in ["Movie", "Series"]:
                         continue
                     provider_ids = item.get("ProviderIds") or {}
                     needs_detail = (
