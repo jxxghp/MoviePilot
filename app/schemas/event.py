@@ -64,6 +64,19 @@ class ChainEventData(BaseEventData):
     pass
 
 
+class PluginDataResetEventData(ChainEventData):
+    """
+    PluginDataReset 事件的数据模型。
+
+    在主程序清空某个插件配置或插件数据前发出，插件可在数据被删除前完成
+    自有状态补偿。事件处理器只应处理 plugin_id 与自身匹配的事件。
+    """
+
+    plugin_id: str = Field(..., description="即将被重置的插件 ID")
+    reset_config: bool = Field(default=False, description="是否即将重置插件配置")
+    reset_data: bool = Field(default=False, description="是否即将重置插件数据")
+
+
 class AgentLLMProviderEventData(ChainEventData):
     """
     Agent LLM 供应商选择事件数据。

@@ -3,7 +3,10 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from app import schemas
 from app.api.endpoints.plugin import plugin_history
+from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
+from app.schemas.event import PluginDataResetEventData
+from app.schemas.types import ChainEventType
 
 
 def test_plugin_history_merges_remote_metadata():
@@ -101,3 +104,45 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
         "https://github.com/local/existing,https://github.com/wiki/new-repo",
     )
     send_event.assert_awaited_once()
+
+
+def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
+    """
+    插件重置会先触发同步链式事件，让插件在数据被清空前完成自有状态补偿。
+    """
+    plugin_manager = MagicMock()
+    calls = []
+
+    def delete_config(plugin_id):
+        calls.append(("delete_config", plugin_id))
+        return True
+
+    def delete_data(plugin_id):
+        calls.append(("delete_data", plugin_id))
+        return True
+
+    plugin_manager.delete_plugin_config.side_effect = delete_config
+    plugin_manager.delete_plugin_data.side_effect = delete_data
+
+    with (
+        patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.eventmanager") as eventmanager,
+        patch("app.api.endpoints.plugin.reload_plugin") as reload_plugin_mock,
+    ):
+        eventmanager.send_event.side_effect = lambda etype, data: calls.append(("event", etype, data))
+        result = reset_plugin("SubscribeAssistantEnhanced", None)
+
+    assert result.success is True
+    assert len(calls) == 3
+    event_call = calls[0]
+    assert event_call[0] == "event"
+    assert event_call[1] is ChainEventType.PluginDataReset
+    assert isinstance(event_call[2], PluginDataResetEventData)
+    assert event_call[2].plugin_id == "SubscribeAssistantEnhanced"
+    assert event_call[2].reset_config is True
+    assert event_call[2].reset_data is True
+    assert calls[1:] == [
+        ("delete_config", "SubscribeAssistantEnhanced"),
+        ("delete_data", "SubscribeAssistantEnhanced"),
+    ]
+    reload_plugin_mock.assert_called_once_with("SubscribeAssistantEnhanced")
