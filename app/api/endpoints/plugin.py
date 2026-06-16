@@ -536,6 +536,8 @@ def reset_plugin(
         ChainEventType.PluginDataReset,
         PluginDataResetEventData(plugin_id=plugin_id, reset_config=True, reset_data=True),
     )
+    # 事件处理器需要运行中插件完成补偿；补偿后先停止插件，避免删除数据时仍有任务读写旧状态。
+    plugin_manager.stop(plugin_id)
     # 删除配置
     plugin_manager.delete_plugin_config(plugin_id)
     # 删除插件所有数据

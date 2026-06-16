@@ -121,6 +121,11 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         calls.append(("delete_data", plugin_id))
         return True
 
+    def stop_plugin(plugin_id):
+        calls.append(("stop", plugin_id))
+        return True
+
+    plugin_manager.stop.side_effect = stop_plugin
     plugin_manager.delete_plugin_config.side_effect = delete_config
     plugin_manager.delete_plugin_data.side_effect = delete_data
 
@@ -133,7 +138,7 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         result = reset_plugin("SubscribeAssistantEnhanced", None)
 
     assert result.success is True
-    assert len(calls) == 3
+    assert len(calls) == 4
     event_call = calls[0]
     assert event_call[0] == "event"
     assert event_call[1] is ChainEventType.PluginDataReset
@@ -142,6 +147,7 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
     assert event_call[2].reset_config is True
     assert event_call[2].reset_data is True
     assert calls[1:] == [
+        ("stop", "SubscribeAssistantEnhanced"),
         ("delete_config", "SubscribeAssistantEnhanced"),
         ("delete_data", "SubscribeAssistantEnhanced"),
     ]
