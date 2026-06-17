@@ -126,11 +126,13 @@ def _load_subscribe_chain_class():
                 setattr(self, key, value)
 
     class _NotExistMediaInfo:
-        def __init__(self, season=None, episodes=None, total_episode=None, start_episode=None):
+        def __init__(self, season=None, episodes=None, total_episode=None, start_episode=None,
+                     require_complete_coverage=False):
             self.season = season
             self.episodes = episodes or []
             self.total_episode = total_episode
             self.start_episode = start_episode
+            self.require_complete_coverage = require_complete_coverage
 
     class _SubscribeEpisodeInfo:
         def __init__(self):
@@ -500,6 +502,204 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(result["media-key"][1].episodes, [])
         self.assertEqual(result["media-key"][1].start_episode, 1)
         self.assertEqual(result["media-key"][1].total_episode, 48)
+
+    def test_resolve_subscribe_missing_combines_library_gap_and_download_history_without_side_effects(self):
+        """目标满足查询应复用主程序媒体库缺集与订阅下载历史的合并口径，且不推进订阅状态。"""
+        subscribe = self._build_subscribe(
+            best_version=0,
+            total_episode=20,
+            lack_episode=10,
+            note=list(range(11, 21)),
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: list(range(1, 21))},
+            title_year="Test Show (2026)",
+        )
+        library_missing = {
+            1: {
+                1: SimpleNamespace(season=1, episodes=list(range(11, 21)), total_episode=20, start_episode=11)
+            }
+        }
+        updates = []
+
+        class _DownloadChain:
+            def get_no_exists_info(self, **kwargs):
+                self.kwargs = kwargs
+                return False, library_missing
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        chain = SubscribeChain()
+        chain.finish_subscribe_or_not = lambda **_kwargs: self.fail("resolve_subscribe_missing must not finish")
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain), patch.object(
+            SUBSCRIBE_CHAIN_MODULE,
+            "SubscribeOper",
+            _SubscribeOper,
+        ):
+            satisfied, no_exists = chain.resolve_subscribe_missing(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=1,
+            )
+
+        self.assertTrue(satisfied)
+        self.assertEqual(no_exists, {})
+        self.assertEqual(updates, [])
+
+    def test_resolve_subscribe_missing_keeps_library_gap_when_download_history_does_not_cover_it(self):
+        """订阅前媒体库已有部分剧集时，目标满足查询应保留仍需下载的媒体库缺口。"""
+        subscribe = self._build_subscribe(
+            best_version=0,
+            total_episode=20,
+            lack_episode=20,
+            note=[],
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: list(range(1, 21))},
+            title_year="Test Show (2026)",
+        )
+        library_missing = {
+            1: {
+                1: SimpleNamespace(season=1, episodes=list(range(11, 21)), total_episode=20, start_episode=11)
+            }
+        }
+
+        class _DownloadChain:
+            def get_no_exists_info(self, **_kwargs):
+                return False, library_missing
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain):
+            satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=1,
+            )
+
+        self.assertFalse(satisfied)
+        self.assertEqual(no_exists[1][1].episodes, list(range(11, 21)))
+        self.assertEqual(no_exists[1][1].start_episode, 1)
+        self.assertEqual(no_exists[1][1].total_episode, 20)
+
+    def test_resolve_subscribe_missing_uses_readonly_effective_total_from_mediainfo(self):
+        """只读目标查询应使用最新媒体信息扩大有效总集数，但不能写回订阅或发送刷新事件。"""
+        subscribe = self._build_subscribe(
+            best_version=0,
+            total_episode=10,
+            lack_episode=0,
+            note=list(range(1, 11)),
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: list(range(1, 21))},
+            title_year="Test Show (2026)",
+        )
+        captured_totals = []
+
+        class _DownloadChain:
+            def get_no_exists_info(self, **kwargs):
+                captured_totals.append(kwargs["totals"])
+                return False, {
+                    1: {
+                        1: SimpleNamespace(season=1, episodes=list(range(11, 21)), total_episode=20, start_episode=11)
+                    }
+                }
+
+        class _EventManager:
+            def send_event(self, *_args, **_kwargs):
+                raise AssertionError("resolve_subscribe_missing must not send refresh events")
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain), patch.object(
+            SUBSCRIBE_CHAIN_MODULE,
+            "eventmanager",
+            _EventManager(),
+        ):
+            satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=1,
+            )
+
+        self.assertFalse(satisfied)
+        self.assertEqual(captured_totals, [{1: 20}])
+        self.assertEqual(no_exists[1][1].episodes, list(range(11, 21)))
+        self.assertEqual(subscribe.total_episode, 10)
+        self.assertEqual(subscribe.lack_episode, 0)
+        self.assertEqual(subscribe.note, list(range(1, 11)))
+
+    def test_get_subscribe_no_exists_preserves_complete_coverage_requirement(self):
+        """缺集裁剪重建 NotExistMediaInfo 时必须保留全集洗版完整覆盖约束。"""
+        no_exists = {
+            "media-key": {
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=list(range(1, 13)),
+                    total_episode=12,
+                    start_episode=1,
+                    require_complete_coverage=True,
+                )
+            }
+        }
+
+        exist_flag, result = SubscribeChain._SubscribeChain__get_subscribe_no_exits(
+            subscribe_name="主角 S01",
+            no_exists=no_exists,
+            mediakey="media-key",
+            begin_season=1,
+            total_episode=12,
+            start_episode=1,
+            downloaded_episodes=[1, 2, 3],
+        )
+
+        self.assertFalse(exist_flag)
+        self.assertTrue(result["media-key"][1].require_complete_coverage)
+        self.assertEqual(result["media-key"][1].episodes, list(range(4, 13)))
+
+    def test_check_existing_media_refreshes_total_before_resolving_missing(self):
+        """主流程应先执行完成前总集数刷新，再复用无副作用缺集查询口径。"""
+        subscribe = self._build_subscribe(best_version=0, total_episode=10, lack_episode=0)
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(type=MediaType.TV, title_year="Test Show (2026)")
+        calls = []
+
+        def fake_refresh(_self, subscribe, mediainfo):
+            calls.append(("refresh", subscribe.total_episode))
+            subscribe.total_episode = 20
+
+        def fake_resolve(_self, subscribe, meta, mediainfo, mediakey=None):
+            calls.append(("resolve", subscribe.total_episode))
+            return False, {"media-key": {1: SimpleNamespace(episodes=[11], total_episode=20, start_episode=1)}}
+
+        chain = SubscribeChain()
+        with patch.object(
+            SubscribeChain,
+            "_SubscribeChain__refresh_total_episode_before_completion",
+            fake_refresh,
+        ), patch.object(
+            SubscribeChain,
+            "resolve_subscribe_missing",
+            fake_resolve,
+        ):
+            exist_flag, no_exists = chain.check_and_handle_existing_media(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey="media-key",
+            )
+
+        self.assertFalse(exist_flag)
+        self.assertEqual(calls, [("refresh", 10), ("resolve", 20)])
+        self.assertEqual(no_exists["media-key"][1].episodes, [11])
 
     def test_best_version_full_pack_first_keeps_whole_missing_for_custom_start_episode(self):
         """分集洗版优先全集时，空集列表仍表示下载链按整季资源处理。"""

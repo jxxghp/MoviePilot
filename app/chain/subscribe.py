@@ -2813,7 +2813,8 @@ class SubscribeChain(ChainBase):
                     season=begin_season,
                     episodes=episodes,
                     total_episode=total_episode,
-                    start_episode=start_episode
+                    start_episode=start_episode,
+                    require_complete_coverage=getattr(no_exist_season, "require_complete_coverage", False)
                 )
         # 根据订阅已下载集数更新缺失集数
         if downloaded_episodes:
@@ -2841,6 +2842,7 @@ class SubscribeChain(ChainBase):
                     episodes=episodes,
                     total_episode=total,
                     start_episode=start,
+                    require_complete_coverage=getattr(no_exist_season, "require_complete_coverage", False)
                 )
             else:
                 # 开始集数
@@ -2855,6 +2857,7 @@ class SubscribeChain(ChainBase):
                     episodes=episodes,
                     total_episode=total_episode,
                     start_episode=start,
+                    require_complete_coverage=False,
                 )
         logger.info(f'订阅 {subscribe_name} 缺失剧集数更新为：{no_exists}')
         return False, no_exists
@@ -3070,72 +3073,12 @@ class SubscribeChain(ChainBase):
         """
         self.__refresh_total_episode_before_completion(subscribe=subscribe, mediainfo=mediainfo)
 
-        # 非洗版
-        if not subscribe.best_version:
-            # 每季总集数
-            totals = {}
-            if subscribe.season and subscribe.total_episode:
-                totals = {
-                    subscribe.season: subscribe.total_episode
-                }
-            # 查询媒体库缺失的媒体信息
-            exist_flag, no_exists = DownloadChain().get_no_exists_info(
-                meta=meta,
-                mediainfo=mediainfo,
-                totals=totals
-            )
-        else:
-            # 洗版，如果已经满足了优先级，则认为已经洗版完成
-            if self.__is_best_version_complete(subscribe):
-                exist_flag = True
-                no_exists = {}
-            else:
-                exist_flag = False
-                if meta.type == MediaType.TV:
-                    pending_episodes = [] if self.__is_full_best_version_enabled(
-                        subscribe
-                    ) else self._get_pending_best_version_episodes(subscribe)
-                    # 对于电视剧，构造缺失的媒体信息
-                    no_exists = {
-                        mediakey: {
-                            subscribe.season: schemas.NotExistMediaInfo(
-                                season=subscribe.season,
-                                episodes=pending_episodes,
-                                total_episode=subscribe.total_episode,
-                                start_episode=subscribe.start_episode or 1,
-                                # 完整覆盖约束会影响整季文件探测、显式集列表匹配和多集拆包降级。
-                                require_complete_coverage=self.__is_full_best_version_enabled(subscribe))
-                        }
-                    }
-                else:
-                    no_exists = {}
-
-        # 如果媒体已存在，执行订阅完成操作
-        if exist_flag:
-            if not subscribe.best_version:
-                logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-            self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
-            return True, no_exists
-
-        # 获取已下载的集数或电影
-        downloaded = self.__get_downloaded(subscribe)
-        if self.__is_full_best_version_enabled(subscribe):
-            # 全集洗版必须保留整季缺失范围，避免下载链路从整包中拆选单集。
-            downloaded = []
-        if meta.type == MediaType.TV:
-            # 对于电视剧类型，整合缺失集数并剔除已下载的集数
-            exist_flag, no_exists = self.__get_subscribe_no_exits(
-                subscribe_name=f'{subscribe.name} {meta.season}',
-                no_exists=no_exists,
-                mediakey=mediakey,
-                begin_season=meta.begin_season,
-                total_episode=subscribe.total_episode,
-                start_episode=subscribe.start_episode,
-                downloaded_episodes=downloaded
-            )
-        elif meta.type == MediaType.MOVIE:
-            # 对于电影类型，直接根据是否已下载判断
-            exist_flag = bool(downloaded)
+        exist_flag, no_exists = self.resolve_subscribe_missing(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=mediakey,
+        )
 
         # 如果已下载完毕，执行订阅完成操作
         if exist_flag:
@@ -3145,6 +3088,95 @@ class SubscribeChain(ChainBase):
 
         # 返回结果，表示媒体未完全下载或存在
         return False, no_exists
+
+    def resolve_subscribe_missing(self, subscribe: Subscribe, meta: MetaBase,
+                                  mediainfo: MediaInfo,
+                                  mediakey: Optional[Union[str, int]] = None):
+        """
+        按主程序订阅口径查询当前目标是否仍有缺失，不推进订阅状态。
+
+        该方法只组合媒体库缺集、订阅范围、下载历史和洗版优先级，用于外部策略在
+        完成前复用主程序"还要不要搜索/下载"的判断口径。它不得完成订阅、写入
+        lack_episode、发送事件或修改数据库。
+        """
+        mediakey = mediakey or subscribe.tmdbid or subscribe.doubanid
+        effective_total_episode = self.__resolve_effective_total_episode(subscribe, mediainfo)
+        if effective_total_episode != (subscribe.total_episode or 0):
+            subscribe = copy.copy(subscribe)
+            subscribe.total_episode = effective_total_episode
+
+        if not subscribe.best_version:
+            totals = {}
+            if subscribe.season and subscribe.total_episode:
+                totals = {
+                    subscribe.season: subscribe.total_episode
+                }
+            exist_flag, no_exists = DownloadChain().get_no_exists_info(
+                meta=meta,
+                mediainfo=mediainfo,
+                totals=totals
+            )
+        elif self.__is_best_version_complete(subscribe):
+            return True, {}
+        else:
+            exist_flag = False
+            if meta.type == MediaType.TV:
+                pending_episodes = [] if self.__is_full_best_version_enabled(
+                    subscribe
+                ) else self._get_pending_best_version_episodes(subscribe)
+                no_exists = {
+                    mediakey: {
+                        subscribe.season: schemas.NotExistMediaInfo(
+                            season=subscribe.season,
+                            episodes=pending_episodes,
+                            total_episode=subscribe.total_episode,
+                            start_episode=subscribe.start_episode or 1,
+                            require_complete_coverage=self.__is_full_best_version_enabled(subscribe))
+                    }
+                }
+            else:
+                no_exists = {}
+
+        if exist_flag:
+            return True, no_exists
+
+        downloaded = self.__get_downloaded(subscribe)
+        if self.__is_full_best_version_enabled(subscribe):
+            downloaded = []
+        if meta.type == MediaType.TV:
+            return self.__get_subscribe_no_exits(
+                subscribe_name=f'{subscribe.name} {meta.season}',
+                no_exists=no_exists,
+                mediakey=mediakey,
+                begin_season=meta.begin_season,
+                total_episode=subscribe.total_episode,
+                start_episode=subscribe.start_episode,
+                downloaded_episodes=downloaded
+            )
+        if meta.type == MediaType.MOVIE:
+            return bool(downloaded), no_exists
+        return False, no_exists
+
+    @staticmethod
+    def __resolve_effective_total_episode(subscribe: Subscribe, mediainfo: MediaInfo) -> int:
+        """
+        只读计算完成前有效总集数，不触发事件、不写回订阅。
+
+        主流程会通过 ``__refresh_total_episode_before_completion`` 持久化增长后的总集数；
+        该查询接口只需要同样避免旧 total 造成误判，因此仅使用当前 mediainfo 中更大的
+        季集数作为临时目标范围。
+        """
+        current_total = subscribe.total_episode or 0
+        if subscribe.type != MediaType.TV.value:
+            return current_total
+        if subscribe.manual_total_episode:
+            return current_total
+        if subscribe.season is None:
+            return current_total
+        media_total = len((mediainfo.seasons or {}).get(subscribe.season) or [])
+        if media_total > current_total:
+            return media_total
+        return current_total
 
     @staticmethod
     def __apply_episodes_refresh(current_total: int, season: Optional[int], *,
