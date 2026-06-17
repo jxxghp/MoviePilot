@@ -463,7 +463,13 @@ class SubscribeChainTest(TestCase):
         """自定义开始集跳过季初集数时，缺失整季需要转成显式目标集。"""
         no_exists = {
             "media-key": {
-                1: SimpleNamespace(season=1, episodes=[], total_episode=48, start_episode=1)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[],
+                    total_episode=48,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
             }
         }
 
@@ -485,7 +491,13 @@ class SubscribeChainTest(TestCase):
         """自定义开始集没有缩小范围时，仍保留空集列表表示整季缺失。"""
         no_exists = {
             "media-key": {
-                1: SimpleNamespace(season=1, episodes=[], total_episode=48, start_episode=1)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[],
+                    total_episode=48,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
             }
         }
 
@@ -519,7 +531,13 @@ class SubscribeChainTest(TestCase):
         )
         library_missing = {
             1: {
-                1: SimpleNamespace(season=1, episodes=list(range(11, 21)), total_episode=20, start_episode=11)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=list(range(11, 21)),
+                    total_episode=20,
+                    start_episode=11,
+                    require_complete_coverage=False,
+                )
             }
         }
         updates = []
@@ -568,7 +586,13 @@ class SubscribeChainTest(TestCase):
         )
         library_missing = {
             1: {
-                1: SimpleNamespace(season=1, episodes=list(range(11, 21)), total_episode=20, start_episode=11)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=list(range(11, 21)),
+                    total_episode=20,
+                    start_episode=11,
+                    require_complete_coverage=False,
+                )
             }
         }
 
@@ -610,7 +634,13 @@ class SubscribeChainTest(TestCase):
                 captured_totals.append(kwargs["totals"])
                 return False, {
                     1: {
-                        1: SimpleNamespace(season=1, episodes=list(range(11, 21)), total_episode=20, start_episode=11)
+                        1: SimpleNamespace(
+                            season=1,
+                            episodes=list(range(11, 21)),
+                            total_episode=20,
+                            start_episode=11,
+                            require_complete_coverage=False,
+                        )
                     }
                 }
 
@@ -636,6 +666,115 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(subscribe.total_episode, 10)
         self.assertEqual(subscribe.lack_episode, 0)
         self.assertEqual(subscribe.note, list(range(1, 11)))
+
+    def test_resolve_subscribe_missing_accepts_downloaded_episode_best_version_targets(self):
+        """外部完成守卫可按任意已下载版本判定分集洗版目标已满足。"""
+        subscribe = self._build_subscribe(
+            best_version=1,
+            best_version_full=0,
+            total_episode=3,
+            note=[1],
+            episode_priority={"2": 80, "3": 99},
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: [1, 2, 3]},
+            title_year="Test Show (2026)",
+        )
+
+        satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=1,
+            best_version_accept_downloaded=True,
+        )
+
+        self.assertTrue(satisfied)
+        self.assertEqual(no_exists, {})
+
+    def test_resolve_subscribe_missing_default_best_version_requires_top_priority(self):
+        """主程序洗版完成口径默认仍要求目标分集达到最高优先级。"""
+        subscribe = self._build_subscribe(
+            best_version=1,
+            best_version_full=0,
+            total_episode=3,
+            note=[1],
+            episode_priority={"2": 80, "3": 99},
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: [1, 2, 3]},
+            title_year="Test Show (2026)",
+        )
+
+        satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=1,
+        )
+
+        self.assertFalse(satisfied)
+        self.assertEqual(no_exists[1][1].episodes, [1, 2, 3])
+        self.assertEqual(no_exists[1][1].total_episode, 3)
+
+    def test_resolve_subscribe_missing_default_best_version_uses_readonly_effective_total(self):
+        """只读目标查询扩大有效总集数时，默认洗版口径应把新增集纳入待洗范围。"""
+        subscribe = self._build_subscribe(
+            best_version=1,
+            best_version_full=0,
+            total_episode=3,
+            episode_priority={"1": 100, "2": 100, "3": 100},
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: [1, 2, 3, 4, 5]},
+            title_year="Test Show (2026)",
+        )
+
+        satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=1,
+        )
+
+        self.assertFalse(satisfied)
+        self.assertEqual(no_exists[1][1].episodes, [4, 5])
+        self.assertEqual(no_exists[1][1].total_episode, 5)
+        self.assertEqual(subscribe.total_episode, 3)
+
+    def test_resolve_subscribe_missing_accept_downloaded_keeps_best_version_gap(self):
+        """任意版本满足口径仍应保留从未下载过的目标分集。"""
+        subscribe = self._build_subscribe(
+            best_version=1,
+            best_version_full=0,
+            total_episode=3,
+            note=[1],
+            episode_priority={"2": 80},
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: [1, 2, 3]},
+            title_year="Test Show (2026)",
+        )
+
+        satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=1,
+            best_version_accept_downloaded=True,
+        )
+
+        self.assertFalse(satisfied)
+        self.assertEqual(no_exists[1][1].episodes, [3])
+        self.assertEqual(no_exists[1][1].total_episode, 3)
 
     def test_get_subscribe_no_exists_preserves_complete_coverage_requirement(self):
         """缺集裁剪重建 NotExistMediaInfo 时必须保留全集洗版完整覆盖约束。"""
@@ -788,7 +927,13 @@ class SubscribeChainTest(TestCase):
         )
         no_exists = {
             "media-key": {
-                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[2],
+                    total_episode=3,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
             }
         }
         calls = []
@@ -832,7 +977,13 @@ class SubscribeChainTest(TestCase):
         )
         no_exists = {
             "media-key": {
-                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[2],
+                    total_episode=3,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
             }
         }
         calls = []
@@ -880,7 +1031,13 @@ class SubscribeChainTest(TestCase):
         )
         no_exists = {
             "media-key": {
-                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[2],
+                    total_episode=3,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
             }
         }
         calls = []
@@ -921,7 +1078,13 @@ class SubscribeChainTest(TestCase):
         )
         no_exists = {
             "media-key": {
-                1: SimpleNamespace(season=1, episodes=[2], total_episode=3, start_episode=1)
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[2],
+                    total_episode=3,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
             }
         }
         calls = []

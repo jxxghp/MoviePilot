@@ -76,16 +76,17 @@ class SubscribeChain(ChainBase):
         return normalized
 
     @classmethod
-    def __get_episode_priority(cls, subscribe: Subscribe) -> Dict[str, int]:
+    def __get_episode_priority(cls, subscribe: Subscribe,
+                               total_episode: Optional[int] = None) -> Dict[str, int]:
         """
         获取订阅按集洗版优先级状态。
         """
-        episode_priority = cls.__normalize_episode_priority(getattr(subscribe, "episode_priority", None))
+        episode_priority = cls.__normalize_episode_priority(subscribe.episode_priority)
         if episode_priority:
             return episode_priority
 
         if subscribe.best_version and subscribe.type == MediaType.TV.value and subscribe.current_priority is not None:
-            target_episodes = cls.__get_best_version_target_episodes(subscribe)
+            target_episodes = cls.__get_best_version_target_episodes(subscribe, total_episode=total_episode)
             return {
                 str(episode): int(subscribe.current_priority)
                 for episode in target_episodes
@@ -100,7 +101,8 @@ class SubscribeChain(ChainBase):
         return cls.__get_episode_priority(subscribe)
 
     @classmethod
-    def __get_best_version_target_episodes(cls, subscribe: Subscribe) -> List[int]:
+    def __get_best_version_target_episodes(cls, subscribe: Subscribe,
+                                           total_episode: Optional[int] = None) -> List[int]:
         """
         获取洗版订阅目标剧集范围。
         """
@@ -108,36 +110,75 @@ class SubscribeChain(ChainBase):
             return []
 
         start_episode = subscribe.start_episode or 1
-        total_episode = subscribe.total_episode or 0
+        total_episode = total_episode or subscribe.total_episode or 0
         if total_episode < start_episode:
             return []
         return list(range(start_episode, total_episode + 1))
+
+    @classmethod
+    def __get_downloaded_best_version_episodes(cls, subscribe: Subscribe,
+                                               total_episode: Optional[int] = None) -> List[int]:
+        """
+        获取洗版订阅目标范围内已下载到任意版本的剧集。
+
+        分集洗版的完成态要求 priority==100，但订阅目标满足查询有时只需要确认
+        目标集是否已下载过任意版本，因此这里按 note 与 episode_priority>0 统计。
+        """
+        if subscribe.type != MediaType.TV.value:
+            return []
+
+        start_episode = subscribe.start_episode or 1
+        total_episode = total_episode or subscribe.total_episode or 0
+        if total_episode < start_episode:
+            return []
+        target_episodes = set(range(start_episode, total_episode + 1))
+        downloaded = set()
+        for episode in subscribe.note or []:
+            try:
+                episode_number = int(episode)
+            except (TypeError, ValueError):
+                continue
+            if episode_number in target_episodes:
+                downloaded.add(episode_number)
+        for episode, priority in (subscribe.episode_priority or {}).items():
+            if not str(episode).isdigit():
+                continue
+            try:
+                if float(priority) > 0:
+                    episode_number = int(episode)
+                    if episode_number in target_episodes:
+                        downloaded.add(episode_number)
+            except (TypeError, ValueError):
+                continue
+        return sorted(downloaded)
 
     @classmethod
     def __get_pending_best_version_episodes_with_priority(
             cls,
             subscribe: Subscribe,
             episode_priority: Optional[dict] = None,
+            total_episode: Optional[int] = None,
     ) -> List[int]:
         """
         使用指定按集优先级状态获取当前仍需继续洗版的剧集。
         """
-        target_episodes = cls.__get_best_version_target_episodes(subscribe)
+        target_episodes = cls.__get_best_version_target_episodes(subscribe, total_episode=total_episode)
         if not target_episodes:
             return []
 
         if episode_priority is None:
-            normalized = cls.__get_episode_priority(subscribe)
+            normalized = cls.__get_episode_priority(subscribe, total_episode=total_episode)
         else:
             normalized = cls.__normalize_episode_priority(episode_priority)
         return [episode for episode in target_episodes if normalized.get(str(episode)) != 100]
 
     @classmethod
-    def _get_pending_best_version_episodes(cls, subscribe: Subscribe) -> List[int]:
+    def _get_pending_best_version_episodes(cls, subscribe: Subscribe,
+                                           total_episode: Optional[int] = None) -> List[int]:
         """
         获取当前仍需继续洗版的剧集。
         """
-        return cls.__get_pending_best_version_episodes_with_priority(subscribe)
+        return cls.__get_pending_best_version_episodes_with_priority(subscribe, total_episode=total_episode)
 
     @classmethod
     def compute_completed_episode(cls, subscribe: Subscribe) -> Optional[int]:
@@ -324,7 +365,7 @@ class SubscribeChain(ChainBase):
         判断当前订阅是否启用了电视剧全集洗版。
         """
         return (
-            bool(getattr(subscribe, "best_version_full", 0))
+            bool(subscribe.best_version_full)
             and bool(subscribe.best_version)
             and subscribe.type == MediaType.TV.value
         )
@@ -2814,7 +2855,7 @@ class SubscribeChain(ChainBase):
                     episodes=episodes,
                     total_episode=total_episode,
                     start_episode=start_episode,
-                    require_complete_coverage=getattr(no_exist_season, "require_complete_coverage", False)
+                    require_complete_coverage=no_exist_season.require_complete_coverage
                 )
         # 根据订阅已下载集数更新缺失集数
         if downloaded_episodes:
@@ -2842,7 +2883,7 @@ class SubscribeChain(ChainBase):
                     episodes=episodes,
                     total_episode=total,
                     start_episode=start,
-                    require_complete_coverage=getattr(no_exist_season, "require_complete_coverage", False)
+                    require_complete_coverage=no_exist_season.require_complete_coverage
                 )
             else:
                 # 开始集数
@@ -3091,45 +3132,63 @@ class SubscribeChain(ChainBase):
 
     def resolve_subscribe_missing(self, subscribe: Subscribe, meta: MetaBase,
                                   mediainfo: MediaInfo,
-                                  mediakey: Optional[Union[str, int]] = None):
+                                  mediakey: Optional[Union[str, int]] = None,
+                                  best_version_accept_downloaded: bool = False):
         """
         按主程序订阅口径查询当前目标是否仍有缺失，不推进订阅状态。
 
         该方法只组合媒体库缺集、订阅范围、下载历史和洗版优先级，用于外部策略在
         完成前复用主程序"还要不要搜索/下载"的判断口径。它不得完成订阅、写入
         lack_episode、发送事件或修改数据库。
+
+        best_version_accept_downloaded 仅用于分集洗版的外部完成守卫：为 True 时，
+        priority>0 的目标集视为已满足；默认 False 保持主程序洗版完成需 priority==100
+        的搜索/完成口径。
         """
         mediakey = mediakey or subscribe.tmdbid or subscribe.doubanid
         effective_total_episode = self.__resolve_effective_total_episode(subscribe, mediainfo)
-        if effective_total_episode != (subscribe.total_episode or 0):
-            subscribe = copy.copy(subscribe)
-            subscribe.total_episode = effective_total_episode
 
         if not subscribe.best_version:
             totals = {}
-            if subscribe.season and subscribe.total_episode:
+            if subscribe.season and effective_total_episode:
                 totals = {
-                    subscribe.season: subscribe.total_episode
+                    subscribe.season: effective_total_episode
                 }
             exist_flag, no_exists = DownloadChain().get_no_exists_info(
                 meta=meta,
                 mediainfo=mediainfo,
                 totals=totals
             )
-        elif self.__is_best_version_complete(subscribe):
+        elif meta.type != MediaType.TV and self.__is_best_version_complete(subscribe):
             return True, {}
         else:
             exist_flag = False
             if meta.type == MediaType.TV:
-                pending_episodes = [] if self.__is_full_best_version_enabled(
-                    subscribe
-                ) else self._get_pending_best_version_episodes(subscribe)
+                if self.__is_full_best_version_enabled(subscribe):
+                    pending_episodes = []
+                elif best_version_accept_downloaded:
+                    downloaded = set(self.__get_downloaded_best_version_episodes(
+                        subscribe, total_episode=effective_total_episode
+                    ))
+                    start_episode = subscribe.start_episode or 1
+                    pending_episodes = [
+                        episode for episode in range(start_episode, effective_total_episode + 1)
+                        if episode not in downloaded
+                    ]
+                    if not pending_episodes:
+                        return True, {}
+                else:
+                    pending_episodes = self._get_pending_best_version_episodes(
+                        subscribe, total_episode=effective_total_episode
+                    )
+                    if not pending_episodes:
+                        return True, {}
                 no_exists = {
                     mediakey: {
                         subscribe.season: schemas.NotExistMediaInfo(
                             season=subscribe.season,
                             episodes=pending_episodes,
-                            total_episode=subscribe.total_episode,
+                            total_episode=effective_total_episode,
                             start_episode=subscribe.start_episode or 1,
                             require_complete_coverage=self.__is_full_best_version_enabled(subscribe))
                     }
@@ -3149,7 +3208,7 @@ class SubscribeChain(ChainBase):
                 no_exists=no_exists,
                 mediakey=mediakey,
                 begin_season=meta.begin_season,
-                total_episode=subscribe.total_episode,
+                total_episode=effective_total_episode,
                 start_episode=subscribe.start_episode,
                 downloaded_episodes=downloaded
             )
