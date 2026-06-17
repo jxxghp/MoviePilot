@@ -307,9 +307,11 @@ class PluginHelper(metaclass=WeakSingleton):
 
     def get_local_plugin_candidate(self, pid: str, package_version: Optional[str] = None,
                                    repo_path: Optional[Path] = None,
-                                   strict_compat: bool = True) -> Optional[dict]:
+                                   strict_compat: bool = True,
+                                   strict_system_version: bool = True) -> Optional[dict]:
         """
         获取指定插件ID的本地插件候选
+        :param strict_system_version: 是否将主系统版本范围不匹配视为不可用候选
         """
         if not pid:
             return None
@@ -352,7 +354,7 @@ class PluginHelper(metaclass=WeakSingleton):
                             candidate["compatible"] = False
                             candidate["skip_reason"] = f"package.json 未声明 {settings.VERSION_FLAG} 兼容"
                         self.annotate_plugin_system_version(candidate)
-                        if candidate.get("system_version_compatible") is False:
+                        if strict_system_version and candidate.get("system_version_compatible") is False:
                             candidate["compatible"] = False
                             candidate["skip_reason"] = candidate.get("system_version_message")
                         if package_version is not None:
@@ -369,6 +371,10 @@ class PluginHelper(metaclass=WeakSingleton):
         candidates = self.get_local_plugin_candidates()
         for candidate_pid, candidate in candidates.items():
             if candidate_pid.lower() == pid.lower():
+                if strict_system_version and candidate.get("system_version_compatible") is False:
+                    candidate = candidate.copy()
+                    candidate["compatible"] = False
+                    candidate["skip_reason"] = candidate.get("system_version_message")
                 return candidate
         return None
 
