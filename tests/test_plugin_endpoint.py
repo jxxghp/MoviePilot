@@ -3,6 +3,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from app import schemas
 from app.api.endpoints.plugin import plugin_history
+from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.schemas.event import PluginDataResetEventData
@@ -62,6 +63,137 @@ def test_plugin_history_returns_installed_plugin_when_remote_missing():
 
     assert result.id == "DemoPlugin"
     assert result.history == {}
+
+
+def test_plugin_releases_returns_supported_versions_with_latest_and_current(monkeypatch):
+    """
+    release 列表接口返回可安装版本，并标记当前 package 最新版本与本地已安装版本。
+    """
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.3",
+        repo_url="https://github.com/demo/plugins",
+        release=True,
+    )
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.0",
+        installed=True,
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.async_get_online_plugins = AsyncMock(return_value=[market_plugin])
+    plugin_manager.get_local_plugins.return_value = [installed_plugin]
+    plugin_helper = MagicMock()
+    plugin_helper.async_get_plugin_release_versions = AsyncMock(return_value=[
+        {"version": "1.2.3", "tag_name": "DemoPlugin_v1.2.3", "asset_name": "demoplugin_v1.2.3.zip"},
+        {"version": "1.2.0", "tag_name": "DemoPlugin_v1.2.0", "asset_name": "demoplugin_v1.2.0.zip"},
+    ])
+
+    with (
+        patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.PluginHelper", return_value=plugin_helper),
+    ):
+        result = asyncio.run(plugin_releases("DemoPlugin", None, "https://github.com/demo/plugins", False))
+
+    assert result["release_supported"] is True
+    assert result["latest_version"] == "1.2.3"
+    assert result["current_version"] == "1.2.0"
+    assert result["items"][0]["is_latest"] is True
+    assert result["items"][0]["is_current"] is False
+    assert result["items"][1]["is_latest"] is False
+    assert result["items"][1]["is_current"] is True
+    plugin_manager.async_get_online_plugins.assert_awaited_once_with(force=False)
+
+
+def test_plugin_releases_does_not_mutate_cached_release_items(monkeypatch):
+    """
+    接口标记当前/最新版本时不能修改 helper 返回对象，避免污染缓存中的 release 列表。
+    """
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.3",
+        repo_url="https://github.com/demo/plugins",
+        release=True,
+    )
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.0",
+        installed=True,
+    )
+    release_items = [
+        {"version": "1.2.3", "tag_name": "DemoPlugin_v1.2.3", "asset_name": "demoplugin_v1.2.3.zip"},
+    ]
+    plugin_manager = MagicMock()
+    plugin_manager.async_get_online_plugins = AsyncMock(return_value=[market_plugin])
+    plugin_manager.get_local_plugins.return_value = [installed_plugin]
+    plugin_helper = MagicMock()
+    plugin_helper.async_get_plugin_release_versions = AsyncMock(return_value=release_items)
+
+    with (
+        patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.PluginHelper", return_value=plugin_helper),
+    ):
+        result = asyncio.run(plugin_releases("DemoPlugin", None, "https://github.com/demo/plugins", False))
+
+    assert result["items"][0]["is_latest"] is True
+    assert "is_latest" not in release_items[0]
+    assert "is_current" not in release_items[0]
+
+
+def test_plugin_releases_uses_force_refresh_for_market_metadata(monkeypatch):
+    """
+    release 列表接口沿用插件市场的 force 语义，供前端手动刷新时绕过缓存。
+    """
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.3",
+        repo_url="https://github.com/demo/plugins",
+        release=True,
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.async_get_online_plugins = AsyncMock(return_value=[market_plugin])
+    plugin_manager.get_local_plugins.return_value = []
+    plugin_helper = MagicMock()
+    plugin_helper.async_get_plugin_release_versions = AsyncMock(return_value=[])
+
+    with (
+        patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.PluginHelper", return_value=plugin_helper),
+    ):
+        result = asyncio.run(plugin_releases("DemoPlugin", None, "https://github.com/demo/plugins", True))
+
+    assert result["release_supported"] is False
+    plugin_manager.async_get_online_plugins.assert_awaited_once_with(force=True)
+    assert plugin_helper.async_get_plugin_release_versions.await_args.args == ("DemoPlugin", "https://github.com/demo/plugins")
+
+
+def test_plugin_releases_hides_items_when_market_plugin_does_not_enable_release(monkeypatch):
+    """
+    接口是否支持 Release 安装要与当前 package 的 release 声明保持一致。
+    """
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.3",
+        repo_url="https://github.com/demo/plugins",
+        release=False,
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.async_get_online_plugins = AsyncMock(return_value=[market_plugin])
+    plugin_manager.get_local_plugins.return_value = []
+    plugin_helper = MagicMock()
+    plugin_helper.async_get_plugin_release_versions = AsyncMock(return_value=[
+        {"version": "1.2.3", "tag_name": "DemoPlugin_v1.2.3", "asset_name": "demoplugin_v1.2.3.zip"},
+    ])
+
+    with (
+        patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.PluginHelper", return_value=plugin_helper),
+    ):
+        result = asyncio.run(plugin_releases("DemoPlugin", None, "https://github.com/demo/plugins", False))
+
+    assert result["release_supported"] is False
+    assert result["items"] == []
+    plugin_helper.async_get_plugin_release_versions.assert_not_awaited()
 
 
 def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():

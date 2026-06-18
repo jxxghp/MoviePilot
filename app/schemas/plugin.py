@@ -42,6 +42,8 @@ class Plugin(BaseModel):
     system_version_message: Optional[str] = None
     # 主系统版本限定范围
     system_version: Optional[str] = None
+    # 是否声明支持通过 GitHub Release 资产安装
+    release: Optional[bool] = False
     # 是否本地
     is_local: Optional[bool] = False
     # 仓库地址

@@ -409,6 +409,55 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return payload
 
+    @staticmethod
+    def __build_plugin_release_item(pid: str, release_info: dict) -> Optional[dict]:
+        """
+        从 GitHub release 响应中提取可安装版本，仅接受规范 tag 与同名 zip 资产。
+        """
+        if not isinstance(release_info, dict):
+            return None
+
+        tag_name = release_info.get("tag_name")
+        if not isinstance(tag_name, str):
+            return None
+
+        tag_prefix = f"{pid}_v"
+        if not tag_name.startswith(tag_prefix):
+            return None
+
+        version = tag_name[len(tag_prefix):]
+        if not version:
+            return None
+
+        asset_name = f"{tag_name.lower()}.zip"
+        assets = release_info.get("assets") or []
+        if not any(isinstance(asset, dict) and asset.get("name") == asset_name for asset in assets):
+            return None
+
+        return {
+            "version": version,
+            "tag_name": tag_name,
+            "name": release_info.get("name") or tag_name,
+            "published_at": release_info.get("published_at"),
+            "body": release_info.get("body") or "",
+            "asset_name": asset_name,
+        }
+
+    @staticmethod
+    def __parse_plugin_release_response(pid: str, payload) -> List[dict]:
+        """
+        解析 GitHub release 列表，过滤出当前插件可直接安装的 release 资产。
+        """
+        if not isinstance(payload, list):
+            return []
+
+        releases = []
+        for release_info in payload:
+            item = PluginHelper.__build_plugin_release_item(pid, release_info)
+            if item:
+                releases.append(item)
+        return releases
+
     @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
@@ -436,6 +485,51 @@ class PluginHelper(metaclass=WeakSingleton):
         if res.status_code != 200:
             return None
         return self.__parse_plugin_index_response(res.text)
+
+    @cached(maxsize=128, ttl=1800)
+    def get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
+        """
+        获取插件可安装的 GitHub Release 版本列表。
+        """
+        if not pid or not repo_url:
+            return []
+
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return []
+
+        user_repo = f"{user}/{repo}"
+        releases = []
+        for page in range(1, 11):
+            release_api = f"https://api.github.com/repos/{user_repo}/releases?per_page=100&page={page}"
+            release_api = self.__append_cache_buster(release_api)
+            res = self.__request_with_fallback(
+                release_api,
+                headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+                timeout=30,
+                is_api=True,
+            )
+            if res is None or res.status_code != 200:
+                break
+
+            try:
+                payload = res.json()
+                if not payload:
+                    break
+                releases.extend(self.__parse_plugin_release_response(pid, payload))
+                if len(payload) < 100:
+                    break
+            except Exception as e:
+                logger.error(f"解析插件 {pid} Release 列表失败：{e}")
+                break
+        return releases
+
+    @staticmethod
+    def __has_installable_release_version(release_items: List[dict], release_version: str) -> bool:
+        """
+        指定版本必须来自已解析出的可安装 Release 列表，避免直接拼接任意 tag。
+        """
+        return any(item.get("version") == release_version for item in release_items)
 
     def get_plugin_package_version(self, pid: str, repo_url: str,
                                    package_version: Optional[str] = None) -> Optional[str]:
@@ -485,7 +579,8 @@ class PluginHelper(metaclass=WeakSingleton):
             return None, None
         return user, repo
 
-    def install(self, pid: str, repo_url: str, package_version: Optional[str] = None, force_install: bool = False) \
+    def install(self, pid: str, repo_url: str, package_version: Optional[str] = None,
+                release_version: Optional[str] = None, force_install: bool = False) \
             -> Tuple[bool, str]:
         """
         安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
@@ -498,6 +593,7 @@ class PluginHelper(metaclass=WeakSingleton):
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
+        :param release_version: 指定安装的 release 资产版本；未指定时安装当前索引版本
         :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
         :return: (是否成功, 错误信息)
         """
@@ -541,6 +637,25 @@ class PluginHelper(metaclass=WeakSingleton):
         is_release = meta.get("release")
         # 插件版本号
         plugin_version = meta.get("version")
+        if release_version:
+            if not is_release:
+                return False, f"{pid} 未声明 Release 安装，无法安装指定版本"
+            if not self.__has_installable_release_version(
+                    self.get_plugin_release_versions(pid, repo_url), release_version
+            ):
+                return False, f"{pid} 未找到可安装的 Release 版本：{release_version}"
+            if release_version == plugin_version:
+                compatible, message = self.check_plugin_system_version(meta)
+                if not compatible:
+                    logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
+                    return False, message
+            release_tag = f"{pid}_v{release_version}"
+
+            def prepare_selected_release() -> Tuple[bool, str]:
+                return self.__install_from_release(pid, user_repo, release_tag)
+
+            return self.__install_flow_sync(pid, force_install, prepare_selected_release, repo_url)
+
         compatible, message = self.check_plugin_system_version(meta)
         if not compatible:
             logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
@@ -1885,6 +2000,44 @@ class PluginHelper(metaclass=WeakSingleton):
             return None
         return self.__parse_plugin_index_response(res.text)
 
+    @cached(maxsize=128, ttl=1800)
+    async def async_get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
+        """
+        异步获取插件可安装的 GitHub Release 版本列表。
+        """
+        if not pid or not repo_url:
+            return []
+
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return []
+
+        user_repo = f"{user}/{repo}"
+        releases = []
+        for page in range(1, 11):
+            release_api = f"https://api.github.com/repos/{user_repo}/releases?per_page=100&page={page}"
+            release_api = self.__append_cache_buster(release_api)
+            res = await self.__async_request_with_fallback(
+                release_api,
+                headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+                timeout=30,
+                is_api=True,
+            )
+            if res is None or res.status_code != 200:
+                break
+
+            try:
+                payload = res.json()
+                if not payload:
+                    break
+                releases.extend(self.__parse_plugin_release_response(pid, payload))
+                if len(payload) < 100:
+                    break
+            except Exception as e:
+                logger.error(f"解析插件 {pid} Release 列表失败：{e}")
+                break
+        return releases
+
     async def __async_get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
             Tuple[Optional[list], Optional[str]]:
         """
@@ -2243,6 +2396,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return []
 
     async def async_install(self, pid: str, repo_url: str, package_version: Optional[str] = None,
+                            release_version: Optional[str] = None,
                             force_install: bool = False) -> Tuple[bool, str]:
         """
         异步安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
@@ -2255,6 +2409,7 @@ class PluginHelper(metaclass=WeakSingleton):
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
+        :param release_version: 指定安装的 release 资产版本；未指定时安装当前索引版本
         :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
         :return: (是否成功, 错误信息)
         """
@@ -2297,6 +2452,24 @@ class PluginHelper(metaclass=WeakSingleton):
         is_release = meta.get("release")
         # 插件版本号
         plugin_version = meta.get("version")
+        if release_version:
+            if not is_release:
+                return False, f"{pid} 未声明 Release 安装，无法安装指定版本"
+            release_items = await self.async_get_plugin_release_versions(pid, repo_url)
+            if not self.__has_installable_release_version(release_items, release_version):
+                return False, f"{pid} 未找到可安装的 Release 版本：{release_version}"
+            if release_version == plugin_version:
+                compatible, message = self.check_plugin_system_version(meta)
+                if not compatible:
+                    logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
+                    return False, message
+            release_tag = f"{pid}_v{release_version}"
+
+            async def prepare_selected_release() -> Tuple[bool, str]:
+                return await self.__async_install_from_release(pid, user_repo, release_tag)
+
+            return await self.__install_flow_async(pid, force_install, prepare_selected_release, repo_url)
+
         compatible, message = self.check_plugin_system_version(meta)
         if not compatible:
             logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")

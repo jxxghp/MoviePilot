@@ -11,6 +11,7 @@ from starlette.responses import StreamingResponse
 
 from app import schemas
 from app.command import Command
+from app.core.cache import async_fresh
 from app.core.config import settings
 from app.core.event import eventmanager
 from app.core.plugin import PluginManager
@@ -161,6 +162,7 @@ def _merge_plugin_market_metadata(
     """
     plugin.repo_url = market_plugin.repo_url or plugin.repo_url
     plugin.history = market_plugin.history or {}
+    plugin.release = market_plugin.release
     plugin.has_update = market_plugin.has_update
     plugin.system_version = market_plugin.system_version or plugin.system_version
     plugin.system_version_compatible = market_plugin.system_version_compatible
@@ -336,6 +338,80 @@ async def plugin_history(
     return plugin
 
 
+@router.get("/releases/{plugin_id}", summary="获取插件Release版本", response_model=dict)
+async def plugin_releases(
+    plugin_id: str,
+    _: User = Depends(get_current_active_superuser_async),
+    repo_url: Optional[str] = "",
+    force: bool = False,
+) -> dict:
+    """
+    查询指定插件可直接安装的 GitHub Release 版本。
+    """
+    if not repo_url:
+        return {
+            "release_supported": False,
+            "latest_version": None,
+            "current_version": None,
+            "items": [],
+        }
+
+    plugin_manager = PluginManager()
+    online_plugins = await plugin_manager.async_get_online_plugins(force=force)
+    market_plugin = next(
+        (
+            plugin
+            for plugin in online_plugins
+            if plugin.id == plugin_id and plugin.repo_url == repo_url
+        ),
+        None,
+    )
+    if not market_plugin:
+        market_plugin = next(
+            (
+                plugin
+                for plugin in online_plugins
+                if plugin.id == plugin_id
+            ),
+            None,
+        )
+
+    installed_plugin = next(
+        (
+            plugin
+            for plugin in plugin_manager.get_local_plugins()
+            if plugin.id == plugin_id and plugin.installed
+        ),
+        None,
+    )
+    latest_version = market_plugin.plugin_version if market_plugin else None
+    current_version = installed_plugin.plugin_version if installed_plugin else None
+    if not getattr(market_plugin, "release", False):
+        return {
+            "release_supported": False,
+            "latest_version": latest_version,
+            "current_version": current_version,
+            "items": [],
+        }
+
+    async with async_fresh(force):
+        release_items = await PluginHelper().async_get_plugin_release_versions(plugin_id, repo_url)
+    items = []
+    for item in release_items:
+        version = item.get("version")
+        copied_item = item.copy()
+        copied_item["is_latest"] = bool(latest_version and version == latest_version)
+        copied_item["is_current"] = bool(current_version and version == current_version)
+        items.append(copied_item)
+
+    return {
+        "release_supported": bool(items),
+        "latest_version": latest_version,
+        "current_version": current_version,
+        "items": items,
+    }
+
+
 @router.get("/statistic", summary="插件安装统计", response_model=dict)
 async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -364,6 +440,7 @@ def reload_plugin(
 async def install(
     plugin_id: str,
     repo_url: Optional[str] = "",
+    release_version: Optional[str] = None,
     force: Optional[bool] = False,
     _: User = Depends(get_current_active_superuser_async),
 ) -> Any:
@@ -386,7 +463,7 @@ async def install(
         # 插件不存在或需要强制安装，下载安装并注册插件
         if repo_url:
             state, msg = await plugin_helper.async_install(
-                pid=plugin_id, repo_url=repo_url, force_install=force
+                pid=plugin_id, repo_url=repo_url, release_version=release_version, force_install=force
             )
             # 安装失败则直接响应
             if not state:
