@@ -347,6 +347,8 @@ async def plugin_releases(
 ) -> dict:
     """
     查询指定插件可直接安装的 GitHub Release 版本。
+
+    市场元数据只读取请求仓库的当前 package，避免版本历史请求触发全部市场缓存读取。
     """
     if not repo_url:
         return {
@@ -357,35 +359,32 @@ async def plugin_releases(
         }
 
     plugin_manager = PluginManager()
-    online_plugins = await plugin_manager.async_get_online_plugins(force=force)
+    market_plugins = await plugin_manager.async_get_plugins_from_market(
+        repo_url, settings.VERSION_FLAG, force
+    )
     market_plugin = next(
         (
             plugin
-            for plugin in online_plugins
-            if plugin.id == plugin_id and plugin.repo_url == repo_url
+            for plugin in market_plugins or []
+            if plugin.id == plugin_id
         ),
         None,
     )
-    if not market_plugin:
+    if not market_plugin and settings.VERSION_FLAG:
+        compatible_plugins = await plugin_manager.async_get_plugins_from_market(
+            repo_url, None, force
+        )
         market_plugin = next(
             (
                 plugin
-                for plugin in online_plugins
+                for plugin in compatible_plugins or []
                 if plugin.id == plugin_id
             ),
             None,
         )
 
-    installed_plugin = next(
-        (
-            plugin
-            for plugin in plugin_manager.get_local_plugins()
-            if plugin.id == plugin_id and plugin.installed
-        ),
-        None,
-    )
     latest_version = market_plugin.plugin_version if market_plugin else None
-    current_version = installed_plugin.plugin_version if installed_plugin else None
+    current_version = plugin_manager.get_local_plugin_version(plugin_id)
     if not getattr(market_plugin, "release", False):
         return {
             "release_supported": False,

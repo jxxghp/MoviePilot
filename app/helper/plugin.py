@@ -51,6 +51,9 @@ class PluginHelper(metaclass=WeakSingleton):
     _base_url = "https://raw.githubusercontent.com/{user}/{repo}/main/"
     # 串行化运行期依赖安装，避免多个 pip 子进程和导入缓存刷新互相踩踏。
     _pip_install_lock = threading.Lock()
+    # 同仓库的并发 Release 请求共享任务；事件循环参与键控，避免热重载或测试循环切换后复用失效任务。
+    _release_task_lock = threading.Lock()
+    _release_tasks: Dict[Tuple[asyncio.AbstractEventLoop, str, bool], asyncio.Task] = {}
     # 这些包一旦被插件覆盖，最容易直接拖垮主程序启动，因此冲突提示需要单独高亮。
     _protected_runtime_packages = frozenset({
         "alembic",
@@ -458,6 +461,27 @@ class PluginHelper(metaclass=WeakSingleton):
                 releases.append(item)
         return releases
 
+    @staticmethod
+    def __normalize_plugin_release_response(payload) -> List[dict]:
+        """仅保留版本展示和资产匹配所需字段，控制仓库级缓存体积。"""
+        if not isinstance(payload, list):
+            return []
+        return [
+            {
+                "tag_name": release_info.get("tag_name"),
+                "name": release_info.get("name"),
+                "published_at": release_info.get("published_at"),
+                "body": release_info.get("body"),
+                "assets": [
+                    {"name": asset.get("name")}
+                    for asset in release_info.get("assets") or []
+                    if isinstance(asset, dict)
+                ],
+            }
+            for release_info in payload
+            if isinstance(release_info, dict)
+        ]
+
     @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
@@ -486,12 +510,12 @@ class PluginHelper(metaclass=WeakSingleton):
             return None
         return self.__parse_plugin_index_response(res.text)
 
-    @cached(maxsize=128, ttl=1800)
-    def get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
+    @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
+    def _get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
         """
-        获取插件可安装的 GitHub Release 版本列表。
+        按仓库获取 GitHub Release 原始分页数据，供仓库内所有插件共享。
         """
-        if not pid or not repo_url:
+        if not repo_url:
             return []
 
         user, repo = self.get_repo_info(repo_url)
@@ -510,19 +534,31 @@ class PluginHelper(metaclass=WeakSingleton):
                 is_api=True,
             )
             if res is None or res.status_code != 200:
-                break
+                return None
 
             try:
                 payload = res.json()
                 if not payload:
                     break
-                releases.extend(self.__parse_plugin_release_response(pid, payload))
+                if not isinstance(payload, list):
+                    return None
+                releases.extend(self.__normalize_plugin_release_response(payload))
                 if len(payload) < 100:
                     break
             except Exception as e:
-                logger.error(f"解析插件 {pid} Release 列表失败：{e}")
-                break
+                logger.error(f"解析插件仓库 {repo_url} Release 列表失败：{e}")
+                return None
         return releases
+
+    def get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
+        """
+        获取插件可安装的 GitHub Release 版本列表。
+
+        GitHub 分页结果按仓库缓存，插件 ID 只参与本地过滤，避免同仓库重复分页。
+        """
+        if not pid or not repo_url:
+            return []
+        return self.__parse_plugin_release_response(pid, self._get_plugin_repo_releases(repo_url.rstrip("/")))
 
     @staticmethod
     def __has_installable_release_version(release_items: List[dict], release_version: str) -> bool:
@@ -2000,12 +2036,12 @@ class PluginHelper(metaclass=WeakSingleton):
             return None
         return self.__parse_plugin_index_response(res.text)
 
-    @cached(maxsize=128, ttl=1800)
-    async def async_get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
+    @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
+    async def _async_get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
         """
-        异步获取插件可安装的 GitHub Release 版本列表。
+        异步按仓库获取 GitHub Release 原始分页数据。
         """
-        if not pid or not repo_url:
+        if not repo_url:
             return []
 
         user, repo = self.get_repo_info(repo_url)
@@ -2024,19 +2060,84 @@ class PluginHelper(metaclass=WeakSingleton):
                 is_api=True,
             )
             if res is None or res.status_code != 200:
-                break
+                return None
 
             try:
                 payload = res.json()
                 if not payload:
                     break
-                releases.extend(self.__parse_plugin_release_response(pid, payload))
+                if not isinstance(payload, list):
+                    return None
+                releases.extend(self.__normalize_plugin_release_response(payload))
                 if len(payload) < 100:
                     break
             except Exception as e:
-                logger.error(f"解析插件 {pid} Release 列表失败：{e}")
-                break
+                logger.error(f"解析插件仓库 {repo_url} Release 列表失败：{e}")
+                return None
         return releases
+
+    async def async_get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
+        """
+        异步获取插件可安装的 GitHub Release 版本列表。
+
+        同一事件循环内，同仓库的并发读取和强制刷新共享一个请求任务。
+        """
+        if not pid or not repo_url:
+            return []
+
+        loop = asyncio.get_running_loop()
+        normalized_repo_url = repo_url.rstrip("/")
+        normal_task_key = (loop, normalized_repo_url, False)
+        force_task_key = (loop, normalized_repo_url, True)
+        with self._release_task_lock:
+            force_task = self._release_tasks.get(force_task_key)
+            if force_task and not force_task.done():
+                task_key = force_task_key
+                task = force_task
+            elif is_fresh():
+                pending_normal_task = self._release_tasks.get(normal_task_key)
+                if pending_normal_task and pending_normal_task.done():
+                    pending_normal_task = None
+                task_key = force_task_key
+                task = loop.create_task(
+                    self._async_refresh_plugin_repo_releases(normalized_repo_url, pending_normal_task)
+                )
+                self._release_tasks[task_key] = task
+                task.add_done_callback(
+                    lambda completed_task: self._remove_release_task(task_key, completed_task)
+                )
+            else:
+                task_key = normal_task_key
+                task = self._release_tasks.get(task_key)
+                if task is None or task.done():
+                    task = loop.create_task(self._async_get_plugin_repo_releases(normalized_repo_url))
+                    self._release_tasks[task_key] = task
+                    task.add_done_callback(
+                        lambda completed_task: self._remove_release_task(task_key, completed_task)
+                    )
+
+        payload = await asyncio.shield(task)
+        return self.__parse_plugin_release_response(pid, payload)
+
+    async def _async_refresh_plugin_repo_releases(
+        self,
+        repo_url: str,
+        pending_normal_task: Optional[asyncio.Task],
+    ) -> Optional[List[dict]]:
+        """等待在途普通读取落盘后执行强刷，确保旧结果不会覆盖强刷缓存。"""
+        if pending_normal_task:
+            try:
+                await asyncio.shield(pending_normal_task)
+            except (Exception, asyncio.CancelledError):
+                pass
+        return await self._async_get_plugin_repo_releases(repo_url)
+
+    @classmethod
+    def _remove_release_task(cls, task_key: Tuple[asyncio.AbstractEventLoop, str, bool], task: asyncio.Task) -> None:
+        """请求任务完成后释放事件循环和仓库引用。"""
+        with cls._release_task_lock:
+            if cls._release_tasks.get(task_key) is task:
+                cls._release_tasks.pop(task_key, None)
 
     async def __async_get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
             Tuple[Optional[list], Optional[str]]:
@@ -2665,3 +2766,10 @@ class PluginHelper(metaclass=WeakSingleton):
         except Exception as e:
             logger.error(f"解压 Release 压缩包失败：{e}")
             return False, f"解压 Release 压缩包失败：{e}"
+
+
+# 公开 Release 查询的缓存管理统一指向仓库级分页缓存。
+PluginHelper.get_plugin_release_versions.cache_clear = PluginHelper._get_plugin_repo_releases.cache_clear
+PluginHelper.get_plugin_release_versions.cache_region = PluginHelper._get_plugin_repo_releases.cache_region
+PluginHelper.async_get_plugin_release_versions.cache_clear = PluginHelper._async_get_plugin_repo_releases.cache_clear
+PluginHelper.async_get_plugin_release_versions.cache_region = PluginHelper._async_get_plugin_repo_releases.cache_region

@@ -245,7 +245,11 @@ class TestPluginHelper:
             },
         ]
         helper = PluginHelper()
-        monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", lambda *_args, **_kwargs: _FakeTextResponse(200, payload))
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__request_with_fallback",
+            lambda *_args, **_kwargs: _FakeTextResponse(200, payload),
+        )
 
         releases = helper.get_plugin_release_versions(PLUGIN_ID, REPO_URL)
 
@@ -323,9 +327,177 @@ class TestPluginHelper:
         assert requested_pages == ["1", "2"]
         assert [item["version"] for item in releases] == ["1.2.0"]
 
-    def test_get_online_plugins_force_clears_release_cache(self, monkeypatch):
+    def test_get_plugin_release_versions_reuses_repository_pages_across_plugins(self, monkeypatch):
         """
-        插件市场缓存刷新会一并清理 Release 列表缓存，覆盖定时刷新服务入口。
+        同一仓库的不同插件共享 GitHub Release 分页结果，避免按插件 ID 重复请求。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        payload = [
+            {
+                "tag_name": "DemoPlugin_v1.2.3",
+                "assets": [{"name": "demoplugin_v1.2.3.zip", "id": 1}],
+            },
+            {
+                "tag_name": "OtherPlugin_v2.0.0",
+                "assets": [{"name": "otherplugin_v2.0.0.zip", "id": 2}],
+            },
+        ]
+        request_count = 0
+
+        def fake_request(*_args, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            return _FakeTextResponse(200, payload)
+
+        helper = PluginHelper()
+        helper.get_plugin_release_versions.cache_clear()
+        monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", fake_request)
+
+        demo_releases = helper.get_plugin_release_versions("DemoPlugin", REPO_URL)
+        other_releases = helper.get_plugin_release_versions("OtherPlugin", REPO_URL)
+
+        assert request_count == 1
+        assert [item["version"] for item in demo_releases] == ["1.2.3"]
+        assert [item["version"] for item in other_releases] == ["2.0.0"]
+
+    def test_async_get_plugin_release_versions_coalesces_forced_repository_requests(self, monkeypatch):
+        """
+        同一仓库的并发强制刷新共享一个请求任务，避免缓存失效瞬间放大 GitHub 请求。
+        """
+        try:
+            from app.core.cache import async_fresh
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        payload = [
+            {
+                "tag_name": "DemoPlugin_v1.2.3",
+                "assets": [{"name": "demoplugin_v1.2.3.zip", "id": 1}],
+            },
+            {
+                "tag_name": "OtherPlugin_v2.0.0",
+                "assets": [{"name": "otherplugin_v2.0.0.zip", "id": 2}],
+            },
+        ]
+        request_count = 0
+
+        async def fake_request(*_args, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            await asyncio.sleep(0.01)
+            return _FakeTextResponse(200, payload)
+
+        async def run_test():
+            helper = PluginHelper()
+            await helper.async_get_plugin_release_versions.cache_clear()
+            monkeypatch.setattr(helper, "_PluginHelper__async_request_with_fallback", fake_request)
+            async with async_fresh(True):
+                return await asyncio.gather(
+                    helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL),
+                    helper.async_get_plugin_release_versions("OtherPlugin", REPO_URL),
+                )
+
+        demo_releases, other_releases = asyncio.run(run_test())
+
+        assert request_count == 1
+        assert [item["version"] for item in demo_releases] == ["1.2.3"]
+        assert [item["version"] for item in other_releases] == ["2.0.0"]
+
+    def test_async_forced_release_refresh_does_not_reuse_normal_read_task(self, monkeypatch):
+        """强刷等待在途普通读取后再请求，最终缓存必须保留强刷结果。"""
+        try:
+            from app.core.cache import async_fresh
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        old_payload = [{
+            "tag_name": "DemoPlugin_v1.2.2",
+            "assets": [{"name": "demoplugin_v1.2.2.zip", "id": 1}],
+        }]
+        fresh_payload = [{
+            "tag_name": "DemoPlugin_v1.2.3",
+            "assets": [{"name": "demoplugin_v1.2.3.zip", "id": 2}],
+        }]
+        first_request_started = asyncio.Event()
+        release_first_request = asyncio.Event()
+        request_count = 0
+
+        async def fake_request(*_args, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            if request_count == 1:
+                first_request_started.set()
+                await release_first_request.wait()
+                return _FakeTextResponse(200, old_payload)
+            return _FakeTextResponse(200, fresh_payload)
+
+        async def run_test():
+            helper = PluginHelper()
+            await helper.async_get_plugin_release_versions.cache_clear()
+            monkeypatch.setattr(helper, "_PluginHelper__async_request_with_fallback", fake_request)
+            normal_task = asyncio.create_task(
+                helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            )
+            await first_request_started.wait()
+            async with async_fresh(True):
+                force_task = asyncio.create_task(
+                    helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+                )
+                await asyncio.sleep(0.01)
+                request_count_before_normal_finished = request_count
+            release_first_request.set()
+            normal_result, force_result = await asyncio.gather(normal_task, force_task)
+            cached_result = await helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            return request_count_before_normal_finished, normal_result, force_result, cached_result
+
+        request_count_before_normal_finished, normal_result, force_result, cached_result = asyncio.run(run_test())
+
+        assert request_count_before_normal_finished == 1
+        assert [item["version"] for item in normal_result] == ["1.2.2"]
+        assert [item["version"] for item in force_result] == ["1.2.3"]
+        assert [item["version"] for item in cached_result] == ["1.2.3"]
+        assert request_count == 2
+
+    def test_failed_forced_release_refresh_preserves_cached_repository_payload(self, monkeypatch):
+        """GitHub 强刷失败时不以空值覆盖该仓库已有 Release 缓存。"""
+        try:
+            from app.core.cache import fresh
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        payload = [{
+            "tag_name": "DemoPlugin_v1.2.3",
+            "assets": [{"name": "demoplugin_v1.2.3.zip", "id": 1}],
+        }]
+        responses = [_FakeTextResponse(200, payload), None]
+
+        def fake_request(*_args, **_kwargs):
+            return responses.pop(0)
+
+        helper = PluginHelper()
+        helper.get_plugin_release_versions.cache_clear()
+        monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", fake_request)
+
+        initial = helper.get_plugin_release_versions("DemoPlugin", REPO_URL)
+        with fresh(True):
+            failed_refresh = helper.get_plugin_release_versions("DemoPlugin", REPO_URL)
+        cached = helper.get_plugin_release_versions("DemoPlugin", REPO_URL)
+
+        assert [item["version"] for item in initial] == ["1.2.3"]
+        assert failed_refresh == []
+        assert [item["version"] for item in cached] == ["1.2.3"]
+        assert responses == []
+
+    def test_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
+        """
+        全市场刷新不清理 Release 缓存，Release 接口按请求仓库协调刷新两类数据。
         """
         try:
             from app.core.plugin import PluginManager
@@ -342,7 +514,56 @@ class TestPluginHelper:
 
         PluginManager().get_online_plugins(force=True)
 
-        assert clear_calls == ["clear"]
+        assert clear_calls == []
+
+    def test_async_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
+        """异步全市场刷新同样不得清理其他仓库的 Release 缓存。"""
+        try:
+            from app.core.plugin import PluginManager
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        clear_calls = []
+
+        async def fake_clear():
+            clear_calls.append("clear")
+
+        fake_release_method = SimpleNamespace(cache_clear=fake_clear)
+        fake_helper = SimpleNamespace(async_get_plugin_release_versions=fake_release_method)
+
+        async def fake_market(*_args, **_kwargs):
+            return []
+
+        monkeypatch.setattr("app.core.plugin.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
+        monkeypatch.setattr("app.core.plugin.PluginHelper", lambda: fake_helper)
+        monkeypatch.setattr(PluginManager, "async_get_plugins_from_market", fake_market)
+
+        asyncio.run(PluginManager().async_get_online_plugins(force=True))
+
+        assert clear_calls == []
+
+    def test_get_local_plugin_version_reads_only_requested_installed_plugin(self, monkeypatch):
+        """单插件版本查询不构建全部本地插件信息。"""
+        try:
+            from app.core.plugin import PluginManager
+            from app.db.systemconfig_oper import SystemConfigOper
+            from app.schemas.types import SystemConfigKey
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        class DemoPlugin:
+            plugin_version = "1.2.0"
+
+        plugin_manager = PluginManager()
+        monkeypatch.setattr(plugin_manager, "_plugins", {"DemoPlugin": DemoPlugin})
+        monkeypatch.setattr(
+            SystemConfigOper,
+            "get",
+            lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
+        )
+
+        assert plugin_manager.get_local_plugin_version("DemoPlugin") == "1.2.0"
+        assert plugin_manager.get_local_plugin_version("OtherPlugin") is None
 
     def test_annotate_plugin_system_version_marks_incompatible(self):
         """
