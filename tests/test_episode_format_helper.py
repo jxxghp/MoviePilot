@@ -596,6 +596,40 @@ def test_should_prefer_fallback_episode_when_anitopy_hits_title_sequence():
     ) is False
 
 
+def test_should_prefer_fallback_episode_preserves_anitopy_multi_episode_list():
+    helper = EpisodeFormatRuleHelper()
+
+    assert helper._should_prefer_fallback_episode(
+        "Show 3 [01][02].mkv",
+        ["01", "02"],
+        "02",
+    ) is False
+
+
+def test_extract_episode_with_native_fallback_keeps_anitopy_range_list(monkeypatch):
+    helper = EpisodeFormatRuleHelper()
+    item = _make_file("Show - 01-02 [02].mkv")
+
+    monkeypatch.setattr(
+        "app.helper.format.anitopy.parse",
+        lambda _: {"episode_number": ["01", "02"]},
+    )
+    monkeypatch.setattr(
+        helper,
+        "_extract_native_episode",
+        lambda _: None,
+    )
+
+    normalized_episode, native_episode, used_native_fallback, native_verified = (
+        helper._extract_episode_with_native_fallback(item)
+    )
+
+    assert normalized_episode == "01-02"
+    assert native_episode is None
+    assert used_native_fallback is False
+    assert native_verified is False
+
+
 def test_should_degrade_native_conflict_only_for_preceding_title_number():
     helper = EpisodeFormatRuleHelper()
 
@@ -609,6 +643,12 @@ def test_should_degrade_native_conflict_only_for_preceding_title_number():
         "01",
         "02",
     ) is False
+
+
+def test_calculate_variable_span_keeps_optional_base_suffix_span():
+    helper = EpisodeFormatRuleHelper()
+
+    assert helper._calculate_variable_span(" Fin ", [""]) == (0, 5)
 
 
 def test_auto_recommend_marks_native_verified_samples(monkeypatch):

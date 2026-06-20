@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, List, Match, Optional, Tuple
+from typing import Dict, Iterable, List, Match, Optional, Tuple, Union
 
 import anitopy
 
@@ -792,8 +792,8 @@ class EpisodeFormatRuleHelper:
     def _should_prefer_fallback_episode(
         cls,
         file_name: str,
-        anitopy_episode: Optional[str],
-        fallback_episode: Optional[str],
+        anitopy_episode: Optional[Union[str, List[str]]],
+        fallback_episode: Optional[Union[str, List[str]]],
     ) -> bool:
         """
         当 anitopy 命中了标题前部数字，而 fallback 命中了更靠后的显式集数 token 时，
@@ -801,11 +801,19 @@ class EpisodeFormatRuleHelper:
         """
         if not file_name or not anitopy_episode or not fallback_episode:
             return False
-        if cls._episode_value_equals(anitopy_episode, fallback_episode):
+        normalized_anitopy_episode = cls._normalize_episode_value(anitopy_episode)
+        normalized_fallback_episode = cls._normalize_episode_value(fallback_episode)
+        if cls._episode_value_equals(
+            normalized_anitopy_episode,
+            normalized_fallback_episode,
+        ):
+            return False
+        _, anitopy_end_episode = cls._parse_episode_value(normalized_anitopy_episode)
+        if anitopy_end_episode is not None:
             return False
 
-        anitopy_span = cls._locate_episode(file_name, str(anitopy_episode))
-        fallback_span = cls._locate_episode(file_name, str(fallback_episode))
+        anitopy_span = cls._locate_episode(file_name, normalized_anitopy_episode)
+        fallback_span = cls._locate_episode(file_name, normalized_fallback_episode)
         if not anitopy_span or not fallback_span:
             return False
         return anitopy_span[1] <= fallback_span[0]
@@ -829,8 +837,8 @@ class EpisodeFormatRuleHelper:
             episode_number = fallback_episode
         elif self._should_prefer_fallback_episode(
             file_name,
-            str(anitopy_episode),
-            str(fallback_episode) if fallback_episode else None,
+            anitopy_episode,
+            fallback_episode,
         ):
             episode_number = fallback_episode
         normalized_episode = (
