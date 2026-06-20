@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Any, Optional, Dict, Union, List, Tuple
 from urllib.parse import unquote, urlparse
 
-from app.agent import ReplyMode, agent_manager, prompt_manager
+from app.agent import ReplyMode, agent_manager
 from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.agent.prompt.transfer_redo import build_manual_redo_prompt
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -872,36 +873,6 @@ class MessageChain(ChainBase):
         由智能助手接管一条失败的整理记录。
         """
 
-        def __build_manual_redo_prompt(his: TransferHistory) -> str:
-            """构建手动 AI 整理提示词。"""
-
-            src_fileitem = his.src_fileitem or {}
-            source_path = src_fileitem.get("path") if isinstance(src_fileitem, dict) else ""
-            source_path = source_path or his.src or ""
-            season_episode = f"{his.seasons or ''}{his.episodes or ''}".strip()
-            # 键名必须与 System Tasks.yaml 中 manual_transfer_redo 模板的占位符一致
-            template_context = {
-                "history_id": his.id,
-                "current_status": "success" if his.status else "failed",
-                "recognized_title": his.title or "unknown",
-                "media_type": his.type or "unknown",
-                "category": his.category or "unknown",
-                "year": his.year or "unknown",
-                "season_episode": season_episode or "unknown",
-                "source_path": source_path or "unknown",
-                "source_storage": his.src_storage or "local",
-                "destination_path": his.dest or "unknown",
-                "destination_storage": his.dest_storage or "unknown",
-                "transfer_mode": his.mode or "unknown",
-                "tmdbid": his.tmdbid or "none",
-                "doubanid": his.doubanid or "none",
-                "error_message": his.errmsg or "none",
-            }
-            return prompt_manager.render_system_task_message(
-                "manual_transfer_redo",
-                template_context=template_context,
-            )
-
         if not settings.AI_AGENT_ENABLE:
             self.post_message(
                 Notification(
@@ -931,7 +902,7 @@ class MessageChain(ChainBase):
             )
             return
 
-        redo_prompt = __build_manual_redo_prompt(history)
+        redo_prompt = build_manual_redo_prompt(history)
 
         self.post_message(
             Notification(

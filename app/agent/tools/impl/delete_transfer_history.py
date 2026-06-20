@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.chain.storage import StorageChain
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
+from app.schemas import FileItem
 
 
 class DeleteTransferHistoryInput(BaseModel):
@@ -27,7 +29,11 @@ class DeleteTransferHistoryTool(MoviePilotTool):
         ToolTag.Transfer,
         ToolTag.Admin,
     ]
-    description: str = "Delete a specific transfer history record by its ID. This is useful when you need to remove a failed transfer record before retrying the transfer, as the system skips files that already have transfer history."
+    description: str = (
+        "Delete a specific transfer history record by its ID. For non-successful-move records with an old "
+        "destination file, the tool removes that media-library file before deleting the history record. This is "
+        "useful before retrying or re-organizing because the system skips files that already have transfer history."
+    )
     args_schema: Type[BaseModel] = DeleteTransferHistoryInput
     require_admin: bool = True
 
@@ -48,10 +54,21 @@ class DeleteTransferHistoryTool(MoviePilotTool):
             title = history.title or "未知"
             src = history.src or "未知"
             status = "成功" if history.status else "失败"
+            deleted_dest = False
+            if history.dest_fileitem and not (history.status and history.mode == "move"):
+                dest_fileitem = FileItem(**history.dest_fileitem)
+                storage_chain = StorageChain()
+                if storage_chain.exists(dest_fileitem):
+                    if not storage_chain.delete_media_file(dest_fileitem):
+                        return f"错误：旧媒体库文件删除失败，路径={dest_fileitem.path}"
+                    deleted_dest = True
             await transferhis.async_delete(history_id)
-            return (
+            message = (
                 f"已删除整理历史记录：ID={history_id}，标题={title}，源路径={src}，状态={status}"
             )
+            if deleted_dest:
+                message += "，已删除旧媒体库文件"
+            return message
         except Exception as e:
             logger.error(f"删除整理历史记录失败: {e}", exc_info=True)
             return f"删除整理历史记录时发生错误: {str(e)}"

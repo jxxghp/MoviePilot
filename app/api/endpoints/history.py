@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.agent import ReplyMode, prompt_manager, agent_manager
+from app.agent import ReplyMode, agent_manager
+from app.agent.prompt.transfer_redo import (
+    build_batch_manual_redo_prompt,
+    build_manual_redo_prompt,
+)
 from app.chain.storage import StorageChain
 from app.core.config import settings, global_vars
 from app.core.event import eventmanager
@@ -35,86 +39,6 @@ def normalize_history_ids(history_ids: list[int]) -> list[int]:
         if history_id not in normalized_ids:
             normalized_ids.append(history_id)
     return normalized_ids
-
-
-def build_manual_redo_template_context(
-    history: TransferHistory,
-) -> dict[str, int | str]:
-    """仅负责把整理历史对象映射成 System Tasks 需要的模板变量。"""
-    src_fileitem = history.src_fileitem or {}
-    source_path = src_fileitem.get("path") if isinstance(src_fileitem, dict) else ""
-    source_path = source_path or history.src or ""
-    season_episode = f"{history.seasons or ''}{history.episodes or ''}".strip()
-    return {
-        "history_id": history.id,
-        "current_status": "success" if history.status else "failed",
-        "recognized_title": history.title or "unknown",
-        "media_type": history.type or "unknown",
-        "category": history.category or "unknown",
-        "year": history.year or "unknown",
-        "season_episode": season_episode or "unknown",
-        "source_path": source_path or "unknown",
-        "source_storage": history.src_storage or "local",
-        "destination_path": history.dest or "unknown",
-        "destination_storage": history.dest_storage or "unknown",
-        "transfer_mode": history.mode or "unknown",
-        "tmdbid": history.tmdbid or "none",
-        "doubanid": history.doubanid or "none",
-        "error_message": history.errmsg or "none",
-    }
-
-
-def format_manual_redo_record_context(history: Any) -> str:
-    """把单条整理记录格式化为批量任务可直接消费的上下文块。"""
-    context = build_manual_redo_template_context(history)
-    return "\n".join(
-        [
-            f"Record #{context['history_id']}:",
-            f"- Current status: {context['current_status']}",
-            f"- Current recognized title: {context['recognized_title']}",
-            f"- Media type: {context['media_type']}",
-            f"- Category: {context['category']}",
-            f"- Year: {context['year']}",
-            f"- Season/Episode: {context['season_episode']}",
-            f"- Source path: {context['source_path']}",
-            f"- Source storage: {context['source_storage']}",
-            f"- Destination path: {context['destination_path']}",
-            f"- Destination storage: {context['destination_storage']}",
-            f"- Transfer mode: {context['transfer_mode']}",
-            f"- Current TMDB ID: {context['tmdbid']}",
-            f"- Current Douban ID: {context['doubanid']}",
-            f"- Error message: {context['error_message']}",
-        ]
-    )
-
-
-def build_manual_redo_prompt(history: Any) -> str:
-    """构建手动 AI 整理提示词。"""
-    return prompt_manager.render_system_task_message(
-        "manual_transfer_redo",
-        template_context=build_manual_redo_template_context(history),
-    )
-
-
-def build_batch_manual_redo_template_context(
-    histories: list[Any],
-) -> dict[str, int | str]:
-    """仅负责把多条整理历史对象映射成批量 System Tasks 需要的模板变量。"""
-    return {
-        "history_ids_csv": ", ".join(str(history.id) for history in histories),
-        "history_count": len(histories),
-        "records_context": "\n\n".join(
-            format_manual_redo_record_context(history) for history in histories
-        ),
-    }
-
-
-def build_batch_manual_redo_prompt(histories: list[Any]) -> str:
-    """构建批量手动 AI 整理提示词。"""
-    return prompt_manager.render_system_task_message(
-        "batch_manual_transfer_redo",
-        template_context=build_batch_manual_redo_template_context(histories),
-    )
 
 
 def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):

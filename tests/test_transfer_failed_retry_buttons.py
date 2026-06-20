@@ -1,4 +1,5 @@
 import unittest
+import asyncio
 import sys
 from types import ModuleType
 from types import SimpleNamespace
@@ -89,6 +90,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             src_fileitem={"path": "/downloads/Test.Show.S01E01.mkv"},
             dest=None,
             dest_storage=None,
+            dest_fileitem=None,
             mode="copy",
             tmdbid=123,
             doubanid=None,
@@ -121,4 +123,73 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         self.assertEqual(
             post_message.call_args_list[0].args[0].title,
             "已将整理记录 #34 交给智能助手处理",
+        )
+
+    def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(self):
+        chain = MessageChain()
+        captured = {}
+        history = SimpleNamespace(
+            id=35,
+            status=True,
+            title="Test Show",
+            type="电视剧",
+            category=None,
+            year="2024",
+            seasons="S01",
+            episodes="E01",
+            src="/downloads/Test.Show.S01E01.mkv",
+            src_storage="local",
+            src_fileitem={"path": "/downloads/Test.Show.S01E01.mkv"},
+            dest="/library/Test Show (2024)/Season 1/Test.Show.S01E01.mkv",
+            dest_storage="local",
+            dest_fileitem={
+                "storage": "local",
+                "path": "/library/Test Show (2024)/Season 1/Test.Show.S01E01.mkv",
+                "name": "Test.Show.S01E01.mkv",
+                "type": "file",
+            },
+            mode="move",
+            tmdbid=123,
+            doubanid=None,
+            errmsg=None,
+        )
+
+        def _run_pending_coro(coro, *args, **kwargs):
+            asyncio.run(coro)
+            return SimpleNamespace()
+
+        async def fake_run_background_prompt(**kwargs):
+            captured["message"] = kwargs["message"]
+            output_callback = kwargs.get("output_callback")
+            if output_callback:
+                output_callback("ok")
+
+        async def fake_async_post_message(*args, **kwargs):
+            return None
+
+        with patch.object(settings, "AI_AGENT_ENABLE", True):
+            with patch(
+                "app.chain.message.TransferHistoryOper"
+            ) as history_oper_cls, patch(
+                "app.chain.message.agent_manager.run_background_prompt",
+                side_effect=fake_run_background_prompt,
+            ), patch(
+                "app.chain.message.asyncio.run_coroutine_threadsafe",
+                side_effect=_run_pending_coro,
+            ):
+                history_oper_cls.return_value.get.return_value = history
+                with patch.object(chain, "post_message"), patch.object(
+                    chain, "async_post_message", side_effect=fake_async_post_message
+                ):
+                    chain._handle_callback(
+                        text="CALLBACK:transfer_ai_retry_35",
+                        channel=MessageChannel.Telegram,
+                        source="telegram-test",
+                        userid="10001",
+                        username="tester",
+                    )
+
+        self.assertIn(
+            "- Source path: /library/Test Show (2024)/Season 1/Test.Show.S01E01.mkv",
+            captured["message"],
         )
