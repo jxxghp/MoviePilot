@@ -1158,15 +1158,30 @@ class TestFeishu(unittest.TestCase):
     def test_run_ws_client_binds_thread_local_event_loop(self):
         client = self._build_client()
         original_loop = object()
-        fake_ws_client = MagicMock()
         created_loops = []
         real_new_event_loop = asyncio.new_event_loop
+
+        class _FakeWsClient:
+            """显式模拟飞书 SDK 长连接客户端，避免 MagicMock 在线程清理路径污染全局 mock 锁。"""
+
+            def __init__(self):
+                self._auto_reconnect = True
+                self._conn = None
+                self._conn_url = "wss://msg-frontier.feishu.cn/ws/v2?access_key=secret&ticket=secret"
+                self._conn_id = "conn_test"
+                self._service_id = "service_test"
+                self._lock = asyncio.Lock()
+                self.started = False
+
+            def start(self):
+                self.started = True
 
         def _new_loop():
             loop = real_new_event_loop()
             created_loops.append(loop)
             return loop
 
+        fake_ws_client = _FakeWsClient()
         with (
             patch(
                 "app.modules.feishu.feishu.lark_ws_client_module.loop", original_loop
@@ -1182,14 +1197,11 @@ class TestFeishu(unittest.TestCase):
             patch(
                 "app.modules.feishu.feishu.lark.ws.Client", return_value=fake_ws_client
             ),
-            patch.object(
-                fake_ws_client, "start", side_effect=lambda: None
-            ) as mock_start,
         ):
             client._run_ws_client()
 
         self.assertIsNone(client._ws_loop)
-        mock_start.assert_called_once()
+        self.assertTrue(fake_ws_client.started)
         self.assertEqual(len(created_loops), 1)
         self.assertTrue(created_loops[0].is_closed())
 

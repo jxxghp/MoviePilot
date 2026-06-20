@@ -25,9 +25,14 @@ def telegram():
         bot_instance = MagicMock()
         # get_me 用于初始化 bot 用户名，需返回带 username 的对象
         bot_instance.get_me.return_value = MagicMock(username="test_bot")
+        # polling/stop 使用普通函数，避免后台线程执行 MagicMock 时在退出阶段产生锁竞争。
+        bot_instance.infinity_polling = lambda *args, **kwargs: None
+        bot_instance.stop_polling = lambda *args, **kwargs: None
         mock_telebot_cls.return_value = bot_instance
         mock_image_cls.return_value.fetch_image.return_value = b"fake-image-bytes"
-        yield Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
+        telegram = Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
+        yield telegram
+        telegram.stop()
 
 
 def test_send_msg_success(telegram):

@@ -115,6 +115,16 @@ def _get_blocking_executor(bucket: str) -> ThreadPoolExecutor:
         return executor
 
 
+def shutdown_blocking_executors(*, wait: bool = True, cancel_futures: bool = False) -> None:
+    """关闭 Agent 工具阻塞线程池，释放长期运行进程或测试环境中的 worker。"""
+    with _blocking_executor_lock:
+        executors = list(_blocking_executors.values())
+        _blocking_executors.clear()
+
+    for executor in executors:
+        executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+
 class ToolExecutionTimeoutError(TimeoutError):
     """Agent 工具执行超时异常。"""
 

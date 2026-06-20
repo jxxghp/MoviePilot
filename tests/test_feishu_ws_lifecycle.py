@@ -71,6 +71,35 @@ def test_shutdown_ws_client_cancels_sdk_tasks_before_quiet_disconnect():
     assert client._ws_tasks == set()
 
 
+def test_shutdown_ws_client_skips_disconnect_when_sdk_lock_is_busy_and_connection_gone():
+    """SDK 已无连接对象时，关机清理不应等待可能长期占用的内部锁。"""
+    client = _build_feishu_client()
+
+    async def _run_shutdown() -> SimpleNamespace:
+        lock = asyncio.Lock()
+        await lock.acquire()
+        ws_client = SimpleNamespace(
+            _auto_reconnect=True,
+            _conn=None,
+            _conn_url="wss://msg-frontier.feishu.cn/ws/v2?access_key=secret&ticket=secret",
+            _conn_id="conn_test",
+            _service_id="service_test",
+            _lock=lock,
+        )
+        client._ws_client = ws_client
+
+        await asyncio.wait_for(client._shutdown_ws_client(), timeout=0.2)
+        return ws_client
+
+    ws_client = asyncio.run(_run_shutdown())
+
+    assert not ws_client._auto_reconnect
+    assert ws_client._conn is None
+    assert ws_client._conn_url == ""
+    assert ws_client._conn_id == ""
+    assert ws_client._service_id == ""
+
+
 def test_consume_ws_task_result_suppresses_stop_exception():
     """停止过程中飞书 SDK 后台任务的异常应被取回并降为调试日志。"""
     client = _build_feishu_client()

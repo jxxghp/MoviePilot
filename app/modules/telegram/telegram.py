@@ -14,8 +14,8 @@ from telebot.types import (
     InlineKeyboardButton,
     InputMediaPhoto,
 )
-from telegramify_markdown import standardize, telegramify  # noqa
-from telegramify_markdown.type import ContentTypes, SentType
+from telegramify_markdown import entities_to_markdownv2, standardize, telegramify  # noqa
+from telegramify_markdown.content import ContentTypes, File, Photo, Text
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
@@ -241,6 +241,18 @@ class Telegram:
         except Exception as e:
             logger.error(f"下载Telegram文件失败: {e}")
         return None
+
+    @staticmethod
+    def _telegramify_item_text(item: Text) -> str:
+        """将 telegramify 文本片段转换为 Telegram MarkdownV2 字符串。"""
+        return entities_to_markdownv2(item.text, item.entities)
+
+    @staticmethod
+    def _telegramify_item_caption(item: Text | File | Photo) -> str:
+        """将 telegramify 文本或媒体片段转换为 Telegram MarkdownV2 caption。"""
+        if isinstance(item, Text):
+            return Telegram._telegramify_item_text(item)
+        return entities_to_markdownv2(item.caption_text, item.caption_entities)
 
     @staticmethod
     def _serialize_update_payload(message: Any) -> Optional[dict]:
@@ -1138,7 +1150,7 @@ class Telegram:
 
         reply_markup = kwargs.pop("reply_markup", None)
 
-        boxs: SentType = (
+        boxs: list[Text | File | Photo] = (
             ThreadHelper()
             .submit(lambda x: asyncio.run(telegramify(x)), caption)
             .result()
@@ -1158,7 +1170,9 @@ class Telegram:
                     if disable_web_page_preview is not None:
                         msg_kwargs["disable_web_page_preview"] = disable_web_page_preview
                     ret = self._bot.send_message(
-                        **msg_kwargs, text=item.content, reply_markup=current_reply_markup
+                        **msg_kwargs,
+                        text=self._telegramify_item_text(item),
+                        reply_markup=current_reply_markup,
                     )
 
                 elif item.content_type == ContentTypes.PHOTO or (image and i == 0):
@@ -1168,7 +1182,7 @@ class Telegram:
                             getattr(item, "file_name", ""),
                             getattr(item, "file_data", image),
                         ),
-                        caption=getattr(item, "caption", item.content),
+                        caption=self._telegramify_item_caption(item),
                         reply_markup=current_reply_markup,
                     )
 
@@ -1176,7 +1190,7 @@ class Telegram:
                     ret = self._bot.send_document(
                         **kwargs,
                         document=(item.file_name, item.file_data),
-                        caption=item.caption,
+                        caption=self._telegramify_item_caption(item),
                         reply_markup=current_reply_markup,
                     )
 

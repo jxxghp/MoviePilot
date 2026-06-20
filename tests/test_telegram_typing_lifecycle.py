@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 import unittest
 from types import SimpleNamespace
@@ -11,6 +12,28 @@ from app.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.schemas.types import MessageChannel
+
+
+def _wait_until(predicate, timeout: float = 1.0) -> bool:
+    """等待后台线程完成目标状态，避免用例依赖固定 sleep 时长。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+class _FakeTelegramBot:
+    """记录 typing 调用的轻量 bot，避免后台线程与 Mock 内部锁交互。"""
+
+    def __init__(self):
+        self.chat_actions = []
+        self.action_event = threading.Event()
+
+    def send_chat_action(self, chat_id, action):
+        self.chat_actions.append((chat_id, action))
+        self.action_event.set()
 
 
 class TestTelegramTypingLifecycle(unittest.TestCase):
@@ -32,7 +55,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
     @staticmethod
     def _telegram_client() -> Telegram:
         telegram = Telegram.__new__(Telegram)
-        telegram._bot = Mock()
+        telegram._bot = _FakeTelegramBot()
         telegram._telegram_token = "token"
         telegram._telegram_chat_id = "default-chat"
         # 缩短测试中的等待时间，不改变生产默认续发间隔。
@@ -48,10 +71,9 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             max_duration_seconds=1,
             initial_delay_seconds=0,
         )
-        time.sleep(0.03)
 
         self.assertIn("chat-1", Telegram._typing_tasks)
-        self.assertTrue(telegram._bot.send_chat_action.called)
+        self.assertTrue(telegram._bot.action_event.wait(1.0))
         self.assertTrue(telegram.stop_typing(chat_id="chat-1"))
         self.assertNotIn("chat-1", Telegram._typing_tasks)
 
@@ -77,8 +99,8 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             max_duration_seconds=0.02,
             initial_delay_seconds=0,
         )
-        time.sleep(0.08)
 
+        self.assertTrue(_wait_until(lambda: "chat-3" not in Telegram._typing_tasks))
         self.assertNotIn("chat-3", Telegram._typing_tasks)
 
     def test_short_typing_task_can_stop_before_first_chat_action(self):
@@ -95,7 +117,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         telegram.stop_typing(chat_id="chat-4")
         time.sleep(0.08)
 
-        telegram._bot.send_chat_action.assert_not_called()
+        self.assertEqual(telegram._bot.chat_actions, [])
         self.assertNotIn("chat-4", Telegram._typing_tasks)
 
     def test_agent_managed_send_msg_keeps_typing_for_worker_cleanup(self):
@@ -319,19 +341,24 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 "chat_id": "-100",
                 "metadata": {"kind": "typing"},
             }
+            calls = []
 
-            with patch("app.agent.AgentChain") as chain_cls:
-                chain_cls.return_value.start_message_processing_status.return_value = status
+            class FakeAgentChain:
+                def start_message_processing_status(self, **kwargs):
+                    calls.append(kwargs)
+                    return status
+
+            with patch("app.agent.AgentChain", FakeAgentChain):
                 result = await _async_start_processing_status(task)
 
-            chain_cls.return_value.start_message_processing_status.assert_called_once_with(
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                message_id="10",
-                chat_id="-100",
-                text="第一条",
-            )
+            self.assertEqual(calls, [{
+                "channel": MessageChannel.Telegram,
+                "source": "telegram-test",
+                "userid": "10001",
+                "message_id": "10",
+                "chat_id": "-100",
+                "text": "第一条",
+            }])
             self.assertEqual(result, status)
 
         asyncio.run(_run())

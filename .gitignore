@@ -31,6 +31,9 @@ public/
 *.pyc
 *.log
 .coverage
+coverage.xml
+coverage.json
+htmlcov/
 .vscode
 venv
 

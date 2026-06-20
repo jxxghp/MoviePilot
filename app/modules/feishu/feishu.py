@@ -264,6 +264,11 @@ class Feishu:
     @staticmethod
     async def _disconnect_ws_client_quietly(ws_client: lark.ws.Client) -> None:
         """静默关闭飞书 WebSocket，避免 SDK 在关机时打印带敏感参数的连接地址。"""
+        if ws_client._conn is None:
+            ws_client._conn_url = ""
+            ws_client._conn_id = ""
+            ws_client._service_id = ""
+            return
         await ws_client._lock.acquire()
         try:
             if ws_client._conn is not None:

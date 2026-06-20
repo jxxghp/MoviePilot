@@ -92,3 +92,5 @@ ddgs~=9.14.4
 websocket-client~=1.9.0
 lark-oapi~=1.6.8
 pytest~=9.0.3
+pytest-cov~=7.1.0
+pytest-timeout~=2.4.0

@@ -22,19 +22,20 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     name: Unit Tests
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: 'pip'
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.in', '**/requirements.txt') }}
@@ -44,12 +45,27 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # 用 requirements.in 还原 CI / 全新环境（含 pytest~=8.4 与 moviepilot-rust 等可选扩展），
+          # 用 requirements.in 还原 CI / 全新环境（含 pytest 与 moviepilot-rust 等可选扩展），
           # 与本地"干净 venv 复现"一致；测试运行器 pytest 已在 requirements.in 中声明。
           pip install -r requirements.in
 
       - name: Run tests
+        timeout-minutes: 10
         run: |
           # tests/run.py 以 pytest 跑 tests 全量；tests/conftest.py 在收集前把 CONFIG_DIR
-          # 指向临时库并建表，测试杜绝真实网络/外部服务（详见 docs/testing.md）。
-          python tests/run.py
+          # 指向临时库并建表；CI 额外生成覆盖率报告，便于后续补测和回归分析。
+          python -m coverage erase
+          python -m coverage run tests/run.py
+          python -m coverage report
+          python -m coverage json
+          python -m coverage xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage.json
+          retention-days: 7

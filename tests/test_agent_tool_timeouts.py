@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.base import MoviePilotTool, _blocking_executors, shutdown_blocking_executors
 from app.agent.tools.manager import MoviePilotToolsManager
 
 
@@ -94,6 +94,55 @@ def test_run_blocking_keeps_bucket_slot_until_worker_finishes():
 
     loop = None
     asyncio.run(_run_scenario())
+
+
+def test_shutdown_blocking_executors_clears_agent_tool_workers():
+    """测试结束清理应关闭 Agent 工具阻塞线程池，避免全量测试退出时等待 worker。"""
+
+    async def _create_worker():
+        await MoviePilotTool.run_blocking("web", lambda: "done")
+
+    asyncio.run(_create_worker())
+    assert "web" in _blocking_executors
+
+    shutdown_blocking_executors()
+
+    assert _blocking_executors == {}
+
+
+def test_shutdown_blocking_executors_cancels_queued_workers_and_is_idempotent():
+    """收尾清理应取消尚未开始的排队任务，并允许重复调用。"""
+    shutdown_blocking_executors(wait=False, cancel_futures=True)
+    started = [threading.Event(), threading.Event()]
+    release = threading.Event()
+    queued_ran = threading.Event()
+
+    def _blocking_call(index: int) -> str:
+        started[index].set()
+        release.wait()
+        return f"done-{index}"
+
+    async def _run_scenario():
+        tasks = [
+            asyncio.create_task(MoviePilotTool.run_blocking("web", _blocking_call, index))
+            for index in range(2)
+        ]
+        for event in started:
+            assert await asyncio.wait_for(asyncio.to_thread(event.wait), timeout=1)
+        executor = _blocking_executors["web"]
+        queued_future = executor.submit(queued_ran.set)
+        shutdown_blocking_executors(wait=False, cancel_futures=True)
+        shutdown_blocking_executors(wait=False, cancel_futures=True)
+        release.set()
+
+        assert await asyncio.wait_for(asyncio.gather(*tasks), timeout=1) == ["done-0", "done-1"]
+        return queued_future
+
+    queued_future = asyncio.run(_run_scenario())
+
+    assert _blocking_executors == {}
+    assert queued_future.cancelled()
+    assert not queued_ran.is_set()
 
 
 def test_create_agent_config_uses_llm_max_iterations():
