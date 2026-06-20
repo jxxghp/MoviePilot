@@ -1,17 +1,81 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Iterable, List, Match, Optional, Tuple
 
 import anitopy
-import parse
 
 from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
 from app.core.meta.metabase import MetaBase
 from app.log import logger
 from app.schemas import EpisodeFormatRule, FileItem
+
+
+@dataclass(frozen=True)
+class _TemplateParseResult:
+    named: Dict[str, str]
+    spans: Dict[str, Tuple[int, int]]
+
+
+@lru_cache(maxsize=256)
+def _compile_template_pattern(
+    template: str,
+    ep_group_name: Optional[str] = None,
+):
+    parts: List[str] = ["^"]
+    cursor = 0
+    while cursor < len(template):
+        if template.startswith("{{", cursor):
+            parts.append(re.escape("{"))
+            cursor += 2
+            continue
+        if template.startswith("}}", cursor):
+            parts.append(re.escape("}"))
+            cursor += 2
+            continue
+        if template[cursor] == "{":
+            end = template.find("}", cursor + 1)
+            if end < 0:
+                raise ValueError(f"模板存在未闭合占位符：{template}")
+            group_name = template[cursor + 1:end]
+            if not re.fullmatch(r"[A-Za-z_]\w*", group_name):
+                raise ValueError(f"模板占位符名称无效：{template}")
+            quantifier = ".+?" if group_name == ep_group_name else ".*?"
+            parts.append(f"(?P<{group_name}>{quantifier})")
+            cursor = end + 1
+            continue
+        if template[cursor] == "}":
+            raise ValueError(f"模板存在未转义的右花括号：{template}")
+
+        literal_end = cursor
+        while literal_end < len(template) and template[literal_end] not in "{}":
+            literal_end += 1
+        parts.append(re.escape(template[cursor:literal_end]))
+        cursor = literal_end
+    parts.append("$")
+    return re.compile("".join(parts))
+
+
+def _match_template(
+    template: str,
+    text: str,
+    ep_group_name: Optional[str] = None,
+) -> Optional[_TemplateParseResult]:
+    pattern = _compile_template_pattern(template, ep_group_name)
+    result = pattern.match(text)
+    if not result:
+        return None
+    group_names = result.groupdict()
+    return _TemplateParseResult(
+        named=group_names,
+        spans={
+            group_name: result.span(group_name)
+            for group_name in group_names
+        },
+    )
 
 
 class FormatParser(object):
@@ -41,6 +105,11 @@ class FormatParser(object):
                 self.__offset = f"EP+{offset}"
         self._key = key
         self._part = None
+        self._compiled_pattern = (
+            _compile_template_pattern(self._format, self._key)
+            if self._format
+            else None
+        )
         if part:
             self._part = part
         if details:
@@ -130,10 +199,10 @@ class FormatParser(object):
         """
         if not self._format:
             return None, None
-        ret = parse.parse(self._format, file)
-        if not ret or not ret.__contains__(self._key):
+        ret = self._compiled_pattern.match(file) if self._compiled_pattern else None
+        if not ret or self._key not in ret.groupdict():
             return None, None
-        episodes = ret.__getitem__(self._key)
+        episodes = ret.group(self._key)
         if not re.compile(
             r"^([Ee][Pp]?)?(\d{1,4})(-([Ee][Pp]?)?(\d{1,4}))?$",
             re.IGNORECASE,
@@ -165,6 +234,7 @@ class EpisodeFormatRuleHelper:
     """
 
     _MIN_MEDIA_FILE_SIZE_BYTES = 100 * 1024 * 1024
+    _MIN_AUTO_VALID_MEDIA_COVERAGE = 0.6
     _EMPTY_META = MetaBase(title="")
 
     _EP_RANGE_RE = re.compile(
@@ -177,12 +247,29 @@ class EpisodeFormatRuleHelper:
     _SEASON_EP_RE = re.compile(r"[Ss]\d{1,4}[Ee][Pp]?(\d{1,4})(?!\d)")
     _HASH_EP_RE = re.compile(r"(?<!\d)#(\d{1,4})(?!\d)")
     _BRACKET_EP_RE = re.compile(r"[\[【](\d{1,4})[\]】]")
+    _FALLBACK_BRACKET_EP_RE = re.compile(r"[\[【](\d{1,3})[\]】]")
     _FALLBACK_EPISODE_RE = re.compile(r"第(\d{1,4})[話话]")
     _FALLBACK_EPISODE_JI_RE = re.compile(r"第(\d{1,4})集")
     _FALLBACK_PERIOD_RE = re.compile(r"。(\d{1,4})\s")
     _CJK_EP_RE = re.compile(r"第(\d{1,4})(?:[話话集])")
     _SPECIAL_SAMPLE_RE = re.compile(
-        r"(?<![A-Za-z0-9])(SP\d+|NCOP|NCED|OP|ED|MENU)(?![A-Za-z0-9])",
+        r"\[(?:"
+        r"SP\d+"
+        r"|NC(?:OP|ED)(?:[_\s-]*EP\d+)?(?:\s+VER\.\d+)?"
+        r"|OP"
+        r"|ED"
+        r"|MENU(?:\d+|OVA)?"
+        r"|OVA(?:\s+TRAILER)?"
+        r"|OAD"
+        r"|PV\d*"
+        r"|CM(?:\d+| COLLECTION)?"
+        r"|TRAILER"
+        r"|WEB PREVIEW(?:\s+\d+)?"
+        r"|SERIES REVIEW"
+        r"|TABLE GAME"
+        r"|TV SPOTS?"
+        r"|\d+\((?:OVA|OAD|SP)\d+\)"
+        r")\]",
         re.IGNORECASE,
     )
 
@@ -317,7 +404,37 @@ class EpisodeFormatRuleHelper:
                 None,
             )
 
+        candidate_media_count = 0
+        for item in candidates:
+            if (
+                    self._get_file_kind(item) == "media"
+                    and not self._is_special_sample(item.name or "")
+            ):
+                candidate_media_count += 1
+
+        valid_media_count = 0
+        for item in valid_samples:
+            if item.source_kind == "media":
+                valid_media_count += 1
+
+        if (
+                candidate_media_count > 1
+                and valid_media_count / candidate_media_count
+                < self._MIN_AUTO_VALID_MEDIA_COVERAGE
+        ):
+            logger.warn(
+                "有效正片样本覆盖率不足，放弃智能生成："
+                f"valid_media={valid_media_count}, candidate_media={candidate_media_count}"
+            )
+            return False, "有效正片样本覆盖率不足，建议补充集数定位规则", None
+
         majority_samples, clear_majority = self._select_base_samples(valid_samples)
+        logger.debug(
+            "自动推荐多数派样本："
+            f"valid={len(valid_samples)}, majority={len(majority_samples)}, "
+            f"clear_majority={clear_majority}, files="
+            f"{[(sample.file_name, sample.expected_episode, sample.ep_span) for sample in majority_samples]}"
+        )
         if len(valid_samples) > 1 and not clear_majority:
             logger.warn("自动生成样本未形成明确多数派，放弃推荐")
             return False, "样本命名差异过大，建议补充集数定位规则", None
@@ -328,9 +445,18 @@ class EpisodeFormatRuleHelper:
         episode_format = self._build_ep_only_template(
             majority_names, majority_spans, use_majority=False
         )
+        logger.debug(
+            "自动推荐基础模板："
+            f"sample={majority_names[0] if majority_names else None}, "
+            f"span={majority_spans[0] if majority_spans else None}, template={episode_format}"
+        )
         if not self._validate_auto_template(episode_format, majority_samples):
             diff_result = self._build_template_with_diff(
                 majority_names, majority_spans, use_majority=False
+            )
+            logger.debug(
+                "自动推荐差异模板尝试："
+                f"base={episode_format}, diff={diff_result}"
             )
             if diff_result and self._validate_auto_template(
                 diff_result, majority_samples
@@ -495,8 +621,18 @@ class EpisodeFormatRuleHelper:
 
             ep_span = self._locate_episode(file_name, normalized_episode)
             if ep_span is None:
+                logger.debug(
+                    "自动推荐样本跳过：未定位到集数 token - "
+                    f"{file_name} - episode={normalized_episode}"
+                )
                 continue
 
+            logger.debug(
+                "自动推荐样本入选："
+                f"{file_name} - episode={normalized_episode}, span={ep_span}, "
+                f"matched={file_name[ep_span[0]:ep_span[1]]}, "
+                f"kind={self._get_file_kind(item)}"
+            )
             valid_samples.append(
                 _AutoRecommendSample(
                     file_name=file_name,
@@ -538,9 +674,9 @@ class EpisodeFormatRuleHelper:
 
         for candidate in cls._build_episode_candidates(normalized_episode_value):
             token_pattern = re.compile(
-                rf"(?:(?<=^)|(?<=[\s._\-\[\]【】()]))"
+                rf"(?:(?<=^)|(?<=[\s._\-\[\]【】()「」『』《》〈〉〔〕]))"
                 rf"{re.escape(candidate)}"
-                rf"(?:(?=$)|(?=[\s._\-\[\]【】()]))"
+                rf"(?:(?=$)|(?=[\s._\-\[\]【】()「」『』《》〈〉〔〕]))"
             )
             matches = list(token_pattern.finditer(file_name))
             if matches:
@@ -629,6 +765,51 @@ class EpisodeFormatRuleHelper:
             return f"{meta.begin_episode}-{meta.end_episode}"
         return str(meta.begin_episode)
 
+    @classmethod
+    def _should_degrade_native_conflict(
+        cls,
+        file_name: str,
+        normalized_episode: Optional[str],
+        native_episode: Optional[str],
+    ) -> bool:
+        """
+        判断原生集数冲突是否应降级处理。
+
+        当自动定位到的集数 token 明确出现在文件名后部，而原生识别出来的数字
+        只出现在更靠前的位置时，通常是标题续作号或目录序号误判，不应继续作
+        为自动推荐的否决条件。
+        """
+        if not file_name or not normalized_episode or not native_episode:
+            return False
+
+        auto_span = cls._locate_episode(file_name, normalized_episode)
+        native_span = cls._locate_episode(file_name, native_episode)
+        if not auto_span or not native_span:
+            return False
+        return native_span[1] <= auto_span[0]
+
+    @classmethod
+    def _should_prefer_fallback_episode(
+        cls,
+        file_name: str,
+        anitopy_episode: Optional[str],
+        fallback_episode: Optional[str],
+    ) -> bool:
+        """
+        当 anitopy 命中了标题前部数字，而 fallback 命中了更靠后的显式集数 token 时，
+        优先使用 fallback 结果。
+        """
+        if not file_name or not anitopy_episode or not fallback_episode:
+            return False
+        if cls._episode_value_equals(anitopy_episode, fallback_episode):
+            return False
+
+        anitopy_span = cls._locate_episode(file_name, str(anitopy_episode))
+        fallback_span = cls._locate_episode(file_name, str(fallback_episode))
+        if not anitopy_span or not fallback_span:
+            return False
+        return anitopy_span[1] <= fallback_span[0]
+
     def _extract_episode_with_native_fallback(
         self,
         item: FileItem,
@@ -636,23 +817,48 @@ class EpisodeFormatRuleHelper:
         file_name = item.name or ""
         native_episode = self._extract_native_episode(item)
         episode_number = None
+        anitopy_episode = None
         try:
             result = anitopy.parse(file_name)
             episode_number = result.get("episode_number")
+            anitopy_episode = episode_number
         except Exception as err:
             logger.warn(f"anitopy 解析失败：{file_name} - {err}")
+        fallback_episode = self._extract_episode_fallback(file_name)
         if not episode_number:
-            episode_number = self._extract_episode_fallback(file_name)
+            episode_number = fallback_episode
+        elif self._should_prefer_fallback_episode(
+            file_name,
+            str(anitopy_episode),
+            str(fallback_episode) if fallback_episode else None,
+        ):
+            episode_number = fallback_episode
         normalized_episode = (
             self._normalize_episode_value(episode_number)
             if episode_number
             else None
+        )
+        logger.debug(
+            "自动推荐集数提取："
+            f"{file_name} - anitopy={anitopy_episode}, "
+            f"fallback={fallback_episode}, normalized={normalized_episode}, "
+            f"native={native_episode}"
         )
         used_native_fallback = False
         native_verified = False
         if normalized_episode and native_episode:
             if self._episode_value_equals(normalized_episode, native_episode):
                 native_verified = True
+            elif self._should_degrade_native_conflict(
+                file_name,
+                normalized_episode,
+                native_episode,
+            ):
+                logger.info(
+                    "原生集数识别疑似命中标题序号，降级冲突权重："
+                    f"{file_name} - auto={normalized_episode}, native={native_episode}"
+                )
+                native_episode = None
             else:
                 return normalized_episode, native_episode, False, False
         elif not normalized_episode and native_episode:
@@ -663,8 +869,22 @@ class EpisodeFormatRuleHelper:
     @classmethod
     def _extract_episode_fallback(cls, file_name: str) -> Optional[str]:
         """
-        anitopy 无法识别时的兜底集数提取（第xx話 / 第xx话 / 。01 等）
+        anitopy 无法识别时的兜底集数提取。
+
+        优先尝试结构更明确的季集/井号/方括号集数，再退回到中日韩常见文案。
         """
+        match = cls._SEASON_EP_RANGE_RE.search(file_name)
+        if match:
+            return match.group(1)
+        match = cls._SEASON_EP_RE.search(file_name)
+        if match:
+            return match.group(1)
+        hash_matches = list(cls._HASH_EP_RE.finditer(file_name))
+        if hash_matches:
+            return hash_matches[-1].group(1)
+        bracket_matches = list(cls._FALLBACK_BRACKET_EP_RE.finditer(file_name))
+        if bracket_matches:
+            return bracket_matches[-1].group(1)
         match = cls._FALLBACK_EPISODE_RE.search(file_name)
         if match:
             return match.group(1)
@@ -926,29 +1146,33 @@ class EpisodeFormatRuleHelper:
         candidates = [base_text] + compare_texts
         prefix_len = self._common_prefix_length(candidates)
         suffix_len = self._common_suffix_length(candidates, prefix_len)
-
-        variable_parts = [
-            text[
-                prefix_len:
-                len(text) - suffix_len if suffix_len else len(text)
-            ]
-            for text in candidates
-        ]
-        while prefix_len > 0 and any(not part for part in variable_parts):
-            prefix_len -= 1
-            variable_parts = [
+        end_pos = len(base_text) - suffix_len
+        if prefix_len >= end_pos:
+            base_part = base_text[prefix_len:end_pos]
+            compare_parts = [
                 text[
                     prefix_len:
                     len(text) - suffix_len if suffix_len else len(text)
                 ]
-                for text in candidates
+                for text in compare_texts
             ]
-
-        if any(not part for part in variable_parts):
+            if not base_part and any(compare_parts):
+                return prefix_len, prefix_len
             return None
 
-        end_pos = len(base_text) - suffix_len
-        if prefix_len >= end_pos:
+        base_part = base_text[prefix_len:end_pos]
+        compare_parts = [
+            text[
+                prefix_len:
+                len(text) - suffix_len if suffix_len else len(text)
+            ]
+            for text in compare_texts
+        ]
+        if any(not part for part in [base_part] + compare_parts):
+            if not base_part and any(compare_parts):
+                return prefix_len, prefix_len
+            if base_part and any(part == "" for part in compare_parts):
+                return prefix_len, end_pos
             return None
         return prefix_len, end_pos
 
@@ -989,7 +1213,7 @@ class EpisodeFormatRuleHelper:
         template_parts: List[str] = []
         cursor = 0
         for start, end, name in sorted(spans, key=lambda item: item[0]):
-            if start < cursor or end <= start:
+            if start < cursor or end < start:
                 continue
             template_parts.append(
                 self._escape_literal(base_after_ep[cursor:start])
@@ -1021,6 +1245,10 @@ class EpisodeFormatRuleHelper:
                 sample.file_name,
                 context="自动模板校验",
             ):
+                logger.debug(
+                    "自动模板校验失败：模板未命中文件 - "
+                    f"template={episode_format}, file={sample.file_name}"
+                )
                 return False
             start_episode, end_episode, _ = self._safe_split_episode(
                 parser,
@@ -1032,12 +1260,22 @@ class EpisodeFormatRuleHelper:
                 end_episode,
                 sample.expected_episode,
             ):
+                logger.debug(
+                    "自动模板校验失败：集数不匹配 - "
+                    f"template={episode_format}, file={sample.file_name}, "
+                    f"expected={sample.expected_episode}, actual={start_episode}-{end_episode}"
+                )
                 return False
             if sample.native_episode and not self._episode_matches(
                 start_episode,
                 end_episode,
                 sample.native_episode,
             ):
+                logger.debug(
+                    "自动模板校验失败：与原生集数不一致 - "
+                    f"template={episode_format}, file={sample.file_name}, "
+                    f"native={sample.native_episode}, actual={start_episode}-{end_episode}"
+                )
                 return False
         return True
 
@@ -1188,9 +1426,9 @@ class EpisodeFormatRuleHelper:
         template: str,
         file_name: str,
         context: str,
-    ) -> Optional[parse.Result]:
+    ) -> Optional[_TemplateParseResult]:
         try:
-            return parse.parse(template, file_name)
+            return _match_template(template, file_name)
         except Exception as err:
             logger.warn(f"{context} parse 模板解析失败：{template} <- {file_name} - {err}")
             return None
