@@ -333,6 +333,7 @@ class SubscribeChainTest(TestCase):
             "year": "2026",
             "imdbid": None,
             "tvdbid": None,
+            "bangumiid": None,
             "episode_group": None,
             "poster": None,
             "backdrop": None,
@@ -352,6 +353,22 @@ class SubscribeChainTest(TestCase):
             meta_info=SimpleNamespace(season_list=[1], episode_list=meta_episodes or selected_episodes or []),
             media_info=SimpleNamespace(type=MediaType.TV, tmdb_id=1, douban_id=None),
         )
+
+    def test_format_subscribe_progress_preserves_special_season_zero(self):
+        """订阅列表展示必须把 S0 当作合法季号，而不是回退到第 1 季。"""
+        subscribe = self._build_subscribe(season=0, total_episode=5, lack_episode=2)
+
+        progress = SubscribeChain._format_subscribe_progress(subscribe)
+
+        self.assertEqual(progress, "第0季 [3/5]")
+
+    def test_format_subscribe_progress_preserves_special_season_zero_without_total(self):
+        """S0 没有总集数时仍显示特别季季号。"""
+        subscribe = self._build_subscribe(season=0, total_episode=None, lack_episode=None)
+
+        progress = SubscribeChain._format_subscribe_progress(subscribe)
+
+        self.assertEqual(progress, "第0季")
 
     def test_match_title_fallback_calls_torrent_match_from_class(self):
         """确保标题兜底匹配不依赖 TorrentHelper 实例绑定。"""
@@ -419,6 +436,98 @@ class SubscribeChainTest(TestCase):
             _PlainTorrentHelper,
         ), self.assertRaises(_ReachedTitleMatch):
             chain.match({"test.example": [context]})
+
+    def test_match_accepts_special_season_zero_candidate(self):
+        """S0 订阅应允许 S00 候选资源进入下载候选，不能按未指定季处理。"""
+
+        class _TorrentHelper:
+            def filter_torrent(self, *args, **kwargs):
+                return True
+
+        subscribe = self._build_subscribe(
+            best_version=0,
+            custom_words=None,
+            doubanid=None,
+            episode_group=None,
+            filter_groups=[],
+            keyword=None,
+            media_category=None,
+            save_path=None,
+            search_imdbid=False,
+            season=0,
+            sites=[],
+            tmdbid=1,
+            username="",
+            downloader=None,
+        )
+        mediainfo = SimpleNamespace(
+            clear=lambda: None,
+            douban_id=None,
+            title_year="Test Show (2026)",
+            tmdb_id=1,
+            type=MediaType.TV,
+        )
+        torrent_media = SimpleNamespace(
+            clear=lambda: None,
+            douban_id=None,
+            tmdb_id=1,
+            type=MediaType.TV,
+        )
+        context = SimpleNamespace(
+            media_info=torrent_media,
+            media_recognize_fail_count=0,
+            meta_info=SimpleNamespace(
+                begin_season=0,
+                episode_list=[1],
+                org_string="Test Show S00E01",
+                season_list=[0],
+            ),
+            torrent_info=SimpleNamespace(
+                description="",
+                pri_order=100,
+                site=1,
+                site_name="TestSite",
+                title="Test Show S00E01",
+            ),
+        )
+        download_calls = []
+
+        class _SubscribeOper:
+            """提供单条订阅，避免依赖真实数据库。"""
+
+            def list(self, *args, **kwargs):
+                """返回当前测试构造的订阅列表。"""
+                return [subscribe]
+
+            def get(self, *args, **kwargs):
+                """下载后仍返回当前订阅。"""
+                return subscribe
+
+        def _download(self, **kwargs):
+            download_calls.append(kwargs)
+            return [context], {}
+
+        chain = SubscribeChain()
+        chain.recognize_media = lambda **kwargs: mediainfo
+        chain.check_and_handle_existing_media = lambda **kwargs: (False, {})
+        chain.get_sub_sites = lambda *_args, **_kwargs: []
+        chain.get_params = lambda *_args, **_kwargs: {}
+        chain.filter_torrents = lambda **_kwargs: [context.torrent_info]
+        chain.finish_subscribe_or_not = lambda **_kwargs: None
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+            SUBSCRIBE_CHAIN_MODULE,
+            "TorrentHelper",
+            _TorrentHelper,
+        ), patch.object(
+            SubscribeChain,
+            "_SubscribeChain__download_best_version_with_full_pack_first",
+            _download,
+        ):
+            chain.match({"test.example": [context]})
+
+        self.assertEqual(len(download_calls), 1)
+        self.assertEqual(download_calls[0]["contexts"][0].meta_info.begin_season, 0)
 
     def test_get_episode_priority_falls_back_to_current_priority(self):
         subscribe = self._build_subscribe(current_priority=80, episode_priority=None)
@@ -666,6 +775,61 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(subscribe.total_episode, 10)
         self.assertEqual(subscribe.lack_episode, 0)
         self.assertEqual(subscribe.note, list(range(1, 11)))
+
+    def test_resolve_subscribe_missing_preserves_special_season_zero_totals(self):
+        """特别季 S0 是合法订阅季，目标满足查询必须按订阅总集数裁剪媒体库缺集。"""
+        subscribe = self._build_subscribe(
+            best_version=0,
+            season=0,
+            total_episode=5,
+            lack_episode=2,
+            note=[1, 2, 3],
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=0, season=0)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={0: list(range(1, 4))},
+            title_year="Test Show (2026)",
+        )
+        captured_totals = []
+
+        class _DownloadChain:
+            def get_no_exists_info(self, **kwargs):
+                captured_totals.append(kwargs["totals"])
+                if kwargs["totals"] == {0: 5}:
+                    return False, {
+                        1: {
+                            0: SimpleNamespace(
+                                season=0,
+                                episodes=[4, 5],
+                                total_episode=5,
+                                start_episode=1,
+                                require_complete_coverage=False,
+                            )
+                        }
+                    }
+                return True, {}
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain):
+            satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=1,
+            )
+
+        self.assertFalse(satisfied)
+        self.assertEqual(captured_totals, [{0: 5}])
+        self.assertEqual(no_exists[1][0].episodes, [4, 5])
+
+    def test_build_subscribe_meta_preserves_special_season_zero(self):
+        """订阅构造 MetaInfo 的统一入口必须保留 S0。"""
+        subscribe = self._build_subscribe(season=0)
+
+        meta = SUBSCRIBE_CHAIN_MODULE.build_subscribe_meta(subscribe)
+
+        self.assertEqual(meta.begin_season, 0)
+        self.assertEqual(meta.type, MediaType.TV)
 
     def test_resolve_subscribe_missing_accepts_downloaded_episode_best_version_targets(self):
         """外部完成守卫可按任意已下载版本判定分集洗版目标已满足。"""

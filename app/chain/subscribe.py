@@ -45,6 +45,17 @@ from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, Notifi
 subscribe_interaction_manager = SlashInteractionManager()
 
 
+def build_subscribe_meta(subscribe: Subscribe) -> MetaInfo:
+    """
+    按订阅对象构造主程序链路共用的 MetaInfo。
+    """
+    meta = MetaInfo(subscribe.name)
+    meta.year = subscribe.year
+    meta.begin_season = subscribe.season if subscribe.season is not None else None
+    meta.type = MediaType(subscribe.type)
+    return meta
+
+
 class SubscribeChain(ChainBase):
     """
     订阅管理处理链
@@ -1013,12 +1024,8 @@ class SubscribeChain(ChainBase):
                         time.sleep(sleep_time)
                     try:
                         logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
-                        # 生成元数据
-                        meta = MetaInfo(subscribe.name)
-                        meta.year = subscribe.year
-                        meta.begin_season = subscribe.season if subscribe.season is not None else None
                         try:
-                            meta.type = MediaType(subscribe.type)
+                            meta = build_subscribe_meta(subscribe)
                         except ValueError:
                             logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                             continue
@@ -1408,12 +1415,8 @@ class SubscribeChain(ChainBase):
                         break
                     logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
                     mediakey = subscribe.tmdbid or subscribe.doubanid
-                    # 生成元数据
-                    meta = MetaInfo(subscribe.name)
-                    meta.year = subscribe.year
-                    meta.begin_season = subscribe.season or None
                     try:
-                        meta.type = MediaType(subscribe.type)
+                        meta = build_subscribe_meta(subscribe)
                     except ValueError:
                         logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                         continue
@@ -1558,7 +1561,7 @@ class SubscribeChain(ChainBase):
                                     logger.debug(f'{torrent_info.title} 有多季，不处理')
                                     continue
                                 # 比对季
-                                if torrent_meta.begin_season:
+                                if torrent_meta.begin_season is not None:
                                     if meta.begin_season != torrent_meta.begin_season:
                                         logger.debug(f'{torrent_info.title} 季不匹配')
                                         continue
@@ -1706,12 +1709,8 @@ class SubscribeChain(ChainBase):
             if global_vars.is_system_stopped:
                 break
             logger.info(f'开始更新订阅元数据：{subscribe.name} ...')
-            # 生成元数据
-            meta = MetaInfo(subscribe.name)
-            meta.year = subscribe.year
-            meta.begin_season = subscribe.season or None
             try:
-                meta.type = MediaType(subscribe.type)
+                meta = build_subscribe_meta(subscribe)
             except ValueError:
                 logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                 continue
@@ -2553,7 +2552,7 @@ class SubscribeChain(ChainBase):
         """
         if subscribe.type == MediaType.MOVIE.value:
             return "电影"
-        season = subscribe.season or 1
+        season = subscribe.season if subscribe.season is not None else 1
         if subscribe.total_episode:
             lack_episode = (
                 subscribe.lack_episode
@@ -3056,12 +3055,8 @@ class SubscribeChain(ChainBase):
                         else:
                             episodes[0].download.append(file_info)
 
-        # 生成元数据
-        meta = MetaInfo(subscribe.name)
-        meta.year = subscribe.year
-        meta.begin_season = subscribe.season or None
         try:
-            meta.type = MediaType(subscribe.type)
+            meta = build_subscribe_meta(subscribe)
         except ValueError:
             logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
             return subscribe_info
@@ -3156,7 +3151,7 @@ class SubscribeChain(ChainBase):
 
         if not subscribe.best_version:
             totals = {}
-            if subscribe.season and effective_total_episode:
+            if subscribe.season is not None and effective_total_episode:
                 totals = {
                     subscribe.season: effective_total_episode
                 }
