@@ -179,20 +179,20 @@ def _build_meta_info(
     if metainfo.get('doubanid'):
         meta.doubanid = metainfo['doubanid']
     if metainfo.get('type'):
-        meta.type = metainfo['type']
+        meta.type = MediaType(metainfo['type']) if isinstance(metainfo['type'], str) else metainfo['type']
     if metainfo.get('episode_group'):
         meta.episode_group = metainfo['episode_group']
-    if metainfo.get('begin_season'):
+    if metainfo.get('begin_season') is not None:
         meta.begin_season = metainfo['begin_season']
-    if metainfo.get('end_season'):
+    if metainfo.get('end_season') is not None:
         meta.end_season = metainfo['end_season']
-    if metainfo.get('total_season'):
+    if metainfo.get('total_season') is not None:
         meta.total_season = metainfo['total_season']
-    if metainfo.get('begin_episode'):
+    if metainfo.get('begin_episode') is not None:
         meta.begin_episode = metainfo['begin_episode']
-    if metainfo.get('end_episode'):
+    if metainfo.get('end_episode') is not None:
         meta.end_episode = metainfo['end_episode']
-    if metainfo.get('total_episode'):
+    if metainfo.get('total_episode') is not None:
         meta.total_episode = metainfo['total_episode']
     return meta
 

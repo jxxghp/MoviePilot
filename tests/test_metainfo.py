@@ -146,6 +146,19 @@ class MetaInfoTest(TestCase):
         self.assertEqual(meta.episode_group, group_id)
         self.assertEqual(meta.apply_words, custom_words)
 
+    def test_custom_words_support_special_season_zero_parameter(self):
+        """显式媒体标签中的 s=0 应作为特别季写入元数据。"""
+        custom_words = [
+            "Test Show => 测试剧 {[tmdbid=12345;type=tv;s=0]}"
+        ]
+
+        with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+            meta = MetaInfo(title="Test Show 01", custom_words=custom_words)
+
+        self.assertEqual(meta.tmdbid, 12345)
+        self.assertEqual(meta.type.value, "电视剧")
+        self.assertEqual(meta.begin_season, 0)
+
     def test_find_metainfo_supports_episode_group_parameter(self):
         """测试显式媒体标签支持 g 剧集组参数"""
         group_id = "5ad0ec240e0a26303f00d84d"

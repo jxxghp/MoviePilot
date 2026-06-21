@@ -219,3 +219,38 @@ class MediaRecognizeModulesTest(TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].title, "测试剧 第二季")
         self.assertEqual(result[0].season, 2)
+
+    def test_douban_process_search_results_preserves_special_season_zero(self):
+        """豆瓣搜索匹配应把 season=0 当作明确季号，而不是默认回第 1 季。"""
+        result = {
+            "items": [
+                {
+                    "type_name": MediaType.TV.value,
+                    "target": {
+                        "id": "200",
+                        "title": "测试剧 S01",
+                        "type": "tv",
+                        "year": "2024",
+                    },
+                },
+                {
+                    "type_name": MediaType.TV.value,
+                    "target": {
+                        "id": "201",
+                        "title": "测试剧 S00",
+                        "type": "tv",
+                        "year": "2024",
+                    },
+                },
+            ]
+        }
+
+        matched = DoubanModule._process_search_results(
+            result,
+            "测试剧",
+            mtype=MediaType.TV,
+            year="2024",
+            season=0,
+        )
+
+        self.assertEqual(matched["id"], "201")

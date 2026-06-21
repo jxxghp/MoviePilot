@@ -45,13 +45,13 @@ from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, Notifi
 subscribe_interaction_manager = SlashInteractionManager()
 
 
-def build_subscribe_meta(subscribe: Subscribe) -> MetaInfo:
+def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
     """
     按订阅对象构造主程序链路共用的 MetaInfo。
     """
     meta = MetaInfo(subscribe.name)
     meta.year = subscribe.year
-    meta.begin_season = subscribe.season if subscribe.season is not None else None
+    meta.begin_season = subscribe.season
     meta.type = MediaType(subscribe.type)
     return meta
 
@@ -1824,7 +1824,8 @@ class SubscribeChain(ChainBase):
                 if subscribe_in.doubanid or subscribe_in.bangumiid:
                     meta = MetaInfo(subscribe_in.name)
                     subscribe_in.name = meta.name
-                    subscribe_in.season = meta.begin_season
+                    if subscribe_in.season is None:
+                        subscribe_in.season = meta.begin_season
                 # 标题转换
                 if subscribe_in.name:
                     title = subscribe_in.name

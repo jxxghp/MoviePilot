@@ -1050,7 +1050,7 @@ class DoubanModule(_ModuleBase):
                 continue
             if mtype and mtype.value != type_name:
                 continue
-            if mtype and mtype == MediaType.TV and not season:
+            if mtype and mtype == MediaType.TV and season is None:
                 season = 1
             item = item_obj.get("target")
             title = item.get("title")
@@ -1059,9 +1059,9 @@ class DoubanModule(_ModuleBase):
             meta = MetaInfo(title)
             if type_name == MediaType.TV.value:
                 meta.type = MediaType.TV
-                meta.begin_season = meta.begin_season or 1
+                meta.begin_season = meta.begin_season if meta.begin_season is not None else 1
             if meta.name == name \
-                    and ((not season and not meta.begin_season) or meta.begin_season == season) \
+                    and ((season is None and meta.begin_season is None) or meta.begin_season == season) \
                     and (not year or item.get('year') == year):
                 logger.info(f"{name} 匹配到豆瓣信息：{item.get('id')} {item.get('title')}")
                 return item

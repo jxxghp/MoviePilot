@@ -121,7 +121,25 @@ def _load_subscribe_chain_class():
             self.kwargs = kwargs
 
     class _SubscribeSchema:
+        _fields = {
+            "name",
+            "type",
+            "year",
+            "tmdbid",
+            "doubanid",
+            "bangumiid",
+            "season",
+            "best_version",
+            "save_path",
+            "search_imdbid",
+            "custom_words",
+            "media_category",
+            "filter_groups",
+        }
+
         def __init__(self, **kwargs):
+            for field in self._fields:
+                setattr(self, field, None)
             for key, value in kwargs.items():
                 setattr(self, key, value)
 
@@ -830,6 +848,77 @@ class SubscribeChainTest(TestCase):
 
         self.assertEqual(meta.begin_season, 0)
         self.assertEqual(meta.type, MediaType.TV)
+
+    def test_follow_preserves_shared_special_season_zero(self):
+        """follow 分享订阅携带 S0 时，标题规整不能把合法季号覆盖成未指定。"""
+        added_calls = []
+
+        class _SubscribeOper:
+            """提供订阅存在性查询，避免依赖真实数据库。"""
+
+            def exists(self, *args, **kwargs):
+                return False
+
+            def exist_history(self, *args, **kwargs):
+                return False
+
+        class _SystemConfigOper:
+            """提供 follow 用户配置。"""
+
+            def get(self, *args, **kwargs):
+                return ["follow-user"]
+
+        class _MoviePilotServerHelper:
+            """提供单条 S0 分享订阅。"""
+
+            @staticmethod
+            def get_subscribe_shares():
+                return [
+                    {
+                        "share_uid": "follow-user",
+                        "name": "Test Show",
+                        "type": MediaType.TV.value,
+                        "year": "2026",
+                        "tmdbid": None,
+                        "doubanid": "12345",
+                        "season": 0,
+                        "best_version": 0,
+                        "save_path": None,
+                        "search_imdbid": False,
+                        "custom_words": None,
+                        "media_category": None,
+                        "filter_groups": [],
+                    }
+                ]
+
+        def _add(self, **kwargs):
+            added_calls.append(kwargs)
+            return 1, None
+
+        def _metainfo(title):
+            return SimpleNamespace(name=title, begin_season=None, episode_list=[])
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+            SUBSCRIBE_CHAIN_MODULE,
+            "SystemConfigOper",
+            _SystemConfigOper,
+        ), patch.object(
+            SUBSCRIBE_CHAIN_MODULE,
+            "MoviePilotServerHelper",
+            _MoviePilotServerHelper,
+        ), patch.object(
+            SUBSCRIBE_CHAIN_MODULE,
+            "MetaInfo",
+            _metainfo,
+        ), patch.object(
+            SubscribeChain,
+            "add",
+            _add,
+        ):
+            SubscribeChain.follow()
+
+        self.assertEqual(len(added_calls), 1)
+        self.assertEqual(added_calls[0]["season"], 0)
 
     def test_resolve_subscribe_missing_accepts_downloaded_episode_best_version_targets(self):
         """外部完成守卫可按任意已下载版本判定分集洗版目标已满足。"""

@@ -80,7 +80,8 @@ async def create_subscribe(
     if subscribe_in.doubanid or subscribe_in.bangumiid:
         meta = MetaInfo(subscribe_in.name)
         subscribe_in.name = meta.name
-        subscribe_in.season = meta.begin_season
+        if subscribe_in.season is None:
+            subscribe_in.season = meta.begin_season
     # 标题转换
     if subscribe_in.name:
         title = subscribe_in.name
