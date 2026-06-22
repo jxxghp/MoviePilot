@@ -12,11 +12,11 @@ python3 -m venv venv
 source venv/bin/activate          # macOS / Linux
 .\venv\Scripts\activate           # Windows
 
-# Install pip-tools
-pip install pip-tools
-
-# Install project dependencies
+# Install runtime dependencies
 pip install -r requirements.txt
+
+# Install development/test/lint/build dependencies
+pip install -r requirements-dev.in
 ```
 
 ---
@@ -24,20 +24,17 @@ pip install -r requirements.txt
 ## Dependency Management
 
 ```bash
-# Compile requirements.txt from requirements.in (full recompile)
-pip-compile requirements.in
-
-# Upgrade a single package without touching others
-pip-compile --upgrade-package <package-name> requirements.in
-
-# Install from the generated lock file
+# Install runtime dependencies
 pip install -r requirements.txt
+
+# Install test/lint/build dependencies
+pip install -r requirements-dev.in
 ```
 
 **Rules:**
-- Always edit `requirements.in` to add or change dependencies.
-- Never edit `requirements.txt` manually — it is a generated lock file.
-- After any change to `requirements.in`, re-run `pip-compile requirements.in` and commit both files together.
+- Runtime dependencies belong in `requirements.in`.
+- Test, coverage, lint, and explicit build tooling belong in `requirements-dev.in`.
+- `requirements.txt` is a compatibility entry that delegates to `requirements.in`; do not replace it with a local cross-platform lock file.
 
 ---
 
@@ -83,7 +80,7 @@ pylint app/chain/download.py
 ## Security Scan
 
 ```bash
-# Run safety check against the lock file
+# Run safety check against the runtime compatibility entry
 safety check -r requirements.txt --policy-file=safety.policy.yml
 
 # Save report to file
@@ -91,7 +88,7 @@ safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report
 ```
 
 **Rules:**
-- Run after every change to `requirements.txt`.
+- Run after runtime dependency changes; include `requirements-dev.in` when development/test/lint/build dependencies change.
 - No new high-severity vulnerabilities may be introduced.
 
 ---

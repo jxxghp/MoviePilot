@@ -1,6 +1,6 @@
 ## 开发环境设置指南
 
-本文档旨在帮助开发者快速设置开发环境，并介绍如何使用 `pip-tools` 管理依赖项和使用 `safety` 进行安全检查。
+本文档旨在帮助开发者快速设置开发环境，并说明主程序、开发测试、构建工具和插件依赖的管理边界。
 
 ### 环境准备
 
@@ -33,57 +33,38 @@ Rust 加速扩展通过 `moviepilot-rust` PyPI 包安装，主项目本地开发
 
 虚拟环境确保项目的依赖项与系统全局环境隔离，防止冲突。
 
-### 2. 使用 pip-tools 管理依赖项
+### 2. 依赖分层与安装
 
-我们使用 `pip-tools` 来管理项目的 Python 依赖项，这有助于保持 `requirements.txt` 文件的一致性和更新性。
+主程序依赖按使用场景分层，避免运行时镜像携带只在开发、测试或构建时需要的工具：
 
-#### 安装 pip-tools
+| 文件 | 用途 | 典型安装场景 |
+| --- | --- | --- |
+| `requirements.in` | 主程序运行时依赖。只放启动、后台任务、插件运行框架和内置功能在生产环境需要导入的包。 | Docker 镜像、CLI 本地运行、运行时依赖自愈。 |
+| `requirements-dev.in` | 开发、测试、静态检查和源码构建辅助依赖。 | CI 单测、本地跑测、Pylint、显式源码构建。 |
+| `requirements.txt` | 兼容入口，默认只委托到 `requirements.in`。它不是跨平台完整锁文件，不应在本地开发机上直接维护一份平台相关锁定结果。 | 旧脚本、Docker 运行时恢复、CLI 安装入口。 |
 
-首先，您需要安装 `pip-tools` 以便管理依赖项：
+运行主程序只需要安装运行时依赖：
 
 ```bash
-pip install pip-tools
+pip install -r requirements.txt
 ```
 
-#### 管理依赖项
+开发、测试、静态检查或执行源码编译时安装开发依赖入口：
 
-1. **修改 `requirements.in` 文件**：
+```bash
+pip install -r requirements-dev.in
+```
 
-   `requirements.in` 文件是项目依赖项的源文件。要添加或更新依赖项，请直接编辑该文件。
+### 3. 修改主程序依赖
 
-2. **更新特定的依赖项**：
+新增或升级依赖时，先确认依赖属于哪个层级：
 
-   如果你只想更新 `requirements.in` 中的某个特定依赖包，而不影响其他依赖项，可以使用 `--upgrade-package` 选项，指定要升级的包：
+1. **运行时依赖**：被 `app/` 生产代码直接导入，或是生产功能、后台任务、插件框架启动必需，写入 `requirements.in`。
+2. **开发 / 测试 / 静态检查 / 构建依赖**：只用于单测、覆盖率、lint 辅助、源码构建等，不应进入生产运行时，写入 `requirements-dev.in`。
+3. **工具依赖**：`pip-tools`、`uv`、`safety` 这类安装或审计工具不属于主程序运行依赖，按脚本或 CI 场景显式安装。
+4. **插件依赖**：由插件声明并在插件安装阶段处理，不直接并入主程序 `requirements.in`。
 
-   ```bash
-   pip-compile --upgrade-package <package-name> requirements.in
-   ```
-
-   例如，要只升级 `requests` 这个包，你可以运行以下命令：
-
-   ```bash
-   pip-compile --upgrade-package requests requirements.in
-   ```
-
-3. **全量更新依赖项**：
-
-   如果你想更新 `requirements.in` 中的所有依赖包，运行以下命令生成或更新 `requirements.txt` 文件：
-
-   ```bash
-   pip-compile requirements.in
-   ```
-
-   这将根据 `requirements.in` 中指定的依赖项生成一个锁定的 `requirements.txt` 文件。
-
-4. **安装依赖项**：
-
-   使用以下命令安装 `requirements.txt` 文件中列出的依赖项：
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### 3. 准备资源与插件目录
+### 4. 准备资源与插件目录
 
 本地源码开发时，主程序需要读取资源文件和插件源码。相关文件需要放到主程序实际加载的目录下：
 
@@ -92,9 +73,9 @@ pip install pip-tools
 
 如果资源文件没有放到 `app/helper/`，站点索引、规则和内置资源相关能力可能无法按本地开发预期工作；如果插件没有放到 `app/plugins/`，主程序也不会在本地运行时发现该插件。
 
-### 4. 运行安全检查
+### 5. 运行安全检查
 
-我们使用 `safety` 工具来检查依赖项中是否存在已知的安全漏洞。请确保在每次更新依赖项后都运行安全检查，以确保项目的安全性。
+我们使用 `safety` 工具检查依赖项中是否存在已知安全漏洞。更新运行时依赖后，应至少检查运行时入口；更新开发测试依赖时，也应覆盖开发入口。
 
 #### 安装 safety
 
@@ -106,7 +87,7 @@ pip install safety
 
 #### 执行安全检查
 
-运行以下命令以检查 `requirements.txt` 文件中列出的依赖项是否存在安全漏洞：
+运行以下命令检查运行时入口：
 
 ```bash
 safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report.txt
@@ -114,11 +95,11 @@ safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report
 
 这将生成一个名为 `safety_report.txt` 的报告文件，您可以查看其中的漏洞报告并进行相应处理。
 
-### 5. 提交代码前的检查
+### 6. 提交代码前的检查
 
 在提交代码之前，请确保完成以下步骤：
 
-1. **确保依赖项已更新**：如果您对 `requirements.in` 进行了更改，请重新生成 `requirements.txt` 并安装依赖项。
+1. **确认依赖分层正确**：运行时包进入 `requirements.in`；测试、覆盖率、静态检查和构建辅助进入 `requirements-dev.in`；插件依赖不并入主程序运行时依赖。
 
 2. **运行安全检查**：确保 `safety` 检查通过，没有新的安全漏洞。
 
@@ -128,9 +109,10 @@ safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report
    pytest
    ```
 
-### 6. 参考资源
+### 7. 参考资源
 
 - [pip-tools 官方文档](https://github.com/jazzband/pip-tools)
+- [uv 官方文档](https://docs.astral.sh/uv/)
 - [safety 官方文档](https://pyup.io/safety/)
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)

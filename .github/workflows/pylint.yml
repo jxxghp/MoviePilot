@@ -23,24 +23,15 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/requirements.in') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.in', '**/requirements-dev.in', '**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install pylint
-        # 安装项目依赖
-        if [ -f requirements.txt ]; then
-          echo "📦 安装 requirements.txt 中的依赖..."
-          pip install -r requirements.txt
-        elif [ -f requirements.in ]; then
-          echo "📦 安装 requirements.in 中的依赖..."
-          pip install -r requirements.in
-        else
-          echo "⚠️ 未找到依赖文件，仅安装 pylint"
-        fi
+        # Pylint 属于开发/静态检查依赖，统一通过 dev 入口安装。
+        pip install -r requirements-dev.in
 
     - name: Verify pylint config
       run: |

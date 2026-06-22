@@ -100,11 +100,10 @@ ci: improve docker build cache
 
 When updating a dependency:
 
-1. Update `requirements.in` with the new version constraint.
-2. Run `pip-compile requirements.in` to regenerate `requirements.txt`.
-3. Run `safety check -r requirements.txt --policy-file=safety.policy.yml`.
+1. Decide the dependency layer: runtime packages go to `requirements.in`; test, coverage, lint, and explicit build tooling go to `requirements-dev.in`.
+2. Keep `requirements.txt` as the compatibility entry that delegates to `requirements.in`; do not commit a locally generated cross-platform lock file.
+3. Run `safety check -r requirements.txt --policy-file=safety.policy.yml`; include the dev dependency entry when `requirements-dev.in` changed.
 4. Run the full test suite: `pytest`.
-5. Commit both `requirements.in` and `requirements.txt` together.
 
 ---
 

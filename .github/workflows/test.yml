@@ -38,16 +38,15 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.in', '**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.in', '**/requirements-dev.in', '**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # 用 requirements.in 还原 CI / 全新环境（含 pytest 与 moviepilot-rust 等可选扩展），
-          # 与本地"干净 venv 复现"一致；测试运行器 pytest 已在 requirements.in 中声明。
-          pip install -r requirements.in
+          # 单测需要开发/测试依赖；运行时入口 requirements.in 不携带测试与构建辅助工具。
+          pip install -r requirements-dev.in
 
       - name: Run tests
         timeout-minutes: 10
