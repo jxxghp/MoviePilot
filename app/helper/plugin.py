@@ -29,6 +29,7 @@ from requests import Response
 from app.core.cache import cached, is_fresh
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.package_installer import PackageInstallRequest, build_package_install_strategies
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils, AsyncRequestUtils
@@ -1014,19 +1015,6 @@ class PluginHelper(metaclass=WeakSingleton):
         return list(dict.fromkeys(wheels_dirs))
 
     @staticmethod
-    def __build_pip_install_strategies(base_cmd: List[str]) -> List[Tuple[str, List[str]]]:
-        """
-        为 pip 命令构建统一的网络降级策略，避免不同安装路径各自拼接参数。
-        """
-        strategies = []
-        if settings.PIP_PROXY:
-            strategies.append(("镜像站", base_cmd + ["-i", settings.PIP_PROXY]))
-        if settings.PROXY_HOST:
-            strategies.append(("代理", base_cmd + ["--proxy", settings.PROXY_HOST]))
-        strategies.append(("直连", base_cmd))
-        return strategies
-
-    @staticmethod
     def __build_runtime_pip_command(*args: str) -> List[str]:
         """
         优先使用当前解释器同目录的 pip 入口，以便 uv-pip-compat 能接管兼容命令。
@@ -1389,6 +1377,44 @@ class PluginHelper(metaclass=WeakSingleton):
         importlib.invalidate_caches()
 
     @classmethod
+    def __build_package_install_request(
+            cls,
+            requirements_file: Path,
+            find_links_dirs: Optional[List[Path]] = None,
+            constraints_file: Optional[Path] = None,
+            purpose: str = "plugin",
+    ) -> PackageInstallRequest:
+        """
+        将 MoviePilot 运行配置转换为 pip/uv 安装请求，统一缓存、镜像和代理语义。
+        """
+        return PackageInstallRequest(
+            requirements_file=requirements_file,
+            python_bin=Path(sys.executable),
+            find_links_dirs=find_links_dirs or [],
+            constraints_file=constraints_file,
+            config_dir=settings.CONFIG_PATH,
+            pip_index_url=settings.PIP_PROXY or None,
+            proxy_url=settings.PROXY_HOST or None,
+            purpose=purpose,
+        )
+
+    @classmethod
+    def __repair_if_runtime_broken(cls, snapshot_file: Optional[Path] = None) -> Tuple[bool, str]:
+        """
+        安装失败后检查主运行环境；若已异常，先恢复主程序依赖再继续向上返回安装失败。
+        """
+        health_ok, health_message = cls.__run_runtime_healthcheck()
+        if health_ok:
+            return True, ""
+        repair_ok, repair_message = cls.__repair_main_runtime_dependencies(snapshot_file)
+        if not repair_ok:
+            return False, f"插件依赖安装失败后主运行环境异常，且恢复失败：{health_message}; {repair_message}"
+        restored, restored_message = cls.__run_runtime_healthcheck()
+        if not restored:
+            return False, f"插件依赖安装失败后主运行环境异常，恢复后仍异常：{restored_message}"
+        return True, "主运行环境已恢复"
+
+    @classmethod
     def __run_runtime_healthcheck(cls) -> Tuple[bool, str]:
         """
         安装完成后立即执行运行环境自检，尽量在插件加载前发现依赖图已被污染。
@@ -1420,15 +1446,19 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, f"恢复依赖文件不存在：{repair_target}"
 
         last_error = ""
-        base_cmd = [sys.executable, "-m", "pip", "install", "-r", str(repair_target)]
-        for strategy_name, pip_command in cls.__build_pip_install_strategies(base_cmd):
-            logger.warning(f"[PIP] 运行环境异常，尝试使用策略：{strategy_name} 恢复{repair_desc}")
-            success, message = SystemUtils.execute_with_subprocess(pip_command)
+        request = cls.__build_package_install_request(repair_target, purpose="runtime-repair")
+        for strategy in build_package_install_strategies(request):
+            logger.warning(f"[PIP] 运行环境异常，尝试使用策略：{strategy.strategy_name} 恢复{repair_desc}")
+            success, message = SystemUtils.execute_with_subprocess(
+                strategy.command,
+                env=strategy.env,
+                safe_command=strategy.safe_log_command,
+            )
             if success:
                 cls.__refresh_import_system()
                 return True, message
             last_error = message
-            logger.error(f"[PIP] 使用策略：{strategy_name} 恢复{repair_desc}失败：{message}")
+            logger.error(f"[PIP] 使用策略：{strategy.strategy_name} 恢复{repair_desc}失败：{message}")
         return False, last_error or f"恢复{repair_desc}失败"
 
     @classmethod
@@ -1461,11 +1491,9 @@ class PluginHelper(metaclass=WeakSingleton):
             seen_dirs.add(candidate_key)
             resolved_dirs.append(candidate_path)
 
-        find_links_option = []
         if resolved_dirs:
             for local_wheels_dir in resolved_dirs:
                 logger.debug(f"[PIP] 发现可用的 wheels 目录: {local_wheels_dir}，将优先从本地安装。")
-                find_links_option.extend(["--find-links", str(local_wheels_dir)])
         else:
             logger.debug(f"[PIP] 未发现可用的 wheels 目录，将仅使用在线源。")
 
@@ -1484,23 +1512,32 @@ class PluginHelper(metaclass=WeakSingleton):
                 logger.error(f"[PIP] 创建运行环境约束文件失败：{e}")
                 return False, f"创建运行环境约束文件失败：{e}"
 
-        base_cmd = [sys.executable, "-m", "pip", "install"] + find_links_option
-        if constraints_file:
-            # 这里固定约束到主程序依赖的当前版本，避免共享 venv 被插件改写核心运行环境。
-            base_cmd.extend(["-c", str(constraints_file)])
-        base_cmd.extend(["-r", str(requirements_file)])
-        strategies = cls.__build_pip_install_strategies(base_cmd)
+        request = cls.__build_package_install_request(
+            requirements_file,
+            find_links_dirs=resolved_dirs,
+            constraints_file=constraints_file,
+            purpose="plugin",
+        )
+        strategies = build_package_install_strategies(request)
 
         try:
             # pip 会修改当前解释器的 site-packages，安装与缓存刷新必须串行，避免运行态模块被并发安装窗口污染。
             with cls._pip_install_lock:
                 loaded_modules_before_install = set(sys.modules.keys())
                 # 遍历策略进行安装
-                for strategy_name, pip_command in strategies:
-                    logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
-                    success, message = SystemUtils.execute_with_subprocess(pip_command)
+                last_error = ""
+                for strategy in strategies:
+                    logger.debug(
+                        f"[PIP] 尝试使用策略：{strategy.strategy_name} 安装依赖，"
+                        f"命令：{' '.join(strategy.safe_log_command)}"
+                    )
+                    success, message = SystemUtils.execute_with_subprocess(
+                        strategy.command,
+                        env=strategy.env,
+                        safe_command=strategy.safe_log_command,
+                    )
                     if success:
-                        logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
+                        logger.debug(f"[PIP] 策略：{strategy.strategy_name} 安装依赖成功，输出：{message}")
                         health_ok, health_message = cls.__run_runtime_healthcheck()
                         if not health_ok:
                             logger.error(f"[PIP] 依赖安装后运行环境自检失败：{health_message}")
@@ -1532,11 +1569,27 @@ class PluginHelper(metaclass=WeakSingleton):
                         logger.debug(f"[PIP] 已刷新导入系统，新加载的模块: {loaded_modules_during_install}")
                         return True, message
 
-                    logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
+                    last_error = message
+                    repair_ok, repair_message = cls.__repair_if_runtime_broken(
+                        constraints_file if protected_packages else None
+                    )
+                    logger.error(f"[PIP] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}")
+                    if not repair_ok:
+                        return False, (
+                            f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
+                            f"{repair_message}"
+                        )
+                    if repair_message:
+                        return False, (
+                            f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
+                            f"{repair_message}"
+                        )
         finally:
             if constraints_file:
                 constraints_file.unlink(missing_ok=True)
 
+        if last_error:
+            return False, f"[PIP] 所有策略均安装依赖失败：{last_error}"
         return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接、PIP 配置或插件依赖约束"
 
     @staticmethod

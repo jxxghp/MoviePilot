@@ -27,6 +27,20 @@ export PATH="${VENV_PATH}/bin:$PATH"
 # 校正设置目录
 CONFIG_DIR="${CONFIG_DIR:-/config}"
 
+# pip/uv 包下载缓存随配置目录持久化，仅管理工具自己的缓存子目录。
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${CONFIG_DIR}/.cache/pip}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${CONFIG_DIR}/.cache/uv}"
+mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+
+function apply_package_proxy_env() {
+    if [ -n "${PROXY_HOST}" ]; then
+        export HTTP_PROXY="${PROXY_HOST}"
+        export HTTPS_PROXY="${PROXY_HOST}"
+        export http_proxy="${PROXY_HOST}"
+        export https_proxy="${PROXY_HOST}"
+    fi
+}
+
 # 环境变量补全
 # 优先级: 系统环境变量 -> .env 文件 (即使为空字符串) -> 预设默认值
 # 精准适配 Python 端 set_key (quote_mode="always", 单引号包裹, \' 转义)
@@ -276,11 +290,10 @@ function ensure_backend_runtime_dependencies() {
     fi
 
     WARN "→ 检测到后端核心依赖异常，开始尝试恢复主程序依赖..."
+    apply_package_proxy_env
     local -a pip_cmd=("${VENV_PATH}/bin/pip" "install" "-r" "/app/requirements.txt")
     if [ -n "${PIP_PROXY}" ]; then
         pip_cmd+=("-i" "${PIP_PROXY}")
-    elif [ -n "${PROXY_HOST}" ]; then
-        pip_cmd+=("--proxy" "${PROXY_HOST}")
     fi
 
     if ! "${pip_cmd[@]}" > /dev/stdout 2> /dev/stderr; then

@@ -74,3 +74,101 @@ class SystemHelperRestartTest(TestCase):
             finally:
                 SystemHelper._SystemHelper__docker_restart_intent_file = original_intent_file
                 settings.CONFIG_DIR = original_config_dir
+
+
+def test_execute_with_subprocess_passes_env_to_subprocess():
+    with patch("app.utils.system.subprocess.run") as run_mock:
+        run_mock.return_value.stdout = "ok"
+        run_mock.return_value.stderr = ""
+
+        success, message = SystemUtils.execute_with_subprocess(
+            ["pip", "check"],
+            env={"PIP_CACHE_DIR": "/config/.cache/pip"},
+        )
+
+    assert success
+    assert message == "ok"
+    assert run_mock.call_args.kwargs["env"]["PIP_CACHE_DIR"] == "/config/.cache/pip"
+
+
+def test_execute_with_subprocess_uses_safe_command_in_failure_message():
+    error = subprocess.CalledProcessError(
+        returncode=1,
+        cmd=["pip", "install", "-i", "https://user:pass@mirror.example/simple"],
+        output="",
+        stderr="failed",
+    )
+
+    command = ["pip", "install", "-i", "https://user:pass@mirror.example/simple"]
+    with patch("app.utils.system.subprocess.run", side_effect=error) as run_mock:
+        success, message = SystemUtils.execute_with_subprocess(
+            command,
+            safe_command=["pip", "install", "-i", "https://mirror.example/simple"],
+        )
+
+    assert not success
+    assert "https://mirror.example/simple" in message
+    assert "user:pass" not in message
+    assert run_mock.call_args.args[0] == command
+
+
+def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():
+    error = subprocess.CalledProcessError(
+        returncode=1,
+        cmd=["pip", "install"],
+        output="Looking in indexes: https://user:pass@mirror.example/simple",
+        stderr="Proxy failed: http://proxy_user:proxy_pass@proxy.example:7890",
+    )
+
+    with patch("app.utils.system.subprocess.run", side_effect=error):
+        success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
+
+    assert not success
+    assert "https://mirror.example/simple" in message
+    assert "http://proxy.example:7890" in message
+    assert "user:pass" not in message
+    assert "proxy_user:proxy_pass" not in message
+
+
+def test_execute_with_subprocess_redacts_userinfo_from_non_http_scheme():
+    error = subprocess.CalledProcessError(
+        returncode=1,
+        cmd=["pip", "install"],
+        output="Proxy failed: socks5://proxy_user:proxy_pass@proxy.example:7890",
+        stderr="Resolved direct URL: git+https://git_user:git_pass@example.com/org/repo.git",
+    )
+
+    with patch("app.utils.system.subprocess.run", side_effect=error):
+        success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
+
+    assert not success
+    assert "socks5://proxy.example:7890" in message
+    assert "git+https://example.com/org/repo.git" in message
+    assert "proxy_user:proxy_pass" not in message
+    assert "git_user:git_pass" not in message
+
+
+def test_execute_with_subprocess_redacts_success_output_userinfo():
+    with patch("app.utils.system.subprocess.run") as run_mock:
+        run_mock.return_value.stdout = "Using https://user:pass@mirror.example/simple\n"
+        run_mock.return_value.stderr = "Proxy socks5://proxy_user:proxy_pass@proxy.example:7890\n"
+
+        success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
+
+    assert success
+    assert "https://mirror.example/simple" in message
+    assert "socks5://proxy.example:7890" in message
+    assert "user:pass" not in message
+    assert "proxy_user:proxy_pass" not in message
+
+
+def test_execute_with_subprocess_redacts_unknown_error_userinfo_and_invalid_port():
+    with patch(
+        "app.utils.system.subprocess.run",
+        side_effect=RuntimeError("bad url https://user:pass@example.com:notaport/simple"),
+    ):
+        success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
+
+    assert not success
+    assert "https://example.com:notaport/simple" in message
+    assert "user:pass" not in message

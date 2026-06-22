@@ -325,11 +325,14 @@ def _best_effort_auto_update() -> None:
     ]
 
     update_env = os.environ.copy()
+    update_env.setdefault("PIP_CACHE_DIR", str(settings.CONFIG_PATH / ".cache" / "pip"))
+    update_env.setdefault("UV_CACHE_DIR", str(settings.CONFIG_PATH / ".cache" / "uv"))
+    if settings.PIP_PROXY:
+        update_env["PIP_PROXY"] = settings.PIP_PROXY
     if settings.PROXY_HOST:
-        update_env.setdefault("http_proxy", settings.PROXY_HOST)
-        update_env.setdefault("https_proxy", settings.PROXY_HOST)
-        update_env.setdefault("HTTP_PROXY", settings.PROXY_HOST)
-        update_env.setdefault("HTTPS_PROXY", settings.PROXY_HOST)
+        update_env["PROXY_HOST"] = settings.PROXY_HOST
+        for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+            update_env[key] = settings.PROXY_HOST
     if settings.GITHUB_TOKEN:
         update_env.setdefault("GITHUB_TOKEN", settings.GITHUB_TOKEN)
 

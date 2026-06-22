@@ -24,6 +24,21 @@ function WARN() {
 VENV_PATH="${VENV_PATH:-/opt/venv}"
 export PATH="${VENV_PATH}/bin:$PATH"
 
+# pip/uv 包下载缓存随配置目录持久化，仅管理工具自己的缓存子目录。
+CONFIG_DIR="${CONFIG_DIR:-/config}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${CONFIG_DIR}/.cache/pip}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${CONFIG_DIR}/.cache/uv}"
+mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+
+function apply_package_proxy_env() {
+    if [[ -n "${PROXY_HOST}" ]]; then
+        export HTTP_PROXY="${PROXY_HOST}"
+        export HTTPS_PROXY="${PROXY_HOST}"
+        export http_proxy="${PROXY_HOST}"
+        export https_proxy="${PROXY_HOST}"
+    fi
+}
+
 # 下载及解压
 function download_and_unzip() {
     local retries=0
@@ -186,9 +201,11 @@ function test_connectivity_pip() {
         ;;
     1)
         if [[ -n "${PROXY_HOST}" ]]; then
-            if ${VENV_PATH}/bin/pip install --proxy=${PROXY_HOST} pip-hello-world > /dev/null 2>&1; then
-                PIP_OPTIONS="--proxy=${PROXY_HOST}"
+            if HTTP_PROXY="${PROXY_HOST}" HTTPS_PROXY="${PROXY_HOST}" http_proxy="${PROXY_HOST}" https_proxy="${PROXY_HOST}" \
+                ${VENV_PATH}/bin/pip install pip-hello-world > /dev/null 2>&1; then
+                PIP_OPTIONS=""
                 PIP_LOG="全局代理模式"
+                apply_package_proxy_env
                 return 0
             fi
         fi

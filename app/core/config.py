@@ -170,6 +170,8 @@ class ConfigModel(BaseModel):
     GLOBAL_IMAGE_CACHE_DAYS: int = 7
     # 临时文件保留天数
     TEMP_FILE_DAYS: int = 3
+    # pip/uv 包下载缓存保留天数
+    PACKAGE_CACHE_DAYS: int = 30
     # 元数据识别缓存过期时间（小时），0为自动
     META_CACHE_EXPIRE: int = 0
 

@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -20,6 +21,8 @@ class SystemUtils:
     系统工具类，提供系统相关的操作和信息获取方法。
     """
 
+    _URL_WITH_USERINFO_PATTERN = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s]+)")
+
     @staticmethod
     def execute(cmd: str) -> str:
         """
@@ -33,22 +36,69 @@ class SystemUtils:
             return ""
 
     @staticmethod
-    def execute_with_subprocess(pip_command: list) -> Tuple[bool, str]:
+    def redact_url_userinfo(value: str) -> str:
+        """
+        脱敏 URL 中的 userinfo，避免命令输出泄露镜像源或代理凭据。
+        """
+        def replace(match: re.Match[str]) -> str:
+            candidate = match.group(1)
+            trailing = ""
+            while candidate and candidate[-1] in ".,;:)":
+                trailing = candidate[-1] + trailing
+                candidate = candidate[:-1]
+            parsed = urllib.parse.urlsplit(candidate)
+            if not parsed.username and not parsed.password:
+                return match.group(1)
+            host = parsed.netloc.rsplit("@", 1)[-1]
+            redacted = urllib.parse.urlunsplit((
+                parsed.scheme,
+                host,
+                parsed.path,
+                parsed.query,
+                parsed.fragment,
+            ))
+            return f"{redacted}{trailing}"
+
+        return SystemUtils._URL_WITH_USERINFO_PATTERN.sub(replace, value or "")
+
+    @staticmethod
+    def redact_command_url_userinfo(command: list[str]) -> List[str]:
+        """
+        脱敏命令参数中的 URL userinfo，供错误信息展示。
+        """
+        return [SystemUtils.redact_url_userinfo(str(item)) for item in command]
+
+    @staticmethod
+    def execute_with_subprocess(
+            pip_command: list,
+            env: Optional[dict[str, str]] = None,
+            safe_command: Optional[list[str]] = None,
+    ) -> Tuple[bool, str]:
         """
         执行命令并捕获标准输出和错误输出，记录日志。
 
         :param pip_command: 要执行的命令，以列表形式提供
+        :param env: 传递给子进程的环境变量
+        :param safe_command: 用于错误信息展示的脱敏命令
         :return: (命令是否成功, 输出信息或错误信息)
         """
+        display_command = safe_command or pip_command
         try:
             # 使用 subprocess.run 捕获标准输出和标准错误
-            result = subprocess.run(pip_command, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(
+                pip_command,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
             # 合并 stdout 和 stderr
-            output = result.stdout + result.stderr
+            output = SystemUtils.redact_url_userinfo(result.stdout + result.stderr)
             return True, output
         except subprocess.CalledProcessError as e:
-            stdout = (e.stdout or "").strip()
-            stderr = (e.stderr or "").strip()
+            stdout = SystemUtils.redact_url_userinfo((e.stdout or "").strip())
+            stderr = SystemUtils.redact_url_userinfo((e.stderr or "").strip())
             # 不同命令/兼容层可能把失败原因写入 stdout，失败时需要同时保留两路输出。
             output_parts = []
             if stdout:
@@ -58,12 +108,15 @@ class SystemUtils:
             if not output_parts:
                 output_parts.append("无标准输出或错误输出")
             error_message = (
-                f"命令：{' '.join(pip_command)}，执行失败，"
+                f"命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，执行失败，"
                 f"返回码：{e.returncode}，{'; '.join(output_parts)}"
             )
             return False, error_message
         except Exception as e:
-            error_message = f"未知错误，命令：{' '.join(pip_command)}，错误：{str(e)}"
+            error_message = (
+                f"未知错误，命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，"
+                f"错误：{SystemUtils.redact_url_userinfo(str(e))}"
+            )
             return False, error_message
 
     @staticmethod

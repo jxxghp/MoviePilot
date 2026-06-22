@@ -625,7 +625,7 @@ class TestPluginHelper:
 
         module_names = ["app.plugins.dynamicwechat.helper", "Crypto.Cipher._mode_cbc"]
 
-        def fake_execute(_cmd):
+        def fake_execute(_cmd, env=None, safe_command=None):
             for module_name in module_names:
                 sys.modules[module_name] = ModuleType(module_name)
             return True, "ok"
@@ -644,6 +644,46 @@ class TestPluginHelper:
             for module_name in module_names:
                 assert module_name in sys.modules
 
+    def test_pip_install_builds_uv_strategy_without_proxy_argument(self):
+        """
+        插件依赖安装优先使用 uv 时，传输代理只进入子进程环境。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        seen = []
+
+        def fake_execute(command, env=None, safe_command=None):
+            seen.append((command, env, safe_command))
+            return True, "ok"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            req = root / "requirements.txt"
+            req.write_text("demo\n", encoding="utf-8")
+            uv_bin = root / "venv" / "bin" / "uv"
+            uv_bin.parent.mkdir(parents=True)
+            uv_bin.write_text("", encoding="utf-8")
+
+            with patch("app.helper.package_installer._find_uv", return_value=uv_bin), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(PluginHelper, "_PluginHelper__run_runtime_healthcheck", return_value=(True, "")), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute), \
+                    patch("app.helper.plugin.settings.PROXY_HOST", "http://proxy.example:7890"), \
+                    patch("app.helper.plugin.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"):
+                success, message = PluginHelper.pip_install_with_fallback(req)
+
+        assert success
+        assert message == "ok"
+        assert seen
+        command, env, safe_command = seen[0]
+        assert command[:3] == [str(uv_bin), "pip", "install"]
+        assert "--proxy" not in command
+        assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
+        assert "user:pass" not in " ".join(safe_command)
+
     def test_pip_install_serializes_concurrent_calls(self):
         """
         验证多个依赖安装请求会复用同一把锁串行执行 pip。
@@ -660,7 +700,7 @@ class TestPluginHelper:
         start_event = threading.Event()
         errors = []
 
-        def fake_execute(_cmd):
+        def fake_execute(_cmd, env=None, safe_command=None):
             nonlocal active_installs, max_active_installs
             with state_lock:
                 active_installs += 1
@@ -769,7 +809,7 @@ class TestPluginHelper:
 
         seen_install_commands = []
 
-        def fake_execute(cmd):
+        def fake_execute(cmd, env=None, safe_command=None):
             if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
                 seen_install_commands.append(cmd)
                 assert "-c" not in cmd
@@ -790,7 +830,8 @@ class TestPluginHelper:
                         return_value={}
                 ):
                     with patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                        with patch("app.helper.package_installer._find_uv", return_value=None):
+                            success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
         assert success
         assert "ok" == message
@@ -807,7 +848,7 @@ class TestPluginHelper:
 
         seen_constraints = []
 
-        def fake_execute(cmd):
+        def fake_execute(cmd, env=None, safe_command=None):
             if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
                 constraint_index = cmd.index("-c") + 1
                 constraint_file = Path(cmd[constraint_index])
@@ -826,7 +867,8 @@ class TestPluginHelper:
                     return_value={"fastapi": Version("0.115.14")}
             ):
                 with patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                    with patch("app.helper.package_installer._find_uv", return_value=None):
+                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
         assert success
         assert "ok" == message
@@ -846,7 +888,7 @@ class TestPluginHelper:
         healthcheck_failed = False
         pip_check_cmd = PluginHelper._PluginHelper__build_runtime_pip_command("check")
 
-        def fake_execute(cmd):
+        def fake_execute(cmd, env=None, safe_command=None):
             nonlocal healthcheck_failed
             if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
                 if "-c" not in cmd:
@@ -871,12 +913,147 @@ class TestPluginHelper:
                     return_value={"fastapi": Version("0.115.14")}
             ):
                 with patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                    with patch("app.helper.package_installer._find_uv", return_value=None):
+                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
         assert not success
         assert "已自动恢复主程序依赖" in message
         assert 1 == len(repair_commands)
         assert "runtime-constraints-" in repair_commands[0][-1]
+
+    def test_failed_install_repairs_runtime_before_returning_error(self):
+        """
+        安装策略失败后如果主运行环境异常，应先恢复主程序依赖再返回失败。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        repair_calls = []
+
+        def fake_execute(command, env=None, safe_command=None):
+            if "install" in command and "-r" in command and "plugin" in str(command[-1]):
+                return False, "partial failure"
+            return True, "ok"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            req = root / "plugin-requirements.txt"
+            req.write_text("demo\n", encoding="utf-8")
+
+            with patch("app.helper.package_installer._find_uv", return_value=None), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__run_runtime_healthcheck",
+                        side_effect=[(False, "broken"), (True, "")],
+                    ), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__repair_main_runtime_dependencies",
+                        side_effect=lambda snapshot_file=None: repair_calls.append(snapshot_file)
+                        or (True, "runtime repaired"),
+                    ), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                success, message = PluginHelper.pip_install_with_fallback(req)
+
+        assert not success
+        assert "partial failure" in message or "恢复" in message
+        assert repair_calls
+
+    def test_failed_strategy_stops_after_runtime_repair_even_if_later_strategy_could_succeed(self):
+        """
+        一旦失败策略污染主运行环境并触发恢复，不能继续 fallback 后把安装结果伪装成成功。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        seen_install_commands = []
+        repair_calls = []
+
+        def fake_execute(command, env=None, safe_command=None):
+            if "install" in command and "-r" in command:
+                seen_install_commands.append(command)
+                if len(seen_install_commands) == 1:
+                    return False, "resolver failed"
+                return True, "later success"
+            return True, "ok"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            req = root / "requirements.txt"
+            req.write_text("demo\n", encoding="utf-8")
+            uv_bin = root / "venv" / "bin" / "uv"
+            uv_bin.parent.mkdir(parents=True)
+            uv_bin.write_text("", encoding="utf-8")
+
+            with patch("app.helper.package_installer._find_uv", return_value=uv_bin), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__run_runtime_healthcheck",
+                        side_effect=[(False, "broken"), (True, "")],
+                    ), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__repair_main_runtime_dependencies",
+                        side_effect=lambda snapshot_file=None: repair_calls.append(snapshot_file)
+                        or (True, "runtime repaired"),
+                    ), \
+                    patch("app.helper.plugin.settings.PIP_PROXY", "https://mirror.example/simple"), \
+                    patch("app.helper.plugin.settings.PROXY_HOST", "http://proxy.example:7890"), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                success, message = PluginHelper.pip_install_with_fallback(req)
+
+        assert not success
+        assert "resolver failed" in message
+        assert "主运行环境已恢复" in message
+        assert len(seen_install_commands) == 1
+        assert repair_calls
+
+    def test_repair_main_runtime_dependencies_uses_package_installer_semantics(self):
+        """
+        主运行环境恢复与插件安装使用同一套 cache、index、proxy 和安全日志语义。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        seen = []
+
+        def fake_execute(command, env=None, safe_command=None):
+            seen.append((command, env, safe_command))
+            return True, "ok"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            req = root / "requirements.txt"
+            req.write_text("fastapi==1.0\n", encoding="utf-8")
+            uv_bin = root / "venv" / "bin" / "uv"
+            uv_bin.parent.mkdir(parents=True)
+            uv_bin.write_text("", encoding="utf-8")
+
+            with patch("app.helper.package_installer._find_uv", return_value=uv_bin), \
+                    patch("app.helper.plugin.settings.CONFIG_DIR", str(root / "config")), \
+                    patch("app.helper.plugin.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \
+                    patch("app.helper.plugin.settings.PROXY_HOST", "http://proxy.example:7890"), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                success, message = PluginHelper._PluginHelper__repair_main_runtime_dependencies(req)
+
+        assert success
+        assert message == "ok"
+        assert seen
+        command, env, safe_command = seen[0]
+        assert command[:3] == [str(uv_bin), "pip", "install"]
+        assert "--proxy" not in command
+        assert env["PIP_CACHE_DIR"] == str(root / "config" / ".cache" / "pip")
+        assert env["UV_CACHE_DIR"] == str(root / "config" / ".cache" / "uv")
+        assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
+        assert "user:pass" not in " ".join(safe_command)
 
     def test_async_pip_install_runs_in_threadpool(self):
         """

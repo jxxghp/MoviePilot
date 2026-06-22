@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import textwrap
+import urllib.parse
 import uuid
 import zipfile
 from datetime import datetime
@@ -493,15 +494,58 @@ def print_step(message: str) -> None:
     print(f"==> {message}")
 
 
+def _redact_url(value: str) -> str:
+    parsed = urllib.parse.urlsplit(value)
+    if "@" not in parsed.netloc:
+        return value
+    host = parsed.netloc.rsplit("@", 1)[-1]
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, host, parsed.path, parsed.query, parsed.fragment)
+    )
+
+
+def redact_command(command: list[str]) -> list[str]:
+    redacted: list[str] = []
+    for item in command:
+        value = str(item)
+        url_marker = value.find("://")
+        equals_marker = value.find("=")
+        if url_marker >= 0 and 0 <= equals_marker < url_marker:
+            key, separator, url = value.partition("=")
+            value = f"{key}{separator}{_redact_url(url)}"
+        elif url_marker >= 0:
+            value = _redact_url(value)
+        redacted.append(value)
+    return redacted
+
+
+def build_package_install_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("PIP_CACHE_DIR", str(CONFIG_DIR / ".cache" / "pip"))
+    env.setdefault("UV_CACHE_DIR", str(CONFIG_DIR / ".cache" / "uv"))
+
+    index_url = env.get("PIP_PROXY", "").strip()
+    if index_url:
+        env["PIP_INDEX_URL"] = index_url
+        env["UV_DEFAULT_INDEX"] = index_url
+
+    proxy = env.get("PROXY_HOST", "").strip()
+    if proxy:
+        for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            env[key] = proxy
+    return env
+
+
 def run(
     command: list[str],
     cwd: Optional[Path] = None,
     env: Optional[dict[str, str]] = None,
+    safe_command: Optional[list[str]] = None,
 ) -> None:
     """
     执行安装步骤中的外部命令，并在失败时让调用方中断流程。
     """
-    pretty = " ".join(command)
+    pretty = " ".join(safe_command or redact_command(command))
     print(f"+ {pretty}")
     subprocess.run(command, cwd=str(cwd or ROOT), check=True, env=env)
 
@@ -597,7 +641,8 @@ def _ensure_uv_available_for_venv(venv_dir: Path, venv_python: Path) -> Optional
         return uv_bin
 
     print_step("当前未检测到 uv，先在虚拟环境内安装 uv")
-    run([str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "uv"])
+    command = [str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "uv"]
+    run(command, env=build_package_install_env(), safe_command=redact_command(command))
     if uv_bin.exists():
         return uv_bin
     raise RuntimeError("uv 安装完成，但虚拟环境中未找到 uv 可执行文件")
@@ -2677,13 +2722,15 @@ def install_deps(*, python_bin: str, venv_dir: Path, recreate: bool) -> Path:
 
     if os.name == "nt":
         print_step("升级 pip")
-        run([str(venv_python), "-m", "pip", "install", "--upgrade", "pip"])
+        command = [str(venv_python), "-m", "pip", "install", "--upgrade", "pip"]
+        run(command, env=build_package_install_env(), safe_command=redact_command(command))
     else:
         print_step("为虚拟环境配置 uv 兼容 pip 命令")
         venv_pip = configure_venv_pip_compat(venv_dir, venv_python)
 
     print_step("安装项目依赖")
-    run([str(venv_pip), "install", "-r", str(ROOT / "requirements.txt")])
+    command = [str(venv_pip), "install", "-r", str(ROOT / "requirements.txt")]
+    run(command, env=build_package_install_env(), safe_command=redact_command(command))
     install_browser_runtime(venv_python)
     return venv_python
 
