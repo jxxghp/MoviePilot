@@ -24,11 +24,17 @@ function WARN() {
 VENV_PATH="${VENV_PATH:-/opt/venv}"
 export PATH="${VENV_PATH}/bin:$PATH"
 
-# pip/uv 包下载缓存随配置目录持久化，仅管理工具自己的缓存子目录。
 CONFIG_DIR="${CONFIG_DIR:-/config}"
-export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${CONFIG_DIR}/.cache/pip}"
-export UV_CACHE_DIR="${UV_CACHE_DIR:-${CONFIG_DIR}/.cache/uv}"
-mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+
+function apply_package_cache_env() {
+    PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
+    export PACKAGE_CACHE_ROOT
+    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/pip}"
+    export UV_CACHE_DIR="${UV_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/uv}"
+    mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+}
+
+apply_package_cache_env
 
 function apply_package_proxy_env() {
     if [[ -n "${PROXY_HOST}" ]]; then
@@ -191,9 +197,16 @@ function test_connectivity_pip() {
     case "$1" in
     0)
         if [[ -n "${PIP_PROXY}" ]]; then
-            if ${VENV_PATH}/bin/pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1; then
+            if [[ -n "${PROXY_HOST}" ]]; then
+                HTTP_PROXY="${PROXY_HOST}" HTTPS_PROXY="${PROXY_HOST}" http_proxy="${PROXY_HOST}" https_proxy="${PROXY_HOST}" \
+                    ${VENV_PATH}/bin/pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1
+            else
+                ${VENV_PATH}/bin/pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1
+            fi
+            if [[ $? -eq 0 ]]; then
                 PIP_OPTIONS="-i ${PIP_PROXY}"
                 PIP_LOG="镜像代理模式"
+                apply_package_proxy_env
                 return 0
             fi
         fi

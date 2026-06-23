@@ -32,6 +32,7 @@ def load_cli_module():
             ROOT_PATH=root,
             FRONTEND_PATH=str(root / "public"),
             CONFIG_PATH=root / "config",
+            PACKAGE_CACHE_PATH=root / "custom-package-cache",
             HOST="127.0.0.1",
             PORT=3001,
             NGINX_PORT=3000,
@@ -130,5 +131,29 @@ class CliAutoUpdateTests(unittest.TestCase):
         env = run_mock.call_args.kwargs["env"]
         self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
         self.assertEqual(env["PIP_PROXY"], "https://mirror.example/simple")
-        self.assertTrue(env["PIP_CACHE_DIR"].endswith("/.cache/pip"))
-        self.assertTrue(env["UV_CACHE_DIR"].endswith("/.cache/uv"))
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(module.settings.PACKAGE_CACHE_PATH))
+        self.assertEqual(env["PIP_CACHE_DIR"], str(module.settings.PACKAGE_CACHE_PATH / "pip"))
+        self.assertEqual(env["UV_CACHE_DIR"], str(module.settings.PACKAGE_CACHE_PATH / "uv"))
+
+    def test_best_effort_auto_update_derives_tool_cache_from_existing_root(self):
+        module = load_cli_module()
+        run_result = SimpleNamespace(returncode=0, stdout="ok")
+        package_cache_root = Path("/custom/package-cache-root")
+
+        with patch.dict(
+            module.os.environ,
+            {
+                "PACKAGE_CACHE_ROOT": str(package_cache_root),
+            },
+            clear=False,
+        ), patch.object(module, "_auto_update_mode", return_value="release"), patch.object(
+            module, "_resolve_auto_update_targets", return_value="v2.10.12"
+        ), patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
+            module.click, "echo"
+        ):
+            module._best_effort_auto_update()
+
+        env = run_mock.call_args.kwargs["env"]
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(package_cache_root))
+        self.assertEqual(env["PIP_CACHE_DIR"], str(package_cache_root / "pip"))
+        self.assertEqual(env["UV_CACHE_DIR"], str(package_cache_root / "uv"))

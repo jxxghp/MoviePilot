@@ -22,6 +22,7 @@ class PackageInstallRequest:
     find_links_dirs: list[Path] = field(default_factory=list)
     constraints_file: Path | None = None
     config_dir: Path = Path("/config")
+    package_cache_root: Path | None = None
     pip_index_url: str | None = None
     proxy_url: str | None = None
     purpose: str = "plugin"
@@ -64,8 +65,14 @@ def build_package_install_env(request: PackageInstallRequest, include_moviepilot
     """
     env = os.environ.copy()
     config_dir = Path(request.config_dir)
-    env.setdefault("PIP_CACHE_DIR", str(config_dir / ".cache" / "pip"))
-    env.setdefault("UV_CACHE_DIR", str(config_dir / ".cache" / "uv"))
+    if request.package_cache_root:
+        package_cache_root = Path(request.package_cache_root)
+        env["PACKAGE_CACHE_ROOT"] = str(package_cache_root)
+    else:
+        package_cache_root = Path(env.get("PACKAGE_CACHE_ROOT") or config_dir / ".cache")
+        env.setdefault("PACKAGE_CACHE_ROOT", str(package_cache_root))
+    env.setdefault("PIP_CACHE_DIR", str(package_cache_root / "pip"))
+    env.setdefault("UV_CACHE_DIR", str(package_cache_root / "uv"))
     proxy = (request.proxy_url or "").strip()
     if proxy and include_moviepilot_proxy:
         for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):

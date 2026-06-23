@@ -14,6 +14,7 @@ from app.helper.package_installer import (
 def test_build_env_maps_proxy_and_cache(tmp_path, monkeypatch):
     monkeypatch.delenv("PIP_CACHE_DIR", raising=False)
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    monkeypatch.delenv("PACKAGE_CACHE_ROOT", raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://old.example:8080")
     request = PackageInstallRequest(
         requirements_file=tmp_path / "requirements.txt",
@@ -29,8 +30,26 @@ def test_build_env_maps_proxy_and_cache(tmp_path, monkeypatch):
     assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
     assert env["http_proxy"] == "http://proxy.example:7890"
     assert env["https_proxy"] == "http://proxy.example:7890"
+    assert env["PACKAGE_CACHE_ROOT"] == str(tmp_path / "config" / ".cache")
     assert env["PIP_CACHE_DIR"] == str(tmp_path / "config" / ".cache" / "pip")
     assert env["UV_CACHE_DIR"] == str(tmp_path / "config" / ".cache" / "uv")
+
+
+def test_build_env_uses_package_cache_root_and_preserves_tool_cache_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("PACKAGE_CACHE_ROOT", str(tmp_path / "custom-package-cache"))
+    monkeypatch.setenv("PIP_CACHE_DIR", "/custom/pip")
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    request = PackageInstallRequest(
+        requirements_file=tmp_path / "requirements.txt",
+        python_bin=Path("/venv/bin/python"),
+        config_dir=tmp_path / "config",
+    )
+
+    env = build_package_install_env(request)
+
+    assert env["PACKAGE_CACHE_ROOT"] == str(tmp_path / "custom-package-cache")
+    assert env["PIP_CACHE_DIR"] == "/custom/pip"
+    assert env["UV_CACHE_DIR"] == str(tmp_path / "custom-package-cache" / "uv")
 
 
 def test_build_strategies_prefers_uv_network_matrix_and_preserves_find_links(tmp_path):

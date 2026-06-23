@@ -1393,6 +1393,7 @@ class PluginHelper(metaclass=WeakSingleton):
             find_links_dirs=find_links_dirs or [],
             constraints_file=constraints_file,
             config_dir=settings.CONFIG_PATH,
+            package_cache_root=settings.PACKAGE_CACHE_PATH,
             pip_index_url=settings.PIP_PROXY or None,
             proxy_url=settings.PROXY_HOST or None,
             purpose=purpose,
@@ -1574,12 +1575,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         constraints_file if protected_packages else None
                     )
                     logger.error(f"[PIP] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}")
-                    if not repair_ok:
-                        return False, (
-                            f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
-                            f"{repair_message}"
-                        )
-                    if repair_message:
+                    if not repair_ok or repair_message:
                         return False, (
                             f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
                             f"{repair_message}"

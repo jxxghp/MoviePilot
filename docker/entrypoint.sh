@@ -27,10 +27,13 @@ export PATH="${VENV_PATH}/bin:$PATH"
 # 校正设置目录
 CONFIG_DIR="${CONFIG_DIR:-/config}"
 
-# pip/uv 包下载缓存随配置目录持久化，仅管理工具自己的缓存子目录。
-export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${CONFIG_DIR}/.cache/pip}"
-export UV_CACHE_DIR="${UV_CACHE_DIR:-${CONFIG_DIR}/.cache/uv}"
-mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+function apply_package_cache_env() {
+    PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
+    export PACKAGE_CACHE_ROOT
+    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/pip}"
+    export UV_CACHE_DIR="${UV_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/uv}"
+    mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+}
 
 function apply_package_proxy_env() {
     if [ -n "${PROXY_HOST}" ]; then
@@ -53,6 +56,7 @@ function load_config_from_app_env() {
     declare -A vars_and_default_values=(
         # update.sh
         ["PIP_PROXY"]=""
+        ["PACKAGE_CACHE_ROOT"]=""
         ["GITHUB_PROXY"]=""
         ["PROXY_HOST"]=""
         ["GITHUB_TOKEN"]=""
@@ -311,6 +315,7 @@ function ensure_backend_runtime_dependencies() {
 
 # 使用env配置
 load_config_from_app_env
+apply_package_cache_env
 
 # 一次性升级标记仅影响本次启动，避免把临时升级模式带入运行中的 Python 进程
 ONE_SHOT_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_update"

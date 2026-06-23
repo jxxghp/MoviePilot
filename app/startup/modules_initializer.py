@@ -84,7 +84,7 @@ def clear_package_tool_cache():
     days = settings.PACKAGE_CACHE_DAYS
     if days <= 0:
         return
-    tool_cache_root = settings.CONFIG_PATH / ".cache"
+    tool_cache_root = settings.PACKAGE_CACHE_PATH
     for child in ("pip", "uv"):
         cache_path = tool_cache_root / child
         try:

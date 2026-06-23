@@ -521,8 +521,10 @@ def redact_command(command: list[str]) -> list[str]:
 
 def build_package_install_env() -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("PIP_CACHE_DIR", str(CONFIG_DIR / ".cache" / "pip"))
-    env.setdefault("UV_CACHE_DIR", str(CONFIG_DIR / ".cache" / "uv"))
+    package_cache_root = env.get("PACKAGE_CACHE_ROOT", "").strip() or str(CONFIG_DIR / ".cache")
+    env.setdefault("PACKAGE_CACHE_ROOT", package_cache_root)
+    env.setdefault("PIP_CACHE_DIR", os.path.join(package_cache_root, "pip"))
+    env.setdefault("UV_CACHE_DIR", os.path.join(package_cache_root, "uv"))
 
     index_url = env.get("PIP_PROXY", "").strip()
     if index_url:

@@ -39,6 +39,7 @@ def test_clear_package_tool_cache_only_removes_pip_and_uv_old_files(tmp_path, mo
         os.utime(path, (old_time, old_time))
 
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "PACKAGE_CACHE_ROOT", None)
     monkeypatch.setattr(settings, "PACKAGE_CACHE_DAYS", 30)
 
     clear_package_tool_cache()
@@ -62,6 +63,7 @@ def test_clear_package_tool_cache_disabled_when_days_non_positive(tmp_path, monk
     os.utime(old_pip, (old_time, old_time))
 
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "PACKAGE_CACHE_ROOT", None)
     monkeypatch.setattr(settings, "PACKAGE_CACHE_DAYS", 0)
 
     clear_package_tool_cache()
@@ -83,12 +85,38 @@ def test_clear_package_tool_cache_isolates_subdir_errors(tmp_path, monkeypatch):
             raise OSError("pip cache locked")
 
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "PACKAGE_CACHE_ROOT", str(tmp_path / "custom-package-cache"))
     monkeypatch.setattr(settings, "PACKAGE_CACHE_DAYS", 30)
     monkeypatch.setattr("app.startup.modules_initializer.SystemUtils.clear", fake_clear)
 
     clear_package_tool_cache()
 
     assert calls == [("pip", 30), ("uv", 30)]
+
+
+def test_clear_package_tool_cache_uses_package_cache_root(tmp_path, monkeypatch):
+    """
+    PACKAGE_CACHE_ROOT 用作 pip/uv 清理根目录，不扩大到配置目录下其他缓存。
+    """
+    from app.startup.modules_initializer import clear_package_tool_cache
+
+    old_time = time.time() - 40 * 24 * 3600
+    package_cache_root = tmp_path / "custom-package-cache"
+    old_pip = package_cache_root / "pip" / "old.whl"
+    default_pip = tmp_path / ".cache" / "pip" / "old.whl"
+    for path in (old_pip, default_pip):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+        os.utime(path, (old_time, old_time))
+
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "PACKAGE_CACHE_ROOT", str(package_cache_root))
+    monkeypatch.setattr(settings, "PACKAGE_CACHE_DAYS", 30)
+
+    clear_package_tool_cache()
+
+    assert not old_pip.exists()
+    assert default_pip.exists()
 
 
 def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):

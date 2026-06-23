@@ -171,7 +171,9 @@ class ConfigModel(BaseModel):
     # 临时文件保留天数
     TEMP_FILE_DAYS: int = 3
     # pip/uv 包下载缓存保留天数
-    PACKAGE_CACHE_DAYS: int = 30
+    PACKAGE_CACHE_DAYS: int = 90
+    # pip/uv 包下载缓存根目录，留空时使用配置目录下的 .cache
+    PACKAGE_CACHE_ROOT: Optional[str] = None
     # 元数据识别缓存过期时间（小时），0为自动
     META_CACHE_EXPIRE: int = 0
 
@@ -943,6 +945,12 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     @property
     def CACHE_PATH(self):
         return self.CONFIG_PATH / "cache"
+
+    @property
+    def PACKAGE_CACHE_PATH(self):
+        if self.PACKAGE_CACHE_ROOT and self.PACKAGE_CACHE_ROOT.strip():
+            return Path(self.PACKAGE_CACHE_ROOT).expanduser()
+        return self.CONFIG_PATH / ".cache"
 
     @property
     def ROOT_PATH(self):

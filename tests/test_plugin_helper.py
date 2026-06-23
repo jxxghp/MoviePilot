@@ -1039,6 +1039,7 @@ class TestPluginHelper:
 
             with patch("app.helper.package_installer._find_uv", return_value=uv_bin), \
                     patch("app.helper.plugin.settings.CONFIG_DIR", str(root / "config")), \
+                    patch("app.helper.plugin.settings.PACKAGE_CACHE_ROOT", str(root / "custom-package-cache")), \
                     patch("app.helper.plugin.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \
                     patch("app.helper.plugin.settings.PROXY_HOST", "http://proxy.example:7890"), \
                     patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
@@ -1050,8 +1051,9 @@ class TestPluginHelper:
         command, env, safe_command = seen[0]
         assert command[:3] == [str(uv_bin), "pip", "install"]
         assert "--proxy" not in command
-        assert env["PIP_CACHE_DIR"] == str(root / "config" / ".cache" / "pip")
-        assert env["UV_CACHE_DIR"] == str(root / "config" / ".cache" / "uv")
+        assert env["PACKAGE_CACHE_ROOT"] == str(root / "custom-package-cache")
+        assert env["PIP_CACHE_DIR"] == str(root / "custom-package-cache" / "pip")
+        assert env["UV_CACHE_DIR"] == str(root / "custom-package-cache" / "uv")
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 

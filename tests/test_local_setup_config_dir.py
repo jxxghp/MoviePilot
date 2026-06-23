@@ -99,6 +99,7 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                 {
                     "PROXY_HOST": "http://proxy.example:7890",
                     "PIP_PROXY": "https://user:pass@mirror.example/simple",
+                    "PACKAGE_CACHE_ROOT": str(Path(temp_dir) / "custom-package-cache"),
                 },
                 clear=False,
         ):
@@ -106,10 +107,26 @@ class LocalSetupConfigDirTests(unittest.TestCase):
             env = module.build_package_install_env()
 
         self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
-        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / ".cache" / "pip"))
-        self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / ".cache" / "uv"))
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
+        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "pip"))
+        self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
         self.assertEqual(env["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
         self.assertEqual(env["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
+
+    def test_package_install_env_defaults_cache_to_config_dir(self):
+        module = load_local_setup_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+                module.os.environ,
+                {},
+                clear=True,
+        ):
+            module.CONFIG_DIR = Path(temp_dir)
+            env = module.build_package_install_env()
+
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / ".cache"))
+        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / ".cache" / "pip"))
+        self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / ".cache" / "uv"))
 
     def test_package_install_env_preserves_explicit_cache_dirs(self):
         module = load_local_setup_module()
@@ -119,12 +136,14 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                 {
                     "PIP_CACHE_DIR": "/custom/pip-cache",
                     "UV_CACHE_DIR": "/custom/uv-cache",
+                    "PACKAGE_CACHE_ROOT": "/custom/custom-package-cache",
                 },
                 clear=False,
         ):
             module.CONFIG_DIR = Path(temp_dir)
             env = module.build_package_install_env()
 
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], "/custom/custom-package-cache")
         self.assertEqual(env["PIP_CACHE_DIR"], "/custom/pip-cache")
         self.assertEqual(env["UV_CACHE_DIR"], "/custom/uv-cache")
 
@@ -192,6 +211,7 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                 {
                     "PROXY_HOST": "http://proxy.example:7890",
                     "PIP_PROXY": "https://user:pass@mirror.example/simple",
+                    "PACKAGE_CACHE_ROOT": str(Path(temp_dir) / "custom-package-cache"),
                 },
                 clear=False,
         ):
@@ -215,8 +235,9 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         self.assertEqual(env["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
         self.assertEqual(env["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
         self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
-        self.assertTrue(env["PIP_CACHE_DIR"].endswith("/.cache/pip"))
-        self.assertTrue(env["UV_CACHE_DIR"].endswith("/.cache/uv"))
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
+        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "pip"))
+        self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
         self.assertNotIn("user:pass", " ".join(safe_command or command))
 
     def test_windows_pip_upgrade_uses_package_env(self):
@@ -228,6 +249,7 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                 {
                     "PROXY_HOST": "http://proxy.example:7890",
                     "PIP_PROXY": "https://user:pass@mirror.example/simple",
+                    "PACKAGE_CACHE_ROOT": str(Path(temp_dir) / "custom-package-cache"),
                 },
                 clear=False,
         ):
@@ -256,8 +278,9 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         self.assertEqual(pip_upgrade[1]["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
         self.assertEqual(pip_upgrade[1]["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
         self.assertEqual(pip_upgrade[1]["HTTPS_PROXY"], "http://proxy.example:7890")
-        self.assertTrue(pip_upgrade[1]["PIP_CACHE_DIR"].endswith("/.cache/pip"))
-        self.assertTrue(pip_upgrade[1]["UV_CACHE_DIR"].endswith("/.cache/uv"))
+        self.assertEqual(pip_upgrade[1]["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
+        self.assertEqual(pip_upgrade[1]["PIP_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "pip"))
+        self.assertEqual(pip_upgrade[1]["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
         self.assertNotIn("user:pass", " ".join(pip_upgrade[2] or pip_upgrade[0]))
 
     def test_install_deps_uses_package_env_for_project_requirements(self):
