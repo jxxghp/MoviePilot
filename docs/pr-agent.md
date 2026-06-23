@@ -15,12 +15,11 @@
 
 `.github/workflows/pr-agent.yml` 监听：
 
-- `pull_request`：PR 打开、重新打开、标记 ready、请求 review、推送新 commit 时自动运行。
+- `pull_request_target`：PR 打开、重新打开、标记 ready、请求 review、推送新 commit 时自动运行。
 - `issue_comment`：允许身份在 PR 评论里写允许的命令时手动运行。
 
-`pull_request` 自动运行仅处理同仓 PR。fork PR 不自动注入仓库 secret 和写权限，允许身份可以在 PR
-评论中使用允许的命令触发受控审查。允许身份包括 `OWNER`、`MEMBER`、`COLLABORATOR`、
-`CONTRIBUTOR` 和 `FIRST_TIME_CONTRIBUTOR`。
+PR 事件会自动执行受控审查，包含同仓 PR 和 fork PR。允许身份也可以在 PR 评论中使用允许的命令触发受控审查。
+允许身份包括 `OWNER`、`MEMBER`、`COLLABORATOR`、`CONTRIBUTOR` 和 `FIRST_TIME_CONTRIBUTOR`。
 
 ## Workflow 权限
 
@@ -102,7 +101,9 @@ PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 的 `env` 中维护。
 PR-Agent Action 会读取 `OPENAI_KEY`，因此依赖的 Docker 镜像在 workflow 中固定版本号和 digest，
 不使用浮动的 `latest` 或仅依赖可变 tag。
 
-当前使用 `pull_request` 而不是 `pull_request_target`。这样更适合避免 fork PR 直接获得仓库 secrets，但 fork PR 自动运行通常因为拿不到 `OPENAI_KEY` 而无法完整执行。`issue_comment` 属于 base repo 事件，因此评论命令只允许指定身份触发。若以后要支持 fork PR 自动审查，需要重新评估 `pull_request_target` 的安全模型，不能 checkout 或执行来自 fork 的代码。
+当前使用 `pull_request_target` 支持 fork PR 自动审查，但 workflow 不 checkout 或执行来自 fork 的代码，
+只运行固定 digest 的 PR-Agent 容器并通过 GitHub API 读取 PR diff。`issue_comment` 属于 base repo
+事件，因此评论命令只允许指定身份触发。
 
 API Key 建议使用低额度、可轮换的专用 key。`OPENAI_API_BASE` 本身通常不是敏感信息，但继续按 secret 管理可以避免暴露服务商信息。
 

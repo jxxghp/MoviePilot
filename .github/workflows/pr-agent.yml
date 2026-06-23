@@ -1,9 +1,9 @@
 name: PR Agent
 
 on:
-  pull_request:
-    # PR-Agent 读取 PR diff，并写入 Review 评论或更新 PR 描述。
-    # synchronize 用于在 PR 推送新 commit 后刷新审查结果。
+  pull_request_target:
+    # PR-Agent 通过 base repo 上下文读取 PR diff 并发布 Review，不 checkout 或执行 PR 分支代码。
+    # pull_request_target 允许 fork PR 使用仓库 secrets，因此 workflow 只运行固定 digest 的 PR-Agent 容器。
     types:
       - opened
       - reopened
@@ -28,14 +28,11 @@ permissions:
 jobs:
   pr-agent:
     name: PR-Agent review and describe
-    # 同仓 PR 可自动处理；fork PR 由允许身份在 PR 下用评论命令触发，避免任意评论消耗模型配额。
+    # PR 事件自动处理；评论命令仅允许指定身份在 PR 下触发，避免任意评论消耗模型配额。
     if: >-
       github.event.sender.type != 'Bot' &&
       (
-        (
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        ) ||
+        github.event_name == 'pull_request_target' ||
         (
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
@@ -80,7 +77,7 @@ jobs:
           config.ignore_pr_title: '["^\\[Auto\\]", "^Auto"]'
           config.ignore_pr_labels: '["skip pr-agent"]'
 
-          # pull_request 事件默认自动执行 /review 和 /describe；/improve 保持手动触发。
+          # pull_request_target 事件默认自动执行 /review 和 /describe；/improve 保持手动触发。
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "false"
