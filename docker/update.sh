@@ -36,12 +36,17 @@ function apply_package_cache_env() {
 
 apply_package_cache_env
 
-function apply_package_proxy_env() {
+PIP_ENV=()
+
+function set_package_proxy_env() {
+    PIP_ENV=()
     if [[ -n "${PROXY_HOST}" ]]; then
-        export HTTP_PROXY="${PROXY_HOST}"
-        export HTTPS_PROXY="${PROXY_HOST}"
-        export http_proxy="${PROXY_HOST}"
-        export https_proxy="${PROXY_HOST}"
+        PIP_ENV=(
+            "HTTP_PROXY=${PROXY_HOST}"
+            "HTTPS_PROXY=${PROXY_HOST}"
+            "http_proxy=${PROXY_HOST}"
+            "https_proxy=${PROXY_HOST}"
+        )
     fi
 }
 
@@ -90,13 +95,13 @@ function install_backend_and_download_resources() {
             # 复制新的requirements.in
             cp "${TMP_PATH}/App/requirements.in" /app/requirements.in
             # 重新编译依赖
-            if ! ${VENV_PATH}/bin/pip-compile /app/requirements.in -o /app/requirements.txt; then
+            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip-compile /app/requirements.in -o /app/requirements.txt; then
                 ERROR "依赖编译失败，恢复原依赖"
                 cp /tmp/requirements.txt.backup /app/requirements.txt
                 return 1
             fi
             # 安装新依赖
-            if ! ${VENV_PATH}/bin/pip install ${PIP_OPTIONS} -r /app/requirements.txt; then
+            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip install ${PIP_OPTIONS} -r /app/requirements.txt; then
                 ERROR "依赖安装失败，恢复原依赖"
                 cp /tmp/requirements.txt.backup /app/requirements.txt
                 return 1
@@ -206,7 +211,7 @@ function test_connectivity_pip() {
             if [[ $? -eq 0 ]]; then
                 PIP_OPTIONS="-i ${PIP_PROXY}"
                 PIP_LOG="镜像代理模式"
-                apply_package_proxy_env
+                set_package_proxy_env
                 return 0
             fi
         fi
@@ -218,13 +223,14 @@ function test_connectivity_pip() {
                 ${VENV_PATH}/bin/pip install pip-hello-world > /dev/null 2>&1; then
                 PIP_OPTIONS=""
                 PIP_LOG="全局代理模式"
-                apply_package_proxy_env
+                set_package_proxy_env
                 return 0
             fi
         fi
         return 1
         ;;
     2)
+        PIP_ENV=()
         PIP_OPTIONS=""
         PIP_LOG="不使用代理"
         return 0

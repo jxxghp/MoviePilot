@@ -56,7 +56,7 @@ export CONFIG_DIR="${TMP_DIR}/config"
 export MOVIEPILOT_AUTO_UPDATE=false
 export PIP_PROXY="https://mirror.example/simple"
 export PROXY_HOST="http://proxy.example:7890"
-unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR
+unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 source "${UPDATE_FUNCS}" >/dev/null
 
 : > "${MP_FAKE_PIP_LOG}"
@@ -74,6 +74,11 @@ if [[ "${PIP_OPTIONS}" == *"--proxy"* ]]; then
   echo "PIP_OPTIONS must not contain --proxy: ${PIP_OPTIONS}" >&2
   exit 1
 fi
+if [[ -n "${HTTP_PROXY:-}" || -n "${HTTPS_PROXY:-}" || -n "${http_proxy:-}" || -n "${https_proxy:-}" ]]; then
+  echo "pip connectivity must not leak PROXY_HOST into parent proxy env" >&2
+  env | grep -E '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)=' >&2 || true
+  exit 1
+fi
 assert_not_contains "user:pass" "${MP_FAKE_PIP_LOG}"
 
 : > "${MP_FAKE_PIP_LOG}"
@@ -85,6 +90,33 @@ if [[ -n "${PIP_OPTIONS}" ]]; then
   echo "proxy branch must keep PIP_OPTIONS empty: ${PIP_OPTIONS}" >&2
   exit 1
 fi
+if [[ -n "${HTTP_PROXY:-}" || -n "${HTTPS_PROXY:-}" || -n "${http_proxy:-}" || -n "${https_proxy:-}" ]]; then
+  echo "proxy connectivity must not leak PROXY_HOST into parent proxy env" >&2
+  env | grep -E '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)=' >&2 || true
+  exit 1
+fi
+
+MP_FAKE_PIP_LOG="${TMP_DIR}/update-explicit-standard-proxy.log"
+export MP_FAKE_PIP_LOG
+(
+  export VENV_PATH="${TMP_DIR}/venv"
+  export CONFIG_DIR="${TMP_DIR}/config"
+  export MOVIEPILOT_AUTO_UPDATE=false
+  export PIP_PROXY=""
+  export PROXY_HOST="http://proxy.example:7890"
+  export HTTP_PROXY="http://explicit.example:8080"
+  export HTTPS_PROXY="http://explicit.example:8080"
+  export http_proxy="http://explicit.example:8080"
+  export https_proxy="http://explicit.example:8080"
+  source "${UPDATE_FUNCS}" >/dev/null
+  test_connectivity_pip 1
+  if [[ "${HTTP_PROXY}" != "http://explicit.example:8080" || "${HTTPS_PROXY}" != "http://explicit.example:8080" ]]; then
+    echo "explicit standard proxy env must be preserved" >&2
+    env | grep -E '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)=' >&2 || true
+    exit 1
+  fi
+)
+assert_contains "HTTPS_PROXY=http://proxy.example:7890" "${MP_FAKE_PIP_LOG}"
 
 MP_FAKE_PIP_LOG="${TMP_DIR}/update-explicit-cache.log"
 export MP_FAKE_PIP_LOG
@@ -157,12 +189,17 @@ export MP_FAKE_PIP_LOG MP_FAKE_PYTHON_COUNT
 (
   export VENV_PATH="${TMP_DIR}/venv"
   export CONFIG_DIR="${TMP_DIR}/config"
-  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR
+  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
   export PIP_PROXY=""
   export PROXY_HOST="http://proxy.example:7890"
   source "${ENTRYPOINT_FUNCS}"
   apply_package_cache_env
   ensure_backend_runtime_dependencies
+  if [[ -n "${HTTP_PROXY:-}" || -n "${HTTPS_PROXY:-}" || -n "${http_proxy:-}" || -n "${https_proxy:-}" ]]; then
+    echo "dependency recovery must not leak PROXY_HOST into parent proxy env" >&2
+    env | grep -E '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)=' >&2 || true
+    exit 1
+  fi
 ) >/dev/null
 
 assert_contains "argv=install -r /app/requirements.txt" "${MP_FAKE_PIP_LOG}"
@@ -171,6 +208,31 @@ assert_contains "PACKAGE_CACHE_ROOT=${TMP_DIR}/config/.cache" "${MP_FAKE_PIP_LOG
 assert_contains "PIP_CACHE_DIR=${TMP_DIR}/config/.cache/pip" "${MP_FAKE_PIP_LOG}"
 assert_contains "UV_CACHE_DIR=${TMP_DIR}/config/.cache/uv" "${MP_FAKE_PIP_LOG}"
 assert_not_contains "--proxy" "${MP_FAKE_PIP_LOG}"
+
+MP_FAKE_PIP_LOG="${TMP_DIR}/entrypoint-explicit-standard-proxy.log"
+MP_FAKE_PYTHON_COUNT="${TMP_DIR}/python-count-explicit-standard-proxy"
+export MP_FAKE_PIP_LOG MP_FAKE_PYTHON_COUNT
+(
+  export VENV_PATH="${TMP_DIR}/venv"
+  export CONFIG_DIR="${TMP_DIR}/config"
+  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR
+  export PIP_PROXY=""
+  export PROXY_HOST="http://proxy.example:7890"
+  export HTTP_PROXY="http://explicit.example:8080"
+  export HTTPS_PROXY="http://explicit.example:8080"
+  export http_proxy="http://explicit.example:8080"
+  export https_proxy="http://explicit.example:8080"
+  source "${ENTRYPOINT_FUNCS}"
+  apply_package_cache_env
+  ensure_backend_runtime_dependencies
+  if [[ "${HTTP_PROXY}" != "http://explicit.example:8080" || "${HTTPS_PROXY}" != "http://explicit.example:8080" ]]; then
+    echo "dependency recovery must preserve explicit standard proxy env" >&2
+    env | grep -E '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)=' >&2 || true
+    exit 1
+  fi
+) >/dev/null
+
+assert_contains "HTTPS_PROXY=http://proxy.example:7890" "${MP_FAKE_PIP_LOG}"
 
 MP_FAKE_PIP_LOG="${TMP_DIR}/entrypoint-app-env.log"
 MP_FAKE_PYTHON_COUNT="${TMP_DIR}/python-count-app-env"

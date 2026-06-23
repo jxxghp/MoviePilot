@@ -35,12 +35,15 @@ function apply_package_cache_env() {
     mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
 }
 
-function apply_package_proxy_env() {
+function run_package_command() {
     if [ -n "${PROXY_HOST}" ]; then
-        export HTTP_PROXY="${PROXY_HOST}"
-        export HTTPS_PROXY="${PROXY_HOST}"
-        export http_proxy="${PROXY_HOST}"
-        export https_proxy="${PROXY_HOST}"
+        HTTP_PROXY="${PROXY_HOST}" \
+            HTTPS_PROXY="${PROXY_HOST}" \
+            http_proxy="${PROXY_HOST}" \
+            https_proxy="${PROXY_HOST}" \
+            "$@"
+    else
+        "$@"
     fi
 }
 
@@ -294,13 +297,12 @@ function ensure_backend_runtime_dependencies() {
     fi
 
     WARN "→ 检测到后端核心依赖异常，开始尝试恢复主程序依赖..."
-    apply_package_proxy_env
     local -a pip_cmd=("${VENV_PATH}/bin/pip" "install" "-r" "/app/requirements.txt")
     if [ -n "${PIP_PROXY}" ]; then
         pip_cmd+=("-i" "${PIP_PROXY}")
     fi
 
-    if ! "${pip_cmd[@]}" > /dev/stdout 2> /dev/stderr; then
+    if ! run_package_command "${pip_cmd[@]}" > /dev/stdout 2> /dev/stderr; then
         ERROR "→ 自动恢复主程序依赖失败，后端无法启动。"
         diagnostic_keepalive 1
     fi
