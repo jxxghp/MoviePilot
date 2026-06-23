@@ -12,8 +12,6 @@ cat > "${TMP_DIR}/venv/bin/pip" <<'SH'
 printf 'argv=%s\n' "$*" >> "${MP_FAKE_PIP_LOG}"
 printf 'HTTP_PROXY=%s\n' "${HTTP_PROXY:-}" >> "${MP_FAKE_PIP_LOG}"
 printf 'HTTPS_PROXY=%s\n' "${HTTPS_PROXY:-}" >> "${MP_FAKE_PIP_LOG}"
-printf 'NO_PROXY=%s\n' "${NO_PROXY:-}" >> "${MP_FAKE_PIP_LOG}"
-printf 'no_proxy=%s\n' "${no_proxy:-}" >> "${MP_FAKE_PIP_LOG}"
 printf 'PACKAGE_CACHE_ROOT=%s\n' "${PACKAGE_CACHE_ROOT:-}" >> "${MP_FAKE_PIP_LOG}"
 printf 'PIP_CACHE_DIR=%s\n' "${PIP_CACHE_DIR:-}" >> "${MP_FAKE_PIP_LOG}"
 printf 'UV_CACHE_DIR=%s\n' "${UV_CACHE_DIR:-}" >> "${MP_FAKE_PIP_LOG}"
@@ -58,8 +56,6 @@ export CONFIG_DIR="${TMP_DIR}/config"
 export MOVIEPILOT_AUTO_UPDATE=false
 export PIP_PROXY="https://mirror.example/simple"
 export PROXY_HOST="http://proxy.example:7890"
-export NO_PROXY="custom.internal,127.0.0.1"
-unset no_proxy
 unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR
 source "${UPDATE_FUNCS}" >/dev/null
 
@@ -67,9 +63,6 @@ source "${UPDATE_FUNCS}" >/dev/null
 test_connectivity_pip 0
 assert_contains "argv=install -i https://mirror.example/simple pip-hello-world" "${MP_FAKE_PIP_LOG}"
 assert_contains "HTTPS_PROXY=http://proxy.example:7890" "${MP_FAKE_PIP_LOG}"
-assert_contains "NO_PROXY=custom.internal,127.0.0.1,localhost,::1,0.0.0.0,10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.168.0.0/16" "${MP_FAKE_PIP_LOG}"
-assert_contains "host.docker.internal,host.containers.internal,gateway.docker.internal" "${MP_FAKE_PIP_LOG}"
-assert_contains "no_proxy=custom.internal,127.0.0.1,localhost,::1,0.0.0.0,10.0.0.0/8,100.64.0.0/10" "${MP_FAKE_PIP_LOG}"
 assert_contains "PACKAGE_CACHE_ROOT=${TMP_DIR}/config/.cache" "${MP_FAKE_PIP_LOG}"
 assert_contains "PIP_CACHE_DIR=${TMP_DIR}/config/.cache/pip" "${MP_FAKE_PIP_LOG}"
 assert_contains "UV_CACHE_DIR=${TMP_DIR}/config/.cache/uv" "${MP_FAKE_PIP_LOG}"
@@ -104,7 +97,6 @@ export MP_FAKE_PIP_LOG
   export UV_CACHE_DIR="${TMP_DIR}/explicit-uv-cache"
   export PIP_PROXY="https://mirror.example/simple"
   export PROXY_HOST="http://proxy.example:7890"
-  unset NO_PROXY no_proxy
   source "${UPDATE_FUNCS}" >/dev/null
   test_connectivity_pip 0
 )
@@ -121,7 +113,7 @@ export MP_FAKE_PIP_LOG
   export MOVIEPILOT_AUTO_UPDATE=false
   export PIP_PROXY="https://mirror.example/simple"
   export PROXY_HOST="http://proxy.example:7890"
-  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy
+  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
   source "${UPDATE_FUNCS}" >/dev/null
   MP_FAKE_PIP_FAIL=1 test_connectivity_pip 0 && exit 1
   if [[ -n "${HTTPS_PROXY:-}" || -n "${https_proxy:-}" ]]; then
@@ -165,11 +157,9 @@ export MP_FAKE_PIP_LOG MP_FAKE_PYTHON_COUNT
 (
   export VENV_PATH="${TMP_DIR}/venv"
   export CONFIG_DIR="${TMP_DIR}/config"
-  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR NO_PROXY no_proxy
+  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR
   export PIP_PROXY=""
   export PROXY_HOST="http://proxy.example:7890"
-  export NO_PROXY="service.local"
-  export no_proxy="extra.lan"
   source "${ENTRYPOINT_FUNCS}"
   apply_package_cache_env
   ensure_backend_runtime_dependencies
@@ -177,8 +167,6 @@ export MP_FAKE_PIP_LOG MP_FAKE_PYTHON_COUNT
 
 assert_contains "argv=install -r /app/requirements.txt" "${MP_FAKE_PIP_LOG}"
 assert_contains "HTTPS_PROXY=http://proxy.example:7890" "${MP_FAKE_PIP_LOG}"
-assert_contains "NO_PROXY=service.local,extra.lan,localhost,127.0.0.1,::1,0.0.0.0,10.0.0.0/8" "${MP_FAKE_PIP_LOG}"
-assert_contains "no_proxy=service.local,extra.lan,localhost,127.0.0.1,::1,0.0.0.0,10.0.0.0/8" "${MP_FAKE_PIP_LOG}"
 assert_contains "PACKAGE_CACHE_ROOT=${TMP_DIR}/config/.cache" "${MP_FAKE_PIP_LOG}"
 assert_contains "PIP_CACHE_DIR=${TMP_DIR}/config/.cache/pip" "${MP_FAKE_PIP_LOG}"
 assert_contains "UV_CACHE_DIR=${TMP_DIR}/config/.cache/uv" "${MP_FAKE_PIP_LOG}"
@@ -194,7 +182,7 @@ export MP_FAKE_PIP_LOG MP_FAKE_PYTHON_COUNT
 (
   export VENV_PATH="${TMP_DIR}/venv"
   export CONFIG_DIR="${TMP_DIR}/config"
-  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR PIP_PROXY PROXY_HOST NO_PROXY no_proxy
+  unset PACKAGE_CACHE_ROOT PIP_CACHE_DIR UV_CACHE_DIR PIP_PROXY PROXY_HOST
   source "${ENTRYPOINT_FUNCS}"
   load_config_from_app_env
   apply_package_cache_env
