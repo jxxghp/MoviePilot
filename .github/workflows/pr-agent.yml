@@ -1,0 +1,126 @@
+name: PR Agent
+
+on:
+  pull_request:
+    # PR-Agent 读取 PR diff，并写入 Review 评论或更新 PR 描述。
+    # synchronize 用于在 PR 推送新 commit 后刷新审查结果。
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - review_requested
+      - synchronize
+  issue_comment:
+    # 手动命令如 "/review"、"/describe"、"/improve" 和 "/ask ..." 只在 PR 评论中有意义。
+    # issue_comment 同时覆盖普通 issue，因此 job 里还会再判断是否属于 PR。
+    types:
+      - created
+      - edited
+
+permissions:
+  # 读取仓库内容和 PR diff。
+  contents: read
+  # 更新 PR 描述、发布 PR Review 或修改 PR 相关元数据。
+  pull-requests: write
+  # PR 评论在 GitHub API 中属于 issue comments，手动命令和总结评论需要该权限。
+  issues: write
+
+jobs:
+  pr-agent:
+    name: PR-Agent review and describe
+    # 同仓 PR 可自动处理；fork PR 由允许身份在 PR 下用评论命令触发，避免任意评论消耗模型配额。
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      (
+        (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        ) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]'), github.event.comment.author_association) &&
+          (
+            github.event.comment.body == '/review' ||
+            startsWith(github.event.comment.body, '/review ') ||
+            github.event.comment.body == '/describe' ||
+            startsWith(github.event.comment.body, '/describe ') ||
+            github.event.comment.body == '/improve' ||
+            startsWith(github.event.comment.body, '/improve ') ||
+            github.event.comment.body == '/ask' ||
+            startsWith(github.event.comment.body, '/ask ')
+          )
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Run PR-Agent
+        id: pragent
+        # 使用版本号加 digest 固定容器构建，避免 tag 被重推后改变运行内容。
+        uses: docker://pragent/pr-agent:0.37.0-github_action@sha256:4ec7bac814050a1bc8c96ab2fab6b7b0f65df0049a5ec43f3fee1a0b551c28ca
+        env:
+          # PR-Agent 使用该 token 读取 PR 元数据并发布评论。
+          GITHUB_TOKEN: ${{ github.token }}
+
+          # 仓库设置中添加的 Secret：Settings -> Secrets and variables -> Actions。
+          # 该 key 只传给 PR-Agent 运行时，不写入仓库。
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+
+          # 仓库设置中添加的 Secret。OpenAI 兼容服务通常需要填写以 "/v1" 结尾的 API 根地址。
+          OPENAI.API_BASE: ${{ secrets.OPENAI_API_BASE }}
+
+          # 模型、输出语言和大 diff 处理策略。
+          config.model: "gpt-5.5"
+          config.fallback_models: '["gpt-5.4"]'
+          config.reasoning_effort: "xhigh"
+          config.ai_timeout: "900"
+          config.response_language: "zh-CN"
+          config.large_patch_policy: "clip"
+          config.ignore_pr_title: '["^\\[Auto\\]", "^Auto"]'
+          config.ignore_pr_labels: '["skip pr-agent"]'
+
+          # pull_request 事件默认自动执行 /review 和 /describe；/improve 保持手动触发。
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "false"
+
+          # 允许触发自动工具的 PR 动作。包含 synchronize，便于新 commit 推送后刷新结果。
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "review_requested", "synchronize"]'
+
+          # 保留 action outputs，便于后续 workflow 编排或排查。
+          github_action_config.enable_output: "true"
+
+          # /describe 行为控制；与自动触发配置放在同一层，避免使用默认图表和标签策略。
+          pr_description.generate_ai_title: "false"
+          pr_description.publish_labels: "false"
+          pr_description.enable_pr_diagram: "false"
+          pr_description.collapsible_file_list: "adaptive"
+          pr_description.add_original_user_description: "true"
+
+          # /review 输出策略，聚焦维护者需要处理的风险和缺口。
+          pr_reviewer.extra_instructions: |
+            请用中文输出。
+            优先指出 P0/P1 风险，避免纠结纯格式问题。
+            重点检查安全、权限、状态一致性、异步/缓存、副作用和测试缺口。
+          pr_reviewer.num_max_findings: "5"
+          pr_reviewer.persistent_comment: "true"
+          pr_reviewer.publish_output_no_suggestions: "true"
+          pr_reviewer.require_tests_review: "true"
+          pr_reviewer.require_security_review: "true"
+          pr_reviewer.require_estimate_effort_to_review: "true"
+          pr_reviewer.require_can_be_split_review: "true"
+          pr_reviewer.require_todo_scan: "false"
+          pr_reviewer.enable_review_labels_effort: "false"
+          pr_reviewer.enable_review_labels_security: "true"
+
+          # /improve 和 /ask 的手动命令策略。
+          pr_code_suggestions.focus_only_on_problems: "true"
+          pr_code_suggestions.suggestions_score_threshold: "7"
+          pr_code_suggestions.commitable_code_suggestions: "false"
+          pr_questions.use_conversation_history: "true"
+
+          # 可选成本和噪音控制：
+          # github_action_config.auto_improve: "true"
+          # config.verbosity_level: "1"
+          # pr_reviewer.num_max_findings: "3"
