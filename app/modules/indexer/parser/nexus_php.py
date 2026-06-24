@@ -284,7 +284,8 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             # 加入日期
             join_at_text = html.xpath(
                 '//tr/td[text()="加入日期" or text()="注册日期" or *[text()="加入日期"]]/following-sibling::td[1]//text()'
-                '|//div/b[text()="加入日期"]/../text()')
+                '|//div/b[text()="加入日期"]/../text()'
+                '|//*[@id="outer"]/table/tr/td/div/div[1]/div[2]/div[3]/span[1]/span/@title')
             if join_at_text:
                 self.join_at = StringUtils.unify_datetime_str(join_at_text[0].split(' (')[0].strip())
 
