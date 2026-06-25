@@ -372,6 +372,25 @@ class SubscribeChainTest(TestCase):
             media_info=SimpleNamespace(type=MediaType.TV, tmdb_id=1, douban_id=None),
         )
 
+    def test_default_kwargs_respects_explicit_zero_best_version(self):
+        """显式关闭洗版时必须保留 0，仅未传值才应用默认订阅规则。"""
+
+        def _default_config(_mtype, key):
+            return 1 if key in {"best_version", "best_version_full"} else None
+
+        with patch.object(SubscribeChain, "_SubscribeChain__get_default_subscribe_config", side_effect=_default_config):
+            explicit = SubscribeChain()._SubscribeChain__get_default_kwargs(
+                MediaType.TV,
+                best_version=0,
+                best_version_full=0,
+            )
+            omitted = SubscribeChain()._SubscribeChain__get_default_kwargs(MediaType.TV)
+
+        self.assertEqual(explicit["best_version"], 0)
+        self.assertEqual(explicit["best_version_full"], 0)
+        self.assertEqual(omitted["best_version"], 1)
+        self.assertEqual(omitted["best_version_full"], 1)
+
     def test_format_subscribe_progress_preserves_special_season_zero(self):
         """订阅列表展示必须把 S0 当作合法季号，而不是回退到第 1 季。"""
         subscribe = self._build_subscribe(season=0, total_episode=5, lack_episode=2)

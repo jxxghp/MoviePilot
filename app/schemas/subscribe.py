@@ -62,9 +62,9 @@ class Subscribe(BaseModel):
     # 下载器
     downloader: Optional[str] = None
     # 是否洗版
-    best_version: Optional[int] = 0
+    best_version: Optional[int] = None
     # 是否只洗全集整包
-    best_version_full: Optional[int] = 0
+    best_version_full: Optional[int] = None
     # 当前优先级
     current_priority: Optional[int] = None
     # 洗版时已下载剧集的优先级状态

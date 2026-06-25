@@ -582,8 +582,8 @@ class SubscribeChain(ChainBase):
                 "include") else kwargs.get("include"),
             'exclude': self.__get_default_subscribe_config(mtype, "exclude") if not kwargs.get(
                 "exclude") else kwargs.get("exclude"),
-            'best_version': self.__get_default_subscribe_config(mtype, "best_version") if not kwargs.get(
-                "best_version") else kwargs.get("best_version"),
+            'best_version': self.__get_default_subscribe_config(mtype, "best_version")
+            if kwargs.get("best_version") is None else kwargs.get("best_version"),
             'best_version_full': self.__get_default_subscribe_config(mtype, "best_version_full")
             if kwargs.get("best_version_full") is None else kwargs.get("best_version_full"),
             'search_imdbid': self.__get_default_subscribe_config(mtype, "search_imdbid") if not kwargs.get(
