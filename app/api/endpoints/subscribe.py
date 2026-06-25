@@ -19,6 +19,7 @@ from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user_async
 from app.helper.server import MoviePilotServerHelper
+from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas.types import MediaType, EventType, SystemConfigKey
 
@@ -371,10 +372,13 @@ async def delete_subscribe_by_mediaid(
         await db.rollback()
         raise
     for subscribe_id, subscribe_info in delete_events:
-        await eventmanager.async_send_event(
-            EventType.SubscribeDeleted,
-            {"subscribe_id": subscribe_id, "subscribe_info": subscribe_info},
-        )
+        try:
+            await eventmanager.async_send_event(
+                EventType.SubscribeDeleted,
+                {"subscribe_id": subscribe_id, "subscribe_info": subscribe_info},
+            )
+        except Exception as err:
+            logger.error(f"发送订阅删除事件失败：{subscribe_id} - {err}", exc_info=True)
     return schemas.Response(success=True)
 
 
