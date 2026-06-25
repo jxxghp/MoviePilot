@@ -770,6 +770,112 @@ class RequestUtils:
             return fallback_encoding or "utf-8"
 
     @staticmethod
+    def detect_xml_declared_encoding(raw_data: bytes) -> Optional[str]:
+        """
+        从 XML 声明中读取字符集，适用于 RSS/Atom 等 XML 响应的 bytes 级解码。
+        """
+        if not raw_data:
+            return None
+        xml_head = raw_data[:512].decode("ascii", errors="ignore")
+        match = re.search(
+            r"^\s*(?:\ufeff)?<\?xml[^>]*encoding\s*=\s*[\"']([^\"']+)[\"']",
+            xml_head,
+            re.IGNORECASE,
+        )
+        return match.group(1).strip() if match else None
+
+    @staticmethod
+    def is_low_confidence_http_encoding(encoding: Optional[str]) -> bool:
+        """
+        判断 HTTP 客户端默认编码是否低可信，避免 latin1 类默认值吞掉 UTF-8 内容。
+        """
+        if not encoding:
+            return False
+        normalized = encoding.strip().lower().replace("_", "-")
+        return normalized in {"iso-8859-1", "latin-1", "latin1"}
+
+    @staticmethod
+    def get_decoded_xml_content(
+        response: Response,
+        performance_mode: bool = False,
+        confidence_threshold: float = 0.8,
+    ) -> str:
+        """
+        获取 XML 响应的解码文本内容，优先尊重 XML 声明并避免低可信 HTTP 默认编码。
+
+        :param response: HTTP 响应对象
+        :param performance_mode: 是否优先使用轻量规则，默认为 False (兼容模式)
+        :param confidence_threshold: chardet 检测置信度阈值，默认为 0.8
+        :return: 解码后的 XML 文本
+        """
+        if not response:
+            return ""
+        raw_data = getattr(response, "content", None)
+        if not raw_data:
+            return getattr(response, "text", "") or ""
+
+        def _try_decode(encodings):
+            seen_encodings = set()
+            for encoding in encodings:
+                if not encoding:
+                    continue
+                normalized = str(encoding).strip()
+                if not normalized or normalized.lower() in seen_encodings:
+                    continue
+                seen_encodings.add(normalized.lower())
+                try:
+                    return raw_data.decode(normalized)
+                except (LookupError, UnicodeDecodeError):
+                    continue
+            return None
+
+        xml_encoding = RequestUtils.detect_xml_declared_encoding(raw_data)
+        if xml_encoding:
+            decoded = _try_decode([xml_encoding])
+            if decoded is not None:
+                return decoded
+
+        response_encoding = getattr(response, "encoding", None)
+        trusted_response_encoding = (
+            response_encoding
+            if not RequestUtils.is_low_confidence_http_encoding(response_encoding)
+            else None
+        )
+        apparent_encoding = getattr(response, "apparent_encoding", None)
+        trusted_apparent_encoding = (
+            apparent_encoding
+            if not RequestUtils.is_low_confidence_http_encoding(apparent_encoding)
+            else None
+        )
+
+        fallback_encoding = None
+        try:
+            if performance_mode:
+                decoded = _try_decode(["utf-8", trusted_response_encoding, trusted_apparent_encoding])
+                if decoded is not None:
+                    return decoded
+
+            detection = chardet.detect(raw_data)
+            if detection.get("confidence", 0) > confidence_threshold:
+                decoded = _try_decode([detection.get("encoding")])
+                if decoded is not None:
+                    return decoded
+            fallback_encoding = detection.get("encoding")
+
+            if not performance_mode:
+                decoded = _try_decode(["utf-8", trusted_response_encoding, trusted_apparent_encoding])
+                if decoded is not None:
+                    return decoded
+
+            decoded = _try_decode([fallback_encoding, "utf-8", apparent_encoding, response_encoding])
+            if decoded is not None:
+                return decoded
+        except Exception as e:
+            logger.debug(f"Error when getting decoded XML content: {str(e)}")
+
+        return raw_data.decode("utf-8", errors="replace")
+
+    @staticmethod
     def get_decoded_html_content(
         response: Response,
         performance_mode: bool = False,

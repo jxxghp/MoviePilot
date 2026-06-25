@@ -17,6 +17,7 @@ from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import SystemConfigKey
 from app.schemas.types import MediaType
 from app.utils import rust_accel
+from app.utils.http import RequestUtils
 
 
 pytestmark = pytest.mark.skipif(
@@ -152,6 +153,8 @@ def test_rss_helper_parse_uses_rust_parser(monkeypatch):
         """
         测试用 RequestUtils，避免真实网络请求。
         """
+
+        get_decoded_xml_content = staticmethod(RequestUtils.get_decoded_xml_content)
 
         def __init__(self, **_kwargs):
             """

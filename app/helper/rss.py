@@ -3,7 +3,6 @@ import traceback
 from typing import List, Tuple, Union, Optional
 from urllib.parse import urljoin
 
-import chardet
 from lxml import etree
 
 from app.core.config import settings
@@ -228,21 +227,6 @@ class RssHelper:
         },
     }
 
-    def __decode_fast_text(self, raw_data: bytes, ret) -> Optional[str]:
-        """
-        使用响应声明编码或 UTF-8 快速解码，优先服务 Rust 解析快路径。
-        """
-        seen_encodings = set()
-        for encoding in (getattr(ret, "encoding", None), "utf-8"):
-            if not encoding or encoding in seen_encodings:
-                continue
-            seen_encodings.add(encoding)
-            try:
-                return raw_data.decode(encoding)
-            except UnicodeDecodeError:
-                continue
-        return None
-
     def __parse_with_rust(self, ret_xml: Optional[str]) -> Optional[list]:
         """
         调用 Rust RSS 解析器，并统一处理基础 XML 校验和最大条目限制。
@@ -301,26 +285,14 @@ class RssHelper:
                     return False
 
                 if raw_data:
-                    ret_xml = self.__decode_fast_text(raw_data, ret)
+                    ret_xml = RequestUtils.get_decoded_xml_content(
+                        ret,
+                        performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
+                        confidence_threshold=settings.ENCODING_DETECTION_MIN_CONFIDENCE
+                    )
                     rust_items = self.__parse_with_rust(ret_xml)
                     if rust_items is not None:
                         return rust_items
-                    if not ret_xml:
-                        try:
-                            result = chardet.detect(raw_data)
-                            encoding = result['encoding']
-                            # 解码为字符串
-                            ret_xml = raw_data.decode(encoding)
-                        except Exception as e:
-                            logger.debug(f"chardet解码失败：{str(e)}")
-                            # 探测utf-8解码
-                            match = re.search(r'encoding\s*=\s*["\']([^"\']+)["\']', ret.text)
-                            if match:
-                                encoding = match.group(1)
-                                if encoding:
-                                    ret_xml = raw_data.decode(encoding)
-                            else:
-                                ret.encoding = ret.apparent_encoding
                 if not ret_xml:
                     ret_xml = ret.text
 
