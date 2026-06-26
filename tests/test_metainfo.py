@@ -211,6 +211,19 @@ def test_video_bit_extracted_for_video_title():
     assert meta.video_bit == "10bit"
 
 
+def test_hdr_vivid_effect_extracted_for_video_title():
+    """测试合并写法 HDRVivid 可识别为资源效果。"""
+    with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            title="Never-Ending Summer 2026 S01E18-S01E19 2160p WEB-DL 50Fps "
+                  "HDRVivid H265 10bit AAC-XXWEB"
+        )
+
+    assert meta.resource_type == "WEB-DL"
+    assert meta.resource_effect == "HDRVivid"
+    assert meta.fps == 50
+
+
 def test_video_bit_extracted_for_anime_title():
     """测试动漫标题中的视频位深可单独识别。"""
     meta = MetaInfo(

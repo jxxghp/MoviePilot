@@ -5,6 +5,7 @@ from unittest.mock import patch
 from app.core.context import MediaInfo, TorrentInfo
 from app.helper.torrent import TorrentHelper
 from app.modules.filter import FilterModule
+from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
 from app.utils import rust_accel
 
 
@@ -63,6 +64,22 @@ def test_filter_torrents_keeps_priority_and_boolean_rule_semantics():
     assert torrents[:2] == filtered
     assert filtered[0].pri_order == 100
     assert filtered[1].pri_order == 99
+
+
+def test_builtin_hdr_rule_matches_hdr_vivid_release():
+    """
+    内置 HDR 规则应覆盖 HDR Vivid 合并写法，保证订阅优先级规则可命中。
+    """
+    module = _build_filter_module(
+        rule_string="HDR",
+        rule_set=BUILTIN_RULE_SET,
+    )
+    torrent = TorrentInfo(title="Movie 2026 2160p WEB-DL HDRVivid H265", description="")
+
+    filtered = module.filter_torrents(rule_groups=["test"], torrent_list=[torrent])
+
+    assert [torrent] == filtered
+    assert torrent.pri_order == 100
 
 
 def test_filter_torrents_keeps_lazy_priority_level_parsing():

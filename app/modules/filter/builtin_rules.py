@@ -83,7 +83,7 @@ BUILTIN_RULE_SET: Dict[str, dict] = {
     },
     # HDR
     "HDR": {
-        "include": [r"[\s.]+HDR[\s.]+|HDR10|HDR10\+"],
+        "include": [r"[\s.]+HDR[\s.]+|HDR10|HDR10\+|HDRVivid"],
         "exclude": [],
     },
     # SDR
