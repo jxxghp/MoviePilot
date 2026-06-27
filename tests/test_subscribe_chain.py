@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+from app import schemas
 from app.schemas.types import MediaType
 from app.testing import stub_modules
 
@@ -34,6 +35,9 @@ def _load_subscribe_chain_class():
             return None
 
         async def async_post_message(self, *args, **kwargs):
+            return None
+
+        def recognize_media(self, *args, **kwargs):
             return None
 
     chain_module.ChainBase = _ChainBase
@@ -103,7 +107,30 @@ def _load_subscribe_chain_class():
     meta_module.MetaBase = SimpleNamespace
 
     metainfo_module = ensure_module("app.core.metainfo", types.ModuleType("app.core.metainfo"))
-    metainfo_module.MetaInfo = lambda *args, **kwargs: SimpleNamespace(episode_list=[])
+
+    class _MetaInfo(SimpleNamespace):
+        """提供订阅刷新测试需要的 MetaInfo 核心字段。"""
+
+        def __init__(self, title="", *args, **kwargs):
+            super().__init__(name=title, episode_list=[])
+
+        @property
+        def season_seq(self):
+            if getattr(self, "begin_season", None) is not None:
+                return str(self.begin_season)
+            if getattr(self, "type", None) == MediaType.TV:
+                return "1"
+            return ""
+
+        @property
+        def season(self):
+            if getattr(self, "begin_season", None) is not None:
+                return f"S{str(self.begin_season).rjust(2, '0')}"
+            if getattr(self, "type", None) == MediaType.TV:
+                return "S01"
+            return ""
+
+    metainfo_module.MetaInfo = _MetaInfo
 
     words_module = ensure_module("app.core.meta.words", types.ModuleType("app.core.meta.words"))
 
@@ -1130,6 +1157,7 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(result["media-key"][1].episodes, [])
         self.assertEqual(result["media-key"][1].start_episode, 44)
         self.assertEqual(result["media-key"][1].total_episode, 48)
+        self.assertTrue(result["media-key"][1].require_complete_coverage)
 
     def test_is_episode_range_covered_matches_pending_episodes(self):
         subscribe = self._build_subscribe(
@@ -1392,6 +1420,28 @@ class SubscribeChainTest(TestCase):
                 priority=80,
             )
         )
+
+    def test_full_best_version_priority_check_uses_current_priority_directly(self):
+        """全集洗版优先判断使用 current_priority，避免部分 episode_priority 破坏整体优先级语义。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            total_episode=3,
+            current_priority=80,
+            episode_priority={"1": 100},
+        )
+
+        self.assertFalse(
+            SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
+                subscribe=subscribe,
+                priority=80,
+            )
+        )
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
+                subscribe=subscribe,
+                priority=81,
+            )
+        )
         self.assertTrue(
             SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
                 subscribe=subscribe,
@@ -1432,7 +1482,7 @@ class SubscribeChainTest(TestCase):
         payload = subscribe_oper.update.call_args.args[1]
         self.assertEqual(payload["episode_priority"], {"1": 100, "2": 80, "3": 90, "4": 60})
         self.assertEqual(payload["current_priority"], 90)
-        # update_subscribe_priority 不再回写 lack_episode；lack 由下载链路末端的 __update_lack_episodes 维护
+        # update_subscribe_priority 不回写 lack_episode；lack 由下载链路末端的 progress writer 维护。
         self.assertNotIn("lack_episode", payload)
         self.assertEqual(subscribe.episode_priority, {"1": 100, "2": 80, "3": 90, "4": 60})
         self.assertEqual(subscribe.current_priority, 90)
@@ -1913,3 +1963,703 @@ class SubscribeNoteTrackingTest(TestCase):
         downloaded = SubscribeChain._SubscribeChain__get_downloaded(subscribe)
 
         self.assertEqual(downloaded, [1, 2, 3])
+
+
+class SubscribeProgressEntrypointTest(TestCase):
+    def setUp(self):
+        self.module, self.SubscribeChain = _load_subscribe_chain_class()
+
+    def _build_subscribe(self, **overrides):
+        values = {
+            "id": 1,
+            "name": "测试剧",
+            "type": MediaType.TV.value,
+            "season": 1,
+            "start_episode": 1,
+            "total_episode": 5,
+            "lack_episode": 5,
+            "note": [],
+            "best_version": 1,
+            "best_version_full": 0,
+            "current_priority": None,
+            "episode_priority": {},
+            "last_update": None,
+            "tmdbid": 10001,
+            "doubanid": None,
+            "year": "2026",
+            "manual_total_episode": 0,
+        }
+        values.update(overrides)
+        return self.module.Subscribe(**values)
+
+    def test_compute_lack_episode_counts_best_version_note_and_positive_priority(self):
+        subscribe = self._build_subscribe(
+            note=[1, "bad"],
+            episode_priority={"2": 80, "3": 0, "4": 100},
+        )
+
+        lack = self.SubscribeChain.compute_lack_episode(subscribe)
+
+        self.assertEqual(lack, 2)
+
+    def test_compute_lack_episode_normal_tv_no_exists_boundaries(self):
+        subscribe = self._build_subscribe(best_version=0, note=[1])
+        missing_all = {
+            10001: {
+                1: self.module.schemas.NotExistMediaInfo(
+                    season=1, episodes=[], total_episode=5, start_episode=1
+                )
+            }
+        }
+        missing_some = {
+            10001: {
+                1: self.module.schemas.NotExistMediaInfo(
+                    season=1, episodes=[2, 4], total_episode=5, start_episode=1
+                )
+            }
+        }
+
+        self.assertEqual(self.SubscribeChain.compute_lack_episode(subscribe, no_exists={}), 0)
+        self.assertEqual(self.SubscribeChain.compute_lack_episode(subscribe, no_exists={"other": {}}), 0)
+        self.assertEqual(self.SubscribeChain.compute_lack_episode(subscribe, no_exists=missing_all), 5)
+        self.assertEqual(self.SubscribeChain.compute_lack_episode(subscribe, no_exists=missing_some), 2)
+
+    def test_compute_lack_episode_defaults_empty_no_exists_for_normal_tv(self):
+        subscribe = self._build_subscribe(best_version=0, note=[1])
+
+        self.assertEqual(self.SubscribeChain.compute_lack_episode(subscribe), 0)
+
+    def test_note_only_backfill_does_not_satisfy_best_version_quality_target(self):
+        subscribe = self._build_subscribe(
+            total_episode=3,
+            note=[1],
+            episode_priority={},
+            lack_episode=2,
+        )
+
+        self.assertEqual(self.SubscribeChain.compute_lack_episode(subscribe), 2)
+        self.assertEqual(self.SubscribeChain._get_pending_best_version_episodes(subscribe), [1, 2, 3])
+
+    def test_backfill_existing_episodes_writes_note_only_without_priority(self):
+        subscribe = self._build_subscribe(note=[1], episode_priority={"2": 80}, lack_episode=4)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            summary = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [1, 2, 3, 9, "bad"],
+                priority=None,
+                refresh_progress=True,
+                scene="unit",
+            )
+
+        self.assertEqual(summary["accepted"], [2, 3])
+        self.assertEqual(summary["ignored"], [
+            {"episode": 1, "reason": "duplicate"},
+            {"episode": 9, "reason": "out_of_range"},
+            {"episode": "bad", "reason": "invalid"},
+        ])
+        self.assertEqual(subscribe.note, [1, 2, 3])
+        self.assertEqual(subscribe.episode_priority, {"2": 80})
+        self.assertEqual(subscribe.lack_episode, 2)
+        self.assertEqual(updates[-1][1]["lack_episode"], 2)
+
+    def test_backfill_existing_episodes_writes_priority_only_upwards(self):
+        subscribe = self._build_subscribe(note=[], episode_priority={"1": 90, "2": 100}, lack_episode=5)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            summary = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [1, 2, 3],
+                priority=100,
+                refresh_progress=True,
+                scene="unit",
+            )
+
+        self.assertEqual(summary["accepted"], [1, 2, 3])
+        self.assertEqual(subscribe.note, [1, 2, 3])
+        self.assertEqual(subscribe.episode_priority, {"1": 100, "2": 100, "3": 100})
+        self.assertEqual(subscribe.current_priority, 0)
+        self.assertEqual(updates[-1]["current_priority"], 0)
+
+    def test_backfill_existing_episodes_ignores_invalid_priority_and_does_not_downgrade(self):
+        subscribe = self._build_subscribe(note=[], episode_priority={"1": 90}, lack_episode=5)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            invalid = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [1, 2],
+                priority=101,
+                refresh_progress=True,
+                scene="unit",
+            )
+            lower = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [1, 2],
+                priority=80,
+                refresh_progress=True,
+                scene="unit",
+            )
+            boolean_priority = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [3],
+                priority=True,
+                refresh_progress=True,
+                scene="unit",
+            )
+
+        self.assertEqual(invalid["accepted"], [1, 2])
+        self.assertEqual(invalid["ignored_priority"], 101)
+        self.assertEqual(lower["accepted"], [])
+        self.assertEqual(lower["ignored"], [
+            {"episode": 1, "reason": "duplicate"},
+            {"episode": 2, "reason": "duplicate"},
+        ])
+        self.assertEqual(boolean_priority["accepted"], [3])
+        self.assertEqual(boolean_priority["ignored_priority"], True)
+        self.assertEqual(subscribe.note, [1, 2, 3])
+        self.assertEqual(subscribe.episode_priority, {"1": 90, "2": 80})
+
+    def test_backfill_existing_episodes_accepts_note_without_downgrading_priority(self):
+        subscribe = self._build_subscribe(note=[], episode_priority={"1": 90}, lack_episode=5)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            summary = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [1],
+                priority=80,
+                refresh_progress=True,
+                scene="unit",
+            )
+
+        self.assertEqual(summary["accepted"], [1])
+        self.assertEqual(subscribe.note, [1])
+        self.assertEqual(subscribe.episode_priority, {"1": 90})
+        self.assertEqual(updates[-1]["episode_priority"], {"1": 90})
+
+    def test_backfill_existing_episodes_marks_current_priority_complete_only_when_all_targets_are_top(self):
+        subscribe = self._build_subscribe(note=[], episode_priority={"1": 90}, lack_episode=5)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            summary = self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [1, 2, 3, 4, 5],
+                priority=100,
+                refresh_progress=True,
+                scene="unit",
+            )
+
+        self.assertEqual(summary["accepted"], [1, 2, 3, 4, 5])
+        self.assertEqual(subscribe.current_priority, 100)
+        self.assertEqual(updates[-1]["current_priority"], 100)
+
+    def test_backfill_materializes_legacy_current_priority_before_partial_write(self):
+        subscribe = self._build_subscribe(
+            total_episode=3,
+            current_priority=80,
+            episode_priority=None,
+            note=[],
+            lack_episode=0,
+        )
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            self.SubscribeChain().backfill_existing_episodes(
+                subscribe,
+                [3],
+                priority=100,
+                refresh_progress=True,
+                scene="unit",
+            )
+
+        self.assertEqual(subscribe.episode_priority, {"1": 80, "2": 80, "3": 100})
+        self.assertEqual(subscribe.note, [3])
+        self.assertEqual(subscribe.current_priority, 80)
+        self.assertEqual(updates[-1]["episode_priority"], {"1": 80, "2": 80, "3": 100})
+
+    def test_refresh_subscribe_progress_normal_tv_uses_resolve_missing_successfully(self):
+        subscribe = self._build_subscribe(best_version=0, lack_episode=5)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            tmdb_id=10001,
+            douban_id=None,
+            title_year="测试剧 (2026)",
+            seasons={1: [1, 2, 3, 4, 5]},
+        )
+        no_exists = {
+            10001: {
+                1: self.module.schemas.NotExistMediaInfo(
+                    season=1, episodes=[2, 4], total_episode=5, start_episode=1
+                )
+            }
+        }
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+                patch.object(self.SubscribeChain, "recognize_media", return_value=mediainfo), \
+                patch.object(self.SubscribeChain, "resolve_subscribe_missing", return_value=(False, no_exists)) as resolve_missing:
+            summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
+
+        resolve_missing.assert_called_once()
+        _, kwargs = resolve_missing.call_args
+        self.assertIs(kwargs["subscribe"], subscribe)
+        self.assertIsNotNone(kwargs["meta"])
+        self.assertEqual(kwargs["meta"].type, MediaType.TV)
+        self.assertEqual(kwargs["meta"].name, subscribe.name)
+        self.assertEqual(kwargs["meta"].season_seq, "1")
+        self.assertIs(kwargs["mediainfo"], mediainfo)
+        self.assertEqual(kwargs["mediakey"], 10001)
+        self.assertTrue(summary["updated"])
+        self.assertEqual(summary["lack_episode"], 2)
+        self.assertEqual(subscribe.lack_episode, 2)
+        self.assertEqual(updates[-1]["lack_episode"], 2)
+
+    def test_refresh_subscribe_progress_normal_tv_resolve_failure_does_not_write_zero(self):
+        subscribe = self._build_subscribe(best_version=0, lack_episode=5)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            tmdb_id=10001,
+            douban_id=None,
+            title_year="测试剧 (2026)",
+            seasons={1: [1, 2, 3, 4, 5]},
+        )
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                raise AssertionError("resolve failure must not write progress")
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+                patch.object(self.SubscribeChain, "recognize_media", return_value=mediainfo), \
+                patch.object(self.SubscribeChain, "resolve_subscribe_missing", return_value=(False, {})):
+            summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
+
+        self.assertFalse(summary["updated"])
+        self.assertIn("reason", summary)
+        self.assertEqual(subscribe.lack_episode, 5)
+
+    def test_refresh_subscribe_progress_normal_tv_recognition_failure_does_not_write_zero(self):
+        subscribe = self._build_subscribe(best_version=0, lack_episode=5)
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                raise AssertionError("recognition failure must not write progress")
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+                patch.object(self.SubscribeChain, "recognize_media", return_value=None):
+            summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
+
+        self.assertFalse(summary["updated"])
+        self.assertIn("reason", summary)
+        self.assertEqual(subscribe.lack_episode, 5)
+
+    def test_refresh_subscribe_progress_rejects_raw_no_exists_for_public_signature(self):
+        subscribe = self._build_subscribe(best_version=0, lack_episode=5)
+
+        with self.assertRaises(TypeError):
+            self.SubscribeChain().refresh_subscribe_progress(subscribe, no_exists={})
+
+    def test_finish_subscribe_progress_writer_keeps_empty_lefts_as_zero_for_normal_tv(self):
+        subscribe = self._build_subscribe(best_version=0, lack_episode=5)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+                patch.object(self.SubscribeChain, "_SubscribeChain__finish_subscribe"):
+            self.SubscribeChain().finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.TV),
+                mediainfo=SimpleNamespace(title_year="测试剧 (2026)"),
+                downloads=None,
+                lefts=None,
+            )
+
+        self.assertEqual(subscribe.lack_episode, 0)
+        self.assertEqual(updates[-1]["lack_episode"], 0)
+
+
+class SubscribeProgressConsolidationTest(TestCase):
+    def _mediainfo(self, total_episode=5):
+        return SimpleNamespace(
+            seasons={1: [object() for _ in range(total_episode)]},
+            title="总集增长剧",
+            year="2026",
+            vote_average=9.5,
+            overview="overview",
+            imdb_id="tt1234567",
+            tvdb_id=99,
+            get_poster_image=lambda: "poster",
+            get_backdrop_image=lambda: "backdrop",
+        )
+
+    def test_refresh_total_episode_before_completion_reuses_progress_priority_snapshot(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=31,
+            name="总集增长剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=3,
+            start_episode=1,
+            lack_episode=0,
+            best_version=1,
+            best_version_full=0,
+            current_priority=80,
+            episode_priority=None,
+            note=[],
+            tmdbid=31031,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        mediainfo = self._mediainfo(total_episode=5)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                mediainfo,
+            )
+
+        self.assertEqual(subscribe.total_episode, 5)
+        self.assertEqual(
+            subscribe.episode_priority,
+            {"1": 80, "2": 80, "3": 80, "4": 0, "5": 0},
+        )
+        self.assertEqual(subscribe.lack_episode, 2)
+        self.assertEqual(subscribe.current_priority, 80)
+        self.assertEqual(updates[-1][1]["lack_episode"], 2)
+        self.assertEqual(updates[-1][1]["current_priority"], 80)
+
+    def test_check_total_growth_reuses_progress_priority_snapshot(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=33,
+            name="总集增长剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=3,
+            start_episode=1,
+            lack_episode=0,
+            best_version=1,
+            best_version_full=0,
+            current_priority=80,
+            episode_priority=None,
+            note=[],
+            year="2026",
+            episode_group=None,
+            tmdbid=31033,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+
+        class _SubscribeOper:
+            def list(self):
+                return [subscribe]
+
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        chain = SubscribeChain()
+        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=5)
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()):
+            chain.check()
+
+        payload = updates[-1][1]
+        self.assertEqual(payload["total_episode"], 5)
+        self.assertEqual(
+            payload["episode_priority"],
+            {"1": 80, "2": 80, "3": 80, "4": 0, "5": 0},
+        )
+        self.assertEqual(payload["lack_episode"], 2)
+        self.assertEqual(payload["current_priority"], 80)
+
+    def test_completed_episode_uses_schema_function_directly_for_best_version(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        values = {
+            "id": 32,
+            "name": "完成集数剧",
+            "type": MediaType.TV.value,
+            "season": 1,
+            "total_episode": 8,
+            "start_episode": 3,
+            "lack_episode": 2,
+            "best_version": 1,
+            "episode_priority": {"3": 100, "4": 80, "5": 100, "8": 100},
+        }
+        chain_subscribe = module.Subscribe(**values)
+        schema_subscribe = schemas.Subscribe(**values)
+
+        self.assertFalse(hasattr(SubscribeChain, "compute_completed_episode"))
+        self.assertEqual(schema_subscribe.completed_episode, schemas.compute_subscribe_completed_episode(chain_subscribe))
+
+
+class SubscribeDownloadFactsTest(TestCase):
+    def setUp(self):
+        self.module, self.SubscribeChain = _load_subscribe_chain_class()
+
+    def _build_subscribe(self, **overrides):
+        values = {
+            "id": 3,
+            "name": "下载事实剧",
+            "type": MediaType.TV.value,
+            "season": 1,
+            "start_episode": 1,
+            "total_episode": 4,
+            "lack_episode": 4,
+            "note": [],
+            "best_version": 0,
+            "best_version_full": 0,
+            "current_priority": None,
+            "episode_priority": {},
+            "tmdbid": 30003,
+            "doubanid": None,
+            "manual_total_episode": 0,
+        }
+        values.update(overrides)
+        return self.module.Subscribe(**values)
+
+    def _download(self, episodes=None, pri_order=80, selected_episodes=None, confirmed_full_coverage=False):
+        return SimpleNamespace(
+            selected_episodes=selected_episodes,
+            confirmed_full_coverage=confirmed_full_coverage,
+            torrent_info=SimpleNamespace(pri_order=pri_order),
+            meta_info=SimpleNamespace(episode_list=episodes or [], season_list=[1]),
+            media_info=SimpleNamespace(type=MediaType.TV, tmdb_id=30003, douban_id=None),
+        )
+
+    def test_normal_tv_download_records_note_and_episode_priority_without_current_priority(self):
+        subscribe = self._build_subscribe(best_version=0)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
+                subscribe,
+                mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
+                downloads=[self._download(episodes=[1, 2], pri_order=70)],
+            )
+
+        self.assertEqual(snapshot["episodes"], [1, 2])
+        self.assertEqual(subscribe.note, [1, 2])
+        self.assertEqual(subscribe.episode_priority, {"1": 70, "2": 70})
+        self.assertIsNone(subscribe.current_priority)
+        self.assertNotIn("current_priority", updates[-1])
+
+    def test_full_resource_without_episode_list_does_not_fallback_without_download_confirmation(self):
+        subscribe = self._build_subscribe(best_version=1, best_version_full=1, episode_priority={"1": 60})
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
+                subscribe,
+                mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
+                downloads=[self._download(episodes=[], pri_order=90, selected_episodes=[])],
+            )
+
+        self.assertEqual(snapshot["episodes"], [])
+        self.assertEqual(subscribe.note, [])
+        self.assertEqual(subscribe.episode_priority, {"1": 60})
+        self.assertEqual(updates, [])
+
+    def test_full_resource_without_episode_list_uses_target_range_only_when_confirmed(self):
+        subscribe = self._build_subscribe(best_version=1, best_version_full=1, episode_priority={"1": 60})
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
+                subscribe,
+                mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
+                downloads=[
+                    self._download(
+                        episodes=[],
+                        pri_order=90,
+                        selected_episodes=[],
+                        confirmed_full_coverage=True,
+                    )
+                ],
+            )
+
+        self.assertEqual(snapshot["episodes"], [1, 2, 3, 4])
+        self.assertEqual(subscribe.note, [1, 2, 3, 4])
+        self.assertEqual(subscribe.episode_priority, {"1": 90, "2": 90, "3": 90, "4": 90})
+        self.assertNotIn("current_priority", updates[-1])
+
+    def test_normal_subscription_without_episode_list_never_uses_target_range_fallback(self):
+        subscribe = self._build_subscribe(best_version=0, best_version_full=0)
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
+                subscribe,
+                mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
+                downloads=[
+                    self._download(
+                        episodes=[],
+                        pri_order=90,
+                        selected_episodes=[],
+                        confirmed_full_coverage=True,
+                    )
+                ],
+            )
+
+        self.assertEqual(snapshot["episodes"], [])
+        self.assertEqual(subscribe.note, [])
+        self.assertEqual(subscribe.episode_priority, {})
+        self.assertEqual(updates, [])
+
+    def test_movie_best_version_download_keeps_current_priority_without_episode_priority(self):
+        subscribe = self._build_subscribe(
+            type=MediaType.MOVIE.value,
+            best_version=1,
+            best_version_full=0,
+            current_priority=60,
+            episode_priority={},
+            note=[],
+            tmdbid=30003,
+            total_episode=1,
+            lack_episode=1,
+        )
+        download = self._download(episodes=[], pri_order=90)
+        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+                patch.object(self.SubscribeChain, "_SubscribeChain__finish_subscribe"):
+            self.SubscribeChain().finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.MOVIE),
+                mediainfo=SimpleNamespace(title_year="下载事实电影 (2026)"),
+                downloads=[download],
+                lefts={},
+            )
+
+        self.assertEqual(subscribe.current_priority, 90)
+        self.assertTrue(subscribe.last_update)
+        self.assertEqual(subscribe.episode_priority, {})
+        self.assertIn({"current_priority": 90, "last_update": subscribe.last_update}, updates)
+
+    def test_movie_best_version_download_does_not_call_tv_progress_writer(self):
+        subscribe = self._build_subscribe(
+            type=MediaType.MOVIE.value,
+            best_version=1,
+            best_version_full=0,
+            current_priority=60,
+            episode_priority={},
+            note=[],
+            tmdbid=30003,
+            total_episode=1,
+            lack_episode=1,
+        )
+        download = self._download(episodes=[], pri_order=90)
+        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
+        chain = self.SubscribeChain()
+
+        with patch.object(self.module, "SubscribeOper") as subscribe_oper_cls, \
+                patch.object(chain, "_SubscribeChain__refresh_subscribe_progress_with_no_exists") as refresh_mock, \
+                patch.object(chain, "_SubscribeChain__finish_subscribe"):
+            subscribe_oper = subscribe_oper_cls.return_value
+            subscribe_oper.update.return_value = None
+
+            chain.finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.MOVIE),
+                mediainfo=SimpleNamespace(title_year="下载事实电影 (2026)"),
+                downloads=[download],
+                lefts={},
+            )
+
+        refresh_mock.assert_not_called()
+
+    def test_movie_normal_download_does_not_call_tv_progress_writer(self):
+        subscribe = self._build_subscribe(
+            type=MediaType.MOVIE.value,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            tmdbid=30003,
+            total_episode=1,
+            lack_episode=1,
+        )
+        download = self._download(episodes=[], pri_order=90)
+        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
+        chain = self.SubscribeChain()
+
+        with patch.object(self.module, "SubscribeOper") as subscribe_oper_cls, \
+                patch.object(chain, "_SubscribeChain__refresh_subscribe_progress_with_no_exists") as refresh_mock, \
+                patch.object(chain, "_SubscribeChain__finish_subscribe"):
+            subscribe_oper = subscribe_oper_cls.return_value
+            subscribe_oper.update.return_value = None
+
+            chain.finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.MOVIE),
+                mediainfo=SimpleNamespace(title_year="下载事实电影 (2026)"),
+                downloads=[download],
+                lefts={},
+            )
+
+        refresh_mock.assert_not_called()

@@ -314,6 +314,8 @@ class Context(BaseModel):
     candidate_recognized: Optional[bool] = False
     # 当前 media_info 是否为目标媒体回填
     media_info_is_target: Optional[bool] = False
+    # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源
+    confirmed_full_coverage: Optional[bool] = False
 
 
 class MediaSeason(BaseModel):
