@@ -21,6 +21,7 @@ from app.db.user_oper import get_current_active_user_async
 from app.helper.server import MoviePilotServerHelper
 from app.log import logger
 from app.scheduler import Scheduler
+from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import MediaType, EventType, SystemConfigKey
 
 router = APIRouter()
@@ -149,11 +150,12 @@ async def update_subscribe(
     # 发送订阅调整事件
     await eventmanager.async_send_event(
         EventType.SubscribeModified,
-        {
-            "subscribe_id": subscribe_in.id,
-            "old_subscribe_info": old_subscribe_dict,
-            "subscribe_info": updated_subscribe.to_dict() if updated_subscribe else {},
-        },
+        SubscribeModifiedEventData(
+            subscribe_id=subscribe_in.id,
+            old_subscribe_info=old_subscribe_dict,
+            subscribe_info=updated_subscribe.to_dict() if updated_subscribe else {},
+            scene="update",
+        ).to_dict(),
     )
     return schemas.Response(success=True)
 
@@ -181,11 +183,12 @@ async def update_subscribe_status(
     # 发送订阅调整事件
     await eventmanager.async_send_event(
         EventType.SubscribeModified,
-        {
-            "subscribe_id": subid,
-            "old_subscribe_info": old_subscribe_dict,
-            "subscribe_info": updated_subscribe.to_dict() if updated_subscribe else {},
-        },
+        SubscribeModifiedEventData(
+            subscribe_id=subid,
+            old_subscribe_info=old_subscribe_dict,
+            subscribe_info=updated_subscribe.to_dict() if updated_subscribe else {},
+            scene="status",
+        ).to_dict(),
     )
     return schemas.Response(success=True)
 
@@ -275,13 +278,14 @@ async def reset_subscribes(
         # 发送订阅调整事件
         await eventmanager.async_send_event(
             EventType.SubscribeModified,
-            {
-                "subscribe_id": subid,
-                "old_subscribe_info": old_subscribe_dict,
-                "subscribe_info": updated_subscribe.to_dict()
+            SubscribeModifiedEventData(
+                subscribe_id=subid,
+                old_subscribe_info=old_subscribe_dict,
+                subscribe_info=updated_subscribe.to_dict()
                 if updated_subscribe
                 else {},
-            },
+                scene="reset",
+            ).to_dict(),
         )
         return schemas.Response(success=True)
     return schemas.Response(success=False, message="订阅不存在")

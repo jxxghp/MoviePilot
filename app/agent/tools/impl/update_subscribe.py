@@ -10,6 +10,7 @@ from app.agent.tools.tags import ToolTag
 from app.core.event import eventmanager
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
+from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import EventType
 
 
@@ -261,13 +262,14 @@ class UpdateSubscribeTool(MoviePilotTool):
             # 发送订阅调整事件
             await eventmanager.async_send_event(
                 EventType.SubscribeModified,
-                {
-                    "subscribe_id": subscribe_id,
-                    "old_subscribe_info": old_subscribe_dict,
-                    "subscribe_info": updated_subscribe.to_dict()
+                SubscribeModifiedEventData(
+                    subscribe_id=subscribe_id,
+                    old_subscribe_info=old_subscribe_dict,
+                    subscribe_info=updated_subscribe.to_dict()
                     if updated_subscribe
                     else {},
-                },
+                    scene="agent_update",
+                ).to_dict(),
             )
 
             # 构建返回结果

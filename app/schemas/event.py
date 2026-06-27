@@ -603,6 +603,48 @@ class SubscribeEpisodesRefreshEventData(ChainEventData):
     reason: str = Field(default="", description="覆盖原因")
 
 
+class SubscribeModifiedEventData(BaseEventData):
+    """
+    SubscribeModified 广播事件数据。
+
+    主程序在订阅字段被普通更新、状态入口、重置或 Agent 更新后发出。payload
+    继续保持 dict 形态，scene 用于表达操作场景，fields 表达最终快照里的真实字段差异。
+    """
+
+    subscribe_id: int = Field(description="订阅 ID")
+    old_subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="更新前订阅快照")
+    subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="更新后订阅快照")
+    scene: str = Field(default="update", description="触发场景：update/status/reset/agent_update")
+    fields: List[str] = Field(default_factory=list, description="真实变更字段")
+
+    @model_validator(mode="after")
+    def compute_fields(self):
+        self.fields = self._diff_fields(self.old_subscribe_info, self.subscribe_info)
+        return self
+
+    @staticmethod
+    def _diff_fields(old_info: Dict[str, Any], new_info: Dict[str, Any]) -> List[str]:
+        """
+        按 old/new 快照并集计算真实字段差异；缺失 key 按 None 参与比较。
+        """
+        old_info = old_info or {}
+        new_info = new_info or {}
+        keys = set(old_info) | set(new_info)
+        return sorted(key for key in keys if old_info.get(key) != new_info.get(key))
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        输出公开事件 payload，避免内部属性被未来扩展意外暴露。
+        """
+        return {
+            "subscribe_id": self.subscribe_id,
+            "old_subscribe_info": self.old_subscribe_info,
+            "subscribe_info": self.subscribe_info,
+            "scene": self.scene,
+            "fields": list(self.fields),
+        }
+
+
 class SubscribeCompletionCheckEventData(ChainEventData):
     """
     SubscribeCompletionCheck 事件的数据模型
