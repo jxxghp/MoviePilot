@@ -976,7 +976,7 @@ class TransHandler:
         """
         整理一个文件，同时处理其他相关文件
         :param fileitem: 原文件
-        :param meta: 文件级整理识别元数据
+        :param meta: 元数据
         :param mediainfo: 媒体信息
         :param source_oper: 源存储操作对象
         :param target_oper: 目标存储操作对象

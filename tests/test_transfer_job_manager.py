@@ -267,7 +267,7 @@ class TransferJobManagerTest(unittest.TestCase):
 
     def test_single_file_transfer_intercept_event_carries_file_meta(self):
         """
-        单文件整理拦截事件应携带文件级识别元数据，便于事件处理器按季集匹配。
+        单文件整理拦截事件应携带元数据，便于事件处理器按季集匹配。
         """
         handler = TransHandler()
         source_item = FileItem(

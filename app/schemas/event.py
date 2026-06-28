@@ -388,7 +388,7 @@ class TransferInterceptEventData(ChainEventData):
     Attributes:
         # 输入参数
         fileitem (FileItem): 源文件
-        meta (Any): 文件级整理识别元数据
+        meta (Any): 元数据
         target_storage (str): 目标存储
         target_path (Path): 目标路径
         transfer_type (str): 整理方式（copy、move、link、softlink等）
@@ -402,7 +402,7 @@ class TransferInterceptEventData(ChainEventData):
 
     # 输入参数
     fileitem: FileItem = Field(..., description="源文件")
-    meta: Optional[Any] = Field(default=None, description="文件级整理识别元数据")
+    meta: Optional[Any] = Field(default=None, description="元数据")
     mediainfo: Any = Field(..., description="媒体信息")
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标路径")
