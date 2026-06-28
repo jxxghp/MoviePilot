@@ -536,6 +536,7 @@ class TransHandler:
                 # 整理文件
                 new_item, err_msg = self.__transfer_file(
                     fileitem=fileitem,
+                    meta=in_meta,
                     mediainfo=mediainfo,
                     target_storage=target_storage,
                     target_file=new_file,
@@ -962,6 +963,7 @@ class TransHandler:
     def __transfer_file(
         self,
         fileitem: FileItem,
+        meta: Optional[MetaBase],
         mediainfo: MediaInfo,
         source_oper: StorageBase,
         target_oper: StorageBase,
@@ -974,6 +976,7 @@ class TransHandler:
         """
         整理一个文件，同时处理其他相关文件
         :param fileitem: 原文件
+        :param meta: 文件级整理识别元数据
         :param mediainfo: 媒体信息
         :param source_oper: 源存储操作对象
         :param target_oper: 目标存储操作对象
@@ -990,6 +993,7 @@ class TransHandler:
         )
         event_data = TransferInterceptEventData(
             fileitem=fileitem,
+            meta=meta,
             mediainfo=mediainfo,
             target_storage=target_storage,
             target_path=target_file,
