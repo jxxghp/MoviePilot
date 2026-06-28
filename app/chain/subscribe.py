@@ -1256,61 +1256,25 @@ class SubscribeChain(ChainBase):
                 self._rlock.release()
                 logger.debug(f"search Lock released at {datetime.now()}")
 
-    def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaBase,
-                                  mediainfo: MediaInfo, downloads: Optional[List[Context]]):
+    @staticmethod
+    def __update_movie_best_version_download_priority(
+            subscribe: Subscribe,
+            mediainfo: MediaInfo,
+            downloads: Optional[List[Context]],
+    ):
         """
-        更新订阅已下载资源的优先级
+        记录电影洗版本轮下载资源优先级。
         """
         if not downloads:
             return
         if not subscribe.best_version:
             return
-        # 当前下载资源的优先级
         priority = max([item.torrent_info.pri_order for item in downloads])
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        if subscribe.type == MediaType.TV.value:
-            episode_priority = self.__get_episode_priority(subscribe)
-            updated = False
-            for download in downloads:
-                download_priority = download.torrent_info.pri_order
-                downloaded_episodes = self.__get_downloaded_episodes([download])
-                if not downloaded_episodes and self.__is_full_season_resource(download.meta_info, subscribe):
-                    # 整包下载时资源标题常不携带集数，视为覆盖当前订阅的全部目标集。
-                    downloaded_episodes = self.__get_best_version_target_episodes(subscribe)
-                if not downloaded_episodes:
-                    continue
-                for episode in downloaded_episodes:
-                    episode_key = str(episode)
-                    old_priority = episode_priority.get(episode_key)
-                    if old_priority is None or download_priority > old_priority:
-                        episode_priority[episode_key] = download_priority
-                        updated = True
-
-            if not updated and not episode_priority:
-                return
-
-            current_priority = self.get_best_version_current_priority(subscribe, episode_priority)
-            # priority 更新只记录下载质量事实，lack 由统一订阅进度入口按最终事实快照维护。
-            update_data: Dict[str, Any] = {
-                "episode_priority": episode_priority,
-                "last_update": now,
-                "current_priority": current_priority,
-            }
-
-            SubscribeOper().update(subscribe.id, update_data)
-            subscribe.episode_priority = episode_priority
-            subscribe.current_priority = current_priority
-            subscribe.last_update = now
-
-            completed_episodes = self.__get_best_version_completed_episodes(subscribe)
-            if not self.__is_best_version_complete(subscribe):
-                logger.info(
-                    f'{mediainfo.title_year} 正在洗版，更新剧集优先级为 {priority}，已完成剧集：{completed_episodes}'
-                )
+        if subscribe.type != MediaType.MOVIE.value:
             return
 
-        # 订阅存在待定策略，不管是否已完成，均需更新订阅信息
         SubscribeOper().update(subscribe.id, {
             "current_priority": priority,
             "last_update": now
@@ -1353,9 +1317,13 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
             return
 
-        if downloads and meta.type != MediaType.TV:
-            self.update_subscribe_priority(subscribe=subscribe, meta=meta,
-                                           mediainfo=mediainfo, downloads=downloads)
+        if downloads and meta.type == MediaType.MOVIE:
+            # 电影没有按集质量事实，只能用 current_priority 表达洗版下载质量。
+            self.__update_movie_best_version_download_priority(
+                subscribe=subscribe,
+                mediainfo=mediainfo,
+                downloads=downloads,
+            )
         if meta.type == MediaType.TV:
             self.__refresh_subscribe_progress_with_no_exists(
                 no_exists=lefts,
@@ -2150,7 +2118,6 @@ class SubscribeChain(ChainBase):
             subscribe: Subscribe,
             episodes: List[Union[int, str]],
             priority: Optional[int] = None,
-            refresh_progress: Optional[bool] = False,
             scene: str = "backfill",
     ) -> Dict[str, Any]:
         """
@@ -2158,6 +2125,8 @@ class SubscribeChain(ChainBase):
         """
         accepted = []
         ignored = []
+        priority_updated = []
+        priority_ignored = []
         target_episodes = set(self.__get_best_version_target_episodes(subscribe))
         note = sorted({int(episode) for episode in subscribe.note or [] if str(episode).isdigit()})
         note_set = set(note)
@@ -2172,17 +2141,20 @@ class SubscribeChain(ChainBase):
             if episode_number not in target_episodes:
                 ignored.append({"episode": episode, "reason": "out_of_range"})
                 continue
-            priority_episodes.add(episode_number)
             if episode_number in note_set:
                 ignored.append({"episode": episode, "reason": "duplicate"})
+                priority_episodes.add(episode_number)
                 continue
             accepted.append(episode_number)
             note_set.add(episode_number)
+            priority_episodes.add(episode_number)
 
         summary: Dict[str, Any] = {
             "scene": scene,
             "accepted": accepted,
             "ignored": ignored,
+            "priority_updated": priority_updated,
+            "priority_ignored": priority_ignored,
             "fields": [],
         }
         update_data: Dict[str, Any] = {}
@@ -2201,10 +2173,19 @@ class SubscribeChain(ChainBase):
                 old_priority = episode_priority.get(episode_key)
                 if old_priority is None or priority > old_priority:
                     episode_priority[episode_key] = priority
-            subscribe.episode_priority = episode_priority
-            update_data["episode_priority"] = episode_priority
+                    priority_updated.append(episode_number)
+                else:
+                    priority_ignored.append({
+                        "episode": episode_number,
+                        "reason": "duplicate" if old_priority == priority else "not_higher_priority",
+                    })
+            if priority_updated:
+                subscribe.episode_priority = episode_priority
+                update_data["episode_priority"] = episode_priority
 
-        if refresh_progress and (accepted or update_data):
+        should_refresh_progress = subscribe.type == MediaType.TV.value and (accepted or priority_updated)
+        progress_summary = None
+        if should_refresh_progress and subscribe.best_version:
             update_data.update(self.__prepare_subscribe_progress_fields(
                 subscribe=subscribe,
                 touch_last_update=True,
@@ -2213,7 +2194,13 @@ class SubscribeChain(ChainBase):
         if update_data:
             self.__apply_subscribe_update(subscribe, update_data)
             summary["fields"] = list(update_data)
+        if should_refresh_progress and not subscribe.best_version:
+            progress_summary = self.refresh_subscribe_progress(subscribe, scene=scene)
+        if progress_summary is not None:
+            summary["progress"] = progress_summary
         summary["updated"] = bool(update_data)
+        if progress_summary:
+            summary["updated"] = summary["updated"] or bool(progress_summary.get("updated"))
         return summary
 
     def __record_subscribe_download_facts(
