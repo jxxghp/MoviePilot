@@ -258,16 +258,16 @@ class SubscribeChain(ChainBase):
         if not subscribe.best_version or subscribe.type != MediaType.TV.value:
             return subscribe.current_priority or 0
 
-        pending_episodes = cls.__get_pending_best_version_episodes_with_priority(subscribe, episode_priority)
-        if not pending_episodes:
-            return 100
+        target_episodes = cls.__get_best_version_target_episodes(subscribe)
+        if not target_episodes:
+            return subscribe.current_priority or 0
 
         if episode_priority is None:
             normalized = cls.__get_episode_priority(subscribe)
         else:
             normalized = cls.__normalize_episode_priority(episode_priority)
-        return max(
-            (normalized.get(str(episode), 0) for episode in pending_episodes),
+        return min(
+            (normalized.get(str(episode), 0) for episode in target_episodes),
             default=0,
         )
 
@@ -300,8 +300,6 @@ class SubscribeChain(ChainBase):
                         total_episode=old_total_episode,
                     )
                 }
-            for episode in cls.__get_best_version_target_episodes(subscribe, total_episode=total_episode):
-                episode_priority.setdefault(str(episode), 0)
             subscribe.episode_priority = episode_priority
             update_data["episode_priority"] = episode_priority
 
@@ -469,7 +467,7 @@ class SubscribeChain(ChainBase):
     @classmethod
     def __is_full_season_priority_higher_than_all_targets(cls, subscribe: Subscribe, priority: int) -> bool:
         """
-        判断整季资源优先级是否高于订阅目标范围内所有分集。
+        判断整季资源优先级是否高于订阅目标范围的整体优先级门槛。
         """
         if subscribe.type != MediaType.TV.value:
             return False
@@ -483,19 +481,13 @@ class SubscribeChain(ChainBase):
         except (TypeError, ValueError):
             resource_priority = 0
 
-        if cls.__is_full_best_version_enabled(subscribe) and subscribe.current_priority is not None:
-            try:
-                current_priority = int(subscribe.current_priority or 0)
-            except (TypeError, ValueError):
-                current_priority = 0
-            return resource_priority > current_priority
+        try:
+            current_priority = int(subscribe.current_priority) if subscribe.current_priority is not None \
+                else cls.get_best_version_current_priority(subscribe)
+        except (TypeError, ValueError):
+            current_priority = 0
 
-        episode_priority = cls.__get_episode_priority(subscribe)
-        for episode in target_episodes:
-            current_priority = episode_priority.get(str(episode), 0)
-            if resource_priority <= current_priority:
-                return False
-        return True
+        return resource_priority > current_priority
 
     @classmethod
     def __build_full_pack_first_no_exists(
@@ -549,16 +541,30 @@ class SubscribeChain(ChainBase):
             if context.media_info.type == MediaType.TV
                and self.__is_full_season_resource(meta=context.meta_info, subscribe=subscribe)
         ] if full_pack_no_exists else []
-        full_pack_contexts = [
-            context for context in full_season_contexts
-            if self.__is_full_season_priority_higher_than_all_targets(
+        target_episodes = self.__get_best_version_target_episodes(subscribe)
+        target_range = f"{target_episodes[0]}-{target_episodes[-1]}" if target_episodes else "empty"
+        try:
+            current_priority_gate = int(subscribe.current_priority) if subscribe.current_priority is not None \
+                else self.get_best_version_current_priority(subscribe)
+        except (TypeError, ValueError):
+            current_priority_gate = 0
+        full_pack_contexts = []
+        for context in full_season_contexts:
+            candidate_priority = getattr(context.torrent_info, "pri_order", 0)
+            accepted = self.__is_full_season_priority_higher_than_all_targets(
                 subscribe=subscribe,
-                priority=context.torrent_info.pri_order,
+                priority=candidate_priority,
             )
-        ]
+            logger.info(
+                f"{subscribe.name} 整包候选优先级判断：candidate_priority={candidate_priority}，"
+                f"current_priority={current_priority_gate}，target_range={target_range}，"
+                f"decision={'accept' if accepted else 'reject'}"
+            )
+            if accepted:
+                full_pack_contexts.append(context)
 
         if full_season_contexts and not full_pack_contexts:
-            logger.info(f"{subscribe.name} 全集候选优先级未高于所有目标集，回退到分集洗版")
+            logger.info(f"{subscribe.name} 全集候选优先级未高于 current_priority 门槛，回退到分集洗版")
 
         if full_pack_contexts:
             logger.info(f"{subscribe.name} 分集洗版优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
@@ -2075,6 +2081,8 @@ class SubscribeChain(ChainBase):
         """
         使用已解析的缺失信息刷新订阅进度，避免下载链路重复查询媒体库。
         """
+        old_lack_episode = subscribe.lack_episode
+        old_current_priority = subscribe.current_priority
         update_data = self.__prepare_subscribe_progress_fields(
             subscribe=subscribe,
             no_exists=no_exists,
@@ -2084,6 +2092,11 @@ class SubscribeChain(ChainBase):
             return {"scene": scene, "updated": False, "fields": [], "reason": "unsupported_subscribe_type"}
 
         self.__apply_subscribe_update(subscribe, update_data)
+        logger.info(
+            f"订阅 {subscribe.id} 进度刷新：scene={scene}，fields={list(update_data)}，"
+            f"lack_episode {old_lack_episode}->{subscribe.lack_episode}，"
+            f"current_priority {old_current_priority}->{subscribe.current_priority}，reason=updated"
+        )
         return {
             "scene": scene,
             "updated": True,
@@ -2217,6 +2230,8 @@ class SubscribeChain(ChainBase):
             return {"episodes": [], "fields": [], "updated": False}
 
         covered_episodes = set()
+        written_priorities: Dict[str, int] = {}
+        used_full_coverage_fallback = False
         episode_priority = self.__get_episode_priority(subscribe)
         note_set = {
             int(episode)
@@ -2245,8 +2260,9 @@ class SubscribeChain(ChainBase):
                 episodes = selected_episodes
             elif getattr(download, "meta_info", None) and download.meta_info.episode_list:
                 episodes = download.meta_info.episode_list
-            elif subscribe.best_version and getattr(download, "confirmed_full_coverage", False):
+            elif getattr(download, "confirmed_full_coverage", False):
                 episodes = self.__get_best_version_target_episodes(subscribe)
+                used_full_coverage_fallback = True
             else:
                 episodes = []
 
@@ -2271,6 +2287,7 @@ class SubscribeChain(ChainBase):
                 if isinstance(priority, int) and not isinstance(priority, bool) \
                         and (old_priority is None or priority > old_priority):
                     episode_priority[episode_key] = priority
+                    written_priorities[episode_key] = priority
 
         if covered_episodes:
             update_data["note"] = sorted(note_set)
@@ -2281,8 +2298,10 @@ class SubscribeChain(ChainBase):
         if update_data:
             self.__apply_subscribe_update(subscribe, update_data)
             logger.info(
-                f"{mediainfo.title_year} 订阅 {subscribe.id} 第 {subscribe.season} 季 "
-                f"记录下载事实：{sorted(covered_episodes)}"
+                f"{mediainfo.title_year} 订阅 {subscribe.id} 第 {subscribe.season} 季记录下载事实："
+                f"mode=best_version:{subscribe.best_version},full:{subscribe.best_version_full}，"
+                f"covered_episodes={sorted(covered_episodes)}，episode_priority={written_priorities}，"
+                f"confirmed_full_coverage_fallback={used_full_coverage_fallback}"
             )
         return {
             "episodes": sorted(covered_episodes),

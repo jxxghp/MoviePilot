@@ -615,12 +615,17 @@ class SubscribeChainTest(TestCase):
     def test_best_version_progress_helpers_return_remaining_priority(self):
         subscribe = self._build_subscribe(
             total_episode=5,
-            episode_priority={"1": 100, "2": 80, "3": 90, "4": 100, "5": 70},
+            episode_priority={"1": 100, "2": 80, "4": 100, "5": 70},
             current_priority=100,
         )
 
-        self.assertEqual(SubscribeChain.get_best_version_current_priority(subscribe), 90)
+        self.assertEqual(SubscribeChain.get_best_version_current_priority(subscribe), 0)
         self.assertFalse(SubscribeChain.is_best_version_complete(subscribe))
+
+    def test_best_version_current_priority_uses_legacy_fallback_when_episode_priority_empty(self):
+        subscribe = self._build_subscribe(total_episode=3, current_priority=80, episode_priority=None)
+
+        self.assertEqual(SubscribeChain.get_best_version_current_priority(subscribe), 80)
 
     def test_best_version_progress_helpers_mark_complete_when_all_target_episodes_done(self):
         subscribe = self._build_subscribe(
@@ -1363,8 +1368,8 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(calls[0]["contexts"], [episode_context, full_pack_context])
         self.assertIs(calls[0]["no_exists"], no_exists)
 
-    def test_episode_best_version_skips_full_pack_first_when_pack_priority_below_one_episode(self):
-        """验证全集低于任一目标分集优先级时不会整包优先。"""
+    def test_episode_best_version_tries_full_pack_when_priority_exceeds_current_priority(self):
+        """整包候选按 current_priority 整体门槛判断，单集较高优先级不阻断整包优先。"""
         subscribe = self._build_subscribe(
             best_version_full=0,
             total_episode=3,
@@ -1390,7 +1395,7 @@ class SubscribeChainTest(TestCase):
         calls = []
 
         class _FakeDownloadChain:
-            """记录回退下载调用，验证低优先级全集不进入整包优先分支。"""
+            """记录整包优先和回退调用，验证整体门槛口径。"""
 
             def batch_download(self, **kwargs):
                 calls.append(kwargs)
@@ -1406,9 +1411,10 @@ class SubscribeChainTest(TestCase):
 
         self.assertEqual(downloads, [])
         self.assertIs(lefts, no_exists)
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0]["contexts"], [full_pack_context])
-        self.assertIs(calls[0]["no_exists"], no_exists)
+        self.assertEqual(calls[0]["no_exists"]["media-key"][1].episodes, [])
+        self.assertIs(calls[1]["no_exists"], no_exists)
 
     def test_full_pack_priority_check_uses_current_priority_fallback(self):
         """验证旧订阅没有分集状态时使用 current_priority 兜底判断。"""
@@ -1442,10 +1448,27 @@ class SubscribeChainTest(TestCase):
                 priority=81,
             )
         )
+        subscribe.current_priority = 0
         self.assertTrue(
             SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
                 subscribe=subscribe,
-                priority=81,
+                priority=10,
+            )
+        )
+
+    def test_full_pack_priority_check_computes_gate_when_current_priority_is_none(self):
+        """没有持久 current_priority 时，整包门槛按当前按集事实计算。"""
+        subscribe = self._build_subscribe(
+            best_version_full=1,
+            total_episode=3,
+            current_priority=None,
+            episode_priority={"1": 100, "2": 80},
+        )
+
+        self.assertTrue(
+            SubscribeChain._SubscribeChain__is_full_season_priority_higher_than_all_targets(
+                subscribe=subscribe,
+                priority=1,
             )
         )
 
@@ -1481,11 +1504,11 @@ class SubscribeChainTest(TestCase):
         subscribe_oper.update.assert_called_once()
         payload = subscribe_oper.update.call_args.args[1]
         self.assertEqual(payload["episode_priority"], {"1": 100, "2": 80, "3": 90, "4": 60})
-        self.assertEqual(payload["current_priority"], 90)
+        self.assertEqual(payload["current_priority"], 60)
         # update_subscribe_priority 不回写 lack_episode；lack 由下载链路末端的 progress writer 维护。
         self.assertNotIn("lack_episode", payload)
         self.assertEqual(subscribe.episode_priority, {"1": 100, "2": 80, "3": 90, "4": 60})
-        self.assertEqual(subscribe.current_priority, 90)
+        self.assertEqual(subscribe.current_priority, 60)
         self.assertEqual(subscribe.lack_episode, 3)
         finish_mock.assert_not_called()
 
@@ -1628,7 +1651,7 @@ class SubscribeChainTest(TestCase):
 
         finish_mock.assert_called_once_with(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
 
-    def test_check_resets_current_priority_when_new_episodes_expand_target_range(self):
+    def test_check_keeps_sparse_priority_when_new_episodes_expand_target_range(self):
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 100, "3": 100},
@@ -1659,7 +1682,9 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(payload["total_episode"], 5)
         self.assertEqual(payload["lack_episode"], 2)
         self.assertEqual(payload["current_priority"], 0)
-        self.assertEqual(payload["episode_priority"], {"1": 100, "2": 100, "3": 100, "4": 0, "5": 0})
+        self.assertEqual(payload["episode_priority"], {"1": 100, "2": 100, "3": 100})
+        self.assertNotIn("4", payload["episode_priority"])
+        self.assertNotIn("5", payload["episode_priority"])
         self.assertEqual(subscribe.total_episode, 5)
         self.assertEqual(subscribe.lack_episode, 2)
         self.assertEqual(subscribe.current_priority, 0)
@@ -2205,6 +2230,30 @@ class SubscribeProgressEntrypointTest(TestCase):
         self.assertEqual(subscribe.current_priority, 80)
         self.assertEqual(updates[-1]["episode_priority"], {"1": 80, "2": 80, "3": 100})
 
+    def test_refresh_subscribe_progress_lowers_current_priority_for_partial_historical_episode_priority(self):
+        subscribe = self._build_subscribe(
+            total_episode=3,
+            current_priority=80,
+            episode_priority={"1": 100},
+            lack_episode=0,
+        )
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            summary = self.SubscribeChain()._SubscribeChain__refresh_subscribe_progress_with_no_exists(
+                subscribe=subscribe,
+                no_exists={},
+                scene="unit",
+            )
+
+        self.assertTrue(summary["updated"])
+        self.assertEqual(subscribe.current_priority, 0)
+        self.assertEqual(updates[-1]["current_priority"], 0)
+
     def test_refresh_subscribe_progress_normal_tv_uses_resolve_missing_successfully(self):
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
         mediainfo = SimpleNamespace(
@@ -2361,12 +2410,12 @@ class SubscribeProgressConsolidationTest(TestCase):
         self.assertEqual(subscribe.total_episode, 5)
         self.assertEqual(
             subscribe.episode_priority,
-            {"1": 80, "2": 80, "3": 80, "4": 0, "5": 0},
+            {"1": 80, "2": 80, "3": 80},
         )
         self.assertEqual(subscribe.lack_episode, 2)
-        self.assertEqual(subscribe.current_priority, 80)
+        self.assertEqual(subscribe.current_priority, 0)
         self.assertEqual(updates[-1][1]["lack_episode"], 2)
-        self.assertEqual(updates[-1][1]["current_priority"], 80)
+        self.assertEqual(updates[-1][1]["current_priority"], 0)
 
     def test_check_total_growth_reuses_progress_priority_snapshot(self):
         module, SubscribeChain = _load_subscribe_chain_class()
@@ -2408,10 +2457,10 @@ class SubscribeProgressConsolidationTest(TestCase):
         self.assertEqual(payload["total_episode"], 5)
         self.assertEqual(
             payload["episode_priority"],
-            {"1": 80, "2": 80, "3": 80, "4": 0, "5": 0},
+            {"1": 80, "2": 80, "3": 80},
         )
         self.assertEqual(payload["lack_episode"], 2)
-        self.assertEqual(payload["current_priority"], 80)
+        self.assertEqual(payload["current_priority"], 0)
 
     def test_completed_episode_uses_schema_function_directly_for_best_version(self):
         module, SubscribeChain = _load_subscribe_chain_class()
@@ -2431,6 +2480,27 @@ class SubscribeProgressConsolidationTest(TestCase):
 
         self.assertFalse(hasattr(SubscribeChain, "compute_completed_episode"))
         self.assertEqual(schema_subscribe.completed_episode, schemas.compute_subscribe_completed_episode(chain_subscribe))
+
+    def test_completed_episode_uses_current_priority_when_episode_priority_empty(self):
+        module, _ = _load_subscribe_chain_class()
+        values = {
+            "id": 33,
+            "name": "完成集数旧快照剧",
+            "type": MediaType.TV.value,
+            "season": 1,
+            "total_episode": 3,
+            "start_episode": 1,
+            "lack_episode": 0,
+            "best_version": 1,
+            "current_priority": 100,
+            "episode_priority": None,
+        }
+
+        chain_subscribe = module.Subscribe(**values)
+        schema_subscribe = schemas.Subscribe(**values)
+
+        self.assertEqual(schema_subscribe.completed_episode, 3)
+        self.assertEqual(schemas.compute_subscribe_completed_episode(chain_subscribe), 3)
 
 
 class SubscribeDownloadFactsTest(TestCase):
@@ -2488,6 +2558,33 @@ class SubscribeDownloadFactsTest(TestCase):
         self.assertIsNone(subscribe.current_priority)
         self.assertNotIn("current_priority", updates[-1])
 
+    def test_normal_tv_download_records_full_pack_confirmed_coverage_episode_priority(self):
+        subscribe = self._build_subscribe(best_version=0, best_version_full=0, total_episode=3, episode_priority={})
+        updates = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+            snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
+                subscribe,
+                mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
+                downloads=[
+                    self._download(
+                        episodes=[],
+                        pri_order=80,
+                        selected_episodes=[],
+                        confirmed_full_coverage=True,
+                    )
+                ],
+            )
+
+        self.assertEqual(snapshot["episodes"], [1, 2, 3])
+        self.assertEqual(subscribe.note, [1, 2, 3])
+        self.assertEqual(subscribe.episode_priority, {"1": 80, "2": 80, "3": 80})
+        self.assertNotIn("current_priority", updates[-1])
+
     def test_full_resource_without_episode_list_does_not_fallback_without_download_confirmation(self):
         subscribe = self._build_subscribe(best_version=1, best_version_full=1, episode_priority={"1": 60})
         updates = []
@@ -2535,7 +2632,7 @@ class SubscribeDownloadFactsTest(TestCase):
         self.assertEqual(subscribe.episode_priority, {"1": 90, "2": 90, "3": 90, "4": 90})
         self.assertNotIn("current_priority", updates[-1])
 
-    def test_normal_subscription_without_episode_list_never_uses_target_range_fallback(self):
+    def test_normal_subscription_without_episode_list_does_not_use_target_range_without_download_confirmation(self):
         subscribe = self._build_subscribe(best_version=0, best_version_full=0)
         updates = []
 
@@ -2552,7 +2649,7 @@ class SubscribeDownloadFactsTest(TestCase):
                         episodes=[],
                         pri_order=90,
                         selected_episodes=[],
-                        confirmed_full_coverage=True,
+                        confirmed_full_coverage=False,
                     )
                 ],
             )

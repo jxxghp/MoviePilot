@@ -968,6 +968,10 @@ class DownloadChain(ChainBase):
                                 need_total = __get_season_episodes(need_mid, torrent_season[0])
                                 complete_coverage_matched = bool(required_episodes) \
                                     and required_episodes.issubset(torrent_episodes_set)
+                                if complete_coverage_matched:
+                                    logger.info(
+                                        f"{meta.org_string} 解析文件集数已完整覆盖目标范围："
+                                        f"{StringUtils.format_ep(sorted(required_episodes))}")
                                 if required_episodes and not complete_coverage_matched:
                                     missing_episodes = sorted(required_episodes.difference(torrent_episodes_set))
                                     logger.info(

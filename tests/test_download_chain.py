@@ -367,6 +367,39 @@ def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target
     chain.download_single.assert_not_called()
 
 
+def test_batch_download_rejects_complete_coverage_when_only_missing_episodes_match(monkeypatch):
+    """
+    完整覆盖要求目标范围全集，不能只覆盖当前缺口集。
+    """
+    _FakeBatchTorrentHelper.episodes = [4, 5]
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context()
+    no_exists = {
+        1: {
+            1: NotExistMediaInfo(
+                season=1,
+                episodes=[4, 5],
+                total_episode=5,
+                start_episode=1,
+                require_complete_coverage=True,
+            )
+        }
+    }
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == []
+    assert lefts == no_exists
+    assert context.confirmed_full_coverage is False
+    chain.download_single.assert_not_called()
+
+
 def test_batch_download_tries_next_episode_candidate_when_first_download_fails(monkeypatch):
     """
     同一季集的首个候选下载失败时，应继续尝试排序后的下一个候选资源。

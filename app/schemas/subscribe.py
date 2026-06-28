@@ -22,6 +22,12 @@ def compute_subscribe_completed_episode(subscribe: Any) -> Optional[int]:
         return max(total_episode - lack, 0)
 
     episode_priority = getattr(subscribe, "episode_priority", None) or {}
+    if not episode_priority and getattr(subscribe, "current_priority", None) is not None:
+        # 兼容只有整体优先级的洗版快照，响应派生值需与链路侧按集口径保持一致。
+        episode_priority = {
+            str(episode): int(getattr(subscribe, "current_priority"))
+            for episode in range(start_episode, total_episode + 1)
+        }
     priority_completed = sum(
         1
         for ep_key, priority in episode_priority.items()
