@@ -161,7 +161,7 @@ class SubscribeChain(ChainBase):
                 continue
             if episode_number in target_episodes:
                 downloaded.add(episode_number)
-        for episode, priority in (subscribe.episode_priority or {}).items():
+        for episode, priority in cls.__get_episode_priority(subscribe, total_episode=total_episode).items():
             if not str(episode).isdigit():
                 continue
             try:
