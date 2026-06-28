@@ -58,7 +58,18 @@ def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
 
 class SubscribeChain(ChainBase):
     """
-    订阅管理处理链
+    订阅管理处理链。
+
+    订阅链路同时服务电影、普通电视剧、分集洗版和全集洗版。普通电视剧订阅与
+    分集洗版共享按集事实：note 表示目标集已经存在或已经下载，
+    episode_priority 表示每集已知下载质量；二者可以互相切换。全集洗版关注
+    完整目标范围的整体质量，只有下载层确认整包完整覆盖目标范围后，才把资源
+    写成目标范围内的按集事实。
+
+    实现上保持三个入口分离：下载事实入口只写 note / episode_priority；
+    progress 刷新入口只把当前事实计算为 lack_episode 和电视剧洗版
+    current_priority；完成入口只根据最终事实和完成策略收敛订阅状态。电影没有
+    按集事实，电影洗版的 current_priority 由电影下载优先级 writer 单独维护。
     """
 
     _rlock = threading.RLock()
