@@ -467,6 +467,20 @@ class DownloadChain(ChainBase):
         # 返回 种子文件路径，种子目录名，种子文件清单
         return content, download_folder, files
 
+    @staticmethod
+    def __get_source_custom_words(source: Optional[str]) -> Optional[str]:
+        """
+        根据下载来源反查订阅，获取完整自定义识别词文本，作为整理时复现识别的快照。
+
+        整理阶段直接复用此快照，避免依赖订阅实时反查（订阅季号漂移、来源解析失败等会导致反查为空而丢失偏移）。
+        此处延迟导入 SubscribeChain，规避与订阅链（subscribe.py 模块级 import DownloadChain）构成的循环依赖。
+        """
+        if not source:
+            return None
+        from app.chain.subscribe import SubscribeChain
+        subscribe = SubscribeChain().get_subscribe_by_source(source)
+        return subscribe.custom_words if subscribe and subscribe.custom_words else None
+
     def download_single(self, context: Context,
                         torrent_file: Path = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
@@ -649,7 +663,8 @@ class DownloadChain(ChainBase):
                 date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                 media_category=_media.category,
                 episode_group=_media.episode_group,
-                note={"source": source}
+                note={"source": source},
+                custom_words=self.__get_source_custom_words(source)
             )
 
             # 登记下载文件
