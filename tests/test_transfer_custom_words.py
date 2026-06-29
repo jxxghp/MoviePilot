@@ -2,12 +2,12 @@
 """订阅自定义识别词快照用例：下载时保存完整识别词，整理时快照优先、实时反查兜底。
 
 回归场景：订阅做季+集组合偏移（如 S04E05→S01E71），下载阶段生效但整理阶段因实时反查订阅
-返回空而静默回退全局识别词、丢失偏移。修复后整理优先复用下载时保存的快照。
+返回空而静默回退全局识别词、丢失偏移。修复后由订阅链在发起下载时将完整识别词作为入参传入
+下载模块并存档（避免下载模块反查订阅的同级循环依赖），整理时优先复用该快照。
 """
 from types import SimpleNamespace
 
 import app.chain.transfer as transfer_module
-from app.chain.download import DownloadChain
 from app.chain.transfer import TransferChain
 
 
@@ -74,25 +74,3 @@ def test_transfer_returns_none_when_unavailable(monkeypatch):
         )
         is None
     )
-
-
-def test_download_snapshots_full_subscribe_custom_words(monkeypatch):
-    """下载时应反查订阅并返回完整 custom_words 文本作为整理快照。"""
-    import app.chain.subscribe as subscribe_module
-
-    class _FakeSubscribeChain:
-        def get_subscribe_by_source(self, source):
-            assert source == "Subscribe|{...}"
-            return SimpleNamespace(custom_words="S04 => S01\n第 <> 集 >> EP+66")
-
-    # download.py 内为延迟导入，需 patch 源模块属性
-    monkeypatch.setattr(subscribe_module, "SubscribeChain", _FakeSubscribeChain)
-
-    snapshot = DownloadChain._DownloadChain__get_source_custom_words("Subscribe|{...}")
-    assert snapshot == "S04 => S01\n第 <> 集 >> EP+66"
-
-
-def test_download_snapshot_none_for_non_subscribe_source():
-    """非订阅来源（source 为空）不保存快照，且不触发任何订阅反查。"""
-    assert DownloadChain._DownloadChain__get_source_custom_words(None) is None
-    assert DownloadChain._DownloadChain__get_source_custom_words("") is None

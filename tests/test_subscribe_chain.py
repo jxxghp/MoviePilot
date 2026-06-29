@@ -358,6 +358,7 @@ class SubscribeChainTest(TestCase):
             "description": None,
             "last_update": None,
             "username": None,
+            "custom_words": None,
             "to_dict": lambda: {},
         }
         data.update(overrides)
@@ -1186,7 +1187,11 @@ class SubscribeChainTest(TestCase):
         )
 
     def test_episode_best_version_downloads_full_pack_before_episode_fallback(self):
-        subscribe = self._build_subscribe(best_version_full=0, total_episode=3)
+        subscribe = self._build_subscribe(
+            best_version_full=0,
+            total_episode=3,
+            custom_words="S04 => S01\n第 <> 集 >> EP+66",
+        )
         full_pack_context = SimpleNamespace(
             torrent_info=SimpleNamespace(pri_order=90),
             media_info=SimpleNamespace(type=MediaType.TV),
@@ -1234,6 +1239,8 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["contexts"], [full_pack_context])
         self.assertEqual(calls[0]["no_exists"]["media-key"][1].episodes, [])
+        # 订阅识别词须作为入参随下载下传，供整理时复现识别（避免下载模块反查订阅的循环依赖）
+        self.assertEqual(calls[0]["custom_words"], "S04 => S01\n第 <> 集 >> EP+66")
 
     def test_episode_best_version_falls_back_when_full_pack_not_downloaded(self):
         subscribe = self._build_subscribe(best_version_full=0, total_episode=3)
