@@ -615,9 +615,9 @@ def reset_plugin(
     # 事件处理器需要运行中插件完成补偿；补偿后先停止插件，避免删除数据时仍有任务读写旧状态。
     plugin_manager.stop(plugin_id)
     # 删除配置
-    plugin_manager.delete_plugin_config(plugin_id)
+    plugin_manager.delete_plugin_config(plugin_id, force=True)
     # 删除插件所有数据
-    plugin_manager.delete_plugin_data(plugin_id)
+    plugin_manager.delete_plugin_data(plugin_id, force=True)
     # 重新加载插件
     reload_plugin(plugin_id)
     return schemas.Response(success=True)

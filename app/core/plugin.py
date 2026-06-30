@@ -723,21 +723,23 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         await SystemConfigOper().async_set(self._config_key % pid, conf)
         return True
 
-    def delete_plugin_config(self, pid: str) -> bool:
+    def delete_plugin_config(self, pid: str, force: bool = False) -> bool:
         """
         删除插件配置
         :param pid: 插件ID
+        :param force: 插件停止后仍允许按插件 ID 删除持久化配置
         """
-        if not self._plugins.get(pid):
+        if not force and not self._plugins.get(pid):
             return False
         return SystemConfigOper().delete(self._config_key % pid)
 
-    def delete_plugin_data(self, pid: str) -> bool:
+    def delete_plugin_data(self, pid: str, force: bool = False) -> bool:
         """
         删除插件数据
         :param pid: 插件ID
+        :param force: 插件停止后仍允许按插件 ID 删除持久化数据
         """
-        if not self._plugins.get(pid):
+        if not force and not self._plugins.get(pid):
             return False
         PluginDataOper().del_data(pid)
         return True

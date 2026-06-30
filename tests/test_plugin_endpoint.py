@@ -7,8 +7,10 @@ from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.core.config import settings
+from app.core.plugin import PluginManager
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.types import ChainEventType
+from app.utils.singleton import Singleton
 
 
 def test_plugin_history_merges_remote_metadata():
@@ -279,12 +281,12 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
     plugin_manager = MagicMock()
     calls = []
 
-    def delete_config(plugin_id):
-        calls.append(("delete_config", plugin_id))
+    def delete_config(plugin_id, force=False):
+        calls.append(("delete_config", plugin_id, force))
         return True
 
-    def delete_data(plugin_id):
-        calls.append(("delete_data", plugin_id))
+    def delete_data(plugin_id, force=False):
+        calls.append(("delete_data", plugin_id, force))
         return True
 
     def stop_plugin(plugin_id):
@@ -314,7 +316,38 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
     assert event_call[2].reset_data is True
     assert calls[1:] == [
         ("stop", "SubscribeAssistantEnhanced"),
-        ("delete_config", "SubscribeAssistantEnhanced"),
-        ("delete_data", "SubscribeAssistantEnhanced"),
+        ("delete_config", "SubscribeAssistantEnhanced", True),
+        ("delete_data", "SubscribeAssistantEnhanced", True),
     ]
     reload_plugin_mock.assert_called_once_with("SubscribeAssistantEnhanced")
+
+
+def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
+    """
+    重置入口会先停止插件；配置删除需要能处理运行态注册已清理的插件 ID。
+    """
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+    manager = PluginManager()
+
+    with patch("app.core.plugin.SystemConfigOper") as system_config_oper:
+        system_config_oper.return_value.delete.return_value = True
+        assert manager.delete_plugin_config("DemoPlugin", force=True) is True
+
+    system_config_oper.return_value.delete.assert_called_once_with("plugin.DemoPlugin")
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
+    """
+    重置入口会先停止插件；插件数据删除不能依赖运行态注册仍存在。
+    """
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+    manager = PluginManager()
+    calls = []
+
+    with patch("app.core.plugin.PluginDataOper") as plugin_data_oper:
+        plugin_data_oper.return_value.del_data.side_effect = lambda pid: calls.append(pid)
+        assert manager.delete_plugin_data("DemoPlugin", force=True) is True
+
+    assert calls == ["DemoPlugin"]
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
