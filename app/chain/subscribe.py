@@ -1306,17 +1306,15 @@ class SubscribeChain(ChainBase):
                 logger.debug(f"search Lock released at {datetime.now()}")
 
     @staticmethod
-    def __update_movie_best_version_download_priority(
+    def __update_movie_download_priority(
             subscribe: Subscribe,
             mediainfo: MediaInfo,
             downloads: Optional[List[Context]],
     ):
         """
-        记录电影洗版本轮下载资源优先级。
+        记录电影本轮下载资源优先级，用作后续电影洗版的起始质量状态。
         """
         if not downloads:
-            return
-        if not subscribe.best_version:
             return
         priority = max([item.torrent_info.pri_order for item in downloads])
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1330,7 +1328,7 @@ class SubscribeChain(ChainBase):
         })
         subscribe.current_priority = priority
         subscribe.last_update = now
-        if priority != 100:
+        if subscribe.best_version and priority != 100:
             # 正在洗版，更新资源优先级
             logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级为 {priority}')
 
@@ -1348,6 +1346,12 @@ class SubscribeChain(ChainBase):
             self.__record_subscribe_download_facts(subscribe=subscribe, mediainfo=mediainfo, downloads=downloads)
         elif downloads:
             self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
+        if downloads and meta.type == MediaType.MOVIE:
+            self.__update_movie_download_priority(
+                subscribe=subscribe,
+                mediainfo=mediainfo,
+                downloads=downloads,
+            )
         # 是否完成订阅
         if not subscribe.best_version:
             # 普通订阅：先按 lefts 写 lack，再判断完成
@@ -1366,13 +1370,6 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
             return
 
-        if downloads and meta.type == MediaType.MOVIE:
-            # 电影没有按集质量事实，只能用 current_priority 表达洗版下载质量。
-            self.__update_movie_best_version_download_priority(
-                subscribe=subscribe,
-                mediainfo=mediainfo,
-                downloads=downloads,
-            )
         if meta.type == MediaType.TV:
             self.__refresh_subscribe_progress_with_no_exists(
                 no_exists=lefts,

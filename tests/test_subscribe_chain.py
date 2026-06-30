@@ -1903,7 +1903,7 @@ class SubscribeNoteTrackingTest(TestCase):
 
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
             SubscribeChain,
-            "_SubscribeChain__update_movie_best_version_download_priority",
+            "_SubscribeChain__update_movie_download_priority",
         ), patch.object(
             SubscribeChain,
             "_SubscribeChain__finish_subscribe",
@@ -2819,3 +2819,44 @@ class SubscribeDownloadFactsTest(TestCase):
             )
 
         refresh_mock.assert_not_called()
+
+    def test_movie_normal_download_records_current_priority_before_completion(self):
+        subscribe = self._build_subscribe(
+            type=MediaType.MOVIE.value,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            tmdbid=30003,
+            total_episode=1,
+            lack_episode=1,
+        )
+        download = self._download(episodes=[], pri_order=90)
+        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
+        updates = []
+        finished = []
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append(payload)
+
+        chain = self.SubscribeChain()
+
+        def finish_probe(subscribe, **_kwargs):
+            finished.append(subscribe.current_priority)
+
+        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+                patch.object(chain, "_SubscribeChain__finish_subscribe", side_effect=finish_probe):
+            chain.finish_subscribe_or_not(
+                subscribe=subscribe,
+                meta=SimpleNamespace(type=MediaType.MOVIE),
+                mediainfo=SimpleNamespace(title_year="下载事实电影 (2026)"),
+                downloads=[download],
+                lefts={},
+            )
+
+        self.assertEqual(subscribe.current_priority, 90)
+        self.assertEqual(finished, [90])
+        self.assertIn({"current_priority": 90, "last_update": subscribe.last_update}, updates)
