@@ -4,7 +4,7 @@ from typing import Union, Tuple
 from pywebpush import webpush, WebPushException
 
 from app.core.config import global_vars, settings
-from app.helper.webpush import is_webpush_subscription_gone
+from app.helper.webpush import is_webpush_subscription_gone, webpush_options_for_endpoint
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
@@ -95,6 +95,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
                             vapid_claims={
                                 "sub": settings.VAPID.get("subject")
                             },
+                            **webpush_options_for_endpoint(sub.get("endpoint")),
                         )
                     except WebPushException as err:
                         logger.error(f"WebPush发送失败: {str(err)}")

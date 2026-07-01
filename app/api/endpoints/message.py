@@ -17,7 +17,7 @@ from app.db.message_oper import MessageOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.service import ServiceConfigHelper
-from app.helper.webpush import is_webpush_subscription_gone
+from app.helper.webpush import is_webpush_subscription_gone, webpush_options_for_endpoint
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel, SystemConfigKey
@@ -316,6 +316,7 @@ def send_notification(
                 data=json.dumps(payload.model_dump()),
                 vapid_private_key=settings.VAPID.get("privateKey"),
                 vapid_claims={"sub": settings.VAPID.get("subject")},
+                **webpush_options_for_endpoint(sub.get("endpoint")),
             )
         except WebPushException as err:
             logger.error(f"WebPush发送失败: {str(err)}")
