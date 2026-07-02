@@ -1543,7 +1543,13 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if download_history:
                     task.username = download_history.username
                     # 识别媒体信息
-                    if download_history.tmdbid or download_history.doubanid:
+                    history_year_conflict = self._is_movie_year_conflict(
+                        task.meta, download_history
+                    )
+                    if (
+                            (download_history.tmdbid or download_history.doubanid)
+                            and not history_year_conflict
+                    ):
                         # 下载记录中已存在识别信息
                         mediainfo: Optional[MediaInfo] = self.recognize_media(
                             mtype=MediaType(download_history.type),
@@ -1556,6 +1562,18 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             # 更新自定义媒体类别
                             if download_history.media_category:
                                 mediainfo.category = download_history.media_category
+                    else:
+                        if history_year_conflict:
+                            logger.info(
+                                f"{task.fileitem.name} 文件年份 {task.meta.year} 与下载记录年份 "
+                                f"{download_history.year} 不一致，按文件名重新识别"
+                            )
+                        mediainfo = MediaChain().recognize_by_meta(
+                            task.meta,
+                            obtain_images=True,
+                        )
+                        if mediainfo and download_history.media_category:
+                            mediainfo.category = download_history.media_category
                 else:
                     # 识别媒体信息
                     mediainfo = MediaChain().recognize_by_meta(
@@ -2305,6 +2323,31 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return None
 
     @staticmethod
+    def _is_movie_year_conflict(
+            file_meta: MetaBase, media: Union[DownloadHistory, MediaInfo]
+    ) -> bool:
+        """
+        判断文件名年份是否与已识别电影年份冲突。
+
+        多电影合集只保存一条下载历史，不能把合集首部电影的媒体 ID 套用到其它年份的文件；
+        电视剧季包仍应继续复用同一条下载历史。
+        """
+        file_year = getattr(file_meta, "year", None)
+        media_year = getattr(media, "year", None)
+        if not file_meta or not media or not file_year or not media_year:
+            return False
+        media_type = getattr(media, "type", None)
+        if not isinstance(media_type, MediaType):
+            try:
+                media_type = MediaType(media_type)
+            except (TypeError, ValueError):
+                return False
+        return (
+            media_type == MediaType.MOVIE
+            and str(file_year) != str(media_year)
+        )
+
+    @staticmethod
     def __optional_attr_equal(
             source: MetaBase,
             target: MetaBase,
@@ -2964,11 +3007,19 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     _downloader = downloader
                     _download_hash = download_hash
 
+                # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
+                task_mediainfo = mediainfo
+                if (
+                        not manual
+                        and self._is_movie_year_conflict(file_meta, task_mediainfo)
+                ):
+                    task_mediainfo = None
+
                 # 后台整理
                 transfer_task = TransferTask(
                     fileitem=file_item,
                     meta=file_meta,
-                    mediainfo=mediainfo,
+                    mediainfo=task_mediainfo,
                     target_directory=target_directory,
                     target_storage=target_storage,
                     target_path=target_path,

@@ -273,3 +273,39 @@ def test_metainfopath_cn_title_containing_keyword_not_cleared():
     path = Path("/Some Movie 2024/粤语残片.mkv")
     meta = MetaInfoPath(path)
     assert "粤语残片" in meta.cn_name
+
+
+def test_metainfopath_movie_collection_parent_does_not_override_file_title():
+    """电影合集父目录不应覆盖文件名中更具体的片名与年份。"""
+    collection = (
+        "/Unraid/Media/MoviePilot/电影/"
+        "The.Hunger.Games.Complete.4-Film.Collection.2160p.UHD.Blu-ray."
+        "DV.Atmos.TrueHD.7.1.x265-HDH"
+    )
+    cases = [
+        (
+            "The.Hunger.Games.2012.2160p.UHD.Blu-ray.DV.Atmos.TrueHD.7.1.x265-HDH.mkv",
+            "The Hunger Games",
+            "2012",
+        ),
+        (
+            "The.Hunger.Games.Catching.Fire.2013.2160p.UHD.Blu-ray.DV.Atmos.TrueHD.7.1.x265-HDH.mkv",
+            "The Hunger Games Catching Fire",
+            "2013",
+        ),
+        (
+            "The.Hunger.Games.Mockingjay.Part.1.2014.2160p.UHD.Blu-ray.DV.Atmos.TrueHD.7.1.x265-HDH.mkv",
+            "The Hunger Games Mockingjay Part 1",
+            "2014",
+        ),
+        (
+            "The.Hunger.Games.Mockingjay.Part.2.2015.2160p.UHD.Blu-ray.DV.Atmos.TrueHD.7.1.x265-HDH.mkv",
+            "The Hunger Games Mockingjay Part 2",
+            "2015",
+        ),
+    ]
+
+    for file_name, expected_name, expected_year in cases:
+        meta = MetaInfoPath(Path(f"{collection}/{file_name}"))
+        assert meta.name == expected_name
+        assert meta.year == expected_year
