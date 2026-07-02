@@ -732,3 +732,74 @@ def test_cleanup_dest_fileitem_is_kept_when_episode_format_matches_nothing(monke
     assert state is True
     assert errmsg == ""
     assert delete_calls == []
+
+
+def test_episode_format_matched_but_filtered_by_size_returns_failure(monkeypatch):
+    """
+    文件名匹配集数定位模板但被大小过滤时，不应误报为模板无匹配的安全跳过。
+    """
+    chain = make_transfer_chain()
+    source_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Show - 01.mkv"
+    )
+
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_trans_fileitems",
+        lambda fileitem, predicate: [(source_fileitem, False)],
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.SystemConfigOper",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+
+    state, errmsg = TransferChain.do_transfer(
+        chain,
+        fileitem=source_fileitem,
+        background=False,
+        epformat=EpisodeFormat(format="Show - {ep}.mkv"),
+        min_filesize=2,
+    )
+
+    assert state is False
+    assert errmsg == f"{source_fileitem.name} 没有找到可整理的媒体文件"
+
+
+def test_candidate_collection_checks_continue_callback(monkeypatch):
+    """
+    候选文件收集阶段应响应取消，避免大目录或远程存储继续完整遍历。
+    """
+    chain = make_transfer_chain()
+    source_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Show - 01.mkv"
+    )
+    callback_calls = []
+
+    def fake_get_trans_fileitems(fileitem, predicate):
+        """
+        模拟递归收集候选文件时调用 predicate。
+        """
+        callback_calls.append("collect")
+        predicate(source_fileitem, False)
+        return [(source_fileitem, False)]
+
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_trans_fileitems",
+        fake_get_trans_fileitems,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.SystemConfigOper",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+
+    state, errmsg = TransferChain.do_transfer(
+        chain,
+        fileitem=source_fileitem,
+        background=False,
+        continue_callback=lambda: False,
+    )
+
+    assert state is False
+    assert errmsg == f"{source_fileitem.name} 已取消"
+    assert callback_calls == ["collect"]

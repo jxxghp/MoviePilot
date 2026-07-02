@@ -2584,6 +2584,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
         # 汇总错误信息
         err_msgs: List[str] = []
+        matched_episode_format_template = False
 
         def _build_file_meta(
                 source_path: Path,
@@ -2648,15 +2649,14 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
             :return: True 表示保留，False 表示排除
             """
+            nonlocal matched_episode_format_template
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
             # 存在集数定位模板时，模板匹配结果作为手动整理的硬过滤条件。
-            if (
-                    has_episode_format_template
-                    and formaterHandler
-                    and not formaterHandler.match(item.name)
-            ):
-                return False
+            if has_episode_format_template and formaterHandler:
+                if not formaterHandler.match(item.name):
+                    return False
+                matched_episode_format_template = True
             # 过滤后缀和大小（蓝光目录、附加文件不过滤）
             if (
                     not is_bluray_dir
@@ -2683,11 +2683,19 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 return False
             return True
 
+        def _keep_candidate_item(item: FileItem, is_bluray_dir: bool) -> bool:
+            """
+            收集候选文件时仅检查中断状态，不套用整理业务过滤。
+            """
+            if continue_callback and not continue_callback():
+                raise OperationInterrupted()
+            return True
+
         def _collect_candidate_file_items() -> List[Tuple[FileItem, bool]]:
             """
             收集来源下的候选文件项，不在此阶段套用整理业务过滤。
             """
-            return self.__get_trans_fileitems(fileitem, predicate=None)
+            return self.__get_trans_fileitems(fileitem, predicate=_keep_candidate_item)
 
         def _filter_allowed_file_items(
                 candidates: List[Tuple[FileItem, bool]]
@@ -2939,7 +2947,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             candidate_file_items.clear()
 
         if not file_items:
-            if has_episode_format_template:
+            if has_episode_format_template and not matched_episode_format_template:
                 logger.info(f"{fileitem.path} 未匹配到集数定位模板，跳过整理")
                 if preview:
                     return True, {
