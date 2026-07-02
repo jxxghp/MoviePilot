@@ -807,7 +807,7 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertEqual("", errmsg)
         self.assertFalse(captured["sync_extra_files"])
 
-    def test_do_transfer_keeps_manual_single_extra_file_when_epformat_misses(self):
+    def test_do_transfer_skips_manual_single_file_when_epformat_misses(self):
         chain = make_transfer_chain()
         planned = []
         subtitle_fileitem = make_fileitem(
@@ -854,13 +854,21 @@ class TransferJobManagerTest(unittest.TestCase):
                 fileitem=subtitle_fileitem,
                 background=False,
                 manual=True,
+                preview=True,
                 sync_extra_files=True,
                 epformat=EpisodeFormat(format="Show - {ep}.mkv"),
             )
 
         self.assertTrue(state)
-        self.assertEqual("", errmsg)
-        self.assertEqual([(subtitle_fileitem.path, 1)], planned)
+        self.assertEqual(
+            {
+                "summary": {"total": 0, "success": 0, "failed": 0},
+                "items": [],
+                "message": "",
+            },
+            errmsg,
+        )
+        self.assertEqual([], planned)
 
     def test_do_transfer_syncs_extra_files_when_epformat_only_matches_main_video(self):
         chain = make_transfer_chain()
@@ -936,7 +944,6 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertEqual(
             [
                 (main_fileitem.path, 1),
-                (subtitle_fileitem.path, 1),
             ],
             planned,
         )

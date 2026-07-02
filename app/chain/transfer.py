@@ -2530,6 +2530,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             manual: Optional[bool] = False,
             preview: Optional[bool] = False,
             sync_extra_files: Optional[bool] = False,
+            cleanup_dest_fileitem: Optional[FileItem] = None,
             continue_callback: Callable = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
@@ -2554,6 +2555,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param manual: 是否手动整理
         :param preview: 是否仅预览
         :param sync_extra_files: 是否在整理主视频文件时同步整理同媒体附加文件
+        :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         :param continue_callback: 继续处理回调
         返回：成功标识，错误信息
         """
@@ -2563,9 +2565,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if preview:
             # 预览模式始终同步执行，避免进入异步队列
             background = False
-        manual_single_file = bool(manual and fileitem and fileitem.type == "file")
-
         # 自定义格式
+        has_episode_format_template = bool(epformat and epformat.format)
         formaterHandler = (
             FormatParser(
                 eformat=epformat.format,
@@ -2583,6 +2584,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
         # 汇总错误信息
         err_msgs: List[str] = []
+        matched_episode_format_template = False
 
         def _build_file_meta(
                 source_path: Path,
@@ -2641,29 +2643,20 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
             return current_meta
 
-        def _filter(item: FileItem, is_bluray_dir: bool) -> bool:
+        def _is_allowed_transfer_item(item: FileItem, is_bluray_dir: bool) -> bool:
             """
-            过滤文件项
+            判断候选文件项是否允许进入整理规划。
 
             :return: True 表示保留，False 表示排除
             """
+            nonlocal matched_episode_format_template
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
-            is_extra_file = self.__is_subtitle_file(item) or self.__is_audio_file(item)
-            # 手动单文件整理时，前端可能把同目录文件拆成多个根文件提交；
-            # 此时应优先信任用户显式选择的根文件，并允许附加文件进入后续同媒体匹配流程，
-            # 避免仅因模板未覆盖字幕/音轨后缀而被提前过滤。
-            should_bypass_epformat_match = (
-                (manual_single_file and item.path == fileitem.path)
-                or (sync_extra_files and is_extra_file)
-            )
-            # 有集自定义格式，过滤文件
-            if (
-                    formaterHandler
-                    and not should_bypass_epformat_match
-                    and not formaterHandler.match(item.name)
-            ):
-                return False
+            # 存在集数定位模板时，模板匹配结果作为手动整理的硬过滤条件。
+            if has_episode_format_template and formaterHandler:
+                if not formaterHandler.match(item.name):
+                    return False
+                matched_episode_format_template = True
             # 过滤后缀和大小（蓝光目录、附加文件不过滤）
             if (
                     not is_bluray_dir
@@ -2689,6 +2682,32 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             ):
                 return False
             return True
+
+        def _keep_candidate_item(item: FileItem, is_bluray_dir: bool) -> bool:
+            """
+            收集候选文件时仅检查中断状态，不套用整理业务过滤。
+            """
+            if continue_callback and not continue_callback():
+                raise OperationInterrupted()
+            return True
+
+        def _collect_candidate_file_items() -> List[Tuple[FileItem, bool]]:
+            """
+            收集来源下的候选文件项，不在此阶段套用整理业务过滤。
+            """
+            return self.__get_trans_fileitems(fileitem, predicate=_keep_candidate_item)
+
+        def _filter_allowed_file_items(
+                candidates: List[Tuple[FileItem, bool]]
+        ) -> List[Tuple[FileItem, bool]]:
+            """
+            将候选文件项筛选为本轮允许整理的文件项。
+            """
+            return [
+                (candidate_item, candidate_bluray_dir)
+                for candidate_item, candidate_bluray_dir in candidates
+                if _is_allowed_transfer_item(candidate_item, candidate_bluray_dir)
+            ]
 
         def _build_main_meta(
                 main_fileitem: FileItem,
@@ -2771,7 +2790,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     continue
                 if not (self.__is_subtitle_file(item) or self.__is_audio_file(item)):
                     continue
-                if not _filter(item, False):
+                if not _is_allowed_transfer_item(item, False):
                     continue
                 extra_items.append((item, False))
             return main_fileitems, extra_items
@@ -2918,19 +2937,36 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
             return planned_items, inherited_map
 
+        candidate_file_items: List[Tuple[FileItem, bool]] = []
         try:
-            # 获取经过筛选后的待整理文件项列表
-            file_items = self.__get_trans_fileitems(fileitem, predicate=_filter)
+            candidate_file_items = _collect_candidate_file_items()
+            file_items = _filter_allowed_file_items(candidate_file_items)
         except OperationInterrupted:
             return False, f"{fileitem.name} 已取消"
+        finally:
+            candidate_file_items.clear()
 
         if not file_items:
+            if has_episode_format_template and not matched_episode_format_template:
+                logger.info(f"{fileitem.path} 未匹配到集数定位模板，跳过整理")
+                if preview:
+                    return True, {
+                        "summary": {"total": 0, "success": 0, "failed": 0},
+                        "items": [],
+                        "message": "",
+                    }
+                return True, ""
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
         file_items, inherited_meta_map = _plan_file_items(file_items)
 
         planned_file_count = len(file_items)
+        if cleanup_dest_fileitem and planned_file_count and not preview:
+            state = StorageChain().delete_media_file(cleanup_dest_fileitem)
+            if not state:
+                return False, f"{cleanup_dest_fileitem.path} 删除失败"
+
         if preview:
             logger.info(f"正在预览 {planned_file_count} 个文件的整理路径...")
         else:
@@ -3394,6 +3430,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             download_hash: Optional[str] = None,
             preview: Optional[bool] = False,
             sync_extra_files: Optional[bool] = True,
+            cleanup_dest_fileitem: Optional[FileItem] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -3417,6 +3454,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param download_hash: 下载任务哈希
         :param preview: 是否仅预览
         :param sync_extra_files: 是否同步整理同媒体附加文件
+        :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         if tmdbid or doubanid:
@@ -3457,6 +3495,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 download_hash=download_hash,
                 preview=preview,
                 sync_extra_files=sync_extra_files,
+                cleanup_dest_fileitem=cleanup_dest_fileitem,
             )
             if not state:
                 return False, errmsg
@@ -3483,6 +3522,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 download_hash=download_hash,
                 preview=preview,
                 sync_extra_files=sync_extra_files,
+                cleanup_dest_fileitem=cleanup_dest_fileitem,
             )
             return state, errmsg
 
