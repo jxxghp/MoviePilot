@@ -5,13 +5,14 @@ import io
 import json
 import shutil
 import site
+import stat
 import sys
 import tempfile
 import threading
 import time
 import traceback
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
@@ -1723,6 +1724,95 @@ class PluginHelper(metaclass=WeakSingleton):
         self.refresh_persistent_plugin_backup(pid)
         return True, ""
 
+    @staticmethod
+    def __validate_release_zip_name(name: str) -> None:
+        """
+        校验 release zip 成员名在 POSIX 与 Windows 语义下都只能表示相对路径。
+        """
+        if not name:
+            raise ValueError("非法 Release 压缩包成员：成员名为空")
+        if "\x00" in name:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+        if "\\" in name:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+
+        posix_path = PurePosixPath(name)
+        windows_path = PureWindowsPath(name)
+        if (
+            name.startswith("//")
+            or posix_path.is_absolute()
+            or windows_path.is_absolute()
+            or windows_path.drive
+        ):
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+
+        parts = [part for part in posix_path.parts if part not in ("", ".")]
+        if not parts:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+        if ".." in parts:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+
+    @staticmethod
+    def __validate_release_zip_type(info: zipfile.ZipInfo) -> None:
+        """
+        release zip 只接受普通文件和目录，避免归档内的符号链接或设备文件影响安装边界。
+        """
+        mode = info.external_attr >> 16
+        file_type = stat.S_IFMT(mode)
+        if not file_type:
+            return
+        if stat.S_ISREG(mode) or stat.S_ISDIR(mode):
+            return
+        raise ValueError(f"非法 Release 压缩包成员：{info.filename}")
+
+    @staticmethod
+    def __get_release_zip_base_prefix(infos: List[zipfile.ZipInfo]) -> str:
+        """
+        识别 release zip 的单一顶层目录，用于保持插件包根目录剥离行为。
+        """
+        names = [info.filename for info in infos]
+        names_with_slash = [name for name in names if "/" in name]
+        if names_with_slash and len(names_with_slash) == len(names):
+            first_seg = names_with_slash[0].split("/", 1)[0]
+            if first_seg and all(name.startswith(first_seg + "/") for name in names):
+                return first_seg + "/"
+        return ""
+
+    @classmethod
+    def __iter_release_zip_targets(
+        cls, zf: zipfile.ZipFile, dest_base: Path
+    ) -> List[Tuple[zipfile.ZipInfo, Path, bool]]:
+        """
+        将 release zip 成员解析为安装目标路径，并保证目标路径不会逃逸插件目录。
+        """
+        infos = zf.infolist()
+        for info in infos:
+            cls.__validate_release_zip_type(info)
+            cls.__validate_release_zip_name(info.filename)
+
+        base_prefix = cls.__get_release_zip_base_prefix(infos)
+        dest_root = dest_base.resolve()
+        targets = []
+        for info in infos:
+            raw_name = info.filename
+            rel_name = raw_name[len(base_prefix):] if base_prefix else raw_name
+            if not rel_name:
+                if base_prefix and raw_name == base_prefix:
+                    continue
+                raise ValueError(f"非法 Release 压缩包成员：{raw_name}")
+
+            cls.__validate_release_zip_name(rel_name)
+            rel_parts = [part for part in PurePosixPath(rel_name).parts if part not in ("", ".")]
+            if not rel_parts:
+                raise ValueError(f"非法 Release 压缩包成员：{raw_name}")
+            dest_path = (dest_root / Path(*rel_parts)).resolve()
+            try:
+                dest_path.relative_to(dest_root)
+            except ValueError as exc:
+                raise ValueError(f"非法 Release 压缩包成员：{raw_name}") from exc
+            targets.append((info, dest_path, info.is_dir()))
+        return targets
+
     def __install_from_release(self, pid: str, user_repo: str, release_tag: str) -> Tuple[bool, str]:
         """
         通过 GitHub Release 资产文件安装插件。
@@ -1766,29 +1856,18 @@ class PluginHelper(metaclass=WeakSingleton):
 
         try:
             with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
-                namelist = zf.namelist()
-                if not namelist:
+                infos = zf.infolist()
+                if not infos:
                     return False, "压缩包内容为空"
-                # 若所有条目均在同一顶层目录下（如 pid/），则剥离这一层，避免出现双层目录
-                names_with_slash = [n for n in namelist if '/' in n]
-                base_prefix = ''
-                if names_with_slash and len(names_with_slash) == len(namelist):
-                    first_seg = names_with_slash[0].split('/')[0]
-                    if all(n.startswith(first_seg + '/') for n in namelist):
-                        base_prefix = first_seg + '/'
-
                 dest_base = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                targets = self.__iter_release_zip_targets(zf, dest_base)
                 wrote_any = False
-                for name in namelist:
-                    rel_path = name[len(base_prefix):]
-                    if not rel_path:
+                for info, dest_path, is_dir in targets:
+                    if is_dir:
+                        dest_path.mkdir(parents=True, exist_ok=True)
                         continue
-                    if rel_path.endswith('/'):
-                        (dest_base / rel_path.rstrip('/')).mkdir(parents=True, exist_ok=True)
-                        continue
-                    dest_path = dest_base / rel_path
                     dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(name, 'r') as src, open(dest_path, 'wb') as dst:
+                    with zf.open(info, 'r') as src, open(dest_path, 'wb') as dst:
                         dst.write(src.read())
                     wrote_any = True
                 if not wrote_any:
@@ -2783,28 +2862,19 @@ class PluginHelper(metaclass=WeakSingleton):
 
         try:
             with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
-                namelist = zf.namelist()
-                if not namelist:
+                infos = zf.infolist()
+                if not infos:
                     return False, "压缩包内容为空"
-                names_with_slash = [n for n in namelist if '/' in n]
-                base_prefix = ''
-                if names_with_slash and len(names_with_slash) == len(namelist):
-                    first_seg = names_with_slash[0].split('/')[0]
-                    if all(n.startswith(first_seg + '/') for n in namelist):
-                        base_prefix = first_seg + '/'
-
-                dest_base = AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                dest_base = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                targets = self.__iter_release_zip_targets(zf, dest_base)
                 wrote_any = False
-                for name in namelist:
-                    rel_path = name[len(base_prefix):]
-                    if not rel_path:
+                for info, dest_path, is_dir in targets:
+                    async_dest_path = AsyncPath(dest_path)
+                    if is_dir:
+                        await async_dest_path.mkdir(parents=True, exist_ok=True)
                         continue
-                    if rel_path.endswith('/'):
-                        await (dest_base / rel_path.rstrip('/')).mkdir(parents=True, exist_ok=True)
-                        continue
-                    dest_path = dest_base / rel_path
-                    await dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(name, 'r') as src:
+                    await async_dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(info, 'r') as src:
                         data = src.read()
                     async with aiofiles.open(dest_path, 'wb') as dst:
                         await dst.write(data)
