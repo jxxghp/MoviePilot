@@ -29,10 +29,19 @@ class SubscribeOper(DbOper):
         """
         新增订阅
         """
-        subscribe = Subscribe.exists(self._db,
-                                     tmdbid=mediainfo.tmdb_id,
-                                     doubanid=mediainfo.douban_id,
-                                     season=kwargs.get('season'))
+        owner_scope = bool(kwargs.pop("owner_scope", False))
+        username = kwargs.get("username") if owner_scope else None
+        if username:
+            subscribe = Subscribe.exists_by_username(self._db,
+                                                     username=username,
+                                                     tmdbid=mediainfo.tmdb_id,
+                                                     doubanid=mediainfo.douban_id,
+                                                     season=kwargs.get('season'))
+        else:
+            subscribe = Subscribe.exists(self._db,
+                                         tmdbid=mediainfo.tmdb_id,
+                                         doubanid=mediainfo.douban_id,
+                                         season=kwargs.get('season'))
         kwargs.update({
             "name": mediainfo.title,
             "year": mediainfo.year,
@@ -55,10 +64,17 @@ class SubscribeOper(DbOper):
             subscribe = Subscribe(**kwargs)
             subscribe.create(self._db)
             # 查询订阅
-            subscribe = Subscribe.exists(self._db,
-                                         tmdbid=mediainfo.tmdb_id,
-                                         doubanid=mediainfo.douban_id,
-                                         season=kwargs.get('season'))
+            if username:
+                subscribe = Subscribe.exists_by_username(self._db,
+                                                         username=username,
+                                                         tmdbid=mediainfo.tmdb_id,
+                                                         doubanid=mediainfo.douban_id,
+                                                         season=kwargs.get('season'))
+            else:
+                subscribe = Subscribe.exists(self._db,
+                                             tmdbid=mediainfo.tmdb_id,
+                                             doubanid=mediainfo.douban_id,
+                                             season=kwargs.get('season'))
             return subscribe.id, "新增订阅成功"
         else:
             return subscribe.id, "订阅已存在"
@@ -67,10 +83,19 @@ class SubscribeOper(DbOper):
         """
         异步新增订阅
         """
-        subscribe = await Subscribe.async_exists(self._db,
-                                                 tmdbid=mediainfo.tmdb_id,
-                                                 doubanid=mediainfo.douban_id,
-                                                 season=kwargs.get('season'))
+        owner_scope = bool(kwargs.pop("owner_scope", False))
+        username = kwargs.get("username") if owner_scope else None
+        if username:
+            subscribe = await Subscribe.async_exists_by_username(self._db,
+                                                                 username=username,
+                                                                 tmdbid=mediainfo.tmdb_id,
+                                                                 doubanid=mediainfo.douban_id,
+                                                                 season=kwargs.get('season'))
+        else:
+            subscribe = await Subscribe.async_exists(self._db,
+                                                     tmdbid=mediainfo.tmdb_id,
+                                                     doubanid=mediainfo.douban_id,
+                                                     season=kwargs.get('season'))
         kwargs.update({
             "name": mediainfo.title,
             "year": mediainfo.year,
@@ -93,10 +118,17 @@ class SubscribeOper(DbOper):
             subscribe = Subscribe(**kwargs)
             await subscribe.async_create(self._db)
             # 查询订阅
-            subscribe = await Subscribe.async_exists(self._db,
-                                                     tmdbid=mediainfo.tmdb_id,
-                                                     doubanid=mediainfo.douban_id,
-                                                     season=kwargs.get('season'))
+            if username:
+                subscribe = await Subscribe.async_exists_by_username(self._db,
+                                                                     username=username,
+                                                                     tmdbid=mediainfo.tmdb_id,
+                                                                     doubanid=mediainfo.douban_id,
+                                                                     season=kwargs.get('season'))
+            else:
+                subscribe = await Subscribe.async_exists(self._db,
+                                                         tmdbid=mediainfo.tmdb_id,
+                                                         doubanid=mediainfo.douban_id,
+                                                         season=kwargs.get('season'))
             return subscribe.id, "新增订阅成功"
         else:
             return subscribe.id, "订阅已存在"

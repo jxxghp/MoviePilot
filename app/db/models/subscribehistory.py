@@ -103,6 +103,31 @@ class SubscribeHistory(Base):
         return result.scalars().all()
 
     @classmethod
+    @async_db_query
+    async def async_list_by_type_and_username(
+            cls,
+            db: AsyncSession,
+            mtype: str,
+            username: str,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30
+    ):
+        """
+        按订阅 owner 查询指定类型的历史分页。
+        """
+        if not username:
+            return []
+        result = await db.execute(
+            select(cls).filter(
+                cls.type == mtype,
+                cls.username == username
+            ).order_by(
+                cls.date.desc()
+            ).offset((page - 1) * count).limit(count)
+        )
+        return result.scalars().all()
+
+    @classmethod
     @db_query
     def exists(cls, db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
                season: Optional[int] = None):

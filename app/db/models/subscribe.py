@@ -132,6 +132,46 @@ class Subscribe(Base):
 
     @classmethod
     @db_query
+    def exists_by_username(cls, db: Session, username: str, tmdbid: Optional[int] = None,
+                           doubanid: Optional[str] = None, season: Optional[int] = None):
+        """
+        按订阅 owner 查询同一媒体的订阅行。
+        """
+        if not username:
+            return None
+        if tmdbid:
+            query = db.query(cls).filter(cls.username == username, cls.tmdbid == tmdbid)
+            if season is not None:
+                query = query.filter(cls.season == season)
+            return query.first()
+        elif doubanid:
+            return db.query(cls).filter(cls.username == username, cls.doubanid == doubanid).first()
+        return None
+
+    @classmethod
+    @async_db_query
+    async def async_exists_by_username(cls, db: AsyncSession, username: str, tmdbid: Optional[int] = None,
+                                       doubanid: Optional[str] = None, season: Optional[int] = None):
+        """
+        异步按订阅 owner 查询同一媒体的订阅行。
+        """
+        if not username:
+            return None
+        if tmdbid:
+            query = select(cls).filter(cls.username == username, cls.tmdbid == tmdbid)
+            if season is not None:
+                query = query.filter(cls.season == season)
+            result = await db.execute(query)
+        elif doubanid:
+            result = await db.execute(
+                select(cls).filter(cls.username == username, cls.doubanid == doubanid)
+            )
+        else:
+            return None
+        return result.scalars().first()
+
+    @classmethod
+    @db_query
     def get_by_state(cls, db: Session, state: str):
         # 如果 state 为空或 None，返回所有订阅
         if not state:
@@ -175,6 +215,22 @@ class Subscribe(Base):
         return result.scalars().first()
 
     @classmethod
+    @async_db_query
+    async def async_list_by_title(cls, db: AsyncSession, title: str, season: Optional[int] = None):
+        """
+        异步按标题查询候选订阅列表。
+        """
+        if season is not None:
+            result = await db.execute(
+                select(cls).filter(cls.name == title, cls.season == season)
+            )
+        else:
+            result = await db.execute(
+                select(cls).filter(cls.name == title)
+            )
+        return result.scalars().all()
+
+    @classmethod
     @db_query
     def get_by_tmdbid(cls, db: Session, tmdbid: int, season: Optional[int] = None):
         if season is not None:
@@ -210,6 +266,17 @@ class Subscribe(Base):
         return result.scalars().first()
 
     @classmethod
+    @async_db_query
+    async def async_list_by_doubanid(cls, db: AsyncSession, doubanid: str):
+        """
+        异步按豆瓣 ID 查询候选订阅列表。
+        """
+        result = await db.execute(
+            select(cls).filter(cls.doubanid == doubanid)
+        )
+        return result.scalars().all()
+
+    @classmethod
     @db_query
     def get_by_bangumiid(cls, db: Session, bangumiid: int):
         return db.query(cls).filter(cls.bangumiid == bangumiid).first()
@@ -223,6 +290,17 @@ class Subscribe(Base):
         return result.scalars().first()
 
     @classmethod
+    @async_db_query
+    async def async_list_by_bangumiid(cls, db: AsyncSession, bangumiid: int):
+        """
+        异步按 Bangumi ID 查询候选订阅列表。
+        """
+        result = await db.execute(
+            select(cls).filter(cls.bangumiid == bangumiid)
+        )
+        return result.scalars().all()
+
+    @classmethod
     @db_query
     def get_by_mediaid(cls, db: Session, mediaid: str):
         return db.query(cls).filter(cls.mediaid == mediaid).first()
@@ -234,6 +312,17 @@ class Subscribe(Base):
             select(cls).filter(cls.mediaid == mediaid)
         )
         return result.scalars().first()
+
+    @classmethod
+    @async_db_query
+    async def async_list_by_mediaid(cls, db: AsyncSession, mediaid: str):
+        """
+        异步按自定义媒体 ID 查询候选订阅列表。
+        """
+        result = await db.execute(
+            select(cls).filter(cls.mediaid == mediaid)
+        )
+        return result.scalars().all()
 
     @classmethod
     @db_query
