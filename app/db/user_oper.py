@@ -58,6 +58,36 @@ async def get_current_active_user_async(
     return current_user
 
 
+def _ensure_manage_user(current_user: User) -> User:
+    """
+    校验用户具备全局管理权限。
+    """
+    permissions = current_user.permissions or {}
+    if not current_user.is_superuser and not bool(permissions.get("manage")):
+        raise HTTPException(
+            status_code=400, detail="用户权限不足"
+        )
+    return current_user
+
+
+def get_current_active_manage_user(
+        current_user: User = Depends(get_current_active_user),
+) -> User:
+    """
+    获取当前拥有管理权限的激活用户。
+    """
+    return _ensure_manage_user(current_user)
+
+
+async def get_current_active_manage_user_async(
+        current_user: User = Depends(get_current_active_user_async),
+) -> User:
+    """
+    异步获取当前拥有管理权限的激活用户。
+    """
+    return _ensure_manage_user(current_user)
+
+
 def get_current_active_superuser(
         current_user: User = Depends(get_current_user),
 ) -> User:
