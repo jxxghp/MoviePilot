@@ -18,7 +18,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
-from app.helper.directory import DirectoryHelper
+from app.helper.directory import DirectoryHelper, validate_download_save_path
 from app.helper.thread import ThreadHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
@@ -107,19 +107,27 @@ class DownloadChain(ChainBase):
     def _resolve_media_download_dir(
             media_info: MediaInfo,
             save_path: Optional[str] = None,
-    ) -> Union[str, Path]:
+    ) -> Tuple[Optional[str], Optional[Path], str]:
         """
         根据媒体信息解析下载目录。
         """
         storage = 'local'
-        if save_path:
-            return storage, Path(save_path)
+        if save_path is not None:
+            try:
+                validated_save_path = validate_download_save_path(save_path)
+            except ValueError as err:
+                logger.warn(str(err))
+                return None, None, str(err)
+            if re.match(r"^[A-Za-z]:/", validated_save_path):
+                return storage, Path(validated_save_path), ""
+            file_uri = FileURI.from_uri(validated_save_path)
+            return file_uri.storage or storage, Path(file_uri.path), ""
 
         dir_info = DirectoryHelper().get_dir(media_info, include_unsorted=True)
         storage = dir_info.storage if dir_info else storage
         if not dir_info:
             logger.error(f"未找到下载目录：{media_info.type.value} {media_info.title_year}")
-            return None
+            return None, None, "未找到下载目录"
 
         if not dir_info.media_type and dir_info.download_type_folder:
             download_dir = Path(dir_info.download_path) / media_info.type.value
@@ -129,7 +137,7 @@ class DownloadChain(ChainBase):
         if not dir_info.media_category and dir_info.download_category_folder and media_info.category:
             download_dir = download_dir / media_info.category
 
-        return storage, download_dir
+        return storage, download_dir, ""
 
     @staticmethod
     def _upload_subtitle_file(
@@ -293,12 +301,12 @@ class DownloadChain(ChainBase):
         if not mediainfo:
             return False, "无法识别媒体信息", []
 
-        storage, target_dir = self._resolve_media_download_dir(
+        storage, target_dir, error_msg = self._resolve_media_download_dir(
             media_info=mediainfo,
             save_path=save_path,
         )
         if not target_dir:
-            return False, "未找到下载目录", []
+            return False, error_msg or "未找到下载目录", []
 
         request = RequestUtils(
             cookies=subtitle.site_cookie,
@@ -527,8 +535,15 @@ class DownloadChain(ChainBase):
                     f"Reason: {event_data.reason}")
                 return (None, "下载被事件取消") if return_detail else None
             # 如果事件修改了下载路径，使用新路径
-            if event_data.options and event_data.options.get("save_path"):
+            if event_data.options and "save_path" in event_data.options:
                 save_path = event_data.options.get("save_path")
+
+        if save_path is not None:
+            try:
+                save_path = validate_download_save_path(save_path)
+            except ValueError as err:
+                logger.warn(str(err))
+                return (None, str(err)) if return_detail else None
 
         # 补充完整的media数据
         if not _media.genre_ids:
@@ -570,7 +585,7 @@ class DownloadChain(ChainBase):
 
         storage = 'local'
         # 下载目录
-        if save_path:
+        if save_path is not None:
             download_dir = Path(save_path)
         else:
             # 根据媒体信息查询下载目录配置

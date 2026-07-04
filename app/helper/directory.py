@@ -1,15 +1,17 @@
 import re
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import List, Optional, Tuple
 
 from app import schemas
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import StorageSchema, SystemConfigKey
 from app.utils.system import SystemUtils
 
 JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
+WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
+WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"^[A-Za-z]:")
 
 
 class DirectoryHelper:
@@ -169,3 +171,118 @@ class DirectoryHelper:
         # 媒体根路径
         media_root = rename_path.parents[rename_format_level - 1]
         return media_root
+
+
+def _split_file_uri(value: str) -> Tuple[str, str]:
+    """
+    拆分 FileURI 字符串，保留原始路径用于安全校验。
+    """
+    for storage in StorageSchema:
+        protocol = f"{storage.value}:"
+        if value.startswith(protocol):
+            return storage.value, value[len(protocol):]
+    return "local", value
+
+
+def _normalize_safe_posix_path(raw_path: str) -> PurePosixPath:
+    """
+    规范化保存目录路径，并拒绝跨目录或跨平台歧义写法。
+    """
+    if not raw_path:
+        raise ValueError("保存路径不能为空")
+    if "\\" in raw_path:
+        raise ValueError("保存路径不能包含反斜杠")
+    if raw_path.startswith("//"):
+        raise ValueError("保存路径不能使用 UNC 路径")
+    if WINDOWS_DRIVE_PATTERN.match(raw_path):
+        raise ValueError("保存路径不能使用 Windows 盘符路径")
+    if not raw_path.startswith("/"):
+        raise ValueError("保存路径必须是绝对路径")
+
+    path = PurePosixPath(raw_path)
+    parts = [part for part in path.parts if part != "/"]
+    if ".." in parts:
+        raise ValueError("保存路径不能包含上级目录")
+    if parts and re.fullmatch(r"[A-Za-z]:", parts[0]):
+        raise ValueError("保存路径不能使用 Windows 盘符路径")
+    return path
+
+
+def _normalize_safe_windows_path(raw_path: str) -> PureWindowsPath:
+    """
+    规范化已配置的 Windows 盘符路径；UNC 与反斜杠写法不参与下载目录 allowlist。
+    """
+    if not raw_path:
+        raise ValueError("保存路径不能为空")
+    if "\\" in raw_path:
+        raise ValueError("保存路径不能包含反斜杠")
+    if raw_path.startswith("//"):
+        raise ValueError("保存路径不能使用 UNC 路径")
+    if not WINDOWS_DRIVE_PATTERN.match(raw_path):
+        raise ValueError("保存路径必须是 Windows 绝对路径")
+
+    path = PureWindowsPath(raw_path)
+    if ".." in path.parts:
+        raise ValueError("保存路径不能包含上级目录")
+    return path
+
+
+def _normalize_download_path(raw_path: str, storage: str) -> Tuple[str, PurePath]:
+    """
+    按存储类型解析下载路径，本地允许 POSIX 或已配置的 Windows drive，远端保持 FileURI POSIX 语义。
+    """
+    path_value = str(raw_path or "").strip()
+    if storage == "local" and WINDOWS_DRIVE_PREFIX_PATTERN.match(path_value):
+        return "windows", _normalize_safe_windows_path(path_value)
+    return "posix", _normalize_safe_posix_path(path_value)
+
+
+def _download_path_uri(storage: str, path: PurePath) -> str:
+    """
+    生成可传给下载器的 save_path，保持 /download/paths 暴露的本地和远端路径风格。
+    """
+    path_value = path.as_posix()
+    if storage == "local":
+        return path_value
+    return schemas.FileURI(storage=storage, path=path_value).uri
+
+
+def _normalize_download_root(dir_info: schemas.TransferDirectoryConf) -> Optional[Tuple[str, str, PurePath]]:
+    """
+    读取下载目录配置中的根路径；无效配置不参与用户 save_path allowlist。
+    """
+    if not dir_info.download_path:
+        return None
+    storage = dir_info.storage or "local"
+    try:
+        path_style, root_path = _normalize_download_path(dir_info.download_path, storage)
+        return storage, path_style, root_path
+    except ValueError as err:
+        logger.warn(f"跳过无效下载目录配置：{str(err)}")
+        return None
+
+
+def validate_download_save_path(save_path: str) -> str:
+    """
+    校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。
+
+    :param save_path: 下载保存目录，支持本地 /path 或远端 <storage>:/path
+    :return: 可直接传给下载接口的规范化保存目录
+    """
+    value = str(save_path or "").strip()
+    storage, raw_path = _split_file_uri(value)
+    target_style, target_path = _normalize_download_path(raw_path, storage)
+
+    for dir_info in DirectoryHelper().get_download_dirs():
+        root = _normalize_download_root(dir_info)
+        if not root:
+            continue
+        root_storage, root_style, root_path = root
+        if storage != root_storage:
+            continue
+        if target_style != root_style:
+            continue
+        if target_path == root_path or target_path.is_relative_to(root_path):
+            return _download_path_uri(storage, target_path)
+
+    raise ValueError("保存路径不在允许的下载目录范围内")
