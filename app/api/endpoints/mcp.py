@@ -19,6 +19,7 @@ router = APIRouter()
 # MCP 协议版本
 MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"]
 MCP_PROTOCOL_VERSION = MCP_PROTOCOL_VERSIONS[0]  # 默认使用最新版本
+# MCP 经 API_TOKEN / X-API-KEY 认证后是管理员级集成入口；隐藏工具只收敛暴露面，不构成权限边界。
 MCP_HIDDEN_TOOLS = {
     "execute_command",
     "search_web",

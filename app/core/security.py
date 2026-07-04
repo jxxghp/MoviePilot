@@ -316,7 +316,9 @@ def __verify_key(key: str | None, expected_key: str, key_type: str) -> str:
 
 def verify_apitoken(token: Annotated[str | None, Security(__get_api_token)]) -> str:
     """
-    使用 API Token 进行身份认证
+    使用 API Token 进行受信第三方集成认证。
+
+    校验值来自 settings.API_TOKEN；通过后只确认集成凭据有效，不生成 per-user 权限上下文。
     :param token: API Token，从 URL 查询参数中获取 token=xxx
     :return: 返回校验通过的 API Token
     """
@@ -325,7 +327,9 @@ def verify_apitoken(token: Annotated[str | None, Security(__get_api_token)]) -> 
 
 def verify_apikey(apikey: Annotated[str | None, Security(__get_api_key)]) -> str:
     """
-    使用 API Key 进行身份认证
+    使用 API Key 形式进行受信第三方集成认证。
+
+    请求字段名兼容 API Key，实际校验值来自 settings.API_TOKEN，不生成 per-user 权限上下文。
     :param apikey: API Key，从 URL 查询参数中获取 apikey=xxx，或请求头中获取 X-API-KEY=xxx
     :return: 返回校验通过的 API Key
     """

@@ -78,6 +78,8 @@ The `API_TOKEN` value in `settings` is the source of truth. It is set at initial
 
 ### Endpoint Authorization
 
+- API-token authenticated integration endpoints are administrator-level surfaces unless a specific endpoint documents a narrower contract.
+- Do not infer user-scoped authorization from a valid `API_TOKEN`; use an explicit user identity dependency when behavior must be scoped to a logged-in user.
 - Use the existing FastAPI dependency functions (e.g., `get_current_user`, `get_current_active_superuser`) — check `app/api/endpoints/` for usage patterns.
 - Do not add manual token parsing inside endpoint functions. Always use the project's dependency injection.
 - Superuser-only operations must explicitly require the superuser dependency.

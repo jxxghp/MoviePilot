@@ -231,6 +231,9 @@ def _error_response(
 def _check_auth(
     credentials: Optional[HTTPAuthorizationCredentials],
 ) -> Optional[JSONResponse]:
+    """
+    OpenAI 兼容接口以 API_TOKEN 认证受信客户端，认证通过即按管理员级 Agent 集成处理。
+    """
     if not credentials or credentials.scheme.lower() != "bearer":
         return _error_response(
             "Invalid bearer token.",
@@ -317,6 +320,7 @@ async def chat_completions(
 
     session_id = build_session_id(session_key, SESSION_PREFIX)
     username = str(payload.user or "openai-client")
+    # 兼容接口的 API_TOKEN 客户端按管理员级 MoviePilot Agent 集成处理。
     agent = _CollectingMoviePilotAgent(
         session_id=session_id,
         user_id=session_key,
@@ -409,6 +413,7 @@ async def responses(
 
     session_key = str(payload.user or uuid.uuid4())
     session_id = build_session_id(session_key, SESSION_PREFIX)
+    # 兼容接口的 API_TOKEN 客户端按管理员级 MoviePilot Agent 集成处理。
     agent = _CollectingMoviePilotAgent(
         session_id=session_id,
         user_id=session_key,
