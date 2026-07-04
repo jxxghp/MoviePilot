@@ -9,12 +9,39 @@ from app.core.context import MediaInfo, Context, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
+from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
 from app.helper.directory import DirectoryHelper
 from app.schemas.types import SystemConfigKey
+from app.utils.security import SecurityUtils
 
 router = APIRouter()
+
+
+def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
+    """
+    校验字幕下载签名，并用服务端站点配置覆盖请求凭据。
+    """
+    if subtitle.site is None:
+        return False, "字幕站点信息为空"
+
+    clean_url = SecurityUtils.verify_signed_url(
+        subtitle.enclosure,
+        purpose=SecurityUtils.subtitle_download_purpose(subtitle.site),
+    )
+    if not clean_url:
+        return False, "字幕下载链接签名无效"
+
+    site = SiteOper().get(subtitle.site)
+    if not site:
+        return False, "字幕站点信息不存在"
+
+    subtitle.enclosure = clean_url
+    subtitle.site_cookie = site.cookie
+    subtitle.site_ua = site.ua
+    subtitle.site_proxy = bool(site.proxy)
+    return True, ""
 
 
 @router.get("/", summary="正在下载", response_model=List[schemas.DownloaderTorrent])
@@ -127,6 +154,10 @@ def download_subtitle(
     """
     subtitle_info = SubtitleInfo()
     subtitle_info.from_dict(subtitle_in.model_dump())
+    valid, message = _prepare_subtitle_download(subtitle_info)
+    if not valid:
+        return schemas.Response(success=False, message=message)
+
     success, message, saved_files = DownloadChain().download_subtitle(
         subtitle=subtitle_info,
         tmdbid=tmdbid,

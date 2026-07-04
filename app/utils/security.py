@@ -107,6 +107,7 @@ def _resolve_addrinfo_to_ips(
 
 class SecurityUtils:
     _SIGNED_URL_PURPOSE = "image-proxy"
+    _SUBTITLE_DOWNLOAD_PURPOSE_PREFIX = "subtitle-download"
 
     @staticmethod
     def is_safe_path(base_path: Path, user_path: Path,
@@ -452,15 +453,22 @@ class SecurityUtils:
     @staticmethod
     def strip_url_signature(url: str) -> str:
         """
-        移除 URL fragment 中的代理签名信息，得到真正要请求的地址。
+        移除 URL fragment 中的资源签名信息，得到真正要请求的地址。
 
-        图片代理签名放在 fragment 中，浏览器会把它传给 MoviePilot，但 HTTP
-        客户端请求媒体服务器前不能把这些内部参数带过去。
+        签名放在 fragment 中，浏览器会把它传给 MoviePilot，但 HTTP 客户端
+        请求外部资源前不能把这些内部参数带过去。
         """
         if not url:
             return url
         parsed_url = urlparse(url)
         return urlunparse(parsed_url._replace(fragment=""))
+
+    @staticmethod
+    def subtitle_download_purpose(site_id: int) -> str:
+        """
+        构造字幕下载 URL 签名用途，签名必须绑定站点 ID，避免跨站点复用。
+        """
+        return f"{SecurityUtils._SUBTITLE_DOWNLOAD_PURPOSE_PREFIX}:{site_id}"
 
     @staticmethod
     def sign_url(
@@ -470,9 +478,8 @@ class SecurityUtils:
         """
         给服务端返回的资源 URL 添加稳定签名。
 
-        签名作为 `/system/img` 代理放行私网图片 URL 的能力凭证：图片代理默认
-        拒绝解析到非公网地址的 URL（防 SSRF），合法媒体服务器 URL 必须由后端
-        预先签名后才能跳过该限制。
+        签名作为后端资源能力凭证：外部请求边界可以用不同 `purpose` 绑定
+        具体业务语义，避免一个场景签出的 URL 被挪用到另一个场景。
 
         签名为 `(url, purpose, RESOURCE_SECRET_KEY)` 的确定性 HMAC，**不带
         过期时间**：相同 URL 多次调用结果完全一致，让浏览器与 Service Worker
@@ -500,7 +507,7 @@ class SecurityUtils:
         purpose: str = _SIGNED_URL_PURPOSE,
     ) -> Optional[str]:
         """
-        验证 URL fragment 中的代理签名，成功时返回去签名后的真实 URL。
+        验证 URL fragment 中的资源签名，成功时返回去签名后的真实 URL。
 
         签名只校验 `(url, purpose, RESOURCE_SECRET_KEY)`，密钥轮换/进程重启
         后旧签名自动失效。
