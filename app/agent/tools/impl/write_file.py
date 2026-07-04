@@ -26,7 +26,7 @@ class WriteFileTool(MoviePilotTool):
     ]
     description: str = (
         "Write full content to a local text file. Non-admin users can only write "
-        "inside the MoviePilot Agent config and log directories."
+        "inside the MoviePilot Agent config directory."
     )
     args_schema: Type[BaseModel] = WriteFileInput
 

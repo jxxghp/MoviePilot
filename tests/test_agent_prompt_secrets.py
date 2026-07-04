@@ -21,10 +21,12 @@ def test_moviepilot_info_does_not_expose_api_token_or_database_password(monkeypa
     assert "db.example.local" not in moviepilot_info
     assert str(settings.CONFIG_PATH) in moviepilot_info
     assert str(settings.TEMP_PATH) in moviepilot_info
-    assert str(settings.LOG_PATH) in moviepilot_info
-    assert str(settings.LOG_PATH / "moviepilot.log") in moviepilot_info
+    assert str(settings.LOG_PATH) not in moviepilot_info
+    assert str(settings.LOG_PATH / "moviepilot.log") not in moviepilot_info
     assert str(settings.LOG_PATH / "moviepilot.stdout.log") not in moviepilot_info
     assert str(settings.LOG_PATH / "moviepilot.frontend.stdout.log") not in moviepilot_info
+    assert "日志目录" not in moviepilot_info
+    assert "主日志文件" not in moviepilot_info
     assert str(settings.CONFIG_PATH / "agent") not in moviepilot_info
     assert str(settings.CONFIG_PATH / "agent" / "memory") not in moviepilot_info
     assert str(settings.CONFIG_PATH / "agent" / "skills") not in moviepilot_info

@@ -28,7 +28,7 @@ class EditFileTool(MoviePilotTool):
     description: str = (
         "Edit a local text file by replacing specific old text with new text. "
         "Non-admin users can only edit files inside the MoviePilot Agent config "
-        "and log directories."
+        "directory."
     )
     args_schema: Type[BaseModel] = EditFileInput
 

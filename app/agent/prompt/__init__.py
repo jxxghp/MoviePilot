@@ -315,8 +315,6 @@ class PromptManager:
             "项目根目录": settings.ROOT_PATH,
             "配置目录": settings.CONFIG_PATH,
             "临时目录": settings.TEMP_PATH,
-            "日志目录": settings.LOG_PATH,
-            "主日志文件": settings.LOG_PATH / "moviepilot.log",
         }
         return [f"  - {label}: `{path}`" for label, path in paths.items()]
 

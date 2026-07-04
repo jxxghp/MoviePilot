@@ -425,7 +425,6 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """
         roots = [
             settings.CONFIG_PATH / "agent",
-            settings.LOG_PATH,
         ]
         resolved_roots = []
         for root in roots:
@@ -461,7 +460,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         allowed_text = "、".join(str(root) for root in allowed_roots)
         return (
             resolved_path,
-            f"抱歉，普通用户只能{operation}Agent配置目录和日志目录内的文件或目录：{allowed_text}",
+            f"抱歉，普通用户只能{operation}Agent配置目录内的文件或目录：{allowed_text}",
         )
 
     async def _check_local_storage_access(
@@ -483,7 +482,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 return None, None
             return (
                 None,
-                f"抱歉，普通用户只能{operation}本地配置目录、Agent记忆目录和日志目录，不能访问远程存储。",
+                f"抱歉，普通用户只能{operation}本地Agent配置目录，不能访问远程存储。",
             )
 
         return await self._check_local_file_access(path=path, operation=operation)
