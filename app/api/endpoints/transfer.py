@@ -12,7 +12,10 @@ from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models import User
 from app.db.models.transferhistory import TransferHistory
-from app.db.user_oper import get_current_active_superuser
+from app.db.user_oper import (
+    get_current_active_manage_user,
+    get_current_active_superuser,
+)
 from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.schemas import (
@@ -182,7 +185,7 @@ def _get_manual_transfer_target_key(
 def match_manual_transfer_target_path(
     transer_item: ManualTransferItem,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_active_superuser),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     根据源文件匹配手动整理目的路径。
@@ -242,7 +245,7 @@ def manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool] = False,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_active_superuser),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
@@ -528,7 +531,7 @@ def manual_transfer(
 )
 def recommend_episode_format(
     recommend_item: EpisodeFormatRecommendItem,
-    _: User = Depends(get_current_active_superuser),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     根据目录样本推荐集数定位模板
