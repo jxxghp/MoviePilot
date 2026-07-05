@@ -12,6 +12,10 @@ from app.utils.string import StringUtils
 
 @dataclass
 class TorrentInfo:
+    """
+    种子搜索结果信息。
+    """
+
     # 站点ID
     site: int = None
     # 站点名称

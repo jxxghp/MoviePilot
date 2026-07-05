@@ -530,7 +530,7 @@ class SearchChain(ChainBase):
     def search_by_title(self, title: str, page: Optional[int] = 0,
                         sites: List[int] = None, cache_local: Optional[bool] = False) -> List[Context]:
         """
-        根据标题搜索资源，不识别不过滤，直接返回站点内容
+        根据标题搜索资源，不识别媒体信息，按默认搜索过滤规则返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
         :param page: 页码
         :param sites: 站点ID列表
@@ -551,6 +551,10 @@ class SearchChain(ChainBase):
         torrents = self.__search_all_sites(keyword=title, sites=sites, page=page) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
+            return []
+        torrents = self.__filter_title_search_torrents(torrents=torrents)
+        if not torrents:
+            logger.warn(f'{title} 没有符合过滤规则的资源')
             return []
         # 组装上下文
         contexts = [
@@ -791,7 +795,7 @@ class SearchChain(ChainBase):
     async def async_search_by_title(self, title: str, page: Optional[int] = 0,
                                     sites: List[int] = None, cache_local: Optional[bool] = False) -> List[Context]:
         """
-        根据标题异步搜索资源，不识别不过滤，直接返回站点内容
+        根据标题异步搜索资源，不识别媒体信息，按默认搜索过滤规则返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
         :param page: 页码
         :param sites: 站点ID列表
@@ -813,6 +817,10 @@ class SearchChain(ChainBase):
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
+        torrents = await run_in_threadpool(self.__filter_title_search_torrents, torrents=torrents)
+        if not torrents:
+            logger.warn(f'{title} 没有符合过滤规则的资源')
+            return []
         # 组装上下文
         contexts = [
             Context(
@@ -830,7 +838,7 @@ class SearchChain(ChainBase):
                                            sites: List[int] = None,
                                            cache_local: Optional[bool] = False) -> AsyncIterator[dict]:
         """
-        根据标题渐进式搜索资源，不识别不过滤，按站点完成顺序返回结果
+        根据标题渐进式搜索资源，不识别媒体信息，按默认搜索过滤规则返回结果
         """
         if cache_local:
             self.cancel_ai_recommend()
@@ -845,8 +853,14 @@ class SearchChain(ChainBase):
             logger.info(f'开始渐进式浏览资源，站点：{sites} ...')
 
         contexts: List[Context] = []
+        rule_groups: List[str] = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
         async for event in self.__async_search_all_sites_stream(keyword=title, sites=sites, page=page):
             result = event.pop("items", []) or []
+            result = await run_in_threadpool(
+                self.__filter_title_search_torrents,
+                torrents=result,
+                rule_groups=rule_groups,
+            )
             batch_contexts = [
                 Context(
                     meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
@@ -875,6 +889,29 @@ class SearchChain(ChainBase):
             "items": [context.to_dict() for context in contexts],
             "total_items": len(contexts)
         }
+
+    def __filter_title_search_torrents(self,
+                                       torrents: List[TorrentInfo],
+                                       rule_groups: Optional[List[str]] = None) -> List[TorrentInfo]:
+        """
+        对标题搜索结果应用默认搜索过滤规则，不执行媒体识别和标题精确匹配。
+        """
+        if not torrents:
+            return []
+
+        if rule_groups is None:
+            rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+        if not rule_groups:
+            return torrents
+
+        logger.info(f'开始过滤标题搜索结果，使用规则组：{rule_groups} ...')
+        filtered_torrents = self.filter_torrents(
+            rule_groups=rule_groups,
+            torrent_list=torrents,
+            mediainfo=None,
+        ) or []
+        logger.info(f'标题搜索过滤完成，剩余 {len(filtered_torrents)} 个资源')
+        return filtered_torrents
 
     async def async_search_by_id_stream(self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
                                         mtype: MediaType = None, area: Optional[str] = "title",
