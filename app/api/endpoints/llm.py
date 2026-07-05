@@ -36,6 +36,7 @@ class LlmTestRequest(BaseModel):
     base_url: Optional[str] = None
     base_url_preset: Optional[str] = None
     user_agent: Optional[str] = None
+    temperature: Optional[float] = None
     use_proxy: Optional[bool] = None
 
 
@@ -292,16 +293,20 @@ async def llm_test(
         )
 
     try:
-        result = await LLMHelper.test_current_settings(
-            provider=payload.provider,
-            model=payload.model,
-            thinking_level=payload.thinking_level,
-            api_key=payload.api_key,
-            base_url=payload.base_url,
-            base_url_preset=payload.base_url_preset,
-            user_agent=payload.user_agent,
-            use_proxy=payload.use_proxy,
-        )
+        test_kwargs = {
+            "provider": payload.provider,
+            "model": payload.model,
+            "thinking_level": payload.thinking_level,
+            "api_key": payload.api_key,
+            "base_url": payload.base_url,
+            "base_url_preset": payload.base_url_preset,
+            "user_agent": payload.user_agent,
+            "use_proxy": payload.use_proxy,
+        }
+        if payload.temperature is not None:
+            test_kwargs["temperature"] = payload.temperature
+
+        result = await LLMHelper.test_current_settings(**test_kwargs)
         if not result.get("reply_preview"):
             return schemas.Response(
                 success=False,

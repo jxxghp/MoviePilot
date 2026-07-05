@@ -952,6 +952,7 @@ class LLMHelper:
             base_url: str | None = None,
             base_url_preset: str | None = None,
             user_agent: str | None = None,
+            temperature: Optional[float] = None,
             use_proxy: bool | None = None,
     ):
         """
@@ -967,6 +968,7 @@ class LLMHelper:
         :param base_url: API Base URL。未显式传入时使用当前配置项 LLM_BASE_URL。
         :param base_url_preset: Base URL 预设。未显式传入时使用当前配置项 LLM_BASE_URL_PRESET。
         :param user_agent: OpenAI兼容接口请求 User-Agent。未显式传入时使用配置项 LLM_USER_AGENT。
+        :param temperature: LLM 温度参数。未显式传入时使用配置项 LLM_TEMPERATURE。
         :param use_proxy: 是否为本次 LLM 调用使用系统代理。未显式传入时使用配置项 LLM_USE_PROXY。
         :return: LLM实例
         """
@@ -978,6 +980,7 @@ class LLMHelper:
             base_url_preset if base_url_preset is not None else settings.LLM_BASE_URL_PRESET
         )
         user_agent_value = user_agent if user_agent is not None else settings.LLM_USER_AGENT
+        temperature_value = temperature if temperature is not None else settings.LLM_TEMPERATURE
         normalized_thinking_level = cls._resolve_thinking_level(
             thinking_level=thinking_level,
         )
@@ -1034,7 +1037,7 @@ class LLMHelper:
                 model=model_name,
                 api_key=runtime["api_key"],
                 retries=3,
-                temperature=settings.LLM_TEMPERATURE,
+                temperature=temperature_value,
                 streaming=streaming,
                 client_args=_build_google_client_args(llm_proxy),
                 **thinking_kwargs,
@@ -1048,7 +1051,7 @@ class LLMHelper:
                 api_key=runtime["api_key"],
                 api_base=runtime["base_url"],
                 max_retries=3,
-                temperature=settings.LLM_TEMPERATURE,
+                temperature=temperature_value,
                 streaming=streaming,
                 stream_usage=True,
                 http_client=_build_httpx_client(llm_proxy),
@@ -1063,7 +1066,7 @@ class LLMHelper:
                 api_key=runtime["api_key"],
                 base_url=runtime["base_url"],
                 max_retries=3,
-                temperature=settings.LLM_TEMPERATURE,
+                temperature=temperature_value,
                 streaming=streaming,
                 stream_usage=True,
                 anthropic_proxy=llm_proxy,
@@ -1084,7 +1087,7 @@ class LLMHelper:
                 api_key=runtime["api_key"],
                 max_retries=3,
                 base_url=runtime.get("base_url"),
-                temperature=settings.LLM_TEMPERATURE,
+                temperature=temperature_value,
                 streaming=streaming,
                 stream_usage=True,
                 openai_proxy=llm_proxy,
@@ -1178,25 +1181,32 @@ class LLMHelper:
             base_url: str | None = None,
             base_url_preset: str | None = None,
             user_agent: str | None = None,
+            temperature: Optional[float] = None,
             use_proxy: bool | None = None,
     ) -> dict:
         """
-        使用当前已保存配置执行一次最小 LLM 调用。
+        使用当前配置或显式传入的临时配置执行一次最小 LLM 调用。
+
+        :param temperature: LLM 温度参数。未显式传入时沿用已保存配置。
         """
         provider_name = provider if provider is not None else settings.LLM_PROVIDER
         model_name = model if model is not None else settings.LLM_MODEL
         start = time.perf_counter()
-        llm = await LLMHelper.get_llm(
-            streaming=False,
-            provider=provider_name,
-            model=model_name,
-            thinking_level=thinking_level,
-            api_key=api_key,
-            base_url=base_url,
-            base_url_preset=base_url_preset,
-            user_agent=user_agent,
-            use_proxy=use_proxy,
-        )
+        llm_kwargs = {
+            "streaming": False,
+            "provider": provider_name,
+            "model": model_name,
+            "thinking_level": thinking_level,
+            "api_key": api_key,
+            "base_url": base_url,
+            "base_url_preset": base_url_preset,
+            "user_agent": user_agent,
+            "use_proxy": use_proxy,
+        }
+        if temperature is not None:
+            llm_kwargs["temperature"] = temperature
+
+        llm = await LLMHelper.get_llm(**llm_kwargs)
         try:
             response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=timeout)
         except TimeoutError as err:
