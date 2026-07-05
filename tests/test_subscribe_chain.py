@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import sys
 import types
@@ -206,6 +207,10 @@ def _load_subscribe_chain_class():
 
     class _SubscribeEpisodesRefreshEventData:
         def __init__(self, **kwargs):
+            self.updated = kwargs.get("updated", False)
+            self.total_episode = kwargs.get("total_episode")
+            self.source = kwargs.get("source", "未知来源")
+            self.reason = kwargs.get("reason", "")
             self.__dict__.update(kwargs)
 
     class _SubscribeCompletionCheckEventData:
@@ -2423,16 +2428,83 @@ class SubscribeProgressEntrypointTest(TestCase):
 class SubscribeProgressConsolidationTest(TestCase):
     def _mediainfo(self, total_episode=5):
         return SimpleNamespace(
+            type=MediaType.TV,
             seasons={1: [object() for _ in range(total_episode)]},
             title="总集增长剧",
+            title_year="总集增长剧 (2026)",
             year="2026",
+            tmdb_id=31000,
+            douban_id=None,
+            bangumi_id=None,
             vote_average=9.5,
             overview="overview",
             imdb_id="tt1234567",
             tvdb_id=99,
             get_poster_image=lambda: "poster",
             get_backdrop_image=lambda: "backdrop",
+            get_message_image=lambda: "message-image",
+            to_dict=lambda: {},
         )
+
+    @staticmethod
+    def _event_manager(total_episode=None, *, updated=True):
+        captured = []
+
+        def _apply(event_type, event_data):
+            captured.append((event_type, event_data))
+            if hasattr(event_data, "current_total_episode"):
+                event_data.updated = updated
+                event_data.total_episode = total_episode
+                event_data.source = "unit"
+                event_data.reason = "unit"
+            return SimpleNamespace(event_data=event_data)
+
+        class _EventManager:
+            def send_event(self, event_type, event_data):
+                return _apply(event_type, event_data)
+
+            async def async_send_event(self, event_type, event_data):
+                return _apply(event_type, event_data)
+
+        return _EventManager(), captured
+
+    def test_apply_episodes_refresh_clamps_external_total_to_current_total(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        eventmanager, captured = self._event_manager(5)
+
+        with patch.object(module, "eventmanager", eventmanager):
+            result = SubscribeChain._SubscribeChain__apply_episodes_refresh(
+                10,
+                season=1,
+                mediainfo=self._mediainfo(total_episode=10),
+                tmdbid=31030,
+                doubanid=None,
+                subscribe_id=31,
+                scene="precheck",
+            )
+
+        self.assertEqual(result, 10)
+        self.assertEqual(captured[0][1].current_total_episode, 10)
+        self.assertEqual(captured[0][1].total_episode, 10)
+
+    def test_async_apply_episodes_refresh_clamps_external_total_to_current_total(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        eventmanager, captured = self._event_manager(5)
+
+        with patch.object(module, "eventmanager", eventmanager):
+            result = asyncio.run(SubscribeChain._SubscribeChain__async_apply_episodes_refresh(
+                10,
+                season=1,
+                mediainfo=self._mediainfo(total_episode=10),
+                tmdbid=31030,
+                doubanid=None,
+                subscribe_id=31,
+                scene="precheck",
+            ))
+
+        self.assertEqual(result, 10)
+        self.assertEqual(captured[0][1].current_total_episode, 10)
+        self.assertEqual(captured[0][1].total_episode, 10)
 
     def test_refresh_total_episode_before_completion_reuses_progress_priority_snapshot(self):
         module, SubscribeChain = _load_subscribe_chain_class()
@@ -2475,6 +2547,317 @@ class SubscribeProgressConsolidationTest(TestCase):
         self.assertEqual(subscribe.current_priority, 0)
         self.assertEqual(updates[-1][1]["lack_episode"], 2)
         self.assertEqual(updates[-1][1]["current_priority"], 0)
+
+    def test_refresh_total_episode_before_completion_follows_recognized_total_decrease(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=34,
+            name="总集回落剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            tmdbid=31034,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, captured = self._event_manager(updated=False)
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=90),
+            )
+
+        self.assertEqual(captured[0][1].current_total_episode, 90)
+        self.assertEqual(subscribe.total_episode, 90)
+        self.assertEqual(subscribe.lack_episode, 90)
+        self.assertEqual(updates[-1][1]["total_episode"], 90)
+        self.assertEqual(updates[-1][1]["lack_episode"], 90)
+
+    def test_refresh_total_episode_before_completion_filters_best_version_priority_on_decrease(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=40,
+            name="洗版回落剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=0,
+            best_version=1,
+            best_version_full=0,
+            current_priority=100,
+            episode_priority={str(episode): 100 for episode in range(1, 101)},
+            note=[],
+            tmdbid=31040,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, _ = self._event_manager(updated=False)
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=10),
+            )
+
+        expected_priority = {str(episode): 100 for episode in range(1, 11)}
+        payload = updates[-1][1]
+        self.assertEqual(subscribe.total_episode, 10)
+        self.assertEqual(subscribe.episode_priority, expected_priority)
+        self.assertEqual(payload["episode_priority"], expected_priority)
+        self.assertEqual(subscribe.lack_episode, 0)
+        self.assertEqual(subscribe.current_priority, 100)
+        self.assertEqual(
+            SubscribeChain._SubscribeChain__get_best_version_completed_episodes(subscribe),
+            list(range(1, 11)),
+        )
+
+    def test_refresh_total_episode_before_completion_resets_legacy_current_priority_when_filtered_empty(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=42,
+            name="洗版空优先级回落剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=0,
+            best_version=1,
+            best_version_full=0,
+            current_priority=100,
+            episode_priority={str(episode): 100 for episode in range(11, 101)},
+            note=[],
+            tmdbid=31042,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, _ = self._event_manager(updated=False)
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=10),
+            )
+
+        payload = updates[-1][1]
+        self.assertEqual(subscribe.total_episode, 10)
+        self.assertEqual(subscribe.episode_priority, {})
+        self.assertEqual(subscribe.current_priority, 0)
+        self.assertEqual(subscribe.lack_episode, 10)
+        self.assertEqual(payload["episode_priority"], {})
+        self.assertEqual(payload["current_priority"], 0)
+        self.assertEqual(payload["lack_episode"], 10)
+        self.assertEqual(
+            SubscribeChain._SubscribeChain__get_best_version_completed_episodes(subscribe),
+            [],
+        )
+
+    def test_refresh_total_episode_before_completion_resets_priority_when_target_range_empty(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=44,
+            name="洗版目标范围为空回落剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=11,
+            lack_episode=0,
+            best_version=1,
+            best_version_full=0,
+            current_priority=100,
+            episode_priority={str(episode): 100 for episode in range(11, 101)},
+            note=[],
+            tmdbid=31044,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, _ = self._event_manager(updated=False)
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=10),
+            )
+
+        payload = updates[-1][1]
+        self.assertEqual(subscribe.total_episode, 10)
+        self.assertEqual(subscribe.episode_priority, {})
+        self.assertEqual(subscribe.current_priority, 0)
+        self.assertEqual(subscribe.lack_episode, 0)
+        self.assertEqual(payload["episode_priority"], {})
+        self.assertEqual(payload["current_priority"], 0)
+        self.assertEqual(payload["lack_episode"], 0)
+        self.assertEqual(
+            SubscribeChain._SubscribeChain__get_best_version_completed_episodes(subscribe),
+            [],
+        )
+
+    def test_refresh_total_episode_before_completion_clamps_lower_event_total_to_recognized_total(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=35,
+            name="总集事件压低剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            tmdbid=31035,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, _ = self._event_manager(9)
+
+        class _SubscribeOper:
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=10),
+            )
+
+        self.assertEqual(subscribe.total_episode, 10)
+        self.assertEqual(subscribe.lack_episode, 10)
+        self.assertEqual(updates[-1][1]["total_episode"], 10)
+        self.assertEqual(updates[-1][1]["lack_episode"], 10)
+
+    def test_refresh_total_episode_before_completion_rejects_manual_total_decrease(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=37,
+            name="手动总集数剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            tmdbid=31037,
+            doubanid=None,
+            manual_total_episode=1,
+        )
+
+        class _EventManager:
+            def send_event(self, *_args, **_kwargs):
+                raise AssertionError("manual total episode must not ask external refresh")
+
+        class _SubscribeOper:
+            def update(self, *_args, **_kwargs):
+                raise AssertionError("manual total episode must not be updated")
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            _EventManager(),
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=10),
+            )
+
+        self.assertEqual(subscribe.total_episode, 100)
+        self.assertEqual(subscribe.lack_episode, 100)
+
+    def test_refresh_total_episode_before_completion_rejects_non_tv_decrease(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=38,
+            name="非电视剧",
+            type=MediaType.MOVIE.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            tmdbid=31038,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+
+        class _EventManager:
+            def send_event(self, *_args, **_kwargs):
+                raise AssertionError("non-tv subscribe must not ask external refresh")
+
+        class _SubscribeOper:
+            def update(self, *_args, **_kwargs):
+                raise AssertionError("non-tv subscribe must not be updated")
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            _EventManager(),
+        ):
+            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+                subscribe,
+                self._mediainfo(total_episode=10),
+            )
+
+        self.assertEqual(subscribe.total_episode, 100)
+        self.assertEqual(subscribe.lack_episode, 100)
 
     def test_check_total_growth_reuses_progress_priority_snapshot(self):
         module, SubscribeChain = _load_subscribe_chain_class()
@@ -2520,6 +2903,182 @@ class SubscribeProgressConsolidationTest(TestCase):
         )
         self.assertEqual(payload["lack_episode"], 2)
         self.assertEqual(payload["current_priority"], 0)
+
+    def test_check_total_growth_still_uses_larger_event_total(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=39,
+            name="总集事件增长剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            year="2026",
+            episode_group=None,
+            tmdbid=31039,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, captured = self._event_manager(120)
+
+        class _SubscribeOper:
+            def list(self):
+                return [subscribe]
+
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        chain = SubscribeChain()
+        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=10)
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            chain.check()
+
+        payload = updates[-1][1]
+        self.assertEqual(captured[0][1].current_total_episode, 10)
+        self.assertEqual(payload["total_episode"], 120)
+        self.assertEqual(payload["lack_episode"], 120)
+
+    def test_check_total_refresh_follows_recognized_total_decrease(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=43,
+            name="总集巡检回落剧",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            year="2026",
+            episode_group=None,
+            tmdbid=31043,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        eventmanager, captured = self._event_manager(updated=False)
+
+        class _SubscribeOper:
+            def list(self):
+                return [subscribe]
+
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        chain = SubscribeChain()
+        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=90)
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            chain.check()
+
+        payload = updates[-1][1]
+        self.assertEqual(captured[0][1].current_total_episode, 90)
+        self.assertEqual(payload["total_episode"], 90)
+        self.assertEqual(payload["lack_episode"], 90)
+
+    def test_check_total_refresh_skips_non_tv_even_when_mediainfo_has_seasons(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.Subscribe(
+            id=45,
+            name="电影误带季集",
+            type=MediaType.MOVIE.value,
+            season=1,
+            total_episode=100,
+            start_episode=1,
+            lack_episode=100,
+            best_version=0,
+            best_version_full=0,
+            current_priority=None,
+            episode_priority={},
+            note=[],
+            year="2026",
+            episode_group=None,
+            tmdbid=31045,
+            doubanid=None,
+            manual_total_episode=0,
+        )
+        updates = []
+        mediainfo = self._mediainfo(total_episode=10)
+        mediainfo.type = MediaType.MOVIE
+
+        class _SubscribeOper:
+            def list(self):
+                return [subscribe]
+
+            def update(self, subscribe_id, payload):
+                updates.append((subscribe_id, payload))
+
+        class _EventManager:
+            def send_event(self, *_args, **_kwargs):
+                raise AssertionError("non-tv subscribe must not ask external refresh")
+
+        chain = SubscribeChain()
+        chain.recognize_media = lambda **kwargs: mediainfo
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            _EventManager(),
+        ):
+            chain.check()
+
+        self.assertEqual(updates[-1][1]["total_episode"], 100)
+        self.assertEqual(updates[-1][1]["lack_episode"], 100)
+
+    def test_add_create_clamps_event_decrease_to_recognized_total(self):
+        module, SubscribeChain = _load_subscribe_chain_class()
+        added = []
+        eventmanager, captured = self._event_manager(5)
+        mediainfo = self._mediainfo(total_episode=10)
+        chain = SubscribeChain()
+        chain.recognize_media = lambda **_kwargs: mediainfo
+        chain.obtain_images = lambda **_kwargs: None
+
+        class _SubscribeOper:
+            def add(self, **kwargs):
+                added.append(kwargs)
+                return 41, None
+
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+            module,
+            "eventmanager",
+            eventmanager,
+        ):
+            sid, err_msg = chain.add(
+                title="总集创建剧",
+                year="2026",
+                mtype=MediaType.TV,
+                tmdbid=31041,
+                season=1,
+                message=False,
+            )
+
+        self.assertEqual(sid, 41)
+        self.assertIsNone(err_msg)
+        self.assertEqual(captured[0][1].scene, "create")
+        self.assertEqual(captured[0][1].current_total_episode, 10)
+        self.assertEqual(added[-1]["total_episode"], 10)
+        self.assertEqual(added[-1]["lack_episode"], 10)
 
     def test_completed_episode_uses_schema_function_directly_for_best_version(self):
         module, SubscribeChain = _load_subscribe_chain_class()
