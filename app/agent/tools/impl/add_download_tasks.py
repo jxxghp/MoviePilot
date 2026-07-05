@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.context import Context
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
-from app.helper.directory import DirectoryHelper
+from app.helper.directory import DirectoryHelper, validate_download_save_path
 from app.log import logger
 from app.schemas import FileURI, TorrentInfo
 from app.utils.crypto import HashUtils
@@ -183,8 +183,8 @@ class AddDownloadTasksTool(MoviePilotTool):
     @staticmethod
     def _resolve_direct_download_dir(save_path: Optional[str]) -> Optional[Path]:
         """解析直接下载使用的目录，优先使用 save_path，其次使用默认下载目录"""
-        if save_path:
-            return Path(save_path)
+        if save_path is not None:
+            return Path(validate_download_save_path(save_path))
 
         download_dirs = DirectoryHelper().get_download_dirs()
         if not download_dirs:
@@ -225,6 +225,8 @@ class AddDownloadTasksTool(MoviePilotTool):
         merged_labels: Optional[str],
     ) -> tuple[Optional[str], Optional[str]]:
         """同步提交带上下文的下载任务，避免站点下载与下载器调用阻塞事件循环。"""
+        if save_path is not None:
+            save_path = validate_download_save_path(save_path)
         return DownloadChain().download_single(
             context=context,
             downloader=downloader,
@@ -244,6 +246,12 @@ class AddDownloadTasksTool(MoviePilotTool):
             torrent_inputs = self._normalize_torrent_urls(torrent_url)
             if not torrent_inputs:
                 return "错误：torrent_url 不能为空。"
+
+            if save_path is not None:
+                try:
+                    save_path = validate_download_save_path(save_path)
+                except ValueError as err:
+                    return f"参数错误：save_path {str(err)}"
 
             merged_labels = self._merge_labels_with_system_tag(labels)
             success_count = 0
