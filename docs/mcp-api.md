@@ -11,6 +11,14 @@ MoviePilot 实现了标准的 **Model Context Protocol (MCP)**，允许 AI 智�
     *   Header: `X-API-KEY: <你的API_KEY>`
     *   Query: `?apikey=<你的API_KEY>`
 
+### 安全提示
+
+MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API KEY 是请求字段名。该密钥应按管理员级 secret 保管，持有者可作为受信第三方集成调用暴露的 MoviePilot 工具。
+
+- 优先使用 `X-API-KEY` 请求头；查询参数更容易出现在代理、浏览器或客户端日志中。
+- 不要在缺少 HTTPS、访问控制和网络隔离的情况下，将 MCP、OpenAI 或 Anthropic 兼容接口直接暴露到公网。
+- MCP 隐藏工具列表只用于减少默认暴露面，不是 per-user 权限系统。
+
 ## 2. 标准 MCP 协议 (JSON-RPC 2.0)
 
 ### 端点

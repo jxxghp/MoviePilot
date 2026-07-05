@@ -39,6 +39,9 @@ def _anthropic_error_response(
 
 
 def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
+    """
+    Anthropic 兼容接口以 API_TOKEN 认证受信客户端，认证通过即按管理员级 Agent 集成处理。
+    """
     if not api_key or api_key != settings.API_TOKEN:
         return _anthropic_error_response(
             "invalid x-api-key",
@@ -122,6 +125,7 @@ async def messages(
 
     session_seed = anthropic_version or "anthropic"
     session_id = build_session_id(f"{session_seed}:{uuid.uuid4().hex}", SESSION_PREFIX)
+    # 兼容接口的 API_TOKEN 客户端按管理员级 MoviePilot Agent 集成处理。
     agent = _CollectingMoviePilotAgent(
         session_id=session_id,
         user_id=session_id,
