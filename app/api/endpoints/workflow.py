@@ -10,11 +10,14 @@ from app import schemas
 from app.chain.workflow import WorkflowChain
 from app.core.config import global_vars
 from app.core.plugin import PluginManager
-from app.core.security import verify_token
 from app.workflow import WorkFlowManager
 from app.db import get_async_db, get_db
-from app.db.models import Workflow
+from app.db.models import Workflow, User
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.user_oper import (
+    get_current_active_manage_user,
+    get_current_active_manage_user_async,
+)
 from app.db.workflow_oper import WorkflowOper
 from app.helper.server import MoviePilotServerHelper
 from app.scheduler import Scheduler
@@ -30,7 +33,7 @@ WORKFLOW_TRIGGER_MANUAL = "manual"
 @router.get("/", summary="所有工作流", response_model=List[schemas.Workflow])
 async def list_workflows(
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     获取工作流列表
@@ -42,7 +45,7 @@ async def list_workflows(
 async def create_workflow(
     workflow: schemas.Workflow,
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     创建工作流
@@ -62,7 +65,7 @@ async def create_workflow(
 
 @router.get("/plugin/actions", summary="查询插件动作", response_model=List[dict])
 def list_plugin_actions(
-    plugin_id: str = None, _: schemas.TokenPayload = Depends(verify_token)
+    plugin_id: str = None, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     获取所有动作
@@ -71,7 +74,7 @@ def list_plugin_actions(
 
 
 @router.get("/actions", summary="所有动作", response_model=List[dict])
-async def list_actions(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def list_actions(_: User = Depends(get_current_active_manage_user_async)) -> Any:
     """
     获取所有动作
     """
@@ -79,7 +82,7 @@ async def list_actions(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/event_types", summary="获取所有事件类型", response_model=List[dict])
-async def get_event_types(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def get_event_types(_: User = Depends(get_current_active_manage_user_async)) -> Any:
     """
     获取所有事件类型
     """
@@ -94,7 +97,7 @@ async def get_event_types(_: schemas.TokenPayload = Depends(verify_token)) -> An
 
 @router.post("/share", summary="分享工作流", response_model=schemas.Response)
 async def workflow_share(
-    workflow: schemas.WorkflowShare, _: schemas.TokenPayload = Depends(verify_token)
+    workflow: schemas.WorkflowShare, _: User = Depends(get_current_active_manage_user_async)
 ) -> Any:
     """
     分享工作流
@@ -115,7 +118,7 @@ async def workflow_share(
 
 @router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response)
 async def workflow_share_delete(
-    share_id: int, _: schemas.TokenPayload = Depends(verify_token)
+    share_id: int, _: User = Depends(get_current_active_manage_user_async)
 ) -> Any:
     """
     删除分享
@@ -128,7 +131,7 @@ async def workflow_share_delete(
 async def workflow_fork(
     workflow: schemas.WorkflowShare,
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.User = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     复用工作流
@@ -194,7 +197,7 @@ async def workflow_shares(
     name: Optional[str] = None,
     page: Optional[int] = 1,
     count: Optional[int] = 30,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     查询分享的工作流
@@ -208,7 +211,7 @@ async def workflow_shares(
 def run_workflow(
     workflow_id: int,
     from_begin: Optional[bool] = True,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     执行工作流
@@ -225,7 +228,7 @@ def run_workflow(
 def start_workflow(
     workflow_id: int,
     db: Session = Depends(get_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     启用工作流
@@ -259,7 +262,7 @@ def start_workflow(
 def pause_workflow(
     workflow_id: int,
     db: Session = Depends(get_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     停用工作流
@@ -287,7 +290,7 @@ def pause_workflow(
 async def reset_workflow(
     workflow_id: int,
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     重置工作流
@@ -308,7 +311,7 @@ async def reset_workflow(
 async def get_workflow(
     workflow_id: int,
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     获取工作流详情
@@ -320,7 +323,7 @@ async def get_workflow(
 def update_workflow(
     workflow: schemas.Workflow,
     db: Session = Depends(get_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     更新工作流
@@ -350,7 +353,7 @@ def update_workflow(
 def delete_workflow(
     workflow_id: int,
     db: Session = Depends(get_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     删除工作流
