@@ -169,6 +169,15 @@ def set_or_refresh_resource_token_cookie(
                 # 根据剩余时长提前刷新令牌
                 if remaining_time < timedelta(seconds=(settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS / 3)):
                     raise jwt.ExpiredSignatureError
+            expected_claims = {
+                "sub": str(payload.sub),
+                "username": payload.username,
+                "super_user": payload.super_user,
+                "level": payload.level,
+                "purpose": "resource",
+            }
+            if any(decoded_token.get(claim) != value for claim, value in expected_claims.items()):
+                raise jwt.InvalidTokenError("资源令牌身份或权限上下文不匹配")
         except jwt.PyJWTError:
             logger.debug(f"Token error occurred. refreshing token")
         except Exception as e:
