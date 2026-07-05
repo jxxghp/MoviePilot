@@ -1,5 +1,6 @@
 import asyncio
 import io
+import stat
 import sys
 import tempfile
 import threading
@@ -58,6 +59,40 @@ def _build_zip(entries: dict[str, bytes]) -> bytes:
         for name, content in entries.items():
             zf.writestr(name, content)
     return buffer.getvalue()
+
+
+def _build_release_zip_member(name: str, *, symlink: bool = False) -> bytes:
+    """构造单成员 release zip，用于覆盖成员路径与文件类型校验。"""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        if symlink:
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = (stat.S_IFLNK | 0o777) << 16
+            zf.writestr(info, b"target")
+        else:
+            zf.writestr(name, b"evil")
+    return buffer.getvalue()
+
+
+def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
+    """隔离 release 安装根目录，并阻止测试误触真实根路径。"""
+    monkeypatch.setattr("app.helper.plugin.settings", SimpleNamespace(
+        ROOT_PATH=tmp_path,
+        REPO_GITHUB_HEADERS=lambda repo=None: {},
+    ))
+
+    original_mkdir = Path.mkdir
+    safe_root = tmp_path.resolve()
+
+    def guarded_mkdir(path: Path, *args, **kwargs):
+        try:
+            path.resolve().relative_to(safe_root)
+        except ValueError as exc:
+            raise AssertionError(f"unsafe mkdir attempted: {path}") from exc
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", guarded_mkdir)
 
 
 def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
@@ -1752,6 +1787,43 @@ class TestPluginHelper:
         assert not success
         assert "下载资产失败：502" == message
 
+    @pytest.mark.parametrize(
+        "member_name, symlink",
+        [
+            ("../evil.py", False),
+            ("/tmp/evil.py", False),
+            ("..\\evil.py", False),
+            ("C:/evil.py", False),
+            ("//server/share/evil.py", False),
+            ("demoplugin/link.py", True),
+        ],
+    )
+    def test_install_from_release_rejects_unsafe_zip_member(self, monkeypatch, tmp_path, member_name, symlink):
+        """
+        release zip 成员必须限制在插件运行目录内，且不能是符号链接或特殊文件。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        responses = iter([
+            _FakeResponse(200, {"assets": [{"name": "demoplugin_v1.2.3.zip", "id": 42}]}),
+            _FakeContentResponse(200, _build_release_zip_member(member_name, symlink=symlink)),
+        ])
+        _patch_release_install_settings(monkeypatch, tmp_path)
+        monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", lambda *_args, **_kwargs: next(responses))
+
+        success, message = helper._PluginHelper__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+
+        assert not success
+        assert "非法 Release 压缩包成员" in message
+        assert not (tmp_path / "app" / "plugins" / "evil.py").exists()
+        assert not (tmp_path / "app" / "plugins" / "demoplugin" / "..\\evil.py").exists()
+        assert not (tmp_path / "app" / "plugins" / "demoplugin" / "C:").exists()
+        assert not (tmp_path / "app" / "plugins" / "demoplugin" / "link.py").exists()
+
     def test_install_from_release_extracts_zip_with_top_level_directory(self, monkeypatch, tmp_path):
         """
         release zip 带顶层插件目录时剥离该层后写入运行目录。
@@ -2286,6 +2358,49 @@ class TestPluginHelper:
 
         assert not success
         assert "下载资产失败：502" == message
+
+    @pytest.mark.parametrize(
+        "member_name, symlink",
+        [
+            ("../evil.py", False),
+            ("/tmp/evil.py", False),
+            ("..\\evil.py", False),
+            ("C:/evil.py", False),
+            ("//server/share/evil.py", False),
+            ("demoplugin/link.py", True),
+        ],
+    )
+    def test_async_install_from_release_rejects_unsafe_zip_member(self, monkeypatch, tmp_path, member_name, symlink):
+        """
+        异步 release zip 成员使用同步路径相同的边界与文件类型规则。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        responses = iter([
+            _FakeResponse(200, {"assets": [{"name": "demoplugin_v1.2.3.zip", "id": 42}]}),
+            _FakeContentResponse(200, _build_release_zip_member(member_name, symlink=symlink)),
+        ])
+
+        async def fake_request(*_args, **_kwargs):
+            return next(responses)
+
+        _patch_release_install_settings(monkeypatch, tmp_path)
+        monkeypatch.setattr(helper, "_PluginHelper__async_request_with_fallback", fake_request)
+
+        success, message = asyncio.run(
+            helper._PluginHelper__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        )
+
+        assert not success
+        assert "非法 Release 压缩包成员" in message
+        assert not (tmp_path / "app" / "plugins" / "evil.py").exists()
+        assert not (tmp_path / "app" / "plugins" / "demoplugin" / "..\\evil.py").exists()
+        assert not (tmp_path / "app" / "plugins" / "demoplugin" / "C:").exists()
+        assert not (tmp_path / "app" / "plugins" / "demoplugin" / "link.py").exists()
 
     def test_async_install_from_release_extracts_zip_with_top_level_directory(self, monkeypatch, tmp_path):
         """
