@@ -7,7 +7,7 @@ from app.chain.download import DownloadChain
 from app.core.config import settings
 from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
-from app.schemas import FileItem, NotExistMediaInfo
+from app.schemas import FileItem, NotExistMediaInfo, TransferDirectoryConf
 from app.schemas.types import MediaType
 
 
@@ -41,6 +41,20 @@ class _FakeThreadHelper:
 
     def submit(self, func, *args, **kwargs):
         self.submitted.append((func, args, kwargs))
+
+
+def _download_dirs():
+    """
+    构造下载成功路径测试使用的允许下载目录配置。
+    """
+    return [
+        TransferDirectoryConf(
+            name="本地下载",
+            priority=1,
+            storage="local",
+            download_path="/downloads",
+        ),
+    ]
 
 
 class _FakeSubtitleStorageChain:
@@ -106,6 +120,10 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     添加下载成功后，站点字幕等后处理应提交到后台，不能阻塞下载接口返回。
     """
     _FakeThreadHelper.submitted = []
+    monkeypatch.setattr(
+        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        lambda _self: _download_dirs(),
+    )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
     monkeypatch.setattr(download_module, "DownloadHistoryOper", _FakeDownloadHistoryOper)
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
@@ -172,6 +190,10 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
             pass
 
     _FakeThreadHelper.submitted = []
+    monkeypatch.setattr(
+        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        lambda _self: _download_dirs(),
+    )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
     monkeypatch.setattr(download_module, "DownloadHistoryOper", _CapturingDownloadHistoryOper)
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
