@@ -187,7 +187,7 @@ def test_non_admin_file_tools_can_access_config_directory(tmp_path, monkeypatch)
 def test_non_admin_file_tools_block_paths_outside_allowed_roots(
     tmp_path, monkeypatch
 ):
-    """普通用户不能通过文件工具访问配置、记忆和日志目录外的路径。"""
+    """普通用户不能通过文件工具访问 Agent 配置目录外的路径。"""
     config_path = tmp_path / "config"
     outside_path = tmp_path / "outside.txt"
     outside_path.write_text("secret", encoding="utf-8")
@@ -208,7 +208,44 @@ def test_non_admin_file_tools_block_paths_outside_allowed_roots(
     assert "普通用户只能写入" in write_result
     assert "普通用户只能编辑" in edit_result
     assert "普通用户只能列出" in list_result
+    assert "日志目录" not in read_result
+    assert "日志目录" not in write_result
+    assert "日志目录" not in edit_result
+    assert "日志目录" not in list_result
     assert outside_path.read_text(encoding="utf-8") == "secret"
+    list_directory.assert_not_called()
+
+
+def test_non_admin_file_tools_block_log_directory(tmp_path, monkeypatch):
+    """普通用户不能通过文件工具读写运行日志目录。"""
+    config_path = tmp_path / "config"
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(config_path))
+    log_path = settings.LOG_PATH / "moviepilot.log"
+    log_path.parent.mkdir(parents=True)
+    log_path.write_text("secret log", encoding="utf-8")
+
+    read_tool = ReadFileTool(session_id="session-1", user_id="10001")
+    write_tool = WriteFileTool(session_id="session-1", user_id="10001")
+    edit_tool = EditFileTool(session_id="session-1", user_id="10001")
+    list_tool = ListDirectoryTool(session_id="session-1", user_id="10001")
+
+    read_result = asyncio.run(read_tool.run(str(log_path)))
+    write_result = asyncio.run(write_tool.run(str(log_path), "changed"))
+    edit_result = asyncio.run(edit_tool.run(str(log_path), "secret log", "changed"))
+    with patch.object(
+        ListDirectoryTool, "_list_directory_sync", return_value="listed"
+    ) as list_directory:
+        list_result = asyncio.run(list_tool.run(str(settings.LOG_PATH)))
+
+    assert "普通用户只能读取" in read_result
+    assert "普通用户只能写入" in write_result
+    assert "普通用户只能编辑" in edit_result
+    assert "普通用户只能列出" in list_result
+    assert "日志目录" not in read_result
+    assert "日志目录" not in write_result
+    assert "日志目录" not in edit_result
+    assert "日志目录" not in list_result
+    assert log_path.read_text(encoding="utf-8") == "secret log"
     list_directory.assert_not_called()
 
 
