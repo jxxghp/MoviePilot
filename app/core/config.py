@@ -377,6 +377,8 @@ class ConfigModel(BaseModel):
     COOKIECLOUD_KEY: Optional[str] = None
     # CookieCloud端对端加密密码
     COOKIECLOUD_PASSWORD: Optional[str] = None
+    # CookieCloud本地上传接口的X-CookieCloud-Auth期望值，留空表示不校验
+    COOKIECLOUD_AUTH_HEADER: Optional[str] = None
     # CookieCloud同步间隔（分钟）
     COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
     # CookieCloud同步黑名单，多个域名,分割
