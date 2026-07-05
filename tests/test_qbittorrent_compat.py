@@ -494,6 +494,61 @@ def test_download_falls_back_to_tag_lookup_when_added_ids_missing():
     fake_server.get_torrent_id_by_tag.assert_called_once_with(tags="tmp-tag-01")
 
 
+def test_get_files_retries_until_qbittorrent_files_available():
+    """qBittorrent 添加任务后文件列表短暂未就绪时应重试。"""
+    torrent_files = [{"id": 12, "name": "Show.S01E12.mkv"}]
+    fake_client = MagicMock()
+    fake_client.torrents_files.side_effect = [
+        Exception("Torrent hash(es): abc123"),
+        torrent_files,
+    ]
+
+    with patch.object(Qbittorrent, "_Qbittorrent__login_qbittorrent", return_value=fake_client):
+        downloader = Qbittorrent(host="http://127.0.0.1", port=8080, username="admin", password="adminadmin")
+
+    with patch.object(qbittorrent_module.time, "sleep") as sleep:
+        result = downloader.get_files("abc123", retry=2, interval=1)
+
+    assert result == torrent_files
+    assert fake_client.torrents_files.call_count == 2
+    fake_client.torrents_files.assert_called_with(torrent_hash="abc123")
+    sleep.assert_called_once_with(1)
+
+
+def test_download_episode_selection_retries_file_list_after_add():
+    """按集选择下载时应等待 qBittorrent 刚添加的任务文件列表。"""
+
+    class _EpisodeMetaInfo:
+        """测试用集数识别对象。"""
+
+        def __init__(self, name):
+            self.episode_list = [12] if "E12" in name else [1]
+
+    fake_server = MagicMock()
+    fake_server.add_torrent.return_value = (True, ["abc123"])
+    fake_server.get_content_layout.return_value = "Original"
+    fake_server.get_files.return_value = [
+        {"id": 1, "name": "Show.S01E01.mkv"},
+        {"id": 12, "name": "Show.S01E12.mkv"},
+    ]
+    fake_server.is_force_resume.return_value = False
+
+    module = _build_module(fake_server)
+    with patch.object(qbittorrent_package_module, "MetaInfo", _EpisodeMetaInfo):
+        result = module.download(
+            content=b"torrent-content",
+            download_dir=Path("/downloads"),
+            cookie="",
+            episodes={12},
+            downloader="qb",
+        )
+
+    assert result == ("qb", "abc123", "Original", "添加下载成功，已选择集数：[12]")
+    fake_server.get_files.assert_called_once_with("abc123", retry=5, interval=1)
+    fake_server.set_files.assert_called_once_with(torrent_hash="abc123", file_ids=[1], priority=0)
+    fake_server.start_torrents.assert_called_once_with("abc123")
+
+
 def test_set_speed_limit_allows_single_direction_limit():
     """
     设置全局限速时允许只传一个方向，未传方向按不限速处理。

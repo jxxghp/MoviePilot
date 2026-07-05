@@ -488,17 +488,30 @@ class Qbittorrent:
             logger.error(f"删除种子出错：{str(err)}")
             return False
 
-    def get_files(self, tid: str) -> Optional[TorrentFilesList]:
+    def get_files(self, tid: str, retry: int = 1, interval: float = 0) -> Optional[TorrentFilesList]:
         """
         获取种子文件清单
+        :param tid: 种子Hash
+        :param retry: 最多尝试次数
+        :param interval: 重试间隔，单位秒
+        :return: 种子文件清单
         """
         if not self.qbc:
             return None
-        try:
-            return self.qbc.torrents_files(torrent_hash=tid)
-        except Exception as err:
-            logger.error(f"获取种子文件列表出错：{str(err)}")
-            return None
+        last_error = None
+        retry_times = max(retry, 1)
+        for index in range(retry_times):
+            try:
+                torrent_files = self.qbc.torrents_files(torrent_hash=tid)
+                if torrent_files:
+                    return torrent_files
+            except Exception as err:
+                last_error = err
+            if index < retry_times - 1 and interval:
+                time.sleep(interval)
+        if last_error:
+            logger.error(f"获取种子文件列表出错：{str(last_error)}")
+        return None
 
     def set_files(self, **kwargs) -> bool:
         """

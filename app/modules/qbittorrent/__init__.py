@@ -37,9 +37,14 @@ _QBITTORRENT_PAUSED_STATES = {
     "stoppeddl",
     "stoppedup",
 }
+_TORRENT_FILES_RETRY_TIMES = 5
+_TORRENT_FILES_RETRY_INTERVAL = 1
 
 
 class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
+    """
+    qBittorrent 下载器模块，负责下载任务添加、文件选择和任务管理。
+    """
 
     def init_module(self) -> None:
         """
@@ -50,6 +55,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
     @staticmethod
     def get_name() -> str:
+        """
+        获取模块名称
+        """
         return "Qbittorrent"
 
     @staticmethod
@@ -73,7 +81,10 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         """
         return 1
 
-    def stop(self):
+    def stop(self) -> None:
+        """
+        停止模块
+        """
         pass
 
     def test(self) -> Optional[Tuple[bool, str]]:
@@ -90,6 +101,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """
+        返回控制模块启用状态的配置项
+        """
         pass
 
     def scheduler_job(self) -> None:
@@ -221,7 +235,11 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             else:
                 if is_paused:
                     # 种子文件
-                    torrent_files = server.get_files(torrent_hash)
+                    torrent_files = server.get_files(
+                        torrent_hash,
+                        retry=_TORRENT_FILES_RETRY_TIMES,
+                        interval=_TORRENT_FILES_RETRY_INTERVAL,
+                    )
                     if not torrent_files:
                         return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "获取种子文件失败，下载任务可能在暂停状态"
 
