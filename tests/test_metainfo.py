@@ -157,6 +157,18 @@ def test_torrent_title_match_ignores_question_mark_variants():
     )
 
 
+def test_python_metainfo_fallback_preserves_xxx_movie_title():
+    """Python 兜底解析不应删除合法 xXx 片名。"""
+    with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+        meta = MetaInfo("xXx 2002 1080p AMZN WEB-DL H.264 DDP 5.1-FROGWeb")
+
+    assert meta.en_name == "Xxx"
+    assert meta.year == "2002"
+    assert meta.resource_pix == "1080p"
+    assert meta.edition == "WEB-DL"
+    assert meta.audio_encode == "DDP 5.1"
+
+
 def test_custom_words_replace_then_episode_offset():
     """测试复杂识别词仍按先替换、后集数偏移的顺序处理。"""
     custom_words = ["旧名 => 新名 && 第 <> 集 >> EP+1"]
