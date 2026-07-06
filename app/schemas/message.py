@@ -243,6 +243,8 @@ class Notification(BaseModel):
     targets: Optional[dict] = None
     # 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
     buttons: Optional[List[List[dict]]] = None
+    # Telegram ForceReply 回复标记
+    force_reply: bool = False
     # 原消息ID，用于编辑消息
     original_message_id: Optional[Union[str, int]] = None
     # 原消息的聊天ID，用于编辑消息
