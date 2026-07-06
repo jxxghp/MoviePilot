@@ -12,6 +12,7 @@ from app.core import metainfo as metainfo_module
 from app.core.config import settings
 from app.core.meta.customization import CustomizationMatcher
 from app.core.meta.releasegroup import ReleaseGroupsMatcher
+from app.core.meta.streamingplatform import StreamingPlatforms
 from app.db.systemconfig_oper import SystemConfigOper
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import SystemConfigKey
@@ -188,13 +189,8 @@ def _metainfo_options(custom_words=None):
     构造 Rust MetaInfo 测试所需的配置，保持和生产入口一致。
     """
     systemconfig = SystemConfigOper()
-    custom_release_groups = systemconfig.get(SystemConfigKey.CustomReleaseGroups)
-    if isinstance(custom_release_groups, list):
-        custom_release_groups = list(filter(None, custom_release_groups))
-    release_groups = ReleaseGroupsMatcher()._ReleaseGroupsMatcher__release_groups
-    if custom_release_groups:
-        release_groups = f"{release_groups}|{'|'.join(custom_release_groups)}"
-    customization = CustomizationMatcher._normalize_customization(
+    release_groups = ReleaseGroupsMatcher().get_release_groups()
+    customization = CustomizationMatcher.normalize_customization(
         systemconfig.get(SystemConfigKey.Customization)
     )
     return {
@@ -202,7 +198,7 @@ def _metainfo_options(custom_words=None):
         "media_exts": settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT,
         "release_groups": release_groups,
         "customization": customization,
-        "streaming_platforms": metainfo_module._rust_parse_options()["streaming_platforms"],
+        "streaming_platforms": StreamingPlatforms().get_lookup_cache(),
     }
 
 

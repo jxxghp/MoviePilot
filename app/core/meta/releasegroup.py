@@ -89,6 +89,18 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
         self.systemconfig = SystemConfigOper()
         self.__groups_re_cache = {}
 
+    def get_release_groups(self) -> str:
+        """
+        返回内置与用户自定义制作组组成的匹配规则。
+        """
+        custom_release_groups = self.systemconfig.get(SystemConfigKey.CustomReleaseGroups)
+        if isinstance(custom_release_groups, list):
+            custom_release_groups = list(filter(None, custom_release_groups))
+        if custom_release_groups:
+            custom_release_groups_str = '|'.join(custom_release_groups)
+            return f"{self.__release_groups}|{custom_release_groups_str}"
+        return self.__release_groups
+
     def __get_groups_re(self, groups: str):
         """
         发布组规则通常很长，按规则文本缓存编译结果，避免每个标题都重复编译。
@@ -108,15 +120,7 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
         if not title:
             return ""
         if not groups:
-            # 自定义组
-            custom_release_groups = self.systemconfig.get(SystemConfigKey.CustomReleaseGroups)
-            if isinstance(custom_release_groups, list):
-                custom_release_groups = list(filter(None, custom_release_groups))
-            if custom_release_groups:
-                custom_release_groups_str = '|'.join(custom_release_groups)
-                groups = f"{self.__release_groups}|{custom_release_groups_str}"
-            else:
-                groups = self.__release_groups
+            groups = self.get_release_groups()
         title = f"{title} "
         groups_re = self.__get_groups_re(groups)
         unique_groups = []

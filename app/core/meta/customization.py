@@ -17,7 +17,7 @@ class CustomizationMatcher(metaclass=Singleton):
         self._customization_re_cache = {}
 
     @staticmethod
-    def _normalize_customization(customization):
+    def normalize_customization(customization):
         """
         规范化自定义占位符配置，兼容历史字符串与列表两种保存格式。
         """
@@ -27,6 +27,13 @@ class CustomizationMatcher(metaclass=Singleton):
             return []
         return list(filter(None, customization))
 
+    @staticmethod
+    def _normalize_customization(customization):
+        """
+        兼容旧调用，统一转到公开的自定义占位符规范化入口。
+        """
+        return CustomizationMatcher.normalize_customization(customization)
+
     def match(self, title=None):
         """
         :param title: 资源标题或文件名
@@ -35,7 +42,7 @@ class CustomizationMatcher(metaclass=Singleton):
         if not title:
             return ""
         # 自定义占位符需要跟随系统配置实时生效，避免单例缓存导致保存后仍沿用旧规则。
-        customization = self._normalize_customization(
+        customization = self.normalize_customization(
             self.systemconfig.get(SystemConfigKey.Customization)
         )
         if not customization:

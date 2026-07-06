@@ -297,6 +297,12 @@ class StreamingPlatforms(metaclass=Singleton):
                 if alias:
                     self._lookup_cache[alias.upper()] = canonical_name
 
+    def get_lookup_cache(self) -> dict:
+        """
+        返回流媒体平台查询表副本，供批量解析配置复用。
+        """
+        return dict(self._lookup_cache)
+
     def get_streaming_platform_name(self, platform_code: str) -> Optional[str]:
         """
         根据流媒体平台简称或全称获取标准名称。

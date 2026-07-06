@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from functools import lru_cache
 from typing import Tuple, List, Optional
@@ -40,6 +41,7 @@ _EMBY_TMDB_RE_LIST = (
     re.compile(r'\{tmdbid[=\-](\d+)\}'),
     re.compile(r'\{tmdb[=\-](\d+)\}'),
 )
+_RUST_PARSE_OPTIONS_CACHE_KEY = "_cache_key"
 
 
 def _empty_metainfo() -> dict:
@@ -70,6 +72,28 @@ def _apply_range_total(metainfo: dict, begin_key: str, end_key: str, total_key: 
         metainfo[total_key] = metainfo[end_key] - metainfo[begin_key] + 1
     elif metainfo.get(begin_key) and not metainfo.get(end_key):
         metainfo[total_key] = 1
+
+
+def _rust_parse_options_cache_key(options: dict) -> str:
+    """
+    生成 Rust Meta 配置缓存键，避免扩展层每次重新展开大配置。
+    """
+    digest = hashlib.blake2b(digest_size=16)
+
+    def update(value) -> None:
+        digest.update(repr(value).encode("utf-8"))
+        digest.update(b"\0")
+
+    streaming_platforms = options.get("streaming_platforms") or {}
+    update(tuple(options.get("custom_words") or []))
+    update(tuple(options.get("media_exts") or []))
+    update(options.get("release_groups") or "")
+    update(tuple(options.get("customization") or []))
+    update(tuple(sorted(
+        (str(key), str(value))
+        for key, value in streaming_platforms.items()
+    )))
+    return digest.hexdigest()
 
 
 def _find_metainfo_python(title: str) -> Tuple[str, dict]:
@@ -209,24 +233,20 @@ def _rust_default_parse_options() -> dict:
     from app.schemas.types import SystemConfigKey
 
     systemconfig = SystemConfigOper()
-    custom_release_groups = systemconfig.get(SystemConfigKey.CustomReleaseGroups)
-    if isinstance(custom_release_groups, list):
-        custom_release_groups = list(filter(None, custom_release_groups))
-    release_matcher = ReleaseGroupsMatcher()
-    release_groups = release_matcher._ReleaseGroupsMatcher__release_groups
-    if custom_release_groups:
-        release_groups = f"{release_groups}|{'|'.join(custom_release_groups)}"
+    release_groups = ReleaseGroupsMatcher().get_release_groups()
 
-    customization = CustomizationMatcher._normalize_customization(
+    customization = CustomizationMatcher.normalize_customization(
         systemconfig.get(SystemConfigKey.Customization)
     )
-    return {
+    options = {
         "custom_words": systemconfig.get(SystemConfigKey.CustomIdentifiers) or [],
         "media_exts": settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT,
         "release_groups": release_groups,
         "customization": customization,
-        "streaming_platforms": StreamingPlatforms()._lookup_cache,
+        "streaming_platforms": StreamingPlatforms().get_lookup_cache(),
     }
+    options[_RUST_PARSE_OPTIONS_CACHE_KEY] = _rust_parse_options_cache_key(options)
+    return options
 
 
 @lru_cache(maxsize=256)
@@ -236,6 +256,7 @@ def _rust_custom_parse_options(custom_words: Tuple[str, ...]) -> dict:
     """
     options = dict(_rust_default_parse_options())
     options["custom_words"] = list(custom_words)
+    options[_RUST_PARSE_OPTIONS_CACHE_KEY] = _rust_parse_options_cache_key(options)
     return options
 
 

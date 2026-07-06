@@ -12,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app.helper import rss as rss_module
 from app.helper.rss import RssHelper
 from app.utils import rust_accel
+from app.utils.http import RequestUtils
 
 
 class FakeRequestUtils:
@@ -20,6 +21,7 @@ class FakeRequestUtils:
     """
 
     xml_text = ""
+    get_decoded_xml_content = staticmethod(RequestUtils.get_decoded_xml_content)
 
     def __init__(self, **_kwargs):
         """
