@@ -1,0 +1,186 @@
+{
+  "system": {
+    "modules": {
+      "BangumiModule": {
+        "name": "Bangumi"
+      },
+      "DiscordModule": {
+        "name": "Discord"
+      },
+      "DoubanModule": {
+        "name": "豆瓣"
+      },
+      "EmbyModule": {
+        "name": "Emby"
+      },
+      "FanartModule": {
+        "name": "Fanart"
+      },
+      "FeishuModule": {
+        "name": "飞书"
+      },
+      "FileManagerModule": {
+        "name": "文件整理"
+      },
+      "FilterModule": {
+        "name": "过滤器"
+      },
+      "IndexerModule": {
+        "name": "站点索引"
+      },
+      "JellyfinModule": {
+        "name": "Jellyfin"
+      },
+      "PlexModule": {
+        "name": "Plex"
+      },
+      "PostgreSQLModule": {
+        "name": "PostgreSQL"
+      },
+      "QbittorrentModule": {
+        "name": "Qbittorrent"
+      },
+      "QQBotModule": {
+        "name": "QQ"
+      },
+      "RedisModule": {
+        "name": "Redis缓存"
+      },
+      "RtorrentModule": {
+        "name": "Rtorrent"
+      },
+      "SlackModule": {
+        "name": "Slack"
+      },
+      "SubtitleModule": {
+        "name": "站点字幕"
+      },
+      "SynologyChatModule": {
+        "name": "Synology Chat"
+      },
+      "TelegramModule": {
+        "name": "Telegram"
+      },
+      "TheMovieDbModule": {
+        "name": "TheMovieDb"
+      },
+      "TheTvDbModule": {
+        "name": "TheTvDb"
+      },
+      "TransmissionModule": {
+        "name": "Transmission"
+      },
+      "TrimeMediaModule": {
+        "name": "飞牛影视"
+      },
+      "UgreenModule": {
+        "name": "绿联影视"
+      },
+      "VoceChatModule": {
+        "name": "VoceChat"
+      },
+      "WebPushModule": {
+        "name": "WebPush"
+      },
+      "WechatModule": {
+        "name": "企业微信"
+      },
+      "WechatClawBotModule": {
+        "name": "微信 ClawBot"
+      },
+      "ZSpaceModule": {
+        "name": "极影视"
+      }
+    },
+    "module_test": {
+      "unsupported": "模块不支持测试"
+    }
+  },
+  "messages": {
+    "模块不支持测试": "模块不支持测试",
+    "网络请求失败": "网络请求失败",
+    "豆瓣网络连接失败": "豆瓣网络连接失败",
+    "Bangumi网络连接失败": "Bangumi网络连接失败",
+    "fanart网络连接失败": "fanart网络连接失败",
+    "未配置站点或未通过用户认证": "未配置站点或未通过用户认证",
+    "Redis连接失败，请检查配置": "Redis连接失败，请检查配置"
+  },
+  "message_patterns": [
+    {
+      "source": "无法连接Qbittorrent下载器：{name}",
+      "target": "无法连接Qbittorrent下载器：{name}"
+    },
+    {
+      "source": "无法连接Transmission下载器：{name}",
+      "target": "无法连接Transmission下载器：{name}"
+    },
+    {
+      "source": "无法连接rTorrent下载器：{name}",
+      "target": "无法连接rTorrent下载器：{name}"
+    },
+    {
+      "source": "无法连接Emby服务器：{name}",
+      "target": "无法连接Emby服务器：{name}"
+    },
+    {
+      "source": "无法连接Jellyfin服务器：{name}",
+      "target": "无法连接Jellyfin服务器：{name}"
+    },
+    {
+      "source": "无法连接Plex服务器：{name}",
+      "target": "无法连接Plex服务器：{name}"
+    },
+    {
+      "source": "飞牛影视配置不完整：{name}",
+      "target": "飞牛影视配置不完整：{name}"
+    },
+    {
+      "source": "无法连接飞牛影视：{name}",
+      "target": "无法连接飞牛影视：{name}"
+    },
+    {
+      "source": "绿联影视配置不完整：{name}",
+      "target": "绿联影视配置不完整：{name}"
+    },
+    {
+      "source": "无法连接绿联影视：{name}",
+      "target": "无法连接绿联影视：{name}"
+    },
+    {
+      "source": "无法连接极影视服务器：{name}",
+      "target": "无法连接极影视服务器：{name}"
+    },
+    {
+      "source": "Telegram {name} 未就绪",
+      "target": "Telegram {name} 未就绪"
+    },
+    {
+      "source": "飞书 {name} 未就绪",
+      "target": "飞书 {name} 未就绪"
+    },
+    {
+      "source": "Discord {name} Bot 未就绪",
+      "target": "Discord {name} Bot 未就绪"
+    },
+    {
+      "source": "Slack {name} 未就绪",
+      "target": "Slack {name} 未就绪"
+    },
+    {
+      "source": "无法连接Bangumi，错误码：{code}",
+      "target": "无法连接Bangumi，错误码：{code}"
+    },
+    {
+      "source": "无法连接fanart，错误码：{code}",
+      "target": "无法连接fanart，错误码：{code}"
+    },
+    {
+      "source": "无法连接 {domain}，错误码：{code}",
+      "target": "无法连接 {domain}，错误码：{code}"
+    },
+    {
+      "source": "{domain} 网络连接失败",
+      "target": "{domain} 网络连接失败"
+    }
+  ]
+}

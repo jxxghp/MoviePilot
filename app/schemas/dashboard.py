@@ -1,6 +1,8 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.helper.locale import LocaleHelper
 
 
 class Statistic(BaseModel):
@@ -87,14 +89,20 @@ class ScheduleProgress(BaseModel):
     id: Optional[str] = None
     # 名称
     name: Optional[str] = None
+    # 多语言名称
+    name_i18n: Optional[str] = None
     # 提供者
     provider: Optional[str] = None
+    # 多语言提供者
+    provider_i18n: Optional[str] = None
     # 是否正在执行
     enable: Optional[bool] = False
     # 当前完成百分比
     value: Optional[float] = 0.0
     # 当前进度文本
     text: Optional[str] = None
+    # 多语言进度文本
+    text_i18n: Optional[str] = None
     # 执行状态 waiting/running/success/failed
     status: Optional[str] = None
     # 最近一次执行是否成功
@@ -105,8 +113,26 @@ class ScheduleProgress(BaseModel):
     finished_at: Optional[str] = None
     # 最近一次错误信息
     error: Optional[str] = None
+    # 多语言错误信息
+    error_i18n: Optional[str] = None
     # 扩展数据
     data: Optional[dict] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def fill_i18n_fields(self) -> "ScheduleProgress":
+        """
+        自动补充后台服务进度的多语言展示字段。
+        """
+        locale = LocaleHelper.get_current_locale()
+        if self.name and self.name_i18n is None:
+            self.name_i18n = LocaleHelper.translate_text(self.name, locale=locale)
+        if self.provider and self.provider_i18n is None:
+            self.provider_i18n = LocaleHelper.translate_text(self.provider, locale=locale)
+        if self.text and self.text_i18n is None:
+            self.text_i18n = LocaleHelper.translate_text(self.text, locale=locale)
+        if self.error and self.error_i18n is None:
+            self.error_i18n = LocaleHelper.translate_text(self.error, locale=locale)
+        return self
 
 
 class ScheduleInfo(BaseModel):
@@ -116,20 +142,48 @@ class ScheduleInfo(BaseModel):
     id: Optional[str] = None
     # 名称
     name: Optional[str] = None
+    # 多语言名称
+    name_i18n: Optional[str] = None
     # 提供者
     provider: Optional[str] = None
+    # 多语言提供者
+    provider_i18n: Optional[str] = None
     # 状态
     status: Optional[str] = None
+    # 多语言状态
+    status_i18n: Optional[str] = None
     # 下次执行时间
     next_run: Optional[str] = None
+    # 多语言下次执行时间
+    next_run_i18n: Optional[str] = None
     # 当前完成百分比
     progress: Optional[float] = 0.0
     # 进度文本
     progress_text: Optional[str] = None
+    # 多语言进度文本
+    progress_text_i18n: Optional[str] = None
     # 是否正在更新进度
     progress_enable: Optional[bool] = False
     # 进度详情
     progress_detail: Optional[ScheduleProgress] = None
+
+    @model_validator(mode="after")
+    def fill_i18n_fields(self) -> "ScheduleInfo":
+        """
+        自动补充后台服务列表的多语言展示字段。
+        """
+        locale = LocaleHelper.get_current_locale()
+        if self.name and self.name_i18n is None:
+            self.name_i18n = LocaleHelper.translate_text(self.name, locale=locale)
+        if self.provider and self.provider_i18n is None:
+            self.provider_i18n = LocaleHelper.translate_text(self.provider, locale=locale)
+        if self.status and self.status_i18n is None:
+            self.status_i18n = LocaleHelper.translate_text(self.status, locale=locale)
+        if self.next_run and self.next_run_i18n is None:
+            self.next_run_i18n = LocaleHelper.translate_text(self.next_run, locale=locale)
+        if self.progress_text and self.progress_text_i18n is None:
+            self.progress_text_i18n = LocaleHelper.translate_text(self.progress_text, locale=locale)
+        return self
 
 
 class DashboardSystemInfo(BaseModel):

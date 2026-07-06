@@ -34,6 +34,7 @@ from app.db.models.agentchat import AgentChat
 from app.db.user_oper import UserOper, get_current_active_user
 from app.helper.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
 from app.helper.interaction import agent_interaction_manager, media_interaction_manager
+from app.helper.locale import LocaleHelper
 from app.log import logger
 from app.schemas.types import EventType, MessageChannel
 
@@ -326,15 +327,25 @@ def _save_web_agent_display_snapshot(
         logger.debug(f"保存WebAgent展示历史失败: {e}")
 
 
-def _build_web_agent_sse(event_type: str, data: Optional[dict] = None) -> str:
+def _build_web_agent_sse(
+        event_type: str,
+        data: Optional[dict] = None,
+        locale: Optional[str] = None,
+) -> str:
     """
     构建 Web Agent SSE 消息。
 
     :param event_type: 前端事件类型
     :param data: 事件数据
+    :param locale: 当前请求语言
     :return: 符合 SSE 格式的字符串
     """
     payload = {"type": event_type, **(data or {})}
+    message = payload.get("message")
+    if event_type == "error" and isinstance(message, str):
+        payload["message_i18n"] = LocaleHelper.translate_text(
+            message, locale=locale
+        )
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
@@ -1597,6 +1608,7 @@ async def web_agent_stream(
     :return: SSE 流式响应
     """
     prompt = payload.text.strip()
+    locale = LocaleHelper.get_locale_from_request(request)
     display_prompt = (payload.display_text or payload.text).strip()
     is_traditional_message = (
         _is_web_agent_traditional_message(prompt)
@@ -1610,6 +1622,7 @@ async def web_agent_stream(
                     _build_web_agent_sse(
                         "error",
                         {"message": denied_message},
+                        locale=locale,
                     )
                 ]),
                 media_type="text/event-stream",
@@ -1621,6 +1634,7 @@ async def web_agent_stream(
                     _build_web_agent_sse(
                         "error",
                         {"message": unknown_command_message},
+                        locale=locale,
                     )
                 ]),
                 media_type="text/event-stream",
@@ -1649,7 +1663,11 @@ async def web_agent_stream(
             """
             生成传统消息链路的 WebAgent SSE 事件。
             """
-            yield _build_web_agent_sse("start", {"session_id": session_id})
+            yield _build_web_agent_sse(
+                "start",
+                {"session_id": session_id},
+                locale=locale,
+            )
             events = await _collect_web_agent_traditional_events(
                 text=prompt,
                 current_user=current_user,
@@ -1660,7 +1678,11 @@ async def web_agent_stream(
             display_messages.append(assistant_message)
             for event in events:
                 event_payload = copy.deepcopy(event)
-                yield _build_web_agent_sse(event_payload.pop("type"), event_payload)
+                yield _build_web_agent_sse(
+                    event_payload.pop("type"),
+                    event_payload,
+                    locale=locale,
+                )
                 if await request.is_disconnected():
                     break
             await run_in_threadpool(
@@ -1670,7 +1692,7 @@ async def web_agent_stream(
                 messages=display_messages,
                 client_session_id=payload.session_id or session_id,
             )
-            yield _build_web_agent_sse("done", {})
+            yield _build_web_agent_sse("done", {}, locale=locale)
 
         return StreamingResponse(
             traditional_event_generator(),
@@ -1688,6 +1710,7 @@ async def web_agent_stream(
                 _build_web_agent_sse(
                     "error",
                     {"message": "智能助手未启用，请先在系统设置中开启。"},
+                    locale=locale,
                 )
             ]),
             media_type="text/event-stream",
@@ -1703,6 +1726,7 @@ async def web_agent_stream(
                 _build_web_agent_sse(
                     "error",
                     {"message": "语音识别失败，请稍后重试。"},
+                    locale=locale,
                 )
             ]),
             media_type="text/event-stream",
@@ -1713,6 +1737,7 @@ async def web_agent_stream(
                 _build_web_agent_sse(
                     "error",
                     {"message": "请输入要发送给智能助手的内容或选择附件。"},
+                    locale=locale,
                 )
             ]),
             media_type="text/event-stream",
@@ -1825,6 +1850,7 @@ async def web_agent_stream(
             yield _build_web_agent_sse(
                 "start",
                 {"session_id": session_id},
+                locale=locale,
             )
             disconnected = False
             while not global_vars.is_system_stopped:
@@ -1832,7 +1858,11 @@ async def web_agent_stream(
                     disconnected = True
                     break
                 event = await event_queue.get()
-                yield _build_web_agent_sse(event.pop("type"), event)
+                yield _build_web_agent_sse(
+                    event.pop("type"),
+                    event,
+                    locale=locale,
+                )
                 if task.done() and event_queue.empty():
                     break
         except asyncio.CancelledError:

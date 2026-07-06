@@ -1,0 +1,1303 @@
+{
+  "system": {
+    "modules": {
+      "BangumiModule": {
+        "name": "Bangumi"
+      },
+      "DiscordModule": {
+        "name": "Discord"
+      },
+      "DoubanModule": {
+        "name": "Douban"
+      },
+      "EmbyModule": {
+        "name": "Emby"
+      },
+      "FanartModule": {
+        "name": "Fanart"
+      },
+      "FeishuModule": {
+        "name": "Feishu"
+      },
+      "FileManagerModule": {
+        "name": "File Organization"
+      },
+      "FilterModule": {
+        "name": "Filter"
+      },
+      "IndexerModule": {
+        "name": "Site Indexer"
+      },
+      "JellyfinModule": {
+        "name": "Jellyfin"
+      },
+      "PlexModule": {
+        "name": "Plex"
+      },
+      "PostgreSQLModule": {
+        "name": "PostgreSQL"
+      },
+      "QbittorrentModule": {
+        "name": "qBittorrent"
+      },
+      "QQBotModule": {
+        "name": "QQ"
+      },
+      "RedisModule": {
+        "name": "Redis Cache"
+      },
+      "RtorrentModule": {
+        "name": "rTorrent"
+      },
+      "SlackModule": {
+        "name": "Slack"
+      },
+      "SubtitleModule": {
+        "name": "Site Subtitle"
+      },
+      "SynologyChatModule": {
+        "name": "Synology Chat"
+      },
+      "TelegramModule": {
+        "name": "Telegram"
+      },
+      "TheMovieDbModule": {
+        "name": "TheMovieDb"
+      },
+      "TheTvDbModule": {
+        "name": "TheTvDb"
+      },
+      "TransmissionModule": {
+        "name": "Transmission"
+      },
+      "TrimeMediaModule": {
+        "name": "Trime Media"
+      },
+      "UgreenModule": {
+        "name": "UGREEN"
+      },
+      "VoceChatModule": {
+        "name": "VoceChat"
+      },
+      "WebPushModule": {
+        "name": "WebPush"
+      },
+      "WechatModule": {
+        "name": "WeCom"
+      },
+      "WechatClawBotModule": {
+        "name": "WeChat ClawBot"
+      },
+      "ZSpaceModule": {
+        "name": "Zspace"
+      }
+    },
+    "module_test": {
+      "unsupported": "Module does not support testing"
+    }
+  },
+  "messages": {
+    "模块不支持测试": "Module does not support testing",
+    "网络请求失败": "Network request failed",
+    "附件保存失败": "Failed to save attachment",
+    "该选择已失效，请重新发起选择": "This selection has expired. Please start the selection again",
+    "会话不存在或无权访问": "The conversation does not exist or you do not have access",
+    "会话保存失败": "Failed to save conversation",
+    "后台服务不存在": "Background service does not exist",
+    "任务添加失败": "Failed to add task",
+    "无法识别媒体信息": "Unable to recognize media information",
+    "未识别到媒体信息": "Unable to recognize media information",
+    "记录不存在": "Record does not exist",
+    "MoviePilot智能助手未启用": "MoviePilot Assistant is not enabled",
+    "整理记录不存在": "Organization record does not exist",
+    "未提供有效的整理记录": "No valid organization record was provided",
+    "请配置LLM提供商和模型": "Please configure the LLM provider and model",
+    "请先配置 LLM 模型": "Please configure the LLM model first",
+    "请先启用智能助手": "Please enable Assistant first",
+    "请先配置 LLM API Key": "Please configure the LLM API Key first",
+    "模型响应为空": "Model response is empty",
+    "LLM 调用超时": "LLM call timed out",
+    "刮削路径无效": "Scraping path is invalid",
+    "刮削失败，无法识别媒体信息": "Scraping failed: unable to recognize media information",
+    "刮削路径不存在": "Scraping path does not exist",
+    "保存成功": "Saved successfully",
+    "保存失败": "Failed to save",
+    "参数错误": "Invalid parameters",
+    "未配置媒体服务器": "Media server is not configured",
+    "未找到播放地址": "Playback URL not found",
+    "验证码错误": "Verification code is incorrect",
+    "您已注册通行密钥，为了防止域名配置变更导致无法登录，请先删除所有通行密钥再关闭 OTP 验证": "You have registered a passkey. To prevent login issues after domain configuration changes, delete all passkeys before disabling OTP verification",
+    "密码错误": "Incorrect password",
+    "为了确保在域名配置错误时仍能找回访问权限，请先启用 OTP 验证码再注册通行密钥": "To ensure access can be recovered when domain configuration is incorrect, enable OTP verification before registering a passkey",
+    "通行密钥注册成功": "Passkey registered successfully",
+    "认证失败": "Authentication failed",
+    "通行密钥已删除": "Passkey deleted",
+    "通行密钥不存在或无权删除": "The passkey does not exist or you do not have permission to delete it",
+    "验证失败": "Verification failed",
+    "通行密钥不存在或不属于当前用户": "The passkey does not exist or does not belong to the current user",
+    "通行密钥验证失败": "Passkey verification failed",
+    "二次验证成功": "Secondary verification succeeded",
+    "没有传入仓库地址，无法正确安装插件，请检查配置": "No repository URL was provided, so the plugin cannot be installed. Please check the configuration",
+    "插件分身创建成功": "Plugin clone created successfully",
+    "未识别到豆瓣媒体信息": "Unable to recognize Douban media information",
+    "未识别到TMDB媒体信息": "Unable to recognize TMDB media information",
+    "未知的媒体ID": "Unknown media ID",
+    "未搜索到任何资源": "No resources found",
+    "未搜索到任何字幕": "No subtitles found",
+    "没有可用的搜索结果": "No available search results",
+    "站点地址不能为空": "Site URL cannot be empty",
+    "用户未通过认证，无法使用站点功能！": "User authentication has not passed, so site features cannot be used.",
+    "该站点不支持，请检查站点域名是否正确": "This site is not supported. Please check whether the site domain is correct",
+    "站点不存在": "Site does not exist",
+    "CookieCloud同步任务已启动！": "CookieCloud sync task has started!",
+    "站点已重置！": "Site has been reset!",
+    "站点不支持索引或未通过用户认证！": "The site does not support indexing or user authentication has not passed!",
+    "站点图标不存在！": "Site icon does not exist!",
+    "请输入认证站点和认证参数": "Please enter the authentication site and authentication parameters",
+    "新名称为空": "New name is empty",
+    "订阅不存在": "Subscription does not exist",
+    "无效的订阅状态": "Invalid subscription status",
+    "不支持的通知类型": "Unsupported notification type",
+    "请求参数不正确": "Request parameters are incorrect",
+    "所有配置项更新成功": "All configuration items were updated successfully",
+    "不支持的 Wiki 同步地址": "Unsupported Wiki sync URL",
+    "无法访问 Wiki 插件仓库清单": "Unable to access the Wiki plugin repository list",
+    "未在 Wiki 中识别到插件仓库地址": "No plugin repository URL was found in the Wiki",
+    "未识别到媒体信息！": "Unable to recognize media information!",
+    "不符合过滤规则！": "Does not match the filter rules!",
+    "测试目标不存在": "Test target does not exist",
+    "测试目标发生了未授权跳转": "Test target performed an unauthorized redirect",
+    "测试目标重定向次数过多": "Test target redirected too many times",
+    "当前运行环境不支持重启操作！": "The current runtime environment does not support restart!",
+    "当前运行环境不支持升级操作！": "The current runtime environment does not support upgrade!",
+    "命令不能为空！": "Command cannot be empty!",
+    "未找到指定的种子": "Specified torrent not found",
+    "种子删除成功": "Torrent deleted successfully",
+    "种子缓存清理完成": "Torrent cache cleanup completed",
+    "重新识别完成": "Re-recognition completed",
+    "未识别到新名称": "Unable to recognize new name",
+    "缺少参数": "Missing parameters",
+    "用户已存在": "User already exists",
+    "密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位": "Password must contain at least two of letters, numbers, and special characters, and be longer than 6 characters",
+    "用户名不能为空": "Username cannot be empty",
+    "用户名已被使用": "Username is already in use",
+    "用户不存在": "User does not exist",
+    "已存在相同名称的工作流": "A workflow with the same name already exists",
+    "创建工作流成功": "Workflow created successfully",
+    "请填写工作流ID、分享标题和分享人": "Please fill in workflow ID, share title, and sharer",
+    "工作流名称不能为空": "Workflow name cannot be empty",
+    "actions字段JSON格式错误": "The actions field contains invalid JSON",
+    "flows字段JSON格式错误": "The flows field contains invalid JSON",
+    "context字段JSON格式错误": "The context field contains invalid JSON",
+    "event_conditions字段JSON格式错误": "The event_conditions field contains invalid JSON",
+    "复用成功": "Reused successfully",
+    "工作流不存在": "Workflow does not exist",
+    "定时工作流缺少定时器配置": "Scheduled workflow is missing timer configuration",
+    "工作流触发类型不支持": "Unsupported workflow trigger type",
+    "工作流ID不能为空": "Workflow ID cannot be empty",
+    "更新成功": "Updated successfully",
+    "删除成功": "Deleted successfully",
+    "豆瓣网络连接失败": "Douban network connection failed",
+    "Bangumi网络连接失败": "Bangumi network connection failed",
+    "fanart网络连接失败": "fanart network connection failed",
+    "未配置站点或未通过用户认证": "No sites are configured or user authentication has not passed",
+    "Redis连接失败，请检查配置": "Redis connection failed. Please check the configuration",
+    "无法打开网站！": "Unable to open the site!",
+    "无法获取Token": "Unable to get token",
+    "连接成功": "Connection successful",
+    "Cookie已失效": "Cookie has expired",
+    "鉴权已过期或无效": "Authentication has expired or is invalid",
+    "Cookie已过期": "Cookie has expired",
+    "APIKEY已过期": "API key has expired",
+    "无法通过Cloudflare！": "Unable to pass Cloudflare!",
+    "仿真登录失败，Cookie已失效！": "Simulated login failed. Cookie has expired!",
+    "系统正在停止，同步被中断": "The system is stopping, and sync was interrupted",
+    "未找到下载目录": "Download directory not found",
+    "下载字幕文件失败": "Failed to download subtitle file",
+    "字幕文件保存成功": "Subtitle file saved successfully",
+    "未保存任何字幕文件": "No subtitle files were saved",
+    "字幕下载链接为空": "Subtitle download URL is empty",
+    "下载字幕文件失败：未收到站点响应": "Failed to download subtitle file: no site response was received",
+    "字幕下载成功": "Subtitle downloaded successfully",
+    "下载被事件取消": "Download was cancelled by an event",
+    "下载种子内容为空": "Torrent content is empty",
+    "媒体信息识别失败": "Media information recognition failed",
+    "媒体信息中没有季集信息": "Media information does not contain season and episode details",
+    "文件整理模块运行失败": "File organization module failed to run",
+    "缺少目录参数": "Directory parameter is missing",
+    "目录不存在": "Directory does not exist",
+    "没有可用于识别的样本文件": "No sample files are available for recognition",
+    "当前选择不满足智能识别条件": "The current selection does not meet intelligent recognition requirements",
+    "工作流无动作": "Workflow has no actions",
+    "工作流无流程": "Workflow has no flows",
+    "工作流已停止": "Workflow has stopped",
+    "未设置任何目录": "No directories are configured",
+    "网络错误": "Network error",
+    "生成二维码失败": "Failed to generate QR code",
+    "无法连接到授权服务器": "Unable to connect to the authorization server",
+    "授权服务器返回数据不完整": "The authorization server returned incomplete data",
+    "获取授权URL失败": "Failed to get authorization URL",
+    "state为空": "State is empty",
+    "授权成功": "Authorization successful",
+    "授权已过期": "Authorization has expired",
+    "等待用户授权": "Waiting for user authorization",
+    "此存储不支持 OAuth2 授权": "This storage does not support OAuth2 authorization",
+    "未知错误": "Unknown error",
+    "下载内容为空": "Download content is empty",
+    "添加种子任务失败：无法读取种子文件": "Failed to add torrent task: unable to read torrent file",
+    "无法连接qbittorrent下载器": "Unable to connect to qBittorrent downloader",
+    "无法连接transmission下载器": "Unable to connect to Transmission downloader",
+    "无法连接rTorrent下载器": "Unable to connect to rTorrent downloader",
+    "下载任务已存在": "Download task already exists",
+    "获取种子文件失败，下载任务可能在暂停状态": "Failed to get torrent file. The download task may be paused",
+    "添加下载成功": "Download added successfully",
+    "添加下载任务成功": "Download task added successfully",
+    "消息客户端未就绪": "Message client is not ready",
+    "Github Token已失效，请检查配置": "GitHub token has expired. Please check the configuration",
+    "触发限流，请配置Github Token": "Rate limit triggered. Please configure a GitHub token",
+    "删除失败": "Deletion failed",
+    "已停止": "Stopped",
+    "当前没有正在执行的任务": "There is currently no running task",
+    "无效响应": "Invalid response",
+    "字幕站点信息为空": "Subtitle site information is empty",
+    "字幕下载链接签名无效": "Subtitle download URL signature is invalid",
+    "字幕站点信息不存在": "Subtitle site information does not exist",
+    "附件不存在或已过期": "Attachment does not exist or has expired",
+    "附件超过 32MB，无法发送给智能助手": "The attachment exceeds 32MB and cannot be sent to the assistant",
+    "附件保存失败": "Failed to save attachment",
+    "认证票据无效或已过期": "Authentication ticket is invalid or has expired",
+    "用户不存在或已禁用": "The user does not exist or has been disabled",
+    "用户权限不足": "Insufficient user permissions",
+    "用户名或密码错误": "Incorrect username or password",
+    "需要双重验证，请提供验证码或使用通行密钥": "Two-factor verification is required. Provide a verification code or use a passkey",
+    "图片读取出错": "Failed to read image",
+    "授权失败": "Authorization failed",
+    "报文内容为空": "Request payload is empty",
+    "配置项不存在": "Configuration item does not exist",
+    "智能助手未启用，请先在系统设置中开启。": "The assistant is not enabled. Enable it in system settings first.",
+    "语音识别失败，请稍后重试。": "Speech recognition failed. Please try again later.",
+    "请输入要发送给智能助手的内容或选择附件。": "Enter content to send to the assistant or choose an attachment.",
+    "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道": "WeChat ClawBot notification is not enabled or the configuration has not been saved. Please save and enable this channel first",
+    "请输入至少一个有效的站点 ID": "Enter at least one valid site ID",
+    "所有订阅搜索完成": "All subscription searches are complete",
+    "请输入订阅 ID，多个 ID 用空格分隔，或输入 all": "Enter subscription IDs separated by spaces, or enter all",
+    "请输入至少一个有效的订阅 ID": "Enter at least one valid subscription ID",
+    "格式错误，请输入：cookie <id> <username> <password> [2fa_code/secret]": "Invalid format. Enter: cookie <id> <username> <password> [2fa_code/secret]",
+    "认证凭证无效": "Authentication credentials are invalid",
+    "不支持的认证类型": "Unsupported authentication type",
+    "CookieCloud参数不正确": "CookieCloud parameters are incorrect",
+    "未获取到cookie密文": "Cookie ciphertext was not obtained",
+    "cookie解密为空": "Cookie decryption result is empty",
+    "未从本地CookieCloud服务加载到cookie数据，请检查服务器设置、用户KEY及加密密码是否正确": "No cookie data was loaded from the local CookieCloud service. Please check the server settings, user key, and encryption password",
+    "CookieCloud请求失败，请检查服务器地址、用户KEY及加密密码是否正确": "CookieCloud request failed. Please check the server address, user key, and encryption password",
+    "目录中没有可用于识别的媒体文件": "No media files are available for recognition in the directory",
+    "无匹配自定义定位规则，智能生成失败": "No matching custom locating rule was found, and intelligent generation failed",
+    "样本命名与原生识别结果冲突，建议补充集数定位规则": "Sample naming conflicts with the native recognition result. Add an episode locating rule",
+    "有效正片样本覆盖率不足，建议补充集数定位规则": "Valid main-video sample coverage is insufficient. Add an episode locating rule",
+    "样本命名差异过大，建议补充集数定位规则": "Sample naming differences are too large. Add an episode locating rule",
+    "样本不足，仅基于单文件智能生成（仅供参考）": "Insufficient samples. Generated intelligently from a single file only (for reference)",
+    "已放宽体积限制智能生成模板（仅供参考）": "Generated template after relaxing the size limit (for reference)",
+    "已结合原生集数识别智能生成模板（仅供参考）": "Generated template using native episode recognition (for reference)",
+    "已根据多数派样本智能生成模板（仅供参考）": "Generated template from the majority of samples (for reference)",
+    "无匹配自定义定位规则，已智能生成（仅供参考）": "No matching custom locating rule was found. Generated intelligently (for reference)",
+    "样本未识别到有效集数，智能生成失败": "No valid episode number was recognized from the sample, and intelligent generation failed",
+    "不存在依赖": "No dependencies exist",
+    "主运行环境已恢复": "Main runtime environment has been restored",
+    "[PIP] 所有策略均安装依赖失败，请检查网络连接、PIP 配置或插件依赖约束": "[PIP] All dependency installation strategies failed. Please check the network connection, PIP configuration, or plugin dependency constraints",
+    "可执行文件模式下，只能安装本地插件": "In executable mode, only local plugins can be installed",
+    "不支持的插件仓库地址格式": "Unsupported plugin repository URL format",
+    "本地插件来源与插件ID不匹配": "Local plugin source does not match the plugin ID",
+    "本地插件来源不能与运行目录相同": "Local plugin source cannot be the same as the runtime directory",
+    "本地插件来源路径无效": "Local plugin source path is invalid",
+    "连接仓库失败": "Failed to connect to repository",
+    "文件列表为空": "File list is empty",
+    "requirements.txt 文件下载失败": "Failed to download requirements.txt",
+    "插件在仓库中不存在或返回数据格式不正确": "The plugin does not exist in the repository or the returned data format is invalid",
+    "插件数据解析失败": "Failed to parse plugin data",
+    "没有传入需要安装的依赖项": "No dependencies to install were provided",
+    "资产缺少ID信息": "Asset is missing ID information",
+    "压缩包内容为空": "Archive content is empty",
+    "压缩包中无可写入文件": "Archive contains no writable files",
+    "连接MoviePilot服务器失败": "Failed to connect to MoviePilot server",
+    "当前没有开启订阅数据共享功能": "Subscription data sharing is not enabled",
+    "当前没有开启工作流数据共享功能": "Workflow data sharing is not enabled",
+    "请分享有动作和流程的工作流": "Please share a workflow that contains actions and flows",
+    "升级模式仅支持 release 或 dev": "Upgrade mode only supports release or dev",
+    "当前实例不是由 moviepilot CLI 启动，无法执行内建重启！": "The current instance was not started by moviepilot CLI, so built-in restart cannot be performed!",
+    "已检测到自动升级模式 dev，正在重启并执行升级": "Auto-upgrade mode dev detected. Restarting and upgrading",
+    "已检测到自动升级已开启，正在重启并执行升级": "Auto-upgrade is enabled. Restarting and upgrading",
+    "获取容器ID失败！": "Failed to get container ID!",
+    "未登录，缺少 bot token": "Not logged in, missing bot token",
+    "连接正常": "Connection is normal",
+    "未登录，请先扫码完成绑定": "Not logged in. Scan the QR code to complete binding first",
+    "旧名称或新名称不能为空": "Old name and new name cannot be empty",
+    "通知名称未变化，无需迁移登录缓存": "Notification name has not changed. No login cache migration is needed",
+    "未找到可迁移的微信 ClawBot 登录缓存": "No WeChat ClawBot login cache available for migration was found",
+    "新名称下已存在登录缓存，跳过迁移": "Login cache already exists under the new name. Migration skipped",
+    "[系统]": "[System]",
+    "工作流": "Workflow",
+    "正在运行": "Running",
+    "等待": "Waiting",
+    "同步CookieCloud站点": "Sync CookieCloud Sites",
+    "同步媒体服务器": "Sync Media Servers",
+    "订阅元数据更新": "Update Subscription Metadata",
+    "订阅搜索补全": "Complete Subscription Search",
+    "新增订阅搜索": "New Subscription Search",
+    "订阅刷新": "Refresh Subscriptions",
+    "关注的订阅分享": "Followed Subscription Sharing",
+    "下载文件整理": "Organize Downloaded Files",
+    "缓存清理": "Cache Cleanup",
+    "数据表清理": "Data Table Cleanup",
+    "用户认证检查": "User Authentication Check",
+    "公共定时服务": "Common Scheduled Service",
+    "壁纸缓存": "Wallpaper Cache",
+    "站点数据刷新": "Refresh Site Data",
+    "推荐缓存": "Recommendation Cache",
+    "插件市场缓存": "Plugin Market Cache",
+    "订阅日历缓存": "Subscription Calendar Cache",
+    "主动内存回收": "Manual Memory Reclamation",
+    "智能体定时任务": "Agent Scheduled Task",
+    "安装版本统计上报": "Installation Version Statistics Report",
+    "开始清理数据表 ...": "Starting data table cleanup ...",
+    "站点资源刷新完成": "Site resource refresh completed",
+    "未配置媒体服务器，跳过同步": "No media server configured, skipping sync",
+    "没有已启用的媒体服务器": "No enabled media servers",
+    "媒体服务器同步完成": "Media server sync completed",
+    "站点数据刷新完成": "Site data refresh completed",
+    "开始下载 CookieCloud 数据 ...": "Starting CookieCloud data download ...",
+    "推荐数据刷新完成，正在缓存海报 ...": "Recommendation data refresh completed, caching posters ...",
+    "推荐缓存刷新完成": "Recommendation cache refresh completed",
+    "未配置下载器监控目录，跳过整理": "No downloader watch directory configured, skipping organization",
+    "正在查询已完成下载任务 ...": "Querying completed download tasks ...",
+    "没有已完成下载但未整理的任务": "No completed but unorganized download tasks",
+    "未开启任何有效站点，无法搜索资源": "No valid site is enabled, unable to search resources",
+    "未开启任何支持字幕搜索的有效站点，无法搜索字幕": "No valid subtitle-search site is enabled, unable to search subtitles",
+    "订阅搜索完成": "Subscription search completed",
+    "没有订阅需要刷新": "No subscriptions need refreshing",
+    "订阅刷新完成": "Subscription refresh completed",
+    "没有缓存资源，跳过订阅匹配": "No cached resources, skipping subscription matching",
+    "正在预处理订阅资源 ...": "Preprocessing subscription resources ...",
+    "订阅资源匹配完成": "Subscription resource matching completed",
+    "订阅元数据更新完成": "Subscription metadata update completed",
+    "未配置 Follow 订阅用户，跳过刷新": "No Follow subscription users configured, skipping refresh",
+    "订阅日历预缓存完成": "Subscription calendar precache completed"
+  },
+  "message_patterns": [
+    {
+      "source": "工具 '{tool}' 未找到",
+      "target": "Tool '{tool}' was not found"
+    },
+    {
+      "source": "获取工具列表失败: {reason}",
+      "target": "Failed to get tool list: {reason}"
+    },
+    {
+      "source": "获取工具信息失败: {reason}",
+      "target": "Failed to get tool information: {reason}"
+    },
+    {
+      "source": "获取工具Schema失败: {reason}",
+      "target": "Failed to get tool schema: {reason}"
+    },
+    {
+      "source": "插件 {plugin} 不存在或未安装",
+      "target": "Plugin {plugin} does not exist or is not installed"
+    },
+    {
+      "source": "插件 {plugin} 不存在或未加载",
+      "target": "Plugin {plugin} does not exist or is not loaded"
+    },
+    {
+      "source": "站点 {site} 不存在！",
+      "target": "Site {site} does not exist!"
+    },
+    {
+      "source": "站点 {site} 不存在",
+      "target": "Site {site} does not exist"
+    },
+    {
+      "source": "站点 {site} 不支持",
+      "target": "Site {site} is not supported"
+    },
+    {
+      "source": "{path} 不是文件",
+      "target": "{path} is not a file"
+    },
+    {
+      "source": "智能助手执行失败: {reason}",
+      "target": "Assistant execution failed: {reason}"
+    },
+    {
+      "source": "无法连接Qbittorrent下载器：{name}",
+      "target": "Unable to connect to qBittorrent downloader: {name}"
+    },
+    {
+      "source": "无法连接Transmission下载器：{name}",
+      "target": "Unable to connect to Transmission downloader: {name}"
+    },
+    {
+      "source": "无法连接rTorrent下载器：{name}",
+      "target": "Unable to connect to rTorrent downloader: {name}"
+    },
+    {
+      "source": "无法连接Emby服务器：{name}",
+      "target": "Unable to connect to Emby server: {name}"
+    },
+    {
+      "source": "无法连接Jellyfin服务器：{name}",
+      "target": "Unable to connect to Jellyfin server: {name}"
+    },
+    {
+      "source": "无法连接Plex服务器：{name}",
+      "target": "Unable to connect to Plex server: {name}"
+    },
+    {
+      "source": "飞牛影视配置不完整：{name}",
+      "target": "Trime Media configuration is incomplete: {name}"
+    },
+    {
+      "source": "无法连接飞牛影视：{name}",
+      "target": "Unable to connect to Trime Media: {name}"
+    },
+    {
+      "source": "绿联影视配置不完整：{name}",
+      "target": "UGREEN configuration is incomplete: {name}"
+    },
+    {
+      "source": "无法连接绿联影视：{name}",
+      "target": "Unable to connect to UGREEN: {name}"
+    },
+    {
+      "source": "无法连接极影视服务器：{name}",
+      "target": "Unable to connect to Zspace server: {name}"
+    },
+    {
+      "source": "Telegram {name} 未就绪",
+      "target": "Telegram {name} is not ready"
+    },
+    {
+      "source": "飞书 {name} 未就绪",
+      "target": "Feishu {name} is not ready"
+    },
+    {
+      "source": "Discord {name} Bot 未就绪",
+      "target": "Discord {name} Bot is not ready"
+    },
+    {
+      "source": "Slack {name} 未就绪",
+      "target": "Slack {name} is not ready"
+    },
+    {
+      "source": "QQ Bot {name} 未就绪",
+      "target": "QQ Bot {name} is not ready"
+    },
+    {
+      "source": "VoceChat {name} 未就绪",
+      "target": "VoceChat {name} is not ready"
+    },
+    {
+      "source": "企业微信 {name} 未就绪",
+      "target": "WeCom {name} is not ready"
+    },
+    {
+      "source": "微信 ClawBot {name} 未就绪：{reason}",
+      "target": "WeChat ClawBot {name} is not ready: {reason}"
+    },
+    {
+      "source": "Synology Chat {name} 未就绪",
+      "target": "Synology Chat {name} is not ready"
+    },
+    {
+      "source": "无法连接Bangumi，错误码：{code}",
+      "target": "Unable to connect to Bangumi, error code: {code}"
+    },
+    {
+      "source": "无法连接fanart，错误码：{code}",
+      "target": "Unable to connect to fanart, error code: {code}"
+    },
+    {
+      "source": "无法连接 {domain}，错误码：{code}",
+      "target": "Unable to connect to {domain}, error code: {code}"
+    },
+    {
+      "source": "{domain} 网络连接失败",
+      "target": "{domain} network connection failed"
+    },
+    {
+      "source": "{item} 删除失败",
+      "target": "{item} deletion failed"
+    },
+    {
+      "source": "错误：{code} {reason}",
+      "target": "Error: {code} {reason}"
+    },
+    {
+      "source": "错误：{code} {reason}！",
+      "target": "Error: {code} {reason}!"
+    },
+    {
+      "source": "站点【{url}】不存在",
+      "target": "Site [{url}] does not exist"
+    },
+    {
+      "source": "站点编号 {site_id} 不存在",
+      "target": "Site ID {site_id} does not exist"
+    },
+    {
+      "source": "未找到站点：{names}",
+      "target": "Sites not found: {names}"
+    },
+    {
+      "source": "【{name}】Cookie&UA 更新失败：{reason}",
+      "target": "[{name}] Cookie & UA update failed: {reason}"
+    },
+    {
+      "source": "【{name}】Cookie&UA 更新成功",
+      "target": "[{name}] Cookie & UA updated successfully"
+    },
+    {
+      "source": "下载目录获取失败，无法保存字幕：{path} - {reason}",
+      "target": "Failed to get download directory, unable to save subtitle: {path} - {reason}"
+    },
+    {
+      "source": "下载目录不存在，无法保存字幕：{path}",
+      "target": "Download directory does not exist, unable to save subtitle: {path}"
+    },
+    {
+      "source": "保存字幕文件失败：{path}",
+      "target": "Failed to save subtitle file: {path}"
+    },
+    {
+      "source": "下载字幕文件失败，状态码：{code}",
+      "target": "Failed to download subtitle file, status code: {code}"
+    },
+    {
+      "source": "下载字幕文件失败，状态码：{code} {reason}",
+      "target": "Failed to download subtitle file, status code: {code} {reason}"
+    },
+    {
+      "source": "下载字幕文件失败，状态码：{code} {reason}：{detail}",
+      "target": "Failed to download subtitle file, status code: {code} {reason}: {detail}"
+    },
+    {
+      "source": "下载链接不是支持的字幕文件：{name}",
+      "target": "Download URL is not a supported subtitle file: {name}"
+    },
+    {
+      "source": "字幕压缩包解压失败：{reason}",
+      "target": "Failed to extract subtitle archive: {reason}"
+    },
+    {
+      "source": "未获取到第 {season} 季的总集数",
+      "target": "Unable to get the total episode count for season {season}"
+    },
+    {
+      "source": "所有订阅搜索完成",
+      "target": "All subscription searches are complete"
+    },
+    {
+      "source": "请输入订阅 ID，多个 ID 用空格分隔，或输入 all",
+      "target": "Enter subscription IDs separated by spaces, or enter all"
+    },
+    {
+      "source": "未找到订阅：{ids}",
+      "target": "Subscriptions not found: {ids}"
+    },
+    {
+      "source": "已完成 {count} 个订阅搜索",
+      "target": "Completed searches for {count} subscriptions"
+    },
+    {
+      "source": "请输入至少一个有效的订阅 ID",
+      "target": "Enter at least one valid subscription ID"
+    },
+    {
+      "source": "已删除 {count} 个订阅",
+      "target": "Deleted {count} subscriptions"
+    },
+    {
+      "source": "{name} 已在整理队列中",
+      "target": "{name} is already in the organization queue"
+    },
+    {
+      "source": "{name} 已取消",
+      "target": "{name} has been cancelled"
+    },
+    {
+      "source": "{name} 没有找到可整理的媒体文件",
+      "target": "{name}: no media files available for organization were found"
+    },
+    {
+      "source": "{name} 已整理过",
+      "target": "{name} has already been organized"
+    },
+    {
+      "source": "{name} 无法识别有效信息",
+      "target": "{name}: unable to recognize valid information"
+    },
+    {
+      "source": "源目录不存在：{path}",
+      "target": "Source directory does not exist: {path}"
+    },
+    {
+      "source": "未识别到媒体信息，类型：{type}，id：{id}",
+      "target": "Unable to recognize media information, type: {type}, id: {id}"
+    },
+    {
+      "source": "媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {type}",
+      "target": "Media information recognition failed, tmdbid: {tmdbid}, doubanid: {doubanid}, type: {type}"
+    },
+    {
+      "source": "{name} 的下载目录未设置",
+      "target": "Download directory for {name} is not configured"
+    },
+    {
+      "source": "{name} 的下载目录 {path} 不存在",
+      "target": "Download directory for {name} does not exist: {path}"
+    },
+    {
+      "source": "{name} 的媒体库目录未设置",
+      "target": "Media library directory for {name} is not configured"
+    },
+    {
+      "source": "{name} 的媒体库目录 {path} 不存在",
+      "target": "Media library directory for {name} does not exist: {path}"
+    },
+    {
+      "source": "{name} 的下载目录 {download_path} 与媒体库目录 {library_path} 不在同一磁盘，无法硬链接",
+      "target": "Download directory {download_path} and media library directory {library_path} for {name} are not on the same disk, so hard links cannot be created"
+    },
+    {
+      "source": "{name} 的存储测试不通过",
+      "target": "Storage test for {name} failed"
+    },
+    {
+      "source": "{name} 的存储不支持 {transfer_type} 整理方式",
+      "target": "Storage for {name} does not support the {transfer_type} organization method"
+    },
+    {
+      "source": "不支持 {storage} 的 OAuth2 授权",
+      "target": "OAuth2 authorization is not supported for {storage}"
+    },
+    {
+      "source": "不支持 {source_storage} 到 {target_storage} 的文件整理",
+      "target": "File organization from {source_storage} to {target_storage} is not supported"
+    },
+    {
+      "source": "不支持的整理方式：{transfer_type}",
+      "target": "Unsupported organization method: {transfer_type}"
+    },
+    {
+      "source": "{path} {transfer_type} 失败",
+      "target": "{path} {transfer_type} failed"
+    },
+    {
+      "source": "文件 {path} 不存在",
+      "target": "File {path} does not exist"
+    },
+    {
+      "source": "{path} 上传 {storage} 失败",
+      "target": "Failed to upload {path} to {storage}"
+    },
+    {
+      "source": "{path} {storage} 下载失败",
+      "target": "Failed to download {path} from {storage}"
+    },
+    {
+      "source": "存储 {storage} 不支持 {transfer_type} 整理方式",
+      "target": "Storage {storage} does not support the {transfer_type} organization method"
+    },
+    {
+      "source": "【{storage}】{path} 复制文件失败",
+      "target": "[{storage}] failed to copy file {path}"
+    },
+    {
+      "source": "【{storage}】{path} 移动文件失败",
+      "target": "[{storage}] failed to move file {path}"
+    },
+    {
+      "source": "【{storage}】{path} 创建硬链接失败",
+      "target": "[{storage}] failed to create hard link for {path}"
+    },
+    {
+      "source": "【{storage}】{path} 目录获取失败",
+      "target": "[{storage}] failed to get directory {path}"
+    },
+    {
+      "source": "获取目标目录失败：{path}",
+      "target": "Failed to get target directory: {path}"
+    },
+    {
+      "source": "{path} 已存在",
+      "target": "{path} already exists"
+    },
+    {
+      "source": "【{storage}】{path} 已存在",
+      "target": "[{storage}] {path} already exists"
+    },
+    {
+      "source": "添加种子任务失败：{reason}",
+      "target": "Failed to add torrent task: {reason}"
+    },
+    {
+      "source": "下载任务添加成功，但获取Qbittorrent任务信息失败：{reason}",
+      "target": "Download task was added, but failed to get qBittorrent task information: {reason}"
+    },
+    {
+      "source": "添加下载成功，已选择集数：{episodes}",
+      "target": "Download added successfully, selected episodes: {episodes}"
+    },
+    {
+      "source": "获取授权 URL 失败: {reason}",
+      "target": "Failed to get authorization URL: {reason}"
+    },
+    {
+      "source": "检查授权状态失败: {reason}",
+      "target": "Failed to check authorization status: {reason}"
+    },
+    {
+      "source": "{path} 刮削完成",
+      "target": "{path} scraping completed"
+    },
+    {
+      "source": "生成注册选项失败: {reason}",
+      "target": "Failed to generate registration options: {reason}"
+    },
+    {
+      "source": "注册失败: {reason}",
+      "target": "Registration failed: {reason}"
+    },
+    {
+      "source": "获取列表失败: {reason}",
+      "target": "Failed to get list: {reason}"
+    },
+    {
+      "source": "删除失败: {reason}",
+      "target": "Deletion failed: {reason}"
+    },
+    {
+      "source": "文件夹 '{folder}' 创建成功",
+      "target": "Folder '{folder}' created successfully"
+    },
+    {
+      "source": "文件夹 '{folder}' 已存在",
+      "target": "Folder '{folder}' already exists"
+    },
+    {
+      "source": "文件夹 '{folder}' 删除成功",
+      "target": "Folder '{folder}' deleted successfully"
+    },
+    {
+      "source": "文件夹 '{folder}' 不存在",
+      "target": "Folder '{folder}' does not exist"
+    },
+    {
+      "source": "文件夹 '{folder}' 中的插件已更新",
+      "target": "Plugins in folder '{folder}' have been updated"
+    },
+    {
+      "source": "创建插件分身失败：{reason}",
+      "target": "Failed to create plugin clone: {reason}"
+    },
+    {
+      "source": "{domain} 站点己存在",
+      "target": "Site {domain} already exists"
+    },
+    {
+      "source": "获取映射失败：{reason}",
+      "target": "Failed to get mapping: {reason}"
+    },
+    {
+      "source": "{name} 未识别到媒体信息",
+      "target": "{name}: unable to recognize media information"
+    },
+    {
+      "source": "{name} 未识别到新名称",
+      "target": "{name}: unable to recognize new name"
+    },
+    {
+      "source": "{name} 重命名失败！",
+      "target": "{name} rename failed!"
+    },
+    {
+      "source": "访问 Wiki 插件仓库清单失败，状态码：{code}",
+      "target": "Failed to access the Wiki plugin repository list, status code: {code}"
+    },
+    {
+      "source": "配置项 '{key}' 不存在",
+      "target": "Configuration item '{key}' does not exist"
+    },
+    {
+      "source": "过滤规则组 {name} 不存在！",
+      "target": "Filter rule group {name} does not exist!"
+    },
+    {
+      "source": "{target}无法连接",
+      "target": "{target} cannot connect"
+    },
+    {
+      "source": "站点 {domain} 缓存不存在",
+      "target": "Site {domain} cache does not exist"
+    },
+    {
+      "source": "删除失败：{reason}",
+      "target": "Deletion failed: {reason}"
+    },
+    {
+      "source": "清理失败：{reason}",
+      "target": "Cleanup failed: {reason}"
+    },
+    {
+      "source": "缓存刷新完成，共刷新 {site_count} 个站点，{torrent_count} 个种子",
+      "target": "Cache refresh completed. Refreshed {site_count} sites and {torrent_count} torrents"
+    },
+    {
+      "source": "刷新失败：{reason}",
+      "target": "Refresh failed: {reason}"
+    },
+    {
+      "source": "重新识别失败：{reason}",
+      "target": "Re-recognition failed: {reason}"
+    },
+    {
+      "source": "整理记录不存在，ID：{id}",
+      "target": "Organization record does not exist, ID: {id}"
+    },
+    {
+      "source": "不支持的媒体类型：{type}",
+      "target": "Unsupported media type: {type}"
+    },
+    {
+      "source": "整理记录不存在: {ids}",
+      "target": "Organization record does not exist: {ids}"
+    },
+    {
+      "source": "未找到名为 {name} 的微信 ClawBot 通知配置",
+      "target": "No WeChat ClawBot notification configuration named {name} was found"
+    },
+    {
+      "source": "下载字幕文件失败：{reason}",
+      "target": "Failed to download subtitle file: {reason}"
+    },
+    {
+      "source": "更新了{updated}个站点，新增了{created}个站点",
+      "target": "Updated {updated} sites and added {created} sites"
+    },
+    {
+      "source": "已{action} {count} 个站点",
+      "target": "Processed {count} sites: {action}"
+    },
+    {
+      "source": "认证类型：{type}，辅助认证事件失败或无效",
+      "target": "Authentication type: {type}. Auxiliary authentication event failed or is invalid"
+    },
+    {
+      "source": "远程同步CookieCloud失败，错误码：{code}",
+      "target": "Remote CookieCloud sync failed, error code: {code}"
+    },
+    {
+      "source": "未从{server}下载到cookie数据",
+      "target": "No cookie data was downloaded from {server}"
+    },
+    {
+      "source": "从{server}下载cookie数据错误：{reason}",
+      "target": "Error downloading cookie data from {server}: {reason}"
+    },
+    {
+      "source": "cookie解密失败：{reason}",
+      "target": "Cookie decryption failed: {reason}"
+    },
+    {
+      "source": "插件限定的系统版本范围 {range} 必须是字符串，请使用 pip 依赖版本格式，例如 >=2.12.0,<3",
+      "target": "The plugin system version range {range} must be a string. Use pip dependency version format, for example >=2.12.0,<3"
+    },
+    {
+      "source": "插件限定的系统版本范围格式不正确：{range}，请使用 pip 依赖版本格式，例如 >=2.12.0,<3",
+      "target": "The plugin system version range format is invalid: {range}. Use pip dependency version format, for example >=2.12.0,<3"
+    },
+    {
+      "source": "当前 MoviePilot 版本 {version} 无法解析，已拒绝安装带版本限制的插件",
+      "target": "Current MoviePilot version {version} cannot be parsed. Installation of the version-restricted plugin was rejected"
+    },
+    {
+      "source": "插件要求 MoviePilot 版本 {range}，当前版本 {version} 不满足，已拒绝安装",
+      "target": "The plugin requires MoviePilot version {range}, but current version {version} does not satisfy it. Installation was rejected"
+    },
+    {
+      "source": "插件依赖与当前运行环境的{dependency}冲突：{reason}。为避免共享运行环境被污染，已拒绝安装。",
+      "target": "Plugin dependency conflicts with the current runtime {dependency}: {reason}. Installation was rejected to avoid contaminating the shared runtime."
+    },
+    {
+      "source": "插件依赖安装失败后主运行环境异常，且恢复失败：{health}; {repair}",
+      "target": "Main runtime became abnormal after plugin dependency installation failed, and recovery failed: {health}; {repair}"
+    },
+    {
+      "source": "插件依赖安装失败后主运行环境异常，恢复后仍异常：{reason}",
+      "target": "Main runtime became abnormal after plugin dependency installation failed and remains abnormal after recovery: {reason}"
+    },
+    {
+      "source": "{check_name}失败：{message}",
+      "target": "{check_name} failed: {message}"
+    },
+    {
+      "source": "恢复依赖文件不存在：{path}",
+      "target": "Dependency recovery file does not exist: {path}"
+    },
+    {
+      "source": "恢复{desc}失败",
+      "target": "Failed to recover {desc}"
+    },
+    {
+      "source": "[PIP] 所有策略均安装依赖失败：{reason}",
+      "target": "[PIP] All dependency installation strategies failed: {reason}"
+    },
+    {
+      "source": "{pid} 未声明 Release 安装，无法安装指定版本",
+      "target": "{pid} does not declare Release installation, so the specified version cannot be installed"
+    },
+    {
+      "source": "{pid} 未找到可安装的 Release 版本：{version}",
+      "target": "{pid}: no installable Release version found: {version}"
+    },
+    {
+      "source": "未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装",
+      "target": "No version number for {pid} was found in the plugin manifest, so Release installation cannot proceed"
+    },
+    {
+      "source": "未找到本地插件：{pid}",
+      "target": "Local plugin not found: {pid}"
+    },
+    {
+      "source": "复制本地插件失败：{reason}",
+      "target": "Failed to copy local plugin: {reason}"
+    },
+    {
+      "source": "连接仓库失败：{code} - {reason}",
+      "target": "Failed to connect to repository: {code} - {reason}"
+    },
+    {
+      "source": "文件 {path} 下载失败！",
+      "target": "File {path} download failed!"
+    },
+    {
+      "source": "下载文件 {path} 失败：{code}",
+      "target": "Failed to download file {path}: {code}"
+    },
+    {
+      "source": "下载 requirements.txt 文件失败：{code}",
+      "target": "Failed to download requirements.txt: {code}"
+    },
+    {
+      "source": "插件依赖预检失败：{reason}",
+      "target": "Plugin dependency precheck failed: {reason}"
+    },
+    {
+      "source": "获取 Release 信息失败：{reason}",
+      "target": "Failed to get Release information: {reason}"
+    },
+    {
+      "source": "未找到资产文件：{asset}",
+      "target": "Asset file not found: {asset}"
+    },
+    {
+      "source": "解析 Release 信息失败：{reason}",
+      "target": "Failed to parse Release information: {reason}"
+    },
+    {
+      "source": "下载资产失败：{reason}",
+      "target": "Failed to download asset: {reason}"
+    },
+    {
+      "source": "解压 Release 压缩包失败：{reason}",
+      "target": "Failed to extract Release archive: {reason}"
+    },
+    {
+      "source": "安装依赖项时发生错误：{reason}",
+      "target": "An error occurred while installing dependencies: {reason}"
+    },
+    {
+      "source": "创建运行环境约束文件失败：{reason}",
+      "target": "Failed to create runtime constraint file: {reason}"
+    },
+    {
+      "source": "策略 {strategy} 安装依赖失败：{reason}；{detail}",
+      "target": "Dependency installation failed with strategy {strategy}: {reason}; {detail}"
+    },
+    {
+      "source": "依赖安装后运行环境自检失败，已自动恢复主程序依赖：{reason}",
+      "target": "Runtime self-check failed after dependency installation. Main program dependencies were automatically restored: {reason}"
+    },
+    {
+      "source": "依赖安装后运行环境自检失败，恢复主程序依赖后仍异常：{reason}",
+      "target": "Runtime self-check failed after dependency installation and remains abnormal after restoring main program dependencies: {reason}"
+    },
+    {
+      "source": "依赖安装后运行环境自检失败，且自动恢复主程序依赖失败：{reason}",
+      "target": "Runtime self-check failed after dependency installation, and automatic restoration of main program dependencies failed: {reason}"
+    },
+    {
+      "source": "响应解析失败: {detail}...",
+      "target": "Response parsing failed: {detail}..."
+    },
+    {
+      "source": "写入一次性升级标记失败：{reason}",
+      "target": "Failed to write one-shot upgrade marker: {reason}"
+    },
+    {
+      "source": "本地 CLI 重启失败：{reason}",
+      "target": "Local CLI restart failed: {reason}"
+    },
+    {
+      "source": "重启时发生错误：{reason}",
+      "target": "Error occurred during restart: {reason}"
+    },
+    {
+      "source": "已安排一次性 {mode} 升级并重启",
+      "target": "Scheduled one-shot {mode} upgrade and restart"
+    },
+    {
+      "source": "错误码：{code}",
+      "target": "Error code: {code}"
+    },
+    {
+      "source": "PostgreSQL连接失败：{reason}",
+      "target": "PostgreSQL connection failed: {reason}"
+    },
+    {
+      "source": "整理完成，{count} 个文件转移失败！",
+      "target": "Organization completed, but {count} files failed to transfer!"
+    },
+    {
+      "source": "下载任务添加成功，但获取rTorrent任务信息失败：{reason}",
+      "target": "Download task was added, but failed to get rTorrent task information: {reason}"
+    },
+    {
+      "source": "已将微信 ClawBot 登录缓存从 {old_name} 迁移到 {new_name}",
+      "target": "Migrated WeChat ClawBot login cache from {old_name} to {new_name}"
+    },
+    {
+      "source": "数据表 {name} 跳过清理",
+      "target": "Data table {name} cleanup skipped"
+    },
+    {
+      "source": "正在清理数据表 {name} ...",
+      "target": "Cleaning data table {name} ..."
+    },
+    {
+      "source": "数据表 {name} 清理处理完成",
+      "target": "Data table {name} cleanup completed"
+    },
+    {
+      "source": "开始刷新站点资源，共 {count} 个站点 ...",
+      "target": "Starting site resource refresh, {count} sites ..."
+    },
+    {
+      "source": "开始同步媒体服务器，共 {count} 个 ...",
+      "target": "Starting media server sync, {count} servers ..."
+    },
+    {
+      "source": "媒体服务器 {name} 无可同步媒体库",
+      "target": "Media server {name} has no libraries to sync"
+    },
+    {
+      "source": "开始刷新站点数据，共 {count} 个站点 ...",
+      "target": "Starting site data refresh, {count} sites ..."
+    },
+    {
+      "source": "正在刷新站点数据（{index}/{total}）{name} ...",
+      "target": "Refreshing site data ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "站点数据（{index}/{total}）刷新完成",
+      "target": "Site data ({index}/{total}) refresh completed"
+    },
+    {
+      "source": "CookieCloud同步失败：{reason}",
+      "target": "CookieCloud sync failed: {reason}"
+    },
+    {
+      "source": "正在同步 CookieCloud 站点（{index}/{total}）{domain} ...",
+      "target": "Syncing CookieCloud site ({index}/{total}) {domain} ..."
+    },
+    {
+      "source": "CookieCloud 站点（{index}/{total}）同步完成",
+      "target": "CookieCloud site ({index}/{total}) sync completed"
+    },
+    {
+      "source": "CookieCloud同步成功：{message}",
+      "target": "CookieCloud sync succeeded: {message}"
+    },
+    {
+      "source": "开始刷新推荐缓存，共 {count} 个数据分页 ...",
+      "target": "Starting recommendation cache refresh, {count} data pages ..."
+    },
+    {
+      "source": "正在缓存推荐海报（{index}/{total}）...",
+      "target": "Caching recommendation posters ({index}/{total}) ..."
+    },
+    {
+      "source": "获取到 {count} 个已完成下载任务",
+      "target": "Found {count} completed download tasks"
+    },
+    {
+      "source": "正在整理下载任务（{index}/{total}）{name} ...",
+      "target": "Organizing download task ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "下载任务（{index}/{total}）整理处理完成",
+      "target": "Download task ({index}/{total}) organization completed"
+    },
+    {
+      "source": "搜索完成，共 {count} 个资源",
+      "target": "Search completed, {count} resources"
+    },
+    {
+      "source": "搜索完成，共 {count} 个字幕",
+      "target": "Search completed, {count} subtitles"
+    },
+    {
+      "source": "正在过滤匹配 {count} 个候选资源 ...",
+      "target": "Filtering and matching {count} candidate resources ..."
+    },
+    {
+      "source": "过滤匹配完成，共 {count} 个资源",
+      "target": "Filtering and matching completed, {count} resources"
+    },
+    {
+      "source": "正在识别匹配 {count} 个候选字幕 ...",
+      "target": "Recognizing and matching {count} candidate subtitles ..."
+    },
+    {
+      "source": "识别匹配完成，共 {count} 个字幕",
+      "target": "Recognition matching completed, {count} subtitles"
+    },
+    {
+      "source": "开始搜索字幕，共 {site_count} 个站点，{page_count} 页 ...",
+      "target": "Starting subtitle search across {site_count} sites and {page_count} pages ..."
+    },
+    {
+      "source": "正在搜索字幕{keyword}，已完成 {finished} / {total} 个请求 ...",
+      "target": "Searching subtitles {keyword}, completed {finished}/{total} requests ..."
+    },
+    {
+      "source": "正在搜索字幕，已完成 {finished} / {total} 个请求 ...",
+      "target": "Searching subtitles, completed {finished}/{total} requests ..."
+    },
+    {
+      "source": "站点字幕搜索完成，有效字幕数：{count}，总耗时 {seconds} 秒",
+      "target": "Site subtitle search completed, {count} valid subtitles, took {seconds} seconds"
+    },
+    {
+      "source": "开始搜索，共 {site_count} 个站点，{page_count} 页 ...",
+      "target": "Starting search across {site_count} sites and {page_count} pages ..."
+    },
+    {
+      "source": "正在搜索{keyword}，已完成 {finished} / {total} 个请求 ...",
+      "target": "Searching {keyword}, completed {finished}/{total} requests ..."
+    },
+    {
+      "source": "正在搜索，已完成 {finished} / {total} 个请求 ...",
+      "target": "Searching, completed {finished}/{total} requests ..."
+    },
+    {
+      "source": "站点搜索完成，有效资源数：{count}，总耗时 {seconds} 秒",
+      "target": "Site search completed, {count} valid resources, took {seconds} seconds"
+    },
+    {
+      "source": "开始订阅搜索，共 {count} 个订阅 ...",
+      "target": "Starting subscription search, {count} subscriptions ..."
+    },
+    {
+      "source": "正在搜索订阅（{index}/{total}）{name} ...",
+      "target": "Searching subscription ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "订阅搜索随机休眠 {seconds} 秒后继续 ...",
+      "target": "Subscription search sleeping randomly for {seconds} seconds before continuing ..."
+    },
+    {
+      "source": "订阅搜索（{index}/{total}）处理完成",
+      "target": "Subscription search ({index}/{total}) completed"
+    },
+    {
+      "source": "开始刷新订阅，共 {count} 个订阅 ...",
+      "target": "Starting subscription refresh, {count} subscriptions ..."
+    },
+    {
+      "source": "资源预处理完成，开始匹配 {count} 个订阅 ...",
+      "target": "Resource preprocessing completed, matching {count} subscriptions ..."
+    },
+    {
+      "source": "开始更新订阅元数据，共 {count} 个订阅 ...",
+      "target": "Starting subscription metadata update, {count} subscriptions ..."
+    },
+    {
+      "source": "正在更新订阅元数据（{index}/{total}）{name} ...",
+      "target": "Updating subscription metadata ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "订阅元数据（{index}/{total}）更新完成",
+      "target": "Subscription metadata ({index}/{total}) update completed"
+    },
+    {
+      "source": "开始刷新 Follow 订阅分享，共 {count} 条 ...",
+      "target": "Starting Follow subscription sharing refresh, {count} items ..."
+    },
+    {
+      "source": "正在处理 Follow 订阅分享（{index}/{total}）...",
+      "target": "Processing Follow subscription sharing ({index}/{total}) ..."
+    },
+    {
+      "source": "Follow 订阅分享刷新完成，新增 {count} 个订阅",
+      "target": "Follow subscription sharing refresh completed, added {count} subscriptions"
+    },
+    {
+      "source": "开始预缓存订阅日历，共 {count} 个订阅 ...",
+      "target": "Starting subscription calendar precache, {count} subscriptions ..."
+    },
+    {
+      "source": "正在预缓存订阅日历（{index}/{total}）{name} ...",
+      "target": "Precaching subscription calendar ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "订阅日历（{index}/{total}）预缓存完成",
+      "target": "Subscription calendar ({index}/{total}) precache completed"
+    },
+    {
+      "source": "{path} 不存在",
+      "target": "{path} does not exist"
+    },
+    {
+      "source": "{days}天{hours}小时{minutes}分钟",
+      "target": "{days}d {hours}h {minutes}m"
+    },
+    {
+      "source": "{days}天{hours}小时",
+      "target": "{days}d {hours}h"
+    },
+    {
+      "source": "{days}天{minutes}分钟",
+      "target": "{days}d {minutes}m"
+    },
+    {
+      "source": "{hours}小时{minutes}分钟",
+      "target": "{hours}h {minutes}m"
+    },
+    {
+      "source": "{days}天",
+      "target": "{days}d"
+    },
+    {
+      "source": "{hours}小时",
+      "target": "{hours}h"
+    },
+    {
+      "source": "{minutes}分钟",
+      "target": "{minutes}m"
+    },
+    {
+      "source": "{seconds}秒",
+      "target": "{seconds}s"
+    }
+  ]
+}

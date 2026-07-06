@@ -1,0 +1,1303 @@
+{
+  "system": {
+    "modules": {
+      "BangumiModule": {
+        "name": "Bangumi"
+      },
+      "DiscordModule": {
+        "name": "Discord"
+      },
+      "DoubanModule": {
+        "name": "豆瓣"
+      },
+      "EmbyModule": {
+        "name": "Emby"
+      },
+      "FanartModule": {
+        "name": "Fanart"
+      },
+      "FeishuModule": {
+        "name": "飛書"
+      },
+      "FileManagerModule": {
+        "name": "檔案整理"
+      },
+      "FilterModule": {
+        "name": "過濾器"
+      },
+      "IndexerModule": {
+        "name": "站點索引"
+      },
+      "JellyfinModule": {
+        "name": "Jellyfin"
+      },
+      "PlexModule": {
+        "name": "Plex"
+      },
+      "PostgreSQLModule": {
+        "name": "PostgreSQL"
+      },
+      "QbittorrentModule": {
+        "name": "Qbittorrent"
+      },
+      "QQBotModule": {
+        "name": "QQ"
+      },
+      "RedisModule": {
+        "name": "Redis 快取"
+      },
+      "RtorrentModule": {
+        "name": "Rtorrent"
+      },
+      "SlackModule": {
+        "name": "Slack"
+      },
+      "SubtitleModule": {
+        "name": "站點字幕"
+      },
+      "SynologyChatModule": {
+        "name": "Synology Chat"
+      },
+      "TelegramModule": {
+        "name": "Telegram"
+      },
+      "TheMovieDbModule": {
+        "name": "TheMovieDb"
+      },
+      "TheTvDbModule": {
+        "name": "TheTvDb"
+      },
+      "TransmissionModule": {
+        "name": "Transmission"
+      },
+      "TrimeMediaModule": {
+        "name": "飛牛影視"
+      },
+      "UgreenModule": {
+        "name": "綠聯影視"
+      },
+      "VoceChatModule": {
+        "name": "VoceChat"
+      },
+      "WebPushModule": {
+        "name": "WebPush"
+      },
+      "WechatModule": {
+        "name": "企業微信"
+      },
+      "WechatClawBotModule": {
+        "name": "微信 ClawBot"
+      },
+      "ZSpaceModule": {
+        "name": "極影視"
+      }
+    },
+    "module_test": {
+      "unsupported": "模組不支援測試"
+    }
+  },
+  "messages": {
+    "模块不支持测试": "模組不支援測試",
+    "网络请求失败": "網路請求失敗",
+    "附件保存失败": "附件儲存失敗",
+    "该选择已失效，请重新发起选择": "此選擇已失效，請重新發起選擇",
+    "会话不存在或无权访问": "會話不存在或無權存取",
+    "会话保存失败": "會話儲存失敗",
+    "后台服务不存在": "背景服務不存在",
+    "任务添加失败": "任務新增失敗",
+    "无法识别媒体信息": "無法識別媒體資訊",
+    "未识别到媒体信息": "未識別到媒體資訊",
+    "记录不存在": "記錄不存在",
+    "MoviePilot智能助手未启用": "MoviePilot 智慧助手未啟用",
+    "整理记录不存在": "整理記錄不存在",
+    "未提供有效的整理记录": "未提供有效的整理記錄",
+    "请配置LLM提供商和模型": "請設定 LLM 提供商和模型",
+    "请先配置 LLM 模型": "請先設定 LLM 模型",
+    "请先启用智能助手": "請先啟用智慧助手",
+    "请先配置 LLM API Key": "請先設定 LLM API Key",
+    "模型响应为空": "模型回應為空",
+    "LLM 调用超时": "LLM 呼叫逾時",
+    "刮削路径无效": "刮削路徑無效",
+    "刮削失败，无法识别媒体信息": "刮削失敗，無法識別媒體資訊",
+    "刮削路径不存在": "刮削路徑不存在",
+    "保存成功": "儲存成功",
+    "保存失败": "儲存失敗",
+    "参数错误": "參數錯誤",
+    "未配置媒体服务器": "未設定媒體伺服器",
+    "未找到播放地址": "未找到播放位址",
+    "验证码错误": "驗證碼錯誤",
+    "您已注册通行密钥，为了防止域名配置变更导致无法登录，请先删除所有通行密钥再关闭 OTP 验证": "您已註冊通行密鑰，為避免網域設定變更導致無法登入，請先刪除所有通行密鑰再關閉 OTP 驗證",
+    "密码错误": "密碼錯誤",
+    "为了确保在域名配置错误时仍能找回访问权限，请先启用 OTP 验证码再注册通行密钥": "為了確保網域設定錯誤時仍可找回存取權限，請先啟用 OTP 驗證碼再註冊通行密鑰",
+    "通行密钥注册成功": "通行密鑰註冊成功",
+    "认证失败": "認證失敗",
+    "通行密钥已删除": "通行密鑰已刪除",
+    "通行密钥不存在或无权删除": "通行密鑰不存在或無權刪除",
+    "验证失败": "驗證失敗",
+    "通行密钥不存在或不属于当前用户": "通行密鑰不存在或不屬於目前使用者",
+    "通行密钥验证失败": "通行密鑰驗證失敗",
+    "二次验证成功": "二次驗證成功",
+    "没有传入仓库地址，无法正确安装插件，请检查配置": "未傳入倉庫位址，無法正確安裝插件，請檢查設定",
+    "插件分身创建成功": "插件分身建立成功",
+    "未识别到豆瓣媒体信息": "未識別到豆瓣媒體資訊",
+    "未识别到TMDB媒体信息": "未識別到 TMDB 媒體資訊",
+    "未知的媒体ID": "未知的媒體 ID",
+    "未搜索到任何资源": "未搜尋到任何資源",
+    "未搜索到任何字幕": "未搜尋到任何字幕",
+    "没有可用的搜索结果": "沒有可用的搜尋結果",
+    "站点地址不能为空": "站點位址不能為空",
+    "用户未通过认证，无法使用站点功能！": "使用者未通過認證，無法使用站點功能！",
+    "该站点不支持，请检查站点域名是否正确": "不支援此站點，請檢查站點網域是否正確",
+    "站点不存在": "站點不存在",
+    "CookieCloud同步任务已启动！": "CookieCloud 同步任務已啟動！",
+    "站点已重置！": "站點已重設！",
+    "站点不支持索引或未通过用户认证！": "站點不支援索引或未通過使用者認證！",
+    "站点图标不存在！": "站點圖示不存在！",
+    "请输入认证站点和认证参数": "請輸入認證站點和認證參數",
+    "新名称为空": "新名稱為空",
+    "订阅不存在": "訂閱不存在",
+    "无效的订阅状态": "無效的訂閱狀態",
+    "不支持的通知类型": "不支援的通知類型",
+    "请求参数不正确": "請求參數不正確",
+    "所有配置项更新成功": "所有設定項更新成功",
+    "不支持的 Wiki 同步地址": "不支援的 Wiki 同步位址",
+    "无法访问 Wiki 插件仓库清单": "無法存取 Wiki 插件倉庫清單",
+    "未在 Wiki 中识别到插件仓库地址": "未在 Wiki 中識別到插件倉庫位址",
+    "未识别到媒体信息！": "未識別到媒體資訊！",
+    "不符合过滤规则！": "不符合過濾規則！",
+    "测试目标不存在": "測試目標不存在",
+    "测试目标发生了未授权跳转": "測試目標發生未授權跳轉",
+    "测试目标重定向次数过多": "測試目標重新導向次數過多",
+    "当前运行环境不支持重启操作！": "目前執行環境不支援重啟操作！",
+    "当前运行环境不支持升级操作！": "目前執行環境不支援升級操作！",
+    "命令不能为空！": "命令不能為空！",
+    "未找到指定的种子": "未找到指定的種子",
+    "种子删除成功": "種子刪除成功",
+    "种子缓存清理完成": "種子快取清理完成",
+    "重新识别完成": "重新識別完成",
+    "未识别到新名称": "未識別到新名稱",
+    "缺少参数": "缺少參數",
+    "用户已存在": "使用者已存在",
+    "密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位": "密碼需同時包含字母、數字、特殊字元中的至少兩項，且長度大於 6 位",
+    "用户名不能为空": "使用者名稱不能為空",
+    "用户名已被使用": "使用者名稱已被使用",
+    "用户不存在": "使用者不存在",
+    "已存在相同名称的工作流": "已存在相同名稱的工作流",
+    "创建工作流成功": "建立工作流成功",
+    "请填写工作流ID、分享标题和分享人": "請填寫工作流 ID、分享標題和分享人",
+    "工作流名称不能为空": "工作流名稱不能為空",
+    "actions字段JSON格式错误": "actions 欄位 JSON 格式錯誤",
+    "flows字段JSON格式错误": "flows 欄位 JSON 格式錯誤",
+    "context字段JSON格式错误": "context 欄位 JSON 格式錯誤",
+    "event_conditions字段JSON格式错误": "event_conditions 欄位 JSON 格式錯誤",
+    "复用成功": "復用成功",
+    "工作流不存在": "工作流不存在",
+    "定时工作流缺少定时器配置": "定時工作流缺少定時器設定",
+    "工作流触发类型不支持": "不支援此工作流觸發類型",
+    "工作流ID不能为空": "工作流 ID 不能為空",
+    "更新成功": "更新成功",
+    "删除成功": "刪除成功",
+    "豆瓣网络连接失败": "豆瓣網路連線失敗",
+    "Bangumi网络连接失败": "Bangumi 網路連線失敗",
+    "fanart网络连接失败": "fanart 網路連線失敗",
+    "未配置站点或未通过用户认证": "未設定站點或未通過使用者認證",
+    "Redis连接失败，请检查配置": "Redis 連線失敗，請檢查設定",
+    "无法打开网站！": "無法開啟網站！",
+    "无法获取Token": "無法取得 Token",
+    "连接成功": "連線成功",
+    "Cookie已失效": "Cookie 已失效",
+    "鉴权已过期或无效": "鑑權已過期或無效",
+    "Cookie已过期": "Cookie 已過期",
+    "APIKEY已过期": "APIKEY 已過期",
+    "无法通过Cloudflare！": "無法通過 Cloudflare！",
+    "仿真登录失败，Cookie已失效！": "仿真登入失敗，Cookie 已失效！",
+    "系统正在停止，同步被中断": "系統正在停止，同步已中斷",
+    "未找到下载目录": "未找到下載目錄",
+    "下载字幕文件失败": "下載字幕檔案失敗",
+    "字幕文件保存成功": "字幕檔案儲存成功",
+    "未保存任何字幕文件": "未儲存任何字幕檔案",
+    "字幕下载链接为空": "字幕下載連結為空",
+    "下载字幕文件失败：未收到站点响应": "下載字幕檔案失敗：未收到站點回應",
+    "字幕下载成功": "字幕下載成功",
+    "下载被事件取消": "下載已被事件取消",
+    "下载种子内容为空": "下載種子內容為空",
+    "媒体信息识别失败": "媒體資訊識別失敗",
+    "媒体信息中没有季集信息": "媒體資訊中沒有季集資訊",
+    "文件整理模块运行失败": "檔案整理模組執行失敗",
+    "缺少目录参数": "缺少目錄參數",
+    "目录不存在": "目錄不存在",
+    "没有可用于识别的样本文件": "沒有可用於識別的樣本檔案",
+    "当前选择不满足智能识别条件": "目前選擇不滿足智慧識別條件",
+    "工作流无动作": "工作流沒有動作",
+    "工作流无流程": "工作流沒有流程",
+    "工作流已停止": "工作流已停止",
+    "未设置任何目录": "未設定任何目錄",
+    "网络错误": "網路錯誤",
+    "生成二维码失败": "產生 QR Code 失敗",
+    "无法连接到授权服务器": "無法連線到授權伺服器",
+    "授权服务器返回数据不完整": "授權伺服器返回資料不完整",
+    "获取授权URL失败": "取得授權 URL 失敗",
+    "state为空": "state 為空",
+    "授权成功": "授權成功",
+    "授权已过期": "授權已過期",
+    "等待用户授权": "等待使用者授權",
+    "此存储不支持 OAuth2 授权": "此儲存不支援 OAuth2 授權",
+    "未知错误": "未知錯誤",
+    "下载内容为空": "下載內容為空",
+    "添加种子任务失败：无法读取种子文件": "新增種子任務失敗：無法讀取種子檔案",
+    "无法连接qbittorrent下载器": "無法連線 qBittorrent 下載器",
+    "无法连接transmission下载器": "無法連線 Transmission 下載器",
+    "无法连接rTorrent下载器": "無法連線 rTorrent 下載器",
+    "下载任务已存在": "下載任務已存在",
+    "获取种子文件失败，下载任务可能在暂停状态": "取得種子檔案失敗，下載任務可能處於暫停狀態",
+    "添加下载成功": "新增下載成功",
+    "添加下载任务成功": "新增下載任務成功",
+    "消息客户端未就绪": "訊息用戶端尚未就緒",
+    "Github Token已失效，请检查配置": "GitHub Token 已失效，請檢查設定",
+    "触发限流，请配置Github Token": "已觸發限流，請設定 GitHub Token",
+    "删除失败": "刪除失敗",
+    "已停止": "已停止",
+    "当前没有正在执行的任务": "目前沒有正在執行的任務",
+    "无效响应": "無效回應",
+    "字幕站点信息为空": "字幕站點資訊為空",
+    "字幕下载链接签名无效": "字幕下載連結簽名無效",
+    "字幕站点信息不存在": "字幕站點資訊不存在",
+    "附件不存在或已过期": "附件不存在或已過期",
+    "附件超过 32MB，无法发送给智能助手": "附件超過 32MB，無法傳送給智慧助手",
+    "附件保存失败": "附件儲存失敗",
+    "认证票据无效或已过期": "認證票據無效或已過期",
+    "用户不存在或已禁用": "使用者不存在或已停用",
+    "用户权限不足": "使用者權限不足",
+    "用户名或密码错误": "使用者名稱或密碼錯誤",
+    "需要双重验证，请提供验证码或使用通行密钥": "需要雙重驗證，請提供驗證碼或使用通行密鑰",
+    "图片读取出错": "圖片讀取出錯",
+    "授权失败": "授權失敗",
+    "报文内容为空": "報文內容為空",
+    "配置项不存在": "設定項不存在",
+    "智能助手未启用，请先在系统设置中开启。": "智慧助手未啟用，請先在系統設定中開啟。",
+    "语音识别失败，请稍后重试。": "語音識別失敗，請稍後重試。",
+    "请输入要发送给智能助手的内容或选择附件。": "請輸入要傳送給智慧助手的內容或選擇附件。",
+    "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道": "微信 ClawBot 通知未啟用或設定尚未儲存，請先儲存並啟用目前渠道",
+    "请输入至少一个有效的站点 ID": "請輸入至少一個有效的站點 ID",
+    "所有订阅搜索完成": "所有訂閱搜尋完成",
+    "请输入订阅 ID，多个 ID 用空格分隔，或输入 all": "請輸入訂閱 ID，多個 ID 以空格分隔，或輸入 all",
+    "请输入至少一个有效的订阅 ID": "請輸入至少一個有效的訂閱 ID",
+    "格式错误，请输入：cookie <id> <username> <password> [2fa_code/secret]": "格式錯誤，請輸入：cookie <id> <username> <password> [2fa_code/secret]",
+    "认证凭证无效": "認證憑證無效",
+    "不支持的认证类型": "不支援的認證類型",
+    "CookieCloud参数不正确": "CookieCloud 參數不正確",
+    "未获取到cookie密文": "未取得 cookie 密文",
+    "cookie解密为空": "cookie 解密為空",
+    "未从本地CookieCloud服务加载到cookie数据，请检查服务器设置、用户KEY及加密密码是否正确": "未從本機 CookieCloud 服務載入 cookie 資料，請檢查伺服器設定、使用者 KEY 及加密密碼是否正確",
+    "CookieCloud请求失败，请检查服务器地址、用户KEY及加密密码是否正确": "CookieCloud 請求失敗，請檢查伺服器位址、使用者 KEY 及加密密碼是否正確",
+    "目录中没有可用于识别的媒体文件": "目錄中沒有可用於識別的媒體檔案",
+    "无匹配自定义定位规则，智能生成失败": "無匹配自訂定位規則，智慧產生失敗",
+    "样本命名与原生识别结果冲突，建议补充集数定位规则": "樣本命名與原生識別結果衝突，建議補充集數定位規則",
+    "有效正片样本覆盖率不足，建议补充集数定位规则": "有效正片樣本覆蓋率不足，建議補充集數定位規則",
+    "样本命名差异过大，建议补充集数定位规则": "樣本命名差異過大，建議補充集數定位規則",
+    "样本不足，仅基于单文件智能生成（仅供参考）": "樣本不足，僅基於單檔案智慧產生（僅供參考）",
+    "已放宽体积限制智能生成模板（仅供参考）": "已放寬體積限制智慧產生模板（僅供參考）",
+    "已结合原生集数识别智能生成模板（仅供参考）": "已結合原生集數識別智慧產生模板（僅供參考）",
+    "已根据多数派样本智能生成模板（仅供参考）": "已根據多數派樣本智慧產生模板（僅供參考）",
+    "无匹配自定义定位规则，已智能生成（仅供参考）": "無匹配自訂定位規則，已智慧產生（僅供參考）",
+    "样本未识别到有效集数，智能生成失败": "樣本未識別到有效集數，智慧產生失敗",
+    "不存在依赖": "不存在依賴",
+    "主运行环境已恢复": "主執行環境已恢復",
+    "[PIP] 所有策略均安装依赖失败，请检查网络连接、PIP 配置或插件依赖约束": "[PIP] 所有策略均安裝依賴失敗，請檢查網路連線、PIP 設定或插件依賴約束",
+    "可执行文件模式下，只能安装本地插件": "可執行檔模式下，只能安裝本機插件",
+    "不支持的插件仓库地址格式": "不支援的插件倉庫位址格式",
+    "本地插件来源与插件ID不匹配": "本機插件來源與插件 ID 不匹配",
+    "本地插件来源不能与运行目录相同": "本機插件來源不能與執行目錄相同",
+    "本地插件来源路径无效": "本機插件來源路徑無效",
+    "连接仓库失败": "連線倉庫失敗",
+    "文件列表为空": "檔案清單為空",
+    "requirements.txt 文件下载失败": "requirements.txt 檔案下載失敗",
+    "插件在仓库中不存在或返回数据格式不正确": "插件在倉庫中不存在或返回資料格式不正確",
+    "插件数据解析失败": "插件資料解析失敗",
+    "没有传入需要安装的依赖项": "未傳入需要安裝的依賴項",
+    "资产缺少ID信息": "資產缺少 ID 資訊",
+    "压缩包内容为空": "壓縮包內容為空",
+    "压缩包中无可写入文件": "壓縮包中無可寫入檔案",
+    "连接MoviePilot服务器失败": "連線 MoviePilot 伺服器失敗",
+    "当前没有开启订阅数据共享功能": "目前未開啟訂閱資料分享功能",
+    "当前没有开启工作流数据共享功能": "目前未開啟工作流資料分享功能",
+    "请分享有动作和流程的工作流": "請分享有動作和流程的工作流",
+    "升级模式仅支持 release 或 dev": "升級模式僅支援 release 或 dev",
+    "当前实例不是由 moviepilot CLI 启动，无法执行内建重启！": "目前實例不是由 moviepilot CLI 啟動，無法執行內建重啟！",
+    "已检测到自动升级模式 dev，正在重启并执行升级": "已偵測到自動升級模式 dev，正在重啟並執行升級",
+    "已检测到自动升级已开启，正在重启并执行升级": "已偵測到自動升級已開啟，正在重啟並執行升級",
+    "获取容器ID失败！": "取得容器 ID 失敗！",
+    "未登录，缺少 bot token": "未登入，缺少 bot token",
+    "连接正常": "連線正常",
+    "未登录，请先扫码完成绑定": "未登入，請先掃碼完成綁定",
+    "旧名称或新名称不能为空": "舊名稱或新名稱不能為空",
+    "通知名称未变化，无需迁移登录缓存": "通知名稱未變更，無需遷移登入快取",
+    "未找到可迁移的微信 ClawBot 登录缓存": "未找到可遷移的微信 ClawBot 登入快取",
+    "新名称下已存在登录缓存，跳过迁移": "新名稱下已存在登入快取，跳過遷移",
+    "[系统]": "[系統]",
+    "工作流": "工作流",
+    "正在运行": "正在執行",
+    "等待": "等待",
+    "同步CookieCloud站点": "同步 CookieCloud 站點",
+    "同步媒体服务器": "同步媒體伺服器",
+    "订阅元数据更新": "訂閱元資料更新",
+    "订阅搜索补全": "訂閱搜尋補全",
+    "新增订阅搜索": "新增訂閱搜尋",
+    "订阅刷新": "訂閱重新整理",
+    "关注的订阅分享": "關注的訂閱分享",
+    "下载文件整理": "下載檔案整理",
+    "缓存清理": "快取清理",
+    "数据表清理": "資料表清理",
+    "用户认证检查": "使用者認證檢查",
+    "公共定时服务": "公共定時服務",
+    "壁纸缓存": "桌布快取",
+    "站点数据刷新": "站點資料重新整理",
+    "推荐缓存": "推薦快取",
+    "插件市场缓存": "插件市場快取",
+    "订阅日历缓存": "訂閱日曆快取",
+    "主动内存回收": "主動記憶體回收",
+    "智能体定时任务": "智慧體定時任務",
+    "安装版本统计上报": "安裝版本統計上報",
+    "开始清理数据表 ...": "開始清理資料表 ...",
+    "站点资源刷新完成": "站點資源重新整理完成",
+    "未配置媒体服务器，跳过同步": "未設定媒體伺服器，跳過同步",
+    "没有已启用的媒体服务器": "沒有已啟用的媒體伺服器",
+    "媒体服务器同步完成": "媒體伺服器同步完成",
+    "站点数据刷新完成": "站點資料重新整理完成",
+    "开始下载 CookieCloud 数据 ...": "開始下載 CookieCloud 資料 ...",
+    "推荐数据刷新完成，正在缓存海报 ...": "推薦資料重新整理完成，正在快取海報 ...",
+    "推荐缓存刷新完成": "推薦快取重新整理完成",
+    "未配置下载器监控目录，跳过整理": "未設定下載器監控目錄，跳過整理",
+    "正在查询已完成下载任务 ...": "正在查詢已完成下載任務 ...",
+    "没有已完成下载但未整理的任务": "沒有已完成下載但未整理的任務",
+    "未开启任何有效站点，无法搜索资源": "未啟用任何有效站點，無法搜尋資源",
+    "未开启任何支持字幕搜索的有效站点，无法搜索字幕": "未啟用任何支援字幕搜尋的有效站點，無法搜尋字幕",
+    "订阅搜索完成": "訂閱搜尋完成",
+    "没有订阅需要刷新": "沒有訂閱需要重新整理",
+    "订阅刷新完成": "訂閱重新整理完成",
+    "没有缓存资源，跳过订阅匹配": "沒有快取資源，跳過訂閱匹配",
+    "正在预处理订阅资源 ...": "正在預處理訂閱資源 ...",
+    "订阅资源匹配完成": "訂閱資源匹配完成",
+    "订阅元数据更新完成": "訂閱元資料更新完成",
+    "未配置 Follow 订阅用户，跳过刷新": "未設定 Follow 訂閱使用者，跳過重新整理",
+    "订阅日历预缓存完成": "訂閱日曆預快取完成"
+  },
+  "message_patterns": [
+    {
+      "source": "工具 '{tool}' 未找到",
+      "target": "工具「{tool}」未找到"
+    },
+    {
+      "source": "获取工具列表失败: {reason}",
+      "target": "取得工具列表失敗: {reason}"
+    },
+    {
+      "source": "获取工具信息失败: {reason}",
+      "target": "取得工具資訊失敗: {reason}"
+    },
+    {
+      "source": "获取工具Schema失败: {reason}",
+      "target": "取得工具 Schema 失敗: {reason}"
+    },
+    {
+      "source": "插件 {plugin} 不存在或未安装",
+      "target": "插件 {plugin} 不存在或未安裝"
+    },
+    {
+      "source": "插件 {plugin} 不存在或未加载",
+      "target": "插件 {plugin} 不存在或未載入"
+    },
+    {
+      "source": "站点 {site} 不存在！",
+      "target": "站點 {site} 不存在！"
+    },
+    {
+      "source": "站点 {site} 不存在",
+      "target": "站點 {site} 不存在"
+    },
+    {
+      "source": "站点 {site} 不支持",
+      "target": "站點 {site} 不支援"
+    },
+    {
+      "source": "{path} 不是文件",
+      "target": "{path} 不是檔案"
+    },
+    {
+      "source": "智能助手执行失败: {reason}",
+      "target": "智慧助手執行失敗: {reason}"
+    },
+    {
+      "source": "无法连接Qbittorrent下载器：{name}",
+      "target": "無法連線 qBittorrent 下載器：{name}"
+    },
+    {
+      "source": "无法连接Transmission下载器：{name}",
+      "target": "無法連線 Transmission 下載器：{name}"
+    },
+    {
+      "source": "无法连接rTorrent下载器：{name}",
+      "target": "無法連線 rTorrent 下載器：{name}"
+    },
+    {
+      "source": "无法连接Emby服务器：{name}",
+      "target": "無法連線 Emby 伺服器：{name}"
+    },
+    {
+      "source": "无法连接Jellyfin服务器：{name}",
+      "target": "無法連線 Jellyfin 伺服器：{name}"
+    },
+    {
+      "source": "无法连接Plex服务器：{name}",
+      "target": "無法連線 Plex 伺服器：{name}"
+    },
+    {
+      "source": "飞牛影视配置不完整：{name}",
+      "target": "飛牛影視設定不完整：{name}"
+    },
+    {
+      "source": "无法连接飞牛影视：{name}",
+      "target": "無法連線飛牛影視：{name}"
+    },
+    {
+      "source": "绿联影视配置不完整：{name}",
+      "target": "綠聯影視設定不完整：{name}"
+    },
+    {
+      "source": "无法连接绿联影视：{name}",
+      "target": "無法連線綠聯影視：{name}"
+    },
+    {
+      "source": "无法连接极影视服务器：{name}",
+      "target": "無法連線極影視伺服器：{name}"
+    },
+    {
+      "source": "Telegram {name} 未就绪",
+      "target": "Telegram {name} 尚未就緒"
+    },
+    {
+      "source": "飞书 {name} 未就绪",
+      "target": "飛書 {name} 尚未就緒"
+    },
+    {
+      "source": "Discord {name} Bot 未就绪",
+      "target": "Discord {name} Bot 尚未就緒"
+    },
+    {
+      "source": "Slack {name} 未就绪",
+      "target": "Slack {name} 尚未就緒"
+    },
+    {
+      "source": "QQ Bot {name} 未就绪",
+      "target": "QQ Bot {name} 尚未就緒"
+    },
+    {
+      "source": "VoceChat {name} 未就绪",
+      "target": "VoceChat {name} 尚未就緒"
+    },
+    {
+      "source": "企业微信 {name} 未就绪",
+      "target": "企業微信 {name} 尚未就緒"
+    },
+    {
+      "source": "微信 ClawBot {name} 未就绪：{reason}",
+      "target": "微信 ClawBot {name} 尚未就緒：{reason}"
+    },
+    {
+      "source": "Synology Chat {name} 未就绪",
+      "target": "Synology Chat {name} 尚未就緒"
+    },
+    {
+      "source": "无法连接Bangumi，错误码：{code}",
+      "target": "無法連線 Bangumi，錯誤碼：{code}"
+    },
+    {
+      "source": "无法连接fanart，错误码：{code}",
+      "target": "無法連線 fanart，錯誤碼：{code}"
+    },
+    {
+      "source": "无法连接 {domain}，错误码：{code}",
+      "target": "無法連線 {domain}，錯誤碼：{code}"
+    },
+    {
+      "source": "{domain} 网络连接失败",
+      "target": "{domain} 網路連線失敗"
+    },
+    {
+      "source": "{item} 删除失败",
+      "target": "{item} 刪除失敗"
+    },
+    {
+      "source": "错误：{code} {reason}",
+      "target": "錯誤：{code} {reason}"
+    },
+    {
+      "source": "错误：{code} {reason}！",
+      "target": "錯誤：{code} {reason}！"
+    },
+    {
+      "source": "站点【{url}】不存在",
+      "target": "站點【{url}】不存在"
+    },
+    {
+      "source": "站点编号 {site_id} 不存在",
+      "target": "站點編號 {site_id} 不存在"
+    },
+    {
+      "source": "未找到站点：{names}",
+      "target": "未找到站點：{names}"
+    },
+    {
+      "source": "【{name}】Cookie&UA 更新失败：{reason}",
+      "target": "【{name}】Cookie&UA 更新失敗：{reason}"
+    },
+    {
+      "source": "【{name}】Cookie&UA 更新成功",
+      "target": "【{name}】Cookie&UA 更新成功"
+    },
+    {
+      "source": "下载目录获取失败，无法保存字幕：{path} - {reason}",
+      "target": "下載目錄取得失敗，無法儲存字幕：{path} - {reason}"
+    },
+    {
+      "source": "下载目录不存在，无法保存字幕：{path}",
+      "target": "下載目錄不存在，無法儲存字幕：{path}"
+    },
+    {
+      "source": "保存字幕文件失败：{path}",
+      "target": "儲存字幕檔案失敗：{path}"
+    },
+    {
+      "source": "下载字幕文件失败，状态码：{code}",
+      "target": "下載字幕檔案失敗，狀態碼：{code}"
+    },
+    {
+      "source": "下载字幕文件失败，状态码：{code} {reason}",
+      "target": "下載字幕檔案失敗，狀態碼：{code} {reason}"
+    },
+    {
+      "source": "下载字幕文件失败，状态码：{code} {reason}：{detail}",
+      "target": "下載字幕檔案失敗，狀態碼：{code} {reason}：{detail}"
+    },
+    {
+      "source": "下载链接不是支持的字幕文件：{name}",
+      "target": "下載連結不是支援的字幕檔案：{name}"
+    },
+    {
+      "source": "字幕压缩包解压失败：{reason}",
+      "target": "字幕壓縮包解壓失敗：{reason}"
+    },
+    {
+      "source": "未获取到第 {season} 季的总集数",
+      "target": "未取得第 {season} 季的總集數"
+    },
+    {
+      "source": "所有订阅搜索完成",
+      "target": "所有訂閱搜尋完成"
+    },
+    {
+      "source": "请输入订阅 ID，多个 ID 用空格分隔，或输入 all",
+      "target": "請輸入訂閱 ID，多個 ID 以空格分隔，或輸入 all"
+    },
+    {
+      "source": "未找到订阅：{ids}",
+      "target": "未找到訂閱：{ids}"
+    },
+    {
+      "source": "已完成 {count} 个订阅搜索",
+      "target": "已完成 {count} 個訂閱搜尋"
+    },
+    {
+      "source": "请输入至少一个有效的订阅 ID",
+      "target": "請輸入至少一個有效的訂閱 ID"
+    },
+    {
+      "source": "已删除 {count} 个订阅",
+      "target": "已刪除 {count} 個訂閱"
+    },
+    {
+      "source": "{name} 已在整理队列中",
+      "target": "{name} 已在整理佇列中"
+    },
+    {
+      "source": "{name} 已取消",
+      "target": "{name} 已取消"
+    },
+    {
+      "source": "{name} 没有找到可整理的媒体文件",
+      "target": "{name} 沒有找到可整理的媒體檔案"
+    },
+    {
+      "source": "{name} 已整理过",
+      "target": "{name} 已整理過"
+    },
+    {
+      "source": "{name} 无法识别有效信息",
+      "target": "{name} 無法識別有效資訊"
+    },
+    {
+      "source": "源目录不存在：{path}",
+      "target": "來源目錄不存在：{path}"
+    },
+    {
+      "source": "未识别到媒体信息，类型：{type}，id：{id}",
+      "target": "未識別到媒體資訊，類型：{type}，id：{id}"
+    },
+    {
+      "source": "媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {type}",
+      "target": "媒體資訊識別失敗，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {type}"
+    },
+    {
+      "source": "{name} 的下载目录未设置",
+      "target": "{name} 的下載目錄未設定"
+    },
+    {
+      "source": "{name} 的下载目录 {path} 不存在",
+      "target": "{name} 的下載目錄 {path} 不存在"
+    },
+    {
+      "source": "{name} 的媒体库目录未设置",
+      "target": "{name} 的媒體庫目錄未設定"
+    },
+    {
+      "source": "{name} 的媒体库目录 {path} 不存在",
+      "target": "{name} 的媒體庫目錄 {path} 不存在"
+    },
+    {
+      "source": "{name} 的下载目录 {download_path} 与媒体库目录 {library_path} 不在同一磁盘，无法硬链接",
+      "target": "{name} 的下載目錄 {download_path} 與媒體庫目錄 {library_path} 不在同一磁碟，無法硬連結"
+    },
+    {
+      "source": "{name} 的存储测试不通过",
+      "target": "{name} 的儲存測試不通過"
+    },
+    {
+      "source": "{name} 的存储不支持 {transfer_type} 整理方式",
+      "target": "{name} 的儲存不支援 {transfer_type} 整理方式"
+    },
+    {
+      "source": "不支持 {storage} 的 OAuth2 授权",
+      "target": "不支援 {storage} 的 OAuth2 授權"
+    },
+    {
+      "source": "不支持 {source_storage} 到 {target_storage} 的文件整理",
+      "target": "不支援 {source_storage} 到 {target_storage} 的檔案整理"
+    },
+    {
+      "source": "不支持的整理方式：{transfer_type}",
+      "target": "不支援的整理方式：{transfer_type}"
+    },
+    {
+      "source": "{path} {transfer_type} 失败",
+      "target": "{path} {transfer_type} 失敗"
+    },
+    {
+      "source": "文件 {path} 不存在",
+      "target": "檔案 {path} 不存在"
+    },
+    {
+      "source": "{path} 上传 {storage} 失败",
+      "target": "{path} 上傳 {storage} 失敗"
+    },
+    {
+      "source": "{path} {storage} 下载失败",
+      "target": "{path} {storage} 下載失敗"
+    },
+    {
+      "source": "存储 {storage} 不支持 {transfer_type} 整理方式",
+      "target": "儲存 {storage} 不支援 {transfer_type} 整理方式"
+    },
+    {
+      "source": "【{storage}】{path} 复制文件失败",
+      "target": "【{storage}】{path} 複製檔案失敗"
+    },
+    {
+      "source": "【{storage}】{path} 移动文件失败",
+      "target": "【{storage}】{path} 移動檔案失敗"
+    },
+    {
+      "source": "【{storage}】{path} 创建硬链接失败",
+      "target": "【{storage}】{path} 建立硬連結失敗"
+    },
+    {
+      "source": "【{storage}】{path} 目录获取失败",
+      "target": "【{storage}】{path} 目錄取得失敗"
+    },
+    {
+      "source": "获取目标目录失败：{path}",
+      "target": "取得目標目錄失敗：{path}"
+    },
+    {
+      "source": "{path} 已存在",
+      "target": "{path} 已存在"
+    },
+    {
+      "source": "【{storage}】{path} 已存在",
+      "target": "【{storage}】{path} 已存在"
+    },
+    {
+      "source": "添加种子任务失败：{reason}",
+      "target": "新增種子任務失敗：{reason}"
+    },
+    {
+      "source": "下载任务添加成功，但获取Qbittorrent任务信息失败：{reason}",
+      "target": "下載任務新增成功，但取得 qBittorrent 任務資訊失敗：{reason}"
+    },
+    {
+      "source": "添加下载成功，已选择集数：{episodes}",
+      "target": "新增下載成功，已選擇集數：{episodes}"
+    },
+    {
+      "source": "获取授权 URL 失败: {reason}",
+      "target": "取得授權 URL 失敗: {reason}"
+    },
+    {
+      "source": "检查授权状态失败: {reason}",
+      "target": "檢查授權狀態失敗: {reason}"
+    },
+    {
+      "source": "{path} 刮削完成",
+      "target": "{path} 刮削完成"
+    },
+    {
+      "source": "生成注册选项失败: {reason}",
+      "target": "產生註冊選項失敗: {reason}"
+    },
+    {
+      "source": "注册失败: {reason}",
+      "target": "註冊失敗: {reason}"
+    },
+    {
+      "source": "获取列表失败: {reason}",
+      "target": "取得清單失敗: {reason}"
+    },
+    {
+      "source": "删除失败: {reason}",
+      "target": "刪除失敗: {reason}"
+    },
+    {
+      "source": "文件夹 '{folder}' 创建成功",
+      "target": "資料夾 '{folder}' 建立成功"
+    },
+    {
+      "source": "文件夹 '{folder}' 已存在",
+      "target": "資料夾 '{folder}' 已存在"
+    },
+    {
+      "source": "文件夹 '{folder}' 删除成功",
+      "target": "資料夾 '{folder}' 刪除成功"
+    },
+    {
+      "source": "文件夹 '{folder}' 不存在",
+      "target": "資料夾 '{folder}' 不存在"
+    },
+    {
+      "source": "文件夹 '{folder}' 中的插件已更新",
+      "target": "資料夾 '{folder}' 中的插件已更新"
+    },
+    {
+      "source": "创建插件分身失败：{reason}",
+      "target": "建立插件分身失敗：{reason}"
+    },
+    {
+      "source": "{domain} 站点己存在",
+      "target": "{domain} 站點已存在"
+    },
+    {
+      "source": "获取映射失败：{reason}",
+      "target": "取得映射失敗：{reason}"
+    },
+    {
+      "source": "{name} 未识别到媒体信息",
+      "target": "{name} 未識別到媒體資訊"
+    },
+    {
+      "source": "{name} 未识别到新名称",
+      "target": "{name} 未識別到新名稱"
+    },
+    {
+      "source": "{name} 重命名失败！",
+      "target": "{name} 重新命名失敗！"
+    },
+    {
+      "source": "访问 Wiki 插件仓库清单失败，状态码：{code}",
+      "target": "存取 Wiki 插件倉庫清單失敗，狀態碼：{code}"
+    },
+    {
+      "source": "配置项 '{key}' 不存在",
+      "target": "設定項 '{key}' 不存在"
+    },
+    {
+      "source": "过滤规则组 {name} 不存在！",
+      "target": "過濾規則組 {name} 不存在！"
+    },
+    {
+      "source": "{target}无法连接",
+      "target": "{target}無法連線"
+    },
+    {
+      "source": "站点 {domain} 缓存不存在",
+      "target": "站點 {domain} 快取不存在"
+    },
+    {
+      "source": "删除失败：{reason}",
+      "target": "刪除失敗：{reason}"
+    },
+    {
+      "source": "清理失败：{reason}",
+      "target": "清理失敗：{reason}"
+    },
+    {
+      "source": "缓存刷新完成，共刷新 {site_count} 个站点，{torrent_count} 个种子",
+      "target": "快取重新整理完成，共重新整理 {site_count} 個站點，{torrent_count} 個種子"
+    },
+    {
+      "source": "刷新失败：{reason}",
+      "target": "重新整理失敗：{reason}"
+    },
+    {
+      "source": "重新识别失败：{reason}",
+      "target": "重新識別失敗：{reason}"
+    },
+    {
+      "source": "整理记录不存在，ID：{id}",
+      "target": "整理記錄不存在，ID：{id}"
+    },
+    {
+      "source": "不支持的媒体类型：{type}",
+      "target": "不支援的媒體類型：{type}"
+    },
+    {
+      "source": "整理记录不存在: {ids}",
+      "target": "整理記錄不存在: {ids}"
+    },
+    {
+      "source": "未找到名为 {name} 的微信 ClawBot 通知配置",
+      "target": "未找到名為 {name} 的微信 ClawBot 通知設定"
+    },
+    {
+      "source": "下载字幕文件失败：{reason}",
+      "target": "下載字幕檔案失敗：{reason}"
+    },
+    {
+      "source": "更新了{updated}个站点，新增了{created}个站点",
+      "target": "更新了 {updated} 個站點，新增了 {created} 個站點"
+    },
+    {
+      "source": "已{action} {count} 个站点",
+      "target": "已{action} {count} 個站點"
+    },
+    {
+      "source": "认证类型：{type}，辅助认证事件失败或无效",
+      "target": "認證類型：{type}，輔助認證事件失敗或無效"
+    },
+    {
+      "source": "远程同步CookieCloud失败，错误码：{code}",
+      "target": "遠端同步 CookieCloud 失敗，錯誤碼：{code}"
+    },
+    {
+      "source": "未从{server}下载到cookie数据",
+      "target": "未從 {server} 下載到 cookie 資料"
+    },
+    {
+      "source": "从{server}下载cookie数据错误：{reason}",
+      "target": "從 {server} 下載 cookie 資料錯誤：{reason}"
+    },
+    {
+      "source": "cookie解密失败：{reason}",
+      "target": "cookie 解密失敗：{reason}"
+    },
+    {
+      "source": "插件限定的系统版本范围 {range} 必须是字符串，请使用 pip 依赖版本格式，例如 >=2.12.0,<3",
+      "target": "插件限定的系統版本範圍 {range} 必須是字串，請使用 pip 依賴版本格式，例如 >=2.12.0,<3"
+    },
+    {
+      "source": "插件限定的系统版本范围格式不正确：{range}，请使用 pip 依赖版本格式，例如 >=2.12.0,<3",
+      "target": "插件限定的系統版本範圍格式不正確：{range}，請使用 pip 依賴版本格式，例如 >=2.12.0,<3"
+    },
+    {
+      "source": "当前 MoviePilot 版本 {version} 无法解析，已拒绝安装带版本限制的插件",
+      "target": "目前 MoviePilot 版本 {version} 無法解析，已拒絕安裝帶版本限制的插件"
+    },
+    {
+      "source": "插件要求 MoviePilot 版本 {range}，当前版本 {version} 不满足，已拒绝安装",
+      "target": "插件要求 MoviePilot 版本 {range}，目前版本 {version} 不滿足，已拒絕安裝"
+    },
+    {
+      "source": "插件依赖与当前运行环境的{dependency}冲突：{reason}。为避免共享运行环境被污染，已拒绝安装。",
+      "target": "插件依賴與目前執行環境的 {dependency} 衝突：{reason}。為避免共享執行環境被污染，已拒絕安裝。"
+    },
+    {
+      "source": "插件依赖安装失败后主运行环境异常，且恢复失败：{health}; {repair}",
+      "target": "插件依賴安裝失敗後主執行環境異常，且恢復失敗：{health}; {repair}"
+    },
+    {
+      "source": "插件依赖安装失败后主运行环境异常，恢复后仍异常：{reason}",
+      "target": "插件依賴安裝失敗後主執行環境異常，恢復後仍異常：{reason}"
+    },
+    {
+      "source": "{check_name}失败：{message}",
+      "target": "{check_name}失敗：{message}"
+    },
+    {
+      "source": "恢复依赖文件不存在：{path}",
+      "target": "恢復依賴檔案不存在：{path}"
+    },
+    {
+      "source": "恢复{desc}失败",
+      "target": "恢復{desc}失敗"
+    },
+    {
+      "source": "[PIP] 所有策略均安装依赖失败：{reason}",
+      "target": "[PIP] 所有策略均安裝依賴失敗：{reason}"
+    },
+    {
+      "source": "{pid} 未声明 Release 安装，无法安装指定版本",
+      "target": "{pid} 未宣告 Release 安裝，無法安裝指定版本"
+    },
+    {
+      "source": "{pid} 未找到可安装的 Release 版本：{version}",
+      "target": "{pid} 未找到可安裝的 Release 版本：{version}"
+    },
+    {
+      "source": "未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装",
+      "target": "未在插件清單中找到 {pid} 的版本號，無法進行 Release 安裝"
+    },
+    {
+      "source": "未找到本地插件：{pid}",
+      "target": "未找到本機插件：{pid}"
+    },
+    {
+      "source": "复制本地插件失败：{reason}",
+      "target": "複製本機插件失敗：{reason}"
+    },
+    {
+      "source": "连接仓库失败：{code} - {reason}",
+      "target": "連線倉庫失敗：{code} - {reason}"
+    },
+    {
+      "source": "文件 {path} 下载失败！",
+      "target": "檔案 {path} 下載失敗！"
+    },
+    {
+      "source": "下载文件 {path} 失败：{code}",
+      "target": "下載檔案 {path} 失敗：{code}"
+    },
+    {
+      "source": "下载 requirements.txt 文件失败：{code}",
+      "target": "下載 requirements.txt 檔案失敗：{code}"
+    },
+    {
+      "source": "插件依赖预检失败：{reason}",
+      "target": "插件依賴預檢失敗：{reason}"
+    },
+    {
+      "source": "获取 Release 信息失败：{reason}",
+      "target": "取得 Release 資訊失敗：{reason}"
+    },
+    {
+      "source": "未找到资产文件：{asset}",
+      "target": "未找到資產檔案：{asset}"
+    },
+    {
+      "source": "解析 Release 信息失败：{reason}",
+      "target": "解析 Release 資訊失敗：{reason}"
+    },
+    {
+      "source": "下载资产失败：{reason}",
+      "target": "下載資產失敗：{reason}"
+    },
+    {
+      "source": "解压 Release 压缩包失败：{reason}",
+      "target": "解壓 Release 壓縮包失敗：{reason}"
+    },
+    {
+      "source": "安装依赖项时发生错误：{reason}",
+      "target": "安裝依賴項時發生錯誤：{reason}"
+    },
+    {
+      "source": "创建运行环境约束文件失败：{reason}",
+      "target": "建立執行環境約束檔案失敗：{reason}"
+    },
+    {
+      "source": "策略 {strategy} 安装依赖失败：{reason}；{detail}",
+      "target": "策略 {strategy} 安裝依賴失敗：{reason}；{detail}"
+    },
+    {
+      "source": "依赖安装后运行环境自检失败，已自动恢复主程序依赖：{reason}",
+      "target": "依賴安裝後執行環境自檢失敗，已自動恢復主程式依賴：{reason}"
+    },
+    {
+      "source": "依赖安装后运行环境自检失败，恢复主程序依赖后仍异常：{reason}",
+      "target": "依賴安裝後執行環境自檢失敗，恢復主程式依賴後仍異常：{reason}"
+    },
+    {
+      "source": "依赖安装后运行环境自检失败，且自动恢复主程序依赖失败：{reason}",
+      "target": "依賴安裝後執行環境自檢失敗，且自動恢復主程式依賴失敗：{reason}"
+    },
+    {
+      "source": "响应解析失败: {detail}...",
+      "target": "回應解析失敗: {detail}..."
+    },
+    {
+      "source": "写入一次性升级标记失败：{reason}",
+      "target": "寫入一次性升級標記失敗：{reason}"
+    },
+    {
+      "source": "本地 CLI 重启失败：{reason}",
+      "target": "本機 CLI 重啟失敗：{reason}"
+    },
+    {
+      "source": "重启时发生错误：{reason}",
+      "target": "重啟時發生錯誤：{reason}"
+    },
+    {
+      "source": "已安排一次性 {mode} 升级并重启",
+      "target": "已安排一次性 {mode} 升級並重啟"
+    },
+    {
+      "source": "错误码：{code}",
+      "target": "錯誤碼：{code}"
+    },
+    {
+      "source": "PostgreSQL连接失败：{reason}",
+      "target": "PostgreSQL 連線失敗：{reason}"
+    },
+    {
+      "source": "整理完成，{count} 个文件转移失败！",
+      "target": "整理完成，{count} 個檔案轉移失敗！"
+    },
+    {
+      "source": "下载任务添加成功，但获取rTorrent任务信息失败：{reason}",
+      "target": "下載任務新增成功，但取得 rTorrent 任務資訊失敗：{reason}"
+    },
+    {
+      "source": "已将微信 ClawBot 登录缓存从 {old_name} 迁移到 {new_name}",
+      "target": "已將微信 ClawBot 登入快取從 {old_name} 遷移到 {new_name}"
+    },
+    {
+      "source": "数据表 {name} 跳过清理",
+      "target": "資料表 {name} 跳過清理"
+    },
+    {
+      "source": "正在清理数据表 {name} ...",
+      "target": "正在清理資料表 {name} ..."
+    },
+    {
+      "source": "数据表 {name} 清理处理完成",
+      "target": "資料表 {name} 清理處理完成"
+    },
+    {
+      "source": "开始刷新站点资源，共 {count} 个站点 ...",
+      "target": "開始重新整理站點資源，共 {count} 個站點 ..."
+    },
+    {
+      "source": "开始同步媒体服务器，共 {count} 个 ...",
+      "target": "開始同步媒體伺服器，共 {count} 個 ..."
+    },
+    {
+      "source": "媒体服务器 {name} 无可同步媒体库",
+      "target": "媒體伺服器 {name} 無可同步媒體庫"
+    },
+    {
+      "source": "开始刷新站点数据，共 {count} 个站点 ...",
+      "target": "開始重新整理站點資料，共 {count} 個站點 ..."
+    },
+    {
+      "source": "正在刷新站点数据（{index}/{total}）{name} ...",
+      "target": "正在重新整理站點資料（{index}/{total}）{name} ..."
+    },
+    {
+      "source": "站点数据（{index}/{total}）刷新完成",
+      "target": "站點資料（{index}/{total}）重新整理完成"
+    },
+    {
+      "source": "CookieCloud同步失败：{reason}",
+      "target": "CookieCloud 同步失敗：{reason}"
+    },
+    {
+      "source": "正在同步 CookieCloud 站点（{index}/{total}）{domain} ...",
+      "target": "正在同步 CookieCloud 站點（{index}/{total}）{domain} ..."
+    },
+    {
+      "source": "CookieCloud 站点（{index}/{total}）同步完成",
+      "target": "CookieCloud 站點（{index}/{total}）同步完成"
+    },
+    {
+      "source": "CookieCloud同步成功：{message}",
+      "target": "CookieCloud 同步成功：{message}"
+    },
+    {
+      "source": "开始刷新推荐缓存，共 {count} 个数据分页 ...",
+      "target": "開始重新整理推薦快取，共 {count} 個資料分頁 ..."
+    },
+    {
+      "source": "正在缓存推荐海报（{index}/{total}）...",
+      "target": "正在快取推薦海報（{index}/{total}）..."
+    },
+    {
+      "source": "获取到 {count} 个已完成下载任务",
+      "target": "取得 {count} 個已完成下載任務"
+    },
+    {
+      "source": "正在整理下载任务（{index}/{total}）{name} ...",
+      "target": "正在整理下載任務（{index}/{total}）{name} ..."
+    },
+    {
+      "source": "下载任务（{index}/{total}）整理处理完成",
+      "target": "下載任務（{index}/{total}）整理處理完成"
+    },
+    {
+      "source": "搜索完成，共 {count} 个资源",
+      "target": "搜尋完成，共 {count} 個資源"
+    },
+    {
+      "source": "搜索完成，共 {count} 个字幕",
+      "target": "搜尋完成，共 {count} 個字幕"
+    },
+    {
+      "source": "正在过滤匹配 {count} 个候选资源 ...",
+      "target": "正在過濾匹配 {count} 個候選資源 ..."
+    },
+    {
+      "source": "过滤匹配完成，共 {count} 个资源",
+      "target": "過濾匹配完成，共 {count} 個資源"
+    },
+    {
+      "source": "正在识别匹配 {count} 个候选字幕 ...",
+      "target": "正在識別匹配 {count} 個候選字幕 ..."
+    },
+    {
+      "source": "识别匹配完成，共 {count} 个字幕",
+      "target": "識別匹配完成，共 {count} 個字幕"
+    },
+    {
+      "source": "开始搜索字幕，共 {site_count} 个站点，{page_count} 页 ...",
+      "target": "開始搜尋字幕，共 {site_count} 個站點，{page_count} 頁 ..."
+    },
+    {
+      "source": "正在搜索字幕{keyword}，已完成 {finished} / {total} 个请求 ...",
+      "target": "正在搜尋字幕{keyword}，已完成 {finished} / {total} 個請求 ..."
+    },
+    {
+      "source": "正在搜索字幕，已完成 {finished} / {total} 个请求 ...",
+      "target": "正在搜尋字幕，已完成 {finished} / {total} 個請求 ..."
+    },
+    {
+      "source": "站点字幕搜索完成，有效字幕数：{count}，总耗时 {seconds} 秒",
+      "target": "站點字幕搜尋完成，有效字幕數：{count}，總耗時 {seconds} 秒"
+    },
+    {
+      "source": "开始搜索，共 {site_count} 个站点，{page_count} 页 ...",
+      "target": "開始搜尋，共 {site_count} 個站點，{page_count} 頁 ..."
+    },
+    {
+      "source": "正在搜索{keyword}，已完成 {finished} / {total} 个请求 ...",
+      "target": "正在搜尋{keyword}，已完成 {finished} / {total} 個請求 ..."
+    },
+    {
+      "source": "正在搜索，已完成 {finished} / {total} 个请求 ...",
+      "target": "正在搜尋，已完成 {finished} / {total} 個請求 ..."
+    },
+    {
+      "source": "站点搜索完成，有效资源数：{count}，总耗时 {seconds} 秒",
+      "target": "站點搜尋完成，有效資源數：{count}，總耗時 {seconds} 秒"
+    },
+    {
+      "source": "开始订阅搜索，共 {count} 个订阅 ...",
+      "target": "開始訂閱搜尋，共 {count} 個訂閱 ..."
+    },
+    {
+      "source": "正在搜索订阅（{index}/{total}）{name} ...",
+      "target": "正在搜尋訂閱（{index}/{total}）{name} ..."
+    },
+    {
+      "source": "订阅搜索随机休眠 {seconds} 秒后继续 ...",
+      "target": "訂閱搜尋隨機休眠 {seconds} 秒後繼續 ..."
+    },
+    {
+      "source": "订阅搜索（{index}/{total}）处理完成",
+      "target": "訂閱搜尋（{index}/{total}）處理完成"
+    },
+    {
+      "source": "开始刷新订阅，共 {count} 个订阅 ...",
+      "target": "開始重新整理訂閱，共 {count} 個訂閱 ..."
+    },
+    {
+      "source": "资源预处理完成，开始匹配 {count} 个订阅 ...",
+      "target": "資源預處理完成，開始匹配 {count} 個訂閱 ..."
+    },
+    {
+      "source": "开始更新订阅元数据，共 {count} 个订阅 ...",
+      "target": "開始更新訂閱元資料，共 {count} 個訂閱 ..."
+    },
+    {
+      "source": "正在更新订阅元数据（{index}/{total}）{name} ...",
+      "target": "正在更新訂閱元資料（{index}/{total}）{name} ..."
+    },
+    {
+      "source": "订阅元数据（{index}/{total}）更新完成",
+      "target": "訂閱元資料（{index}/{total}）更新完成"
+    },
+    {
+      "source": "开始刷新 Follow 订阅分享，共 {count} 条 ...",
+      "target": "開始重新整理 Follow 訂閱分享，共 {count} 條 ..."
+    },
+    {
+      "source": "正在处理 Follow 订阅分享（{index}/{total}）...",
+      "target": "正在處理 Follow 訂閱分享（{index}/{total}）..."
+    },
+    {
+      "source": "Follow 订阅分享刷新完成，新增 {count} 个订阅",
+      "target": "Follow 訂閱分享重新整理完成，新增 {count} 個訂閱"
+    },
+    {
+      "source": "开始预缓存订阅日历，共 {count} 个订阅 ...",
+      "target": "開始預快取訂閱日曆，共 {count} 個訂閱 ..."
+    },
+    {
+      "source": "正在预缓存订阅日历（{index}/{total}）{name} ...",
+      "target": "正在預快取訂閱日曆（{index}/{total}）{name} ..."
+    },
+    {
+      "source": "订阅日历（{index}/{total}）预缓存完成",
+      "target": "訂閱日曆（{index}/{total}）預快取完成"
+    },
+    {
+      "source": "{path} 不存在",
+      "target": "{path} 不存在"
+    },
+    {
+      "source": "{days}天{hours}小时{minutes}分钟",
+      "target": "{days}天{hours}小時{minutes}分鐘"
+    },
+    {
+      "source": "{days}天{hours}小时",
+      "target": "{days}天{hours}小時"
+    },
+    {
+      "source": "{days}天{minutes}分钟",
+      "target": "{days}天{minutes}分鐘"
+    },
+    {
+      "source": "{hours}小时{minutes}分钟",
+      "target": "{hours}小時{minutes}分鐘"
+    },
+    {
+      "source": "{days}天",
+      "target": "{days}天"
+    },
+    {
+      "source": "{hours}小时",
+      "target": "{hours}小時"
+    },
+    {
+      "source": "{minutes}分钟",
+      "target": "{minutes}分鐘"
+    },
+    {
+      "source": "{seconds}秒",
+      "target": "{seconds}秒"
+    }
+  ]
+}
