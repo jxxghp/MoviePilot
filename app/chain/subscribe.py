@@ -1190,7 +1190,7 @@ class SubscribeChain(ChainBase):
                     if subscribe.date:
                         now = datetime.now()
                         subscribe_time = datetime.strptime(subscribe.date, '%Y-%m-%d %H:%M:%S')
-                        if (now - subscribe_time).total_seconds() < 60:
+                        if not sid and not manual and (now - subscribe_time).total_seconds() < 60:
                             logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
                             continue
                     # 随机休眠1-5分钟

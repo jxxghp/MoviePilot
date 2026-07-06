@@ -362,7 +362,7 @@ class SubscribeEndpointTest(TestCase):
         with patch(
             "app.api.endpoints.subscribe.Subscribe.async_list_by_username",
             new=AsyncMock(return_value=owned),
-        ):
+        ), patch("app.api.endpoints.subscribe.Scheduler"):
             response = asyncio.run(
                 search_subscribes(
                     background_tasks=background_tasks,
@@ -610,10 +610,11 @@ class SubscribeEndpointTest(TestCase):
         with patch(
             "app.api.endpoints.subscribe.SubscribeChain.async_add",
             new=AsyncMock(return_value=(1, "新增订阅成功")),
-        ) as async_add:
+        ) as async_add, patch("app.api.endpoints.subscribe.Scheduler"):
             response = asyncio.run(
                 create_subscribe(
                     subscribe_in=subscribe_in,
+                    background_tasks=_EndpointBackgroundTasks(),
                     current_user=_EndpointUser(name="moviepilot-user", is_superuser=False),
                 )
             )
@@ -643,10 +644,11 @@ class SubscribeEndpointTest(TestCase):
         ), patch(
             "app.api.endpoints.subscribe.SubscribeChain.async_add",
             new=AsyncMock(return_value=(1, "新增订阅成功")),
-        ) as async_add:
+        ) as async_add, patch("app.api.endpoints.subscribe.Scheduler"):
             response = asyncio.run(
                 create_subscribe(
                     subscribe_in=subscribe_in,
+                    background_tasks=_EndpointBackgroundTasks(),
                     current_user=_EndpointUser(name="moviepilot-user", is_superuser=False),
                 )
             )
@@ -672,6 +674,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 create_subscribe(
                     subscribe_in=subscribe_in,
+                    background_tasks=_EndpointBackgroundTasks(),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
