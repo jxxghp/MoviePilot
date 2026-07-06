@@ -82,6 +82,33 @@ def test_builtin_hdr_rule_matches_hdr_vivid_release():
     assert torrent.pri_order == 100
 
 
+def test_builtin_cnsub_rule_ignores_trailing_file_size_unit():
+    """
+    内置 CNSUB 规则不应把标题末尾文件大小单位 GB 当成字幕标记。
+    """
+    module = _build_filter_module(
+        rule_string="CNSUB",
+        rule_set=BUILTIN_RULE_SET,
+    )
+    file_size_only = TorrentInfo(
+        title="Movie 2026 1080p WEB-DL H264 AAC 39.23 GB",
+        description="",
+    )
+    explicit_gb_subtitle = TorrentInfo(
+        title="Movie 2026 1080p WEB-DL H264 AAC [GB]",
+        description="",
+    )
+
+    with patch("app.modules.filter.rust_accel.is_enabled", return_value=False):
+        filtered = module.filter_torrents(
+            rule_groups=["test"],
+            torrent_list=[file_size_only, explicit_gb_subtitle],
+        )
+
+    assert [explicit_gb_subtitle] == filtered
+    assert explicit_gb_subtitle.pri_order == 100
+
+
 def test_filter_torrents_keeps_lazy_priority_level_parsing():
     """
     命中高优先级规则后不应解析低优先级坏规则。
