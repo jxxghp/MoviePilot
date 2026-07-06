@@ -338,6 +338,9 @@
     "工作流": "Workflow",
     "正在运行": "Running",
     "等待": "Waiting",
+    "执行完成": "completed",
+    "执行中": "running",
+    "执行失败": "failed",
     "同步CookieCloud站点": "Sync CookieCloud Sites",
     "同步媒体服务器": "Sync Media Servers",
     "订阅元数据更新": "Update Subscription Metadata",
@@ -1088,16 +1091,44 @@
       "target": "Data table {name} cleanup completed"
     },
     {
+      "source": "{name} 开始执行 ...",
+      "target": "Starting {name_i18n} ..."
+    },
+    {
       "source": "开始刷新站点资源，共 {count} 个站点 ...",
       "target": "Starting site resource refresh, {count} sites ..."
+    },
+    {
+      "source": "正在刷新站点资源（{index}/{total}）{name} ...",
+      "target": "Refreshing site resources ({index}/{total}) {name} ..."
     },
     {
       "source": "开始同步媒体服务器，共 {count} 个 ...",
       "target": "Starting media server sync, {count} servers ..."
     },
     {
+      "source": "正在同步媒体服务器（{index}/{total}）{name} ...",
+      "target": "Syncing media server ({index}/{total}) {name} ..."
+    },
+    {
       "source": "媒体服务器 {name} 无可同步媒体库",
       "target": "Media server {name} has no libraries to sync"
+    },
+    {
+      "source": "正在同步 {server} 媒体库 {library}（{finished}/{total}）",
+      "target": "Syncing {server} library {library} ({finished}/{total})"
+    },
+    {
+      "source": "正在同步 {server} 媒体库 {library}",
+      "target": "Syncing {server} library {library}"
+    },
+    {
+      "source": "{server} 媒体库（{index}/{total}）{library} 同步完成",
+      "target": "{server} library ({index}/{total}) {library} sync completed"
+    },
+    {
+      "source": "媒体服务器（{index}/{total}）{name} 同步完成",
+      "target": "Media server ({index}/{total}) {name} sync completed"
     },
     {
       "source": "开始刷新站点数据，共 {count} 个站点 ...",
@@ -1130,6 +1161,10 @@
     {
       "source": "开始刷新推荐缓存，共 {count} 个数据分页 ...",
       "target": "Starting recommendation cache refresh, {count} data pages ..."
+    },
+    {
+      "source": "正在刷新推荐缓存（{finished}/{total}）...",
+      "target": "Refreshing recommendation cache ({finished}/{total}) ..."
     },
     {
       "source": "正在缓存推荐海报（{index}/{total}）...",
@@ -1228,6 +1263,10 @@
       "target": "Resource preprocessing completed, matching {count} subscriptions ..."
     },
     {
+      "source": "正在匹配订阅（{index}/{total}）{name} ...",
+      "target": "Matching subscription ({index}/{total}) {name} ..."
+    },
+    {
       "source": "开始更新订阅元数据，共 {count} 个订阅 ...",
       "target": "Starting subscription metadata update, {count} subscriptions ..."
     },
@@ -1262,6 +1301,26 @@
     {
       "source": "订阅日历（{index}/{total}）预缓存完成",
       "target": "Subscription calendar ({index}/{total}) precache completed"
+    },
+    {
+      "source": "开始执行工作流 {name} ...",
+      "target": "Starting workflow {name} ..."
+    },
+    {
+      "source": "工作流动作（{finished}/{total}）{name} {status}",
+      "target": "Workflow action ({finished}/{total}) {name} {status_i18n}"
+    },
+    {
+      "source": "工作流 {name} 执行完成",
+      "target": "Workflow {name} completed"
+    },
+    {
+      "source": "{name} 执行完成",
+      "target": "{name_i18n} completed"
+    },
+    {
+      "source": "{name} 执行失败",
+      "target": "{name_i18n} failed"
     },
     {
       "source": "{path} 不存在",

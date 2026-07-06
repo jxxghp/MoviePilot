@@ -218,8 +218,30 @@ class LocaleHelper:
         for pattern, target in cls._load_pattern_matchers(locale):
             matched = pattern.fullmatch(text)
             if matched:
-                return cls._format(target, matched.groupdict())
+                return cls._format(
+                    target,
+                    cls._build_pattern_values(locale, matched.groupdict()),
+                )
         return None
+
+    @classmethod
+    def _build_pattern_values(cls, locale: str, values: dict[str, str]) -> dict[str, str]:
+        """
+        为动态模板补充可选的占位值翻译。
+        """
+        pattern_values = dict(values)
+        catalog = cls._load_catalog(locale)
+        default_catalog = (
+            cls._load_catalog(cls.DEFAULT_LOCALE)
+            if locale != cls.DEFAULT_LOCALE
+            else catalog
+        )
+        for name, value in values.items():
+            translated = cls._lookup_message(catalog, value)
+            if translated is None and locale != cls.DEFAULT_LOCALE:
+                translated = cls._lookup_message(default_catalog, value)
+            pattern_values[f"{name}_i18n"] = translated or value
+        return pattern_values
 
     @staticmethod
     @lru_cache(maxsize=16)

@@ -53,6 +53,62 @@ def _sample_message_expression(value: ast.AST) -> list[str]:
     return []
 
 
+def _sample_progress_text_expression(value: ast.AST) -> list[str]:
+    """从进度 text 表达式中生成用于翻译校验的样本文本。"""
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return [value.value]
+    if isinstance(value, ast.JoinedStr):
+        samples = [""]
+        placeholder_index = 0
+        for item in value.values:
+            if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                choices = [item.value]
+            elif isinstance(item, ast.FormattedValue):
+                choices = [
+                    sample
+                    for sample in _sample_progress_text_expression(item.value)
+                    if _has_chinese(sample)
+                ]
+                if not choices:
+                    placeholder_index += 1
+                    choices = [f"样例{placeholder_index}"]
+            else:
+                placeholder_index += 1
+                choices = [f"样例{placeholder_index}"]
+            samples = [prefix + choice for prefix in samples for choice in choices]
+        return [sample for sample in samples if _has_chinese(sample)]
+    if isinstance(value, ast.IfExp):
+        return (
+            _sample_progress_text_expression(value.body)
+            + _sample_progress_text_expression(value.orelse)
+        )
+    if isinstance(value, ast.BoolOp):
+        samples = []
+        for item in value.values:
+            samples.extend(_sample_progress_text_expression(item))
+        return samples
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+        left_samples = _sample_progress_text_expression(value.left)
+        right_samples = _sample_progress_text_expression(value.right)
+        if left_samples and right_samples:
+            return [left + right for left in left_samples for right in right_samples]
+        if left_samples:
+            return [f"{left}样例" for left in left_samples]
+        if right_samples:
+            return [f"样例{right}" for right in right_samples]
+    return []
+
+
+def _is_progress_text_call(node: ast.Call) -> bool:
+    """判断调用是否可能写入前端展示的进度文本。"""
+    func = ast.unparse(node.func)
+    return (
+        func.endswith("progress_callback")
+        or func.endswith(".update")
+        or func.endswith(".end")
+    )
+
+
 def test_locale_helper_normalizes_supported_aliases():
     """语言别名应规范化为项目支持的语言标识。"""
     assert LocaleHelper.normalize_locale("en") == "en-US"
@@ -260,6 +316,55 @@ def test_schedule_info_auto_fills_i18n_display_fields():
     assert schedule.progress_text_i18n == "Starting media server sync, 2 servers ..."
     assert schedule.progress_detail.text_i18n == "Media server Emby has no libraries to sync"
     assert schedule.progress_detail.error_i18n == "Background service does not exist"
+
+
+def test_scheduler_progress_patterns_translate_dynamic_texts():
+    """定时任务进度动态模板应翻译固定词并保留业务变量。"""
+    assert (
+        LocaleHelper.translate_text("同步媒体服务器 开始执行 ...", locale="en-US")
+        == "Starting Sync Media Servers ..."
+    )
+    assert (
+        LocaleHelper.translate_text("同步媒体服务器 执行完成", locale="en-US")
+        == "Sync Media Servers completed"
+    )
+    assert (
+        LocaleHelper.translate_text("同步媒体服务器 执行失败", locale="zh-TW")
+        == "同步媒體伺服器 執行失敗"
+    )
+    assert (
+        LocaleHelper.translate_text("工作流动作（1/3）动作A 执行完成", locale="en-US")
+        == "Workflow action (1/3) 动作A completed"
+    )
+
+
+def test_scheduler_progress_texts_have_english_translations():
+    """定时任务相关进度文案应有英文翻译，避免前端切英文后回退中文。"""
+    untranslated = []
+    progress_paths = [
+        Path("app/scheduler.py"),
+        Path("app/chain/torrents.py"),
+        Path("app/chain/mediaserver.py"),
+        Path("app/chain/site.py"),
+        Path("app/chain/recommend.py"),
+        Path("app/chain/transfer.py"),
+        Path("app/chain/subscribe.py"),
+        Path("app/chain/workflow.py"),
+    ]
+    for path in progress_paths:
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not _is_progress_text_call(node):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg != "text":
+                    continue
+                for message in _sample_progress_text_expression(keyword.value):
+                    translated = LocaleHelper.translate_text(message, locale="en-US")
+                    if translated == message:
+                        untranslated.append(f"{path}:{keyword.value.lineno}:{message}")
+
+    assert untranslated == []
 
 
 def test_api_endpoint_literal_messages_have_english_translations():
