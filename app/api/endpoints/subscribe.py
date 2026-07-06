@@ -27,24 +27,9 @@ from app.schemas.types import MediaType, EventType, SystemConfigKey
 router = APIRouter()
 
 
-def _schedule_subscribe_search(
-    background_tasks: Optional[BackgroundTasks], subscribe_id: Optional[int]
-) -> None:
-    """
-    入队新增订阅的首次搜索任务。
-    """
-    if not background_tasks or not subscribe_id:
-        return
-    background_tasks.add_task(
-        Scheduler().start,
-        job_id="new_subscribe_search",
-        **{"sid": subscribe_id, "state": None, "manual": False},
-    )
-
-
 def start_subscribe_add(
     title: str, year: str, mtype: MediaType, tmdbid: int, season: int, username: str
-) -> None:
+):
     """
     启动订阅任务
     """
@@ -146,7 +131,6 @@ async def list_subscribes(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 async def create_subscribe(
     *,
     subscribe_in: schemas.Subscribe,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user_async),
 ) -> schemas.Response:
     """
@@ -183,8 +167,6 @@ async def create_subscribe(
         owner_scope=not current_user.is_superuser,
         **subscribe_dict,
     )
-    if message == "新增订阅成功":
-        _schedule_subscribe_search(background_tasks, sid)
     return schemas.Response(success=bool(sid), message=message, data={"id": sid})
 
 
@@ -746,7 +728,6 @@ async def subscribe_share_delete(
 @router.post("/fork", summary="复用订阅", response_model=schemas.Response)
 async def subscribe_fork(
     sub: schemas.SubscribeShare,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user_async),
 ) -> Any:
     """
@@ -758,9 +739,7 @@ async def subscribe_fork(
         if not hasattr(schemas.Subscribe(), key):
             sub_dict.pop(key)
     result = await create_subscribe(
-        subscribe_in=schemas.Subscribe(**sub_dict),
-        background_tasks=background_tasks,
-        current_user=current_user,
+        subscribe_in=schemas.Subscribe(**sub_dict), current_user=current_user
     )
     if result.success:
         await MoviePilotServerHelper.async_sub_fork(share_id=sub.id)
