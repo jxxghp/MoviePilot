@@ -338,6 +338,9 @@
     "工作流": "工作流",
     "正在运行": "正在執行",
     "等待": "等待",
+    "执行完成": "執行完成",
+    "执行中": "執行中",
+    "执行失败": "執行失敗",
     "同步CookieCloud站点": "同步 CookieCloud 站點",
     "同步媒体服务器": "同步媒體伺服器",
     "订阅元数据更新": "訂閱元資料更新",
@@ -1088,16 +1091,44 @@
       "target": "資料表 {name} 清理處理完成"
     },
     {
+      "source": "{name} 开始执行 ...",
+      "target": "{name_i18n} 開始執行 ..."
+    },
+    {
       "source": "开始刷新站点资源，共 {count} 个站点 ...",
       "target": "開始重新整理站點資源，共 {count} 個站點 ..."
+    },
+    {
+      "source": "正在刷新站点资源（{index}/{total}）{name} ...",
+      "target": "正在重新整理站點資源（{index}/{total}）{name} ..."
     },
     {
       "source": "开始同步媒体服务器，共 {count} 个 ...",
       "target": "開始同步媒體伺服器，共 {count} 個 ..."
     },
     {
+      "source": "正在同步媒体服务器（{index}/{total}）{name} ...",
+      "target": "正在同步媒體伺服器（{index}/{total}）{name} ..."
+    },
+    {
       "source": "媒体服务器 {name} 无可同步媒体库",
       "target": "媒體伺服器 {name} 無可同步媒體庫"
+    },
+    {
+      "source": "正在同步 {server} 媒体库 {library}（{finished}/{total}）",
+      "target": "正在同步 {server} 媒體庫 {library}（{finished}/{total}）"
+    },
+    {
+      "source": "正在同步 {server} 媒体库 {library}",
+      "target": "正在同步 {server} 媒體庫 {library}"
+    },
+    {
+      "source": "{server} 媒体库（{index}/{total}）{library} 同步完成",
+      "target": "{server} 媒體庫（{index}/{total}）{library} 同步完成"
+    },
+    {
+      "source": "媒体服务器（{index}/{total}）{name} 同步完成",
+      "target": "媒體伺服器（{index}/{total}）{name} 同步完成"
     },
     {
       "source": "开始刷新站点数据，共 {count} 个站点 ...",
@@ -1130,6 +1161,10 @@
     {
       "source": "开始刷新推荐缓存，共 {count} 个数据分页 ...",
       "target": "開始重新整理推薦快取，共 {count} 個資料分頁 ..."
+    },
+    {
+      "source": "正在刷新推荐缓存（{finished}/{total}）...",
+      "target": "正在重新整理推薦快取（{finished}/{total}）..."
     },
     {
       "source": "正在缓存推荐海报（{index}/{total}）...",
@@ -1228,6 +1263,10 @@
       "target": "資源預處理完成，開始匹配 {count} 個訂閱 ..."
     },
     {
+      "source": "正在匹配订阅（{index}/{total}）{name} ...",
+      "target": "正在匹配訂閱（{index}/{total}）{name} ..."
+    },
+    {
       "source": "开始更新订阅元数据，共 {count} 个订阅 ...",
       "target": "開始更新訂閱元資料，共 {count} 個訂閱 ..."
     },
@@ -1262,6 +1301,26 @@
     {
       "source": "订阅日历（{index}/{total}）预缓存完成",
       "target": "訂閱日曆（{index}/{total}）預快取完成"
+    },
+    {
+      "source": "开始执行工作流 {name} ...",
+      "target": "開始執行工作流 {name} ..."
+    },
+    {
+      "source": "工作流动作（{finished}/{total}）{name} {status}",
+      "target": "工作流動作（{finished}/{total}）{name} {status_i18n}"
+    },
+    {
+      "source": "工作流 {name} 执行完成",
+      "target": "工作流 {name} 執行完成"
+    },
+    {
+      "source": "{name} 执行完成",
+      "target": "{name_i18n} 執行完成"
+    },
+    {
+      "source": "{name} 执行失败",
+      "target": "{name_i18n} 執行失敗"
     },
     {
       "source": "{path} 不存在",
