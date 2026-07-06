@@ -398,6 +398,286 @@ class MediaInteractionManager:
 media_interaction_manager = MediaInteractionManager()
 
 
+@dataclass
+class PendingPluginInputInteraction:
+    """
+    记录插件临时接管用户下一条文本输入的会话。
+    """
+
+    request_id: str
+    user_id: str
+    plugin_id: str
+    channel: Optional[MessageChannel]
+    source: Optional[str]
+    username: Optional[str]
+    chat_id: Optional[str] = None
+    prompt_id: Optional[str] = None
+    payload: Optional[Any] = None
+    timeout_seconds: int = 120
+    created_at: datetime = field(default_factory=datetime.now)
+
+    @property
+    def expires_at(self) -> datetime:
+        return self.created_at + timedelta(seconds=max(1, self.timeout_seconds))
+
+
+class PluginInputInteractionManager:
+    """
+    管理插件输入会话。
+
+    会话按用户和渠道绑定；同一用户在同一渠道只保留一个待输入会话。
+    """
+
+    EXPIRED_GRACE_SECONDS = 300
+
+    def __init__(self):
+        self._by_id: Dict[str, PendingPluginInputInteraction] = {}
+        self._by_user_channel: Dict[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]], str] = {}
+        self._expired_by_user_channel: Dict[
+            Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]],
+            PendingPluginInputInteraction,
+        ] = {}
+        self._lock = Lock()
+
+    @staticmethod
+    def _user_channel_source_key(
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel],
+            source: Optional[str] = None,
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]:
+        return str(user_id), channel, source, str(chat_id) if chat_id not in (None, "") else None
+
+    @classmethod
+    def _keys_overlap(
+            cls,
+            left: Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]],
+            right: Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]],
+    ) -> bool:
+        left_user, left_channel, left_source, left_chat_id = left
+        right_user, right_channel, right_source, right_chat_id = right
+        if left_user != right_user:
+            return False
+        if left_chat_id and right_chat_id and left_chat_id != right_chat_id:
+            return False
+        if (left_channel is None and left_source is None) or (right_channel is None and right_source is None):
+            return left_channel == right_channel and left_source == right_source
+        channel_overlap = left_channel == right_channel or left_channel is None or right_channel is None
+        source_overlap = left_source == right_source or left_source is None or right_source is None
+        return channel_overlap and source_overlap
+
+    def _cleanup_locked(self) -> None:
+        now = datetime.now()
+        expired_tombstones = [
+            key
+            for key, request in self._expired_by_user_channel.items()
+            if request.expires_at + timedelta(seconds=self.EXPIRED_GRACE_SECONDS) < now
+        ]
+        for key in expired_tombstones:
+            self._expired_by_user_channel.pop(key, None)
+
+        expired = [
+            request_id
+            for request_id, request in self._by_id.items()
+            if request.expires_at < now
+        ]
+        for request_id in expired:
+            request = self._by_id.pop(request_id, None)
+            if request:
+                key = self._user_channel_source_key(
+                    request.user_id,
+                    request.channel,
+                    request.source,
+                    request.chat_id,
+                )
+                self._by_user_channel.pop(key, None)
+                self._expired_by_user_channel[key] = request
+
+    def create_or_replace(
+            self,
+            user_id: Union[str, int],
+            plugin_id: str,
+            channel: Optional[MessageChannel],
+            source: Optional[str],
+            username: Optional[str],
+            chat_id: Optional[Union[str, int]] = None,
+            prompt_id: Optional[str] = None,
+            timeout_seconds: int = 120,
+            payload: Optional[Any] = None,
+    ) -> PendingPluginInputInteraction:
+        with self._lock:
+            self._cleanup_locked()
+            key = self._user_channel_source_key(user_id, channel, source, chat_id)
+            old_request_ids = [
+                request_id
+                for stored_key, request_id in self._by_user_channel.items()
+                if self._keys_overlap(stored_key, key)
+            ]
+            for old_request_id in old_request_ids:
+                self._by_id.pop(old_request_id, None)
+            self._by_user_channel = {
+                stored_key: request_id
+                for stored_key, request_id in self._by_user_channel.items()
+                if request_id not in old_request_ids
+            }
+            self._expired_by_user_channel = {
+                stored_key: request
+                for stored_key, request in self._expired_by_user_channel.items()
+                if not self._keys_overlap(stored_key, key)
+            }
+
+            request = PendingPluginInputInteraction(
+                request_id=uuid.uuid4().hex[:12],
+                user_id=str(user_id),
+                plugin_id=plugin_id,
+                channel=channel,
+                source=source,
+                username=username,
+                chat_id=str(chat_id) if chat_id not in (None, "") else None,
+                prompt_id=prompt_id,
+                timeout_seconds=timeout_seconds,
+                payload=payload,
+            )
+            self._by_id[request.request_id] = request
+            self._by_user_channel[key] = request.request_id
+            return request
+
+    def get_by_user(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel] = None,
+            source: Optional[str] = None,
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Optional[PendingPluginInputInteraction]:
+        with self._lock:
+            self._cleanup_locked()
+            request_id = self._find_request_id_locked(user_id, channel, source, chat_id)
+            if request_id:
+                return self._by_id.get(request_id)
+            return None
+
+    def pop_by_user(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel] = None,
+            source: Optional[str] = None,
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Optional[PendingPluginInputInteraction]:
+        request, _ = self.consume_by_user(user_id, channel, source, chat_id)
+        return request
+
+    def consume_by_user(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel] = None,
+            source: Optional[str] = None,
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Tuple[Optional[PendingPluginInputInteraction], Optional[str]]:
+        with self._lock:
+            key, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
+
+            if request_id:
+                self._by_user_channel.pop(key, None)
+                request = self._by_id.pop(request_id, None)
+                if request:
+                    status = "expired" if request.expires_at < datetime.now() else "active"
+                    return request, status
+            key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
+            if request:
+                self._expired_by_user_channel.pop(key, None)
+                return request, "expired"
+            self._cleanup_locked()
+            return None, None
+
+    def _find_request_id_locked(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel],
+            source: Optional[str],
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Optional[str]:
+        _, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
+        return request_id
+
+    def _find_key_and_request_id_locked(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel],
+            source: Optional[str],
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Tuple[Optional[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]], Optional[str]]:
+        for key in self._candidate_keys(user_id, channel, source, chat_id):
+            request_id = self._by_user_channel.get(key)
+            if request_id:
+                return key, request_id
+        return None, None
+
+    def _find_expired_key_and_request_locked(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel],
+            source: Optional[str],
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> Tuple[Optional[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]],
+               Optional[PendingPluginInputInteraction]]:
+        now = datetime.now()
+        for key in self._candidate_keys(user_id, channel, source, chat_id):
+            request = self._expired_by_user_channel.get(key)
+            if not request:
+                continue
+            if request.expires_at + timedelta(seconds=self.EXPIRED_GRACE_SECONDS) < now:
+                self._expired_by_user_channel.pop(key, None)
+                continue
+            return key, request
+        return None, None
+
+    def _candidate_keys(
+            self,
+            user_id: Union[str, int],
+            channel: Optional[MessageChannel],
+            source: Optional[str],
+            chat_id: Optional[Union[str, int]] = None,
+    ) -> List[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]]:
+        chat_key = str(chat_id) if chat_id not in (None, "") else None
+        candidates = [
+            self._user_channel_source_key(user_id, channel, source, chat_key),
+        ]
+        if source is not None:
+            candidates.append(self._user_channel_source_key(user_id, channel, None, chat_key))
+        if channel is not None and source is not None:
+            candidates.append(self._user_channel_source_key(user_id, None, source, chat_key))
+        if channel is None and source is None:
+            wildcard_key = self._user_channel_source_key(user_id, None, None, chat_key)
+            candidates.append(wildcard_key)
+        if chat_key is not None:
+            candidates.append(self._user_channel_source_key(user_id, channel, source, None))
+            if source is not None:
+                candidates.append(self._user_channel_source_key(user_id, channel, None, None))
+            if channel is not None and source is not None:
+                candidates.append(self._user_channel_source_key(user_id, None, source, None))
+            if channel is None and source is None:
+                candidates.append(self._user_channel_source_key(user_id, None, None, None))
+        return candidates
+
+    def remove(self, request_id: str) -> None:
+        with self._lock:
+            request = self._by_id.pop(request_id, None)
+            if request:
+                self._by_user_channel.pop(
+                    self._user_channel_source_key(request.user_id, request.channel, request.source, request.chat_id),
+                    None,
+                )
+
+    def clear(self) -> None:
+        with self._lock:
+            self._by_id.clear()
+            self._by_user_channel.clear()
+            self._expired_by_user_channel.clear()
+
+
+plugin_input_interaction_manager = PluginInputInteractionManager()
+
+
 @dataclass(frozen=True)
 class AgentInteractionOption:
     """

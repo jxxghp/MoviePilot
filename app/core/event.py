@@ -439,11 +439,19 @@ class EventManager(metaclass=Singleton):
         if not handlers:
             logger.debug(f"No handlers found for broadcast event: {event}")
             return
+        target_plugin_id = None
+        if event.event_type == EventType.MessageAction and isinstance(event.event_data, dict):
+            target_plugin_id = event.event_data.get("__mp_target_plugin_id")
         # 为每个处理器提供独立的事件实例，防止某个处理器对 event_data 的修改影响其他处理器
         for handler_id, handler in handlers.items():
+            if target_plugin_id and not self.__should_dispatch_to_target_plugin(
+                    handler, handler_id, str(target_plugin_id)
+            ):
+                continue
             # 仅浅拷贝顶层字典，避免不必要的深拷贝开销；这样可以隔离键级别的替换/赋值
             if isinstance(event.event_data, dict):
                 event_data_copy = event.event_data.copy()
+                event_data_copy.pop("__mp_target_plugin_id", None)
             else:
                 event_data_copy = event.event_data
             isolated_event = Event(event_type=event.event_type,
@@ -458,6 +466,34 @@ class EventManager(metaclass=Singleton):
             else:
                 # 对于同步函数，在线程池中运行
                 self.__executor.submit(self.__safe_invoke_handler, handler, isolated_event)
+
+    @classmethod
+    def __should_dispatch_to_target_plugin(
+            cls,
+            handler: Callable,
+            handler_identifier: str,
+            target_plugin_id: str,
+    ) -> bool:
+        """
+        限定插件输入事件只投递给目标插件，避免自由文本被其他插件观察到。
+        """
+        class_name, method_name = cls.__parse_handler_names(handler)
+        if class_name != target_plugin_id:
+            return False
+        identifier_parts = (handler_identifier or "").split(".")
+        if len(identifier_parts) < 2:
+            logger.debug(
+                "Target plugin dispatch skipped because handler identifier is invalid: "
+                f"target={target_plugin_id}, handler={handler_identifier}"
+            )
+            return False
+        if identifier_parts[-2:] != [class_name, method_name]:
+            logger.debug(
+                "Target plugin dispatch skipped because handler identifier does not match handler: "
+                f"target={target_plugin_id}, handler={handler_identifier}, parsed={class_name}.{method_name}"
+            )
+            return False
+        return True
 
     def __safe_invoke_handler(self, handler: Callable, event: Event):
         """

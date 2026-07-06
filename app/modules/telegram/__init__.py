@@ -521,6 +521,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                         userid=userid,
                         link=message.link,
                         buttons=message.buttons,
+                        force_reply=message.force_reply,
                         original_message_id=message.original_message_id,
                         original_chat_id=message.original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,

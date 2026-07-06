@@ -15,6 +15,10 @@ from telebot.types import (
     InlineKeyboardButton,
     InputMediaPhoto,
 )
+try:
+    from telebot.types import ForceReply
+except ImportError:
+    ForceReply = None
 from telegramify_markdown import standardize, telegramify  # noqa
 try:
     from telegramify_markdown import entities_to_markdownv2  # noqa
@@ -584,6 +588,7 @@ class Telegram:
             userid: Optional[str] = None,
             link: Optional[str] = None,
             buttons: Optional[List[List[dict]]] = None,
+            force_reply: bool = False,
             original_message_id: Optional[int] = None,
             original_chat_id: Optional[str] = None,
             disable_web_page_preview: Optional[bool] = None,
@@ -598,6 +603,7 @@ class Telegram:
         :param userid: 用户ID，如有则只发消息给该用户
         :param link: 跳转链接
         :param buttons: 按钮列表，格式：[[{"text": "按钮文本", "callback_data": "回调数据"}]]
+        :param force_reply: 是否请求 Telegram 客户端强制回复
         :param original_message_id: 原消息ID，如果提供则编辑原消息
         :param original_chat_id: 原消息的聊天ID，编辑消息时需要
         :param disable_web_page_preview: 是否禁用链接预览
@@ -634,9 +640,31 @@ class Telegram:
             reply_markup = None
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
+            elif force_reply and ForceReply:
+                reply_markup = self._create_force_reply_markup()
 
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
+                if force_reply and reply_markup and not buttons:
+                    sent = self.__send_request(
+                        userid=original_chat_id,
+                        image=image,
+                        caption=caption,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
+                        parse_mode=parse_mode,
+                        reply_to_message_id=original_message_id,
+                    )
+                    self._stop_typing_if_needed(chat_id, stop_typing)
+                    if sent and hasattr(sent, "message_id"):
+                        return {
+                            "success": True,
+                            "message_id": sent.message_id,
+                            "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
+                        }
+                    elif sent:
+                        return {"success": True}
+                    return {"success": False}
                 # 编辑消息
                 result = self.__edit_message(
                     original_chat_id,
@@ -678,6 +706,18 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             self._stop_typing_if_needed(chat_id, stop_typing)
             return {"success": False}
+
+    @staticmethod
+    def _create_force_reply_markup():
+        if not ForceReply:
+            return None
+        try:
+            return ForceReply(selective=True, input_field_placeholder="请输入内容")
+        except TypeError:
+            try:
+                return ForceReply(selective=True)
+            except TypeError:
+                return ForceReply()
 
     def send_voice(
             self,
@@ -1285,12 +1325,14 @@ class Telegram:
             reply_markup: Optional[InlineKeyboardMarkup] = None,
             disable_web_page_preview: Optional[bool] = None,
             parse_mode: Optional[str] = None,
+            reply_to_message_id: Optional[int] = None,
     ):
         """
         向Telegram发送报文，返回发送的消息对象
         :param reply_markup: 内联键盘
         :param disable_web_page_preview: 是否禁用链接预览
         :param parse_mode: Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
+        :param reply_to_message_id: 回复的原消息ID
         :return: 发送成功返回消息对象，失败返回None
         """
         parse_mode = self._normalize_parse_mode(parse_mode)
@@ -1299,6 +1341,8 @@ class Telegram:
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
         }
+        if reply_to_message_id:
+            kwargs["reply_to_message_id"] = reply_to_message_id
         # 处理图片
         image = self.__process_image(image)
 
