@@ -115,10 +115,29 @@ jobs:
           print(f"head_sha={head_sha}")
           PY
 
+      - name: Check PR head before side effects
+        id: run_state
+        if: steps.pr_language.outputs.skip_pr_agent != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          is_stale=false
+          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
+            echo "PR head changed from ${RUN_HEAD_SHA} to ${current_head_sha}; skip stale PR-Agent run."
+            is_stale=true
+          fi
+          echo "is_stale=${is_stale}" >> "${GITHUB_OUTPUT}"
+
       - name: Prepare PR-Agent description markers
         id: prepare_description
         if: >-
           steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true' &&
           (
             github.event_name == 'pull_request_target' ||
             (
@@ -192,10 +211,32 @@ jobs:
           fi
           echo "body_changed=${body_changed}" >> "${GITHUB_OUTPUT}"
 
+      - name: Check PR head before PR-Agent
+        id: pragent_head
+        if: >-
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          is_stale=false
+          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
+            echo "PR head changed from ${RUN_HEAD_SHA} to ${current_head_sha}; skip stale PR-Agent run."
+            is_stale=true
+          fi
+          echo "is_stale=${is_stale}" >> "${GITHUB_OUTPUT}"
+
       - name: Snapshot PR-Agent inline comments
         id: inline_state_before
         if: >-
           steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true' &&
+          steps.pragent_head.outputs.is_stale != 'true' &&
           (
             github.event_name == 'pull_request_target' ||
             (
@@ -218,7 +259,10 @@ jobs:
 
       - name: Run PR-Agent
         id: pragent
-        if: steps.pr_language.outputs.skip_pr_agent != 'true'
+        if: >-
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true' &&
+          steps.pragent_head.outputs.is_stale != 'true'
         # 使用版本号加 digest 固定容器构建，避免 tag 被重推后改变运行内容。
         uses: docker://pragent/pr-agent:0.39.0-github_action@sha256:b253845caa8c7ff5ce8be78f32996647982bdd4890826a962b78eff2e385a825
         env:
@@ -291,9 +335,76 @@ jobs:
           # github_action_config.auto_improve: "true"
           # config.verbosity_level: "1"
 
+      - name: Clean stale PR-Agent inline comments
+        id: post_pragent_state
+        if: >-
+          always() &&
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true' &&
+          steps.pragent_head.outputs.is_stale != 'true' &&
+          steps.inline_state_before.outputs.inline_ids_b64 != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
+          BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
+        run: |
+          set -euo pipefail
+          current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          is_stale=false
+          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
+            is_stale=true
+          fi
+          echo "is_stale=${is_stale}" >> "${GITHUB_OUTPUT}"
+          if [ "${is_stale}" != "true" ]; then
+            exit 0
+          fi
+
+          before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
+          comments="$(mktemp)"
+          delete_ids="$(mktemp)"
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | @json' > "${comments}"
+          python3 - "${before_ids}" "${comments}" "${delete_ids}" "${RUN_HEAD_SHA}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          before_ids = set(json.loads(sys.argv[1] or "[]"))
+          comments_path = Path(sys.argv[2])
+          delete_path = Path(sys.argv[3])
+          head_sha = sys.argv[4]
+
+          delete_ids = []
+          for line in comments_path.read_text().splitlines():
+              if not line.strip():
+                  continue
+              item = json.loads(line)
+              if (
+                  item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("id") not in before_ids
+                  and item.get("commit_id") == head_sha
+              ):
+                  delete_ids.append(str(item["id"]))
+
+          delete_path.write_text("\n".join(delete_ids))
+          PY
+
+          if [ ! -s "${delete_ids}" ]; then
+            echo "No stale PR-Agent inline comments to clean."
+            exit 0
+          fi
+          while IFS= read -r comment_id; do
+            [ -z "${comment_id}" ] && continue
+            gh api --method DELETE "repos/${REPO}/pulls/comments/${comment_id}" >/dev/null
+          done < "${delete_ids}"
+
       - name: Publish PR-Agent code review summary
         if: >-
           steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true' &&
+          steps.pragent_head.outputs.is_stale != 'true' &&
+          steps.post_pragent_state.outputs.is_stale != 'true' &&
           (
             github.event_name == 'pull_request_target' ||
             (
@@ -514,13 +625,14 @@ jobs:
 
       - name: Restore PR-Agent description markers on failure
         if: >-
-          failure() &&
+          always() &&
           steps.prepare_description.outputs.body_changed == 'true' &&
           steps.pr_language.outputs.skip_pr_agent != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
         run: |
           set -euo pipefail
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
@@ -534,7 +646,13 @@ jobs:
           fi
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
-          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" <<'PY'
+          current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          is_stale=false
+          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
+            is_stale=true
+          fi
+
+          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" "${is_stale}" <<'PY'
           import json
           import re
           import sys
@@ -544,6 +662,7 @@ jobs:
           placeholder_body = Path(sys.argv[2]).read_text()
           current_body = Path(sys.argv[3]).read_text()
           payload_path = Path(sys.argv[4])
+          is_stale = sys.argv[5] == "true"
 
           start = "<!-- pr-agent-summary:start -->"
           end = "<!-- pr-agent-summary:end -->"
@@ -573,10 +692,10 @@ jobs:
 
           current_section = current_body[current_block[0]:current_block[1]]
           placeholder_section = placeholder_body[placeholder_block[0]:placeholder_block[1]]
-          if "pr_agent:summary" not in current_section:
+          if "pr_agent:summary" not in current_section and not is_stale:
               print("No visible PR-Agent summary placeholder to restore.")
               raise SystemExit(0)
-          if current_section != placeholder_section:
+          if current_section != placeholder_section and not is_stale:
               print("Current PR-Agent summary block changed; skip restore.")
               raise SystemExit(0)
 
