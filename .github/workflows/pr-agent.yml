@@ -540,7 +540,6 @@ jobs:
           python3 - "${review_data}" "${payload}" <<'PY'
           import json
           import os
-          import textwrap
           import urllib.error
           import urllib.request
           from pathlib import Path
@@ -640,14 +639,15 @@ jobs:
 
           summary = llm_summary() or fallback_summary()
           commit_label = "审查提交：" if use_chinese else "Reviewed commit:"
-          body = textwrap.dedent(f"""\
-          {marker}
-          ## Code Review
-
-          {summary}
-
-          {commit_label} [{review_data["short_sha"]}]({review_data["commit_url"]})
-          """)
+          body = "\n".join([
+              marker,
+              "## Code Review",
+              "",
+              summary.strip(),
+              "",
+              f'{commit_label} [{review_data["short_sha"]}]({review_data["commit_url"]})',
+              "",
+          ])
           payload_path.write_text(json.dumps({"body": body}, ensure_ascii=False))
           PY
 
@@ -679,6 +679,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
         run: |
           set -euo pipefail
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
@@ -693,12 +694,13 @@ jobs:
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
           current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          run_head_sha="${RUN_HEAD_SHA:-}"
           is_stale=false
-          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
+          if [ -n "${run_head_sha}" ] && [ "${current_head_sha}" != "${run_head_sha}" ]; then
             is_stale=true
           fi
 
-          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" "${RUN_HEAD_SHA}" "${is_stale}" <<'PY'
+          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" "${run_head_sha}" "${is_stale}" <<'PY'
           import json
           import re
           import sys
