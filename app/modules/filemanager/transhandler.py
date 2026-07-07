@@ -37,6 +37,8 @@ _BLURAY_MPLS_MAX_DURATION_SECONDS = 12 * 60 * 60
 _BLURAY_MPLS_TIME_BASE = 45000
 _BLURAY_PLAYITEM_IN_TIME_OFFSET = 14
 _BLURAY_PLAYITEM_OUT_TIME_OFFSET = 18
+_BLURAY_REMUX_LOCK_CACHE_LIMIT = 1024
+_BLURAY_REMUX_MIN_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,15 @@ class TransHandler:
         with cls._bluray_remux_locks_guard:
             if lock_key not in cls._bluray_remux_locks:
                 cls._bluray_remux_locks[lock_key] = threading.Lock()
+            while len(cls._bluray_remux_locks) > _BLURAY_REMUX_LOCK_CACHE_LIMIT:
+                removed = False
+                for stale_key, stale_lock in list(cls._bluray_remux_locks.items()):
+                    if stale_key != lock_key and not stale_lock.locked():
+                        cls._bluray_remux_locks.pop(stale_key, None)
+                        removed = True
+                        break
+                if not removed:
+                    break
             return cls._bluray_remux_locks[lock_key]
 
     @staticmethod
@@ -465,8 +476,12 @@ class TransHandler:
                     "-dn",
                     tmp_file.as_posix(),
                 ]
+            timeout = max(
+                _BLURAY_REMUX_MIN_TIMEOUT,
+                int(settings.BLURAY_REMUX_TIMEOUT or _BLURAY_REMUX_MIN_TIMEOUT),
+            )
             completed = subprocess.run(
-                command, capture_output=True, text=True, check=False
+                command, capture_output=True, text=True, check=False, timeout=timeout
             )
             if completed.returncode != 0:
                 errmsg = (completed.stderr or completed.stdout or "").strip()
@@ -487,6 +502,8 @@ class TransHandler:
                 return False, "媒体库存在同名文件，且质量更好"
             tmp_file.replace(target_file)
             return True, ""
+        except subprocess.TimeoutExpired:
+            return False, f"ffmpeg 转封装超过 {timeout} 秒"
         except Exception as err:
             return False, f"蓝光原盘转封装失败：{err}"
         finally:
@@ -764,18 +781,28 @@ class TransHandler:
             if overwrite_mode == "latest":
                 self.__delete_version_files(target_oper, target_file)
 
+        target_item = target_oper.get_item(target_file)
+        if not target_item and target_file.exists():
+            target_item = self.__build_local_fileitem(target_file)
+
         if transfer_type == "move" and not source_oper.delete(fileitem):
+            if not allow_target_replace and (target_file.exists() or target_file.is_symlink()):
+                try:
+                    target_file.unlink()
+                    target_item = None
+                except OSError as err:
+                    logger.error(f"回滚蓝光原盘转封装目标文件失败：{target_file} - {err}")
             return TransferInfo(
                 success=False,
                 message="转封装成功但删除源目录失败",
                 fileitem=fileitem,
+                target_item=target_item,
                 target_diritem=target_diritem,
                 fail_list=[fileitem.path],
                 transfer_type=transfer_type,
                 need_notify=need_notify,
             )
 
-        target_item = target_oper.get_item(target_file)
         if not target_item:
             target_item = self.__build_local_fileitem(target_file)
         logger.info(f"蓝光原盘 {fileitem.path} 转封装整理成功")

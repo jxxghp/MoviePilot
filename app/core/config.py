@@ -389,6 +389,8 @@ class ConfigModel(BaseModel):
     TRANSFER_THREADS: int = 1
     # 蓝光原盘目录自动转封装为单个MKV文件，默认关闭
     BLURAY_REMUX_ENABLED: bool = False
+    # 蓝光原盘转封装超时时间（秒）
+    BLURAY_REMUX_TIMEOUT: int = 6 * 60 * 60
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = (
         "{{title}}{% if year %} ({{year}}){% endif %}"

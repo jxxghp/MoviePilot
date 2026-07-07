@@ -918,3 +918,93 @@ class BluRayRemuxTest(TestCase):
             self.assertFalse(result.success)
             self.assertTrue(target_file.is_symlink())
             self.assertFalse(mock_run.called)
+
+    def test_bluray_remux_timeout_returns_failure(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+
+            def run_ffmpeg(command, *_args, **kwargs):
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch.object(
+                settings, "BLURAY_REMUX_TIMEOUT", 1
+            ), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertFalse(result.success)
+            self.assertIn("ffmpeg 转封装超过 60 秒", result.message)
+
+    def test_bluray_remux_target_lock_cache_is_bounded(self):
+        old_locks = TransHandler._bluray_remux_locks
+        try:
+            TransHandler._bluray_remux_locks = {}
+            with TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                for index in range(1100):
+                    TransHandler._TransHandler__get_bluray_remux_target_lock(
+                        root / f"target-{index}.mkv"
+                    )
+
+            self.assertLessEqual(len(TransHandler._bluray_remux_locks), 1024)
+        finally:
+            TransHandler._bluray_remux_locks = old_locks
+
+    def test_bluray_remux_move_delete_failure_rolls_back_new_target(self):
+        class DeleteFailingLocalStorage(LocalStorage):
+            def delete(self, fileitem):
+                return False
+
+        def run_ffmpeg(command, *_args, **_kwargs):
+            output_path = Path(command[-1])
+            output_path.write_bytes(b"mkv")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            source_item = self.__create_bluray_dir(source_root)
+            target_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).mkv"
+            )
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="move",
+                    source_oper=DeleteFailingLocalStorage(),
+                    target_oper=LocalStorage(),
+                    need_rename=False,
+                )
+
+            self.assertFalse(result.success)
+            self.assertTrue(source_root.exists())
+            self.assertFalse(target_file.exists())
