@@ -524,9 +524,7 @@ class TransHandler:
             rename_format=rename_format,
             need_rename=need_rename,
         )
-        if transfer_type == "move" and self.__is_path_relative_to(
-            target_file, bluray_root
-        ):
+        if self.__is_path_relative_to(target_file, bluray_root):
             return TransferInfo(
                 success=False,
                 message="蓝光原盘转封装目标不能位于源目录内",
