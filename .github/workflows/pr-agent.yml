@@ -323,7 +323,7 @@ jobs:
           pr_code_suggestions.extra_instructions: |
             Match the configured response language.
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
-            For prioritized issues, start the suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
+            Start every suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
           pr_code_suggestions.suggestions_score_threshold: "8"
           pr_code_suggestions.num_code_suggestions_per_chunk: "2"
@@ -374,16 +374,19 @@ jobs:
           comments_path = Path(sys.argv[2])
           delete_path = Path(sys.argv[3])
           head_sha = sys.argv[4]
+          risk_prefixes = ("🔴 **High Risk**:", "🟡 **Medium Risk**:", "🔵 **Low Risk**:")
 
           delete_ids = []
           for line in comments_path.read_text().splitlines():
               if not line.strip():
                   continue
               item = json.loads(line)
+              body = (item.get("body") or "").lstrip()
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
                   and item.get("commit_id") == head_sha
+                  and body.startswith(risk_prefixes)
               ):
                   delete_ids.append(str(item["id"]))
 
@@ -458,6 +461,7 @@ jobs:
           pr_url = sys.argv[5]
           commit_url = sys.argv[6]
           short_sha = sys.argv[7]
+          risk_prefixes = ("🔴 **High Risk**:", "🟡 **Medium Risk**:", "🔵 **Low Risk**:")
 
           comments = []
           for line in comments_path.read_text().splitlines():
@@ -469,6 +473,7 @@ jobs:
               if item.get("user", {}).get("login") == "github-actions[bot]"
               and item.get("id") not in before_ids
               and item.get("commit_id") == head_sha
+              and (item.get("body") or "").lstrip().startswith(risk_prefixes)
           ]
           suggestions = []
           for item in new_comments:
@@ -632,7 +637,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
         run: |
           set -euo pipefail
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
@@ -646,13 +650,8 @@ jobs:
           fi
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
-          current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
-          is_stale=false
-          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
-            is_stale=true
-          fi
 
-          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" "${is_stale}" <<'PY'
+          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" <<'PY'
           import json
           import re
           import sys
@@ -662,7 +661,6 @@ jobs:
           placeholder_body = Path(sys.argv[2]).read_text()
           current_body = Path(sys.argv[3]).read_text()
           payload_path = Path(sys.argv[4])
-          is_stale = sys.argv[5] == "true"
 
           start = "<!-- pr-agent-summary:start -->"
           end = "<!-- pr-agent-summary:end -->"
@@ -692,10 +690,10 @@ jobs:
 
           current_section = current_body[current_block[0]:current_block[1]]
           placeholder_section = placeholder_body[placeholder_block[0]:placeholder_block[1]]
-          if "pr_agent:summary" not in current_section and not is_stale:
+          if "pr_agent:summary" not in current_section:
               print("No visible PR-Agent summary placeholder to restore.")
               raise SystemExit(0)
-          if current_section != placeholder_section and not is_stale:
+          if current_section != placeholder_section:
               print("Current PR-Agent summary block changed; skip restore.")
               raise SystemExit(0)
 
