@@ -48,7 +48,7 @@ jobs:
         )
       )
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}-${{ github.event_name == 'issue_comment' && github.event.comment.id || 'auto' }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}-${{ github.event_name == 'issue_comment' && (github.event.comment.body == '/ask' || startsWith(github.event.comment.body, '/ask ')) && github.event.comment.id || 'write' }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -261,6 +261,7 @@ jobs:
           set -euo pipefail
           can_describe="${CAN_DESCRIBE:-true}"
           should_improve=true
+          should_publish_existing_summary=false
           push_commands='["/describe", "/improve"]'
           if [ "${can_describe}" = "false" ]; then
             push_commands='["/improve"]'
@@ -300,6 +301,9 @@ jobs:
             fi
             if [ -n "${existing_summary_id}" ] || [ -n "${existing_inline_id}" ]; then
               should_improve=false
+              if [ -z "${existing_summary_id}" ] && [ -n "${existing_inline_id}" ]; then
+                should_publish_existing_summary=true
+              fi
               if [ "${can_describe}" = "false" ]; then
                 push_commands='[]'
               else
@@ -309,6 +313,7 @@ jobs:
             fi
           fi
           echo "should_improve=${should_improve}" >> "${GITHUB_OUTPUT}"
+          echo "should_publish_existing_summary=${should_publish_existing_summary}" >> "${GITHUB_OUTPUT}"
           echo "push_commands=${push_commands}" >> "${GITHUB_OUTPUT}"
 
       - name: Snapshot PR-Agent review state
@@ -320,7 +325,10 @@ jobs:
           (
             (
               github.event_name == 'pull_request_target' &&
-              steps.review_history.outputs.should_improve == 'true'
+              (
+                steps.review_history.outputs.should_improve == 'true' ||
+                steps.review_history.outputs.should_publish_existing_summary == 'true'
+              )
             ) ||
             (
               github.event_name == 'issue_comment' &&
@@ -640,6 +648,7 @@ jobs:
           BEFORE_REVIEW_IDS_B64: ${{ steps.inline_state_before.outputs.review_ids_b64 }}
           RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
           SUMMARY_LANGUAGE: ${{ steps.pr_language.outputs.summary_language }}
+          USE_EXISTING_INLINE_SUMMARY: ${{ github.event_name == 'pull_request_target' && steps.review_history.outputs.should_publish_existing_summary == 'true' }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           SUMMARY_MODEL: gpt-5.5
@@ -685,6 +694,7 @@ jobs:
           commit_url = sys.argv[8]
           short_sha = sys.argv[9]
           marker = os.environ["PR_AGENT_INLINE_MARKER"]
+          use_existing_inline_summary = (os.environ.get("USE_EXISTING_INLINE_SUMMARY") or "").lower() == "true"
           marker_re = re.compile(
               r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*",
               re.IGNORECASE,
@@ -693,7 +703,10 @@ jobs:
           def normalize_suggestion_body(body: str) -> str:
               return marker_re.sub("", body or "", count=1).strip()
 
-          def is_pr_agent_suggestion(item: dict) -> bool:
+          def has_inline_marker(item: dict) -> bool:
+              return bool(marker_re.search(item.get("body") or ""))
+
+          def has_current_run_marker(item: dict) -> bool:
               return (item.get("body") or "").lstrip().startswith(marker)
 
           comments = []
@@ -713,14 +726,22 @@ jobs:
               ):
                   new_review_ids.add(item["id"])
 
-          new_comments = [
-              item for item in comments
-              if item.get("user", {}).get("login") == "github-actions[bot]"
-              and item.get("id") not in before_ids
-              and item.get("commit_id") == head_sha
-              and item.get("pull_request_review_id") in new_review_ids
-              and is_pr_agent_suggestion(item)
-          ]
+          if use_existing_inline_summary:
+              new_comments = [
+                  item for item in comments
+                  if item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("commit_id") == head_sha
+                  and has_inline_marker(item)
+              ]
+          else:
+              new_comments = [
+                  item for item in comments
+                  if item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("id") not in before_ids
+                  and item.get("commit_id") == head_sha
+                  and item.get("pull_request_review_id") in new_review_ids
+                  and has_current_run_marker(item)
+              ]
           suggestions = []
           for item in new_comments:
               body = normalize_suggestion_body(item.get("body") or "")
