@@ -48,7 +48,7 @@ jobs:
         )
       )
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}-${{ github.event_name == 'issue_comment' && github.event.comment.id || 'pr' }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -307,6 +307,7 @@ jobs:
           steps.pr_language.outputs.skip_pr_agent != 'true' &&
           steps.run_state.outputs.is_stale != 'true' &&
           steps.pragent_head.outputs.is_stale != 'true'
+        timeout-minutes: 40
         # 使用版本号加 digest 固定容器构建，避免 tag 被重推后改变运行内容。
         uses: docker://pragent/pr-agent:0.39.0-github_action@sha256:b253845caa8c7ff5ce8be78f32996647982bdd4890826a962b78eff2e385a825
         env:
@@ -443,7 +444,6 @@ jobs:
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_review_ids
-                  and item.get("commit_id") == head_sha
               ):
                   new_review_ids.add(item["id"])
 
@@ -455,7 +455,6 @@ jobs:
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
-                  and item.get("commit_id") == head_sha
                   and item.get("pull_request_review_id") in new_review_ids
                   and is_pr_agent_suggestion(item)
               ):
@@ -547,18 +546,13 @@ jobs:
               r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
               re.IGNORECASE,
           )
-          risk_prefix_re = re.compile(
-              r"^\s*"
-              r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
-              re.IGNORECASE,
-          )
 
           def normalize_suggestion_body(body: str) -> str:
               return re.sub(r"^\s*<!-- pr-agent-inline-comment -->\s*", "", body or "").strip()
 
           def is_pr_agent_suggestion(item: dict) -> bool:
               body = item.get("body") or ""
-              return bool(pr_agent_marker_re.search(body) or risk_prefix_re.search(body))
+              return bool(pr_agent_marker_re.search(body))
 
           comments = []
           for line in comments_path.read_text().splitlines():
@@ -753,6 +747,7 @@ jobs:
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
           placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
           current_body="$(mktemp)"
+          latest_body="$(mktemp)"
           payload="$(mktemp)"
 
           if [ ! -s "${body_backup}" ] || [ ! -s "${placeholder_body}" ]; then
@@ -832,5 +827,10 @@ jobs:
           payload_path.write_text(json.dumps({"body": next_body}, ensure_ascii=False))
           PY
           if [ -s "${payload}" ]; then
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${latest_body}"
+            if ! cmp -s "${current_body}" "${latest_body}"; then
+              echo "PR body changed while preparing restore payload; skip restore."
+              exit 0
+            fi
             gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
           fi
