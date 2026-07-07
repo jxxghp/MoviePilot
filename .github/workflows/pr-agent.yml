@@ -49,7 +49,7 @@ jobs:
       )
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -492,6 +492,12 @@ jobs:
           """)
           payload_path.write_text(json.dumps({"body": body}, ensure_ascii=False))
           PY
+
+          latest_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [ "${latest_head_sha}" != "${HEAD_SHA}" ]; then
+            echo "PR head changed from ${HEAD_SHA} to ${latest_head_sha}; skip stale code review summary."
+            exit 0
+          fi
 
           new_comment_id="$(gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" --jq '.id')"
           comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq ".[] | select(.id != ${new_comment_id} and .user.login == \"github-actions[bot]\" and ((.body | startswith(\"<!-- pr-agent-code-review-summary -->\")) or (.body | startswith(\"<!-- pr-agent-update-notification -->\")))) | .id")"
