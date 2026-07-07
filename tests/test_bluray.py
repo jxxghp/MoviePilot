@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
+import shutil
 import subprocess
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
@@ -260,6 +261,19 @@ class BluRayRemuxTest(TestCase):
         path.write_bytes(b"MPLS0200" + (16).to_bytes(4, "big") + b"\x00" * 4 + playlist)
 
     @staticmethod
+    def __set_first_mpls_times(path: Path, in_time: int, out_time: int):
+        data = bytearray(path.read_bytes())
+        playlist_start = int.from_bytes(data[8:12], "big")
+        first_playitem_pos = playlist_start + 10
+        data[first_playitem_pos + 13:first_playitem_pos + 17] = in_time.to_bytes(
+            4, "big"
+        )
+        data[first_playitem_pos + 17:first_playitem_pos + 21] = out_time.to_bytes(
+            4, "big"
+        )
+        path.write_bytes(data)
+
+    @staticmethod
     def __create_bluray_dir(
             root: Path,
             playlist_name: str = "00000.mpls",
@@ -359,6 +373,47 @@ class BluRayRemuxTest(TestCase):
             command = mock_run.call_args.args[0]
             self.assertIn("concat", command)
             self.assertIn("-safe", command)
+
+    def test_bluray_remux_writes_playlist_clip_points(self):
+        concat_files = []
+
+        def run_ffmpeg(command, *_args, **_kwargs):
+            concat_files.append(Path(command[command.index("-i") + 1]).read_text())
+            output_path = Path(command[-1])
+            output_path.write_bytes(b"mkv")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            source_item = self.__create_bluray_dir(source_root)
+            self.__set_first_mpls_times(
+                source_root / "BDMV" / "PLAYLIST" / "00000.mpls",
+                in_time=45000,
+                out_time=90000,
+            )
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertTrue(result.success)
+            self.assertIn("inpoint 1", concat_files[0])
+            self.assertIn("outpoint 2", concat_files[0])
 
     def test_bluray_remux_accepts_uppercase_playlist_suffix(self):
         def run_ffmpeg(command, *_args, **_kwargs):
@@ -524,6 +579,17 @@ class BluRayRemuxTest(TestCase):
                 [],
             )
 
+    def test_bluray_remux_rejects_invalid_playlist_time_range(self):
+        with TemporaryDirectory() as temp_dir:
+            mpls_file = Path(temp_dir) / "00000.mpls"
+            self.__write_mpls(mpls_file, ["00000.m2ts"])
+            self.__set_first_mpls_times(mpls_file, in_time=90000, out_time=45000)
+
+            self.assertEqual(
+                TransHandler._TransHandler__parse_mpls_stream_names(mpls_file),
+                [],
+            )
+
     def test_bluray_remux_rejects_large_playlist_parse(self):
         with TemporaryDirectory() as temp_dir:
             mpls_file = Path(temp_dir) / "00000.mpls"
@@ -584,6 +650,32 @@ class BluRayRemuxTest(TestCase):
                 self.assertTrue(source_root.exists())
                 self.assertFalse((source_root / f"{source_item.name}.mkv").exists())
                 self.assertFalse(mock_run.called)
+
+    def test_bluray_remux_move_rejects_multi_stream_largest_file_fallback(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            source_item = self.__create_bluray_dir(source_root)
+            shutil.rmtree(source_root / "BDMV" / "PLAYLIST")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="move",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    need_rename=False,
+                )
+
+            self.assertFalse(result.success)
+            self.assertTrue(source_root.exists())
+            self.assertFalse(mock_run.called)
 
     def test_bluray_remux_move_rejects_child_directory_entry(self):
         with TemporaryDirectory() as temp_dir:

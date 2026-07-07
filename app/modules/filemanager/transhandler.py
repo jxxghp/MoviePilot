@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import threading
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -31,6 +32,24 @@ from app.schemas.types import MediaType, ChainEventType
 from app.utils.system import SystemUtils
 
 _BLURAY_MPLS_MAX_SIZE = 1024 * 1024
+_BLURAY_MPLS_TIME_BASE = 45000
+
+
+@dataclass(frozen=True)
+class _BlurayRemuxSource:
+    """
+    蓝光转封装源分片。
+    """
+    path: Path
+    in_time: int = 0
+    out_time: int = 0
+
+    @property
+    def need_clip(self) -> bool:
+        """
+        是否需要按 MPLS 时间戳裁剪。
+        """
+        return self.in_time > 0 or self.out_time > 0
 
 
 class TransHandler:
@@ -186,9 +205,9 @@ class TransHandler:
         return None
 
     @staticmethod
-    def __parse_mpls_stream_names(mpls_file: Path) -> List[str]:
+    def __parse_mpls_stream_items(mpls_file: Path) -> List[Tuple[str, int, int]]:
         """
-        从 MPLS 播放列表中提取 m2ts 分片名。
+        从 MPLS 播放列表中提取 m2ts 分片名和裁剪时间。
         """
         try:
             if mpls_file.stat().st_size > _BLURAY_MPLS_MAX_SIZE:
@@ -203,28 +222,43 @@ class TransHandler:
             pos = playlist_start + 6
             playitem_count = int.from_bytes(data[pos:pos + 2], "big")
             pos += 4
-            stream_names = []
+            stream_items = []
             for _ in range(playitem_count):
-                if pos + 13 > len(data):
+                if pos + 21 > len(data):
                     return []
                 item_length = int.from_bytes(data[pos:pos + 2], "big")
                 item_end = pos + 2 + item_length
-                if item_length < 9 or item_end > len(data):
+                if item_length < 19 or item_end > len(data):
                     return []
                 clip_name = data[pos + 2:pos + 7].decode(
                     "ascii", errors="ignore"
                 ).strip("\x00 ")
                 if not clip_name:
                     return []
-                stream_names.append(f"{clip_name}.m2ts")
+                in_time = int.from_bytes(data[pos + 13:pos + 17], "big")
+                out_time = int.from_bytes(data[pos + 17:pos + 21], "big")
+                if out_time <= in_time:
+                    return []
+                stream_items.append((f"{clip_name}.m2ts", in_time, out_time))
                 pos = item_end
-            return stream_names
+            return stream_items
         except Exception as err:
             logger.debug(f"解析蓝光播放列表 {mpls_file} 失败：{err}")
             return []
 
     @classmethod
-    def __get_bluray_remux_sources(cls, bluray_root: Path) -> Tuple[List[Path], int]:
+    def __parse_mpls_stream_names(cls, mpls_file: Path) -> List[str]:
+        """
+        从 MPLS 播放列表中提取 m2ts 分片名。
+        """
+        return [item[0] for item in cls.__parse_mpls_stream_items(mpls_file)]
+
+    @classmethod
+    def __get_bluray_remux_sources(
+            cls,
+            bluray_root: Path,
+            allow_largest_fallback: bool = True,
+    ) -> Tuple[List[_BlurayRemuxSource], int]:
         """
         获取蓝光原盘转封装源文件列表。
         """
@@ -254,16 +288,19 @@ class TransHandler:
                 if item.is_file() and item.suffix.lower() == ".mpls"
             ]
             for mpls_file in sorted(playlist_files):
-                names = cls.__parse_mpls_stream_names(mpls_file)
+                stream_items = cls.__parse_mpls_stream_items(mpls_file)
                 files = [
                     stream_map.get(name.upper())
-                    for name in names
+                    for name, _in_time, _out_time in stream_items
                 ]
                 if not files or any(item is None for item in files):
                     continue
                 total_size = sum(item.stat().st_size for item in files)
                 if total_size > best_size:
-                    best_files = files
+                    best_files = [
+                        _BlurayRemuxSource(file, in_time, out_time)
+                        for file, (_name, in_time, out_time) in zip(files, stream_items)
+                    ]
                     best_size = total_size
         if best_files:
             return best_files, best_size
@@ -274,8 +311,14 @@ class TransHandler:
             )
             return [], 0
 
+        if len(stream_files) > 1 and not allow_largest_fallback:
+            logger.warn(
+                f"蓝光原盘 {bluray_root} 缺少播放列表，移动模式跳过最大分片回退"
+            )
+            return [], 0
+
         largest_file = max(stream_files, key=lambda item: item.stat().st_size)
-        return [largest_file], largest_file.stat().st_size
+        return [_BlurayRemuxSource(largest_file)], largest_file.stat().st_size
 
     @staticmethod
     def __build_local_fileitem(path: Path) -> FileItem:
@@ -303,10 +346,17 @@ class TransHandler:
             raise ValueError("蓝光分片路径包含换行控制字符")
         return value.replace("'", "'\\''")
 
+    @staticmethod
+    def __format_bluray_time(value: int) -> str:
+        """
+        将 MPLS 时间戳转换为 ffconcat 秒数。
+        """
+        return f"{value / _BLURAY_MPLS_TIME_BASE:.6f}".rstrip("0").rstrip(".")
+
     @classmethod
     def __run_bluray_remux(
             cls,
-            source_files: List[Path],
+            source_files: List[_BlurayRemuxSource],
             target_file: Path,
     ) -> Tuple[bool, str]:
         """
@@ -325,7 +375,7 @@ class TransHandler:
             f".{target_file.stem}.{temp_suffix}.ffconcat"
         )
         try:
-            if len(source_files) == 1:
+            if len(source_files) == 1 and not source_files[0].need_clip:
                 command = [
                     ffmpeg,
                     "-hide_banner",
@@ -333,7 +383,7 @@ class TransHandler:
                     "error",
                     "-y",
                     "-i",
-                    source_files[0].as_posix(),
+                    source_files[0].path.as_posix(),
                     "-map",
                     "0",
                     "-c",
@@ -342,13 +392,21 @@ class TransHandler:
                     tmp_file.as_posix(),
                 ]
             else:
-                concat_file.write_text(
-                    "ffconcat version 1.0\n"
-                    + "\n".join(
-                        f"file '{cls.__escape_ffconcat_path(item)}'"
-                        for item in source_files
+                concat_lines = ["ffconcat version 1.0"]
+                for item in source_files:
+                    concat_lines.append(
+                        f"file '{cls.__escape_ffconcat_path(item.path)}'"
                     )
-                    + "\n",
+                    if item.in_time > 0:
+                        concat_lines.append(
+                            f"inpoint {cls.__format_bluray_time(item.in_time)}"
+                        )
+                    if item.out_time > 0:
+                        concat_lines.append(
+                            f"outpoint {cls.__format_bluray_time(item.out_time)}"
+                        )
+                concat_file.write_text(
+                    "\n".join(concat_lines) + "\n",
                     encoding="utf-8",
                 )
                 command = [
@@ -580,7 +638,10 @@ class TransHandler:
                     need_notify=need_notify,
                 )
 
-        source_files, source_size = self.__get_bluray_remux_sources(bluray_root)
+        source_files, source_size = self.__get_bluray_remux_sources(
+            bluray_root,
+            allow_largest_fallback=transfer_type == "copy",
+        )
         if not source_files:
             return TransferInfo(
                 success=False,
