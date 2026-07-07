@@ -461,7 +461,7 @@ jobs:
             echo "No stale PR-Agent inline comments to clean."
             exit 0
           fi
-          while IFS= read -r comment_id; do
+          while IFS= read -r comment_id || [ -n "${comment_id}" ]; do
             [ -z "${comment_id}" ] && continue
             gh api --method DELETE "repos/${REPO}/pulls/comments/${comment_id}" >/dev/null
           done < "${delete_ids}"
