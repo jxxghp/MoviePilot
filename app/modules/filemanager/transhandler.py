@@ -1,4 +1,6 @@
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -125,6 +127,449 @@ class TransHandler:
             type=item_type,
             extension=path.suffix.lstrip(".") if item_type == "file" else None,
             size=size if item_type == "file" else None,
+        )
+
+    @staticmethod
+    def __get_local_bluray_root(path: Path) -> Optional[Path]:
+        """
+        获取本地蓝光原盘根目录。
+        """
+        if (path / "BDMV" / "STREAM").is_dir():
+            return path
+        if path.name.upper() == "BDMV" and (path / "STREAM").is_dir():
+            return path.parent
+        if (
+            path.name.upper() == "STREAM"
+            and path.parent.name.upper() == "BDMV"
+            and path.is_dir()
+        ):
+            return path.parent.parent
+        return None
+
+    @staticmethod
+    def __parse_mpls_stream_names(mpls_file: Path) -> List[str]:
+        """
+        从 MPLS 播放列表中提取 m2ts 分片名。
+        """
+        try:
+            data = mpls_file.read_bytes()
+            if len(data) < 16:
+                return []
+            playlist_start = int.from_bytes(data[8:12], "big")
+            if playlist_start <= 0 or playlist_start + 10 > len(data):
+                return []
+            pos = playlist_start + 6
+            playitem_count = int.from_bytes(data[pos:pos + 2], "big")
+            pos += 4
+            stream_names = []
+            for _ in range(playitem_count):
+                if pos + 13 > len(data):
+                    break
+                item_length = int.from_bytes(data[pos:pos + 2], "big")
+                item_end = pos + 2 + item_length
+                if item_length < 9 or item_end > len(data):
+                    break
+                clip_name = data[pos + 2:pos + 7].decode(
+                    "ascii", errors="ignore"
+                ).strip("\x00 ")
+                if clip_name:
+                    stream_names.append(f"{clip_name}.m2ts")
+                pos = item_end
+            return stream_names
+        except Exception as err:
+            logger.debug(f"解析蓝光播放列表 {mpls_file} 失败：{err}")
+            return []
+
+    @classmethod
+    def __get_bluray_remux_sources(cls, bluray_root: Path) -> Tuple[List[Path], int]:
+        """
+        获取蓝光原盘转封装源文件列表。
+        """
+        stream_dir = bluray_root / "BDMV" / "STREAM"
+        stream_files = [
+            item
+            for item in stream_dir.iterdir()
+            if item.is_file() and item.suffix.lower() == ".m2ts"
+        ] if stream_dir.is_dir() else []
+        if not stream_files:
+            return [], 0
+
+        stream_map = {item.name.upper(): item for item in stream_files}
+        playlist_dir = bluray_root / "BDMV" / "PLAYLIST"
+        best_files = []
+        best_size = 0
+        if playlist_dir.is_dir():
+            for mpls_file in sorted(playlist_dir.glob("*.mpls")):
+                names = cls.__parse_mpls_stream_names(mpls_file)
+                files = [
+                    stream_map.get(name.upper())
+                    for name in names
+                ]
+                if not files or any(item is None for item in files):
+                    continue
+                total_size = sum(item.stat().st_size for item in files)
+                if total_size > best_size:
+                    best_files = files
+                    best_size = total_size
+        if best_files:
+            return best_files, best_size
+
+        largest_file = max(stream_files, key=lambda item: item.stat().st_size)
+        return [largest_file], largest_file.stat().st_size
+
+    @staticmethod
+    def __build_local_fileitem(path: Path) -> FileItem:
+        """
+        根据本地文件路径构造文件项。
+        """
+        return FileItem(
+            storage="local",
+            path=path.as_posix(),
+            name=path.name,
+            basename=path.stem,
+            type="file",
+            size=path.stat().st_size,
+            extension=path.suffix.lstrip("."),
+            modify_time=path.stat().st_mtime,
+        )
+
+    @staticmethod
+    def __escape_ffconcat_path(path: Path) -> str:
+        """
+        转义 ffconcat 文件中的路径。
+        """
+        return path.as_posix().replace("\\", "/").replace("'", "\\'")
+
+    @classmethod
+    def __run_bluray_remux(
+            cls,
+            source_files: List[Path],
+            target_file: Path,
+    ) -> Tuple[bool, str]:
+        """
+        使用 ffmpeg 将蓝光原盘分片转封装为单个 MKV。
+        """
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            return False, "未找到 ffmpeg，无法进行蓝光原盘转封装"
+
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp_file = target_file.with_name(
+            f".{target_file.stem}.tmp{target_file.suffix}"
+        )
+        concat_file = target_file.with_name(f".{target_file.stem}.ffconcat")
+        try:
+            if tmp_file.exists():
+                tmp_file.unlink()
+            if len(source_files) == 1:
+                command = [
+                    ffmpeg,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    source_files[0].as_posix(),
+                    "-map",
+                    "0",
+                    "-c",
+                    "copy",
+                    "-dn",
+                    tmp_file.as_posix(),
+                ]
+            else:
+                concat_file.write_text(
+                    "ffconcat version 1.0\n"
+                    + "\n".join(
+                        f"file '{cls.__escape_ffconcat_path(item)}'"
+                        for item in source_files
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                command = [
+                    ffmpeg,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    concat_file.as_posix(),
+                    "-map",
+                    "0",
+                    "-c",
+                    "copy",
+                    "-dn",
+                    tmp_file.as_posix(),
+                ]
+            completed = subprocess.run(
+                command, capture_output=True, text=True, check=False
+            )
+            if completed.returncode != 0:
+                errmsg = (completed.stderr or completed.stdout or "").strip()
+                return False, f"ffmpeg 转封装失败：{errmsg or completed.returncode}"
+            if not tmp_file.exists():
+                return False, "ffmpeg 转封装完成但未生成目标文件"
+            if target_file.exists() or target_file.is_symlink():
+                target_file.unlink()
+            tmp_file.replace(target_file)
+            return True, ""
+        except Exception as err:
+            return False, f"蓝光原盘转封装失败：{err}"
+        finally:
+            if tmp_file.exists():
+                tmp_file.unlink()
+            if concat_file.exists():
+                concat_file.unlink()
+
+    def __get_bluray_remux_target_file(
+            self,
+            fileitem: FileItem,
+            in_meta: MetaBase,
+            mediainfo: MediaInfo,
+            target_path: Path,
+            rename_format: str,
+            need_rename: bool,
+    ) -> Path:
+        """
+        获取蓝光原盘转封装目标文件路径。
+        """
+        if need_rename:
+            target_file = self.get_rename_path(
+                path=target_path,
+                template_string=rename_format,
+                rename_dict=self.get_naming_dict(
+                    meta=in_meta,
+                    mediainfo=mediainfo,
+                    file_ext=".mkv",
+                ),
+                source_path=fileitem.path,
+                source_item=fileitem,
+            )
+            if target_file.suffix.lower() != ".mkv":
+                target_file = target_file.parent / f"{target_file.name}.mkv"
+            return target_file
+        return target_path / f"{fileitem.name}.mkv"
+
+    def __check_bluray_remux_overwrite(
+            self,
+            fileitem: FileItem,
+            target_oper: StorageBase,
+            target_file: Path,
+            target_storage: str,
+            transfer_type: str,
+            overwrite_mode: Optional[str],
+            source_size: int,
+    ) -> Tuple[bool, str]:
+        """
+        检查蓝光转封装目标文件覆盖策略。
+        """
+        target_item = target_oper.get_item(target_file)
+        if not target_item:
+            if overwrite_mode == "latest":
+                self.__delete_version_files(target_oper, target_file)
+            return True, ""
+
+        logger.info(
+            f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}"
+        )
+        overwrite_event_data = TransferOverwriteCheckEventData(
+            fileitem=fileitem,
+            target_item=target_item,
+            target_storage=target_storage,
+            target_path=target_file,
+            overwrite_mode=overwrite_mode or "",
+            transfer_type=transfer_type,
+        )
+        overwrite_event = eventmanager.send_event(
+            ChainEventType.TransferOverwriteCheck,
+            overwrite_event_data,
+        )
+        if overwrite_event and overwrite_event.event_data:
+            overwrite_event_data = overwrite_event.event_data
+            if overwrite_event_data.overwrite is True:
+                target_oper.delete(target_item)
+                return True, ""
+            if overwrite_event_data.overwrite is False:
+                return False, overwrite_event_data.reason or "插件决定不覆盖已有文件"
+
+        if overwrite_mode in ["always", "latest"]:
+            target_oper.delete(target_item)
+            return True, ""
+        if overwrite_mode == "size":
+            if (target_item.size or 0) < source_size:
+                target_oper.delete(target_item)
+                return True, ""
+            return False, "媒体库存在同名文件，且质量更好"
+        if overwrite_mode == "never":
+            return False, "媒体库存在同名文件，当前覆盖模式为不覆盖"
+        return False, f"{target_file} 已存在"
+
+    def __transfer_bluray_remux(
+            self,
+            fileitem: FileItem,
+            in_meta: MetaBase,
+            mediainfo: MediaInfo,
+            target_storage: str,
+            target_path: Path,
+            transfer_type: str,
+            source_oper: StorageBase,
+            target_oper: StorageBase,
+            rename_format: str,
+            overwrite_mode: Optional[str],
+            need_scrape: bool,
+            need_rename: bool,
+            need_notify: bool,
+    ) -> Optional[TransferInfo]:
+        """
+        在配置开启时将本地蓝光原盘目录转封装为单个 MKV。
+        """
+        if not settings.BLURAY_REMUX_ENABLED:
+            return None
+        if (fileitem.storage or "local") != "local" or target_storage != "local":
+            logger.warn("蓝光原盘转封装仅支持本地源到本地目标，保持目录整理")
+            return None
+        if transfer_type not in ["copy", "move"]:
+            logger.warn(
+                f"蓝光原盘转封装不支持 {transfer_type} 整理方式，保持目录整理"
+            )
+            return None
+
+        bluray_root = self.__get_local_bluray_root(Path(fileitem.path))
+        if not bluray_root:
+            return None
+        if mediainfo.type == MediaType.TV and in_meta.begin_episode is None:
+            logger.warn("电视剧蓝光原盘未识别到集数，保持目录整理")
+            return None
+
+        target_file = self.__get_bluray_remux_target_file(
+            fileitem=fileitem,
+            in_meta=in_meta,
+            mediainfo=mediainfo,
+            target_path=target_path,
+            rename_format=rename_format,
+            need_rename=need_rename,
+        )
+        if need_rename:
+            folder_path = DirectoryHelper.get_media_root_path(
+                rename_format, rename_path=target_file
+            )
+        else:
+            folder_path = target_file.parent
+        if not folder_path:
+            return TransferInfo(
+                success=False,
+                message="重命名格式无效",
+                fileitem=fileitem,
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
+        target_diritem = target_oper.get_folder(folder_path)
+        if not target_diritem:
+            return TransferInfo(
+                success=False,
+                message=f"目标目录 {folder_path} 获取失败",
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
+
+        event_data = TransferInterceptEventData(
+            fileitem=fileitem,
+            meta=in_meta,
+            mediainfo=mediainfo,
+            target_storage=target_storage,
+            target_path=target_file,
+            transfer_type=transfer_type,
+            options={"bluray_remux": True},
+        )
+        event = eventmanager.send_event(ChainEventType.TransferIntercept, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            if event_data.cancel:
+                return TransferInfo(
+                    success=False,
+                    message=event_data.reason,
+                    fileitem=fileitem,
+                    fail_list=[fileitem.path],
+                    transfer_type=transfer_type,
+                    need_notify=need_notify,
+                )
+
+        source_files, source_size = self.__get_bluray_remux_sources(bluray_root)
+        if not source_files:
+            return TransferInfo(
+                success=False,
+                message=f"蓝光原盘 {bluray_root} 未找到可转封装的视频分片",
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
+        can_overwrite, errmsg = self.__check_bluray_remux_overwrite(
+            fileitem=fileitem,
+            target_oper=target_oper,
+            target_file=target_file,
+            target_storage=target_storage,
+            transfer_type=transfer_type,
+            overwrite_mode=overwrite_mode,
+            source_size=source_size,
+        )
+        if not can_overwrite:
+            return TransferInfo(
+                success=False,
+                message=errmsg,
+                fileitem=fileitem,
+                target_diritem=target_diritem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
+
+        logger.info(f"正在转封装蓝光原盘：{bluray_root} 到 {target_file}")
+        state, errmsg = self.__run_bluray_remux(source_files, target_file)
+        if not state:
+            logger.error(f"蓝光原盘 {fileitem.path} 转封装失败：{errmsg}")
+            return TransferInfo(
+                success=False,
+                message=errmsg,
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
+        if transfer_type == "move" and not source_oper.delete(fileitem):
+            return TransferInfo(
+                success=False,
+                message="转封装成功但删除源目录失败",
+                fileitem=fileitem,
+                target_diritem=target_diritem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
+
+        target_item = target_oper.get_item(target_file)
+        if not target_item:
+            target_item = self.__build_local_fileitem(target_file)
+        logger.info(f"蓝光原盘 {fileitem.path} 转封装整理成功")
+        return TransferInfo(
+            success=True,
+            fileitem=fileitem,
+            target_item=target_item,
+            target_diritem=target_diritem,
+            need_scrape=need_scrape,
+            need_notify=need_notify,
+            transfer_type=transfer_type,
+            file_list=[fileitem.path],
+            file_list_new=[target_item.path],
+            file_count=1,
+            total_size=target_item.size or 0,
         )
 
     def transfer_media(
@@ -257,6 +702,24 @@ class TransHandler:
                     fileitem.size = sum(
                         file.size for file in source_oper.list(stream_fileitem) or []
                     )
+                # 可选：将本地蓝光原盘转封装为单个 MKV 文件
+                bluray_remux_result = self.__transfer_bluray_remux(
+                    fileitem=fileitem,
+                    in_meta=in_meta,
+                    mediainfo=mediainfo,
+                    target_storage=target_storage,
+                    target_path=target_path,
+                    transfer_type=transfer_type,
+                    source_oper=source_oper,
+                    target_oper=target_oper,
+                    rename_format=rename_format,
+                    overwrite_mode=overwrite_mode,
+                    need_scrape=need_scrape,
+                    need_rename=need_rename,
+                    need_notify=need_notify,
+                )
+                if bluray_remux_result:
+                    return bluray_remux_result
                 # 整理目录
                 new_diritem, errmsg = self.__transfer_dir(
                     fileitem=fileitem,

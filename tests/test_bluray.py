@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
+import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 from unittest import TestCase
 from unittest.mock import patch
@@ -9,12 +11,15 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.event import Event
 from app.core.metainfo import MetaInfoPath
 from app.db.models.transferhistory import TransferHistory
 from app.log import logger
-from app.schemas.types import EventType
+from app.modules.filemanager.storages.local import LocalStorage
+from app.modules.filemanager.transhandler import TransHandler
+from app.schemas.types import EventType, MediaType
 from tests.cases.files import bluray_files
 
 
@@ -225,3 +230,121 @@ class BluRayTest(TestCase):
             "app.chain.media.MediaChain.metadata_nfo", return_value=None
         ) as mock:
             self._test_scrape_metadata(mock_metadata_nfo=mock)
+
+
+class BluRayRemuxTest(TestCase):
+    @staticmethod
+    def __write_mpls(path: Path, stream_names: list[str]):
+        """
+        写入只包含基础 PlayItem 的最小 MPLS 测试文件。
+        """
+        items = b""
+        for stream_name in stream_names:
+            clip_name = Path(stream_name).stem.encode("ascii")[:5].ljust(5, b"\x00")
+            body = (
+                clip_name
+                + b"M2TS"
+                + b"\x00"
+                + b"\x01"
+                + (0).to_bytes(4, "big")
+                + (90000).to_bytes(4, "big")
+            )
+            items += len(body).to_bytes(2, "big") + body
+        playlist = (
+            len(items).to_bytes(4, "big")
+            + b"\x00\x00"
+            + len(stream_names).to_bytes(2, "big")
+            + (0).to_bytes(2, "big")
+            + items
+        )
+        path.write_bytes(b"MPLS0200" + (16).to_bytes(4, "big") + b"\x00" * 4 + playlist)
+
+    @staticmethod
+    def __create_bluray_dir(root: Path) -> schemas.FileItem:
+        stream_dir = root / "BDMV" / "STREAM"
+        playlist_dir = root / "BDMV" / "PLAYLIST"
+        stream_dir.mkdir(parents=True)
+        playlist_dir.mkdir(parents=True)
+        (stream_dir / "00000.m2ts").write_bytes(b"0" * 10)
+        (stream_dir / "00001.m2ts").write_bytes(b"1" * 20)
+        BluRayRemuxTest.__write_mpls(
+            playlist_dir / "00000.mpls",
+            ["00000.m2ts", "00001.m2ts"],
+        )
+        return schemas.FileItem(
+            storage="local",
+            type="dir",
+            path=root.as_posix(),
+            name=root.name,
+            basename=root.stem,
+            size=0,
+        )
+
+    @staticmethod
+    def __movie_info() -> MediaInfo:
+        mediainfo = MediaInfo()
+        mediainfo.type = MediaType.MOVIE
+        mediainfo.title = "BluRay Movie"
+        mediainfo.year = "2024"
+        return mediainfo
+
+    def test_bluray_remux_disabled_keeps_directory_transfer(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_path = root / "media"
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", False), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=target_path,
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.target_item.type, "dir")
+            self.assertFalse(mock_run.called)
+
+    def test_bluray_remux_enabled_uses_playlist_concat(self):
+        def run_ffmpeg(command, *_args, **_kwargs):
+            output_path = Path(command[-1])
+            output_path.write_bytes(b"mkv")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_path = root / "media"
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=target_path,
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            target_file = target_path / "BluRay Movie (2024)" / "BluRay Movie (2024).mkv"
+            self.assertTrue(result.success)
+            self.assertEqual(result.target_item.path, target_file.as_posix())
+            self.assertTrue(target_file.exists())
+            command = mock_run.call_args.args[0]
+            self.assertIn("concat", command)
+            self.assertIn("-safe", command)

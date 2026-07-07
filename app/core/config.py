@@ -387,6 +387,8 @@ class ConfigModel(BaseModel):
     # ==================== 整理配置 ====================
     # 文件整理线程数
     TRANSFER_THREADS: int = 1
+    # 蓝光原盘目录自动转封装为单个MKV文件，默认关闭
+    BLURAY_REMUX_ENABLED: bool = False
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = (
         "{{title}}{% if year %} ({{year}}){% endif %}"
