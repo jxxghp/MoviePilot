@@ -36,6 +36,22 @@ def test_extract_btih_supports_hex_and_base32():
     assert search_endpoint._extract_btih("https://example.com/demo.torrent") is None
 
 
+def test_sanitize_probe_magnet_keeps_only_btih():
+    """
+    探测添加到下载器前应移除 tracker/webseed 等外部连接参数。
+    """
+    unsafe_magnet = (
+        f"{MAGNET}&tr=http%3A%2F%2F192.168.1.1%2Fannounce"
+        "&ws=http%3A%2F%2Flocalhost%2Ffile"
+    )
+
+    assert (
+        search_endpoint._sanitize_probe_magnet(unsafe_magnet)
+        == f"magnet:?xt=urn:btih:{INFO_HASH}"
+    )
+    assert search_endpoint._sanitize_probe_magnet("magnet:?dn=demo") is None
+
+
 def test_parse_probe_timeout_uses_safe_bounds():
     """
     探测超时时间应被限制在较小区间内，避免接口长期占用后端线程。
@@ -146,13 +162,27 @@ def test_probe_new_magnet_adds_tagged_task_and_cleans_files(monkeypatch):
     assert result["data"]["size"] == 8192
 
     add_kwargs = server.add_torrent.call_args.kwargs
-    assert add_kwargs["content"] == MAGNET
+    assert add_kwargs["content"] == f"magnet:?xt=urn:btih:{INFO_HASH}"
     assert add_kwargs["is_paused"] is False
     assert add_kwargs["dl_limit"] == search_endpoint._PROBE_SPEED_LIMIT
     assert add_kwargs["up_limit"] == search_endpoint._PROBE_SPEED_LIMIT
     assert add_kwargs["stop_condition"] == "MetadataReceived"
     assert add_kwargs["tag"][0].startswith(f"{search_endpoint._PROBE_TAG_PREFIX}_")
     server.delete_torrents.assert_called_once_with(delete_file=True, ids=INFO_HASH)
+
+
+def test_probe_rejects_magnet_without_btih(monkeypatch):
+    """
+    无法识别 info hash 时不应把任务交给下载器，避免误清理已有任务。
+    """
+    module = MagicMock()
+    monkeypatch.setattr(search_endpoint, "QbittorrentModule", lambda: module)
+
+    result = search_endpoint._probe_magnet("magnet:?dn=demo", downloader=None, timeout=5)
+
+    assert not result["success"]
+    assert result["message"] == "无法解析 magnet 链接中的 btih"
+    module.init_module.assert_not_called()
 
 
 def test_probe_timeout_returns_partial_tracker_state_and_cleans(monkeypatch):

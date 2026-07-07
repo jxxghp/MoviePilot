@@ -35,6 +35,9 @@ _PROBE_MAX_TIMEOUT = 60
 _PROBE_SPEED_LIMIT = 1024
 _PROBE_TAG_RETRY_TIMES = 10
 _PROBE_TAG_RETRY_INTERVAL = 1
+_PROBE_MAX_CONCURRENCY = 4
+_PROBE_QUEUE_TIMEOUT = 5
+_PROBE_SEMAPHORE = asyncio.Semaphore(_PROBE_MAX_CONCURRENCY)
 
 
 def _parse_site_list(sites: Optional[str]) -> Optional[List[int]]:
@@ -83,6 +86,16 @@ def _extract_btih(value: str) -> Optional[str]:
     except Exception as err:
         logger.debug(f"解析磁力链接 hash 失败：{err}")
     return None
+
+
+def _sanitize_probe_magnet(value: str) -> Optional[str]:
+    """
+    仅保留探测所需的 btih，避免让下载器访问用户传入的 tracker/webseed 地址。
+    """
+    info_hash = _extract_btih(value)
+    if not info_hash:
+        return None
+    return f"magnet:?xt=urn:btih:{info_hash}"
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -251,13 +264,17 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
     if not enclosure or not enclosure.startswith("magnet:"):
         return {"success": False, "message": "只支持 magnet 链接探测"}
 
+    safe_enclosure = _sanitize_probe_magnet(enclosure)
+    if not safe_enclosure:
+        return {"success": False, "message": "无法解析 magnet 链接中的 btih"}
+    expected_hash = _extract_btih(safe_enclosure)
+
     module = QbittorrentModule()
     module.init_module()
     server = module.get_instance(downloader)
     if not server:
         return {"success": False, "message": "未找到可用的 qBittorrent 下载器"}
 
-    expected_hash = _extract_btih(enclosure)
     if expected_hash:
         existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
         if existing_torrent:
@@ -280,7 +297,7 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
 
     try:
         state, added_ids = server.add_torrent(
-            content=enclosure,
+            content=safe_enclosure,
             is_paused=False,
             tag=[tag],
             dl_limit=_PROBE_SPEED_LIMIT,
@@ -333,7 +350,7 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
         message = (
             "探测完成"
             if data.get("has_metadata")
-            else "未获取到文件大小，已返回可用的 tracker 健康度"
+            else "未获取到文件大小，已返回可用的健康度信息"
         )
         result = {"success": True, "message": message, "data": data}
         return result
@@ -551,7 +568,15 @@ async def probe_search_torrent(
     enclosure = payload.get("enclosure") or payload.get("magnet")
     downloader = payload.get("downloader")
     timeout = _parse_probe_timeout(payload.get("timeout"))
-    result = await run_in_threadpool(_probe_magnet, enclosure, downloader, timeout)
+    try:
+        await asyncio.wait_for(_PROBE_SEMAPHORE.acquire(), _PROBE_QUEUE_TIMEOUT)
+    except asyncio.TimeoutError:
+        result = {"success": False, "message": "探测任务繁忙，请稍后再试"}
+    else:
+        try:
+            result = await run_in_threadpool(_probe_magnet, enclosure, downloader, timeout)
+        finally:
+            _PROBE_SEMAPHORE.release()
     return schemas.Response(
         success=bool(result.get("success")),
         message=result.get("message"),
