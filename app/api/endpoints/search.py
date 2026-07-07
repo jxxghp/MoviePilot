@@ -225,7 +225,13 @@ def _cleanup_probe_torrent(server, *, tag: str, hash_id: Optional[str]) -> bool:
     """
     删除探测任务前重新确认唯一标签，避免误删已有任务。
     """
-    torrent = _find_probe_torrent(server, tag=tag, hash_id=hash_id)
+    torrent = _find_probe_torrent(
+        server,
+        tag=tag,
+        hash_id=hash_id,
+        retry=_PROBE_TAG_RETRY_TIMES if not hash_id else 1,
+        interval=_PROBE_TAG_RETRY_INTERVAL,
+    )
     if not torrent:
         return False
     cleanup_hash = torrent.get("hash")
@@ -332,7 +338,7 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
         result = {"success": True, "message": message, "data": data}
         return result
     finally:
-        if added_by_probe and hash_id:
+        if added_by_probe:
             cleanup = _cleanup_probe_torrent(server, tag=tag, hash_id=hash_id)
             if result and isinstance(result.get("data"), dict):
                 result["data"]["cleanup"] = cleanup
