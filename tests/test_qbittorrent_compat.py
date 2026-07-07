@@ -317,6 +317,53 @@ def test_completed_status_includes_qbittorrent_finished_upload_states():
     server.get_torrents.assert_called_once_with(tags="moviepilot-tag")
 
 
+def test_get_completed_torrents_includes_finished_stopped_tasks():
+    """
+    已完成但不再做种的 qBittorrent 任务仍应进入待整理列表。
+    """
+    fake_client = MagicMock()
+    fake_client.torrents_info.return_value = [
+        {
+            "hash": "hash-stalled-up",
+            "progress": 1,
+            "amount_left": 0,
+            "state": "stalledUP",
+        },
+        {
+            "hash": "hash-stopped-up",
+            "progress": 1,
+            "amount_left": 0,
+            "state": "stoppedUP",
+        },
+        {
+            "hash": "hash-moving",
+            "progress": 1,
+            "amount_left": 0,
+            "state": "moving",
+        },
+        {
+            "hash": "hash-metadata",
+            "progress": 0,
+            "amount_left": 0,
+            "state": "metaDL",
+        },
+        {
+            "hash": "hash-download-left",
+            "progress": 0.9,
+            "amount_left": 1024,
+            "state": "stalledDL",
+        },
+    ]
+
+    with patch.object(Qbittorrent, "_Qbittorrent__login_qbittorrent", return_value=fake_client):
+        downloader = Qbittorrent(host="http://127.0.0.1", port=8080, username="admin", password="adminadmin")
+
+    torrents = downloader.get_completed_torrents()
+
+    assert [torrent["hash"] for torrent in torrents] == ["hash-stalled-up", "hash-stopped-up"]
+    fake_client.torrents_info.assert_called_once_with(torrent_hashes=None, status_filter="completed")
+
+
 def test_list_torrents_include_all_tags_removes_builtin_tag_filter():
     """
     智能体扩大查询范围时，qBittorrent 查询应取消内置标签过滤。

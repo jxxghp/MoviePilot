@@ -259,9 +259,34 @@ class Qbittorrent:
         """
         if not self.qbc:
             return None
-        # completed会包含移动状态 改为获取seeding状态 包含活动上传, 正在做种, 及强制做种
-        torrents, error = self.get_torrents(status="seeding", ids=ids, tags=tags)
-        return None if error else torrents or []
+        torrents, error = self.get_torrents(status="completed", ids=ids, tags=tags)
+        if error:
+            return None
+        ret_torrents = []
+        for torrent in torrents or []:
+            state = str(torrent.get("state") or "").strip().lower()
+            progress = torrent.get("progress") or 0
+            amount_left = torrent.get("amount_left") or 0
+            if (
+                    progress >= 1
+                    and amount_left <= 0
+                    and state not in {
+                        "allocating",
+                        "checkingdl",
+                        "checkingup",
+                        "downloading",
+                        "error",
+                        "forceddl",
+                        "missingfiles",
+                        "metadl",
+                        "moving",
+                        "queueddl",
+                        "stalleddl",
+                        "unknown",
+                    }
+            ):
+                ret_torrents.append(torrent)
+        return ret_torrents
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
                                  tags: Union[str, list] = None) -> Optional[List[TorrentDictionary]]:
