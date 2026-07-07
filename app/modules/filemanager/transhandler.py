@@ -199,7 +199,12 @@ class TransHandler:
         best_files = []
         best_size = 0
         if playlist_dir.is_dir():
-            for mpls_file in sorted(playlist_dir.glob("*.mpls")):
+            playlist_files = [
+                item
+                for item in playlist_dir.iterdir()
+                if item.is_file() and item.suffix.lower() == ".mpls"
+            ]
+            for mpls_file in sorted(playlist_files):
                 names = cls.__parse_mpls_stream_names(mpls_file)
                 files = [
                     stream_map.get(name.upper())
@@ -314,8 +319,6 @@ class TransHandler:
                 return False, f"ffmpeg 转封装失败：{errmsg or completed.returncode}"
             if not tmp_file.exists():
                 return False, "ffmpeg 转封装完成但未生成目标文件"
-            if target_file.exists() or target_file.is_symlink():
-                target_file.unlink()
             tmp_file.replace(target_file)
             return True, ""
         except Exception as err:
@@ -392,17 +395,14 @@ class TransHandler:
         if overwrite_event and overwrite_event.event_data:
             overwrite_event_data = overwrite_event.event_data
             if overwrite_event_data.overwrite is True:
-                target_oper.delete(target_item)
                 return True, ""
             if overwrite_event_data.overwrite is False:
                 return False, overwrite_event_data.reason or "插件决定不覆盖已有文件"
 
         if overwrite_mode in ["always", "latest"]:
-            target_oper.delete(target_item)
             return True, ""
         if overwrite_mode == "size":
             if (target_item.size or 0) < source_size:
-                target_oper.delete(target_item)
                 return True, ""
             return False, "媒体库存在同名文件，且质量更好"
         if overwrite_mode == "never":

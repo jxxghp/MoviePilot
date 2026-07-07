@@ -260,7 +260,10 @@ class BluRayRemuxTest(TestCase):
         path.write_bytes(b"MPLS0200" + (16).to_bytes(4, "big") + b"\x00" * 4 + playlist)
 
     @staticmethod
-    def __create_bluray_dir(root: Path) -> schemas.FileItem:
+    def __create_bluray_dir(
+            root: Path,
+            playlist_name: str = "00000.mpls",
+    ) -> schemas.FileItem:
         stream_dir = root / "BDMV" / "STREAM"
         playlist_dir = root / "BDMV" / "PLAYLIST"
         stream_dir.mkdir(parents=True)
@@ -268,7 +271,7 @@ class BluRayRemuxTest(TestCase):
         (stream_dir / "00000.m2ts").write_bytes(b"0" * 10)
         (stream_dir / "00001.m2ts").write_bytes(b"1" * 20)
         BluRayRemuxTest.__write_mpls(
-            playlist_dir / "00000.mpls",
+            playlist_dir / playlist_name,
             ["00000.m2ts", "00001.m2ts"],
         )
         return schemas.FileItem(
@@ -348,3 +351,76 @@ class BluRayRemuxTest(TestCase):
             command = mock_run.call_args.args[0]
             self.assertIn("concat", command)
             self.assertIn("-safe", command)
+
+    def test_bluray_remux_accepts_uppercase_playlist_suffix(self):
+        def run_ffmpeg(command, *_args, **_kwargs):
+            output_path = Path(command[-1])
+            output_path.write_bytes(b"mkv")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(
+                root / "BluRay Movie Source",
+                playlist_name="00000.MPLS",
+            )
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertTrue(result.success)
+            command = mock_run.call_args.args[0]
+            self.assertIn("concat", command)
+
+    def test_bluray_remux_failure_keeps_existing_target_file(self):
+        def run_ffmpeg(command, *_args, **_kwargs):
+            return subprocess.CompletedProcess(command, 1, "", "failed")
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).mkv"
+            )
+            target_file.parent.mkdir(parents=True)
+            target_file.write_bytes(b"old")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    overwrite_mode="always",
+                )
+
+            self.assertFalse(result.success)
+            self.assertEqual(target_file.read_bytes(), b"old")
