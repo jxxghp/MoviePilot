@@ -157,6 +157,7 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
         run: |
           set -euo pipefail
+          current_response="$(mktemp)"
           current_body="$(mktemp)"
           latest_body="$(mktemp)"
           latest_response="$(mktemp)"
@@ -166,7 +167,14 @@ jobs:
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
           placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
 
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${current_response}"
+          python3 - "${current_response}" "${current_body}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          Path(sys.argv[2]).write_text(json.loads(Path(sys.argv[1]).read_text()).get("body") or "")
+          PY
           cp "${current_body}" "${body_backup}"
           python3 - "${current_body}" "${next_body}" <<'PY'
           import os
@@ -461,7 +469,7 @@ jobs:
           pr_code_suggestions.extra_instructions: |
             Match the configured response language.
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
-            Start every suggestion with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
+            Use one of these Markdown risk labels near the beginning of each visible suggestion when applicable: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
           pr_code_suggestions.suggestions_score_threshold: "8"
           pr_code_suggestions.num_code_suggestions_per_chunk: "2"
@@ -510,11 +518,6 @@ jobs:
           patches_path = Path(sys.argv[5])
           marker = os.environ["PR_AGENT_INLINE_MARKER"]
           marker_re = re.compile(r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*", re.IGNORECASE)
-          risk_prefixes = ("🔴 **High Risk**:", "🟡 **Medium Risk**:", "🔵 **Low Risk**:")
-
-          def is_pr_agent_inline_body(body: str) -> bool:
-              visible = (body or "").lstrip()
-              return visible.startswith("**Suggestion:**") or visible.startswith(risk_prefixes)
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
@@ -537,7 +540,7 @@ jobs:
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
                   and item.get("pull_request_review_id") in new_review_ids
-                  and is_pr_agent_inline_body(body)
+                  and body.lstrip().startswith("**Suggestion:**")
                   and not marker_re.search(body)
               ):
                   patches.append({"id": item["id"], "body": f"{marker}\n{body}"})
@@ -935,6 +938,14 @@ jobs:
           gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" > "${new_comment}"
           new_comment_id="$(jq -r '.id' "${new_comment}")"
           new_comment_created_at="$(jq -r '.created_at' "${new_comment}")"
+
+          latest_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [ "${latest_head_sha}" != "${HEAD_SHA}" ]; then
+            echo "PR head changed from ${HEAD_SHA} to ${latest_head_sha}; remove stale code review summary."
+            gh api --method DELETE "repos/${REPO}/issues/comments/${new_comment_id}" >/dev/null
+            exit 0
+          fi
+
           comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq ".[] | select(.id != ${new_comment_id} and .user.login == \"github-actions[bot]\" and ((.body | startswith(\"<!-- pr-agent-code-review-summary -->\")) or (.body | startswith(\"<!-- pr-agent-update-notification -->\"))) and (.created_at < \"${new_comment_created_at}\" or (.created_at == \"${new_comment_created_at}\" and .id < ${new_comment_id}))) | .id")"
 
           if [ -z "${comment_ids}" ]; then
@@ -973,6 +984,7 @@ jobs:
           set -euo pipefail
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
           placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
+          current_response="$(mktemp)"
           current_body="$(mktemp)"
           latest_body="$(mktemp)"
           latest_response="$(mktemp)"
@@ -984,7 +996,14 @@ jobs:
             exit 0
           fi
 
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${current_response}"
+          python3 - "${current_response}" "${current_body}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          Path(sys.argv[2]).write_text(json.loads(Path(sys.argv[1]).read_text()).get("body") or "")
+          PY
           current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
           run_head_sha="${RUN_HEAD_SHA:-}"
           is_stale=false
