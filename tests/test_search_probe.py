@@ -41,8 +41,8 @@ def test_sanitize_probe_magnet_keeps_only_btih():
     探测添加到下载器前应移除 tracker/webseed 等外部连接参数。
     """
     unsafe_magnet = (
-        f"{MAGNET}&tr=http%3A%2F%2F192.168.1.1%2Fannounce"
-        "&ws=http%3A%2F%2Flocalhost%2Ffile"
+        f"{MAGNET}&tr=http%3A%2F%2Ftracker.invalid%2Fannounce"
+        "&ws=http%3A%2F%2Fwebseed.invalid%2Ffile"
     )
 
     assert (
