@@ -65,6 +65,7 @@ function load_config_from_app_env() {
         ["GITHUB_TOKEN"]=""
         ["MOVIEPILOT_AUTO_UPDATE"]="release"
         ["MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE"]="true"
+        ["MOVIEPILOT_FORCE_CHOWN"]="false"
         ["MOVIEPILOT_SAFE_MODE"]="false"
         ["BROWSER_EMULATION"]="cloakbrowser"
 
@@ -315,6 +316,70 @@ function ensure_backend_runtime_dependencies() {
     INFO "→ 已自动恢复主程序依赖，继续启动后端。"
 }
 
+function force_chown_image_paths_if_requested() {
+    local force="${MOVIEPILOT_FORCE_CHOWN:-false}"
+    force="${force,,}"
+
+    if [ "${force}" != "true" ] && [ "${force}" != "1" ] && [ "${force}" != "yes" ]; then
+        return 0
+    fi
+
+    WARN "→ MOVIEPILOT_FORCE_CHOWN 已启用，将递归修复 /app、/public 权限，可能显著增加启动耗时。"
+
+    local path
+    for path in "$@"; do
+        [ -e "${path}" ] || continue
+        chown -R moviepilot:moviepilot "${path}"
+    done
+}
+
+function correct_home_permissions() {
+    [ -e "${HOME}" ] || return 0
+
+    local force="${MOVIEPILOT_FORCE_CHOWN:-false}"
+    force="${force,,}"
+
+    chown moviepilot:moviepilot "${HOME}"
+    [ -e "${HOME}/.cloakbrowser" ] && chown -h moviepilot:moviepilot "${HOME}/.cloakbrowser"
+
+    if [ "${force}" = "true" ] || [ "${force}" = "1" ] || [ "${force}" = "yes" ]; then
+        [ -e "${HOME}/.cloakbrowser" ] && chown -R moviepilot:moviepilot "${HOME}/.cloakbrowser"
+    elif [ -e "${HOME}/.cloakbrowser" ]; then
+        INFO "→ 默认跳过 ${HOME}/.cloakbrowser 递归权限校正，如遇浏览器缓存权限错误可设置 MOVIEPILOT_FORCE_CHOWN=true 后重启一次。"
+    fi
+
+    find "${HOME}" -mindepth 1 -maxdepth 1 ! -name ".cloakbrowser" -exec chown -R moviepilot:moviepilot {} +
+}
+
+function chown_plugin_runtime_path() {
+    local plugin_path="${1:-}"
+    [ -n "${plugin_path}" ] || return 0
+    [ -e "${plugin_path}" ] || return 0
+    local current_owner
+    current_owner="$(stat -c '%u:%g' "${plugin_path}" 2>/dev/null || true)"
+    [ "${current_owner}" = "${PUID}:${PGID}" ] && return 0
+    chown -h moviepilot:moviepilot "${plugin_path}"
+}
+
+function correct_file_permissions() {
+    local chown_start
+    local chown_end
+    chown_start=$(date +%s)
+
+    INFO "→ 正在校正文件权限..."
+    force_chown_image_paths_if_requested /app /public
+    chown_plugin_runtime_path /app/app/plugins
+    correct_home_permissions
+    chown -R moviepilot:moviepilot \
+        "${CONFIG_DIR}" \
+        /var/lib/nginx \
+        /var/log/nginx
+    chown moviepilot:moviepilot /etc/hosts /tmp
+
+    chown_end=$(date +%s)
+    INFO "→ 文件权限校正完成，耗时 $(( chown_end - chown_start )) 秒。"
+}
+
 # 使用env配置
 load_config_from_app_env
 apply_package_cache_env
@@ -354,14 +419,7 @@ groupmod -o -g "${PGID}" moviepilot
 usermod -o -u "${PUID}" moviepilot
 
 # 更改文件权限
-chown -R moviepilot:moviepilot \
-    "${HOME}" \
-    /app \
-    /public \
-    "${CONFIG_DIR}" \
-    /var/lib/nginx \
-    /var/log/nginx
-chown moviepilot:moviepilot /etc/hosts /tmp
+correct_file_permissions
 
 # 启动前优先确认主运行环境仍然健康，避免插件依赖污染导致服务直接起不来。
 ensure_backend_runtime_dependencies
