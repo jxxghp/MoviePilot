@@ -8,36 +8,41 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urljoin, quote
 
-from telebot import TeleBot, apihelper
-from telebot.types import (
+from app.modules.telegram.compat import ensure_urllib3_header_param_compat
+
+# Must run before importing pyTelegramBotAPI.
+ensure_urllib3_header_param_compat()
+
+from telebot import TeleBot, apihelper  # noqa: E402
+from telebot.types import (  # noqa: E402
     BotCommand,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InputMediaPhoto,
 )
 try:
-    from telebot.types import ForceReply
+    from telebot.types import ForceReply  # noqa: E402
 except ImportError:
     ForceReply = None
-from telegramify_markdown import standardize, telegramify  # noqa
+from telegramify_markdown import standardize, telegramify  # noqa: E402
 try:
-    from telegramify_markdown import entities_to_markdownv2  # noqa
+    from telegramify_markdown import entities_to_markdownv2  # noqa: E402
 except ImportError:
     entities_to_markdownv2 = None
 try:
-    from telegramify_markdown.content import ContentTypes, File, Photo, Text
+    from telegramify_markdown.content import ContentTypes, File, Photo, Text  # noqa: E402
 except ImportError:
-    from telegramify_markdown.type import ContentTypes, File, Photo, Text
+    from telegramify_markdown.type import ContentTypes, File, Photo, Text  # noqa: E402
 
-from app.core.config import settings
-from app.core.context import MediaInfo, Context
-from app.core.metainfo import MetaInfo
-from app.helper.image import ImageHelper
-from app.helper.thread import ThreadHelper
-from app.log import logger
-from app.utils.common import retry
-from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
+from app.core.config import settings  # noqa: E402
+from app.core.context import MediaInfo, Context  # noqa: E402
+from app.core.metainfo import MetaInfo  # noqa: E402
+from app.helper.image import ImageHelper  # noqa: E402
+from app.helper.thread import ThreadHelper  # noqa: E402
+from app.log import logger  # noqa: E402
+from app.utils.common import retry  # noqa: E402
+from app.utils.http import RequestUtils  # noqa: E402
+from app.utils.string import StringUtils  # noqa: E402
 
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
