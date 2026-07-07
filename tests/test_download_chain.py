@@ -568,6 +568,147 @@ def test_batch_download_threads_custom_words_to_download_single(monkeypatch):
     assert chain.download_single.call_args.kwargs["custom_words"] == custom_words
 
 
+def test_download_single_records_failure_cooldown_when_downloader_rejects(monkeypatch):
+    """
+    下载器拒绝种子且没有返回 hash 时，应记录资源级失败冷却。
+    """
+    captured = {}
+
+    class _CapturingDownloadFailureOper:
+        """
+        捕获下载失败冷却记录，避免测试写入数据库。
+        """
+
+        def record_failure(self, **kwargs: object) -> SimpleNamespace:
+            """
+            保存写入字段供断言使用。
+            """
+            captured.update(kwargs)
+            return SimpleNamespace(id=1)
+
+    monkeypatch.setattr(
+        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        lambda _self: _download_dirs(),
+    )
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(download_module, "DownloadFailureOper", _CapturingDownloadFailureOper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    error_msg = "添加种子任务失败：无法读取种子文件"
+    chain.download = MagicMock(return_value=("qb", None, "Original", error_msg))
+    chain.post_message = MagicMock()
+
+    context = Context(
+        meta_info=MetaInfo("Demo Movie 2026"),
+        media_info=MediaInfo(
+            type=MediaType.MOVIE,
+            title="Demo Movie",
+            year="2026",
+            tmdb_id=1,
+            genre_ids=[18],
+        ),
+        torrent_info=TorrentInfo(
+            site=12,
+            site_name="AGSVPT",
+            title="Demo Movie 2026 1080p",
+            enclosure="https://example.com/download.php?id=484660",
+            size=1024,
+        ),
+    )
+
+    download_id, returned_error = chain.download_single(
+        context=context,
+        torrent_content=b"torrent-content",
+        save_path="/downloads",
+        source="Subscribe|{}",
+        return_detail=True,
+    )
+
+    assert download_id is None
+    assert returned_error == error_msg
+    assert captured["fingerprint"] == DownloadChain._build_download_failure_fingerprint(context)
+    assert captured["torrent_id"] == "example.com:id=484660"
+    assert captured["site"] == 12
+    assert captured["error_message"] == error_msg
+    assert captured["next_retry_at"] > captured["now_time"]
+
+
+def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkeypatch):
+    """
+    订阅自动下载应跳过冷却中的失败资源，但继续尝试同媒体的后续候选。
+    """
+    _FakeBatchTorrentHelper.episodes = []
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    first_context = SimpleNamespace(
+        media_info=SimpleNamespace(
+            type=MediaType.MOVIE,
+            title="Demo Movie",
+            year="2026",
+            title_year="Demo Movie (2026)",
+            tmdb_id=1,
+            douban_id=None,
+        ),
+        meta_info=SimpleNamespace(season=None, episode=None, episode_list=[], season_episode=""),
+        torrent_info=SimpleNamespace(
+            site=12,
+            site_name="AGSVPT",
+            title="Demo Movie Bad",
+            torrent_id="484660",
+            size=1024,
+        ),
+    )
+    second_context = SimpleNamespace(
+        media_info=SimpleNamespace(
+            type=MediaType.MOVIE,
+            title="Demo Movie",
+            year="2026",
+            title_year="Demo Movie (2026)",
+            tmdb_id=1,
+            douban_id=None,
+        ),
+        meta_info=SimpleNamespace(season=None, episode=None, episode_list=[], season_episode=""),
+        torrent_info=SimpleNamespace(
+            site=13,
+            site_name="OtherSite",
+            title="Demo Movie Good",
+            torrent_id="999999",
+            size=2048,
+        ),
+    )
+    failed_fingerprint = DownloadChain._build_download_failure_fingerprint(first_context)
+
+    class _ActiveDownloadFailureOper:
+        """
+        返回第一个候选的活跃失败冷却记录。
+        """
+
+        def get_active_by_fingerprints(self, fingerprints: list[str], now_time: str) -> dict:
+            """
+            模拟数据库批量查询活跃失败记录。
+            """
+            assert now_time
+            assert failed_fingerprint in fingerprints
+            return {failed_fingerprint: SimpleNamespace(fingerprint=failed_fingerprint)}
+
+    monkeypatch.setattr(download_module, "DownloadFailureOper", _ActiveDownloadFailureOper)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_single = MagicMock(return_value="hash")
+
+    downloads, lefts = chain.batch_download(
+        contexts=[first_context, second_context],
+        source="Subscribe|{}",
+    )
+
+    assert downloads == [second_context]
+    assert lefts is None
+    chain.download_single.assert_called_once()
+    assert chain.download_single.call_args.args[0] is second_context
+
+
 def test_batch_download_accepts_complete_coverage_when_files_cover_target_range(monkeypatch):
     """
     自定义起始集场景按目标范围覆盖判断，100-143 可满足 start=100、total=143。

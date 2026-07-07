@@ -1,4 +1,5 @@
 from .agentchat import AgentChat
+from .downloadfailure import DownloadFailure
 from .downloadhistory import DownloadHistory, DownloadFiles
 from .mediaserver import MediaServerItem
 from .message import Message
