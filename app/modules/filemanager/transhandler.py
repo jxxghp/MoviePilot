@@ -1,6 +1,8 @@
 import re
 import shutil
 import subprocess
+import threading
+import uuid
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -34,8 +36,22 @@ class TransHandler:
     文件转移整理类
     """
 
+    _bluray_remux_locks = {}
+    _bluray_remux_locks_guard = threading.Lock()
+
     def __init__(self):
         pass
+
+    @classmethod
+    def __get_bluray_remux_target_lock(cls, target_file: Path) -> threading.Lock:
+        """
+        获取蓝光转封装目标文件锁，避免并发任务共享临时文件或相互覆盖。
+        """
+        lock_key = target_file.resolve().as_posix()
+        with cls._bluray_remux_locks_guard:
+            if lock_key not in cls._bluray_remux_locks:
+                cls._bluray_remux_locks[lock_key] = threading.Lock()
+            return cls._bluray_remux_locks[lock_key]
 
     @staticmethod
     def __normalize_disc_folder_name(value: Optional[str]) -> Optional[str]:
@@ -250,7 +266,10 @@ class TransHandler:
         """
         转义 ffconcat 文件中的路径。
         """
-        return path.as_posix().replace("\\", "/").replace("'", "\\'")
+        value = path.as_posix().replace("\\", "/")
+        if "\n" in value or "\r" in value:
+            raise ValueError("蓝光分片路径包含换行控制字符")
+        return value.replace("'", "\\'")
 
     @classmethod
     def __run_bluray_remux(
@@ -266,13 +285,14 @@ class TransHandler:
             return False, "未找到 ffmpeg，无法进行蓝光原盘转封装"
 
         target_file.parent.mkdir(parents=True, exist_ok=True)
+        temp_suffix = uuid.uuid4().hex
         tmp_file = target_file.with_name(
-            f".{target_file.stem}.tmp{target_file.suffix}"
+            f".{target_file.stem}.{temp_suffix}.tmp{target_file.suffix}"
         )
-        concat_file = target_file.with_name(f".{target_file.stem}.ffconcat")
+        concat_file = target_file.with_name(
+            f".{target_file.stem}.{temp_suffix}.ffconcat"
+        )
         try:
-            if tmp_file.exists():
-                tmp_file.unlink()
             if len(source_files) == 1:
                 command = [
                     ffmpeg,
@@ -380,8 +400,6 @@ class TransHandler:
         """
         target_item = target_oper.get_item(target_file)
         if not target_item:
-            if overwrite_mode == "latest":
-                self.__delete_version_files(target_oper, target_file)
             return True, ""
 
         logger.info(
@@ -518,38 +536,43 @@ class TransHandler:
                 transfer_type=transfer_type,
                 need_notify=need_notify,
             )
-        can_overwrite, errmsg = self.__check_bluray_remux_overwrite(
-            fileitem=fileitem,
-            target_oper=target_oper,
-            target_file=target_file,
-            target_storage=target_storage,
-            transfer_type=transfer_type,
-            overwrite_mode=overwrite_mode,
-            source_size=source_size,
-        )
-        if not can_overwrite:
-            return TransferInfo(
-                success=False,
-                message=errmsg,
+        target_lock = self.__get_bluray_remux_target_lock(target_file)
+        with target_lock:
+            can_overwrite, errmsg = self.__check_bluray_remux_overwrite(
                 fileitem=fileitem,
-                target_diritem=target_diritem,
-                fail_list=[fileitem.path],
+                target_oper=target_oper,
+                target_file=target_file,
+                target_storage=target_storage,
                 transfer_type=transfer_type,
-                need_notify=need_notify,
+                overwrite_mode=overwrite_mode,
+                source_size=source_size,
             )
+            if not can_overwrite:
+                return TransferInfo(
+                    success=False,
+                    message=errmsg,
+                    fileitem=fileitem,
+                    target_diritem=target_diritem,
+                    fail_list=[fileitem.path],
+                    transfer_type=transfer_type,
+                    need_notify=need_notify,
+                )
 
-        logger.info(f"正在转封装蓝光原盘：{bluray_root} 到 {target_file}")
-        state, errmsg = self.__run_bluray_remux(source_files, target_file)
-        if not state:
-            logger.error(f"蓝光原盘 {fileitem.path} 转封装失败：{errmsg}")
-            return TransferInfo(
-                success=False,
-                message=errmsg,
-                fileitem=fileitem,
-                fail_list=[fileitem.path],
-                transfer_type=transfer_type,
-                need_notify=need_notify,
-            )
+            logger.info(f"正在转封装蓝光原盘：{bluray_root} 到 {target_file}")
+            state, errmsg = self.__run_bluray_remux(source_files, target_file)
+            if not state:
+                logger.error(f"蓝光原盘 {fileitem.path} 转封装失败：{errmsg}")
+                return TransferInfo(
+                    success=False,
+                    message=errmsg,
+                    fileitem=fileitem,
+                    fail_list=[fileitem.path],
+                    transfer_type=transfer_type,
+                    need_notify=need_notify,
+                )
+            if overwrite_mode == "latest":
+                self.__delete_version_files(target_oper, target_file)
+
         if transfer_type == "move" and not source_oper.delete(fileitem):
             return TransferInfo(
                 success=False,

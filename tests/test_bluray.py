@@ -451,6 +451,50 @@ class BluRayRemuxTest(TestCase):
             self.assertEqual(result.target_item.type, "dir")
             self.assertFalse(mock_run.called)
 
+    def test_bluray_remux_failure_keeps_latest_version_files(self):
+        def run_ffmpeg(command, *_args, **_kwargs):
+            return subprocess.CompletedProcess(command, 1, "", "failed")
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            old_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).old.mkv"
+            )
+            old_file.parent.mkdir(parents=True)
+            old_file.write_bytes(b"old")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    overwrite_mode="latest",
+                )
+
+            self.assertFalse(result.success)
+            self.assertTrue(old_file.exists())
+
+    def test_bluray_remux_rejects_newline_in_concat_path(self):
+        with self.assertRaises(ValueError):
+            TransHandler._TransHandler__escape_ffconcat_path(
+                Path("BluRay\nMovie Source") / "BDMV" / "STREAM" / "00000.m2ts"
+            )
+
     def test_bluray_remux_failure_keeps_existing_target_file(self):
         def run_ffmpeg(command, *_args, **_kwargs):
             return subprocess.CompletedProcess(command, 1, "", "failed")
