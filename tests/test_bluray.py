@@ -591,6 +591,26 @@ class BluRayRemuxTest(TestCase):
                 [],
             )
 
+    def test_bluray_remux_rejects_duplicate_playlist_items(self):
+        with TemporaryDirectory() as temp_dir:
+            mpls_file = Path(temp_dir) / "00000.mpls"
+            self.__write_mpls(mpls_file, ["00000.m2ts", "00000.m2ts"])
+
+            self.assertEqual(
+                TransHandler._TransHandler__parse_mpls_stream_names(mpls_file),
+                [],
+            )
+
+    def test_bluray_remux_rejects_excessive_playlist_items(self):
+        with TemporaryDirectory() as temp_dir:
+            mpls_file = Path(temp_dir) / "00000.mpls"
+            self.__write_mpls(mpls_file, ["00000.m2ts"] * 201)
+
+            self.assertEqual(
+                TransHandler._TransHandler__parse_mpls_stream_names(mpls_file),
+                [],
+            )
+
     def test_bluray_remux_rejects_large_playlist_parse(self):
         with TemporaryDirectory() as temp_dir:
             mpls_file = Path(temp_dir) / "00000.mpls"
@@ -787,6 +807,43 @@ class BluRayRemuxTest(TestCase):
             self.assertFalse(result.success)
             self.assertEqual(target_file.read_bytes(), b"external")
 
+    def test_bluray_remux_rejects_empty_output(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).mkv"
+            )
+
+            def run_ffmpeg(command, *_args, **_kwargs):
+                output_path = Path(command[-1])
+                output_path.write_bytes(b"")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertFalse(result.success)
+            self.assertFalse(target_file.exists())
+
     def test_bluray_remux_size_overwrite_uses_output_size_before_replace(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -826,3 +883,37 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertEqual(target_file.read_bytes(), b"larger-old")
+
+    def test_bluray_remux_rejects_broken_symlink_target_by_default(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).mkv"
+            )
+            target_file.parent.mkdir(parents=True)
+            try:
+                target_file.symlink_to(root / "missing.mkv")
+            except OSError as err:
+                self.skipTest(f"当前文件系统不支持创建符号链接：{err}")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertFalse(result.success)
+            self.assertTrue(target_file.is_symlink())
+            self.assertFalse(mock_run.called)

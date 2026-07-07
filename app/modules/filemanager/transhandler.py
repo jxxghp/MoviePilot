@@ -32,6 +32,8 @@ from app.schemas.types import MediaType, ChainEventType
 from app.utils.system import SystemUtils
 
 _BLURAY_MPLS_MAX_SIZE = 1024 * 1024
+_BLURAY_MPLS_MAX_PLAYITEMS = 200
+_BLURAY_MPLS_MAX_DURATION_SECONDS = 12 * 60 * 60
 _BLURAY_MPLS_TIME_BASE = 45000
 _BLURAY_PLAYITEM_IN_TIME_OFFSET = 14
 _BLURAY_PLAYITEM_OUT_TIME_OFFSET = 18
@@ -223,8 +225,15 @@ class TransHandler:
                 return []
             pos = playlist_start + 6
             playitem_count = int.from_bytes(data[pos:pos + 2], "big")
+            if (
+                    playitem_count <= 0
+                    or playitem_count > _BLURAY_MPLS_MAX_PLAYITEMS
+            ):
+                return []
             pos += 4
             stream_items = []
+            seen_items = set()
+            total_duration = 0
             for _ in range(playitem_count):
                 if pos + _BLURAY_PLAYITEM_OUT_TIME_OFFSET + 4 > len(data):
                     return []
@@ -255,6 +264,16 @@ class TransHandler:
                     "big",
                 )
                 if out_time <= in_time:
+                    return []
+                item_key = (clip_name.upper(), in_time, out_time)
+                if item_key in seen_items:
+                    return []
+                seen_items.add(item_key)
+                total_duration += out_time - in_time
+                if (
+                        total_duration
+                        > _BLURAY_MPLS_MAX_DURATION_SECONDS * _BLURAY_MPLS_TIME_BASE
+                ):
                     return []
                 stream_items.append((f"{clip_name}.m2ts", in_time, out_time))
                 pos = item_end
@@ -455,6 +474,8 @@ class TransHandler:
                 return False, f"ffmpeg 转封装失败：{errmsg or completed.returncode}"
             if not tmp_file.exists():
                 return False, "ffmpeg 转封装完成但未生成目标文件"
+            if tmp_file.stat().st_size <= 0:
+                return False, "ffmpeg 转封装完成但输出文件为空"
             if (
                     not allow_target_replace
                     and (target_file.exists() or target_file.is_symlink())
@@ -520,6 +541,18 @@ class TransHandler:
         检查蓝光转封装目标文件覆盖策略。
         """
         target_item = target_oper.get_item(target_file)
+        if not target_item and (target_file.exists() or target_file.is_symlink()):
+            if target_file.is_file():
+                target_item = self.__build_local_fileitem(target_file)
+            else:
+                target_item = FileItem(
+                    storage=target_storage,
+                    path=target_file.as_posix(),
+                    name=target_file.name,
+                    basename=target_file.stem,
+                    type="file",
+                    size=0,
+                )
         if not target_item:
             return True, "", False
 
