@@ -51,7 +51,7 @@ jobs:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Detect PR review language
         id: pr_language
@@ -59,12 +59,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           pr_info="$(mktemp)"
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${pr_info}"
           python3 - "${pr_info}" >> "${GITHUB_OUTPUT}" <<'PY'
           import json
+          import os
           import re
           import sys
           from pathlib import Path
@@ -74,7 +76,7 @@ jobs:
           body = pr.get("body") or ""
           labels = {item.get("name", "") for item in pr.get("labels") or []}
           skip_pr_agent = "true" if "skip pr-agent" in labels or re.search(r"^(?:\[Auto\]|Auto)", title) else "false"
-          head_sha = pr.get("head", {}).get("sha") or ""
+          head_sha = os.environ.get("EVENT_HEAD_SHA") or pr.get("head", {}).get("sha") or ""
 
           body = re.sub(
               r"\n*##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*"
