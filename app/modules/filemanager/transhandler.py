@@ -191,16 +191,17 @@ class TransHandler:
             stream_names = []
             for _ in range(playitem_count):
                 if pos + 13 > len(data):
-                    break
+                    return []
                 item_length = int.from_bytes(data[pos:pos + 2], "big")
                 item_end = pos + 2 + item_length
                 if item_length < 9 or item_end > len(data):
-                    break
+                    return []
                 clip_name = data[pos + 2:pos + 7].decode(
                     "ascii", errors="ignore"
                 ).strip("\x00 ")
-                if clip_name:
-                    stream_names.append(f"{clip_name}.m2ts")
+                if not clip_name:
+                    return []
+                stream_names.append(f"{clip_name}.m2ts")
                 pos = item_end
             return stream_names
         except Exception as err:
@@ -280,7 +281,7 @@ class TransHandler:
         value = path.as_posix().replace("\\", "/")
         if "\n" in value or "\r" in value:
             raise ValueError("蓝光分片路径包含换行控制字符")
-        return value.replace("'", "\\'")
+        return value.replace("'", "'\\''")
 
     @classmethod
     def __run_bluray_remux(

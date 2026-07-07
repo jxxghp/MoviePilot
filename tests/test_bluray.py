@@ -495,6 +495,28 @@ class BluRayRemuxTest(TestCase):
                 Path("BluRay\nMovie Source") / "BDMV" / "STREAM" / "00000.m2ts"
             )
 
+    def test_bluray_remux_escapes_quote_in_concat_path(self):
+        escaped = TransHandler._TransHandler__escape_ffconcat_path(
+            Path("Schindler's List") / "BDMV" / "STREAM" / "00000.m2ts"
+        )
+
+        self.assertIn("Schindler'\\''s List", escaped)
+
+    def test_bluray_remux_rejects_partial_playlist_parse(self):
+        with TemporaryDirectory() as temp_dir:
+            mpls_file = Path(temp_dir) / "00000.mpls"
+            self.__write_mpls(mpls_file, ["00000.m2ts"])
+            data = bytearray(mpls_file.read_bytes())
+            playlist_start = int.from_bytes(data[8:12], "big")
+            playitem_count_pos = playlist_start + 6
+            data[playitem_count_pos:playitem_count_pos + 2] = (2).to_bytes(2, "big")
+            mpls_file.write_bytes(data)
+
+            self.assertEqual(
+                TransHandler._TransHandler__parse_mpls_stream_names(mpls_file),
+                [],
+            )
+
     def test_bluray_remux_move_rejects_target_inside_source(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
