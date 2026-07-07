@@ -54,6 +54,17 @@ class TransHandler:
             return cls._bluray_remux_locks[lock_key]
 
     @staticmethod
+    def __is_path_relative_to(path: Path, parent: Path) -> bool:
+        """
+        判断 path 是否位于 parent 内部，兼容目标文件尚未创建的场景。
+        """
+        try:
+            path.resolve().relative_to(parent.resolve())
+            return True
+        except (OSError, ValueError):
+            return False
+
+    @staticmethod
     def __normalize_disc_folder_name(value: Optional[str]) -> Optional[str]:
         """
         从 Disc/Disk/DVD/CD 标识中提取盘号并统一为 Disc N。
@@ -479,6 +490,17 @@ class TransHandler:
             rename_format=rename_format,
             need_rename=need_rename,
         )
+        if transfer_type == "move" and self.__is_path_relative_to(
+            target_file, bluray_root
+        ):
+            return TransferInfo(
+                success=False,
+                message="蓝光原盘转封装目标不能位于源目录内",
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
         if need_rename:
             folder_path = DirectoryHelper.get_media_root_path(
                 rename_format, rename_path=target_file
