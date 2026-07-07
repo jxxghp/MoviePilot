@@ -33,6 +33,8 @@ from app.utils.system import SystemUtils
 
 _BLURAY_MPLS_MAX_SIZE = 1024 * 1024
 _BLURAY_MPLS_TIME_BASE = 45000
+_BLURAY_PLAYITEM_IN_TIME_OFFSET = 14
+_BLURAY_PLAYITEM_OUT_TIME_OFFSET = 18
 
 
 @dataclass(frozen=True)
@@ -224,19 +226,34 @@ class TransHandler:
             pos += 4
             stream_items = []
             for _ in range(playitem_count):
-                if pos + 21 > len(data):
+                if pos + _BLURAY_PLAYITEM_OUT_TIME_OFFSET + 4 > len(data):
                     return []
                 item_length = int.from_bytes(data[pos:pos + 2], "big")
                 item_end = pos + 2 + item_length
-                if item_length < 19 or item_end > len(data):
+                if (
+                        item_length < _BLURAY_PLAYITEM_OUT_TIME_OFFSET + 4 - 2
+                        or item_end > len(data)
+                ):
                     return []
                 clip_name = data[pos + 2:pos + 7].decode(
                     "ascii", errors="ignore"
                 ).strip("\x00 ")
                 if not clip_name:
                     return []
-                in_time = int.from_bytes(data[pos + 13:pos + 17], "big")
-                out_time = int.from_bytes(data[pos + 17:pos + 21], "big")
+                in_time = int.from_bytes(
+                    data[
+                        pos + _BLURAY_PLAYITEM_IN_TIME_OFFSET:
+                        pos + _BLURAY_PLAYITEM_IN_TIME_OFFSET + 4
+                    ],
+                    "big",
+                )
+                out_time = int.from_bytes(
+                    data[
+                        pos + _BLURAY_PLAYITEM_OUT_TIME_OFFSET:
+                        pos + _BLURAY_PLAYITEM_OUT_TIME_OFFSET + 4
+                    ],
+                    "big",
+                )
                 if out_time <= in_time:
                     return []
                 stream_items.append((f"{clip_name}.m2ts", in_time, out_time))
@@ -359,6 +376,7 @@ class TransHandler:
             source_files: List[_BlurayRemuxSource],
             target_file: Path,
             allow_target_replace: bool,
+            recheck_target_size: Optional[int],
     ) -> Tuple[bool, str]:
         """
         使用 ffmpeg 将蓝光原盘分片转封装为单个 MKV。
@@ -442,6 +460,11 @@ class TransHandler:
                     and (target_file.exists() or target_file.is_symlink())
             ):
                 return False, f"{target_file} 在转封装期间被创建，取消覆盖"
+            if (
+                    recheck_target_size is not None
+                    and tmp_file.stat().st_size <= recheck_target_size
+            ):
+                return False, "媒体库存在同名文件，且质量更好"
             tmp_file.replace(target_file)
             return True, ""
         except Exception as err:
@@ -492,13 +515,13 @@ class TransHandler:
             transfer_type: str,
             overwrite_mode: Optional[str],
             source_size: int,
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, str, bool]:
         """
         检查蓝光转封装目标文件覆盖策略。
         """
         target_item = target_oper.get_item(target_file)
         if not target_item:
-            return True, ""
+            return True, "", False
 
         logger.info(
             f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}"
@@ -518,19 +541,19 @@ class TransHandler:
         if overwrite_event and overwrite_event.event_data:
             overwrite_event_data = overwrite_event.event_data
             if overwrite_event_data.overwrite is True:
-                return True, ""
+                return True, "", False
             if overwrite_event_data.overwrite is False:
-                return False, overwrite_event_data.reason or "插件决定不覆盖已有文件"
+                return False, overwrite_event_data.reason or "插件决定不覆盖已有文件", False
 
         if overwrite_mode in ["always", "latest"]:
-            return True, ""
+            return True, "", False
         if overwrite_mode == "size":
             if (target_item.size or 0) < source_size:
-                return True, ""
-            return False, "媒体库存在同名文件，且质量更好"
+                return True, "", True
+            return False, "媒体库存在同名文件，且质量更好", False
         if overwrite_mode == "never":
-            return False, "媒体库存在同名文件，当前覆盖模式为不覆盖"
-        return False, f"{target_file} 已存在"
+            return False, "媒体库存在同名文件，当前覆盖模式为不覆盖", False
+        return False, f"{target_file} 已存在", False
 
     def __transfer_bluray_remux(
             self,
@@ -659,12 +682,20 @@ class TransHandler:
             )
         target_lock = self.__get_bluray_remux_target_lock(target_file)
         with target_lock:
+            target_item = target_oper.get_item(target_file)
+            target_size = target_item.size if target_item else None
+            if target_size is None and target_file.is_file():
+                target_size = target_file.stat().st_size
             allow_target_replace = bool(
                 target_file.exists()
                 or target_file.is_symlink()
-                or target_oper.get_item(target_file)
+                or target_item
             )
-            can_overwrite, errmsg = self.__check_bluray_remux_overwrite(
+            (
+                can_overwrite,
+                errmsg,
+                recheck_output_size,
+            ) = self.__check_bluray_remux_overwrite(
                 fileitem=fileitem,
                 target_oper=target_oper,
                 target_file=target_file,
@@ -689,6 +720,7 @@ class TransHandler:
                 source_files,
                 target_file,
                 allow_target_replace=allow_target_replace,
+                recheck_target_size=target_size if recheck_output_size else None,
             )
             if not state:
                 logger.error(f"蓝光原盘 {fileitem.path} 转封装失败：{errmsg}")

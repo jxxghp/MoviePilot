@@ -246,6 +246,7 @@ class BluRayRemuxTest(TestCase):
                 clip_name
                 + b"M2TS"
                 + b"\x00"
+                + b"\x00"
                 + b"\x01"
                 + (0).to_bytes(4, "big")
                 + (90000).to_bytes(4, "big")
@@ -265,10 +266,10 @@ class BluRayRemuxTest(TestCase):
         data = bytearray(path.read_bytes())
         playlist_start = int.from_bytes(data[8:12], "big")
         first_playitem_pos = playlist_start + 10
-        data[first_playitem_pos + 13:first_playitem_pos + 17] = in_time.to_bytes(
+        data[first_playitem_pos + 14:first_playitem_pos + 18] = in_time.to_bytes(
             4, "big"
         )
-        data[first_playitem_pos + 17:first_playitem_pos + 21] = out_time.to_bytes(
+        data[first_playitem_pos + 18:first_playitem_pos + 22] = out_time.to_bytes(
             4, "big"
         )
         path.write_bytes(data)
@@ -785,3 +786,43 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertEqual(target_file.read_bytes(), b"external")
+
+    def test_bluray_remux_size_overwrite_uses_output_size_before_replace(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).mkv"
+            )
+            target_file.parent.mkdir(parents=True)
+            target_file.write_bytes(b"larger-old")
+
+            def run_ffmpeg(command, *_args, **_kwargs):
+                output_path = Path(command[-1])
+                output_path.write_bytes(b"mkv")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    overwrite_mode="size",
+                )
+
+            self.assertFalse(result.success)
+            self.assertEqual(target_file.read_bytes(), b"larger-old")
