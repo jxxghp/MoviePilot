@@ -34,7 +34,7 @@ workflow 会在 `/improve` 后发布一条普通 PR 评论：
 - 评论标题为 `## Code Review`。
 - 如果本轮有新增行内建议，会基于这些建议生成自然语言总结。
 - 如果本轮没有新增行内建议，直接发布无更多反馈的简短总结。
-- 下一次运行前会删除上一条 PR-Agent Code Review 总结评论，避免评论堆叠，同时保留新的通知事件。
+- 发布新总结后会删除上一条 PR-Agent Code Review 总结评论，避免评论堆叠，同时保留新的通知事件。
 
 ## 常用评论命令
 
@@ -58,7 +58,7 @@ workflow 会在 `/improve` 后发布一条普通 PR 评论：
 
 PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 中维护。公开说明只描述用户可见行为：
 
-- 根据 PR 标题和用户原始描述自动选择中文或英文；无法识别时默认中文。
+- 根据用户原始 PR 描述自动选择中文或英文；无法识别时默认中文。
 - 保留用户原始 PR 描述，只更新 PR Body 中的 PR-Agent 标记区域。
 - 不使用 PR-Agent 的 Reviewer Guide 输出。
 - 不输出 PR Type、额外标签、图表或 describe 评论。
