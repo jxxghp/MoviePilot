@@ -427,7 +427,8 @@ jobs:
           pr_code_suggestions.extra_instructions: |
             Match the configured response language.
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
-            Start every suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
+            Start every suggestion body with this hidden ownership marker on its own first line: <!-- pr-agent-inline-comment:${{ github.run_id }} -->
+            Then start the visible suggestion text with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
           pr_code_suggestions.suggestions_score_threshold: "8"
           pr_code_suggestions.num_code_suggestions_per_chunk: "2"
@@ -478,6 +479,14 @@ jobs:
           head_sha = sys.argv[6]
           marker = os.environ["PR_AGENT_INLINE_MARKER"]
           marker_re = re.compile(r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*", re.IGNORECASE)
+          risk_prefix_re = re.compile(
+              r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
+              re.IGNORECASE,
+          )
+
+          def looks_like_pr_agent_suggestion(body: str) -> bool:
+              body = marker_re.sub("", body or "", count=1).lstrip()
+              return bool(risk_prefix_re.search(body))
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
@@ -504,6 +513,7 @@ jobs:
                   and item.get("pull_request_review_id") in new_review_ids
                   and body.strip()
                   and not marker_re.search(body)
+                  and looks_like_pr_agent_suggestion(body)
               ):
                   patches.append({"id": item["id"], "body": f"{marker}\n{body}"})
 
@@ -630,7 +640,10 @@ jobs:
           (
             (
               github.event_name == 'pull_request_target' &&
-              steps.review_history.outputs.should_improve == 'true'
+              (
+                steps.review_history.outputs.should_improve == 'true' ||
+                steps.review_history.outputs.should_publish_existing_summary == 'true'
+              )
             ) ||
             (
               github.event_name == 'issue_comment' &&
