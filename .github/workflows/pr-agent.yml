@@ -233,7 +233,7 @@ jobs:
           fi
           echo "is_stale=${is_stale}" >> "${GITHUB_OUTPUT}"
 
-      - name: Snapshot PR-Agent inline comments
+      - name: Snapshot PR-Agent review state
         id: inline_state_before
         if: >-
           steps.pr_language.outputs.skip_pr_agent != 'true' &&
@@ -257,7 +257,10 @@ jobs:
           set -euo pipefail
           inline_ids="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | select(.user.login == "github-actions[bot]") | .id' | jq -sc '.')"
           inline_ids_b64="$(printf '%s' "${inline_ids}" | base64 -w0)"
+          review_ids="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | select(.user.login == "github-actions[bot]") | .id' | jq -sc '.')"
+          review_ids_b64="$(printf '%s' "${review_ids}" | base64 -w0)"
           echo "inline_ids_b64=${inline_ids_b64}" >> "${GITHUB_OUTPUT}"
+          echo "review_ids_b64=${review_ids_b64}" >> "${GITHUB_OUTPUT}"
 
       - name: Run PR-Agent
         id: pragent
@@ -351,6 +354,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
           BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
+          BEFORE_REVIEW_IDS_B64: ${{ steps.inline_state_before.outputs.review_ids_b64 }}
         run: |
           set -euo pipefail
           current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
@@ -364,31 +368,46 @@ jobs:
           fi
 
           before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
+          before_review_ids="$(printf '%s' "${BEFORE_REVIEW_IDS_B64:-W10=}" | base64 -d)"
           comments="$(mktemp)"
+          reviews="$(mktemp)"
           delete_ids="$(mktemp)"
           gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | @json' > "${comments}"
-          python3 - "${before_ids}" "${comments}" "${delete_ids}" "${RUN_HEAD_SHA}" <<'PY'
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | @json' > "${reviews}"
+          python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${delete_ids}" "${RUN_HEAD_SHA}" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           before_ids = set(json.loads(sys.argv[1] or "[]"))
-          comments_path = Path(sys.argv[2])
-          delete_path = Path(sys.argv[3])
-          head_sha = sys.argv[4]
-          risk_prefixes = ("🔴 **High Risk**:", "🟡 **Medium Risk**:", "🔵 **Low Risk**:")
+          before_review_ids = set(json.loads(sys.argv[2] or "[]"))
+          comments_path = Path(sys.argv[3])
+          reviews_path = Path(sys.argv[4])
+          delete_path = Path(sys.argv[5])
+          head_sha = sys.argv[6]
+
+          new_review_ids = set()
+          for line in reviews_path.read_text().splitlines():
+              if not line.strip():
+                  continue
+              item = json.loads(line)
+              if (
+                  item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("id") not in before_review_ids
+                  and item.get("commit_id") == head_sha
+              ):
+                  new_review_ids.add(item["id"])
 
           delete_ids = []
           for line in comments_path.read_text().splitlines():
               if not line.strip():
                   continue
               item = json.loads(line)
-              body = (item.get("body") or "").lstrip()
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
                   and item.get("commit_id") == head_sha
-                  and body.startswith(risk_prefixes)
+                  and item.get("pull_request_review_id") in new_review_ids
               ):
                   delete_ids.append(str(item["id"]))
 
@@ -425,6 +444,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
+          BEFORE_REVIEW_IDS_B64: ${{ steps.inline_state_before.outputs.review_ids_b64 }}
           RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
           SUMMARY_LANGUAGE: ${{ steps.pr_language.outputs.summary_language }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
@@ -433,8 +453,10 @@ jobs:
         run: |
           set -euo pipefail
           before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
+          before_review_ids="$(printf '%s' "${BEFORE_REVIEW_IDS_B64:-W10=}" | base64 -d)"
           pr_info="$(mktemp)"
           comments="$(mktemp)"
+          reviews="$(mktemp)"
           review_data="$(mktemp)"
           payload="$(mktemp)"
 
@@ -450,32 +472,46 @@ jobs:
           commit_url="https://github.com/${REPO}/commit/${HEAD_SHA}"
 
           gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | @json' > "${comments}"
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | @json' > "${reviews}"
 
-          python3 - "${before_ids}" "${comments}" "${review_data}" "${HEAD_SHA}" "${pr_url}" "${commit_url}" "${short_sha}" <<'PY'
+          python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${review_data}" "${HEAD_SHA}" "${pr_url}" "${commit_url}" "${short_sha}" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           before_ids = set(json.loads(sys.argv[1] or "[]"))
-          comments_path = Path(sys.argv[2])
-          output_path = Path(sys.argv[3])
-          head_sha = sys.argv[4]
-          pr_url = sys.argv[5]
-          commit_url = sys.argv[6]
-          short_sha = sys.argv[7]
-          risk_prefixes = ("🔴 **High Risk**:", "🟡 **Medium Risk**:", "🔵 **Low Risk**:")
+          before_review_ids = set(json.loads(sys.argv[2] or "[]"))
+          comments_path = Path(sys.argv[3])
+          reviews_path = Path(sys.argv[4])
+          output_path = Path(sys.argv[5])
+          head_sha = sys.argv[6]
+          pr_url = sys.argv[7]
+          commit_url = sys.argv[8]
+          short_sha = sys.argv[9]
 
           comments = []
           for line in comments_path.read_text().splitlines():
               if line.strip():
                   comments.append(json.loads(line))
 
+          new_review_ids = set()
+          for line in reviews_path.read_text().splitlines():
+              if not line.strip():
+                  continue
+              item = json.loads(line)
+              if (
+                  item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("id") not in before_review_ids
+                  and item.get("commit_id") == head_sha
+              ):
+                  new_review_ids.add(item["id"])
+
           new_comments = [
               item for item in comments
               if item.get("user", {}).get("login") == "github-actions[bot]"
               and item.get("id") not in before_ids
               and item.get("commit_id") == head_sha
-              and (item.get("body") or "").lstrip().startswith(risk_prefixes)
+              and item.get("pull_request_review_id") in new_review_ids
           ]
           suggestions = []
           for item in new_comments:
