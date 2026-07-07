@@ -65,6 +65,16 @@ class TransHandler:
             return False
 
     @staticmethod
+    def __is_same_path(path: Path, other: Path) -> bool:
+        """
+        判断两个路径是否指向同一位置。
+        """
+        try:
+            return path.resolve() == other.resolve()
+        except OSError:
+            return False
+
+    @staticmethod
     def __normalize_disc_folder_name(value: Optional[str]) -> Optional[str]:
         """
         从 Disc/Disk/DVD/CD 标识中提取盘号并统一为 Disc N。
@@ -278,7 +288,7 @@ class TransHandler:
         """
         转义 ffconcat 文件中的路径。
         """
-        value = path.as_posix().replace("\\", "/")
+        value = path.as_posix()
         if "\n" in value or "\r" in value:
             raise ValueError("蓝光分片路径包含换行控制字符")
         return value.replace("'", "'\\''")
@@ -479,6 +489,17 @@ class TransHandler:
         bluray_root = self.__get_local_bluray_root(Path(fileitem.path))
         if not bluray_root:
             return None
+        if transfer_type == "move" and not self.__is_same_path(
+            Path(fileitem.path), bluray_root
+        ):
+            return TransferInfo(
+                success=False,
+                message="蓝光原盘转封装移动模式不支持从子目录入口整理",
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+                need_notify=need_notify,
+            )
         if mediainfo.type == MediaType.TV:
             logger.warn("电视剧蓝光原盘可能包含多集或全集播放列表，保持目录整理")
             return None

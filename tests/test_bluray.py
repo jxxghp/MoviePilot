@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Optional
 from unittest import TestCase
@@ -502,6 +502,13 @@ class BluRayRemuxTest(TestCase):
 
         self.assertIn("Schindler'\\''s List", escaped)
 
+    def test_bluray_remux_keeps_literal_backslash_in_concat_path(self):
+        escaped = TransHandler._TransHandler__escape_ffconcat_path(
+            PurePosixPath("Back\\slash/BDMV/STREAM/00000.m2ts")
+        )
+
+        self.assertIn("Back\\slash", escaped)
+
     def test_bluray_remux_rejects_partial_playlist_parse(self):
         with TemporaryDirectory() as temp_dir:
             mpls_file = Path(temp_dir) / "00000.mpls"
@@ -532,6 +539,39 @@ class BluRayRemuxTest(TestCase):
                     mediainfo=self.__movie_info(),
                     target_storage="local",
                     target_path=source_root,
+                    transfer_type="move",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    need_rename=False,
+                )
+
+            self.assertFalse(result.success)
+            self.assertTrue(source_root.exists())
+            self.assertFalse(mock_run.called)
+
+    def test_bluray_remux_move_rejects_child_directory_entry(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            self.__create_bluray_dir(source_root)
+            bdmv_item = schemas.FileItem(
+                storage="local",
+                type="dir",
+                path=(source_root / "BDMV").as_posix(),
+                name="BDMV",
+                basename="BDMV",
+                size=0,
+            )
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=bdmv_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
                     transfer_type="move",
                     source_oper=LocalStorage(),
                     target_oper=LocalStorage(),
