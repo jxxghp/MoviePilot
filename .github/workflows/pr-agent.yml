@@ -476,7 +476,9 @@ jobs:
           fi
           while IFS= read -r comment_id || [ -n "${comment_id}" ]; do
             [ -z "${comment_id}" ] && continue
-            gh api --method DELETE "repos/${REPO}/pulls/comments/${comment_id}" >/dev/null
+            if ! gh api --method DELETE "repos/${REPO}/pulls/comments/${comment_id}" >/dev/null 2>&1; then
+              echo "PR-Agent inline comment ${comment_id} was already removed; continue."
+            fi
           done < "${delete_ids}"
 
       - name: Publish PR-Agent code review summary
@@ -746,7 +748,9 @@ jobs:
 
           while IFS= read -r comment_id; do
             [ -z "${comment_id}" ] && continue
-            gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null
+            if ! gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null 2>&1; then
+              echo "PR-Agent summary comment ${comment_id} was already removed; continue."
+            fi
           done <<< "${comment_ids}"
 
       - name: Restore PR-Agent description markers on failure
