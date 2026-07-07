@@ -11,11 +11,16 @@ on:
       - review_requested
       - synchronize
   issue_comment:
-    # 手动命令如 "/review"、"/describe"、"/improve" 和 "/ask ..." 只在 PR 评论中有意义。
+    # 手动命令如 "/describe"、"/improve" 和 "/ask ..." 只在 PR 评论中有意义。
     # issue_comment 同时覆盖普通 issue，因此 job 里还会再判断是否属于 PR。
     types:
       - created
       - edited
+
+concurrency:
+  # 同一 PR 上只保留最新一次 PR-Agent 运行，避免旧 commit 的 review 后完成并覆盖新结果。
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   # 读取仓库内容和 PR diff。
@@ -27,7 +32,7 @@ permissions:
 
 jobs:
   pr-agent:
-    name: PR-Agent review and describe
+    name: PR-Agent inline review
     # PR 事件自动处理；评论命令仅允许指定身份在 PR 下触发，避免任意评论消耗模型配额。
     if: >-
       github.event.sender.type != 'Bot' &&
@@ -38,8 +43,6 @@ jobs:
           github.event.issue.pull_request != null &&
           contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]'), github.event.comment.author_association) &&
           (
-            github.event.comment.body == '/review' ||
-            startsWith(github.event.comment.body, '/review ') ||
             github.event.comment.body == '/describe' ||
             startsWith(github.event.comment.body, '/describe ') ||
             github.event.comment.body == '/improve' ||
@@ -52,10 +55,182 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Detect PR review language
+        id: pr_language
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          pr_info="$(mktemp)"
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${pr_info}"
+          python3 - "${pr_info}" >> "${GITHUB_OUTPUT}" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          pr = json.loads(Path(sys.argv[1]).read_text())
+          title = pr.get("title") or ""
+          body = pr.get("body") or ""
+
+          body = re.sub(
+              r"\n*##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*"
+              r"<!-- pr-agent-summary:start -->.*?<!-- pr-agent-summary:end -->",
+              " ",
+              body,
+              flags=re.IGNORECASE | re.DOTALL,
+          )
+          body = re.sub(
+              r"<!-- pr-agent-summary:start -->.*?<!-- pr-agent-summary:end -->",
+              " ",
+              body,
+              flags=re.DOTALL,
+          )
+          body = re.sub(r"```.*?```", " ", body, flags=re.DOTALL)
+
+          text = f"{title}\n{body}"
+          cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
+          latin_words = len(re.findall(r"\b[A-Za-z][A-Za-z]{2,}\b", text))
+
+          if cjk_count >= 4:
+              response_language = "zh-CN"
+              summary_heading = "PR-Agent 摘要"
+              summary_language = "中文"
+          elif latin_words >= 8:
+              response_language = "en-US"
+              summary_heading = "PR-Agent Summary"
+              summary_language = "English"
+          else:
+              response_language = "zh-CN"
+              summary_heading = "PR-Agent 摘要"
+              summary_language = "中文"
+
+          print(f"response_language={response_language}")
+          print(f"summary_heading={summary_heading}")
+          print(f"summary_language={summary_language}")
+          PY
+
+      - name: Prepare PR-Agent description markers
+        if: >-
+          github.event_name == 'pull_request_target' ||
+          (
+            github.event_name == 'issue_comment' &&
+            (
+              github.event.comment.body == '/describe' ||
+              startsWith(github.event.comment.body, '/describe ')
+            )
+          )
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          SUMMARY_HEADING: ${{ steps.pr_language.outputs.summary_heading }}
+        run: |
+          set -euo pipefail
+          current_body="$(mktemp)"
+          next_body="$(mktemp)"
+          payload="$(mktemp)"
+
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
+          python3 - "${current_body}" "${next_body}" <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          current_path = Path(sys.argv[1])
+          next_path = Path(sys.argv[2])
+
+          body = current_path.read_text()
+          start = "<!-- pr-agent-summary:start -->"
+          end = "<!-- pr-agent-summary:end -->"
+          placeholder = "pr_agent:summary"
+          summary_heading = os.environ.get("SUMMARY_HEADING") or "PR-Agent 摘要"
+          agent_block = f"## {summary_heading}\n\n{start}\n{placeholder}\n{end}\n"
+          body = re.sub(
+              r"(?im)^##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*(?=<!-- pr-agent-summary:start -->)",
+              f"## {summary_heading}\n\n",
+              body,
+          )
+
+          start_index = body.find(start)
+          end_index = body.find(end)
+          if start_index >= 0 and end_index > start_index:
+              next_body = body[: start_index + len(start)] + f"\n{placeholder}\n" + body[end_index:]
+          else:
+              separator = "\n\n" if body.strip() else ""
+              next_body = body.rstrip() + separator + agent_block
+
+          next_path.write_text(next_body)
+          PY
+
+          if ! cmp -s "${current_body}" "${next_body}"; then
+            python3 - "${next_body}" "${payload}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          body = Path(sys.argv[1]).read_text()
+          Path(sys.argv[2]).write_text(json.dumps({"body": body}, ensure_ascii=False))
+          PY
+            gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+          fi
+
+      - name: Snapshot PR-Agent inline comments
+        id: inline_state_before
+        if: >-
+          github.event_name == 'pull_request_target' ||
+          (
+            github.event_name == 'issue_comment' &&
+            (
+              github.event.comment.body == '/improve' ||
+              startsWith(github.event.comment.body, '/improve ')
+            )
+          )
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          inline_ids="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | select(.user.login == "github-actions[bot]") | .id' | jq -sc '.')"
+          inline_ids_b64="$(printf '%s' "${inline_ids}" | base64 -w0)"
+          echo "inline_ids_b64=${inline_ids_b64}" >> "${GITHUB_OUTPUT}"
+
+      - name: Clean previous PR-Agent code review summary
+        if: >-
+          github.event_name == 'pull_request_target' ||
+          (
+            github.event_name == 'issue_comment' &&
+            (
+              github.event.comment.body == '/improve' ||
+              startsWith(github.event.comment.body, '/improve ')
+            )
+          )
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq '.[] | select(.user.login == "github-actions[bot]" and ((.body | startswith("<!-- pr-agent-code-review-summary -->")) or (.body | startswith("<!-- pr-agent-update-notification -->")))) | .id')"
+
+          if [ -z "${comment_ids}" ]; then
+            echo "No previous PR-Agent code review summary to clean."
+            exit 0
+          fi
+
+          while IFS= read -r comment_id; do
+            [ -z "${comment_id}" ] && continue
+            gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null
+          done <<< "${comment_ids}"
+
       - name: Run PR-Agent
         id: pragent
         # 使用版本号加 digest 固定容器构建，避免 tag 被重推后改变运行内容。
-        uses: docker://pragent/pr-agent:0.37.0-github_action@sha256:4ec7bac814050a1bc8c96ab2fab6b7b0f65df0049a5ec43f3fee1a0b551c28ca
+        uses: docker://pragent/pr-agent:0.39.0-github_action@sha256:b253845caa8c7ff5ce8be78f32996647982bdd4890826a962b78eff2e385a825
         env:
           # PR-Agent 使用该 token 读取 PR 元数据并发布评论。
           GITHUB_TOKEN: ${{ github.token }}
@@ -72,52 +247,257 @@ jobs:
           config.fallback_models: '["gpt-5.4"]'
           config.reasoning_effort: "xhigh"
           config.ai_timeout: "900"
-          config.response_language: "zh-CN"
+          config.response_language: ${{ steps.pr_language.outputs.response_language }}
           config.large_patch_policy: "clip"
           config.ignore_pr_title: '["^\\[Auto\\]", "^Auto"]'
           config.ignore_pr_labels: '["skip pr-agent"]'
 
-          # pull_request_target 事件默认自动执行 /review 和 /describe；/improve 保持手动触发。
-          github_action_config.auto_review: "true"
+          # PR 初次进入评审或后续 push 时，更新 PR 摘要并发布 GitHub Review 行内建议。
+          github_action_config.auto_review: "false"
           github_action_config.auto_describe: "true"
-          github_action_config.auto_improve: "false"
+          github_action_config.auto_improve: "true"
 
-          # 允许触发自动工具的 PR 动作。包含 synchronize，便于新 commit 推送后刷新结果。
-          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "review_requested", "synchronize"]'
+          # synchronize 由 push_commands 单独处理；每次 push 更新摘要和行内 Review，旧行评由 GitHub 标记 outdated。
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "review_requested"]'
+          github_action_config.handle_push_trigger: "true"
+          github_action_config.push_commands: '["/describe", "/improve"]'
 
           # 保留 action outputs，便于后续 workflow 编排或排查。
           github_action_config.enable_output: "true"
 
-          # /describe 行为控制；与自动触发配置放在同一层，避免使用默认图表和标签策略。
+          # /describe 行为控制；只更新 PR body 中的 PR-Agent 摘要占位符。
           pr_description.generate_ai_title: "false"
           pr_description.publish_labels: "false"
+          pr_description.publish_description_as_comment: "false"
+          pr_description.publish_description_as_comment_persistent: "false"
           pr_description.enable_pr_diagram: "false"
+          pr_description.enable_pr_type: "false"
+          pr_description.enable_help_text: "false"
+          pr_description.enable_help_comment: "false"
+          pr_description.enable_semantic_files_types: "false"
           pr_description.collapsible_file_list: "adaptive"
           pr_description.add_original_user_description: "true"
+          pr_description.use_description_markers: "true"
+          pr_description.final_update_message: "false"
+          pr_description.extra_instructions: |
+            Match the configured response language.
+            Generate a moderately detailed PR summary covering the change goal, key implementation details, configuration or compatibility impact, tests, and notable risks.
+            Use 2-4 bullets for small PRs; use 4-8 bullets for feature or multi-file PRs.
+            Avoid low-value file lists and local command transcripts.
 
-          # /review 输出策略，聚焦维护者需要处理的风险和缺口。
-          pr_reviewer.extra_instructions: |
-            请用中文输出。
-            优先指出 P0/P1 风险，避免纠结纯格式问题。
-            重点检查安全、权限、状态一致性、异步/缓存、副作用和测试缺口。
-          pr_reviewer.num_max_findings: "5"
-          pr_reviewer.persistent_comment: "true"
-          pr_reviewer.publish_output_no_suggestions: "true"
-          pr_reviewer.require_tests_review: "true"
-          pr_reviewer.require_security_review: "true"
-          pr_reviewer.require_estimate_effort_to_review: "true"
-          pr_reviewer.require_can_be_split_review: "true"
-          pr_reviewer.require_todo_scan: "false"
-          pr_reviewer.enable_review_labels_effort: "false"
-          pr_reviewer.enable_review_labels_security: "true"
-
-          # /improve 和 /ask 的手动命令策略。
+          # /improve 以 GitHub 内联建议呈现，便于像正式 review discussion 一样逐条处理。
+          pr_code_suggestions.extra_instructions: |
+            Match the configured response language.
+            Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
+            For prioritized issues, start the suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
-          pr_code_suggestions.suggestions_score_threshold: "7"
-          pr_code_suggestions.commitable_code_suggestions: "false"
+          pr_code_suggestions.suggestions_score_threshold: "8"
+          pr_code_suggestions.num_code_suggestions_per_chunk: "2"
+          pr_code_suggestions.commitable_code_suggestions: "true"
+          pr_code_suggestions.publish_output_no_suggestions: "false"
           pr_questions.use_conversation_history: "true"
 
           # 可选成本和噪音控制：
           # github_action_config.auto_improve: "true"
           # config.verbosity_level: "1"
-          # pr_reviewer.num_max_findings: "3"
+
+      - name: Publish PR-Agent code review summary
+        if: >-
+          github.event_name == 'pull_request_target' ||
+          (
+            github.event_name == 'issue_comment' &&
+            (
+              github.event.comment.body == '/improve' ||
+              startsWith(github.event.comment.body, '/improve ')
+            )
+          )
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          SUMMARY_LANGUAGE: ${{ steps.pr_language.outputs.summary_language }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          SUMMARY_MODEL: gpt-5.5
+        run: |
+          set -euo pipefail
+          before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
+          pr_info="$(mktemp)"
+          comments="$(mktemp)"
+          review_data="$(mktemp)"
+          payload="$(mktemp)"
+
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${pr_info}"
+          CURRENT_HEAD_SHA="$(jq -r '.head.sha' "${pr_info}")"
+          HEAD_SHA="${EVENT_HEAD_SHA:-${CURRENT_HEAD_SHA}}"
+          if [ "${CURRENT_HEAD_SHA}" != "${HEAD_SHA}" ]; then
+            echo "PR head changed from ${HEAD_SHA} to ${CURRENT_HEAD_SHA}; skip stale code review summary."
+            exit 0
+          fi
+          short_sha="${HEAD_SHA:0:7}"
+          pr_url="https://github.com/${REPO}/pull/${PR_NUMBER}"
+          commit_url="https://github.com/${REPO}/commit/${HEAD_SHA}"
+
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | @json' > "${comments}"
+
+          python3 - "${before_ids}" "${comments}" "${review_data}" "${HEAD_SHA}" "${pr_url}" "${commit_url}" "${short_sha}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          before_ids = set(json.loads(sys.argv[1] or "[]"))
+          comments_path = Path(sys.argv[2])
+          output_path = Path(sys.argv[3])
+          head_sha = sys.argv[4]
+          pr_url = sys.argv[5]
+          commit_url = sys.argv[6]
+          short_sha = sys.argv[7]
+
+          comments = []
+          for line in comments_path.read_text().splitlines():
+              if line.strip():
+                  comments.append(json.loads(line))
+
+          new_comments = [
+              item for item in comments
+              if item.get("user", {}).get("login") == "github-actions[bot]"
+              and item.get("id") not in before_ids
+              and item.get("commit_id") == head_sha
+          ]
+          suggestions = []
+          for item in new_comments:
+              body = (item.get("body") or "").strip()
+              first_line = next((line.strip() for line in body.splitlines() if line.strip()), "")
+              suggestions.append({
+                  "path": item.get("path"),
+                  "line": item.get("line") or item.get("start_line"),
+                  "url": item.get("html_url"),
+                  "summary": first_line[:500],
+                  "body": body[:1500],
+              })
+
+          output_path.write_text(json.dumps({
+              "pr_url": pr_url,
+              "commit_url": commit_url,
+              "short_sha": short_sha,
+              "suggestions": suggestions,
+          }, ensure_ascii=False))
+          PY
+
+          python3 - "${review_data}" "${payload}" <<'PY'
+          import json
+          import os
+          import textwrap
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          review_data = json.loads(Path(os.sys.argv[1]).read_text())
+          payload_path = Path(os.sys.argv[2])
+          suggestions = review_data["suggestions"]
+          marker = "<!-- pr-agent-code-review-summary -->"
+          summary_language = os.environ.get("SUMMARY_LANGUAGE") or "中文"
+          use_chinese = summary_language != "English"
+
+          def fallback_summary() -> str:
+              if not suggestions:
+                  if use_chinese:
+                      return "已审查本次变更，未发现需要进一步反馈或调整的问题。"
+                  return "Reviewed this change and found no further feedback or required adjustments."
+              if use_chinese:
+                  lines = [f"本轮代码审查新增 {len(suggestions)} 条行内建议，建议优先查看以下位置："]
+              else:
+                  noun = "suggestion" if len(suggestions) == 1 else "suggestions"
+                  lines = [f"This review added {len(suggestions)} inline {noun}. Consider reviewing these locations first:"]
+              for item in suggestions[:5]:
+                  location = f"{item.get('path')}:{item.get('line')}" if item.get("line") else str(item.get("path"))
+                  summary = item.get("summary") or "查看行内建议"
+                  url = item.get("url")
+                  if use_chinese:
+                      lines.append(f"- [{location}]({url})：{summary}" if url else f"- {location}：{summary}")
+                  else:
+                      lines.append(f"- [{location}]({url}): {summary}" if url else f"- {location}: {summary}")
+              if len(suggestions) > 5:
+                  if use_chinese:
+                      lines.append(f"- 其余 {len(suggestions) - 5} 条请在 Files changed 的行内评论中查看。")
+                  else:
+                      lines.append(f"- Review the remaining {len(suggestions) - 5} inline comments in Files changed.")
+              return "\n".join(lines)
+
+          def llm_summary() -> str | None:
+              if not suggestions:
+                  return None
+
+              api_base = (os.environ.get("OPENAI_API_BASE") or "").rstrip("/")
+              api_key = os.environ.get("OPENAI_KEY") or ""
+              model = os.environ.get("SUMMARY_MODEL") or "gpt-5.5"
+              if not api_base or not api_key:
+                  return None
+
+              if use_chinese:
+                  task = (
+                      "你是独立的代码审查摘要助手。只基于本轮已经发布的行内审查意见做简短汇总，"
+                      "不新增审查结论，不替维护者判断 PR 是否可以合并。请用中文 Markdown 输出："
+                      "第一段说明本轮审查已完成，并已在行内留下需要关注的建议；如有建议，"
+                      "概括 1-3 个主要关注点，使用“建议关注”“可能影响”“可优先查看”等中立表述。"
+                      "不要输出表格，不要复述所有文件，不要使用“可以合并”“不建议合并”“阻塞合并”"
+                      "“先处理后再合入”等合并裁决措辞。"
+                  )
+                  system_prompt = "你是严谨、中立的代码审查摘要助手。输出中文 Markdown，简洁自然。"
+              else:
+                  task = (
+                      "You are an independent code review summarizer. Summarize only the inline review comments "
+                      "already posted in this run; do not add new review conclusions or decide whether the PR should merge. "
+                      "Write concise Markdown in English. Start by noting that review completed and inline suggestions "
+                      "were left; then summarize 1-3 main points using neutral phrasing such as \"consider\", "
+                      "\"may affect\", or \"worth reviewing\". Do not output tables, list every file, or use merge-gate "
+                      "wording such as \"ready to merge\", \"do not merge\", \"blocks merging\", or \"must be fixed before merge\"."
+                  )
+                  system_prompt = "You are a rigorous, neutral code review summarizer. Write concise English Markdown."
+
+              user_content = {
+                  "task": task,
+                  "suggestions": suggestions[:10],
+              }
+
+              request_body = {
+                  "model": model,
+                  "messages": [
+                      {"role": "system", "content": system_prompt},
+                      {"role": "user", "content": json.dumps(user_content, ensure_ascii=False)},
+                  ],
+                  "temperature": 0.2,
+              }
+              request = urllib.request.Request(
+                  f"{api_base}/chat/completions",
+                  data=json.dumps(request_body).encode("utf-8"),
+                  headers={
+                      "Authorization": f"Bearer {api_key}",
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      data = json.loads(response.read().decode("utf-8"))
+                  content = data["choices"][0]["message"]["content"].strip()
+                  return content or None
+              except (KeyError, TimeoutError, urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+                  return None
+
+          summary = llm_summary() or fallback_summary()
+          commit_label = "审查提交：" if use_chinese else "Reviewed commit:"
+          body = textwrap.dedent(f"""\
+          {marker}
+          ## Code Review
+
+          {summary}
+
+          {commit_label} [{review_data["short_sha"]}]({review_data["commit_url"]})
+          """)
+          payload_path.write_text(json.dumps({"body": body}, ensure_ascii=False))
+          PY
+
+          gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" >/dev/null
