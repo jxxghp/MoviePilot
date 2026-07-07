@@ -416,6 +416,7 @@ jobs:
           gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | @json' > "${reviews}"
           python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${delete_ids}" "${RUN_HEAD_SHA}" <<'PY'
           import json
+          import re
           import sys
           from pathlib import Path
 
@@ -425,9 +426,13 @@ jobs:
           reviews_path = Path(sys.argv[4])
           delete_path = Path(sys.argv[5])
           head_sha = sys.argv[6]
+          risk_prefix_re = re.compile(
+              r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
+              re.IGNORECASE,
+          )
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              return bool((item.get("body") or "").strip())
+              return bool(risk_prefix_re.search((item.get("body") or "").lstrip()))
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
@@ -543,12 +548,17 @@ jobs:
               r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*",
               re.IGNORECASE,
           )
+          risk_prefix_re = re.compile(
+              r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
+              re.IGNORECASE,
+          )
 
           def normalize_suggestion_body(body: str) -> str:
               return marker_re.sub("", body or "", count=1).strip()
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              return bool((item.get("body") or "").strip())
+              body = normalize_suggestion_body(item.get("body") or "")
+              return bool(risk_prefix_re.search(body))
 
           comments = []
           for line in comments_path.read_text().splitlines():
