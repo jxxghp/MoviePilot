@@ -747,3 +747,41 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertEqual(target_file.read_bytes(), b"old")
+
+    def test_bluray_remux_rechecks_target_before_replace(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Movie Source")
+            target_file = (
+                root
+                / "media"
+                / "BluRay Movie (2024)"
+                / "BluRay Movie (2024).mkv"
+            )
+
+            def run_ffmpeg(command, *_args, **_kwargs):
+                target_file.write_bytes(b"external")
+                output_path = Path(command[-1])
+                output_path.write_bytes(b"mkv")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run",
+                side_effect=run_ffmpeg,
+            ):
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                )
+
+            self.assertFalse(result.success)
+            self.assertEqual(target_file.read_bytes(), b"external")

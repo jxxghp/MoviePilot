@@ -358,6 +358,7 @@ class TransHandler:
             cls,
             source_files: List[_BlurayRemuxSource],
             target_file: Path,
+            allow_target_replace: bool,
     ) -> Tuple[bool, str]:
         """
         使用 ffmpeg 将蓝光原盘分片转封装为单个 MKV。
@@ -436,6 +437,11 @@ class TransHandler:
                 return False, f"ffmpeg 转封装失败：{errmsg or completed.returncode}"
             if not tmp_file.exists():
                 return False, "ffmpeg 转封装完成但未生成目标文件"
+            if (
+                    not allow_target_replace
+                    and (target_file.exists() or target_file.is_symlink())
+            ):
+                return False, f"{target_file} 在转封装期间被创建，取消覆盖"
             tmp_file.replace(target_file)
             return True, ""
         except Exception as err:
@@ -653,6 +659,11 @@ class TransHandler:
             )
         target_lock = self.__get_bluray_remux_target_lock(target_file)
         with target_lock:
+            allow_target_replace = bool(
+                target_file.exists()
+                or target_file.is_symlink()
+                or target_oper.get_item(target_file)
+            )
             can_overwrite, errmsg = self.__check_bluray_remux_overwrite(
                 fileitem=fileitem,
                 target_oper=target_oper,
@@ -674,7 +685,11 @@ class TransHandler:
                 )
 
             logger.info(f"正在转封装蓝光原盘：{bluray_root} 到 {target_file}")
-            state, errmsg = self.__run_bluray_remux(source_files, target_file)
+            state, errmsg = self.__run_bluray_remux(
+                source_files,
+                target_file,
+                allow_target_replace=allow_target_replace,
+            )
             if not state:
                 logger.error(f"蓝光原盘 {fileitem.path} 转封装失败：{errmsg}")
                 return TransferInfo(
