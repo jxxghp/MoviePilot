@@ -1,7 +1,7 @@
 import base64
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Any, Mapping, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 
 from requests import Session
@@ -13,6 +13,10 @@ from app.utils.url import UrlUtils
 
 @dataclass
 class ApiResult:
+    """
+    绿联接口标准响应封装。
+    """
+
     code: int = -1
     msg: str = ""
     data: Any = None
@@ -21,6 +25,7 @@ class ApiResult:
 
     @property
     def success(self) -> bool:
+        """判断绿联接口是否返回成功状态"""
         return self.code == 200
 
 
@@ -59,7 +64,17 @@ class Api:
         ug_agent: str = "PC/WEB",
         timeout: int = 20,
         verify_ssl: bool = True,
-    ):
+    ) -> None:
+        """
+        初始化绿联影视 API 客户端。
+
+        :param host: 绿联服务端地址
+        :param client_version: 绿联 Web 客户端版本号
+        :param language: 请求语言
+        :param ug_agent: 绿联客户端标识
+        :param timeout: HTTP 请求超时时间
+        :param verify_ssl: 是否校验 HTTPS 证书
+        """
         self._host = self._normalize_base_url(host)
         self._session = Session()
 
@@ -80,25 +95,30 @@ class Api:
 
     @property
     def host(self) -> str:
+        """获取规范化后的绿联服务端地址"""
         return self._host
 
     @property
     def token(self) -> Optional[str]:
+        """获取当前登录会话 token"""
         return self._token
 
     @property
     def static_token(self) -> Optional[str]:
+        """获取可用于静态资源访问的 token"""
         return self._static_token
 
     @property
     def is_ugk(self) -> bool:
+        """判断当前会话是否使用 ugk 访问参数"""
         return self._is_ugk
 
     @property
     def public_key(self) -> Optional[str]:
+        """获取当前会话加密公钥"""
         return self._public_key
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭底层 HTTP 会话。
         """
@@ -262,14 +282,32 @@ class Api:
             logger.error(f"绿联登录失败：{login_result.msg}")
             return None
 
-        token = str(login_result.data.get("token") or "").strip()
-        public_key = self._decode_public_key(str(login_result.data.get("public_key") or ""))
+        token = str(
+            login_result.data.get("token")
+            or login_result.data.get("token_id")
+            or login_result.data.get("tokenId")
+            or ""
+        ).strip()
+        public_key = (
+            self._decode_public_key(
+                str(
+                    login_result.data.get("public_key")
+                    or login_result.data.get("publicKey")
+                    or ""
+                )
+            )
+            or login_public_key
+        )
         if not token or not public_key:
-            logger.error("绿联登录失败：未返回 token/public_key")
+            logger.error("绿联登录失败：未返回 token/token_id 或可用公钥")
             return None
 
         self._token = token
-        static_token = str(login_result.data.get("static_token") or "").strip()
+        static_token = str(
+            login_result.data.get("static_token")
+            or login_result.data.get("staticToken")
+            or ""
+        ).strip()
         self._static_token = static_token or self._token
         self._is_ugk = bool(login_result.data.get("is_ugk"))
         self._public_key = public_key
@@ -365,7 +403,7 @@ class Api:
         )
         return True
 
-    def logout(self):
+    def logout(self) -> None:
         """
         登出并清理本地认证状态。
         """
@@ -569,7 +607,7 @@ class Api:
         """
         获取海报墙文件夹与条目（可按目录路径递归展开）。
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
             "sort_type": sort_type,
@@ -590,7 +628,7 @@ class Api:
         """
         获取电影详情。
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "id": item_id,
             "media_lib_set_id": media_lib_set_id,
             "fileVersion": "true",
