@@ -159,8 +159,10 @@ jobs:
           set -euo pipefail
           current_body="$(mktemp)"
           latest_body="$(mktemp)"
+          latest_response="$(mktemp)"
           next_body="$(mktemp)"
           payload="$(mktemp)"
+          etag_file="$(mktemp)"
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
           placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
 
@@ -204,7 +206,27 @@ jobs:
           body_changed=false
           can_describe=true
           if ! cmp -s "${current_body}" "${next_body}"; then
-            gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${latest_body}"
+            gh api -i "repos/${REPO}/pulls/${PR_NUMBER}" > "${latest_response}"
+            python3 - "${latest_response}" "${latest_body}" "${etag_file}" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          raw = Path(sys.argv[1]).read_text()
+          parts = re.split(r"\r?\n\r?\n", raw)
+          headers = parts[-2] if len(parts) > 1 else ""
+          body = parts[-1]
+          etag = ""
+          for line in headers.splitlines():
+              if line.lower().startswith("etag:"):
+                  etag = line.split(":", 1)[1].strip()
+                  break
+          Path(sys.argv[2]).write_text(json.loads(body).get("body") or "")
+          if etag.lower().startswith("w/"):
+              etag = ""
+          Path(sys.argv[3]).write_text(etag)
+          PY
             if ! cmp -s "${current_body}" "${latest_body}"; then
               echo "PR body changed while preparing PR-Agent markers; skip placeholder update."
               can_describe=false
@@ -217,7 +239,12 @@ jobs:
           body = Path(sys.argv[1]).read_text()
           Path(sys.argv[2]).write_text(json.dumps({"body": body}, ensure_ascii=False))
           PY
-              gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+              etag="$(cat "${etag_file}")"
+              if [ -n "${etag}" ]; then
+                gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" -H "If-Match: ${etag}" --input "${payload}" >/dev/null
+              else
+                gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+              fi
               body_changed=true
             fi
           fi
@@ -427,8 +454,7 @@ jobs:
           pr_code_suggestions.extra_instructions: |
             Match the configured response language.
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
-            Start every suggestion body with this hidden ownership marker on its own first line: <!-- pr-agent-inline-comment:${{ github.run_id }} -->
-            Then start the visible suggestion text with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
+            Start every suggestion with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
           pr_code_suggestions.suggestions_score_threshold: "8"
           pr_code_suggestions.num_code_suggestions_per_chunk: "2"
@@ -439,6 +465,94 @@ jobs:
           # 可选成本和噪音控制：
           # github_action_config.auto_improve: "true"
           # config.verbosity_level: "1"
+
+      - name: Mark PR-Agent inline comments
+        if: >-
+          always() &&
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
+          steps.run_state.outputs.is_stale != 'true' &&
+          steps.pragent_head.outputs.is_stale != 'true' &&
+          steps.inline_state_before.outputs.inline_ids_b64 != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
+          BEFORE_REVIEW_IDS_B64: ${{ steps.inline_state_before.outputs.review_ids_b64 }}
+          PR_AGENT_INLINE_MARKER: "<!-- pr-agent-inline-comment:${{ github.run_id }} -->"
+        run: |
+          set -euo pipefail
+          before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
+          before_review_ids="$(printf '%s' "${BEFORE_REVIEW_IDS_B64:-W10=}" | base64 -d)"
+          comments="$(mktemp)"
+          reviews="$(mktemp)"
+          patches="$(mktemp)"
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | @json' > "${comments}"
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | @json' > "${reviews}"
+          python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${patches}" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          before_ids = set(json.loads(sys.argv[1] or "[]"))
+          before_review_ids = set(json.loads(sys.argv[2] or "[]"))
+          comments_path = Path(sys.argv[3])
+          reviews_path = Path(sys.argv[4])
+          patches_path = Path(sys.argv[5])
+          marker = os.environ["PR_AGENT_INLINE_MARKER"]
+          marker_re = re.compile(r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*", re.IGNORECASE)
+
+          new_review_ids = set()
+          for line in reviews_path.read_text().splitlines():
+              if not line.strip():
+                  continue
+              item = json.loads(line)
+              if (
+                  item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("id") not in before_review_ids
+              ):
+                  new_review_ids.add(item["id"])
+
+          patches = []
+          for line in comments_path.read_text().splitlines():
+              if not line.strip():
+                  continue
+              item = json.loads(line)
+              body = item.get("body") or ""
+              if (
+                  item.get("user", {}).get("login") == "github-actions[bot]"
+                  and item.get("id") not in before_ids
+                  and item.get("pull_request_review_id") in new_review_ids
+                  and body.lstrip().startswith("**Suggestion:**")
+                  and not marker_re.search(body)
+              ):
+                  patches.append({"id": item["id"], "body": f"{marker}\n{body}"})
+
+          patches_path.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in patches))
+          PY
+
+          if [ ! -s "${patches}" ]; then
+            echo "No PR-Agent inline comments to mark."
+            exit 0
+          fi
+          patch_failed=false
+          while IFS= read -r patch || [ -n "${patch}" ]; do
+            [ -z "${patch}" ] && continue
+            comment_id="$(printf '%s' "${patch}" | jq -r '.id')"
+            payload="$(mktemp)"
+            err="$(mktemp)"
+            printf '%s' "${patch}" | jq '{body:.body}' > "${payload}"
+            if ! gh api --method PATCH "repos/${REPO}/pulls/comments/${comment_id}" --input "${payload}" >/dev/null 2>"${err}"; then
+              cat "${err}" >&2
+              echo "PR-Agent inline comment ${comment_id} could not be marked."
+              patch_failed=true
+            fi
+          done < "${patches}"
+          if [ "${patch_failed}" = "true" ]; then
+            exit 1
+          fi
 
       - name: Clean stale PR-Agent inline comments
         id: post_pragent_state
@@ -500,7 +614,6 @@ jobs:
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_review_ids
-                  and item.get("commit_id") == head_sha
               ):
                   new_review_ids.add(item["id"])
 
@@ -512,7 +625,6 @@ jobs:
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
-                  and item.get("commit_id") == head_sha
                   and item.get("pull_request_review_id") in new_review_ids
                   and is_pr_agent_suggestion(item)
               ):
@@ -852,7 +964,9 @@ jobs:
           placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
           current_body="$(mktemp)"
           latest_body="$(mktemp)"
+          latest_response="$(mktemp)"
           payload="$(mktemp)"
+          etag_file="$(mktemp)"
 
           if [ ! -s "${body_backup}" ] || [ ! -s "${placeholder_body}" ]; then
             echo "No PR body backup found."
@@ -931,10 +1045,35 @@ jobs:
           payload_path.write_text(json.dumps({"body": next_body}, ensure_ascii=False))
           PY
           if [ -s "${payload}" ]; then
-            gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${latest_body}"
+            gh api -i "repos/${REPO}/pulls/${PR_NUMBER}" > "${latest_response}"
+            python3 - "${latest_response}" "${latest_body}" "${etag_file}" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          raw = Path(sys.argv[1]).read_text()
+          parts = re.split(r"\r?\n\r?\n", raw)
+          headers = parts[-2] if len(parts) > 1 else ""
+          body = parts[-1]
+          etag = ""
+          for line in headers.splitlines():
+              if line.lower().startswith("etag:"):
+                  etag = line.split(":", 1)[1].strip()
+                  break
+          Path(sys.argv[2]).write_text(json.loads(body).get("body") or "")
+          if etag.lower().startswith("w/"):
+              etag = ""
+          Path(sys.argv[3]).write_text(etag)
+          PY
             if ! cmp -s "${current_body}" "${latest_body}"; then
               echo "PR body changed while preparing restore payload; skip restore."
               exit 0
             fi
-            gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+            etag="$(cat "${etag_file}")"
+            if [ -n "${etag}" ]; then
+              gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" -H "If-Match: ${etag}" --input "${payload}" >/dev/null
+            else
+              gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+            fi
           fi
