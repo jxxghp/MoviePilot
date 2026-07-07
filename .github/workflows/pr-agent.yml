@@ -503,6 +503,11 @@ jobs:
           patches_path = Path(sys.argv[5])
           marker = os.environ["PR_AGENT_INLINE_MARKER"]
           marker_re = re.compile(r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*", re.IGNORECASE)
+          risk_prefixes = ("🔴 **High Risk**:", "🟡 **Medium Risk**:", "🔵 **Low Risk**:")
+
+          def is_pr_agent_inline_body(body: str) -> bool:
+              visible = (body or "").lstrip()
+              return visible.startswith("**Suggestion:**") or visible.startswith(risk_prefixes)
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
@@ -525,7 +530,7 @@ jobs:
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
                   and item.get("pull_request_review_id") in new_review_ids
-                  and body.lstrip().startswith("**Suggestion:**")
+                  and is_pr_agent_inline_body(body)
                   and not marker_re.search(body)
               ):
                   patches.append({"id": item["id"], "body": f"{marker}\n{body}"})
@@ -951,7 +956,6 @@ jobs:
       - name: Restore PR-Agent description markers on failure
         if: >-
           always() &&
-          steps.prepare_description.outputs.body_changed == 'true' &&
           steps.pr_language.outputs.skip_pr_agent != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -968,7 +972,7 @@ jobs:
           payload="$(mktemp)"
           etag_file="$(mktemp)"
 
-          if [ ! -s "${body_backup}" ] || [ ! -s "${placeholder_body}" ]; then
+          if [ ! -e "${body_backup}" ] || [ ! -s "${placeholder_body}" ]; then
             echo "No PR body backup found."
             exit 0
           fi
@@ -1039,7 +1043,11 @@ jobs:
               payload_path.write_text(json.dumps({"body": next_body}, ensure_ascii=False))
               raise SystemExit(0)
 
-          restored_section = backup_body[backup_block[0]:backup_block[1]] if backup_block else ""
+          restored_section = ""
+          if backup_block:
+              backup_section = backup_body[backup_block[0]:backup_block[1]]
+              if "pr_agent:summary" not in backup_section:
+                  restored_section = backup_section
           next_body = current_body[:current_block[0]] + restored_section + current_body[current_block[1]:]
           next_body = re.sub(r"\n{4,}", "\n\n\n", next_body).rstrip() + "\n"
           payload_path.write_text(json.dumps({"body": next_body}, ensure_ascii=False))
