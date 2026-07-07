@@ -216,37 +216,6 @@ jobs:
           inline_ids_b64="$(printf '%s' "${inline_ids}" | base64 -w0)"
           echo "inline_ids_b64=${inline_ids_b64}" >> "${GITHUB_OUTPUT}"
 
-      - name: Clean previous PR-Agent code review summary
-        if: >-
-          steps.pr_language.outputs.skip_pr_agent != 'true' &&
-          (
-            github.event_name == 'pull_request_target' ||
-            (
-              github.event_name == 'issue_comment' &&
-              (
-                github.event.comment.body == '/improve' ||
-                startsWith(github.event.comment.body, '/improve ')
-              )
-            )
-          )
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-        run: |
-          set -euo pipefail
-          comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq '.[] | select(.user.login == "github-actions[bot]" and ((.body | startswith("<!-- pr-agent-code-review-summary -->")) or (.body | startswith("<!-- pr-agent-update-notification -->")))) | .id')"
-
-          if [ -z "${comment_ids}" ]; then
-            echo "No previous PR-Agent code review summary to clean."
-            exit 0
-          fi
-
-          while IFS= read -r comment_id; do
-            [ -z "${comment_id}" ] && continue
-            gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null
-          done <<< "${comment_ids}"
-
       - name: Run PR-Agent
         id: pragent
         if: steps.pr_language.outputs.skip_pr_agent != 'true'
@@ -524,7 +493,18 @@ jobs:
           payload_path.write_text(json.dumps({"body": body}, ensure_ascii=False))
           PY
 
-          gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" >/dev/null
+          new_comment_id="$(gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" --jq '.id')"
+          comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq ".[] | select(.id != ${new_comment_id} and .user.login == \"github-actions[bot]\" and ((.body | startswith(\"<!-- pr-agent-code-review-summary -->\")) or (.body | startswith(\"<!-- pr-agent-update-notification -->\")))) | .id")"
+
+          if [ -z "${comment_ids}" ]; then
+            echo "No previous PR-Agent code review summary to clean."
+            exit 0
+          fi
+
+          while IFS= read -r comment_id; do
+            [ -z "${comment_id}" ] && continue
+            gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null
+          done <<< "${comment_ids}"
 
       - name: Restore PR-Agent description markers on failure
         if: >-
