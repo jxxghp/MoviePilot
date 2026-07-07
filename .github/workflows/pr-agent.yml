@@ -158,6 +158,7 @@ jobs:
         run: |
           set -euo pipefail
           current_body="$(mktemp)"
+          latest_body="$(mktemp)"
           next_body="$(mktemp)"
           payload="$(mktemp)"
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
@@ -202,7 +203,11 @@ jobs:
 
           body_changed=false
           if ! cmp -s "${current_body}" "${next_body}"; then
-            python3 - "${next_body}" "${payload}" <<'PY'
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${latest_body}"
+            if ! cmp -s "${current_body}" "${latest_body}"; then
+              echo "PR body changed while preparing PR-Agent markers; skip placeholder update."
+            else
+              python3 - "${next_body}" "${payload}" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -210,8 +215,9 @@ jobs:
           body = Path(sys.argv[1]).read_text()
           Path(sys.argv[2]).write_text(json.dumps({"body": body}, ensure_ascii=False))
           PY
-            gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
-            body_changed=true
+              gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+              body_changed=true
+            fi
           fi
           echo "body_changed=${body_changed}" >> "${GITHUB_OUTPUT}"
 
@@ -361,6 +367,7 @@ jobs:
           pr_code_suggestions.extra_instructions: |
             Match the configured response language.
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
+            Start every suggestion body with this exact hidden marker on the first line: <!-- pr-agent-inline-comment -->.
             Start every suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
           pr_code_suggestions.suggestions_score_threshold: "8"
@@ -419,14 +426,14 @@ jobs:
           reviews_path = Path(sys.argv[4])
           delete_path = Path(sys.argv[5])
           head_sha = sys.argv[6]
-          risk_prefix_re = re.compile(
-              r"^\s*(?:<!-- pr-agent-inline-comment -->\s*)?"
+          pr_agent_marker_re = re.compile(
+              r"^\s*<!-- pr-agent-inline-comment -->\s*"
               r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
               re.IGNORECASE,
           )
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              return bool(risk_prefix_re.search(item.get("body") or ""))
+              return bool(pr_agent_marker_re.search(item.get("body") or ""))
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
@@ -535,8 +542,13 @@ jobs:
           pr_url = sys.argv[7]
           commit_url = sys.argv[8]
           short_sha = sys.argv[9]
+          pr_agent_marker_re = re.compile(
+              r"^\s*<!-- pr-agent-inline-comment -->\s*"
+              r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
+              re.IGNORECASE,
+          )
           risk_prefix_re = re.compile(
-              r"^\s*(?:<!-- pr-agent-inline-comment -->\s*)?"
+              r"^\s*"
               r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
               re.IGNORECASE,
           )
@@ -545,7 +557,8 @@ jobs:
               return re.sub(r"^\s*<!-- pr-agent-inline-comment -->\s*", "", body or "").strip()
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              return bool(risk_prefix_re.search(item.get("body") or ""))
+              body = item.get("body") or ""
+              return bool(pr_agent_marker_re.search(body) or risk_prefix_re.search(body))
 
           comments = []
           for line in comments_path.read_text().splitlines():
