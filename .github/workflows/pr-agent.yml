@@ -430,9 +430,16 @@ jobs:
               r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
               re.IGNORECASE,
           )
+          marker_re = re.compile(
+              r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*",
+              re.IGNORECASE,
+          )
+
+          def normalize_suggestion_body(body: str) -> str:
+              return marker_re.sub("", body or "", count=1).strip()
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              return bool(risk_prefix_re.search((item.get("body") or "").lstrip()))
+              return bool(risk_prefix_re.search(normalize_suggestion_body(item.get("body") or "")))
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
