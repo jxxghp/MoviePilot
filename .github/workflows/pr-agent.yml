@@ -155,6 +155,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           SUMMARY_HEADING: ${{ steps.pr_language.outputs.summary_heading }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
         run: |
           set -euo pipefail
           current_body="$(mktemp)"
@@ -179,7 +180,9 @@ jobs:
           end = "<!-- pr-agent-summary:end -->"
           placeholder = "pr_agent:summary"
           summary_heading = os.environ.get("SUMMARY_HEADING") or "PR-Agent 摘要"
-          agent_block = f"## {summary_heading}\n\n{start}\n{placeholder}\n{end}\n"
+          run_head_sha = os.environ.get("RUN_HEAD_SHA") or ""
+          run_marker = f"<!-- pr-agent-run-head:{run_head_sha} -->\n" if run_head_sha else ""
+          agent_block = f"## {summary_heading}\n\n{start}\n{run_marker}{placeholder}\n{end}\n"
           body = re.sub(
               r"(?im)^##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*(?=<!-- pr-agent-summary:start -->)",
               f"## {summary_heading}\n\n",
@@ -189,7 +192,7 @@ jobs:
           start_index = body.find(start)
           end_index = body.find(end)
           if start_index >= 0 and end_index > start_index:
-              next_body = body[: start_index + len(start)] + f"\n{placeholder}\n" + body[end_index:]
+              next_body = body[: start_index + len(start)] + f"\n{run_marker}{placeholder}\n" + body[end_index:]
           else:
               separator = "\n\n" if body.strip() else ""
               next_body = body.rstrip() + separator + agent_block
@@ -253,6 +256,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
         run: |
           set -euo pipefail
           inline_ids="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | select(.user.login == "github-actions[bot]") | .id' | jq -sc '.')"
@@ -688,8 +692,13 @@ jobs:
           fi
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
+          current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          is_stale=false
+          if [ -n "${RUN_HEAD_SHA}" ] && [ "${current_head_sha}" != "${RUN_HEAD_SHA}" ]; then
+            is_stale=true
+          fi
 
-          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" <<'PY'
+          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" "${RUN_HEAD_SHA}" "${is_stale}" <<'PY'
           import json
           import re
           import sys
@@ -699,9 +708,12 @@ jobs:
           placeholder_body = Path(sys.argv[2]).read_text()
           current_body = Path(sys.argv[3]).read_text()
           payload_path = Path(sys.argv[4])
+          run_head_sha = sys.argv[5]
+          is_stale = sys.argv[6] == "true"
 
           start = "<!-- pr-agent-summary:start -->"
           end = "<!-- pr-agent-summary:end -->"
+          run_marker = f"<!-- pr-agent-run-head:{run_head_sha} -->" if run_head_sha else ""
           heading_re = re.compile(r"(?im)^##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*")
 
           def find_block(body: str) -> tuple[int, int] | None:
@@ -728,11 +740,20 @@ jobs:
 
           current_section = current_body[current_block[0]:current_block[1]]
           placeholder_section = placeholder_body[placeholder_block[0]:placeholder_block[1]]
-          if "pr_agent:summary" not in current_section:
+          current_has_marker = bool(run_marker and run_marker in current_section)
+          current_has_placeholder = "pr_agent:summary" in current_section
+          if not current_has_placeholder and not current_has_marker:
               print("No visible PR-Agent summary placeholder to restore.")
               raise SystemExit(0)
-          if current_section != placeholder_section:
+          if current_has_placeholder and current_section != placeholder_section:
               print("Current PR-Agent summary block changed; skip restore.")
+              raise SystemExit(0)
+
+          if current_has_marker and not current_has_placeholder and not is_stale:
+              next_section = current_section.replace(f"{run_marker}\n", "").replace(run_marker, "")
+              next_body = current_body[:current_block[0]] + next_section + current_body[current_block[1]:]
+              next_body = re.sub(r"\n{4,}", "\n\n\n", next_body).rstrip() + "\n"
+              payload_path.write_text(json.dumps({"body": next_body}, ensure_ascii=False))
               raise SystemExit(0)
 
           restored_section = backup_body[backup_block[0]:backup_block[1]] if backup_block else ""
