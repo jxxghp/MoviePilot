@@ -368,7 +368,7 @@ jobs:
           pr_code_suggestions.extra_instructions: |
             Match the configured response language.
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
-            Start every suggestion body with this exact hidden marker on the first line: <!-- pr-agent-inline-comment -->.
+            Start every suggestion body with this exact hidden marker on the first line: <!-- pr-agent-inline-comment:${{ github.run_id }} -->.
             Start every suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
           pr_code_suggestions.suggestions_score_threshold: "8"
@@ -396,6 +396,7 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
           BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
           BEFORE_REVIEW_IDS_B64: ${{ steps.inline_state_before.outputs.review_ids_b64 }}
+          PR_AGENT_INLINE_MARKER: "<!-- pr-agent-inline-comment:${{ github.run_id }} -->"
         run: |
           set -euo pipefail
           current_head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
@@ -417,6 +418,7 @@ jobs:
           gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | @json' > "${reviews}"
           python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${delete_ids}" "${RUN_HEAD_SHA}" <<'PY'
           import json
+          import os
           import re
           import sys
           from pathlib import Path
@@ -427,14 +429,17 @@ jobs:
           reviews_path = Path(sys.argv[4])
           delete_path = Path(sys.argv[5])
           head_sha = sys.argv[6]
-          pr_agent_marker_re = re.compile(
-              r"^\s*<!-- pr-agent-inline-comment -->\s*"
-              r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
+          pr_agent_inline_marker = os.environ.get("PR_AGENT_INLINE_MARKER") or "<!-- pr-agent-inline-comment -->"
+          risk_prefix_re = re.compile(
+              r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
               re.IGNORECASE,
           )
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              return bool(pr_agent_marker_re.search(item.get("body") or ""))
+              body = (item.get("body") or "").lstrip()
+              if not body.startswith(pr_agent_inline_marker):
+                  return False
+              return bool(risk_prefix_re.search(body[len(pr_agent_inline_marker):].lstrip()))
 
           new_review_ids = set()
           for line in reviews_path.read_text().splitlines():
@@ -444,6 +449,7 @@ jobs:
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_review_ids
+                  and item.get("commit_id") == head_sha
               ):
                   new_review_ids.add(item["id"])
 
@@ -455,6 +461,7 @@ jobs:
               if (
                   item.get("user", {}).get("login") == "github-actions[bot]"
                   and item.get("id") not in before_ids
+                  and item.get("commit_id") == head_sha
                   and item.get("pull_request_review_id") in new_review_ids
                   and is_pr_agent_suggestion(item)
               ):
@@ -502,6 +509,7 @@ jobs:
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           SUMMARY_MODEL: gpt-5.5
+          PR_AGENT_INLINE_MARKER: "<!-- pr-agent-inline-comment:${{ github.run_id }} -->"
         run: |
           set -euo pipefail
           before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
@@ -528,6 +536,7 @@ jobs:
 
           python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${review_data}" "${HEAD_SHA}" "${pr_url}" "${commit_url}" "${short_sha}" <<'PY'
           import json
+          import os
           import re
           import sys
           from pathlib import Path
@@ -541,18 +550,23 @@ jobs:
           pr_url = sys.argv[7]
           commit_url = sys.argv[8]
           short_sha = sys.argv[9]
-          pr_agent_marker_re = re.compile(
-              r"^\s*<!-- pr-agent-inline-comment -->\s*"
-              r"(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
+          pr_agent_inline_marker = os.environ.get("PR_AGENT_INLINE_MARKER") or "<!-- pr-agent-inline-comment -->"
+          risk_prefix_re = re.compile(
+              r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
               re.IGNORECASE,
           )
 
           def normalize_suggestion_body(body: str) -> str:
-              return re.sub(r"^\s*<!-- pr-agent-inline-comment -->\s*", "", body or "").strip()
+              stripped = (body or "").lstrip()
+              if stripped.startswith(pr_agent_inline_marker):
+                  return stripped[len(pr_agent_inline_marker):].lstrip()
+              return stripped.strip()
 
           def is_pr_agent_suggestion(item: dict) -> bool:
-              body = item.get("body") or ""
-              return bool(pr_agent_marker_re.search(body))
+              body = (item.get("body") or "").lstrip()
+              if not body.startswith(pr_agent_inline_marker):
+                  return False
+              return bool(risk_prefix_re.search(body[len(pr_agent_inline_marker):].lstrip()))
 
           comments = []
           for line in comments_path.read_text().splitlines():
@@ -719,8 +733,11 @@ jobs:
             exit 0
           fi
 
-          new_comment_id="$(gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" --jq '.id')"
-          comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq ".[] | select(.id != ${new_comment_id} and .user.login == \"github-actions[bot]\" and ((.body | startswith(\"<!-- pr-agent-code-review-summary -->\")) or (.body | startswith(\"<!-- pr-agent-update-notification -->\")))) | .id")"
+          new_comment="$(mktemp)"
+          gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" > "${new_comment}"
+          new_comment_id="$(jq -r '.id' "${new_comment}")"
+          new_comment_created_at="$(jq -r '.created_at' "${new_comment}")"
+          comment_ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --jq ".[] | select(.id != ${new_comment_id} and .user.login == \"github-actions[bot]\" and ((.body | startswith(\"<!-- pr-agent-code-review-summary -->\")) or (.body | startswith(\"<!-- pr-agent-update-notification -->\"))) and (.created_at < \"${new_comment_created_at}\" or (.created_at == \"${new_comment_created_at}\" and .id < ${new_comment_id}))) | .id")"
 
           if [ -z "${comment_ids}" ]; then
             echo "No previous PR-Agent code review summary to clean."
