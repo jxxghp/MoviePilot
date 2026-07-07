@@ -17,11 +17,6 @@ on:
       - created
       - edited
 
-concurrency:
-  # 同一 PR 上只保留最新一次 PR-Agent 运行，避免旧 commit 的 review 后完成并覆盖新结果。
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
-  cancel-in-progress: true
-
 permissions:
   # 读取仓库内容和 PR diff。
   contents: read
@@ -52,6 +47,9 @@ jobs:
           )
         )
       )
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -74,6 +72,8 @@ jobs:
           pr = json.loads(Path(sys.argv[1]).read_text())
           title = pr.get("title") or ""
           body = pr.get("body") or ""
+          labels = {item.get("name", "") for item in pr.get("labels") or []}
+          skip_pr_agent = "true" if "skip pr-agent" in labels or re.search(r"^(?:\[Auto\]|Auto)", title) else "false"
 
           body = re.sub(
               r"\n*##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*"
@@ -110,16 +110,21 @@ jobs:
           print(f"response_language={response_language}")
           print(f"summary_heading={summary_heading}")
           print(f"summary_language={summary_language}")
+          print(f"skip_pr_agent={skip_pr_agent}")
           PY
 
       - name: Prepare PR-Agent description markers
+        id: prepare_description
         if: >-
-          github.event_name == 'pull_request_target' ||
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
           (
-            github.event_name == 'issue_comment' &&
+            github.event_name == 'pull_request_target' ||
             (
-              github.event.comment.body == '/describe' ||
-              startsWith(github.event.comment.body, '/describe ')
+              github.event_name == 'issue_comment' &&
+              (
+                github.event.comment.body == '/describe' ||
+                startsWith(github.event.comment.body, '/describe ')
+              )
             )
           )
         env:
@@ -132,8 +137,10 @@ jobs:
           current_body="$(mktemp)"
           next_body="$(mktemp)"
           payload="$(mktemp)"
+          body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
+          cp "${current_body}" "${body_backup}"
           python3 - "${current_body}" "${next_body}" <<'PY'
           import os
           import re
@@ -166,6 +173,7 @@ jobs:
           next_path.write_text(next_body)
           PY
 
+          body_changed=false
           if ! cmp -s "${current_body}" "${next_body}"; then
             python3 - "${next_body}" "${payload}" <<'PY'
           import json
@@ -176,17 +184,22 @@ jobs:
           Path(sys.argv[2]).write_text(json.dumps({"body": body}, ensure_ascii=False))
           PY
             gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+            body_changed=true
           fi
+          echo "body_changed=${body_changed}" >> "${GITHUB_OUTPUT}"
 
       - name: Snapshot PR-Agent inline comments
         id: inline_state_before
         if: >-
-          github.event_name == 'pull_request_target' ||
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
           (
-            github.event_name == 'issue_comment' &&
+            github.event_name == 'pull_request_target' ||
             (
-              github.event.comment.body == '/improve' ||
-              startsWith(github.event.comment.body, '/improve ')
+              github.event_name == 'issue_comment' &&
+              (
+                github.event.comment.body == '/improve' ||
+                startsWith(github.event.comment.body, '/improve ')
+              )
             )
           )
         env:
@@ -201,12 +214,15 @@ jobs:
 
       - name: Clean previous PR-Agent code review summary
         if: >-
-          github.event_name == 'pull_request_target' ||
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
           (
-            github.event_name == 'issue_comment' &&
+            github.event_name == 'pull_request_target' ||
             (
-              github.event.comment.body == '/improve' ||
-              startsWith(github.event.comment.body, '/improve ')
+              github.event_name == 'issue_comment' &&
+              (
+                github.event.comment.body == '/improve' ||
+                startsWith(github.event.comment.body, '/improve ')
+              )
             )
           )
         env:
@@ -229,6 +245,7 @@ jobs:
 
       - name: Run PR-Agent
         id: pragent
+        if: steps.pr_language.outputs.skip_pr_agent != 'true'
         # 使用版本号加 digest 固定容器构建，避免 tag 被重推后改变运行内容。
         uses: docker://pragent/pr-agent:0.39.0-github_action@sha256:b253845caa8c7ff5ce8be78f32996647982bdd4890826a962b78eff2e385a825
         env:
@@ -303,12 +320,15 @@ jobs:
 
       - name: Publish PR-Agent code review summary
         if: >-
-          github.event_name == 'pull_request_target' ||
+          steps.pr_language.outputs.skip_pr_agent != 'true' &&
           (
-            github.event_name == 'issue_comment' &&
+            github.event_name == 'pull_request_target' ||
             (
-              github.event.comment.body == '/improve' ||
-              startsWith(github.event.comment.body, '/improve ')
+              github.event_name == 'issue_comment' &&
+              (
+                github.event.comment.body == '/improve' ||
+                startsWith(github.event.comment.body, '/improve ')
+              )
             )
           )
         env:
@@ -501,3 +521,39 @@ jobs:
           PY
 
           gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "${payload}" >/dev/null
+
+      - name: Restore PR-Agent description markers on failure
+        if: >-
+          failure() &&
+          steps.prepare_description.outputs.body_changed == 'true' &&
+          steps.pr_language.outputs.skip_pr_agent != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
+          current_body="$(mktemp)"
+          payload="$(mktemp)"
+
+          if [ ! -s "${body_backup}" ]; then
+            echo "No PR body backup found."
+            exit 0
+          fi
+
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
+          if ! grep -q 'pr_agent:summary' "${current_body}"; then
+            echo "No visible PR-Agent summary placeholder to restore."
+            exit 0
+          fi
+
+          python3 - "${body_backup}" "${payload}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          body = Path(sys.argv[1]).read_text()
+          Path(sys.argv[2]).write_text(json.dumps({"body": body}, ensure_ascii=False))
+          PY
+          gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
