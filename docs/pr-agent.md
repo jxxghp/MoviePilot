@@ -1,15 +1,6 @@
 # PR-Agent 使用说明
 
-本仓库通过 GitHub Actions 运行开源 PR-Agent，用于自动生成 PR 说明和进行 AI Review。
-
-## Secrets
-
-在仓库的 `Settings -> Secrets and variables -> Actions -> Repository secrets` 中配置：
-
-- `OPENAI_KEY`：OpenAI 或 OpenAI 兼容服务的 API Key。
-- `OPENAI_API_BASE`：OpenAI 兼容接口的 API Base，通常需要包含 `/v1`，以服务商文档为准。
-
-`GITHUB_TOKEN` 使用 GitHub Actions 自动注入的 `${{ github.token }}`，不需要手工添加。
+本仓库通过 GitHub Actions 运行开源 PR-Agent，用于自动维护 PR 摘要、发布行内代码审查建议，并在每轮审查后发布一条简短的 Code Review 总结评论。
 
 ## 触发方式
 
@@ -31,14 +22,19 @@ workflow 设置了最小可用权限：
 
 没有开启 `contents: write`。当前配置不让 PR-Agent 往仓库推代码或提交 changelog，因此不需要内容写权限。
 
-默认自动执行：
+## 自动行为
 
-- `/review`：检查 PR 风险、潜在 bug、安全问题、测试缺口和可维护性问题。
-- `/describe`：生成或更新 PR 描述、变更摘要和文件说明。
+PR 事件默认自动执行：
 
-默认不自动执行：
+- `/describe`：更新 PR Body 中的 `PR-Agent 摘要` / `PR-Agent Summary` 标记区域，保留用户原始描述。
+- `/improve`：发布 GitHub 行内代码审查建议，不发布 PR-Agent 建议表格。
 
-- `/improve`：给出代码改进建议。这个工具更容易产生噪音和额外成本，建议先用评论命令手动触发。
+workflow 会在 `/improve` 后发布一条普通 PR 评论：
+
+- 评论标题为 `## Code Review`。
+- 如果本轮有新增行内建议，会基于这些建议生成自然语言总结。
+- 如果本轮没有新增行内建议，直接发布无更多反馈的简短总结。
+- 发布新总结后会删除上一条 PR-Agent Code Review 总结评论，避免评论堆叠，同时保留新的通知事件。
 
 ## 常用评论命令
 
@@ -51,7 +47,6 @@ workflow 设置了最小可用权限：
 - `FIRST_TIME_CONTRIBUTOR`：首次向仓库贡献 PR 的用户。
 
 ```text
-/review
 /describe
 /improve
 /ask 这次改动有没有遗漏权限校验？
@@ -59,35 +54,23 @@ workflow 设置了最小可用权限：
 
 评论触发依赖 `issue_comment` 事件。普通 issue 评论、Bot 评论、非允许身份评论、以及不以允许命令开头的评论都会跳过。
 
-## 配置来源
+## 输出约定
 
-PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 的 `env` 中维护。
+PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 中维护。公开说明只描述用户可见行为：
 
-当前主要设置：
+- 根据用户原始 PR 描述自动选择中文或英文；无法识别时默认中文。
+- 保留用户原始 PR 描述，只更新 PR Body 中的 PR-Agent 标记区域。
+- 不使用 PR-Agent 的 Reviewer Guide 输出。
+- 不输出 PR Type、额外标签、图表或 describe 评论。
+- 只发布值得维护者处理的问题型行内建议。
+- 行内建议可使用 GitHub suggestion 形式，便于直接采纳。
+- 没有建议时不发布 PR-Agent 建议表格，只保留简短的 Code Review 总结评论。
 
-- `config.model = "gpt-5.5"`：默认使用 GPT-5.5。
-- `config.fallback_models = ["gpt-5.4"]`：主模型不可用时降级到 GPT-5.4。
-- `config.reasoning_effort = "xhigh"`：使用更高审查推理强度。
-- `config.ai_timeout = "900"`：模型调用最长等待 900 秒。
-- `config.response_language = "zh-CN"`：让 PR-Agent 默认中文输出。
-- `config.large_patch_policy = "clip"`：大 PR 截断分析，不直接跳过。
-- `config.ignore_pr_title` / `config.ignore_pr_labels`：跳过自动生成 PR 或带 `skip pr-agent` 标签的 PR。
-- `pr_reviewer.extra_instructions`：要求中文输出，优先指出 P0/P1 风险，并关注安全、权限、状态一致性、异步/缓存、副作用和测试缺口。
-- `pr_reviewer.require_security_review = true`：要求输出安全审查部分。
-- `pr_reviewer.require_tests_review = true`：要求输出测试审查部分。
-- `pr_reviewer.enable_review_labels_effort = false`：不添加 `Review effort x/5` 工作量标签。
-- `pr_reviewer.enable_review_labels_security = true`：保留明确安全风险标签。
-- `pr_description.generate_ai_title = false`：默认不改 PR 标题。
-- `pr_description.publish_labels = false`：默认不添加 PR 类型标签。
-- `pr_description.enable_pr_diagram = false`：默认不生成图表。
-- `pr_code_suggestions.focus_only_on_problems = true`：手动 `/improve` 时优先输出问题型建议。
-- `pr_code_suggestions.suggestions_score_threshold = 7`：过滤低置信度建议。
+行内建议可使用风险前缀：
 
-标签来源：
-
-- `/review` 可添加安全标签和工作量标签；当前只保留安全标签，关闭工作量标签。
-- `/describe` 可按 PR 类型添加 `Bug fix`、`Tests`、`Bug fix with tests`、`Enhancement`、`Documentation`、`Other` 等标签；当前 `pr_description.publish_labels = false`，不会添加类型标签。
-- 自定义标签默认未启用。
+- `🔴 **High Risk**:`：高风险问题。
+- `🟡 **Medium Risk**:`：中风险问题。
+- `🔵 **Low Risk**:`：低风险问题。
 
 可按需再启用的工具配置：
 
@@ -98,34 +81,6 @@ PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 的 `env` 中维护。
 
 ## 安全边界
 
-PR-Agent Action 会读取 `OPENAI_KEY`，因此依赖的 Docker 镜像在 workflow 中固定版本号和 digest，
-不使用浮动的 `latest` 或仅依赖可变 tag。
+PR-Agent 依赖的 Docker 镜像在 workflow 中固定版本号和 digest，不使用浮动的 `latest` 或仅依赖可变 tag。
 
-当前使用 `pull_request_target` 支持 fork PR 自动审查，但 workflow 不 checkout 或执行来自 fork 的代码，
-只运行固定 digest 的 PR-Agent 容器并通过 GitHub API 读取 PR diff。`issue_comment` 属于 base repo
-事件，因此评论命令只允许指定身份触发。
-
-API Key 建议使用低额度、可轮换的专用 key。`OPENAI_API_BASE` 本身通常不是敏感信息，但继续按 secret 管理可以避免暴露服务商信息。
-
-## 调整自动行为
-
-自动行为在 workflow 的 `env` 中控制：
-
-```yaml
-config.model: "gpt-5.5"
-config.fallback_models: '["gpt-5.4"]'
-config.reasoning_effort: "xhigh"
-config.ai_timeout: "900"
-config.response_language: "zh-CN"
-github_action_config.auto_review: "true"
-github_action_config.auto_describe: "true"
-github_action_config.auto_improve: "false"
-github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "review_requested", "synchronize"]'
-pr_description.generate_ai_title: "false"
-pr_description.publish_labels: "false"
-pr_description.enable_pr_diagram: "false"
-pr_reviewer.enable_review_labels_effort: "false"
-pr_reviewer.enable_review_labels_security: "true"
-```
-
-如果需要自动运行 `/improve`，把 `github_action_config.auto_improve` 改为 `"true"`。建议先观察手动 `/improve` 的质量和成本，再决定是否开启。
+当前使用 `pull_request_target` 支持 fork PR 自动审查，但 workflow 不 checkout 或执行来自 fork 的代码，只运行固定 digest 的 PR-Agent 容器并通过 GitHub API 读取 PR diff。`issue_comment` 属于 base repo 事件，因此评论命令只允许指定身份触发。
