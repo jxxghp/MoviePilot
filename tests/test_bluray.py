@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
+import gc
 import shutil
 import subprocess
+import weakref
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Optional
@@ -950,22 +952,31 @@ class BluRayRemuxTest(TestCase):
             self.assertFalse(result.success)
             self.assertIn("ffmpeg 转封装超过 60 秒", result.message)
 
-    def test_bluray_remux_target_lock_cache_is_bounded(self):
+    def test_bluray_remux_target_locks_reuse_live_lock_without_cache_growth(self):
         old_locks = TransHandler._bluray_remux_locks
         try:
-            TransHandler._bluray_remux_locks = {}
+            TransHandler._bluray_remux_locks = weakref.WeakValueDictionary()
             with TemporaryDirectory() as temp_dir:
                 root = Path(temp_dir)
+                target = root / "target.mkv"
+                target_lock = TransHandler._TransHandler__get_bluray_remux_target_lock(
+                    target
+                )
+                self.assertIs(
+                    target_lock,
+                    TransHandler._TransHandler__get_bluray_remux_target_lock(target),
+                )
                 for index in range(1100):
                     TransHandler._TransHandler__get_bluray_remux_target_lock(
                         root / f"target-{index}.mkv"
                     )
+                gc.collect()
 
-            self.assertLessEqual(len(TransHandler._bluray_remux_locks), 1024)
+                self.assertEqual(1, len(TransHandler._bluray_remux_locks))
         finally:
             TransHandler._bluray_remux_locks = old_locks
 
-    def test_bluray_remux_move_delete_failure_rolls_back_new_target(self):
+    def test_bluray_remux_move_delete_failure_keeps_new_target(self):
         class DeleteFailingLocalStorage(LocalStorage):
             def delete(self, fileitem):
                 return False
@@ -979,12 +990,7 @@ class BluRayRemuxTest(TestCase):
             root = Path(temp_dir)
             source_root = root / "BluRay Movie Source"
             source_item = self.__create_bluray_dir(source_root)
-            target_file = (
-                root
-                / "media"
-                / "BluRay Movie (2024)"
-                / "BluRay Movie (2024).mkv"
-            )
+            target_file = root / "media" / f"{source_item.name}.mkv"
 
             with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
                 "app.modules.filemanager.transhandler.shutil.which",
@@ -1007,4 +1013,5 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertTrue(source_root.exists())
-            self.assertFalse(target_file.exists())
+            self.assertTrue(target_file.exists())
+            self.assertEqual(target_file, Path(result.target_item.path))

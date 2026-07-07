@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import threading
 import uuid
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Tuple
@@ -37,7 +38,6 @@ _BLURAY_MPLS_MAX_DURATION_SECONDS = 12 * 60 * 60
 _BLURAY_MPLS_TIME_BASE = 45000
 _BLURAY_PLAYITEM_IN_TIME_OFFSET = 14
 _BLURAY_PLAYITEM_OUT_TIME_OFFSET = 18
-_BLURAY_REMUX_LOCK_CACHE_LIMIT = 1024
 _BLURAY_REMUX_MIN_TIMEOUT = 60
 
 
@@ -63,7 +63,7 @@ class TransHandler:
     文件转移整理类
     """
 
-    _bluray_remux_locks = {}
+    _bluray_remux_locks = weakref.WeakValueDictionary()
     _bluray_remux_locks_guard = threading.Lock()
 
     def __init__(self):
@@ -76,18 +76,11 @@ class TransHandler:
         """
         lock_key = target_file.resolve().as_posix()
         with cls._bluray_remux_locks_guard:
-            if lock_key not in cls._bluray_remux_locks:
-                cls._bluray_remux_locks[lock_key] = threading.Lock()
-            while len(cls._bluray_remux_locks) > _BLURAY_REMUX_LOCK_CACHE_LIMIT:
-                removed = False
-                for stale_key, stale_lock in list(cls._bluray_remux_locks.items()):
-                    if stale_key != lock_key and not stale_lock.locked():
-                        cls._bluray_remux_locks.pop(stale_key, None)
-                        removed = True
-                        break
-                if not removed:
-                    break
-            return cls._bluray_remux_locks[lock_key]
+            target_lock = cls._bluray_remux_locks.get(lock_key)
+            if target_lock is None:
+                target_lock = threading.Lock()
+                cls._bluray_remux_locks[lock_key] = target_lock
+            return target_lock
 
     @staticmethod
     def __is_path_relative_to(path: Path, parent: Path) -> bool:
@@ -786,12 +779,6 @@ class TransHandler:
             target_item = self.__build_local_fileitem(target_file)
 
         if transfer_type == "move" and not source_oper.delete(fileitem):
-            if not allow_target_replace and (target_file.exists() or target_file.is_symlink()):
-                try:
-                    target_file.unlink()
-                    target_item = None
-                except OSError as err:
-                    logger.error(f"回滚蓝光原盘转封装目标文件失败：{target_file} - {err}")
             return TransferInfo(
                 success=False,
                 message="转封装成功但删除源目录失败",
