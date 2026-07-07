@@ -168,7 +168,7 @@ def test_probe_new_magnet_adds_tagged_task_and_cleans_files(monkeypatch):
     assert add_kwargs["up_limit"] == search_endpoint._PROBE_SPEED_LIMIT
     assert add_kwargs["stop_condition"] == "MetadataReceived"
     assert add_kwargs["tag"][0].startswith(f"{search_endpoint._PROBE_TAG_PREFIX}_")
-    server.delete_torrents.assert_called_once_with(delete_file=True, ids=INFO_HASH)
+    server.delete_torrents.assert_called_once_with(delete_file=False, ids=INFO_HASH)
 
 
 def test_probe_rejects_magnet_without_btih(monkeypatch):
@@ -236,7 +236,7 @@ def test_probe_timeout_returns_partial_tracker_state_and_cleans(monkeypatch):
     assert result["data"]["timed_out"]
     assert result["data"]["seeders"] == 6
     assert result["data"]["cleanup"] is True
-    server.delete_torrents.assert_called_once_with(delete_file=True, ids=INFO_HASH)
+    server.delete_torrents.assert_called_once_with(delete_file=False, ids=INFO_HASH)
 
 
 def test_probe_add_without_hash_finds_tagged_task_and_cleans(monkeypatch):
@@ -293,7 +293,7 @@ def test_probe_add_without_hash_finds_tagged_task_and_cleans(monkeypatch):
     assert result["success"]
     assert result["data"]["cleanup"] is True
     server.get_torrent_id_by_tag.assert_not_called()
-    server.delete_torrents.assert_called_once_with(delete_file=True, ids=INFO_HASH)
+    server.delete_torrents.assert_called_once_with(delete_file=False, ids=INFO_HASH)
 
 
 def test_probe_cleanup_skips_task_without_unique_probe_tag(monkeypatch):

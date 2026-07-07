@@ -251,7 +251,7 @@ def _cleanup_probe_torrent(server, *, tag: str, hash_id: Optional[str]) -> bool:
     if not cleanup_hash:
         return False
     try:
-        return server.delete_torrents(delete_file=True, ids=cleanup_hash)
+        return server.delete_torrents(delete_file=False, ids=cleanup_hash)
     except Exception as err:
         logger.warning(f"清理临时探测任务失败：{cleanup_hash} - {err}")
         return False
