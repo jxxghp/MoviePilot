@@ -49,7 +49,7 @@ jobs:
       )
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -74,6 +74,7 @@ jobs:
           body = pr.get("body") or ""
           labels = {item.get("name", "") for item in pr.get("labels") or []}
           skip_pr_agent = "true" if "skip pr-agent" in labels or re.search(r"^(?:\[Auto\]|Auto)", title) else "false"
+          head_sha = pr.get("head", {}).get("sha") or ""
 
           body = re.sub(
               r"\n*##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*"
@@ -111,6 +112,7 @@ jobs:
           print(f"summary_heading={summary_heading}")
           print(f"summary_language={summary_language}")
           print(f"skip_pr_agent={skip_pr_agent}")
+          print(f"head_sha={head_sha}")
           PY
 
       - name: Prepare PR-Agent description markers
@@ -138,6 +140,7 @@ jobs:
           next_body="$(mktemp)"
           payload="$(mktemp)"
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
+          placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
           cp "${current_body}" "${body_backup}"
@@ -172,6 +175,7 @@ jobs:
 
           next_path.write_text(next_body)
           PY
+          cp "${next_body}" "${placeholder_body}"
 
           body_changed=false
           if ! cmp -s "${current_body}" "${next_body}"; then
@@ -336,7 +340,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
-          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
           SUMMARY_LANGUAGE: ${{ steps.pr_language.outputs.summary_language }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
@@ -351,7 +355,7 @@ jobs:
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${pr_info}"
           CURRENT_HEAD_SHA="$(jq -r '.head.sha' "${pr_info}")"
-          HEAD_SHA="${EVENT_HEAD_SHA:-${CURRENT_HEAD_SHA}}"
+          HEAD_SHA="${RUN_HEAD_SHA:-${CURRENT_HEAD_SHA}}"
           if [ "${CURRENT_HEAD_SHA}" != "${HEAD_SHA}" ]; then
             echo "PR head changed from ${HEAD_SHA} to ${CURRENT_HEAD_SHA}; skip stale code review summary."
             exit 0
@@ -534,26 +538,67 @@ jobs:
         run: |
           set -euo pipefail
           body_backup="${RUNNER_TEMP}/pr-agent-body-before-describe.md"
+          placeholder_body="${RUNNER_TEMP}/pr-agent-body-with-placeholder.md"
           current_body="$(mktemp)"
           payload="$(mktemp)"
 
-          if [ ! -s "${body_backup}" ]; then
+          if [ ! -s "${body_backup}" ] || [ ! -s "${placeholder_body}" ]; then
             echo "No PR body backup found."
             exit 0
           fi
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${current_body}"
-          if ! grep -q 'pr_agent:summary' "${current_body}"; then
-            echo "No visible PR-Agent summary placeholder to restore."
-            exit 0
-          fi
-
-          python3 - "${body_backup}" "${payload}" <<'PY'
+          python3 - "${body_backup}" "${placeholder_body}" "${current_body}" "${payload}" <<'PY'
           import json
+          import re
           import sys
           from pathlib import Path
 
-          body = Path(sys.argv[1]).read_text()
-          Path(sys.argv[2]).write_text(json.dumps({"body": body}, ensure_ascii=False))
+          backup_body = Path(sys.argv[1]).read_text()
+          placeholder_body = Path(sys.argv[2]).read_text()
+          current_body = Path(sys.argv[3]).read_text()
+          payload_path = Path(sys.argv[4])
+
+          start = "<!-- pr-agent-summary:start -->"
+          end = "<!-- pr-agent-summary:end -->"
+          heading_re = re.compile(r"(?im)^##\s+(PR-Agent\s+摘要|PR-Agent Summary)\s*\n\s*")
+
+          def find_block(body: str) -> tuple[int, int] | None:
+              start_index = body.find(start)
+              end_index = body.find(end)
+              if start_index < 0 or end_index <= start_index:
+                  return None
+              end_index += len(end)
+              heading_start = start_index
+              prefix = body[:start_index]
+              matches = list(heading_re.finditer(prefix))
+              if matches:
+                  last = matches[-1]
+                  if prefix[last.end():].strip() == "":
+                      heading_start = last.start()
+              return heading_start, end_index
+
+          current_block = find_block(current_body)
+          placeholder_block = find_block(placeholder_body)
+          backup_block = find_block(backup_body)
+          if not current_block or not placeholder_block:
+              print("No PR-Agent summary block to restore.")
+              raise SystemExit(0)
+
+          current_section = current_body[current_block[0]:current_block[1]]
+          placeholder_section = placeholder_body[placeholder_block[0]:placeholder_block[1]]
+          if "pr_agent:summary" not in current_section:
+              print("No visible PR-Agent summary placeholder to restore.")
+              raise SystemExit(0)
+          if current_section != placeholder_section:
+              print("Current PR-Agent summary block changed; skip restore.")
+              raise SystemExit(0)
+
+          restored_section = backup_body[backup_block[0]:backup_block[1]] if backup_block else ""
+          next_body = current_body[:current_block[0]] + restored_section + current_body[current_block[1]:]
+          next_body = re.sub(r"\n{4,}", "\n\n\n", next_body).rstrip() + "\n"
+          payload_path.write_text(json.dumps({"body": next_body}, ensure_ascii=False))
           PY
-          gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+          if [ -s "${payload}" ]; then
+            gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" --input "${payload}" >/dev/null
+          fi
