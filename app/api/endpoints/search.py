@@ -1,8 +1,14 @@
 import asyncio
+import base64
 import json
+import re
+import time
+import uuid
 from typing import List, Any, Optional, AsyncIterator
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Depends, Body, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -14,6 +20,7 @@ from app.core.metainfo import MetaInfo
 from app.core.security import verify_resource_token, verify_token
 from app.helper.locale import LocaleHelper
 from app.log import logger
+from app.modules.qbittorrent import QbittorrentModule
 from app.schemas import MediaRecognizeConvertEventData
 from app.schemas.types import MediaType, ChainEventType
 from app.utils.security import SecurityUtils
@@ -22,6 +29,10 @@ router = APIRouter()
 
 _SSE_APPEND_FLUSH_INTERVAL = 1
 _SSE_APPEND_MAX_ITEMS = 48
+_PROBE_TAG_PREFIX = "MP_PROBE"
+_PROBE_DEFAULT_TIMEOUT = 30
+_PROBE_MAX_TIMEOUT = 60
+_PROBE_SPEED_LIMIT = 1024
 
 
 def _parse_site_list(sites: Optional[str]) -> Optional[List[int]]:
@@ -38,6 +49,227 @@ def _parse_media_type(mtype: Optional[str]) -> Optional[MediaType]:
     if not mtype:
         return None
     return MediaType.from_agent(mtype) or MediaType(mtype)
+
+
+def _parse_probe_timeout(value: Any) -> int:
+    """
+    解析磁力探测超时时间，避免单次请求长时间占用后端线程。
+    """
+    try:
+        timeout = int(value or _PROBE_DEFAULT_TIMEOUT)
+    except (TypeError, ValueError):
+        timeout = _PROBE_DEFAULT_TIMEOUT
+    return max(5, min(timeout, _PROBE_MAX_TIMEOUT))
+
+
+def _extract_btih(value: str) -> Optional[str]:
+    """
+    从 magnet 链接中提取 qBittorrent 使用的 v1 info hash。
+    """
+    if not value or not value.startswith("magnet:"):
+        return None
+    try:
+        xt_values = parse_qs(urlparse(value).query).get("xt") or []
+        for xt in xt_values:
+            if not xt.lower().startswith("urn:btih:"):
+                continue
+            info_hash = xt.rsplit(":", 1)[-1].strip()
+            if re.fullmatch(r"[0-9a-fA-F]{40}", info_hash):
+                return info_hash.lower()
+            if re.fullmatch(r"[A-Z2-7a-z]{32}", info_hash):
+                return base64.b32decode(info_hash.upper()).hex()
+    except Exception as err:
+        logger.debug(f"解析磁力链接 hash 失败：{err}")
+    return None
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    """
+    将 qBittorrent 返回值安全转为整数。
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_float(value: Any, default: float = 0) -> float:
+    """
+    将 qBittorrent 返回值安全转为浮点数。
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pick_torrent_size(torrent: dict) -> int:
+    """
+    qB 在 magnet 未拿到 metadata 前 total_size 可能是 -1，部分索引器也会使用 1B 占位。
+    """
+    total_size = _as_int(torrent.get("total_size"), -1)
+    if total_size > 1:
+        return total_size
+    size = _as_int(torrent.get("size"), 0)
+    return size if size > 1 else 0
+
+
+def _build_probe_payload(
+    torrent: Optional[dict],
+    *,
+    existing: bool,
+    timed_out: bool,
+    cleanup: Optional[bool] = None,
+) -> dict:
+    """
+    构造前端可直接回填搜索卡片的探测结果。
+    """
+    if not torrent:
+        return {
+            "existing": existing,
+            "timed_out": timed_out,
+            "cleanup": cleanup,
+            "has_metadata": False,
+            "size": 0,
+            "seeders": 0,
+            "peers": 0,
+        }
+
+    connected_seeders = _as_int(torrent.get("num_seeds"))
+    reported_seeders = _as_int(torrent.get("num_complete"))
+    connected_peers = _as_int(torrent.get("num_leechs"))
+    reported_peers = _as_int(torrent.get("num_incomplete"))
+    torrent_size = _pick_torrent_size(torrent)
+    has_metadata = bool(torrent.get("has_metadata")) or torrent_size > 0
+    return {
+        "existing": existing,
+        "timed_out": timed_out,
+        "cleanup": cleanup,
+        "hash": torrent.get("hash"),
+        "name": torrent.get("name"),
+        "state": torrent.get("state"),
+        "has_metadata": has_metadata,
+        "size": torrent_size,
+        "seeders": max(connected_seeders, reported_seeders),
+        "peers": max(connected_peers, reported_peers),
+        "connected_seeders": connected_seeders,
+        "reported_seeders": reported_seeders,
+        "connected_peers": connected_peers,
+        "reported_peers": reported_peers,
+        "availability": _as_float(torrent.get("availability")),
+    }
+
+
+def _get_first_torrent(
+    server,
+    *,
+    hash_id: Optional[str] = None,
+    tag: Optional[str] = None,
+) -> Optional[dict]:
+    """
+    从 qB 查询单个探测任务。
+    """
+    torrents, error = server.get_torrents(ids=hash_id, tags=tag)
+    if error or not torrents:
+        return None
+    return torrents[0]
+
+
+def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> dict:
+    """
+    使用 qBittorrent 临时添加 magnet，读取 metadata/tracker 健康度后立即清理。
+    """
+    if not enclosure or not enclosure.startswith("magnet:"):
+        return {"success": False, "message": "只支持 magnet 链接探测"}
+
+    module = QbittorrentModule()
+    module.init_module()
+    server = module.get_instance(downloader)
+    if not server:
+        return {"success": False, "message": "未找到可用的 qBittorrent 下载器"}
+
+    expected_hash = _extract_btih(enclosure)
+    if expected_hash:
+        existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
+        if existing_torrent:
+            data = _build_probe_payload(
+                existing_torrent,
+                existing=True,
+                timed_out=False,
+            )
+            return {
+                "success": True,
+                "message": "该任务已在下载器中，已读取现有状态",
+                "data": data,
+            }
+
+    tag = f"{_PROBE_TAG_PREFIX}_{uuid.uuid4().hex[:12]}"
+    hash_id = None
+    added_by_probe = False
+    last_torrent = None
+    result = None
+
+    try:
+        state, added_ids = server.add_torrent(
+            content=enclosure,
+            is_paused=False,
+            tag=[tag],
+            dl_limit=_PROBE_SPEED_LIMIT,
+            up_limit=_PROBE_SPEED_LIMIT,
+            stop_condition="MetadataReceived",
+        )
+        if not state:
+            if expected_hash:
+                existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
+                if existing_torrent:
+                    data = _build_probe_payload(
+                        existing_torrent,
+                        existing=True,
+                        timed_out=False,
+                    )
+                    return {
+                        "success": True,
+                        "message": "该任务已在下载器中，已读取现有状态",
+                        "data": data,
+                    }
+            return {"success": False, "message": "添加临时探测任务失败"}
+
+        added_by_probe = True
+        hash_id = next(iter(added_ids or []), None) or server.get_torrent_id_by_tag(
+            tags=tag
+        )
+        if not hash_id:
+            return {"success": False, "message": "临时探测任务已添加，但未获取到任务 hash"}
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            last_torrent = _get_first_torrent(server, hash_id=hash_id)
+            if last_torrent and _pick_torrent_size(last_torrent) > 0:
+                break
+            time.sleep(2)
+
+        timed_out = not last_torrent or _pick_torrent_size(last_torrent) <= 0
+        data = _build_probe_payload(
+            last_torrent,
+            existing=False,
+            timed_out=timed_out,
+        )
+        message = (
+            "探测完成"
+            if data.get("has_metadata")
+            else "未获取到文件大小，已返回可用的 tracker 健康度"
+        )
+        result = {"success": True, "message": message, "data": data}
+        return result
+    finally:
+        if added_by_probe and hash_id:
+            try:
+                cleanup = server.delete_torrents(delete_file=True, ids=hash_id)
+            except Exception as err:
+                cleanup = False
+                logger.warning(f"清理临时探测任务失败：{hash_id} - {err}")
+            if result and isinstance(result.get("data"), dict):
+                result["data"]["cleanup"] = cleanup
 
 
 def _sse_event(data: dict, locale: Optional[str] = None) -> str:
@@ -232,6 +464,26 @@ async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token))
             if params.get("result_type") == "subtitle"
             else [result.to_dict() for result in results],
         },
+    )
+
+
+@router.post("/probe", summary="探测磁力链接健康度", response_model=schemas.Response)
+async def probe_search_torrent(
+    payload: dict = Body(...),
+    _: schemas.TokenPayload = Depends(verify_token),
+) -> Any:
+    """
+    使用 qBittorrent 临时添加 magnet，获取真实大小和做种健康度后立即清理。
+    """
+    payload = payload or {}
+    enclosure = payload.get("enclosure") or payload.get("magnet")
+    downloader = payload.get("downloader")
+    timeout = _parse_probe_timeout(payload.get("timeout"))
+    result = await run_in_threadpool(_probe_magnet, enclosure, downloader, timeout)
+    return schemas.Response(
+        success=bool(result.get("success")),
+        message=result.get("message"),
+        data=result.get("data") or {},
     )
 
 
