@@ -1,6 +1,9 @@
 import base64
 from unittest.mock import MagicMock
 
+import pytest
+
+from app import schemas
 import app.api.endpoints.search as search_endpoint
 
 
@@ -90,9 +93,9 @@ def test_build_probe_payload_uses_real_size_and_best_seeder_count():
     assert data["availability"] == 1.5
 
 
-def test_probe_existing_magnet_skips_without_leaking_status(monkeypatch):
+def test_probe_existing_magnet_reads_status_without_cleanup(monkeypatch):
     """
-    磁力任务已存在时不应返回下载器中的任务详情。
+    磁力任务已存在时只读取状态，不应删除用户已有任务。
     """
     server = MagicMock()
     server.get_torrents.return_value = (
@@ -112,8 +115,10 @@ def test_probe_existing_magnet_skips_without_leaking_status(monkeypatch):
 
     result = search_endpoint._probe_magnet(MAGNET, downloader="qb", timeout=5)
 
-    assert not result["success"]
-    assert "data" not in result
+    assert result["success"]
+    assert result["data"]["existing"]
+    assert result["data"]["size"] == 2048
+    assert result["data"]["seeders"] == 5
     server.add_torrent.assert_not_called()
     server.delete_torrents.assert_not_called()
 
@@ -390,3 +395,17 @@ def test_probe_cleanup_skips_task_without_probe_category(monkeypatch):
     assert result["success"]
     assert result["data"]["cleanup"] is False
     server.delete_torrents.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_probe_endpoint_requires_superuser():
+    """
+    磁力探测会操作下载器，应限制为管理员 token。
+    """
+    response = await search_endpoint.probe_search_torrent(
+        payload={"magnet": MAGNET},
+        token=schemas.TokenPayload(super_user=False),
+    )
+
+    assert not response.success
+    assert response.message == "用户权限不足"

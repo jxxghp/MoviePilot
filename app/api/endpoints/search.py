@@ -290,9 +290,15 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
     if expected_hash:
         existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
         if existing_torrent:
+            data = _build_probe_payload(
+                existing_torrent,
+                existing=True,
+                timed_out=False,
+            )
             return {
-                "success": False,
-                "message": "无法创建临时探测任务",
+                "success": True,
+                "message": "该任务已在下载器中，已读取现有状态",
+                "data": data,
             }
 
     tag = f"{_PROBE_TAG_PREFIX}_{uuid.uuid4().hex[:12]}"
@@ -315,9 +321,15 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
             if expected_hash:
                 existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
                 if existing_torrent:
+                    data = _build_probe_payload(
+                        existing_torrent,
+                        existing=True,
+                        timed_out=False,
+                    )
                     return {
-                        "success": False,
-                        "message": "无法创建临时探测任务",
+                        "success": True,
+                        "message": "该任务已在下载器中，已读取现有状态",
+                        "data": data,
                     }
             return {"success": False, "message": "添加临时探测任务失败"}
 
@@ -560,12 +572,14 @@ async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token))
 @router.post("/probe", summary="探测磁力链接健康度", response_model=schemas.Response)
 async def probe_search_torrent(
     payload: dict = Body(...),
-    _: schemas.TokenPayload = Depends(verify_token),
+    token: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
     使用 qBittorrent 临时添加 magnet，获取真实大小和做种健康度后立即清理。
     """
     payload = payload or {}
+    if not token.super_user:
+        return schemas.Response(success=False, message="用户权限不足", data={})
     enclosure = payload.get("enclosure") or payload.get("magnet")
     downloader = payload.get("downloader")
     timeout = _parse_probe_timeout(payload.get("timeout"))
