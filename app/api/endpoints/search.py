@@ -273,7 +273,7 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
     """
     使用 qBittorrent 临时添加 magnet，读取 metadata/tracker 健康度后立即清理。
     """
-    if not enclosure or not enclosure.startswith("magnet:"):
+    if not isinstance(enclosure, str) or not enclosure.startswith("magnet:"):
         return {"success": False, "message": "只支持 magnet 链接探测"}
 
     safe_enclosure = _sanitize_probe_magnet(enclosure)

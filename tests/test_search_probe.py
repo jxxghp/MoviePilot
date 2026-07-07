@@ -185,6 +185,20 @@ def test_probe_rejects_magnet_without_btih(monkeypatch):
     module.init_module.assert_not_called()
 
 
+def test_probe_rejects_non_string_magnet(monkeypatch):
+    """
+    非字符串输入应返回受控失败，不应触发下载器初始化。
+    """
+    module = MagicMock()
+    monkeypatch.setattr(search_endpoint, "QbittorrentModule", lambda: module)
+
+    result = search_endpoint._probe_magnet(123, downloader=None, timeout=5)
+
+    assert not result["success"]
+    assert result["message"] == "只支持 magnet 链接探测"
+    module.init_module.assert_not_called()
+
+
 def test_probe_timeout_returns_partial_tracker_state_and_cleans(monkeypatch):
     """
     超时时即使没有 metadata，也应返回 tracker 健康度并清理临时任务。
