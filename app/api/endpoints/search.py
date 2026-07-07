@@ -33,6 +33,8 @@ _PROBE_TAG_PREFIX = "MP_PROBE"
 _PROBE_DEFAULT_TIMEOUT = 30
 _PROBE_MAX_TIMEOUT = 60
 _PROBE_SPEED_LIMIT = 1024
+_PROBE_TAG_RETRY_TIMES = 10
+_PROBE_TAG_RETRY_INTERVAL = 1
 
 
 def _parse_site_list(sites: Optional[str]) -> Optional[List[int]]:
@@ -175,6 +177,67 @@ def _get_first_torrent(
     return torrents[0]
 
 
+def _torrent_has_tag(torrent: Optional[dict], tag: str) -> bool:
+    """
+    判断种子是否带有本次探测唯一标签。
+    """
+    if not torrent or not tag:
+        return False
+    tags = torrent.get("tags") or []
+    if isinstance(tags, str):
+        tags = tags.split(",")
+    return tag in {str(item).strip() for item in tags if item}
+
+
+def _find_probe_torrent(
+    server,
+    *,
+    tag: str,
+    hash_id: Optional[str] = None,
+    retry: int = 1,
+    interval: float = 0,
+) -> Optional[dict]:
+    """
+    按唯一探测标签查找任务，不移除标签，便于后续安全清理。
+    """
+    for index in range(max(retry, 1)):
+        torrent = None
+        if hash_id:
+            torrent = _get_first_torrent(server, hash_id=hash_id)
+            if torrent and not _torrent_has_tag(torrent, tag):
+                torrent = None
+        if not torrent:
+            torrent = _get_first_torrent(server, tag=tag)
+            if (
+                torrent
+                and hash_id
+                and str(torrent.get("hash", "")).lower() != hash_id.lower()
+            ):
+                torrent = None
+        if torrent:
+            return torrent
+        if index + 1 < retry and interval > 0:
+            time.sleep(interval)
+    return None
+
+
+def _cleanup_probe_torrent(server, *, tag: str, hash_id: Optional[str]) -> bool:
+    """
+    删除探测任务前重新确认唯一标签，避免误删已有任务。
+    """
+    torrent = _find_probe_torrent(server, tag=tag, hash_id=hash_id)
+    if not torrent:
+        return False
+    cleanup_hash = torrent.get("hash")
+    if not cleanup_hash:
+        return False
+    try:
+        return server.delete_torrents(delete_file=True, ids=cleanup_hash)
+    except Exception as err:
+        logger.warning(f"清理临时探测任务失败：{cleanup_hash} - {err}")
+        return False
+
+
 def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> dict:
     """
     使用 qBittorrent 临时添加 magnet，读取 metadata/tracker 健康度后立即清理。
@@ -235,9 +298,16 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
             return {"success": False, "message": "添加临时探测任务失败"}
 
         added_by_probe = True
-        hash_id = next(iter(added_ids or []), None) or server.get_torrent_id_by_tag(
-            tags=tag
-        )
+        hash_id = next(iter(added_ids or []), None)
+        if not hash_id:
+            probe_torrent = _find_probe_torrent(
+                server,
+                tag=tag,
+                hash_id=expected_hash,
+                retry=_PROBE_TAG_RETRY_TIMES,
+                interval=_PROBE_TAG_RETRY_INTERVAL,
+            )
+            hash_id = probe_torrent.get("hash") if probe_torrent else None
         if not hash_id:
             return {"success": False, "message": "临时探测任务已添加，但未获取到任务 hash"}
 
@@ -263,11 +333,7 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
         return result
     finally:
         if added_by_probe and hash_id:
-            try:
-                cleanup = server.delete_torrents(delete_file=True, ids=hash_id)
-            except Exception as err:
-                cleanup = False
-                logger.warning(f"清理临时探测任务失败：{hash_id} - {err}")
+            cleanup = _cleanup_probe_torrent(server, tag=tag, hash_id=hash_id)
             if result and isinstance(result.get("data"), dict):
                 result["data"]["cleanup"] = cleanup
 
