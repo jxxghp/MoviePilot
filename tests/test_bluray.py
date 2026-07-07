@@ -524,6 +524,40 @@ class BluRayRemuxTest(TestCase):
                 [],
             )
 
+    def test_bluray_remux_rejects_large_playlist_parse(self):
+        with TemporaryDirectory() as temp_dir:
+            mpls_file = Path(temp_dir) / "00000.mpls"
+            mpls_file.write_bytes(b"0" * (1024 * 1024 + 1))
+
+            self.assertEqual(
+                TransHandler._TransHandler__parse_mpls_stream_names(mpls_file),
+                [],
+            )
+
+    def test_bluray_remux_ignores_stream_symlink(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            self.__create_bluray_dir(source_root)
+            outside_file = root / "outside.m2ts"
+            outside_file.write_bytes(b"x" * 50)
+            symlink_file = source_root / "BDMV" / "STREAM" / "00002.m2ts"
+            try:
+                symlink_file.symlink_to(outside_file)
+            except OSError as err:
+                self.skipTest(f"当前文件系统不支持创建符号链接：{err}")
+            self.__write_mpls(
+                source_root / "BDMV" / "PLAYLIST" / "00000.mpls",
+                ["00002.m2ts"],
+            )
+
+            source_files, source_size = TransHandler._TransHandler__get_bluray_remux_sources(
+                source_root
+            )
+
+            self.assertEqual(source_files, [])
+            self.assertEqual(source_size, 0)
+
     def test_bluray_remux_move_rejects_target_inside_source(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

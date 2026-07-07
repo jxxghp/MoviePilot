@@ -30,6 +30,8 @@ from app.schemas import (
 from app.schemas.types import MediaType, ChainEventType
 from app.utils.system import SystemUtils
 
+_BLURAY_MPLS_MAX_SIZE = 1024 * 1024
+
 
 class TransHandler:
     """
@@ -189,6 +191,9 @@ class TransHandler:
         从 MPLS 播放列表中提取 m2ts 分片名。
         """
         try:
+            if mpls_file.stat().st_size > _BLURAY_MPLS_MAX_SIZE:
+                logger.warn(f"蓝光播放列表 {mpls_file} 过大，跳过解析")
+                return []
             data = mpls_file.read_bytes()
             if len(data) < 16:
                 return []
@@ -227,7 +232,12 @@ class TransHandler:
         stream_files = [
             item
             for item in stream_dir.iterdir()
-            if item.is_file() and item.suffix.lower() == ".m2ts"
+            if (
+                not item.is_symlink()
+                and item.is_file()
+                and item.suffix.lower() == ".m2ts"
+                and cls.__is_path_relative_to(item, bluray_root)
+            )
         ] if stream_dir.is_dir() else []
         if not stream_files:
             return [], 0
@@ -373,10 +383,12 @@ class TransHandler:
         except Exception as err:
             return False, f"蓝光原盘转封装失败：{err}"
         finally:
-            if tmp_file.exists():
-                tmp_file.unlink()
-            if concat_file.exists():
-                concat_file.unlink()
+            for cleanup_file in [tmp_file, concat_file]:
+                try:
+                    if cleanup_file.exists():
+                        cleanup_file.unlink()
+                except OSError as err:
+                    logger.warning(f"清理蓝光转封装临时文件失败：{cleanup_file} - {err}")
 
     def __get_bluray_remux_target_file(
             self,
