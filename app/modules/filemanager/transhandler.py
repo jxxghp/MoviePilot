@@ -196,6 +196,7 @@ class TransHandler:
 
         stream_map = {item.name.upper(): item for item in stream_files}
         playlist_dir = bluray_root / "BDMV" / "PLAYLIST"
+        playlist_files = []
         best_files = []
         best_size = 0
         if playlist_dir.is_dir():
@@ -218,6 +219,12 @@ class TransHandler:
                     best_size = total_size
         if best_files:
             return best_files, best_size
+
+        if playlist_files:
+            logger.warn(
+                f"蓝光原盘 {bluray_root} 存在播放列表但无法匹配可转封装分片，跳过转封装"
+            )
+            return [], 0
 
         largest_file = max(stream_files, key=lambda item: item.stat().st_size)
         return [largest_file], largest_file.stat().st_size
@@ -442,8 +449,8 @@ class TransHandler:
         bluray_root = self.__get_local_bluray_root(Path(fileitem.path))
         if not bluray_root:
             return None
-        if mediainfo.type == MediaType.TV and in_meta.begin_episode is None:
-            logger.warn("电视剧蓝光原盘未识别到集数，保持目录整理")
+        if mediainfo.type == MediaType.TV:
+            logger.warn("电视剧蓝光原盘可能包含多集或全集播放列表，保持目录整理")
             return None
 
         target_file = self.__get_bluray_remux_target_file(

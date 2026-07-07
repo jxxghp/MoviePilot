@@ -291,6 +291,14 @@ class BluRayRemuxTest(TestCase):
         mediainfo.year = "2024"
         return mediainfo
 
+    @staticmethod
+    def __tv_info() -> MediaInfo:
+        mediainfo = MediaInfo()
+        mediainfo.type = MediaType.TV
+        mediainfo.title = "BluRay Show"
+        mediainfo.year = "2024"
+        return mediainfo
+
     def test_bluray_remux_disabled_keeps_directory_transfer(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -386,6 +394,62 @@ class BluRayRemuxTest(TestCase):
             self.assertTrue(result.success)
             command = mock_run.call_args.args[0]
             self.assertIn("concat", command)
+
+    def test_bluray_remux_rejects_unmatched_playlist(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            source_item = self.__create_bluray_dir(source_root)
+            self.__write_mpls(
+                source_root / "BDMV" / "PLAYLIST" / "00000.mpls",
+                ["99999.m2ts"],
+            )
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.shutil.which",
+                return_value="ffmpeg",
+            ), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="move",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    need_rename=False,
+                )
+
+            self.assertFalse(result.success)
+            self.assertTrue(source_root.exists())
+            self.assertFalse(mock_run.called)
+
+    def test_tv_bluray_remux_keeps_directory_transfer(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_item = self.__create_bluray_dir(root / "BluRay Show S01E01")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Show S01E01")),
+                    mediainfo=self.__tv_info(),
+                    target_storage="local",
+                    target_path=root / "media",
+                    transfer_type="copy",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    need_rename=False,
+                )
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.target_item.type, "dir")
+            self.assertFalse(mock_run.called)
 
     def test_bluray_remux_failure_keeps_existing_target_file(self):
         def run_ffmpeg(command, *_args, **_kwargs):
