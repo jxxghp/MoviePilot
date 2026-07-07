@@ -30,6 +30,7 @@ router = APIRouter()
 _SSE_APPEND_FLUSH_INTERVAL = 1
 _SSE_APPEND_MAX_ITEMS = 48
 _PROBE_TAG_PREFIX = "MP_PROBE"
+_PROBE_CATEGORY = "MP_PROBE"
 _PROBE_DEFAULT_TIMEOUT = 30
 _PROBE_MAX_TIMEOUT = 60
 _PROBE_SPEED_LIMIT = 1024
@@ -202,6 +203,15 @@ def _torrent_has_tag(torrent: Optional[dict], tag: str) -> bool:
     return tag in {str(item).strip() for item in tags if item}
 
 
+def _torrent_has_probe_category(torrent: Optional[dict]) -> bool:
+    """
+    判断任务是否属于磁力探测专用分类。
+    """
+    if not torrent:
+        return False
+    return str(torrent.get("category") or "") == _PROBE_CATEGORY
+
+
 def _find_probe_torrent(
     server,
     *,
@@ -247,6 +257,8 @@ def _cleanup_probe_torrent(server, *, tag: str, hash_id: Optional[str]) -> bool:
     )
     if not torrent:
         return False
+    if not _torrent_has_probe_category(torrent):
+        return False
     cleanup_hash = torrent.get("hash")
     if not cleanup_hash:
         return False
@@ -278,15 +290,9 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
     if expected_hash:
         existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
         if existing_torrent:
-            data = _build_probe_payload(
-                existing_torrent,
-                existing=True,
-                timed_out=False,
-            )
             return {
-                "success": True,
-                "message": "该任务已在下载器中，已读取现有状态",
-                "data": data,
+                "success": False,
+                "message": "无法创建临时探测任务",
             }
 
     tag = f"{_PROBE_TAG_PREFIX}_{uuid.uuid4().hex[:12]}"
@@ -300,6 +306,7 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
             content=safe_enclosure,
             is_paused=False,
             tag=[tag],
+            category=_PROBE_CATEGORY,
             dl_limit=_PROBE_SPEED_LIMIT,
             up_limit=_PROBE_SPEED_LIMIT,
             stop_condition="MetadataReceived",
@@ -308,15 +315,9 @@ def _probe_magnet(enclosure: str, downloader: Optional[str], timeout: int) -> di
             if expected_hash:
                 existing_torrent = _get_first_torrent(server, hash_id=expected_hash)
                 if existing_torrent:
-                    data = _build_probe_payload(
-                        existing_torrent,
-                        existing=True,
-                        timed_out=False,
-                    )
                     return {
-                        "success": True,
-                        "message": "该任务已在下载器中，已读取现有状态",
-                        "data": data,
+                        "success": False,
+                        "message": "无法创建临时探测任务",
                     }
             return {"success": False, "message": "添加临时探测任务失败"}
 

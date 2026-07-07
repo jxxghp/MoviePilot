@@ -90,9 +90,9 @@ def test_build_probe_payload_uses_real_size_and_best_seeder_count():
     assert data["availability"] == 1.5
 
 
-def test_probe_existing_magnet_reads_status_without_cleanup(monkeypatch):
+def test_probe_existing_magnet_skips_without_leaking_status(monkeypatch):
     """
-    磁力任务已存在时只读取状态，不应删除用户已有任务。
+    磁力任务已存在时不应返回下载器中的任务详情。
     """
     server = MagicMock()
     server.get_torrents.return_value = (
@@ -112,10 +112,8 @@ def test_probe_existing_magnet_reads_status_without_cleanup(monkeypatch):
 
     result = search_endpoint._probe_magnet(MAGNET, downloader="qb", timeout=5)
 
-    assert result["success"]
-    assert result["data"]["existing"]
-    assert result["data"]["size"] == 2048
-    assert result["data"]["seeders"] == 5
+    assert not result["success"]
+    assert "data" not in result
     server.add_torrent.assert_not_called()
     server.delete_torrents.assert_not_called()
 
@@ -140,6 +138,7 @@ def test_probe_new_magnet_adds_tagged_task_and_cleans_files(monkeypatch):
                     "name": "new",
                     "total_size": 8192,
                     "tags": f"MOVIEPILOT,{probe_tag}",
+                    "category": search_endpoint._PROBE_CATEGORY,
                     "num_seeds": 1,
                     "num_complete": 2,
                 }
@@ -167,6 +166,7 @@ def test_probe_new_magnet_adds_tagged_task_and_cleans_files(monkeypatch):
     assert add_kwargs["dl_limit"] == search_endpoint._PROBE_SPEED_LIMIT
     assert add_kwargs["up_limit"] == search_endpoint._PROBE_SPEED_LIMIT
     assert add_kwargs["stop_condition"] == "MetadataReceived"
+    assert add_kwargs["category"] == search_endpoint._PROBE_CATEGORY
     assert add_kwargs["tag"][0].startswith(f"{search_endpoint._PROBE_TAG_PREFIX}_")
     server.delete_torrents.assert_called_once_with(delete_file=False, ids=INFO_HASH)
 
@@ -207,6 +207,7 @@ def test_probe_timeout_returns_partial_tracker_state_and_cleans(monkeypatch):
                     "total_size": -1,
                     "size": 0,
                     "tags": f"MOVIEPILOT,{probe_tag}",
+                    "category": search_endpoint._PROBE_CATEGORY,
                     "num_seeds": 0,
                     "num_complete": 6,
                     "num_leechs": 1,
@@ -254,6 +255,7 @@ def test_probe_add_without_hash_finds_tagged_task_and_cleans(monkeypatch):
                         "name": "new",
                         "total_size": 4096,
                         "tags": "MOVIEPILOT,MP_PROBE_test",
+                        "category": search_endpoint._PROBE_CATEGORY,
                     }
                 ],
                 False,
@@ -266,6 +268,7 @@ def test_probe_add_without_hash_finds_tagged_task_and_cleans(monkeypatch):
                         "name": "new",
                         "total_size": 4096,
                         "tags": f"MOVIEPILOT,{tags}",
+                        "category": search_endpoint._PROBE_CATEGORY,
                     }
                 ],
                 False,
@@ -327,6 +330,43 @@ def test_probe_cleanup_skips_task_without_unique_probe_tag(monkeypatch):
         ),
         ([], False),
     ]
+    server.add_torrent.return_value = (True, [INFO_HASH])
+    module = _FakeQbittorrentModule(server)
+    monkeypatch.setattr(search_endpoint, "QbittorrentModule", lambda: module)
+
+    result = search_endpoint._probe_magnet(MAGNET, downloader=None, timeout=5)
+
+    assert result["success"]
+    assert result["data"]["cleanup"] is False
+    server.delete_torrents.assert_not_called()
+
+
+def test_probe_cleanup_skips_task_without_probe_category(monkeypatch):
+    """
+    即使任务带有本次唯一标签，缺少探测专用分类时也不应删除。
+    """
+    server = MagicMock()
+    first_hash_query = True
+
+    def get_torrents(ids=None, tags=None):
+        nonlocal first_hash_query
+        if ids == INFO_HASH and first_hash_query:
+            first_hash_query = False
+            return ([], False)
+        probe_tag = server.add_torrent.call_args.kwargs["tag"][0]
+        return (
+            [
+                {
+                    "hash": INFO_HASH,
+                    "name": "new",
+                    "total_size": 4096,
+                    "tags": f"MOVIEPILOT,{probe_tag}",
+                }
+            ],
+            False,
+        )
+
+    server.get_torrents.side_effect = get_torrents
     server.add_torrent.return_value = (True, [INFO_HASH])
     module = _FakeQbittorrentModule(server)
     monkeypatch.setattr(search_endpoint, "QbittorrentModule", lambda: module)
