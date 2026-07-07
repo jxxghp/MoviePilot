@@ -440,105 +440,6 @@ jobs:
           # github_action_config.auto_improve: "true"
           # config.verbosity_level: "1"
 
-      - name: Mark PR-Agent inline comments
-        if: >-
-          always() &&
-          steps.pr_language.outputs.skip_pr_agent != 'true' &&
-          steps.run_state.outputs.is_stale != 'true' &&
-          steps.pragent_head.outputs.is_stale != 'true' &&
-          steps.inline_state_before.outputs.inline_ids_b64 != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-          RUN_HEAD_SHA: ${{ steps.pr_language.outputs.head_sha }}
-          BEFORE_INLINE_IDS_B64: ${{ steps.inline_state_before.outputs.inline_ids_b64 }}
-          BEFORE_REVIEW_IDS_B64: ${{ steps.inline_state_before.outputs.review_ids_b64 }}
-          PR_AGENT_INLINE_MARKER: "<!-- pr-agent-inline-comment:${{ github.run_id }} -->"
-        run: |
-          set -euo pipefail
-          before_ids="$(printf '%s' "${BEFORE_INLINE_IDS_B64:-W10=}" | base64 -d)"
-          before_review_ids="$(printf '%s' "${BEFORE_REVIEW_IDS_B64:-W10=}" | base64 -d)"
-          comments="$(mktemp)"
-          reviews="$(mktemp)"
-          patches="$(mktemp)"
-          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" --jq '.[] | @json' > "${comments}"
-          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --jq '.[] | @json' > "${reviews}"
-          python3 - "${before_ids}" "${before_review_ids}" "${comments}" "${reviews}" "${patches}" "${RUN_HEAD_SHA}" <<'PY'
-          import json
-          import os
-          import re
-          import sys
-          from pathlib import Path
-
-          before_ids = set(json.loads(sys.argv[1] or "[]"))
-          before_review_ids = set(json.loads(sys.argv[2] or "[]"))
-          comments_path = Path(sys.argv[3])
-          reviews_path = Path(sys.argv[4])
-          patches_path = Path(sys.argv[5])
-          head_sha = sys.argv[6]
-          marker = os.environ["PR_AGENT_INLINE_MARKER"]
-          marker_re = re.compile(r"^\s*<!--\s*pr-agent-inline-comment(?::[^>]*)?\s*-->\s*", re.IGNORECASE)
-          risk_prefix_re = re.compile(
-              r"^(?:(?:🔴\s*)?\*\*High Risk\*\*:|(?:🟡\s*)?\*\*Medium Risk\*\*:|(?:🔵\s*)?\*\*Low Risk\*\*:)",
-              re.IGNORECASE,
-          )
-
-          def looks_like_pr_agent_suggestion(body: str) -> bool:
-              body = marker_re.sub("", body or "", count=1).lstrip()
-              return bool(risk_prefix_re.search(body))
-
-          new_review_ids = set()
-          for line in reviews_path.read_text().splitlines():
-              if not line.strip():
-                  continue
-              item = json.loads(line)
-              if (
-                  item.get("user", {}).get("login") == "github-actions[bot]"
-                  and item.get("id") not in before_review_ids
-                  and item.get("commit_id") == head_sha
-              ):
-                  new_review_ids.add(item["id"])
-
-          patches = []
-          for line in comments_path.read_text().splitlines():
-              if not line.strip():
-                  continue
-              item = json.loads(line)
-              body = item.get("body") or ""
-              if (
-                  item.get("user", {}).get("login") == "github-actions[bot]"
-                  and item.get("id") not in before_ids
-                  and item.get("commit_id") == head_sha
-                  and item.get("pull_request_review_id") in new_review_ids
-                  and body.strip()
-                  and not marker_re.search(body)
-                  and looks_like_pr_agent_suggestion(body)
-              ):
-                  patches.append({"id": item["id"], "body": f"{marker}\n{body}"})
-
-          patches_path.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in patches))
-          PY
-
-          if [ ! -s "${patches}" ]; then
-            echo "No PR-Agent inline comments to mark."
-            exit 0
-          fi
-          patch_failed=false
-          while IFS= read -r patch || [ -n "${patch}" ]; do
-            [ -z "${patch}" ] && continue
-            comment_id="$(printf '%s' "${patch}" | jq -r '.id')"
-            payload="$(mktemp)"
-            printf '%s' "${patch}" | jq '{body:.body}' > "${payload}"
-            if ! gh api --method PATCH "repos/${REPO}/pulls/comments/${comment_id}" --input "${payload}" >/dev/null 2>&1; then
-              echo "PR-Agent inline comment ${comment_id} could not be marked."
-              patch_failed=true
-            fi
-          done < "${patches}"
-          if [ "${patch_failed}" = "true" ]; then
-            exit 1
-          fi
-
       - name: Clean stale PR-Agent inline comments
         id: post_pragent_state
         if: >-
@@ -624,12 +525,23 @@ jobs:
             echo "No stale PR-Agent inline comments to clean."
             exit 0
           fi
+          delete_failed=false
           while IFS= read -r comment_id || [ -n "${comment_id}" ]; do
             [ -z "${comment_id}" ] && continue
-            if ! gh api --method DELETE "repos/${REPO}/pulls/comments/${comment_id}" >/dev/null 2>&1; then
-              echo "PR-Agent inline comment ${comment_id} was already removed; continue."
+            err="$(mktemp)"
+            if ! gh api --method DELETE "repos/${REPO}/pulls/comments/${comment_id}" >/dev/null 2>"${err}"; then
+              if grep -qiE "HTTP 404|Not Found" "${err}"; then
+                echo "PR-Agent inline comment ${comment_id} was already removed; continue."
+              else
+                cat "${err}" >&2
+                echo "PR-Agent inline comment ${comment_id} could not be deleted."
+                delete_failed=true
+              fi
             fi
           done < "${delete_ids}"
+          if [ "${delete_failed}" = "true" ]; then
+            exit 1
+          fi
 
       - name: Publish PR-Agent code review summary
         if: >-
@@ -906,12 +818,23 @@ jobs:
             exit 0
           fi
 
+          delete_failed=false
           while IFS= read -r comment_id; do
             [ -z "${comment_id}" ] && continue
-            if ! gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null 2>&1; then
-              echo "PR-Agent summary comment ${comment_id} was already removed; continue."
+            err="$(mktemp)"
+            if ! gh api --method DELETE "repos/${REPO}/issues/comments/${comment_id}" >/dev/null 2>"${err}"; then
+              if grep -qiE "HTTP 404|Not Found" "${err}"; then
+                echo "PR-Agent summary comment ${comment_id} was already removed; continue."
+              else
+                cat "${err}" >&2
+                echo "PR-Agent summary comment ${comment_id} could not be deleted."
+                delete_failed=true
+              fi
             fi
           done <<< "${comment_ids}"
+          if [ "${delete_failed}" = "true" ]; then
+            exit 1
+          fi
 
       - name: Restore PR-Agent description markers on failure
         if: >-
