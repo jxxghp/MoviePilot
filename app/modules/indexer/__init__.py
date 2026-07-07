@@ -9,6 +9,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.spider import SiteSpider
+from app.modules.indexer.spider.dmhy import DMHYSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
@@ -21,6 +22,7 @@ from app.schemas.types import MediaType, ModuleType, OtherModulesType
 from app.utils.string import StringUtils
 
 SPIDER_PARSER_CLASSES = {
+    "DMHY": DMHYSpider,
     "TNodeSpider": TNodeSpider,
     "TorrentLeech": TorrentLeech,
     "mTorrent": MTorrentSpider,
@@ -264,6 +266,12 @@ class IndexerModule(_ModuleBase):
                     cat=cat,
                     page=page
                 )
+            elif site.get('parser') == "DMHY":
+                error_flag, result = DMHYSpider(site).search(
+                    keyword=search_word,
+                    mtype=mtype,
+                    page=page
+                )
             else:
                 error_flag, result = self.__spider_search(
                     search_word=search_word,
@@ -398,6 +406,12 @@ class IndexerModule(_ModuleBase):
                     keyword=search_word,
                     mtype=mtype,
                     cat=cat,
+                    page=page
+                )
+            elif site.get('parser') == "DMHY":
+                error_flag, result = await DMHYSpider(site).async_search(
+                    keyword=search_word,
+                    mtype=mtype,
                     page=page
                 )
             else:
