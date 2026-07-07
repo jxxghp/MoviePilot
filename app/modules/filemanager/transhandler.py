@@ -293,7 +293,6 @@ class TransHandler:
     def __get_bluray_remux_sources(
             cls,
             bluray_root: Path,
-            allow_largest_fallback: bool = True,
     ) -> Tuple[List[_BlurayRemuxSource], int]:
         """
         获取蓝光原盘转封装源文件列表。
@@ -347,9 +346,9 @@ class TransHandler:
             )
             return [], 0
 
-        if len(stream_files) > 1 and not allow_largest_fallback:
+        if len(stream_files) > 1:
             logger.warn(
-                f"蓝光原盘 {bluray_root} 缺少播放列表，移动模式跳过最大分片回退"
+                f"蓝光原盘 {bluray_root} 缺少播放列表，跳过多分片最大文件回退"
             )
             return [], 0
 
@@ -700,10 +699,7 @@ class TransHandler:
                     need_notify=need_notify,
                 )
 
-        source_files, source_size = self.__get_bluray_remux_sources(
-            bluray_root,
-            allow_largest_fallback=transfer_type == "copy",
-        )
+        source_files, source_size = self.__get_bluray_remux_sources(bluray_root)
         if not source_files:
             return TransferInfo(
                 success=False,

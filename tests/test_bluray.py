@@ -672,31 +672,32 @@ class BluRayRemuxTest(TestCase):
                 self.assertFalse((source_root / f"{source_item.name}.mkv").exists())
                 self.assertFalse(mock_run.called)
 
-    def test_bluray_remux_move_rejects_multi_stream_largest_file_fallback(self):
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source_root = root / "BluRay Movie Source"
-            source_item = self.__create_bluray_dir(source_root)
-            shutil.rmtree(source_root / "BDMV" / "PLAYLIST")
+    def test_bluray_remux_rejects_multi_stream_largest_file_fallback(self):
+        for transfer_type in ["copy", "move"]:
+            with self.subTest(transfer_type=transfer_type), TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                source_root = root / "BluRay Movie Source"
+                source_item = self.__create_bluray_dir(source_root)
+                shutil.rmtree(source_root / "BDMV" / "PLAYLIST")
 
-            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
-                "app.modules.filemanager.transhandler.subprocess.run"
-            ) as mock_run:
-                result = TransHandler().transfer_media(
-                    fileitem=source_item,
-                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
-                    mediainfo=self.__movie_info(),
-                    target_storage="local",
-                    target_path=root / "media",
-                    transfer_type="move",
-                    source_oper=LocalStorage(),
-                    target_oper=LocalStorage(),
-                    need_rename=False,
-                )
+                with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                    "app.modules.filemanager.transhandler.subprocess.run"
+                ) as mock_run:
+                    result = TransHandler().transfer_media(
+                        fileitem=source_item,
+                        in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                        mediainfo=self.__movie_info(),
+                        target_storage="local",
+                        target_path=root / "media",
+                        transfer_type=transfer_type,
+                        source_oper=LocalStorage(),
+                        target_oper=LocalStorage(),
+                        need_rename=False,
+                    )
 
-            self.assertFalse(result.success)
-            self.assertTrue(source_root.exists())
-            self.assertFalse(mock_run.called)
+                self.assertFalse(result.success)
+                self.assertTrue(source_root.exists())
+                self.assertFalse(mock_run.called)
 
     def test_bluray_remux_move_rejects_child_directory_entry(self):
         with TemporaryDirectory() as temp_dir:
