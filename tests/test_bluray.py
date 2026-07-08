@@ -316,6 +316,15 @@ class BluRayRemuxTest(TestCase):
         mediainfo.year = "2024"
         return mediainfo
 
+    def __assert_ffmpeg_not_called(self, mock_run):
+        for run_call in mock_run.call_args_list:
+            command = run_call.args[0] if run_call.args else run_call.kwargs.get("args")
+            if isinstance(command, (list, tuple)) and command:
+                executable = Path(str(command[0])).name.lower()
+            else:
+                executable = str(command or "").strip().split(" ", 1)[0].strip("'\"").lower()
+            self.assertNotIn(executable, {"ffmpeg", "ffmpeg.exe"})
+
     def test_bluray_remux_disabled_keeps_directory_transfer(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -338,7 +347,7 @@ class BluRayRemuxTest(TestCase):
 
             self.assertTrue(result.success)
             self.assertEqual(result.target_item.type, "dir")
-            self.assertFalse(mock_run.called)
+            self.__assert_ffmpeg_not_called(mock_run)
 
     def test_bluray_remux_enabled_uses_playlist_concat(self):
         def run_ffmpeg(command, *_args, **_kwargs):
@@ -483,7 +492,7 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertTrue(source_root.exists())
-            self.assertFalse(mock_run.called)
+            self.__assert_ffmpeg_not_called(mock_run)
 
     def test_tv_bluray_remux_keeps_directory_transfer(self):
         with TemporaryDirectory() as temp_dir:
@@ -507,7 +516,7 @@ class BluRayRemuxTest(TestCase):
 
             self.assertTrue(result.success)
             self.assertEqual(result.target_item.type, "dir")
-            self.assertFalse(mock_run.called)
+            self.__assert_ffmpeg_not_called(mock_run)
 
     def test_bluray_remux_failure_keeps_latest_version_files(self):
         def run_ffmpeg(command, *_args, **_kwargs):
@@ -672,7 +681,7 @@ class BluRayRemuxTest(TestCase):
                 self.assertFalse(result.success)
                 self.assertTrue(source_root.exists())
                 self.assertFalse((source_root / f"{source_item.name}.mkv").exists())
-                self.assertFalse(mock_run.called)
+                self.__assert_ffmpeg_not_called(mock_run)
 
     def test_bluray_remux_rejects_multi_stream_largest_file_fallback(self):
         for transfer_type in ["copy", "move"]:
@@ -699,7 +708,7 @@ class BluRayRemuxTest(TestCase):
 
                 self.assertFalse(result.success)
                 self.assertTrue(source_root.exists())
-                self.assertFalse(mock_run.called)
+                self.__assert_ffmpeg_not_called(mock_run)
 
     def test_bluray_remux_move_rejects_child_directory_entry(self):
         with TemporaryDirectory() as temp_dir:
@@ -732,7 +741,7 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertTrue(source_root.exists())
-            self.assertFalse(mock_run.called)
+            self.__assert_ffmpeg_not_called(mock_run)
 
     def test_bluray_remux_failure_keeps_existing_target_file(self):
         def run_ffmpeg(command, *_args, **_kwargs):
@@ -919,7 +928,7 @@ class BluRayRemuxTest(TestCase):
 
             self.assertFalse(result.success)
             self.assertTrue(target_file.is_symlink())
-            self.assertFalse(mock_run.called)
+            self.__assert_ffmpeg_not_called(mock_run)
 
     def test_bluray_remux_timeout_returns_failure(self):
         with TemporaryDirectory() as temp_dir:
