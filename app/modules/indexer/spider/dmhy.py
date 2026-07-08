@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -25,13 +25,34 @@ class DMHYSpider:
     def __init__(self, indexer: dict):
         self._indexerid = indexer.get("id")
         self._name = indexer.get("name") or "动漫花园"
-        self._domain = (
-            indexer.get("domain") or indexer.get("url") or "https://dmhy.anoneko.com/"
-        ).rstrip("/") + "/"
-        self._rss = indexer.get("rss")
+        self._domain = self.__normalize_base_url(
+            indexer.get("url") or indexer.get("domain")
+        )
+        self._rss = self.__normalize_rss_url(indexer.get("rss"))
         self._proxy = bool(indexer.get("proxy"))
         self._ua = indexer.get("ua") or settings.USER_AGENT
         self._timeout = int(indexer.get("timeout") or 20)
+
+    @staticmethod
+    def __normalize_base_url(value: Optional[str]) -> str:
+        """
+        补齐站点基址协议并统一保留结尾斜杠。
+        """
+        base_url = str(value or "https://dmhy.anoneko.com/").strip()
+        if not base_url.startswith(("http://", "https://")):
+            base_url = f"https://{base_url}"
+        return base_url.rstrip("/") + "/"
+
+    def __normalize_rss_url(self, value: Optional[str]) -> Optional[str]:
+        """
+        将相对 RSS 地址补齐为完整 URL。
+        """
+        rss_url = str(value or "").strip()
+        if not rss_url:
+            return None
+        if rss_url.startswith(("http://", "https://")):
+            return rss_url
+        return urljoin(self._domain, rss_url)
 
     @classmethod
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:

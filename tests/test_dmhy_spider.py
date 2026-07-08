@@ -109,6 +109,54 @@ def test_dmhy_spider_search_returns_primary_results_when_season_pack_fails(monke
     assert torrents[0]["seeders"] == 0
 
 
+def test_dmhy_spider_prefers_url_and_normalizes_relative_rss(monkeypatch):
+    """
+    站点 domain 为裸域时，应优先使用完整 url 并补齐相对 RSS 地址。
+    """
+    calls = []
+
+    def fake_parse(self, url, **kwargs):
+        calls.append(url)
+        return []
+
+    monkeypatch.setattr("app.modules.indexer.spider.dmhy.RssHelper.parse", fake_parse)
+
+    error, torrents = DMHYSpider(
+        _indexer(
+            domain="anoneko.com",
+            url="https://dmhy.anoneko.com/",
+            rss="/topics/rss/rss.xml",
+        )
+    ).search(keyword="测试 动画")
+
+    assert not error
+    assert torrents == []
+    assert calls[0].startswith("https://dmhy.anoneko.com/topics/rss/rss.xml?")
+    assert parse_qs(urlparse(calls[0]).query)["keyword"] == ["测试 动画"]
+    assert parse_qs(urlparse(calls[1]).query)["sort_id"] == ["31"]
+
+
+def test_dmhy_spider_adds_scheme_to_bare_domain(monkeypatch):
+    """
+    只有裸域名时，应补齐 https 协议后生成 RSS 地址。
+    """
+    calls = []
+
+    def fake_parse(self, url, **kwargs):
+        calls.append(url)
+        return []
+
+    monkeypatch.setattr("app.modules.indexer.spider.dmhy.RssHelper.parse", fake_parse)
+
+    error, torrents = DMHYSpider(
+        _indexer(domain="dmhy.anoneko.com", url=None, rss=None)
+    ).search(keyword="测试")
+
+    assert not error
+    assert torrents == []
+    assert calls[0].startswith("https://dmhy.anoneko.com/topics/rss/rss.xml?")
+
+
 def test_dmhy_spider_uses_fixed_rss_page_size_when_result_num_is_configured(monkeypatch):
     """
     动漫花园 RSS 页容量固定，不能被站点 result_num 改写。
