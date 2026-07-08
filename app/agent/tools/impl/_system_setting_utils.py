@@ -59,6 +59,10 @@ SYSTEMCONFIG_SETTING_METADATA = {
         "group": "ai_agent",
         "label": "AI 智能体配置",
     },
+    SystemConfigKey.AIAgentMcpServers.value: {
+        "group": "ai_agent",
+        "label": "AI 智能体外部 MCP 服务器",
+    },
     SystemConfigKey.CustomIdentifiers.value: {
         "group": "custom_identifiers",
         "label": "自定义识别词",

@@ -470,6 +470,14 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/mcp/tools/{tool_name}` | Get tool definition |
 | GET | `/api/v1/mcp/tools/{tool_name}/schema` | Get tool input schema |
 
+### Agent MCP Client (3 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/message/agent/mcp/servers` | List external MCP servers configured for the built-in Agent. Superuser login required |
+| POST | `/api/v1/message/agent/mcp/servers` | Save external MCP servers for the built-in Agent. Body: `{"servers":[...]}` |
+| POST | `/api/v1/message/agent/mcp/servers/test` | Test one external MCP server and return discovered tools. Body: `{"server":{...}}` |
+
 ### Webhook (2 endpoints)
 
 | Method | Path | Description |

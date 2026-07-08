@@ -67,6 +67,26 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 }
 ```
 
+## 4.1 Agent 外部 MCP Client 配置
+
+MoviePilot 的内置 Agent 也可以作为 MCP Client 连接外部 MCP 服务器，将外部工具注入到智能助手工具列表中。当前支持：
+
+- `stdio`：按配置的命令和参数启动本地 MCP 进程，通过标准输入输出交换 JSON-RPC 消息。
+- `sse`：连接旧版 HTTP+SSE MCP 服务，先读取 `endpoint` 事件，再向返回的 endpoint POST JSON-RPC 消息。
+- `http` / `streamable_http`：连接 Streamable HTTP MCP 服务，直接向配置 URL POST JSON-RPC 消息。
+
+这些配置是管理员级 Agent 运行时配置，保存在 `SystemConfigKey.AIAgentMcpServers` 中。外部 MCP 工具默认要求管理员上下文调用，避免普通用户触发高权限外部工具。
+
+### Agent MCP 配置接口
+
+这些接口使用登录态鉴权，并要求当前用户为超级管理员。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/message/agent/mcp/servers` | 查询已配置的外部 MCP 服务器列表 |
+| POST | `/api/v1/message/agent/mcp/servers` | 保存外部 MCP 服务器列表 |
+| POST | `/api/v1/message/agent/mcp/servers/test` | 测试单个外部 MCP 服务器，返回发现的工具列表 |
+
 ## 5. 错误码说明
 
 | 错误码 | 消息 | 说明 |
@@ -133,6 +153,9 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | POST | `/api/v1/system/setting/PLUGIN_MARKET/sync-wiki` | 管理员从 MoviePilot Wiki 的插件文档同步公开插件仓库清单，和本地 `PLUGIN_MARKET` 合并去重后写入配置 |
 | GET | `/api/v1/system/modulelist` | 查询已加载模块，保留 `name` 原始中文字段，并提供 `name_i18n` 和 `name_key` 给多语言前端展示 |
 | GET | `/api/v1/system/moduletest/{moduleid}` | 测试指定模块可用性，保留原 `message`，并在标准响应顶层返回 `message_i18n` |
+| GET | `/api/v1/message/agent/mcp/servers` | 管理员查询 Agent 外部 MCP 服务器配置 |
+| POST | `/api/v1/message/agent/mcp/servers` | 管理员保存 Agent 外部 MCP 服务器配置 |
+| POST | `/api/v1/message/agent/mcp/servers/test` | 管理员测试单个 Agent 外部 MCP 服务器并读取工具列表 |
 
 ### 插件补充接口
 

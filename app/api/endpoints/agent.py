@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import schemas
 from app.agent import MoviePilotAgent, ReplyMode, StreamingHandler, agent_manager
 from app.agent.llm.capability import AgentCapabilityManager
+from app.agent.mcp import agent_mcp_manager
 from app.chain.message import MessageChain
 from app.chain.site import site_interaction_manager
 from app.chain.skills import skills_interaction_manager
@@ -54,6 +55,78 @@ _WEB_AGENT_NOTICE_QUEUES: dict[str, list[Queue[schemas.Notification]]] = {}
 _WEB_AGENT_NOTICE_LOCK = Lock()
 _WEB_AGENT_NOTICE_LISTENER_REGISTERED = False
 _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _ensure_superuser(user: User) -> None:
+    """校验当前用户是否为超级管理员。"""
+    if not getattr(user, "is_superuser", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
+@router.get("/mcp/servers", summary="查询 Agent MCP 服务器配置", response_model=schemas.Response)
+async def list_agent_mcp_servers(
+    current_user: User = Depends(get_current_active_user),
+) -> schemas.Response:
+    """
+    查询 Agent 外部 MCP 服务器配置。
+    """
+    _ensure_superuser(current_user)
+    servers = agent_mcp_manager.get_servers()
+    enabled_count = len([server for server in servers if server.enabled])
+    return schemas.Response(
+        success=True,
+        data={
+            "servers": [server.model_dump() for server in servers],
+            "enabled_count": enabled_count,
+            "total_count": len(servers),
+        },
+    )
+
+
+@router.post("/mcp/servers", summary="保存 Agent MCP 服务器配置", response_model=schemas.Response)
+async def save_agent_mcp_servers(
+    request: schemas.AgentMcpServersSaveRequest,
+    current_user: User = Depends(get_current_active_user),
+) -> schemas.Response:
+    """
+    保存 Agent 外部 MCP 服务器配置。
+    """
+    _ensure_superuser(current_user)
+    success = await agent_mcp_manager.save_servers(request.servers)
+    return schemas.Response(
+        success=success,
+        message="保存MCP配置成功" if success else "保存MCP配置失败",
+    )
+
+
+@router.post("/mcp/servers/test", summary="测试 Agent MCP 服务器", response_model=schemas.Response)
+async def test_agent_mcp_server(
+    request: schemas.AgentMcpServerTestRequest,
+    current_user: User = Depends(get_current_active_user),
+) -> schemas.Response:
+    """
+    测试 Agent 外部 MCP 服务器连接并读取工具列表。
+    """
+    _ensure_superuser(current_user)
+    try:
+        result = await agent_mcp_manager.test_server(request.server)
+        return schemas.Response(
+            success=result.success,
+            message=result.message,
+            data=result.model_dump(),
+        )
+    except Exception as err:
+        logger.warning(f"测试 Agent MCP 服务器失败: {err}")
+        return schemas.Response(
+            success=False,
+            message=f"测试MCP服务器失败: {str(err)}",
+            data={
+                "success": False,
+                "message": str(err),
+                "tools": [],
+                "tool_count": 0,
+            },
+        )
 
 
 class _WebAgentStreamingHandler(StreamingHandler):

@@ -265,6 +265,8 @@ class SystemConfigKey(Enum):
     NotificationSendTime = "NotificationSendTime"
     # AI智能体配置
     AIAgentConfig = "AIAgentConfig"
+    # AI智能体外部MCP服务器配置
+    AIAgentMcpServers = "AIAgentMcpServers"
     # 通知消息格式模板
     NotificationTemplates = "NotificationTemplates"
     # 通知中心清理时间
