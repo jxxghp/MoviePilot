@@ -280,8 +280,8 @@ jobs:
             Only provide substantive issues that maintainers should address; avoid style-only, preference-only, or low-value suggestions.
             For prioritized issues, start the suggestion body with one of these Markdown prefixes: 🔴 **High Risk**:, 🟡 **Medium Risk**:, or 🔵 **Low Risk**:.
           pr_code_suggestions.focus_only_on_problems: "true"
-          pr_code_suggestions.suggestions_score_threshold: "8"
-          pr_code_suggestions.num_code_suggestions_per_chunk: "2"
+          pr_code_suggestions.suggestions_score_threshold: "3"
+          pr_code_suggestions.num_code_suggestions_per_chunk: "3"
           pr_code_suggestions.commitable_code_suggestions: "true"
           pr_code_suggestions.publish_output_no_suggestions: "false"
           pr_questions.use_conversation_history: "true"
