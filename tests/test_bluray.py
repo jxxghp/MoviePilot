@@ -683,6 +683,37 @@ class BluRayRemuxTest(TestCase):
                 self.assertFalse((source_root / f"{source_item.name}.mkv").exists())
                 self.__assert_ffmpeg_not_called(mock_run)
 
+    def test_bluray_remux_rejects_leaf_symlink_target_inside_source(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_root = root / "BluRay Movie Source"
+            source_item = self.__create_bluray_dir(source_root)
+            target_file = source_root / f"{source_item.name}.mkv"
+            try:
+                target_file.symlink_to(root / "outside.mkv")
+            except OSError as err:
+                self.skipTest(f"当前文件系统不支持创建符号链接：{err}")
+
+            with patch.object(settings, "BLURAY_REMUX_ENABLED", True), patch(
+                "app.modules.filemanager.transhandler.subprocess.run"
+            ) as mock_run:
+                result = TransHandler().transfer_media(
+                    fileitem=source_item,
+                    in_meta=MetaInfoPath(Path("BluRay Movie (2024)")),
+                    mediainfo=self.__movie_info(),
+                    target_storage="local",
+                    target_path=source_root,
+                    transfer_type="move",
+                    source_oper=LocalStorage(),
+                    target_oper=LocalStorage(),
+                    need_rename=False,
+                )
+
+            self.assertFalse(result.success)
+            self.assertIn("目标不能位于源目录内", result.message)
+            self.assertTrue(target_file.is_symlink())
+            self.__assert_ffmpeg_not_called(mock_run)
+
     def test_bluray_remux_rejects_multi_stream_largest_file_fallback(self):
         for transfer_type in ["copy", "move"]:
             with self.subTest(transfer_type=transfer_type), TemporaryDirectory() as temp_dir:

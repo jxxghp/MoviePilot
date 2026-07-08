@@ -88,7 +88,9 @@ class TransHandler:
         判断 path 是否位于 parent 内部，兼容目标文件尚未创建的场景。
         """
         try:
-            path.resolve().relative_to(parent.resolve())
+            parent_path = parent.resolve()
+            candidate_path = path.parent.resolve() / path.name
+            candidate_path.relative_to(parent_path)
             return True
         except (OSError, ValueError):
             return False
