@@ -499,6 +499,109 @@ class TestPluginHelper:
         assert [item["version"] for item in cached_result] == ["1.2.3"]
         assert request_count == 2
 
+    def test_async_normal_release_read_does_not_wait_for_pending_force_refresh(self, monkeypatch):
+        """普通读取遇到后台强刷时仍优先返回已有缓存，避免页面响应被强刷阻塞。"""
+        try:
+            from app.core.cache import async_fresh
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        old_payload = [{
+            "tag_name": "DemoPlugin_v1.2.2",
+            "assets": [{"name": "demoplugin_v1.2.2.zip", "id": 1}],
+        }]
+        fresh_payload = [{
+            "tag_name": "DemoPlugin_v1.2.3",
+            "assets": [{"name": "demoplugin_v1.2.3.zip", "id": 2}],
+        }]
+        force_request_started = asyncio.Event()
+        release_force_request = asyncio.Event()
+        request_count = 0
+
+        async def fake_request(*_args, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            if request_count == 1:
+                return _FakeTextResponse(200, old_payload)
+            force_request_started.set()
+            await release_force_request.wait()
+            return _FakeTextResponse(200, fresh_payload)
+
+        async def run_test():
+            helper = PluginHelper()
+            await helper.async_get_plugin_release_versions.cache_clear()
+            monkeypatch.setattr(helper, "_PluginHelper__async_request_with_fallback", fake_request)
+            initial = await helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            async with async_fresh(True):
+                force_task = asyncio.create_task(
+                    helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+                )
+            await force_request_started.wait()
+            normal_task = asyncio.create_task(
+                helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            )
+            normal_before_force_finished = await asyncio.wait_for(normal_task, timeout=1)
+            force_done_before_normal_finished = force_task.done()
+            release_force_request.set()
+            force_result = await force_task
+            cached_result = await helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            return (
+                initial,
+                force_done_before_normal_finished,
+                normal_before_force_finished,
+                force_result,
+                cached_result,
+            )
+
+        (
+            initial,
+            force_done_before_normal_finished,
+            normal_before_force_finished,
+            force_result,
+            cached_result,
+        ) = asyncio.run(run_test())
+
+        assert [item["version"] for item in initial] == ["1.2.2"]
+        assert force_done_before_normal_finished is False
+        assert [item["version"] for item in normal_before_force_finished] == ["1.2.2"]
+        assert [item["version"] for item in force_result] == ["1.2.3"]
+        assert [item["version"] for item in cached_result] == ["1.2.3"]
+        assert request_count == 2
+
+    def test_async_has_plugin_release_cache_reflects_repository_cache(self, monkeypatch):
+        """Release 缓存探针只判断仓库级缓存是否已经存在，不触发网络请求。"""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        payload = [{
+            "tag_name": "DemoPlugin_v1.2.3",
+            "assets": [{"name": "demoplugin_v1.2.3.zip", "id": 1}],
+        }]
+        request_count = 0
+
+        async def fake_request(*_args, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            return _FakeTextResponse(200, payload)
+
+        async def run_test():
+            helper = PluginHelper()
+            await helper.async_get_plugin_release_versions.cache_clear()
+            monkeypatch.setattr(helper, "_PluginHelper__async_request_with_fallback", fake_request)
+            before = await helper.async_has_plugin_release_cache(REPO_URL)
+            await helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            after = await helper.async_has_plugin_release_cache(REPO_URL)
+            return before, after
+
+        before, after = asyncio.run(run_test())
+
+        assert before is False
+        assert after is True
+        assert request_count == 1
+
     def test_failed_forced_release_refresh_preserves_cached_repository_payload(self, monkeypatch):
         """GitHub 强刷失败时不以空值覆盖该仓库已有 Release 缓存。"""
         try:
