@@ -1214,8 +1214,19 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 """
                 await cache_backend.clear(region=cache_region)
 
+            async def cache_exists(*args, **kwargs) -> bool:
+                """
+                判断当前参数对应的有效缓存是否存在。
+                """
+                cache_key = __get_cache_key(args, kwargs)
+                cached_value = await cache_backend.get(cache_key, region=cache_region)
+                return should_cache(cached_value) and await async_is_valid_cache_value(
+                    cache_key, cached_value, cache_region
+                )
+
             async_wrapper.cache_region = cache_region
             async_wrapper.cache_clear = cache_clear
+            async_wrapper.cache_exists = cache_exists
             return async_wrapper
         else:
             # 同步函数使用同步缓存后端
@@ -1246,8 +1257,19 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 """
                 cache_backend.clear(region=cache_region)
 
+            def cache_exists(*args, **kwargs) -> bool:
+                """
+                判断当前参数对应的有效缓存是否存在。
+                """
+                cache_key = __get_cache_key(args, kwargs)
+                cached_value = cache_backend.get(cache_key, region=cache_region)
+                return should_cache(cached_value) and is_valid_cache_value(
+                    cache_key, cached_value, cache_region
+                )
+
             wrapper.cache_region = cache_region
             wrapper.cache_clear = cache_clear
+            wrapper.cache_exists = cache_exists
             return wrapper
 
     return decorator

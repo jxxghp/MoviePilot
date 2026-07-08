@@ -2218,34 +2218,47 @@ class PluginHelper(metaclass=WeakSingleton):
         normal_task_key = (loop, normalized_repo_url, False)
         force_task_key = (loop, normalized_repo_url, True)
         with self._release_task_lock:
-            force_task = self._release_tasks.get(force_task_key)
-            if force_task and not force_task.done():
-                task_key = force_task_key
-                task = force_task
-            elif is_fresh():
-                pending_normal_task = self._release_tasks.get(normal_task_key)
-                if pending_normal_task and pending_normal_task.done():
-                    pending_normal_task = None
-                task_key = force_task_key
-                task = loop.create_task(
-                    self._async_refresh_plugin_repo_releases(normalized_repo_url, pending_normal_task)
-                )
-                self._release_tasks[task_key] = task
-                task.add_done_callback(
-                    lambda completed_task: self._remove_release_task(task_key, completed_task)
-                )
+            if is_fresh():
+                force_task = self._release_tasks.get(force_task_key)
+                if force_task and not force_task.done():
+                    task_key = force_task_key
+                    task = force_task
+                else:
+                    pending_normal_task = self._release_tasks.get(normal_task_key)
+                    if pending_normal_task and pending_normal_task.done():
+                        pending_normal_task = None
+                    task_key = force_task_key
+                    task = loop.create_task(
+                        self._async_refresh_plugin_repo_releases(normalized_repo_url, pending_normal_task)
+                    )
+                    self._release_tasks[task_key] = task
+                    task.add_done_callback(
+                        lambda completed_task: self._remove_release_task(task_key, completed_task)
+                    )
             else:
                 task_key = normal_task_key
-                task = self._release_tasks.get(task_key)
-                if task is None or task.done():
+                pending_normal_task = self._release_tasks.get(normal_task_key)
+                if pending_normal_task is None or pending_normal_task.done():
                     task = loop.create_task(self._async_get_plugin_repo_releases(normalized_repo_url))
                     self._release_tasks[task_key] = task
                     task.add_done_callback(
                         lambda completed_task: self._remove_release_task(task_key, completed_task)
                     )
+                else:
+                    task = pending_normal_task
 
         payload = await asyncio.shield(task)
         return self.__parse_plugin_release_response(pid, payload)
+
+    async def async_has_plugin_release_cache(self, repo_url: str) -> bool:
+        """
+        判断指定仓库的 Release 列表缓存是否已经存在。
+        """
+        if not repo_url:
+            return False
+        return await self._async_get_plugin_repo_releases.cache_exists(
+            self, repo_url.rstrip("/")
+        )
 
     async def _async_refresh_plugin_repo_releases(
         self,

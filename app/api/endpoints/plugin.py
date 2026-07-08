@@ -1,3 +1,4 @@
+import asyncio
 import mimetypes
 import shutil
 from typing import Annotated, Any, List, Optional
@@ -39,6 +40,67 @@ PROTECTED_ROUTES = {"/api/v1/openapi.json", "/docs", "/docs/oauth2-redirect", "/
 PLUGIN_PREFIX = f"{settings.API_V1_STR}/plugin"
 
 router = APIRouter()
+_plugin_release_refresh_tasks: set[asyncio.Task] = set()
+
+
+async def _get_market_plugin_from_repo(
+    plugin_manager: PluginManager,
+    plugin_id: str,
+    repo_url: str,
+    force: bool,
+) -> Optional[schemas.Plugin]:
+    """
+    只读取指定插件仓库的市场元数据，避免单插件详情触发全部市场刷新。
+    """
+    market_plugins = await plugin_manager.async_get_plugins_from_market(
+        repo_url, settings.VERSION_FLAG, force
+    )
+    market_plugin = next(
+        (
+            plugin
+            for plugin in market_plugins or []
+            if plugin.id == plugin_id
+        ),
+        None,
+    )
+    if market_plugin or not settings.VERSION_FLAG:
+        return market_plugin
+
+    compatible_plugins = await plugin_manager.async_get_plugins_from_market(
+        repo_url, None, force
+    )
+    return next(
+        (
+            plugin
+            for plugin in compatible_plugins or []
+            if plugin.id == plugin_id
+        ),
+        None,
+    )
+
+
+async def _refresh_plugin_release_versions(plugin_id: str, repo_url: str) -> None:
+    """
+    后台强制刷新 Release 缓存，接口响应路径优先返回已有缓存。
+    """
+    try:
+        async with async_fresh(True):
+            await PluginHelper().async_get_plugin_release_versions(plugin_id, repo_url)
+    except Exception as e:
+        logger.warning(f"后台刷新插件 {plugin_id} Release 列表失败：{e}")
+
+
+def _schedule_plugin_release_refresh(plugin_id: str, repo_url: str) -> None:
+    """
+    保留后台任务引用，避免任务被回收，同时让 helper 负责同仓库强刷合并。
+    """
+    task = asyncio.create_task(_refresh_plugin_release_versions(plugin_id, repo_url))
+    _plugin_release_refresh_tasks.add(task)
+
+    def _discard_task(completed_task: asyncio.Task) -> None:
+        _plugin_release_refresh_tasks.discard(completed_task)
+
+    task.add_done_callback(_discard_task)
 
 
 def register_plugin_api(plugin_id: Optional[str] = None):
@@ -239,6 +301,15 @@ async def _get_plugin_history_detail(
     if local_repo_plugin:
         return _merge_plugin_market_metadata(installed_plugin, local_repo_plugin)
 
+    if installed_plugin.repo_url:
+        market_plugin = await _get_market_plugin_from_repo(
+            plugin_manager, plugin_id, installed_plugin.repo_url, force
+        )
+        if not market_plugin:
+            logger.debug(f"插件 {plugin_id} 未从来源仓库获取到更新说明，返回本地插件信息")
+            return installed_plugin
+        return _merge_plugin_market_metadata(installed_plugin, market_plugin)
+
     market_plugin = next(
         (
             plugin
@@ -359,30 +430,9 @@ async def plugin_releases(
         }
 
     plugin_manager = PluginManager()
-    market_plugins = await plugin_manager.async_get_plugins_from_market(
-        repo_url, settings.VERSION_FLAG, force
+    market_plugin = await _get_market_plugin_from_repo(
+        plugin_manager, plugin_id, repo_url, force
     )
-    market_plugin = next(
-        (
-            plugin
-            for plugin in market_plugins or []
-            if plugin.id == plugin_id
-        ),
-        None,
-    )
-    if not market_plugin and settings.VERSION_FLAG:
-        compatible_plugins = await plugin_manager.async_get_plugins_from_market(
-            repo_url, None, force
-        )
-        market_plugin = next(
-            (
-                plugin
-                for plugin in compatible_plugins or []
-                if plugin.id == plugin_id
-            ),
-            None,
-        )
-
     latest_version = market_plugin.plugin_version if market_plugin else None
     current_version = plugin_manager.get_local_plugin_version(plugin_id)
     if not getattr(market_plugin, "release", False):
@@ -393,8 +443,15 @@ async def plugin_releases(
             "items": [],
         }
 
-    async with async_fresh(force):
-        release_items = await PluginHelper().async_get_plugin_release_versions(plugin_id, repo_url)
+    plugin_helper = PluginHelper()
+    has_release_cache = (
+        await plugin_helper.async_has_plugin_release_cache(repo_url)
+        if force
+        else False
+    )
+    release_items = await plugin_helper.async_get_plugin_release_versions(plugin_id, repo_url)
+    if force and has_release_cache:
+        _schedule_plugin_release_refresh(plugin_id, repo_url)
     items = []
     for item in release_items:
         version = item.get("version")
