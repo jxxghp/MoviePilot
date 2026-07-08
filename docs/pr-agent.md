@@ -34,7 +34,7 @@ workflow 会在 `/improve` 后发布一条普通 PR 评论：
 - 评论标题为 `## Code Review`。
 - 如果本轮有新增行内建议，会基于这些建议生成自然语言总结。
 - 如果本轮没有新增行内建议，直接发布无更多反馈的简短总结。
-- 发布新总结后会删除上一条 PR-Agent Code Review 总结评论，避免评论堆叠，同时保留新的通知事件。
+- 下一次运行前会删除上一条 PR-Agent Code Review 总结评论，避免评论堆叠，同时保留新的通知事件。
 
 ## 常用评论命令
 
@@ -58,7 +58,7 @@ workflow 会在 `/improve` 后发布一条普通 PR 评论：
 
 PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 中维护。公开说明只描述用户可见行为：
 
-- 根据用户原始 PR 描述自动选择中文或英文；无法识别时默认中文。
+- 根据 PR 标题和用户原始描述自动选择中文或英文；无法识别时默认中文。
 - 保留用户原始 PR 描述，只更新 PR Body 中的 PR-Agent 标记区域。
 - 不使用 PR-Agent 的 Reviewer Guide 输出。
 - 不输出 PR Type、额外标签、图表或 describe 评论。
@@ -83,4 +83,4 @@ PR-Agent 配置集中在 `.github/workflows/pr-agent.yml` 中维护。公开说�
 
 PR-Agent 依赖的 Docker 镜像在 workflow 中固定版本号和 digest，不使用浮动的 `latest` 或仅依赖可变 tag。
 
-当前使用 `pull_request_target` 支持 fork PR 自动审查，但 workflow 不 checkout 或执行来自 fork 的代码，只运行固定 digest 的 PR-Agent 容器并通过 GitHub API 读取 PR diff。`issue_comment` 属于 base repo 事件，因此评论命令只允许指定身份触发。
+当前使用 `pull_request_target` 支持 PR 自动审查，但 workflow 不 checkout 或执行 PR 分支代码，只运行固定 digest 的 PR-Agent 容器并通过 GitHub API 读取 PR diff。`issue_comment` 属于 base repo 事件，因此评论命令只允许指定身份触发。
