@@ -122,6 +122,8 @@
     "刮削路径不存在": "Scraping path does not exist",
     "保存成功": "Saved successfully",
     "保存失败": "Failed to save",
+    "保存MCP配置成功": "MCP configuration saved successfully",
+    "保存MCP配置失败": "Failed to save MCP configuration",
     "参数错误": "Invalid parameters",
     "未配置媒体服务器": "Media server is not configured",
     "未找到播放地址": "Playback URL not found",
@@ -401,6 +403,10 @@
     {
       "source": "获取工具Schema失败: {reason}",
       "target": "Failed to get tool schema: {reason}"
+    },
+    {
+      "source": "测试MCP服务器失败: {reason}",
+      "target": "Failed to test MCP server: {reason}"
     },
     {
       "source": "插件 {plugin} 不存在或未安装",
