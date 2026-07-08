@@ -1,8 +1,15 @@
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from app import schemas
 from app.api.endpoints import site as site_endpoint
+
+
+@pytest.fixture()
+def anyio_backend():
+    return "asyncio"
 
 
 def test_update_cookie_by_body_uses_request_body():
@@ -62,3 +69,52 @@ def test_update_cookie_legacy_get_keeps_query_params():
         password="password",
         two_step_code=None,
     )
+
+
+@pytest.mark.anyio
+async def test_add_site_honors_indexer_default_disabled_status(monkeypatch):
+    """
+    资源包声明默认关闭时，新增站点应保存为未启用。
+    """
+    created_site = {}
+
+    class FakeSitesHelper:
+        auth_level = 2
+
+        async def async_get_indexer(self, domain):
+            assert domain == "anoneko.com"
+            return {
+                "name": "动漫花园",
+                "public": True,
+                "is_active": False,
+            }
+
+    class FakeSite:
+        @staticmethod
+        async def async_get_by_domain(db, domain):
+            assert domain == "anoneko.com"
+            return None
+
+        def __init__(self, **kwargs):
+            created_site.update(kwargs)
+
+        def create(self, db):
+            created_site["created"] = True
+
+    send_event = AsyncMock()
+    monkeypatch.setattr(site_endpoint, "SitesHelper", FakeSitesHelper)
+    monkeypatch.setattr(site_endpoint, "Site", FakeSite)
+    monkeypatch.setattr(site_endpoint.eventmanager, "async_send_event", send_event)
+
+    response = await site_endpoint.add_site(
+        db=Mock(),
+        site_in=schemas.Site(url="https://dmhy.anoneko.com/"),
+        _=Mock(),
+    )
+
+    assert response.success is True
+    assert created_site["name"] == "动漫花园"
+    assert created_site["public"] == 1
+    assert created_site["is_active"] is False
+    assert created_site["created"] is True
+    send_event.assert_awaited_once()

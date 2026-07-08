@@ -79,6 +79,8 @@ async def add_site(
     site_in.name = site_info.get("name")
     site_in.id = None
     site_in.public = 1 if site_info.get("public") else 0
+    if "is_active" in site_info:
+        site_in.is_active = bool(site_info.get("is_active"))
     site = Site(**site_in.model_dump())
     site.create(db)
     # 通知站点更新

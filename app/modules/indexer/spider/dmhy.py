@@ -32,10 +32,6 @@ class DMHYSpider:
         self._proxy = bool(indexer.get("proxy"))
         self._ua = indexer.get("ua") or settings.USER_AGENT
         self._timeout = int(indexer.get("timeout") or 20)
-        try:
-            self._size = int(indexer.get("result_num") or self._size)
-        except (TypeError, ValueError):
-            self._size = 40
 
     @classmethod
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:

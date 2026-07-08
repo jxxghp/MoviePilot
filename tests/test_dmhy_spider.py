@@ -109,6 +109,35 @@ def test_dmhy_spider_search_returns_primary_results_when_season_pack_fails(monke
     assert torrents[0]["seeders"] == 0
 
 
+def test_dmhy_spider_uses_fixed_rss_page_size_when_result_num_is_configured(monkeypatch):
+    """
+    动漫花园 RSS 页容量固定，不能被站点 result_num 改写。
+    """
+
+    def fake_parse(self, url, **kwargs):
+        query = parse_qs(urlparse(url).query)
+        if query.get("sort_id") == ["31"]:
+            return []
+        return [
+            {
+                "title": f"测试动画第{index}集",
+                "enclosure": f"magnet:?xt=urn:btih:episode{index}",
+                "size": "1",
+            }
+            for index in range(45)
+        ]
+
+    monkeypatch.setattr("app.modules.indexer.spider.dmhy.RssHelper.parse", fake_parse)
+
+    error, torrents = DMHYSpider(_indexer(result_num=2)).search(keyword="测试动画")
+
+    assert not error
+    assert len(torrents) == 40
+    assert IndexerModule.get_search_page_size(
+        {"parser": "DMHY", "result_num": 2}, keyword="测试"
+    ) == 40
+
+
 def test_indexer_module_registers_dmhy_parser():
     """
     验证索引模块已注册动漫花园专用解析器。
