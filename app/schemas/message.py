@@ -175,6 +175,8 @@ class CommingMessage(BaseModel):
     message_id: Optional[Union[str, int]] = None
     # 聊天ID（用于回调时定位聊天）
     chat_id: Optional[str] = None
+    # 回复目标消息ID（用于 ForceReply 等回复场景）
+    reply_to_message_id: Optional[Union[str, int]] = None
     # 完整的回调查询信息（原始数据）
     callback_query: Optional[Dict] = None
     # 图片列表（图片URL或file_id）

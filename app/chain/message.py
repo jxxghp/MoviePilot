@@ -141,9 +141,14 @@ class MessageChain(ChainBase):
             logger.debug(f"未识别到消息内容：：{body}{form}{args}")
             return
 
-        # 获取原消息ID信息
-        original_message_id = info.message_id
+        # Telegram 普通文本的 message_id 是用户消息 ID，不可用于编辑机器人消息；其他渠道保持旧传递行为。
+        original_message_id = (
+            None
+            if info.channel == MessageChannel.Telegram and not info.is_callback
+            else info.message_id
+        )
         original_chat_id = info.chat_id
+        reply_to_message_id = info.reply_to_message_id
 
         # 处理消息
         self.handle_message(
@@ -154,6 +159,7 @@ class MessageChain(ChainBase):
             text=text,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            reply_to_message_id=reply_to_message_id,
             images=images,
             audio_refs=audio_refs,
             files=files,
@@ -171,6 +177,7 @@ class MessageChain(ChainBase):
             images: Optional[List[CommingMessage.MessageImage]] = None,
             audio_refs: Optional[List[str]] = None,
             files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            reply_to_message_id: Optional[Union[str, int]] = None,
     ) -> None:
         """
         识别消息内容，执行操作
@@ -213,6 +220,7 @@ class MessageChain(ChainBase):
                     username=username,
                     text=text,
                     original_chat_id=original_chat_id,
+                    reply_to_message_id=reply_to_message_id,
                     images=images,
                     audio_refs=audio_refs,
                     files=files,
@@ -255,6 +263,7 @@ class MessageChain(ChainBase):
                 text=text,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                reply_to_message_id=reply_to_message_id,
                 images=images,
                 audio_refs=audio_refs,
                 files=files,
@@ -286,6 +295,7 @@ class MessageChain(ChainBase):
             files: Optional[List[CommingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
             processing_status: Optional[_ProcessingStatus] = None,
+            reply_to_message_id: Optional[Union[str, int]] = None,
     ) -> bool:
         """执行实际消息路由，便于统一包裹处理中状态。"""
 
@@ -316,6 +326,7 @@ class MessageChain(ChainBase):
                 username=username,
                 text=text,
                 original_chat_id=original_chat_id,
+                reply_to_message_id=reply_to_message_id,
                 images=images,
                 audio_refs=audio_refs,
                 files=files,
@@ -444,6 +455,8 @@ class MessageChain(ChainBase):
                 "userid": userid,
                 "channel": channel,
                 "source": source,
+                "chat_id": original_chat_id,
+                "reply_to_message_id": reply_to_message_id,
             },
         )
         return False
@@ -460,6 +473,7 @@ class MessageChain(ChainBase):
             audio_refs: Optional[List[str]] = None,
             files: Optional[List[CommingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
+            reply_to_message_id: Optional[Union[str, int]] = None,
     ) -> bool:
         """
         将插件输入会话中的下一条普通文本派发给指定插件。
@@ -469,8 +483,14 @@ class MessageChain(ChainBase):
         if text.startswith("CALLBACK:"):
             return False
 
+        is_cancel_text = text.strip().lower() in {"取消", "退出", "q", "quit", "exit"}
         request, status = plugin_input_interaction_manager.consume_by_user(
-            userid, channel, source, original_chat_id
+            userid,
+            channel,
+            source,
+            original_chat_id,
+            reply_to_message_id=reply_to_message_id,
+            bypass_reply_check=is_cancel_text,
         )
         if not request:
             return False
@@ -487,6 +507,7 @@ class MessageChain(ChainBase):
                     "source": source,
                     "username": username,
                     "chat_id": original_chat_id,
+                    "reply_to_message_id": reply_to_message_id,
                     "prompt_id": request.prompt_id,
                     "input_session_id": request.request_id,
                     "expired": True,
@@ -505,7 +526,7 @@ class MessageChain(ChainBase):
             )
             return not text.strip().startswith("/")
 
-        if text.strip().lower() in {"取消", "退出", "q", "quit", "exit"}:
+        if is_cancel_text:
             self.eventmanager.send_event(
                 EventType.MessageAction,
                 {
@@ -517,6 +538,7 @@ class MessageChain(ChainBase):
                     "source": source,
                     "username": username,
                     "chat_id": original_chat_id,
+                    "reply_to_message_id": reply_to_message_id,
                     "prompt_id": request.prompt_id,
                     "input_session_id": request.request_id,
                     "cancelled": True,
@@ -547,6 +569,7 @@ class MessageChain(ChainBase):
                 "source": source,
                 "username": username,
                 "chat_id": original_chat_id,
+                "reply_to_message_id": reply_to_message_id,
                 "prompt_id": request.prompt_id,
                 "input_session_id": request.request_id,
                 "payload": request.payload,

@@ -415,6 +415,8 @@ class PendingPluginInputInteraction:
     payload: Optional[Any] = None
     timeout_seconds: int = 120
     created_at: datetime = field(default_factory=datetime.now)
+    # Optional reply binding for channels that can report reply_to_message_id.
+    prompt_message_id: Optional[str] = None
 
     @property
     def expires_at(self) -> datetime:
@@ -504,6 +506,8 @@ class PluginInputInteractionManager:
             prompt_id: Optional[str] = None,
             timeout_seconds: int = 120,
             payload: Optional[Any] = None,
+            *,
+            prompt_message_id: Optional[Union[str, int]] = None,
     ) -> PendingPluginInputInteraction:
         with self._lock:
             self._cleanup_locked()
@@ -526,6 +530,13 @@ class PluginInputInteractionManager:
                 if not self._keys_overlap(stored_key, key)
             }
 
+            normalized_chat_id = str(chat_id) if chat_id not in (None, "") else None
+            normalized_prompt_message_id = (
+                str(prompt_message_id)
+                if channel == MessageChannel.Telegram and normalized_chat_id and prompt_message_id not in (None, "")
+                else None
+            )
+
             request = PendingPluginInputInteraction(
                 request_id=uuid.uuid4().hex[:12],
                 user_id=str(user_id),
@@ -533,8 +544,9 @@ class PluginInputInteractionManager:
                 channel=channel,
                 source=source,
                 username=username,
-                chat_id=str(chat_id) if chat_id not in (None, "") else None,
+                chat_id=normalized_chat_id,
                 prompt_id=prompt_id,
+                prompt_message_id=normalized_prompt_message_id,
                 timeout_seconds=timeout_seconds,
                 payload=payload,
             )
@@ -563,8 +575,16 @@ class PluginInputInteractionManager:
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[PendingPluginInputInteraction]:
-        request, _ = self.consume_by_user(user_id, channel, source, chat_id)
-        return request
+        with self._lock:
+            self._cleanup_locked()
+            key, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
+            if request_id:
+                self._by_user_channel.pop(key, None)
+                return self._by_id.pop(request_id, None)
+            expired_key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
+            if expired_key:
+                self._expired_by_user_channel.pop(expired_key, None)
+            return request
 
     def consume_by_user(
             self,
@@ -572,22 +592,63 @@ class PluginInputInteractionManager:
             channel: Optional[MessageChannel] = None,
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
+            *,
+            reply_to_message_id: Optional[Union[str, int]] = None,
+            bypass_reply_check: bool = False,
     ) -> Tuple[Optional[PendingPluginInputInteraction], Optional[str]]:
         with self._lock:
             key, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
 
             if request_id:
-                self._by_user_channel.pop(key, None)
-                request = self._by_id.pop(request_id, None)
-                if request:
-                    status = "expired" if request.expires_at < datetime.now() else "active"
-                    return request, status
+                request = self._by_id.get(request_id)
+                if not request:
+                    self._by_user_channel.pop(key, None)
+                elif request.expires_at < datetime.now():
+                    self._by_user_channel.pop(key, None)
+                    self._by_id.pop(request_id, None)
+                    if request.prompt_message_id:
+                        return None, None
+                    return request, "expired"
+                elif not self._reply_matches_prompt(
+                        request,
+                        chat_id,
+                        reply_to_message_id,
+                        ignore_reply_to_message_id=bypass_reply_check,
+                ):
+                    return None, None
+                else:
+                    self._by_user_channel.pop(key, None)
+                    self._by_id.pop(request_id, None)
+                    return request, "active"
+            self._cleanup_locked()
             key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
             if request:
                 self._expired_by_user_channel.pop(key, None)
+                if request.prompt_message_id:
+                    return None, None
                 return request, "expired"
             self._cleanup_locked()
             return None, None
+
+    @staticmethod
+    def _reply_matches_prompt(
+            request: PendingPluginInputInteraction,
+            chat_id: Optional[Union[str, int]],
+            reply_to_message_id: Optional[Union[str, int]],
+            *,
+            ignore_reply_to_message_id: bool = False,
+    ) -> bool:
+        if not request.prompt_message_id:
+            return True
+        if not request.chat_id or chat_id in (None, ""):
+            return False
+        if str(chat_id) != str(request.chat_id):
+            return False
+        if ignore_reply_to_message_id:
+            return True
+        if reply_to_message_id in (None, ""):
+            return False
+        return str(reply_to_message_id) == str(request.prompt_message_id)
 
     def _find_request_id_locked(
             self,
