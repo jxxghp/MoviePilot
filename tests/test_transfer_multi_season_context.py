@@ -160,6 +160,18 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
         "Placeholder \u7b2c1\u30012\u30013\u5b63"
     ) == (1, 2, 3)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-S03") == (1, 2, 3)
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01-02") == (1, 2)
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01~02") == (1, 2)
+    assert TransferChain._parse_multi_season_numbers(
+        "Placeholder \u7b2c1\u5b63-\u7b2c3\u5b63"
+    ) == (1, 2, 3)
+    assert TransferChain._parse_multi_season_numbers(
+        "Placeholder \u7b2c1\u5b63\u3001\u7b2c3\u5b63"
+    ) == (1, 3)
+    assert TransferChain._extract_single_season_marker("Placeholder S01-02") is None
+    assert TransferChain._extract_single_season_marker(
+        "Placeholder \u7b2c1\u5b63-\u7b2c3\u5b63"
+    ) is None
 
 
 def test_multi_season_context_accepts_episode_object_lists():

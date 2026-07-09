@@ -129,21 +129,24 @@ _SEASON_RANGE_RE_LIST = (
     re.compile(
         r"(?:^|[^A-Za-z0-9])(?:TV)?S(?:eason)?\s*0*([1-9]\d?)\s*"
         r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*"
-        r"S(?:eason)?\s*0*([1-9]\d?)(?![A-Za-z0-9])",
+        r"(?:(?:TV)?S(?:eason)?\s*)?0*([1-9]\d?)(?![A-Za-z0-9])",
         re.IGNORECASE,
     ),
     re.compile(
         r"(?:^|[^A-Za-z0-9])Season\s*0*([1-9]\d?)\s*"
-        r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*0*([1-9]\d?)(?![A-Za-z0-9])",
+        r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*"
+        r"(?:Season\s*)?0*([1-9]\d?)(?![A-Za-z0-9])",
         re.IGNORECASE,
     ),
     re.compile(
-        rf"第\s*({_CN_NUMBER_RE})\s*(?:[-~+&/、,，]|至|到|和)\s*"
+        rf"第\s*({_CN_NUMBER_RE})\s*[季期部]?\s*"
+        rf"(?:[-~+&/、,，]|至|到|和)\s*第?\s*"
         rf"({_CN_NUMBER_RE})\s*[季期部]",
         re.IGNORECASE,
     ),
     re.compile(
-        rf"({_CN_NUMBER_RE})\s*(?:[-~+&/、,，]|至|到|和)\s*"
+        rf"({_CN_NUMBER_RE})\s*[季期部]?\s*"
+        rf"(?:[-~+&/、,，]|至|到|和)\s*第?\s*"
         rf"({_CN_NUMBER_RE})\s*[季期部]",
         re.IGNORECASE,
     ),
