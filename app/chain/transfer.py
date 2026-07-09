@@ -5,7 +5,8 @@ import threading
 import traceback
 import uuid
 from copy import deepcopy
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import List, Optional, Tuple, Union, Dict, Callable, Any
 
 from app import schemas
@@ -107,6 +108,77 @@ SUBTITLE_STEM_TAGS = {
     "繁中",
     "繁体",
 }
+
+
+_CN_NUMBER_MAP = {
+    "零": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+}
+_CN_NUMBER_RE = r"[0-9一二两三四五六七八九十]{1,3}"
+_SEASON_RANGE_RE_LIST = (
+    re.compile(
+        r"(?:^|[^A-Za-z0-9])(?:TV)?S(?:eason)?\s*0*([1-9]\d?)\s*"
+        r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*"
+        r"S(?:eason)?\s*0*([1-9]\d?)(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:^|[^A-Za-z0-9])Season\s*0*([1-9]\d?)\s*"
+        r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*0*([1-9]\d?)(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"第\s*({_CN_NUMBER_RE})\s*(?:[-~+&/、,，]|至|到|和)\s*"
+        rf"({_CN_NUMBER_RE})\s*[季期部]",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"({_CN_NUMBER_RE})\s*(?:[-~+&/、,，]|至|到|和)\s*"
+        rf"({_CN_NUMBER_RE})\s*[季期部]",
+        re.IGNORECASE,
+    ),
+)
+_SEASON_SINGLE_RE_LIST = (
+    re.compile(r"(?:^|[^A-Za-z0-9])S0*([0-9]{1,2})(?=E\d{1,4}|[^A-Za-z0-9]|$)", re.IGNORECASE),
+    re.compile(r"(?:^|[^A-Za-z0-9])Season\s*0*([0-9]{1,2})(?![A-Za-z0-9])", re.IGNORECASE),
+    re.compile(rf"第\s*({_CN_NUMBER_RE})\s*[季期部]", re.IGNORECASE),
+)
+_EPISODE_RANGE_RE_LIST = (
+    re.compile(
+        rf"第\s*({_CN_NUMBER_RE})\s*"
+        rf"(?:[-~+&/、,，]|至|到|和)\s*"
+        rf"({_CN_NUMBER_RE})\s*[集话話幕]",
+        re.IGNORECASE,
+    ),
+)
+_EPISODE_SINGLE_RE_LIST = (
+    re.compile(rf"第\s*({_CN_NUMBER_RE})\s*[集话話幕]", re.IGNORECASE),
+    re.compile(r"(?:^|[^A-Za-z0-9])EP?\s*0*([0-9]{1,4})(?![A-Za-z0-9])", re.IGNORECASE),
+)
+
+
+@dataclass
+class _MultiSeasonTransferContext:
+    """
+    多季包整理上下文。
+    """
+    source_root: Optional[PurePosixPath] = None
+    source_seasons: Tuple[int, ...] = ()
+    top_dir_seasons: Dict[str, int] = None
+
+    def __post_init__(self):
+        if self.top_dir_seasons is None:
+            self.top_dir_seasons = {}
 
 
 class JobManager:
@@ -1656,6 +1728,17 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     mediainfo.title = transfer_history.title
                     mediainfo_changed = True
 
+            if self._remap_absolute_episode(
+                    task.meta,
+                    task.source_seasons,
+                    mediainfo,
+                    Path(task.fileitem.path),
+            ):
+                mediainfo_changed = True
+                logger.info(
+                    f"{task.fileitem.name} 多季包集数已修正为 {task.meta.season_episode}"
+                )
+
             if mediainfo_changed:
                 # 更新任务信息
                 task.mediainfo = mediainfo
@@ -2508,6 +2591,358 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             else None
         )
 
+    @staticmethod
+    def _cn_number_to_int(value: Optional[Union[int, str]]) -> Optional[int]:
+        """
+        将简单中文数字转换为整数。
+        """
+        if value is None:
+            return None
+        text = str(value).strip()
+        if text.isdigit():
+            return int(text)
+        if text in _CN_NUMBER_MAP:
+            return _CN_NUMBER_MAP[text]
+        if "十" in text:
+            left, _, right = text.partition("十")
+            tens = _CN_NUMBER_MAP.get(left, 1) if left else 1
+            ones = _CN_NUMBER_MAP.get(right, 0) if right else 0
+            return tens * 10 + ones
+        return None
+
+    @staticmethod
+    def _normalize_posix_path(path: Union[str, Path, PurePosixPath]) -> PurePosixPath:
+        """
+        统一按 POSIX 路径处理下载器/容器内路径。
+        """
+        return PurePosixPath(str(path or "").replace("\\", "/"))
+
+    @classmethod
+    def _season_range_to_numbers(cls, start: str, end: str) -> Tuple[int, ...]:
+        """
+        将季范围转换为升序季号。
+        """
+        begin = cls._cn_number_to_int(start)
+        finish = cls._cn_number_to_int(end)
+        if begin is None or finish is None:
+            return ()
+        low, high = sorted((begin, finish))
+        if high - low > 20:
+            return ()
+        return tuple(range(low, high + 1))
+
+    @classmethod
+    def _parse_multi_season_numbers(cls, *texts: Optional[str]) -> Tuple[int, ...]:
+        """
+        从下载历史、种子标题或源路径中解析多季范围。
+        """
+        seasons: set[int] = set()
+        merged_text = "\n".join(str(text or "") for text in texts)
+        for pattern in _SEASON_RANGE_RE_LIST:
+            for match in pattern.findall(merged_text):
+                start, end = match[:2] if isinstance(match, tuple) else (None, None)
+                seasons.update(cls._season_range_to_numbers(start, end))
+        return tuple(sorted(seasons))
+
+    @classmethod
+    def _extract_single_season_marker(cls, text: Optional[str]) -> Optional[int]:
+        """
+        从单个路径片段中提取明确的单季标记。
+        """
+        if not text:
+            return None
+        text = str(text)
+        if cls._parse_multi_season_numbers(text):
+            return None
+        for pattern in _SEASON_SINGLE_RE_LIST:
+            match = pattern.search(text)
+            if not match:
+                continue
+            season = cls._cn_number_to_int(match.group(1))
+            if season is not None:
+                return season
+        return None
+
+    @classmethod
+    def _nearest_path_season_marker(
+            cls, source_path: Union[str, Path, PurePosixPath]
+    ) -> Optional[int]:
+        """
+        从近到远查找路径中的明确单季标记。
+        """
+        path = cls._normalize_posix_path(source_path)
+        for part in reversed(path.parts):
+            season = cls._extract_single_season_marker(part)
+            if season is not None:
+                return season
+        return None
+
+    @classmethod
+    def _extract_local_episode_marker(
+            cls, text: Optional[str]
+    ) -> Optional[Tuple[int, Optional[int]]]:
+        """
+        从文件名中提取明确的本季集数标记。
+        """
+        if not text:
+            return None
+        text = str(text)
+        for pattern in _EPISODE_RANGE_RE_LIST:
+            matches = list(pattern.finditer(text))
+            if not matches:
+                continue
+            match = matches[-1]
+            begin_episode = cls._cn_number_to_int(match.group(1))
+            end_episode = cls._cn_number_to_int(match.group(2))
+            if begin_episode and end_episode and end_episode >= begin_episode:
+                return begin_episode, end_episode
+        for pattern in _EPISODE_SINGLE_RE_LIST:
+            matches = list(pattern.finditer(text))
+            if not matches:
+                continue
+            begin_episode = cls._cn_number_to_int(matches[-1].group(1))
+            if begin_episode is not None:
+                return begin_episode, None
+        return None
+
+    @staticmethod
+    def _natural_sort_key(text: str) -> Tuple:
+        """
+        自然排序键，用于将同种子下多个季目录按目录名顺序对应到季号。
+        """
+        parts = re.split(r"(\d+)", text.lower())
+        return tuple(int(part) if part.isdigit() else part for part in parts)
+
+    @classmethod
+    def _relative_first_dir(
+            cls,
+            source_root: Optional[PurePosixPath],
+            source_path: Union[str, Path, PurePosixPath],
+    ) -> Optional[str]:
+        """
+        获取文件相对种子根目录的第一层目录。
+        """
+        if not source_root:
+            return None
+        path = cls._normalize_posix_path(source_path)
+        try:
+            rel_path = path.relative_to(source_root)
+        except ValueError:
+            return None
+        if len(rel_path.parts) < 2:
+            return None
+        return rel_path.parts[0]
+
+    @classmethod
+    def _build_multi_season_context(
+            cls,
+            download_history: Optional[DownloadHistory],
+            file_items: List[Tuple[FileItem, bool]],
+            source_fileitem: Optional[FileItem] = None,
+    ) -> _MultiSeasonTransferContext:
+        """
+        构建多季包上下文，用于整理阶段继承种子/目录级季信息。
+        """
+        history_path = getattr(download_history, "path", None)
+        source_path = getattr(source_fileitem, "path", None)
+        source_seasons = cls._parse_multi_season_numbers(
+            getattr(download_history, "seasons", None),
+            getattr(download_history, "torrent_name", None),
+            getattr(download_history, "torrent_description", None),
+            history_path,
+            source_path,
+        )
+        source_root = cls._normalize_posix_path(history_path or source_path)
+        if source_root.suffix:
+            source_root = source_root.parent
+
+        top_dirs: set[str] = set()
+        for item, _ in file_items or []:
+            if not item or item.type != "file":
+                continue
+            if f".{(item.extension or '').lower()}" not in settings.RMT_MEDIAEXT:
+                continue
+            first_dir = cls._relative_first_dir(source_root, item.path)
+            if not first_dir:
+                continue
+            if cls._extract_single_season_marker(first_dir) is not None:
+                continue
+            top_dirs.add(first_dir)
+
+        top_dir_seasons: Dict[str, int] = {}
+        if len(source_seasons) > 1 and len(top_dirs) == len(source_seasons):
+            for dirname, season_num in zip(
+                    sorted(top_dirs, key=cls._natural_sort_key),
+                    source_seasons,
+            ):
+                top_dir_seasons[dirname] = season_num
+
+        return _MultiSeasonTransferContext(
+            source_root=source_root,
+            source_seasons=source_seasons,
+            top_dir_seasons=top_dir_seasons,
+        )
+
+    @classmethod
+    def _infer_context_season(
+            cls,
+            source_path: Union[str, Path, PurePosixPath],
+            context: Optional[_MultiSeasonTransferContext],
+    ) -> Optional[int]:
+        """
+        根据路径和多季上下文推断当前文件所属季。
+        """
+        explicit_season = cls._nearest_path_season_marker(source_path)
+        if explicit_season is not None:
+            return explicit_season
+        if not context:
+            return None
+        first_dir = cls._relative_first_dir(context.source_root, source_path)
+        if first_dir and first_dir in context.top_dir_seasons:
+            return context.top_dir_seasons[first_dir]
+        return None
+
+    @classmethod
+    def _apply_multi_season_context(
+            cls,
+            meta: Optional[MetaBase],
+            source_path: Union[str, Path, PurePosixPath],
+            context: Optional[_MultiSeasonTransferContext],
+    ) -> bool:
+        """
+        将多季包上下文中的季号应用到文件元数据。
+        """
+        if not meta or not context or len(context.source_seasons) <= 1:
+            return False
+        explicit_season = cls._nearest_path_season_marker(source_path)
+        season_num = explicit_season or cls._infer_context_season(source_path, context)
+        if season_num is None:
+            return False
+        changed = False
+        if meta.begin_season != season_num or meta.end_season is not None:
+            meta.begin_season = season_num
+            meta.end_season = None
+            meta.total_season = 1
+            changed = True
+
+        if explicit_season is not None:
+            local_episode = cls._extract_local_episode_marker(
+                cls._normalize_posix_path(source_path).name
+            )
+            if local_episode:
+                begin_episode, end_episode = local_episode
+                if (
+                        meta.begin_episode != begin_episode
+                        or meta.end_episode != end_episode
+                ):
+                    meta.begin_episode = begin_episode
+                    meta.end_episode = end_episode
+                    meta.total_episode = (
+                        (end_episode - begin_episode) + 1
+                        if end_episode
+                        else 1
+                    )
+                    changed = True
+
+        return changed
+
+    @staticmethod
+    def _season_episode_list(
+            mediainfo: Optional[MediaInfo], season_num: int
+    ) -> List[int]:
+        """
+        获取指定季的剧集列表。
+        """
+        if not mediainfo or not season_num:
+            return []
+        seasons = getattr(mediainfo, "seasons", None) or {}
+        episodes = seasons.get(season_num) or seasons.get(str(season_num)) or []
+        if isinstance(episodes, list):
+            return [int(ep) for ep in episodes if str(ep).isdigit()]
+        return []
+
+    @classmethod
+    def _map_absolute_episode(
+            cls,
+            episode_num: Optional[int],
+            source_seasons: Union[List[int], Tuple[int, ...]],
+            mediainfo: Optional[MediaInfo],
+    ) -> Optional[Tuple[int, int]]:
+        """
+        按媒体每季集数将全局集数映射为季内集数。
+        """
+        if not episode_num or not source_seasons or not mediainfo:
+            return None
+        offset = 0
+        for season_num in sorted({int(season) for season in source_seasons}):
+            episode_list = cls._season_episode_list(mediainfo, season_num)
+            if not episode_list:
+                return None
+            count = len(episode_list)
+            if offset < episode_num <= offset + count:
+                return season_num, episode_list[episode_num - offset - 1]
+            offset += count
+        return None
+
+    @classmethod
+    def _remap_absolute_episode(
+            cls,
+            meta: Optional[MetaBase],
+            source_seasons: Union[List[int], Tuple[int, ...]],
+            mediainfo: Optional[MediaInfo],
+            source_path: Union[str, Path, PurePosixPath] = None,
+    ) -> bool:
+        """
+        将多季包里的全局集数映射为对应季内集数。
+        """
+        if (
+                not meta
+                or not source_seasons
+                or len(source_seasons) <= 1
+                or not meta.begin_episode
+        ):
+            return False
+        mapped_begin = cls._map_absolute_episode(
+            meta.begin_episode, source_seasons, mediainfo
+        )
+        if not mapped_begin:
+            return False
+
+        mapped_season, mapped_episode = mapped_begin
+        explicit_season = (
+            cls._nearest_path_season_marker(source_path) if source_path else None
+        )
+        if explicit_season is not None and mapped_season != explicit_season:
+            return False
+        if (
+                meta.begin_season
+                and meta.begin_season != 1
+                and mapped_season != meta.begin_season
+        ):
+            return False
+
+        mapped_end = None
+        if meta.end_episode:
+            mapped_end = cls._map_absolute_episode(
+                meta.end_episode, source_seasons, mediainfo
+            )
+            if not mapped_end or mapped_end[0] != mapped_season:
+                return False
+
+        changed = (
+                meta.begin_season != mapped_season
+                or meta.begin_episode != mapped_episode
+                or (mapped_end and meta.end_episode != mapped_end[1])
+        )
+        meta.begin_season = mapped_season
+        meta.end_season = None
+        meta.total_season = 1
+        meta.begin_episode = mapped_episode
+        if mapped_end:
+            meta.end_episode = mapped_end[1]
+            meta.total_episode = (meta.end_episode - meta.begin_episode) + 1
+        return changed
+
     def do_transfer(
             self,
             fileitem: FileItem,
@@ -2585,6 +3020,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 汇总错误信息
         err_msgs: List[str] = []
         matched_episode_format_template = False
+        multi_season_context: Optional[_MultiSeasonTransferContext] = None
 
         def _build_file_meta(
                 source_path: Path,
@@ -2602,7 +3038,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # _build_path_meta 已经应用过手动季集/自定义格式覆盖；
                 # 这里避免再次偏移集数，导致手动整理的集数偏移翻倍。
                 return built_meta
-            return _apply_meta_overrides(built_meta, source_path)
+            built_meta = _apply_meta_overrides(built_meta, source_path)
+            if season is None:
+                self._apply_multi_season_context(
+                    built_meta, source_path, multi_season_context
+                )
+            return built_meta
 
         def _build_path_meta(
                 source_path: Path,
@@ -2616,7 +3057,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
             if not path_meta:
                 return None
-            return _apply_meta_overrides(path_meta, source_path)
+            path_meta = _apply_meta_overrides(path_meta, source_path)
+            if season is None:
+                self._apply_multi_season_context(
+                    path_meta, source_path, multi_season_context
+                )
+            return path_meta
 
         def _apply_meta_overrides(
                 current_meta: MetaBase, source_path: Path
@@ -2708,6 +3154,35 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 for candidate_item, candidate_bluray_dir in candidates
                 if _is_allowed_transfer_item(candidate_item, candidate_bluray_dir)
             ]
+
+        def _resolve_multi_season_download_history(
+                items: List[Tuple[FileItem, bool]]
+        ) -> Optional[DownloadHistory]:
+            """
+            解析本轮整理对应的下载历史，用于提取整包季范围。
+            """
+            downloadhis = DownloadHistoryOper()
+            if download_hash:
+                return downloadhis.get_by_hash(download_hash)
+
+            if fileitem and fileitem.path:
+                source_path = Path(fileitem.path).as_posix()
+                download_history = downloadhis.get_by_path(source_path)
+                if download_history:
+                    return download_history
+
+            for candidate_item, candidate_bluray_dir in items or []:
+                if not candidate_item or not candidate_item.path:
+                    continue
+                download_history = self._resolve_download_history(
+                    downloadhis=downloadhis,
+                    file_path=Path(candidate_item.path),
+                    bluray_dir=candidate_bluray_dir,
+                    download_hash=download_hash,
+                )
+                if download_history:
+                    return download_history
+            return None
 
         def _build_main_meta(
                 main_fileitem: FileItem,
@@ -2941,6 +3416,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         try:
             candidate_file_items = _collect_candidate_file_items()
             file_items = _filter_allowed_file_items(candidate_file_items)
+            multi_season_context = self._build_multi_season_context(
+                download_history=_resolve_multi_season_download_history(file_items),
+                file_items=file_items,
+                source_fileitem=fileitem,
+            )
         except OperationInterrupted:
             return False, f"{fileitem.name} 已取消"
         finally:
@@ -3066,6 +3546,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     downloader=_downloader,
                     download_hash=_download_hash,
                     download_history=download_history,
+                    source_seasons=list(multi_season_context.source_seasons)
+                    if multi_season_context
+                    else [],
                     transfer_batch_id=transfer_batch_id,
                     manual=manual,
                     background=background,

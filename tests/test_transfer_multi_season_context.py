@@ -1,0 +1,181 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+from app.chain.transfer import TransferChain
+from app.core.context import MediaInfo
+from app.core.metainfo import MetaInfoPath
+from app.schemas import FileItem
+from app.schemas.types import MediaType
+
+
+def _fileitem(path: str, item_type: str = "file") -> FileItem:
+    file_path = Path(path)
+    return FileItem(
+        storage="local",
+        path=file_path.as_posix(),
+        type=item_type,
+        name=file_path.name,
+        basename=file_path.stem,
+        extension=file_path.suffix.lstrip("."),
+        size=1024,
+    )
+
+
+def _history(path: str, seasons: str, torrent_name: str = ""):
+    return SimpleNamespace(
+        path=path,
+        seasons=seasons,
+        episodes="",
+        torrent_name=torrent_name,
+        torrent_description="",
+    )
+
+
+def _mediainfo(*season_lengths: int) -> MediaInfo:
+    media = MediaInfo()
+    media.type = MediaType.TV
+    media.seasons = {
+        index: list(range(1, season_length + 1))
+        for index, season_length in enumerate(season_lengths, start=1)
+    }
+    return media
+
+
+def test_multi_season_context_maps_absolute_episode_to_second_season():
+    """
+    A two-season pack can use global episode numbers while the second top-level
+    directory has no explicit S02 marker.
+    """
+    root = "/downloads/[ReleaseGroup] Placeholder Series Alpha [Lite]"
+    first_season = (
+        f"{root}/[ReleaseGroup] Placeholder Series Alpha [1080p][Lite]/"
+        "[ReleaseGroup] Placeholder Series Alpha [02][1080p].mkv"
+    )
+    second_season = (
+        f"{root}/[ReleaseGroup] Placeholder Series Alpha Arc Two [1080p][Lite]/"
+        "[ReleaseGroup] Placeholder Series Alpha Arc Two [14][1080p].mkv"
+    )
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(
+            root,
+            "S01-S02",
+            "Placeholder Series Alpha S01-S02 1080p",
+        ),
+        file_items=[(_fileitem(first_season), False), (_fileitem(second_season), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    meta = MetaInfoPath(Path(second_season))
+    TransferChain._apply_multi_season_context(meta, Path(second_season), context)
+    TransferChain._remap_absolute_episode(
+        meta, context.source_seasons, _mediainfo(12, 12), Path(second_season)
+    )
+
+    assert context.source_seasons == (1, 2)
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 2
+    assert meta.season_episode == "S02 E02"
+
+
+def test_multi_season_context_maps_second_directory_with_tilde_range():
+    """
+    A S01~S02 pack should still infer the second top-level directory as season 2
+    and map absolute episode 16 to S02E04.
+    """
+    root = "/downloads/[ReleaseGroup] Placeholder Series Beta S01~S02 [Lite]"
+    first_season = (
+        f"{root}/[ReleaseGroup] Placeholder Series Beta [1080p][Lite]/"
+        "[ReleaseGroup] Placeholder Series Beta [02][1080p].mkv"
+    )
+    second_season = (
+        f"{root}/[ReleaseGroup] Placeholder Series Beta Arc Two [1080p][Lite]/"
+        "[ReleaseGroup] Placeholder Series Beta Arc Two [16][1080p].mkv"
+    )
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(
+            root,
+            "S01~S02",
+            "Placeholder Series Beta S01~S02 1080p",
+        ),
+        file_items=[(_fileitem(first_season), False), (_fileitem(second_season), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    meta = MetaInfoPath(Path(second_season))
+    TransferChain._apply_multi_season_context(meta, Path(second_season), context)
+    TransferChain._remap_absolute_episode(
+        meta, context.source_seasons, _mediainfo(12, 12), Path(second_season)
+    )
+
+    assert context.source_seasons == (1, 2)
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 4
+    assert meta.season_episode == "S02 E04"
+
+
+def test_multi_season_context_uses_explicit_chinese_season_marker():
+    """
+    When a file has an explicit Chinese season marker, that local marker wins
+    over the root-level multi-season range.
+    """
+    season_range = "\u7b2c1-3\u671f"
+    season_marker = "\u7b2c2\u671f"
+    episode_marker = "\u7b2c03\u8bdd"
+    root = f"/downloads/[ReleaseGroup] Placeholder Series Gamma {season_range}"
+    source = (
+        f"{root}/[ReleaseGroup] Placeholder Series Gamma {season_marker} "
+        f"{episode_marker} [1080p].mkv"
+    )
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(
+            root,
+            "S01-S03",
+            "Placeholder Series Gamma S1-S3 1080p",
+        ),
+        file_items=[(_fileitem(source), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    meta = MetaInfoPath(Path(source))
+    TransferChain._apply_multi_season_context(meta, Path(source), context)
+    TransferChain._remap_absolute_episode(
+        meta, context.source_seasons, _mediainfo(12, 12, 12), Path(source)
+    )
+
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 3
+    assert meta.season_episode == "S02 E03"
+
+
+def test_multi_season_context_keeps_local_episode_with_explicit_season():
+    """
+    A later season can restart local episode numbers from 01; it must not be
+    remapped through the full-pack cumulative episode table.
+    """
+    season_range = "\u7b2c1-6\u671f"
+    season_marker = "\u7b2c4\u671f"
+    episode_marker = "\u7b2c01\u8bdd"
+    root = f"/downloads/[ReleaseGroup] Placeholder Series Delta {season_range}"
+    source = (
+        f"{root}/[ReleaseGroup] Placeholder Series Delta Arc Four "
+        f"{season_marker} {episode_marker} [1080p].mkv"
+    )
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(
+            root,
+            "S01-S06",
+            "Placeholder Series Delta S1-S6 1080p",
+        ),
+        file_items=[(_fileitem(source), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    meta = MetaInfoPath(Path(source))
+    TransferChain._apply_multi_season_context(meta, Path(source), context)
+    TransferChain._remap_absolute_episode(
+        meta, context.source_seasons, _mediainfo(13, 12, 12, 12, 1, 2), Path(source)
+    )
+
+    assert meta.begin_season == 4
+    assert meta.begin_episode == 1
+    assert meta.season_episode == "S04 E01"
