@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain, _MultiSeasonTransferContext
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfoPath
 from app.schemas import FileItem
@@ -179,6 +179,18 @@ def test_multi_season_context_accepts_episode_object_lists():
     assert TransferChain._season_episode_list(media, 1) == [1, 2, 3]
 
 
+def test_multi_season_context_ignores_non_dict_seasons():
+    """
+    Unexpected season payloads should disable absolute remapping instead of
+    interrupting transfer.
+    """
+    media = MediaInfo()
+    media.type = MediaType.TV
+    media.seasons = [{"season_number": 1, "episode_count": 3}]
+
+    assert TransferChain._season_episode_list(media, 1) == []
+
+
 def test_multi_season_context_keeps_explicit_season_local_episode():
     """
     If a path already says S02E14 and season 2 has episode 14, keep it as
@@ -201,6 +213,44 @@ def test_multi_season_context_keeps_explicit_season_local_episode():
     assert meta.begin_season == 2
     assert meta.begin_episode == 14
     assert meta.season_episode == "S02 E14"
+
+
+def test_multi_season_context_reports_status_field_changes():
+    """
+    Queue state must be updated when remapping only normalizes season status
+    fields.
+    """
+    source = "/downloads/[ReleaseGroup] Placeholder Series Eta [02][1080p].mkv"
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 2
+    meta.end_season = 3
+    meta.total_season = 2
+    meta.begin_episode = 2
+    meta.end_episode = None
+    meta.total_episode = 1
+
+    changed = TransferChain._remap_absolute_episode(
+        meta, (2, 3), _mediainfo(12, 12, 12), Path(source)
+    )
+
+    assert changed is True
+    assert meta.begin_season == 2
+    assert meta.end_season is None
+    assert meta.total_season == 1
+    assert meta.begin_episode == 2
+    assert meta.end_episode is None
+    assert meta.total_episode == 1
+
+
+def test_multi_season_context_drops_source_seasons_for_explicit_task_season():
+    """
+    A user-provided task season should not carry source seasons that can remap it
+    later in the queue.
+    """
+    context = _MultiSeasonTransferContext(source_seasons=(1, 2))
+
+    assert TransferChain._task_source_seasons(context, season=2) == []
+    assert TransferChain._task_source_seasons(context, season=None) == [1, 2]
 
 
 def test_multi_season_context_uses_explicit_chinese_season_marker():

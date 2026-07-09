@@ -2831,6 +2831,18 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             top_dir_seasons=top_dir_seasons,
         )
 
+    @staticmethod
+    def _task_source_seasons(
+            context: Optional[_MultiSeasonTransferContext],
+            season: Optional[int],
+    ) -> List[int]:
+        """
+        获取整理任务需要继承的源多季信息。
+        """
+        if not context or season is not None:
+            return []
+        return list(context.source_seasons)
+
     @classmethod
     def _infer_context_season(
             cls,
@@ -2904,6 +2916,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not mediainfo or not season_num:
             return []
         seasons = getattr(mediainfo, "seasons", None) or {}
+        if not isinstance(seasons, dict):
+            return []
         episodes = seasons.get(season_num) or seasons.get(str(season_num)) or []
         if not isinstance(episodes, list):
             return []
@@ -2998,18 +3012,26 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if not mapped_end or mapped_end[0] != mapped_season:
                 return False
 
+        new_end_episode = mapped_end[1] if mapped_end else None
+        new_total_episode = (
+            (new_end_episode - mapped_episode) + 1
+            if new_end_episode is not None
+            else 1
+        )
         changed = (
                 meta.begin_season != mapped_season
+                or meta.end_season is not None
+                or meta.total_season != 1
                 or meta.begin_episode != mapped_episode
-                or (mapped_end and meta.end_episode != mapped_end[1])
+                or meta.end_episode != new_end_episode
+                or meta.total_episode != new_total_episode
         )
         meta.begin_season = mapped_season
         meta.end_season = None
         meta.total_season = 1
         meta.begin_episode = mapped_episode
-        if mapped_end:
-            meta.end_episode = mapped_end[1]
-            meta.total_episode = (meta.end_episode - meta.begin_episode) + 1
+        meta.end_episode = new_end_episode
+        meta.total_episode = new_total_episode
         return changed
 
     def do_transfer(
@@ -3617,9 +3639,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     downloader=_downloader,
                     download_hash=_download_hash,
                     download_history=download_history,
-                    source_seasons=list(multi_season_context.source_seasons)
-                    if multi_season_context
-                    else [],
+                    source_seasons=self._task_source_seasons(
+                        multi_season_context, season
+                    ),
                     transfer_batch_id=transfer_batch_id,
                     manual=manual,
                     background=background,
