@@ -155,7 +155,52 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     """
     assert TransferChain._parse_multi_season_numbers("Placeholder S01&S03") == (1, 3)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01,S03") == (1, 3)
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01&S02&S03") == (1, 2, 3)
+    assert TransferChain._parse_multi_season_numbers(
+        "Placeholder \u7b2c1\u30012\u30013\u5b63"
+    ) == (1, 2, 3)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-S03") == (1, 2, 3)
+
+
+def test_multi_season_context_accepts_episode_object_lists():
+    """
+    Season episode lists can contain TMDB-like dicts or objects.
+    """
+    media = MediaInfo()
+    media.type = MediaType.TV
+    media.seasons = {
+        1: [
+            {"episode_number": 1},
+            SimpleNamespace(episode_number="2"),
+            3,
+        ]
+    }
+
+    assert TransferChain._season_episode_list(media, 1) == [1, 2, 3]
+
+
+def test_multi_season_context_keeps_explicit_season_local_episode():
+    """
+    If a path already says S02E14 and season 2 has episode 14, keep it as
+    S02E14 instead of treating 14 as a full-pack absolute episode number.
+    """
+    source = "/downloads/[ReleaseGroup] Placeholder Series Zeta S02E14 [1080p].mkv"
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 2
+    meta.end_season = None
+    meta.total_season = 1
+    meta.begin_episode = 14
+    meta.end_episode = None
+    meta.total_episode = 1
+
+    changed = TransferChain._remap_absolute_episode(
+        meta, (1, 2), _mediainfo(24, 24), Path(source)
+    )
+
+    assert changed is False
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 14
+    assert meta.season_episode == "S02 E14"
 
 
 def test_multi_season_context_uses_explicit_chinese_season_marker():

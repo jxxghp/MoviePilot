@@ -165,6 +165,23 @@ _EPISODE_SINGLE_RE_LIST = (
     re.compile(rf"第\s*({_CN_NUMBER_RE})\s*[集话話幕]", re.IGNORECASE),
     re.compile(r"(?:^|[^A-Za-z0-9])EP?\s*0*([0-9]{1,4})(?![A-Za-z0-9])", re.IGNORECASE),
 )
+_SEASON_ENUM_SEPARATOR_RE = r"(?:[+&/\u3001,\uff0c]|\u548c)"
+_SEASON_ENUM_RE_LIST = (
+    re.compile(
+        r"(?:^|[^A-Za-z0-9])("
+        r"(?:(?:TV)?S(?:eason)?\s*0*[1-9]\d?\s*"
+        rf"{_SEASON_ENUM_SEPARATOR_RE}\s*)+"
+        r"(?:TV)?S(?:eason)?\s*0*[1-9]\d?"
+        r")(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"(\u7b2c?\s*{_CN_NUMBER_RE}"
+        rf"(?:\s*{_SEASON_ENUM_SEPARATOR_RE}\s*{_CN_NUMBER_RE})+"
+        rf"\s*[\u5b63\u671f\u90e8])",
+        re.IGNORECASE,
+    ),
+)
 
 
 @dataclass
@@ -2651,6 +2668,16 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 seasons.update(
                     season for season in (begin, finish) if season is not None
                 )
+        for pattern in _SEASON_ENUM_RE_LIST:
+            for match in pattern.finditer(merged_text):
+                seasons.update(
+                    season
+                    for season in (
+                        cls._cn_number_to_int(season_text)
+                        for season_text in re.findall(_CN_NUMBER_RE, match.group(1))
+                    )
+                    if season is not None
+                )
         return tuple(sorted(seasons))
 
     @classmethod
@@ -2878,9 +2905,17 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return []
         seasons = getattr(mediainfo, "seasons", None) or {}
         episodes = seasons.get(season_num) or seasons.get(str(season_num)) or []
-        if isinstance(episodes, list):
-            return [int(ep) for ep in episodes if str(ep).isdigit()]
-        return []
+        if not isinstance(episodes, list):
+            return []
+        episode_numbers = []
+        for episode in episodes:
+            if isinstance(episode, dict):
+                episode_num = episode.get("episode_number")
+            else:
+                episode_num = getattr(episode, "episode_number", episode)
+            if str(episode_num).isdigit():
+                episode_numbers.append(int(episode_num))
+        return episode_numbers
 
     @classmethod
     def _map_absolute_episode(
@@ -2923,6 +2958,22 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 or not meta.begin_episode
         ):
             return False
+        explicit_season = (
+            cls._nearest_path_season_marker(source_path) if source_path else None
+        )
+        if explicit_season is not None:
+            explicit_episode_list = cls._season_episode_list(
+                mediainfo, explicit_season
+            )
+            if (
+                    meta.begin_episode in explicit_episode_list
+                    and (
+                        not meta.end_episode
+                        or meta.end_episode in explicit_episode_list
+                    )
+            ):
+                return False
+
         mapped_begin = cls._map_absolute_episode(
             meta.begin_episode, source_seasons, mediainfo
         )
@@ -2930,9 +2981,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
 
         mapped_season, mapped_episode = mapped_begin
-        explicit_season = (
-            cls._nearest_path_season_marker(source_path) if source_path else None
-        )
         if explicit_season is not None and mapped_season != explicit_season:
             return False
         if (
