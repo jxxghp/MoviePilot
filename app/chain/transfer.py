@@ -179,6 +179,12 @@ _SEASON_ENUM_RE_LIST = (
         re.IGNORECASE,
     ),
     re.compile(
+        rf"(\u7b2c?\s*{_CN_NUMBER_RE}\s*[\u5b63\u671f\u90e8]"
+        rf"(?:\s*{_SEASON_ENUM_SEPARATOR_RE}\s*\u7b2c?\s*"
+        rf"{_CN_NUMBER_RE}\s*[\u5b63\u671f\u90e8])+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
         rf"(\u7b2c?\s*{_CN_NUMBER_RE}"
         rf"(?:\s*{_SEASON_ENUM_SEPARATOR_RE}\s*{_CN_NUMBER_RE})+"
         rf"\s*[\u5b63\u671f\u90e8])",
@@ -2876,6 +2882,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         将多季包上下文中的季号应用到文件元数据。
         """
         if not meta or not context or len(context.source_seasons) <= 1:
+            return False
+        if getattr(meta, "begin_episode", None) is None:
             return False
         explicit_season = cls._nearest_path_season_marker(source_path)
         season_num = (

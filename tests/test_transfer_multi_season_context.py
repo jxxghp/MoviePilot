@@ -159,6 +159,9 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     assert TransferChain._parse_multi_season_numbers(
         "Placeholder \u7b2c1\u30012\u30013\u5b63"
     ) == (1, 2, 3)
+    assert TransferChain._parse_multi_season_numbers(
+        "Placeholder \u7b2c1\u5b63\uff0c\u7b2c2\u5b63\uff0c\u7b2c3\u5b63"
+    ) == (1, 2, 3)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-S03") == (1, 2, 3)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-02") == (1, 2)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01~02") == (1, 2)
@@ -172,6 +175,27 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     assert TransferChain._extract_single_season_marker(
         "Placeholder \u7b2c1\u5b63-\u7b2c3\u5b63"
     ) is None
+
+
+def test_multi_season_context_requires_explicit_episode():
+    """
+    Collection-like titles can contain part ranges; without an episode marker
+    they should not receive TV season context.
+    """
+    source = "/downloads/[ReleaseGroup] Placeholder Collection \u7b2c1-3\u90e8.mkv"
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = None
+    meta.end_season = None
+    meta.total_season = 1
+    meta.begin_episode = None
+    meta.end_episode = None
+    context = _MultiSeasonTransferContext(source_seasons=(1, 2, 3))
+
+    changed = TransferChain._apply_multi_season_context(meta, Path(source), context)
+
+    assert changed is False
+    assert meta.begin_season is None
+    assert meta.begin_episode is None
 
 
 def test_multi_season_context_accepts_episode_object_lists():
