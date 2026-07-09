@@ -141,12 +141,7 @@ class MessageChain(ChainBase):
             logger.debug(f"未识别到消息内容：：{body}{form}{args}")
             return
 
-        # Telegram 普通文本的 message_id 是用户消息 ID，不可用于编辑机器人消息；其他渠道保持旧传递行为。
-        original_message_id = (
-            None
-            if info.channel == MessageChannel.Telegram and not info.is_callback
-            else info.message_id
-        )
+        original_message_id = info.message_id
         original_chat_id = info.chat_id
         reply_to_message_id = info.reply_to_message_id
 

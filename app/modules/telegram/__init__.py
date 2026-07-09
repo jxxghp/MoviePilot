@@ -519,9 +519,13 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                     )
                 else:
                     # Telegram 的 reply_markup 不能同时承载 InlineKeyboard 和 ForceReply。
-                    # 无按钮 ForceReply 由 client 发送新提示消息并 reply_to 原消息；有按钮时保持原有按钮编辑语义。
+                    # 普通通知不把来源消息 ID 当成可编辑消息；交互消息才保留上下文。
+                    has_interaction_context = bool(message.buttons or message.force_reply)
                     original_message_id = (
-                        message.original_message_id
+                        message.original_message_id if has_interaction_context else None
+                    )
+                    original_chat_id = (
+                        message.original_chat_id if has_interaction_context else None
                     )
                     client.send_msg(
                         title=message.title,
@@ -532,7 +536,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                         buttons=message.buttons,
                         force_reply=message.force_reply,
                         original_message_id=original_message_id,
-                        original_chat_id=message.original_chat_id,
+                        original_chat_id=original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
                     )

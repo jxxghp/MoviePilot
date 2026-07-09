@@ -54,7 +54,7 @@ def test_send_msg_success(telegram):
 
 
 def test_telegram_parser_preserves_reply_to_message_id():
-    """Telegram ForceReply 回复应保留 reply_to_message.message_id。"""
+    """Telegram ForceReply 回复应保留来源消息和被回复消息的 message_id。"""
     module = TelegramModule()
     client_config = SimpleNamespace(name="telegram-test", config={})
     client = SimpleNamespace(bot_username="mp_bot")
@@ -340,6 +340,37 @@ def test_telegram_module_passes_parse_mode_to_client():
 
     client.send_msg.assert_called_once()
     assert client.send_msg.call_args.kwargs["parse_mode"] == "HTML"
+
+
+def test_telegram_module_plain_post_message_does_not_edit_source_message():
+    """普通通知携带来源消息 ID 时也应发送新消息，避免误编辑用户消息。"""
+    module = TelegramModule()
+    client = Mock()
+
+    with patch.object(
+        module,
+        "get_configs",
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+    ), patch.object(
+        module, "check_message", return_value=True
+    ), patch.object(
+        module, "get_instance", return_value=client
+    ):
+        module.post_message(
+            Notification(
+                channel=MessageChannel.Telegram,
+                source="telegram-test",
+                title="Agent 回复",
+                text="处理完成",
+                original_message_id=123,
+                original_chat_id="chat-a",
+            )
+        )
+
+    client.send_msg.assert_called_once()
+    kwargs = client.send_msg.call_args.kwargs
+    assert kwargs["original_message_id"] is None
+    assert kwargs["original_chat_id"] is None
 
 
 def test_telegram_module_passes_force_reply_to_client():

@@ -160,8 +160,8 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
     handle_ai.assert_not_called()
 
 
-def test_message_process_keeps_plain_message_id_out_of_edit_context():
-    """普通文本消息的 message_id 是用户消息 ID，不应作为可编辑原消息传递。"""
+def test_message_process_preserves_parser_message_id_context():
+    """消息链不按渠道解释 message_id，只透传解析器给出的原消息上下文。"""
     chain = MessageChain()
     incoming = CommingMessage(
         channel=MessageChannel.Telegram,
@@ -181,7 +181,7 @@ def test_message_process_keeps_plain_message_id_out_of_edit_context():
 
     handle_message.assert_called_once()
     kwargs = handle_message.call_args.kwargs
-    assert kwargs["original_message_id"] is None
+    assert kwargs["original_message_id"] == 101
     assert kwargs["original_chat_id"] == "chat-a"
     assert kwargs["reply_to_message_id"] == 99
 
