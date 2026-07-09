@@ -2708,15 +2708,24 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not text:
             return None
         text = str(text)
-        if cls._parse_multi_season_numbers(text):
-            return None
+        range_spans = [
+            match.span()
+            for pattern in _SEASON_RANGE_RE_LIST + _SEASON_ENUM_RE_LIST
+            for match in pattern.finditer(text)
+        ]
+        candidates = []
         for pattern in _SEASON_SINGLE_RE_LIST:
-            match = pattern.search(text)
-            if not match:
-                continue
-            season = cls._cn_number_to_int(match.group(1))
-            if season is not None:
-                return season
+            for match in pattern.finditer(text):
+                if any(
+                        start <= match.start(1) < end
+                        for start, end in range_spans
+                ):
+                    continue
+                season = cls._cn_number_to_int(match.group(1))
+                if season is not None:
+                    candidates.append((match.start(1), season))
+        if candidates:
+            return max(candidates, key=lambda candidate: candidate[0])[1]
         return None
 
     @classmethod
@@ -2843,6 +2852,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
 
         top_dirs: set[str] = set()
+        explicit_top_dir_seasons: set[int] = set()
         for item, _ in file_items or []:
             if not item or item.type != "file":
                 continue
@@ -2851,15 +2861,25 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             first_dir = cls._relative_first_dir(source_root, item.path)
             if not first_dir:
                 continue
-            if cls._extract_single_season_marker(first_dir) is not None:
+            explicit_season = cls._extract_single_season_marker(first_dir)
+            if explicit_season is not None:
+                explicit_top_dir_seasons.add(explicit_season)
                 continue
             top_dirs.add(first_dir)
 
         top_dir_seasons: Dict[str, int] = {}
-        if len(source_seasons) > 1 and len(top_dirs) == len(source_seasons):
+        remaining_source_seasons = tuple(
+            season
+            for season in source_seasons
+            if season not in explicit_top_dir_seasons
+        )
+        if (
+                len(source_seasons) > 1
+                and len(top_dirs) == len(remaining_source_seasons)
+        ):
             for dirname, season_num in zip(
                     sorted(top_dirs, key=cls._natural_sort_key),
-                    source_seasons,
+                    remaining_source_seasons,
             ):
                 top_dir_seasons[dirname] = season_num
 

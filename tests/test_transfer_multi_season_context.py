@@ -177,6 +177,9 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     assert TransferChain._extract_single_season_marker(
         "Placeholder \u7b2c1\u5b63-\u7b2c3\u5b63"
     ) is None
+    assert TransferChain._extract_single_season_marker(
+        "Placeholder S01-S02 S02E03"
+    ) == 2
 
 
 def test_multi_season_context_accepts_mixed_chinese_numbers():
@@ -204,6 +207,33 @@ def test_multi_season_context_ignores_parent_directory_ranges():
 
     assert context.source_seasons == ()
     assert context.top_dir_seasons == {}
+
+
+def test_multi_season_context_maps_remaining_implicit_directories():
+    """
+    Explicit season directories should occupy their seasons while implicit
+    sibling directories map to the remaining source seasons.
+    """
+    root = "/downloads/[ReleaseGroup] Placeholder Series Xi"
+    first_season = (
+        f"{root}/Season 1/"
+        "[ReleaseGroup] Placeholder Series Xi [01][1080p].mkv"
+    )
+    second_season = (
+        f"{root}/Placeholder Series Xi Arc Two/"
+        "[ReleaseGroup] Placeholder Series Xi Arc Two [01][1080p].mkv"
+    )
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(
+            root,
+            "S01-S02",
+            "Placeholder Series Xi S01-S02 1080p",
+        ),
+        file_items=[(_fileitem(first_season), False), (_fileitem(second_season), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    assert context.top_dir_seasons["Placeholder Series Xi Arc Two"] == 2
 
 
 def test_multi_season_context_ignores_parent_season_marker():
