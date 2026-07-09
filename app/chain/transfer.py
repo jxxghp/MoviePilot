@@ -2875,11 +2875,19 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not meta or not context or len(context.source_seasons) <= 1:
             return False
         explicit_season = cls._nearest_path_season_marker(source_path)
-        season_num = explicit_season or cls._infer_context_season(source_path, context)
+        season_num = (
+            explicit_season
+            if explicit_season is not None
+            else cls._infer_context_season(source_path, context)
+        )
         if season_num is None:
             return False
         changed = False
-        if meta.begin_season != season_num or meta.end_season is not None:
+        if (
+                meta.begin_season != season_num
+                or meta.end_season is not None
+                or meta.total_season != 1
+        ):
             meta.begin_season = season_num
             meta.end_season = None
             meta.total_season = 1
@@ -2891,17 +2899,19 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
             if local_episode:
                 begin_episode, end_episode = local_episode
+                total_episode = (
+                    (end_episode - begin_episode) + 1
+                    if end_episode
+                    else 1
+                )
                 if (
                         meta.begin_episode != begin_episode
                         or meta.end_episode != end_episode
+                        or meta.total_episode != total_episode
                 ):
                     meta.begin_episode = begin_episode
                     meta.end_episode = end_episode
-                    meta.total_episode = (
-                        (end_episode - begin_episode) + 1
-                        if end_episode
-                        else 1
-                    )
+                    meta.total_episode = total_episode
                     changed = True
 
         return changed
@@ -2913,7 +2923,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         获取指定季的剧集列表。
         """
-        if not mediainfo or not season_num:
+        if not mediainfo or season_num is None:
             return []
         seasons = getattr(mediainfo, "seasons", None) or {}
         if not isinstance(seasons, dict):
@@ -2929,7 +2939,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 episode_num = getattr(episode, "episode_number", episode)
             if str(episode_num).isdigit():
                 episode_numbers.append(int(episode_num))
-        return episode_numbers
+        return sorted(episode_numbers)
 
     @classmethod
     def _map_absolute_episode(

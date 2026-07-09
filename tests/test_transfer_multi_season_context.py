@@ -179,6 +179,18 @@ def test_multi_season_context_accepts_episode_object_lists():
     assert TransferChain._season_episode_list(media, 1) == [1, 2, 3]
 
 
+def test_multi_season_context_sorts_episode_lists():
+    """
+    Absolute episode mapping should not depend on upstream episode list order.
+    """
+    media = MediaInfo()
+    media.type = MediaType.TV
+    media.seasons = {1: [3, 1, 2], 0: [1]}
+
+    assert TransferChain._season_episode_list(media, 1) == [1, 2, 3]
+    assert TransferChain._season_episode_list(media, 0) == [1]
+
+
 def test_multi_season_context_ignores_non_dict_seasons():
     """
     Unexpected season payloads should disable absolute remapping instead of
@@ -189,6 +201,56 @@ def test_multi_season_context_ignores_non_dict_seasons():
     media.seasons = [{"season_number": 1, "episode_count": 3}]
 
     assert TransferChain._season_episode_list(media, 1) == []
+
+
+def test_multi_season_context_normalizes_total_fields():
+    """
+    Applying source context should normalize stale total fields even when the
+    parsed season and episode numbers are already correct.
+    """
+    season_marker = "\u7b2c2\u5b63"
+    episode_marker = "\u7b2c03\u8bdd"
+    source = (
+        "/downloads/[ReleaseGroup] Placeholder Series Theta "
+        f"{season_marker} {episode_marker} [1080p].mkv"
+    )
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 2
+    meta.end_season = None
+    meta.total_season = 4
+    meta.begin_episode = 3
+    meta.end_episode = None
+    meta.total_episode = 4
+    context = _MultiSeasonTransferContext(source_seasons=(1, 2))
+
+    changed = TransferChain._apply_multi_season_context(meta, Path(source), context)
+
+    assert changed is True
+    assert meta.begin_season == 2
+    assert meta.end_season is None
+    assert meta.total_season == 1
+    assert meta.begin_episode == 3
+    assert meta.end_episode is None
+    assert meta.total_episode == 1
+
+
+def test_multi_season_context_keeps_zero_season_marker():
+    """
+    S00 is a valid explicit season marker for specials and should not be treated
+    as missing context.
+    """
+    episode_marker = "\u7b2c01\u8bdd"
+    source = (
+        "/downloads/[ReleaseGroup] Placeholder Series Iota "
+        f"S00 {episode_marker} [1080p].mkv"
+    )
+    meta = MetaInfoPath(Path(source))
+    context = _MultiSeasonTransferContext(source_seasons=(1, 2))
+
+    TransferChain._apply_multi_season_context(meta, Path(source), context)
+
+    assert meta.begin_season == 0
+    assert meta.begin_episode == 1
 
 
 def test_multi_season_context_keeps_explicit_season_local_episode():
