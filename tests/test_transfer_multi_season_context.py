@@ -304,6 +304,33 @@ def test_multi_season_context_reports_status_field_changes():
     assert meta.total_episode == 1
 
 
+def test_multi_season_context_keeps_inferred_season_local_episode():
+    """
+    Once the directory context has inferred season 2, a valid S02 local episode
+    should not be remapped as a full-pack absolute episode.
+    """
+    source = (
+        "/downloads/[ReleaseGroup] Placeholder Series Kappa/"
+        "[ReleaseGroup] Placeholder Series Kappa Arc Two [02][1080p].mkv"
+    )
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 2
+    meta.end_season = None
+    meta.total_season = 1
+    meta.begin_episode = 2
+    meta.end_episode = None
+    meta.total_episode = 1
+
+    changed = TransferChain._remap_absolute_episode(
+        meta, (1, 2), _mediainfo(1, 12), Path(source)
+    )
+
+    assert changed is False
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 2
+    assert meta.season_episode == "S02 E02"
+
+
 def test_multi_season_context_drops_source_seasons_for_explicit_task_season():
     """
     A user-provided task season should not carry source seasons that can remap it
@@ -313,6 +340,19 @@ def test_multi_season_context_drops_source_seasons_for_explicit_task_season():
 
     assert TransferChain._task_source_seasons(context, season=2) == []
     assert TransferChain._task_source_seasons(context, season=None) == [1, 2]
+
+
+def test_multi_season_context_normalizes_backslash_paths():
+    """
+    Downloader paths can contain backslashes and should use the same POSIX
+    normalization as multi-season relative path handling.
+    """
+    path = r"C:\downloads\Placeholder.Series.Lambda.S01-S02"
+
+    assert (
+        TransferChain._normalize_posix_path(path).as_posix()
+        == "C:/downloads/Placeholder.Series.Lambda.S01-S02"
+    )
 
 
 def test_multi_season_context_uses_explicit_chinese_season_marker():

@@ -2985,18 +2985,42 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         explicit_season = (
             cls._nearest_path_season_marker(source_path) if source_path else None
         )
-        if explicit_season is not None:
-            explicit_episode_list = cls._season_episode_list(
-                mediainfo, explicit_season
+        current_season = (
+            explicit_season
+            if explicit_season is not None
+            else meta.begin_season
+        )
+        source_season_numbers = {int(season) for season in source_seasons}
+        if current_season is not None and (
+                explicit_season is not None
+                or current_season in source_season_numbers
+        ):
+            current_episode_list = cls._season_episode_list(
+                mediainfo, current_season
             )
             if (
-                    meta.begin_episode in explicit_episode_list
+                    meta.begin_episode in current_episode_list
                     and (
-                        not meta.end_episode
-                        or meta.end_episode in explicit_episode_list
+                        meta.end_episode is None
+                        or meta.end_episode in current_episode_list
                     )
             ):
-                return False
+                new_total_episode = (
+                    (meta.end_episode - meta.begin_episode) + 1
+                    if meta.end_episode is not None
+                    else 1
+                )
+                changed = (
+                        meta.begin_season != current_season
+                        or meta.end_season is not None
+                        or meta.total_season != 1
+                        or meta.total_episode != new_total_episode
+                )
+                meta.begin_season = current_season
+                meta.end_season = None
+                meta.total_season = 1
+                meta.total_episode = new_total_episode
+                return changed
 
         mapped_begin = cls._map_absolute_episode(
             meta.begin_episode, source_seasons, mediainfo
@@ -3269,7 +3293,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     return download_history
 
             if fileitem and fileitem.path:
-                source_path = Path(fileitem.path).as_posix()
+                source_path = self._normalize_posix_path(fileitem.path).as_posix()
                 download_history = downloadhis.get_by_path(source_path)
                 if download_history:
                     return download_history
