@@ -125,17 +125,20 @@ _CN_NUMBER_MAP = {
     "十": 10,
 }
 _CN_NUMBER_RE = r"[0-9一二两三四五六七八九十]{1,3}"
+_SEASON_RANGE_TRAILING_RE = r"(?!\s*(?:Episodes?|EP(?:isodes?)?|[集话話幕]))"
 _SEASON_RANGE_RE_LIST = (
     re.compile(
         r"(?:^|[^A-Za-z0-9])(?:TV)?S(?:eason)?\s*0*([1-9]\d?)\s*"
         r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*"
-        r"(?:(?:TV)?S(?:eason)?\s*)?0*([1-9]\d?)(?![A-Za-z0-9])",
+        r"(?:(?:TV)?S(?:eason)?\s*)?0*([1-9]\d?)"
+        rf"(?![A-Za-z0-9]){_SEASON_RANGE_TRAILING_RE}",
         re.IGNORECASE,
     ),
     re.compile(
         r"(?:^|[^A-Za-z0-9])Season\s*0*([1-9]\d?)\s*"
         r"(?:[-~+&/、,，]|至|到|和|\bto\b)\s*"
-        r"(?:Season\s*)?0*([1-9]\d?)(?![A-Za-z0-9])",
+        r"(?:Season\s*)?0*([1-9]\d?)"
+        rf"(?![A-Za-z0-9]){_SEASON_RANGE_TRAILING_RE}",
         re.IGNORECASE,
     ),
     re.compile(
@@ -2718,13 +2721,23 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @classmethod
     def _nearest_path_season_marker(
-            cls, source_path: Union[str, Path, PurePosixPath]
+            cls,
+            source_path: Union[str, Path, PurePosixPath],
+            source_root: Optional[PurePosixPath] = None,
     ) -> Optional[int]:
         """
         从近到远查找路径中的明确单季标记。
         """
         path = cls._normalize_posix_path(source_path)
-        for part in reversed(path.parts):
+        parts = path.parts
+        if source_root:
+            try:
+                parts = path.relative_to(
+                    cls._normalize_posix_path(source_root)
+                ).parts
+            except ValueError:
+                pass
+        for part in reversed(parts):
             season = cls._extract_single_season_marker(part)
             if season is not None:
                 return season
@@ -2824,7 +2837,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         source_seasons = cls._parse_multi_season_numbers(
             getattr(download_history, "seasons", None),
             getattr(download_history, "torrent_name", None),
-            getattr(download_history, "torrent_description", None),
             history_name,
             source_name,
             source_root_name,
@@ -2878,7 +2890,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         根据路径和多季上下文推断当前文件所属季。
         """
-        explicit_season = cls._nearest_path_season_marker(source_path)
+        explicit_season = cls._nearest_path_season_marker(
+            source_path, context.source_root if context else None
+        )
         if explicit_season is not None:
             return explicit_season
         if not context:
@@ -2902,7 +2916,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
         if getattr(meta, "begin_episode", None) is None:
             return False
-        explicit_season = cls._nearest_path_season_marker(source_path)
+        explicit_season = cls._nearest_path_season_marker(
+            source_path, context.source_root if context else None
+        )
         season_num = (
             explicit_season
             if explicit_season is not None
@@ -3011,7 +3027,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ):
             return False
         explicit_season = (
-            cls._nearest_path_season_marker(source_path) if source_path else None
+            cls._extract_single_season_marker(
+                cls._normalize_posix_path(source_path).name
+            )
+            if source_path
+            else None
         )
         current_season = (
             explicit_season
@@ -3175,6 +3195,25 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         matched_episode_format_template = False
         multi_season_context: Optional[_MultiSeasonTransferContext] = None
 
+        def _apply_multi_season_adjustments(
+                current_meta: Optional[MetaBase], source_path: Path
+        ) -> Optional[MetaBase]:
+            """
+            应用多季上下文，并在已有媒体集数信息时提前修正绝对集数。
+            """
+            if not current_meta or season is not None:
+                return current_meta
+            self._apply_multi_season_context(
+                current_meta, source_path, multi_season_context
+            )
+            self._remap_absolute_episode(
+                current_meta,
+                self._task_source_seasons(multi_season_context, season),
+                mediainfo,
+                source_path,
+            )
+            return current_meta
+
         def _build_file_meta(
                 source_path: Path,
                 custom_word_list: Optional[List[str]] = None,
@@ -3192,11 +3231,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # 这里避免再次偏移集数，导致手动整理的集数偏移翻倍。
                 return built_meta
             built_meta = _apply_meta_overrides(built_meta, source_path)
-            if season is None:
-                self._apply_multi_season_context(
-                    built_meta, source_path, multi_season_context
-                )
-            return built_meta
+            return _apply_multi_season_adjustments(built_meta, source_path)
 
         def _build_path_meta(
                 source_path: Path,
@@ -3211,11 +3246,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if not path_meta:
                 return None
             path_meta = _apply_meta_overrides(path_meta, source_path)
-            if season is None:
-                self._apply_multi_season_context(
-                    path_meta, source_path, multi_season_context
-                )
-            return path_meta
+            return _apply_multi_season_adjustments(path_meta, source_path)
 
         def _apply_meta_overrides(
                 current_meta: MetaBase, source_path: Path

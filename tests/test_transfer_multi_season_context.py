@@ -165,6 +165,8 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-S03") == (1, 2, 3)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-02") == (1, 2)
     assert TransferChain._parse_multi_season_numbers("Placeholder S01~02") == (1, 2)
+    assert TransferChain._parse_multi_season_numbers("Season 1 - 12 Episodes") == ()
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01-12 EP") == ()
     assert TransferChain._parse_multi_season_numbers(
         "Placeholder \u7b2c1\u5b63-\u7b2c3\u5b63"
     ) == (1, 2, 3)
@@ -202,6 +204,29 @@ def test_multi_season_context_ignores_parent_directory_ranges():
 
     assert context.source_seasons == ()
     assert context.top_dir_seasons == {}
+
+
+def test_multi_season_context_ignores_parent_season_marker():
+    """
+    Parent category folders outside the torrent root must not override the
+    season inferred from the torrent's own top-level directories.
+    """
+    root = "/downloads/S02/Placeholder Series Nu"
+    source = (
+        f"{root}/Placeholder Series Nu Arc One/"
+        "[ReleaseGroup] Placeholder Series Nu [01][1080p].mkv"
+    )
+    context = _MultiSeasonTransferContext(
+        source_root=TransferChain._normalize_posix_path(root),
+        source_seasons=(1, 2),
+        top_dir_seasons={"Placeholder Series Nu Arc One": 1},
+    )
+    meta = MetaInfoPath(Path(source))
+
+    TransferChain._apply_multi_season_context(meta, Path(source), context)
+
+    assert meta.begin_season == 1
+    assert meta.begin_episode == 1
 
 
 def test_multi_season_context_requires_explicit_episode():
