@@ -395,6 +395,54 @@ def test_multi_season_context_keeps_explicit_season_local_episode():
     assert meta.season_episode == "S02 E14"
 
 
+def test_multi_season_context_keeps_explicit_season_without_episode_catalog():
+    """
+    A filename-level season marker is authoritative even when the media episode
+    catalog is incomplete.
+    """
+    source = "/downloads/[ReleaseGroup] Placeholder Series Mu S02E14 [1080p].mkv"
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 2
+    meta.end_season = None
+    meta.total_season = 1
+    meta.begin_episode = 14
+    meta.end_episode = None
+    meta.total_episode = 1
+
+    changed = TransferChain._remap_absolute_episode(
+        meta, (1, 2), _mediainfo(13, 12), Path(source)
+    )
+
+    assert changed is False
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 14
+    assert meta.season_episode == "S02 E14"
+
+
+def test_multi_season_context_rejects_reversed_episode_range():
+    """
+    Reversed episode ranges should not write invalid total_episode values.
+    """
+    source = "/downloads/[ReleaseGroup] Placeholder Series Nu [15-13][1080p].mkv"
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 1
+    meta.end_season = None
+    meta.total_season = 1
+    meta.begin_episode = 15
+    meta.end_episode = 13
+    meta.total_episode = 1
+
+    changed = TransferChain._remap_absolute_episode(
+        meta, (1, 2), _mediainfo(12, 12), Path(source)
+    )
+
+    assert changed is False
+    assert meta.begin_season == 1
+    assert meta.begin_episode == 15
+    assert meta.end_episode == 13
+    assert meta.total_episode == 1
+
+
 def test_multi_season_context_reports_status_field_changes():
     """
     Queue state must be updated when remapping only normalizes season status

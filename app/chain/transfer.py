@@ -3046,6 +3046,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 or not meta.begin_episode
         ):
             return False
+        if (
+                meta.end_episode is not None
+                and meta.end_episode < meta.begin_episode
+        ):
+            return False
         explicit_season = (
             cls._extract_single_season_marker(
                 cls._normalize_posix_path(source_path).name
@@ -3053,15 +3058,28 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if source_path
             else None
         )
-        current_season = (
-            explicit_season
-            if explicit_season is not None
-            else meta.begin_season
-        )
+        if explicit_season is not None:
+            new_total_episode = (
+                (meta.end_episode - meta.begin_episode) + 1
+                if meta.end_episode is not None
+                else 1
+            )
+            changed = (
+                    meta.begin_season != explicit_season
+                    or meta.end_season is not None
+                    or meta.total_season != 1
+                    or meta.total_episode != new_total_episode
+            )
+            meta.begin_season = explicit_season
+            meta.end_season = None
+            meta.total_season = 1
+            meta.total_episode = new_total_episode
+            return changed
+
+        current_season = meta.begin_season
         source_season_numbers = {int(season) for season in source_seasons}
         if current_season is not None and (
-                explicit_season is not None
-                or current_season in source_season_numbers
+                current_season in source_season_numbers
         ):
             current_episode_list = cls._season_episode_list(
                 mediainfo, current_season
@@ -3097,8 +3115,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
 
         mapped_season, mapped_episode = mapped_begin
-        if explicit_season is not None and mapped_season != explicit_season:
-            return False
         if (
                 meta.begin_season
                 and meta.begin_season != 1
@@ -3382,7 +3398,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     continue
                 download_history = self._resolve_download_history(
                     downloadhis=downloadhis,
-                    file_path=Path(candidate_item.path),
+                    file_path=Path(
+                        self._normalize_posix_path(candidate_item.path).as_posix()
+                    ),
                     bluray_dir=candidate_bluray_dir,
                     download_hash=None,
                 )
