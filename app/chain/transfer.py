@@ -2631,8 +2631,16 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return _CN_NUMBER_MAP[text]
         if "十" in text:
             left, _, right = text.partition("十")
-            tens = _CN_NUMBER_MAP.get(left, 1) if left else 1
-            ones = _CN_NUMBER_MAP.get(right, 0) if right else 0
+            if left:
+                tens = int(left) if left.isdigit() else _CN_NUMBER_MAP.get(left)
+            else:
+                tens = 1
+            if right:
+                ones = int(right) if right.isdigit() else _CN_NUMBER_MAP.get(right)
+            else:
+                ones = 0
+            if tens is None or ones is None:
+                return None
             return tens * 10 + ones
         return None
 
@@ -2790,13 +2798,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         history_path = getattr(download_history, "path", None)
         source_path = getattr(source_fileitem, "path", None)
-        source_seasons = cls._parse_multi_season_numbers(
-            getattr(download_history, "seasons", None),
-            getattr(download_history, "torrent_name", None),
-            getattr(download_history, "torrent_description", None),
-            history_path,
-            source_path,
-        )
         source_root = cls._normalize_posix_path(history_path or source_path)
         source_root_is_file = (
                 getattr(source_fileitem, "type", None) == "file"
@@ -2812,6 +2813,22 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
         if source_root_is_file:
             source_root = source_root.parent
+
+        history_name = (
+            cls._normalize_posix_path(history_path).name if history_path else None
+        )
+        source_name = (
+            cls._normalize_posix_path(source_path).name if source_path else None
+        )
+        source_root_name = source_root.name or None
+        source_seasons = cls._parse_multi_season_numbers(
+            getattr(download_history, "seasons", None),
+            getattr(download_history, "torrent_name", None),
+            getattr(download_history, "torrent_description", None),
+            history_name,
+            source_name,
+            source_root_name,
+        )
 
         top_dirs: set[str] = set()
         for item, _ in file_items or []:

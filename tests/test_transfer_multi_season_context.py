@@ -177,6 +177,33 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     ) is None
 
 
+def test_multi_season_context_accepts_mixed_chinese_numbers():
+    """
+    Mixed Chinese/Arabic season numbers should be parsed instead of silently
+    becoming the wrong value.
+    """
+    assert TransferChain._cn_number_to_int("\u53412") == 12
+    assert TransferChain._cn_number_to_int("2\u5341") == 20
+    assert TransferChain._cn_number_to_int("\u5341x") is None
+
+
+def test_multi_season_context_ignores_parent_directory_ranges():
+    """
+    A generic parent folder named like a season range must not provide source
+    seasons for an unrelated child torrent root.
+    """
+    root = "/downloads/S01-S02/Placeholder Series Mu"
+    source = f"{root}/[ReleaseGroup] Placeholder Series Mu [01][1080p].mkv"
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(root, "", ""),
+        file_items=[(_fileitem(source), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    assert context.source_seasons == ()
+    assert context.top_dir_seasons == {}
+
+
 def test_multi_season_context_requires_explicit_episode():
     """
     Collection-like titles can contain part ranges; without an episode marker
