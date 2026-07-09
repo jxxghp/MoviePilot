@@ -160,6 +160,110 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
     handle_ai.assert_not_called()
 
 
+def test_message_process_preserves_parser_message_id_context():
+    """消息链不按渠道解释 message_id，只透传解析器给出的原消息上下文。"""
+    chain = MessageChain()
+    incoming = CommingMessage(
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        userid="10001",
+        username="tester",
+        text="东张西望",
+        message_id=101,
+        chat_id="chat-a",
+        reply_to_message_id=99,
+    )
+
+    with patch.object(chain, "message_parser", return_value=incoming), patch.object(
+        chain, "handle_message"
+    ) as handle_message:
+        chain.process(body=None, form=None, args={"source": "telegram-test"})
+
+    handle_message.assert_called_once()
+    kwargs = handle_message.call_args.kwargs
+    assert kwargs["original_message_id"] == 101
+    assert kwargs["original_chat_id"] == "chat-a"
+    assert kwargs["reply_to_message_id"] == 99
+
+
+def test_message_process_keeps_callback_message_id_as_edit_context():
+    """按钮回调的 message_id 仍应作为机器人原消息 ID 传递，供编辑原消息使用。"""
+    chain = MessageChain()
+    incoming = CommingMessage(
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        userid="10001",
+        username="tester",
+        text="CALLBACK:demo",
+        is_callback=True,
+        message_id=101,
+        chat_id="chat-a",
+    )
+
+    with patch.object(chain, "message_parser", return_value=incoming), patch.object(
+        chain, "handle_message"
+    ) as handle_message:
+        chain.process(body=None, form=None, args={"source": "telegram-test"})
+
+    handle_message.assert_called_once()
+    kwargs = handle_message.call_args.kwargs
+    assert kwargs["original_message_id"] == 101
+    assert kwargs["original_chat_id"] == "chat-a"
+
+
+def test_message_process_preserves_non_telegram_plain_message_id():
+    """非 Telegram 渠道保持旧行为，普通消息 ID 仍向下传递给渠道实现自行解释。"""
+    chain = MessageChain()
+    incoming = CommingMessage(
+        channel=MessageChannel.Slack,
+        source="slack-test",
+        userid="10001",
+        username="tester",
+        text="hello",
+        message_id="slack-message-ts",
+        chat_id="slack-channel",
+    )
+
+    with patch.object(chain, "message_parser", return_value=incoming), patch.object(
+        chain, "handle_message"
+    ) as handle_message:
+        chain.process(body=None, form=None, args={"source": "slack-test"})
+
+    handle_message.assert_called_once()
+    kwargs = handle_message.call_args.kwargs
+    assert kwargs["original_message_id"] == "slack-message-ts"
+    assert kwargs["original_chat_id"] == "slack-channel"
+
+
+def test_handle_message_keeps_legacy_positional_images_argument():
+    """新增 reply_to_message_id 不应改变旧位置参数 images/audio/files 的含义。"""
+    chain = MessageChain()
+    images = [CommingMessage.MessageImage(ref="tg://file_id/photo-1")]
+
+    with patch.object(
+        chain, "_handle_plugin_input_interaction", return_value=False
+    ), patch.object(
+        chain, "_mark_message_processing_started", return_value=None
+    ), patch.object(
+        chain, "_mark_message_processing_finished"
+    ), patch.object(chain, "_handle_message_core", return_value=False) as handle_core:
+        chain.handle_message(
+            MessageChannel.Telegram,
+            "telegram-test",
+            "10001",
+            "tester",
+            "带图消息",
+            None,
+            "chat-a",
+            images,
+        )
+
+    handle_core.assert_called_once()
+    kwargs = handle_core.call_args.kwargs
+    assert kwargs["images"] == images
+    assert kwargs["reply_to_message_id"] is None
+
+
 def test_plugin_input_session_captures_plain_text_before_media_interaction():
     """插件输入会话存在时，普通文本应派发给插件而不是媒体交互。"""
     chain = MessageChain()
@@ -209,6 +313,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
             "source": "wechat-test",
             "username": "tester",
             "chat_id": None,
+            "reply_to_message_id": None,
             "prompt_id": "prompt-1",
             "input_session_id": request.request_id,
             "payload": {"step": "name"},
@@ -526,6 +631,326 @@ def test_plugin_input_session_does_not_capture_other_chat_text():
     assert event_type == EventType.MessageAction
     assert payload["input_text"] == "真正输入"
     assert payload["chat_id"] == "chat-a"
+
+
+def test_plugin_input_prompt_message_requires_matching_reply():
+    """绑定提示消息 ID 的插件输入只应消费当前 ForceReply 回复。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-current",
+        payload={"step": "keyword"},
+    )
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="旧回复框文本",
+            original_chat_id="chat-a",
+            reply_to_message_id="prompt-old",
+        )
+
+    record_message.assert_called_once()
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) == request
+    assert not any(
+        call.args and call.args[0] == EventType.MessageAction
+        for call in send_event.call_args_list
+    )
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="当前回复框文本",
+            original_chat_id="chat-a",
+            reply_to_message_id="prompt-current",
+        )
+
+    record_message.assert_not_called()
+    send_event.assert_called_once()
+    event_type, payload = send_event.call_args.args
+    assert event_type == EventType.MessageAction
+    assert payload["input_session_id"] == request.request_id
+    assert payload["input_text"] == "当前回复框文本"
+    assert payload["reply_to_message_id"] == "prompt-current"
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) is None
+
+
+def test_plugin_input_prompt_message_matches_integer_reply_ids():
+    """真实 Telegram message_id 为 int，应与内部 str 归一化后的 prompt_message_id 匹配。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id=10001,
+        prompt_message_id=99,
+        payload={"step": "keyword"},
+    )
+
+    with patch.object(chain.eventmanager, "send_event") as send_event:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="翡翠台",
+            original_chat_id=10001,
+            reply_to_message_id=99,
+        )
+
+    send_event.assert_called_once()
+    event_type, payload = send_event.call_args.args
+    assert event_type == EventType.MessageAction
+    assert payload["input_session_id"] == request.request_id
+    assert payload["input_text"] == "翡翠台"
+
+
+def test_plugin_input_prompt_message_ignores_plain_text_without_reply():
+    """用户未使用 ForceReply 回复框直接发文本时，绑定会话不应消费该文本。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-current",
+        payload={"step": "keyword"},
+    )
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="直接输入文本",
+            original_chat_id="chat-a",
+        )
+
+    record_message.assert_called_once()
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) == request
+    assert not any(
+        call.args and call.args[0] == EventType.MessageAction
+        for call in send_event.call_args_list
+    )
+
+
+def test_plugin_input_prompt_message_allows_direct_cancel_without_reply():
+    """绑定 ForceReply 时，取消词应能直接结束会话，避免用户被残留回复框卡住。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-current",
+        payload={"step": "keyword"},
+    )
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event, patch.object(chain, "post_message") as post_message:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="取消",
+            original_chat_id="chat-a",
+        )
+
+    record_message.assert_not_called()
+    send_event.assert_called_once()
+    event_type, payload = send_event.call_args.args
+    assert event_type == EventType.MessageAction
+    assert payload["input_session_id"] == request.request_id
+    assert payload["cancelled"] is True
+    post_message.assert_called_once()
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) is None
+
+
+def test_expired_prompt_message_cancel_text_falls_back_to_normal_search_without_notice():
+    """绑定 ForceReply 过期后，即使输入取消词也应静默放行给普通文本链路。"""
+    chain = MessageChain()
+    plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-expired",
+        timeout_seconds=60,
+    ).created_at = datetime.now() - timedelta(seconds=61)
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event, patch.object(
+        chain, "_handle_message_core", return_value=False
+    ) as handle_core:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="取消",
+            original_chat_id="chat-a",
+            reply_to_message_id="prompt-expired",
+        )
+
+    record_message.assert_called_once()
+    handle_core.assert_called_once()
+    assert not any(
+        call.args and call.args[0] == EventType.MessageAction
+        for call in send_event.call_args_list
+    )
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) is None
+
+
+def test_plugin_input_prompt_message_requires_matching_chat_id():
+    """绑定提示消息 ID 时还必须匹配 chat_id，避免跨聊天同号消息误消费。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-current",
+        payload={"step": "keyword"},
+    )
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="其他聊天同号回复",
+            original_chat_id="chat-b",
+            reply_to_message_id="prompt-current",
+        )
+
+    record_message.assert_called_once()
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) == request
+    assert not any(
+        call.args and call.args[0] == EventType.MessageAction
+        for call in send_event.call_args_list
+    )
+
+
+def test_expired_prompt_message_input_falls_back_to_normal_search_without_notice():
+    """回复过期 ForceReply 时不提示插件输入超时，交回普通文本搜索。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-expired",
+        timeout_seconds=60,
+    )
+    request.created_at = datetime.now() - timedelta(seconds=61)
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event, patch.object(chain, "post_message") as post_message:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="过期回复框文本",
+            original_chat_id="chat-a",
+            reply_to_message_id="prompt-expired",
+        )
+
+    record_message.assert_called_once()
+    post_message.assert_not_called()
+    assert not any(
+        call.args and call.args[0] == EventType.MessageAction
+        for call in send_event.call_args_list
+    )
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) is None
+
+
+def test_expired_prompt_message_without_reply_falls_back_and_clears_state():
+    """绑定会话过期后，未命中回复框的文本也应放行并清理过期状态。"""
+    chain = MessageChain()
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-expired",
+        timeout_seconds=60,
+    )
+    request.created_at = datetime.now() - timedelta(seconds=61)
+
+    with patch.object(chain, "_record_user_message") as record_message, patch.object(
+        chain.eventmanager, "send_event"
+    ) as send_event:
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+            text="过期后直接输入",
+            original_chat_id="chat-a",
+        )
+
+    record_message.assert_called_once()
+    assert not any(
+        call.args and call.args[0] == EventType.MessageAction
+        for call in send_event.call_args_list
+    )
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) is None
 
 
 def test_plugin_input_chatless_session_keeps_legacy_chat_fallback():
@@ -875,6 +1300,92 @@ def test_plugin_input_session_with_no_channel_and_no_source_does_not_match_speci
     )
 
 
+def test_plugin_input_create_or_replace_keeps_legacy_positional_timeout_and_payload():
+    """新增 prompt_message_id 不应改变旧位置参数 timeout_seconds/payload 的含义。"""
+    request = plugin_input_interaction_manager.create_or_replace(
+        "10001",
+        "demo_plugin",
+        MessageChannel.Telegram,
+        "telegram-test",
+        "tester",
+        "chat-a",
+        "prompt-id",
+        30,
+        {"step": "legacy"},
+    )
+
+    assert request.timeout_seconds == 30
+    assert request.payload == {"step": "legacy"}
+    assert request.prompt_message_id is None
+
+
+def test_plugin_input_create_or_replace_ignores_prompt_message_without_chat_id():
+    """缺少 chat_id 时不启用 prompt_message_id 绑定，避免创建永远无法消费的会话。"""
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        prompt_message_id="prompt-current",
+    )
+
+    assert request.chat_id is None
+    assert request.prompt_message_id is None
+
+
+def test_plugin_input_create_or_replace_ignores_prompt_message_for_non_telegram_channel():
+    """非 Telegram 渠道不启用 prompt_message_id 绑定，避免渠道无法上报回复 ID 时卡死。"""
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Slack,
+        source="slack-test",
+        username="tester",
+        chat_id="slack-channel",
+        prompt_message_id="prompt-current",
+    )
+
+    assert request.chat_id == "slack-channel"
+    assert request.prompt_message_id is None
+
+    consumed, status = plugin_input_interaction_manager.consume_by_user(
+        "10001",
+        MessageChannel.Slack,
+        "slack-test",
+        "slack-channel",
+    )
+    assert consumed == request
+    assert status == "active"
+
+
+def test_plugin_input_bypass_reply_check_still_requires_matching_chat_id():
+    """取消词绕过 reply_id 校验时，仍必须匹配绑定会话的 chat_id。"""
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        chat_id="chat-a",
+        prompt_message_id="prompt-current",
+    )
+
+    consumed, status = plugin_input_interaction_manager.consume_by_user(
+        "10001",
+        MessageChannel.Telegram,
+        "telegram-test",
+        "chat-b",
+        bypass_reply_check=True,
+    )
+
+    assert consumed is None
+    assert status is None
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+    ) == request
+
+
 def test_plugin_input_specific_session_replaces_overlapping_no_channel_session():
     """同用户创建具体渠道会话时，应替换重叠的无渠道会话，避免下一条消息被连环接管。"""
     old_request = plugin_input_interaction_manager.create_or_replace(
@@ -909,6 +1420,46 @@ def test_plugin_input_session_pop_by_user_consumes_once():
         source="telegram-test",
         username="tester",
     )
+
+    assert plugin_input_interaction_manager.pop_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test"
+    ) == request
+    assert plugin_input_interaction_manager.pop_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test"
+    ) is None
+
+
+def test_plugin_input_session_pop_by_user_ignores_prompt_message_binding():
+    """主动清理会话时不应要求提供 ForceReply 的 reply_to_message_id。"""
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        prompt_message_id="prompt-current",
+    )
+
+    assert plugin_input_interaction_manager.pop_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test"
+    ) == request
+    assert plugin_input_interaction_manager.get_by_user(
+        "10001", MessageChannel.Telegram, "telegram-test"
+    ) is None
+
+
+def test_plugin_input_session_pop_by_user_removes_expired_prompt_session():
+    """主动清理已过期会话时，也应移除过期表中的绑定 ForceReply 会话。"""
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="10001",
+        plugin_id="demo_plugin",
+        channel=MessageChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        prompt_message_id="prompt-current",
+        timeout_seconds=60,
+    )
+    request.created_at = datetime.now() - timedelta(seconds=61)
 
     assert plugin_input_interaction_manager.pop_by_user(
         "10001", MessageChannel.Telegram, "telegram-test"
