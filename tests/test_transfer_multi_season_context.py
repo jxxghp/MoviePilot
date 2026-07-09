@@ -113,6 +113,51 @@ def test_multi_season_context_maps_second_directory_with_tilde_range():
     assert meta.season_episode == "S02 E04"
 
 
+def test_multi_season_context_keeps_dot_separated_root_directory():
+    """
+    Dot-separated release names may look like file paths; they still need to be
+    treated as torrent root directories when the source item is a directory.
+    """
+    root = "/downloads/Placeholder.Series.Epsilon.S01-S02.1080p"
+    first_season = (
+        f"{root}/Placeholder.Series.Epsilon.Part.One/"
+        "Placeholder Series Epsilon [02][1080p].mkv"
+    )
+    second_season = (
+        f"{root}/Placeholder.Series.Epsilon.Part.Two/"
+        "Placeholder Series Epsilon [14][1080p].mkv"
+    )
+    context = TransferChain._build_multi_season_context(
+        download_history=_history(
+            root,
+            "S01-S02",
+            "Placeholder Series Epsilon S01-S02 1080p",
+        ),
+        file_items=[(_fileitem(first_season), False), (_fileitem(second_season), False)],
+        source_fileitem=_fileitem(root, item_type="dir"),
+    )
+
+    meta = MetaInfoPath(Path(second_season))
+    TransferChain._apply_multi_season_context(meta, Path(second_season), context)
+    TransferChain._remap_absolute_episode(
+        meta, context.source_seasons, _mediainfo(12, 12), Path(second_season)
+    )
+
+    assert context.top_dir_seasons["Placeholder.Series.Epsilon.Part.Two"] == 2
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 2
+    assert meta.season_episode == "S02 E02"
+
+
+def test_multi_season_context_does_not_expand_enumerated_seasons():
+    """
+    Enumerated seasons are not continuous ranges; S01&S03 must not imply S02.
+    """
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01&S03") == (1, 3)
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01,S03") == (1, 3)
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01-S03") == (1, 2, 3)
+
+
 def test_multi_season_context_uses_explicit_chinese_season_marker():
     """
     When a file has an explicit Chinese season marker, that local marker wins

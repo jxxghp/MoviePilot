@@ -2639,9 +2639,18 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         seasons: set[int] = set()
         merged_text = "\n".join(str(text or "") for text in texts)
         for pattern in _SEASON_RANGE_RE_LIST:
-            for match in pattern.findall(merged_text):
-                start, end = match[:2] if isinstance(match, tuple) else (None, None)
-                seasons.update(cls._season_range_to_numbers(start, end))
+            for match in pattern.finditer(merged_text):
+                start, end = match.group(1), match.group(2)
+                separator = merged_text[match.end(1):match.start(2)]
+                if re.search(r"[-~]|至|到|\bto\b", separator, re.IGNORECASE):
+                    seasons.update(cls._season_range_to_numbers(start, end))
+                    continue
+
+                begin = cls._cn_number_to_int(start)
+                finish = cls._cn_number_to_int(end)
+                seasons.update(
+                    season for season in (begin, finish) if season is not None
+                )
         return tuple(sorted(seasons))
 
     @classmethod
@@ -2753,7 +2762,19 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             source_path,
         )
         source_root = cls._normalize_posix_path(history_path or source_path)
-        if source_root.suffix:
+        source_root_is_file = (
+                getattr(source_fileitem, "type", None) == "file"
+                and source_path is not None
+                and source_root == cls._normalize_posix_path(source_path)
+        )
+        if not source_root_is_file:
+            source_root_is_file = any(
+                item
+                and item.type == "file"
+                and cls._normalize_posix_path(item.path) == source_root
+                for item, _ in file_items or []
+            )
+        if source_root_is_file:
             source_root = source_root.parent
 
         top_dirs: set[str] = set()
@@ -3163,7 +3184,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             """
             downloadhis = DownloadHistoryOper()
             if download_hash:
-                return downloadhis.get_by_hash(download_hash)
+                download_history = downloadhis.get_by_hash(download_hash)
+                if download_history:
+                    return download_history
 
             if fileitem and fileitem.path:
                 source_path = Path(fileitem.path).as_posix()
@@ -3178,7 +3201,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     downloadhis=downloadhis,
                     file_path=Path(candidate_item.path),
                     bluray_dir=candidate_bluray_dir,
-                    download_hash=download_hash,
+                    download_hash=None,
                 )
                 if download_history:
                     return download_history
