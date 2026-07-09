@@ -167,6 +167,10 @@ def test_multi_season_context_does_not_expand_enumerated_seasons():
     assert TransferChain._parse_multi_season_numbers("Placeholder S01~02") == (1, 2)
     assert TransferChain._parse_multi_season_numbers("Season 1 - 12 Episodes") == ()
     assert TransferChain._parse_multi_season_numbers("Placeholder S01-12 EP") == ()
+    assert TransferChain._parse_multi_season_numbers("Placeholder S01-12.EP") == ()
+    assert TransferChain._parse_multi_season_numbers(
+        "Placeholder Season 1-12[Episodes]"
+    ) == ()
     assert TransferChain._parse_multi_season_numbers(
         "Placeholder \u7b2c1\u5b63-\u7b2c3\u5b63"
     ) == (1, 2, 3)
@@ -369,6 +373,30 @@ def test_multi_season_context_keeps_zero_season_marker():
 
     assert meta.begin_season == 0
     assert meta.begin_episode == 1
+
+
+def test_multi_season_context_preserves_zero_season_without_episode_catalog():
+    """
+    S00 can be carried by metadata even when the episode catalog lacks specials;
+    it must not be remapped through normal seasons.
+    """
+    source = "/downloads/[ReleaseGroup] Placeholder Series Omicron [02][1080p].mkv"
+    meta = MetaInfoPath(Path(source))
+    meta.begin_season = 0
+    meta.end_season = None
+    meta.total_season = 1
+    meta.begin_episode = 2
+    meta.end_episode = None
+    meta.total_episode = 1
+
+    changed = TransferChain._remap_absolute_episode(
+        meta, (0, 1), _mediainfo(12), Path(source)
+    )
+
+    assert changed is False
+    assert meta.begin_season == 0
+    assert meta.begin_episode == 2
+    assert meta.season_episode == "S00 E02"
 
 
 def test_multi_season_context_keeps_explicit_season_local_episode():

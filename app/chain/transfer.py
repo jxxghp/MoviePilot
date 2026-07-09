@@ -125,7 +125,7 @@ _CN_NUMBER_MAP = {
     "十": 10,
 }
 _CN_NUMBER_RE = r"[0-9一二两三四五六七八九十]{1,3}"
-_SEASON_RANGE_TRAILING_RE = r"(?!\s*(?:Episodes?|EP(?:isodes?)?|[集话話幕]))"
+_SEASON_RANGE_TRAILING_RE = r"(?![\s._\-\[\]()（）]*(?:Episodes?|EP(?:isodes?)?|[集话話幕]))"
 _SEASON_RANGE_RE_LIST = (
     re.compile(
         r"(?:^|[^A-Za-z0-9])(?:TV)?S(?:eason)?\s*0*([1-9]\d?)\s*"
@@ -3116,7 +3116,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         mapped_season, mapped_episode = mapped_begin
         if (
-                meta.begin_season
+                meta.begin_season is not None
                 and meta.begin_season != 1
                 and mapped_season != meta.begin_season
         ):
