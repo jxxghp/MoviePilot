@@ -342,8 +342,8 @@ def test_telegram_module_passes_parse_mode_to_client():
     assert client.send_msg.call_args.kwargs["parse_mode"] == "HTML"
 
 
-def test_telegram_module_plain_post_message_does_not_edit_source_message():
-    """普通通知携带来源消息 ID 时也应发送新消息，避免误编辑用户消息。"""
+def test_telegram_module_plain_post_message_keeps_chat_without_editing_source_message():
+    """普通通知应保留原会话目标，同时避免把来源消息 ID 当成编辑目标。"""
     module = TelegramModule()
     client = Mock()
 
@@ -370,7 +370,7 @@ def test_telegram_module_plain_post_message_does_not_edit_source_message():
     client.send_msg.assert_called_once()
     kwargs = client.send_msg.call_args.kwargs
     assert kwargs["original_message_id"] is None
-    assert kwargs["original_chat_id"] is None
+    assert kwargs["original_chat_id"] == "chat-a"
 
 
 def test_telegram_module_passes_force_reply_to_client():
