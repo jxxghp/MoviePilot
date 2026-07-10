@@ -74,7 +74,8 @@ class CookieHelper:
                 return page.content()
             except Exception as e:
                 if i >= retries - 1:
-                    raise
+                    logger.error(f"获取页面源码失败：{str(e)}")
+                    return None
                 logger.warning(f"获取页面源码失败：{str(e)}，{interval}秒后重试 ({i + 1}/{retries - 1})")
                 time.sleep(interval)
         return None
@@ -211,7 +212,10 @@ class CookieHelper:
                 if "verify" in page.url:
                     if not otp_code:
                         return None, None, "需要二次验证码"
-                    html = etree.HTML(self.get_page_content(page))
+                    html_text = self.get_page_content(page)
+                    if not html_text:
+                        return None, None, "获取网页源码失败"
+                    html = etree.HTML(html_text)
                     for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
                         if html.xpath(xpath):
                             try:
