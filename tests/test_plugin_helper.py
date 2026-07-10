@@ -1534,22 +1534,50 @@ class TestPluginHelper:
         assert "" == message
         assert seen_versions
 
-    def test_install_local_delegates_local_repo_url(self, monkeypatch):
+    def test_install_local_copies_runtime_assets_without_build_dependencies(self, monkeypatch, tmp_path):
         """
-        local:// 来源由本地插件安装路径处理，不访问远端仓库。
+        local:// 来源保留运行资产，但不把本地前端构建依赖复制到运行目录。
         """
         try:
             from app.helper.plugin import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
-        helper = PluginHelper()
-        monkeypatch.setattr(helper, "install_local", lambda pid, repo_url, force_install=False: (True, f"{pid}:{repo_url}"))
+        repo_path = tmp_path / "local-plugins"
+        source_dir = repo_path / "plugins.v2" / PLUGIN_ID.lower()
+        remote_entry = source_dir / "dist" / "assets" / "remoteEntry.js"
+        remote_entry.parent.mkdir(parents=True)
+        remote_entry.write_text("export default {}\n", encoding="utf-8")
+        dependency_file = source_dir / "node_modules" / "example" / "index.js"
+        dependency_file.parent.mkdir(parents=True)
+        dependency_file.write_text("module.exports = {}\n", encoding="utf-8")
 
-        success, message = helper.install(PLUGIN_ID, f"local://{PLUGIN_ID}?path=/tmp/plugins")
+        runtime_root = tmp_path / "runtime-plugins"
+        helper = PluginHelper()
+        monkeypatch.setattr(
+            helper,
+            "get_local_plugin_candidate",
+            lambda *_args, **_kwargs: {
+                "path": source_dir,
+                "repo_path": repo_path,
+                "package_version": "v2",
+                "version": "1.0.0",
+            },
+        )
+        monkeypatch.setattr("app.helper.plugin.PLUGIN_DIR", runtime_root)
+        monkeypatch.setattr(helper, "refresh_persistent_plugin_backup", lambda _pid: True)
+
+        success, message = helper.install(
+            PLUGIN_ID,
+            helper.make_local_repo_url(PLUGIN_ID, repo_path, "v2"),
+            force_install=True,
+        )
 
         assert success
-        assert message.startswith(f"{PLUGIN_ID}:local://{PLUGIN_ID}")
+        assert "" == message
+        runtime_dir = runtime_root / PLUGIN_ID.lower()
+        assert (runtime_dir / "dist" / "assets" / "remoteEntry.js").is_file()
+        assert not (runtime_dir / "node_modules").exists()
 
     def test_install_release_download_failure_falls_back_to_filelist(self, monkeypatch):
         """

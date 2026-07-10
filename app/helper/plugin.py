@@ -758,7 +758,7 @@ class PluginHelper(metaclass=WeakSingleton):
                     source_dir,
                     dest_dir,
                     dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store", "node_modules")
                 )
                 return True, ""
             except Exception as e:
