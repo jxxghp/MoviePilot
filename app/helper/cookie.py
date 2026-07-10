@@ -69,8 +69,16 @@ class CookieHelper:
         :return: 页面源码
         """
         for i in range(retries):
+            # 等待加载失败不代表源码不可读取，最后一次等待失败时仍尝试直接获取源码
             try:
                 page.wait_for_load_state("domcontentloaded", timeout=10 * 1000)
+            except Exception as e:
+                if i < retries - 1:
+                    logger.warning(f"等待页面加载完成失败：{str(e)}，{interval}秒后重试 ({i + 1}/{retries - 1})")
+                    time.sleep(interval)
+                    continue
+                logger.warning(f"等待页面加载完成失败：{str(e)}，尝试直接获取源码")
+            try:
                 return page.content()
             except Exception as e:
                 if i >= retries - 1:
@@ -121,6 +129,8 @@ class CookieHelper:
                 return None, None, "获取源码失败"
             # 查找用户名输入框
             html = etree.HTML(html_text)
+            if html is None:
+                return None, None, "解析网页源码失败"
             try:
                 username_xpath = None
                 for xpath in self._SITE_LOGIN_XPATH.get("username"):
@@ -216,6 +226,8 @@ class CookieHelper:
                     if not html_text:
                         return None, None, "获取网页源码失败"
                     html = etree.HTML(html_text)
+                    if html is None:
+                        return None, None, "解析网页源码失败"
                     for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
                         if html.xpath(xpath):
                             try:
@@ -238,7 +250,10 @@ class CookieHelper:
                     return self.parse_cookies(page.context.cookies()), \
                         page.evaluate("() => window.navigator.userAgent"), ""
                 else:
-                    # 读取错误信息
+                    # 从登录后的页面读取错误信息
+                    html = etree.HTML(html_text)
+                    if html is None:
+                        return None, None, "登录失败"
                     error_xpath = None
                     for xpath in self._SITE_LOGIN_XPATH.get("error"):
                         if html.xpath(xpath):
