@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -9,7 +10,7 @@ from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.helper.interaction import media_interaction_manager, plugin_input_interaction_manager
 from app.schemas import CommingMessage, TransferDirectoryConf
-from app.schemas.types import EventType, MediaType, MessageChannel
+from app.schemas.types import ChainEventType, EventType, MediaType, MessageChannel
 
 
 @pytest.fixture(autouse=True)
@@ -1469,8 +1470,24 @@ def test_plugin_input_session_pop_by_user_removes_expired_prompt_session():
     ) is None
 
 
+def _mock_running_plugin(plugin_manager, plugin_id: str, plugin_cls: type):
+    plugin_obj = plugin_cls()
+    if not callable(getattr(plugin_obj, "get_state", None)):
+        plugin_obj.get_state = lambda: True
+    plugin_manager.return_value.plugins = {plugin_id: plugin_cls}
+    plugin_manager.return_value.running_plugins = {plugin_id: plugin_obj}
+
+
+def _handler_binding_key(handler_identifier: str, handler):
+    return (
+        handler_identifier,
+        id(EventManager._EventManager__normalize_handler_callable(handler)),
+    )
+
+
 def test_target_plugin_filter_only_allows_target_plugin_handler():
     """带目标插件的输入事件不应投递给其他插件或模块级处理器。"""
+    manager = EventManager()
 
     def demo_plugin_handler(_event):
         return None
@@ -1484,20 +1501,1430 @@ def test_target_plugin_filter_only_allows_target_plugin_handler():
     def module_handler(_event):
         return None
 
-    should_dispatch = EventManager._EventManager__should_dispatch_to_target_plugin
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
     handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_module = ".".join(handler_id.split(".")[:-2])
+    plugin_class = type("demo_plugin", (), {"handle": demo_plugin_handler, "__module__": handler_module})
 
-    assert should_dispatch(
-        demo_plugin_handler, "tests.plugins.demo_plugin.handle", "demo_plugin"
-    ) is True
-    assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
-    assert should_dispatch(
-        demo_plugin_handler, "tests.plugins.other_plugin.handle", "demo_plugin"
-    ) is False
-    assert should_dispatch(
-        other_plugin_handler, "tests.plugins.other_plugin.handle", "demo_plugin"
-    ) is False
-    assert should_dispatch(module_handler, "tests.module_handler", "demo_plugin") is False
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", plugin_class)
+            manager.bind_plugin_event_handlers("demo_plugin", plugin_class)
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
+            assert should_dispatch(
+                demo_plugin_handler, f"{handler_module}.other_plugin.handle", "demo_plugin"
+            ) is False
+            assert should_dispatch(
+                other_plugin_handler, f"{handler_module}.other_plugin.handle", "demo_plugin"
+            ) is False
+            assert should_dispatch(module_handler, "tests.module_handler", "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_rejects_same_named_handler_from_other_module():
+    """其他模块中的同名插件类处理器不应通过定向过滤。"""
+    manager = EventManager()
+
+    def spoofed_handler(_event):
+        return None
+
+    spoofed_handler.__qualname__ = "demo_plugin.handle"
+    spoofed_handler.__module__ = "app.plugins.other_plugin"
+    target_plugin_class = type("demo_plugin", (), {"__module__": "app.plugins.demo_plugin"})
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    with patch("app.core.plugin.PluginManager") as plugin_manager:
+        plugin_manager.return_value.plugins = {"demo_plugin": target_plugin_class}
+
+        assert should_dispatch(
+            spoofed_handler, "app.plugins.other_plugin.demo_plugin.handle", "demo_plugin"
+        ) is False
+
+
+def test_target_plugin_filter_rejects_handler_object_from_other_module():
+    """注册标识匹配但处理器对象来自其他模块时仍应拒绝投递。"""
+    manager = EventManager()
+
+    def spoofed_handler(_event):
+        return None
+
+    spoofed_handler.__qualname__ = "demo_plugin.handle"
+    spoofed_handler.__module__ = "app.plugins.other_plugin"
+    target_plugin_class = type("demo_plugin", (), {"__module__": "app.plugins.demo_plugin"})
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    with patch("app.core.plugin.PluginManager") as plugin_manager:
+        plugin_manager.return_value.plugins = {"demo_plugin": target_plugin_class}
+
+        assert should_dispatch(
+            spoofed_handler, "app.plugins.demo_plugin.demo_plugin.handle", "demo_plugin"
+        ) is False
+
+
+def test_target_plugin_filter_rejects_when_target_plugin_is_not_loaded():
+    """插件管理器没有目标插件记录时应 fail-closed。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin_handler.__module__ = "app.plugins.demo_plugin"
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    with patch("app.core.plugin.PluginManager") as plugin_manager:
+        plugin_manager.return_value.plugins = {}
+
+        assert should_dispatch(
+            demo_plugin_handler, "app.plugins.demo_plugin.demo_plugin.handle", "demo_plugin"
+        ) is False
+
+
+def test_target_plugin_filter_allows_clone_plugin_handler():
+    """分身插件类名和模块均匹配时应通过定向过滤。"""
+    manager = EventManager()
+
+    def clone_plugin_handler(_event):
+        return None
+
+    clone_plugin_handler.__qualname__ = "demo_pluginclone.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(clone_plugin_handler)
+    handler_module = ".".join(handler_id.split(".")[:-2])
+    clone_plugin_class = type(
+        "demo_pluginclone", (), {"handle": clone_plugin_handler, "__module__": handler_module}
+    )
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, clone_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_pluginclone", clone_plugin_class)
+            manager.bind_plugin_event_handlers("demo_pluginclone", clone_plugin_class)
+
+            assert should_dispatch(
+                clone_plugin_handler,
+                handler_id,
+                "demo_pluginclone",
+            ) is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, clone_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_pluginclone")
+
+
+def test_target_plugin_filter_allows_reimported_plugin_class():
+    """热重载后的新类对象只要模块名一致仍应通过定向过滤。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_module = ".".join(handler_id.split(".")[:-2])
+    original_plugin_class = type(
+        "demo_plugin", (), {"handle": demo_plugin_handler, "__module__": handler_module}
+    )
+    reimported_plugin_class = type(
+        "demo_plugin", (), {"handle": demo_plugin_handler, "__module__": handler_module}
+    )
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    assert original_plugin_class is not reimported_plugin_class
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", reimported_plugin_class)
+            manager.bind_plugin_event_handlers("demo_plugin", reimported_plugin_class)
+
+            assert should_dispatch(
+                demo_plugin_handler, handler_id, "demo_plugin"
+            ) is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_uses_bound_plugin_metadata_when_handler_module_changes():
+    """处理器模块属性被改写时，应以加载器绑定的插件归属为准。"""
+
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type("demo_plugin", (), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    original_module = demo_plugin_handler.__module__
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        demo_plugin_handler.__module__ = "app.plugins.other_plugin"
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", demo_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
+    finally:
+        demo_plugin_handler.__module__ = original_module
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_rejects_spoofed_handler_bound_to_other_plugin():
+    """类名和模块看似匹配目标时，仍应拒绝归属到其他插件的处理器。"""
+
+    manager = EventManager()
+
+    def spoofed_handler(_event):
+        return None
+
+    spoofed_handler.__qualname__ = "demo_plugin.handle"
+    other_plugin = type("other_plugin", (), {"handle": spoofed_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(spoofed_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+    target_plugin_class = type(
+        "demo_plugin", (), {"__module__": spoofed_handler.__module__}
+    )
+
+    manager.add_event_listener(EventType.MessageAction, spoofed_handler)
+    try:
+        manager.bind_plugin_event_handlers("other_plugin", other_plugin)
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": target_plugin_class}
+
+            assert should_dispatch(spoofed_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, spoofed_handler)
+        manager.unbind_plugin_event_handlers("other_plugin")
+
+
+def test_target_plugin_filter_rejects_bind_from_untrusted_plugin_class():
+    """绑定入口不应接受插件管理器未确认的同名插件类。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    trusted_plugin = type("demo_plugin", (), {})
+    untrusted_plugin = type("demo_plugin", (), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": trusted_plugin}
+            manager.bind_plugin_event_handlers("demo_plugin", untrusted_plugin)
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_rejects_handler_on_wrong_plugin_method_name():
+    """处理器对象只挂在目标插件其他属性上时，不应当成目标方法归属。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "other_handle": demo_plugin_handler,
+            "get_state": lambda self: True,
+        },
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", demo_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_rejects_bound_method_from_stale_plugin_instance():
+    """绑定方法来自旧插件实例时，即使函数对象相同也应拒绝定向投递。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_self, _event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": demo_plugin_handler,
+            "get_state": lambda self: True,
+        },
+    )
+    stale_plugin_obj = demo_plugin()
+    running_plugin_obj = demo_plugin()
+    handler = stale_plugin_obj.handle
+    handler_id = EventManager._EventManager__get_handler_identifier(handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+            plugin_manager.return_value.running_plugins = {"demo_plugin": running_plugin_obj}
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_allows_bound_method_from_running_plugin_instance():
+    """绑定方法来自当前运行插件实例时，应保留正常定向投递。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_self, _event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": demo_plugin_handler,
+            "get_state": lambda self: True,
+        },
+    )
+    running_plugin_obj = demo_plugin()
+    handler = running_plugin_obj.handle
+    handler_id = EventManager._EventManager__get_handler_identifier(handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+            plugin_manager.return_value.running_plugins = {"demo_plugin": running_plugin_obj}
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(handler, handler_id, "demo_plugin") is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_plugin_manager_start_binds_target_plugin_event_handlers():
+    """插件管理器加载插件类后，应自动回填目标事件处理器归属。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    original_module = demo_plugin_handler.__module__
+
+    class DemoPluginBase:
+        plugin_name = "Demo"
+        plugin_version = "1.0"
+        name = "Demo"
+
+        def init_plugin(self, _config):
+            return None
+
+        def get_state(self):
+            return True
+
+    demo_plugin = type(
+        "demo_plugin",
+        (DemoPluginBase,),
+        {"handle": demo_plugin_handler, "__module__": original_module},
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = event_manager._EventManager__should_dispatch_to_target_plugin
+
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.SystemConfigOper") as system_config_oper, patch.object(
+            plugin_module.PluginManager, "_load_selective_plugins", return_value=[demo_plugin]
+        ), patch.object(
+            plugin_manager, "_PluginManager__set_and_check_auth_level", return_value=True
+        ), patch.object(
+            plugin_manager, "get_plugin_config", return_value={}
+        ):
+            system_config_oper.return_value.get.return_value = ["demo_plugin"]
+            plugin_manager.start("demo_plugin")
+
+        demo_plugin_handler.__module__ = "app.plugins.other_plugin"
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
+    finally:
+        demo_plugin_handler.__module__ = original_module
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_plugin_manager_start_unbinds_target_handlers_when_auth_fails():
+    """插件认证失败时，应清理该插件旧的定向处理器绑定。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    original_module = demo_plugin_handler.__module__
+
+    class DemoPluginBase:
+        plugin_name = "Demo"
+        plugin_version = "1.0"
+        name = "Demo"
+
+        def get_state(self):
+            return True
+
+    demo_plugin = type(
+        "demo_plugin",
+        (DemoPluginBase,),
+        {"handle": demo_plugin_handler, "__module__": original_module},
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = event_manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": demo_plugin()}
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        event_manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
+
+        with patch("app.core.plugin.SystemConfigOper") as system_config_oper, patch.object(
+            plugin_module.PluginManager, "_load_selective_plugins", return_value=[demo_plugin]
+        ), patch.object(
+            plugin_manager, "_PluginManager__set_and_check_auth_level", return_value=False
+        ):
+            system_config_oper.return_value.get.return_value = ["demo_plugin"]
+            plugin_manager.start("demo_plugin")
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_add_event_listener_binds_handler_when_plugin_is_already_loaded():
+    """插件加载后动态注册或重注册处理器时，应立即恢复插件归属绑定。"""
+    from app.core.plugin import PluginManager
+
+    manager = EventManager()
+    plugin_manager = PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {"handle": demo_plugin_handler, "get_state": lambda self: True},
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    original_module = demo_plugin_handler.__module__
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": demo_plugin()}
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        demo_plugin_handler.__module__ = "app.plugins.other_plugin"
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
+    finally:
+        demo_plugin_handler.__module__ = original_module
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_add_event_listener_keeps_registration_when_plugin_manager_lookup_fails():
+    """插件管理器查询异常时，动态监听器注册仍应成功。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+
+    try:
+        with patch("app.core.plugin.PluginManager", side_effect=RuntimeError("plugin manager unavailable")):
+            manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+        assert handler_id in manager._EventManager__broadcast_subscribers[EventType.MessageAction]
+        assert handler_key not in manager._EventManager__handler_plugin_ids
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+
+def test_add_event_listener_keeps_existing_binding_when_plugin_manager_lookup_fails():
+    """动态重注册无法查询插件管理器时，不应清理已有插件归属绑定。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": demo_plugin_handler,
+            "get_state": lambda self: True,
+        },
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", demo_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+        original_binding = manager._EventManager__handler_plugin_ids[handler_key]
+
+        with patch("app.core.plugin.PluginManager", side_effect=RuntimeError("lookup failed")):
+            manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+        assert manager._EventManager__handler_plugin_ids[handler_key] == original_binding
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_add_event_listener_clears_existing_binding_when_handler_no_longer_belongs_to_plugin():
+    """动态重注册确认处理器不再属于插件类时，应清理陈旧归属绑定。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    old_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": demo_plugin_handler,
+            "get_state": lambda self: True,
+        },
+    )
+    new_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "get_state": lambda self: True,
+        },
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", old_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", old_plugin)
+        assert handler_key in manager._EventManager__handler_plugin_ids
+
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", new_plugin)
+            manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+        assert handler_key not in manager._EventManager__handler_plugin_ids
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_add_event_listener_binds_loaded_handler_after_releasing_lock():
+    """动态绑定查询应在订阅表写锁释放后执行，避免插件加载重入死锁。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    lock_states = []
+
+    def record_lock_state(_handler_identifier, _handler):
+        lock_states.append(manager._EventManager__lock.locked())
+
+    try:
+        with patch.object(
+            manager,
+            "_EventManager__bind_loaded_plugin_event_handler",
+            side_effect=record_lock_state,
+        ):
+            manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+        assert lock_states == [False]
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+
+def test_remove_event_listener_keeps_binding_when_handler_still_registered():
+    """同一处理器仍订阅其他事件时，退订单个事件不应清理插件归属绑定。"""
+    from app.core.plugin import PluginManager
+
+    manager = EventManager()
+    plugin_manager = PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {"handle": demo_plugin_handler, "get_state": lambda self: True},
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": demo_plugin()}
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    manager.add_event_listener(ChainEventType.NameRecognize, demo_plugin_handler)
+    try:
+        manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+        manager.remove_event_listener(ChainEventType.NameRecognize, demo_plugin_handler)
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_remove_event_listener_clears_only_removed_handler_object_binding():
+    """同一标识仍有其他对象订阅时，应只清理已退订对象的归属。"""
+    manager = EventManager()
+
+    def old_handler(_event):
+        return None
+
+    def new_handler(_event):
+        return None
+
+    old_handler.__qualname__ = "demo_plugin.handle"
+    new_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(old_handler)
+    old_key = _handler_binding_key(handler_id, old_handler)
+    new_key = _handler_binding_key(handler_id, new_handler)
+
+    manager.add_event_listener(EventType.MessageAction, old_handler)
+    manager.add_event_listener(ChainEventType.NameRecognize, new_handler)
+    try:
+        manager._EventManager__handler_plugin_ids[old_key] = "demo_plugin"
+        manager._EventManager__handler_plugin_ids[new_key] = "demo_plugin"
+
+        manager.remove_event_listener(EventType.MessageAction, old_handler)
+
+        assert old_key not in manager._EventManager__handler_plugin_ids
+        assert manager._EventManager__handler_plugin_ids[new_key] == "demo_plugin"
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, old_handler)
+        manager.remove_event_listener(ChainEventType.NameRecognize, new_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_bind_plugin_event_handlers_does_not_steal_shared_handler_from_parsed_plugin():
+    """其他插件复用同一函数对象时，不应覆盖处理器解析出的插件归属。"""
+    manager = EventManager()
+
+    def shared_handler(_event):
+        return None
+
+    shared_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {"handle": shared_handler, "get_state": lambda self: True},
+    )
+    other_plugin = type(
+        "other_plugin",
+        (),
+        {"handle": shared_handler, "get_state": lambda self: True},
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(shared_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, shared_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {
+                "demo_plugin": demo_plugin,
+                "other_plugin": other_plugin,
+            }
+            plugin_manager.return_value.running_plugins = {
+                "demo_plugin": demo_plugin(),
+                "other_plugin": other_plugin(),
+            }
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+            manager.bind_plugin_event_handlers("other_plugin", other_plugin)
+
+            assert should_dispatch(shared_handler, handler_id, "demo_plugin") is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, shared_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+        manager.unbind_plugin_event_handlers("other_plugin")
+
+
+def test_add_event_listener_binds_loaded_handler_by_parsed_plugin_id():
+    """动态注册共享处理器时，应按处理器类名绑定目标插件而非首个匹配类。"""
+    from app.core.plugin import PluginManager
+
+    manager = EventManager()
+    plugin_manager = PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def shared_handler(_event):
+        return None
+
+    shared_handler.__qualname__ = "demo_plugin.handle"
+    other_plugin = type(
+        "other_plugin",
+        (),
+        {"handle": shared_handler, "get_state": lambda self: True},
+    )
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {"handle": shared_handler, "get_state": lambda self: True},
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(shared_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {
+        "other_plugin": other_plugin,
+        "demo_plugin": demo_plugin,
+    }
+    plugin_manager._running_plugins = {
+        "other_plugin": other_plugin(),
+        "demo_plugin": demo_plugin(),
+    }
+    manager.add_event_listener(EventType.MessageAction, shared_handler)
+    try:
+        assert should_dispatch(shared_handler, handler_id, "demo_plugin") is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, shared_handler)
+        manager.unbind_plugin_event_handlers("other_plugin")
+        manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_target_plugin_filter_rejects_stale_handler_object_after_rebind():
+    """同一标识被新处理器重绑后，旧处理器对象不应继续通过定向过滤。"""
+    manager = EventManager()
+
+    def old_handler(_event):
+        return None
+
+    def new_handler(_event):
+        return None
+
+    old_handler.__qualname__ = "demo_plugin.handle"
+    new_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(old_handler)
+    old_plugin = type("demo_plugin", (), {"handle": old_handler})
+    new_plugin = type("demo_plugin", (), {"handle": new_handler})
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, old_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", old_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", old_plugin)
+            manager.add_event_listener(EventType.MessageAction, new_handler)
+            _mock_running_plugin(plugin_manager, "demo_plugin", new_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", new_plugin)
+
+            assert should_dispatch(old_handler, handler_id, "demo_plugin") is False
+            assert should_dispatch(new_handler, handler_id, "demo_plugin") is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, new_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_allows_inherited_plugin_handler():
+    """插件类继承的处理器也应能绑定到真实插件归属。"""
+    manager = EventManager()
+
+    def inherited_handler(_event):
+        return None
+
+    inherited_handler.__qualname__ = "demo_plugin.handle"
+    base_plugin = type("BasePlugin", (), {"handle": inherited_handler})
+    demo_plugin = type("demo_plugin", (base_plugin,), {})
+    handler_id = EventManager._EventManager__get_handler_identifier(inherited_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, inherited_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", demo_plugin)
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(inherited_handler, handler_id, "demo_plugin") is True
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, inherited_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_rejects_when_target_plugin_is_not_running():
+    """目标插件只有类记录但没有运行实例时，应 fail-closed。"""
+    from app.core.plugin import PluginManager
+
+    manager = EventManager()
+    plugin_manager = PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type("demo_plugin", (), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {}
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_target_plugin_filter_rejects_when_target_plugin_is_disabled():
+    """目标插件实例仍在运行表但已禁用时，应 fail-closed。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": demo_plugin_handler,
+            "get_state": lambda self: False,
+        },
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+            plugin_manager.return_value.running_plugins = {"demo_plugin": demo_plugin()}
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_rejects_when_target_plugin_state_lookup_fails():
+    """无法确认目标插件启用状态时，应 fail-closed。"""
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    def get_state(_self):
+        raise RuntimeError("state unavailable")
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": demo_plugin_handler,
+            "get_state": get_state,
+        },
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+            plugin_manager.return_value.running_plugins = {"demo_plugin": demo_plugin()}
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_bind_plugin_event_handlers_clears_stale_binding_when_handler_removed():
+    """热更新后的插件类移除处理器时，应清理同插件旧绑定。"""
+    from app.core.plugin import PluginManager
+
+    manager = EventManager()
+    plugin_manager = PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    old_plugin = type("demo_plugin", (), {"handle": demo_plugin_handler})
+    new_plugin = type("demo_plugin", (), {})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": old_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": old_plugin()}
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        manager.bind_plugin_event_handlers("demo_plugin", old_plugin)
+        plugin_manager._plugins = {"demo_plugin": new_plugin}
+        plugin_manager._running_plugins = {"demo_plugin": new_plugin()}
+        manager.bind_plugin_event_handlers("demo_plugin", new_plugin)
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_plugin_manager_stop_unbinds_target_handlers_when_stop_raises():
+    """停止插件过程抛错时，也应清理定向事件处理器归属。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type("demo_plugin", (), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    should_dispatch = event_manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": demo_plugin()}
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        event_manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+        with patch.object(
+            plugin_manager, "_PluginManager__stop_plugin", side_effect=RuntimeError("stop failed")
+        ), pytest.raises(RuntimeError):
+            plugin_manager.stop("demo_plugin")
+
+        assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_plugin_manager_stop_all_keeps_bindings_for_plugins_not_attempted_after_stop_error():
+    """批量停止某个插件失败时，不应清理仍在运行且未尝试停止的其他插件绑定。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    def other_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    other_plugin_handler.__qualname__ = "other_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {"handle": demo_plugin_handler, "get_state": lambda self: True},
+    )
+    other_plugin = type(
+        "other_plugin",
+        (),
+        {"handle": other_plugin_handler, "get_state": lambda self: True},
+    )
+    demo_handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    other_handler_id = EventManager._EventManager__get_handler_identifier(other_plugin_handler)
+    should_dispatch = event_manager._EventManager__should_dispatch_to_target_plugin
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin, "other_plugin": other_plugin}
+    plugin_manager._running_plugins = {
+        "demo_plugin": demo_plugin(),
+        "other_plugin": other_plugin(),
+    }
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    event_manager.add_event_listener(EventType.MessageAction, other_plugin_handler)
+    try:
+        event_manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+        event_manager.bind_plugin_event_handlers("other_plugin", other_plugin)
+        with patch.object(
+            plugin_manager, "_PluginManager__stop_plugin", side_effect=RuntimeError("stop failed")
+        ), pytest.raises(RuntimeError):
+            plugin_manager.stop()
+
+        assert should_dispatch(demo_plugin_handler, demo_handler_id, "demo_plugin") is False
+        assert should_dispatch(other_plugin_handler, other_handler_id, "other_plugin") is True
+    finally:
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.remove_event_listener(EventType.MessageAction, other_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        event_manager.unbind_plugin_event_handlers("other_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_plugin_manager_start_does_not_bind_target_handlers_when_init_fails():
+    """插件实例初始化失败时，不应留下该插件的定向处理器归属绑定。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+
+    class DemoPluginBase:
+        plugin_name = "Demo"
+        plugin_version = "1.0"
+        name = "Demo"
+
+        def init_plugin(self, _config):
+            raise RuntimeError("init failed")
+
+        def get_state(self):
+            return True
+
+    demo_plugin = type("demo_plugin", (DemoPluginBase,), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.SystemConfigOper") as system_config_oper, patch.object(
+            plugin_module.PluginManager, "_load_selective_plugins", return_value=[demo_plugin]
+        ), patch.object(
+            plugin_manager, "_PluginManager__set_and_check_auth_level", return_value=True
+        ), patch.object(
+            plugin_manager, "get_plugin_config", return_value={}
+        ):
+            system_config_oper.return_value.get.return_value = ["demo_plugin"]
+            plugin_manager.start("demo_plugin")
+
+        assert handler_key not in event_manager._EventManager__handler_plugin_ids
+    finally:
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_plugin_manager_init_plugin_unbinds_target_handlers_when_init_fails():
+    """已运行插件重新初始化失败时，应清理旧的定向处理器归属。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    class DemoPluginBase:
+        def init_plugin(self, _config):
+            raise RuntimeError("init failed")
+
+        def get_state(self):
+            return True
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type("demo_plugin", (DemoPluginBase,), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": demo_plugin()}
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        event_manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+        with pytest.raises(RuntimeError, match="init failed"):
+            plugin_manager.init_plugin("demo_plugin", {})
+
+        assert handler_key not in event_manager._EventManager__handler_plugin_ids
+    finally:
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+@pytest.mark.parametrize(
+    ("plugin_state", "failure_method"),
+    [
+        ("error", None),
+        (True, "bind_plugin_event_handlers"),
+        (True, "enable_event_handler"),
+        (False, "disable_event_handler"),
+    ],
+)
+def test_plugin_manager_init_plugin_unbinds_target_handlers_when_lifecycle_step_fails(
+    plugin_state,
+    failure_method,
+):
+    """插件重配置后续生命周期步骤失败时，也应统一清理定向归属。"""
+    import app.core.plugin as plugin_module
+
+    event_manager = plugin_module.eventmanager
+    plugin_manager = plugin_module.PluginManager()
+    original_plugins = dict(plugin_manager.plugins)
+    original_running_plugins = dict(plugin_manager.running_plugins)
+
+    def demo_plugin_handler(_event):
+        return None
+
+    class DemoPluginBase:
+        def init_plugin(self, _config):
+            return None
+
+        def get_state(self):
+            if plugin_state == "error":
+                raise RuntimeError("lifecycle failed")
+            return plugin_state
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type("demo_plugin", (DemoPluginBase,), {"handle": demo_plugin_handler})
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+
+    plugin_manager._plugins = {"demo_plugin": demo_plugin}
+    plugin_manager._running_plugins = {"demo_plugin": demo_plugin()}
+    event_manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        event_manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+        failure_context = (
+            patch.object(event_manager, failure_method, side_effect=RuntimeError("lifecycle failed"))
+            if failure_method
+            else nullcontext()
+        )
+
+        with failure_context, pytest.raises(RuntimeError, match="lifecycle failed"):
+            plugin_manager.init_plugin("demo_plugin", {})
+
+        assert handler_key not in event_manager._EventManager__handler_plugin_ids
+    finally:
+        event_manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        event_manager.unbind_plugin_event_handlers("demo_plugin")
+        plugin_manager._plugins = original_plugins
+        plugin_manager._running_plugins = original_running_plugins
+
+
+def test_target_plugin_filter_returns_false_when_plugin_manager_import_fails():
+    """运行时无法导入插件管理器时，目标插件过滤应 fail-closed 而不是中断事件消费。"""
+    import builtins
+
+    manager = EventManager()
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+    original_import = builtins.__import__
+    original_binding = manager._EventManager__handler_plugin_ids.get(handler_key)
+
+    def import_or_fail(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "app.core.plugin" and fromlist == ("PluginManager",):
+            raise ImportError("plugin manager unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    try:
+        manager._EventManager__handler_plugin_ids[handler_key] = "demo_plugin"
+        with patch("builtins.__import__", side_effect=import_or_fail):
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        if original_binding is None:
+            manager._EventManager__handler_plugin_ids.pop(handler_key, None)
+        else:
+            manager._EventManager__handler_plugin_ids[handler_key] = original_binding
+
+
+def test_target_plugin_filter_returns_false_when_handler_ownership_check_fails():
+    """处理器归属校验异常时，应 fail-closed 而不是中断事件消费。"""
+    manager = EventManager()
+
+    class BrokenCallable:
+        def __getattribute__(self, name):
+            if name == "__func__":
+                raise RuntimeError("ownership unavailable")
+            return object.__getattribute__(self, name)
+
+        def __call__(self, _event):
+            return None
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "handle": BrokenCallable(),
+            "get_state": lambda self: True,
+        },
+    )
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+
+    try:
+        manager._EventManager__handler_plugin_ids[handler_key] = "demo_plugin"
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+            plugin_manager.return_value.running_plugins = {"demo_plugin": demo_plugin()}
+
+            assert should_dispatch(demo_plugin_handler, handler_id, "demo_plugin") is False
+    finally:
+        manager._EventManager__handler_plugin_ids.pop(handler_key, None)
+
+
+def test_add_event_listener_clears_stale_binding_when_handler_is_rebound():
+    """同一标识被新对象重注册时，应清理旧处理器对象的插件归属绑定。"""
+    manager = EventManager()
+
+    def old_handler(_event):
+        return None
+
+    def new_handler(_event):
+        return None
+
+    old_handler.__qualname__ = "demo_plugin.handle"
+    new_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(old_handler)
+    old_key = _handler_binding_key(handler_id, old_handler)
+    new_key = _handler_binding_key(handler_id, new_handler)
+    old_plugin = type("demo_plugin", (), {"handle": old_handler})
+    new_plugin = type("demo_plugin", (), {"handle": new_handler})
+
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", old_plugin)
+            manager.add_event_listener(EventType.MessageAction, old_handler)
+            assert manager._EventManager__handler_plugin_ids[old_key] == "demo_plugin"
+
+            _mock_running_plugin(plugin_manager, "demo_plugin", new_plugin)
+            manager.add_event_listener(EventType.MessageAction, new_handler)
+
+            assert old_key not in manager._EventManager__handler_plugin_ids
+            assert manager._EventManager__handler_plugin_ids[new_key] == "demo_plugin"
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, new_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_target_plugin_filter_returns_false_when_handler_binding_lookup_fails():
+    """目标投递过滤归一化处理器失败时，应 fail-closed 而不是中断事件消费。"""
+    manager = EventManager()
+
+    class BrokenHandler:
+        def __getattribute__(self, name):
+            if name == "__func__":
+                raise RuntimeError("handler unavailable")
+            return object.__getattribute__(self, name)
+
+        def __call__(self, _event):
+            return None
+
+    should_dispatch = manager._EventManager__should_dispatch_to_target_plugin
+    handler = BrokenHandler()
+    handler.__qualname__ = "demo_plugin.handle"
+
+    assert should_dispatch(handler, "tests.demo_plugin.handle", "demo_plugin") is False
+
+
+def test_add_event_listener_skips_plugin_binding_when_handler_scan_fails():
+    """运行期绑定插件归属扫描失败时，应保留订阅但不抛错、不留下归属绑定。"""
+    manager = EventManager()
+
+    class BrokenPluginCallable:
+        def __getattribute__(self, name):
+            if name == "__func__":
+                raise RuntimeError("plugin scan unavailable")
+            return object.__getattribute__(self, name)
+
+        def __call__(self, _event):
+            return None
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+    demo_plugin = type("demo_plugin", (), {"handle": BrokenPluginCallable()})
+
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            _mock_running_plugin(plugin_manager, "demo_plugin", demo_plugin)
+            manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+
+            assert handler_key not in manager._EventManager__handler_plugin_ids
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_bind_plugin_event_handlers_skips_broken_plugin_class_handler():
+    """批量扫描插件类时，单个异常处理器不应阻断其他真实处理器绑定。"""
+    manager = EventManager()
+
+    class BrokenPluginCallable:
+        def __getattribute__(self, name):
+            if name == "__func__":
+                raise RuntimeError("plugin scan unavailable")
+            return object.__getattribute__(self, name)
+
+        def __call__(self, _event):
+            return None
+
+    def demo_plugin_handler(_event):
+        return None
+
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+    demo_plugin = type(
+        "demo_plugin",
+        (),
+        {
+            "broken": BrokenPluginCallable(),
+            "handle": demo_plugin_handler,
+        },
+    )
+
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert manager._EventManager__handler_plugin_ids[handler_key] == "demo_plugin"
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
+
+
+def test_bind_plugin_event_handlers_skips_broken_subscriber_handler():
+    """批量绑定订阅表时，单个异常订阅处理器不应阻断其他真实处理器绑定。"""
+    manager = EventManager()
+
+    class BrokenSubscriber:
+        def __getattribute__(self, name):
+            if name == "__func__":
+                raise RuntimeError("subscriber unavailable")
+            return object.__getattribute__(self, name)
+
+        def __call__(self, _event):
+            return None
+
+    def demo_plugin_handler(_event):
+        return None
+
+    broken_handler = BrokenSubscriber()
+    broken_handler.__qualname__ = "demo_plugin.broken"
+    demo_plugin_handler.__qualname__ = "demo_plugin.handle"
+    handler_id = EventManager._EventManager__get_handler_identifier(demo_plugin_handler)
+    handler_key = _handler_binding_key(handler_id, demo_plugin_handler)
+    demo_plugin = type("demo_plugin", (), {"handle": demo_plugin_handler})
+
+    manager.add_event_listener(EventType.MessageAction, broken_handler)
+    manager.add_event_listener(EventType.MessageAction, demo_plugin_handler)
+    try:
+        with patch("app.core.plugin.PluginManager") as plugin_manager:
+            plugin_manager.return_value.plugins = {"demo_plugin": demo_plugin}
+
+            manager.bind_plugin_event_handlers("demo_plugin", demo_plugin)
+
+            assert manager._EventManager__handler_plugin_ids[handler_key] == "demo_plugin"
+    finally:
+        manager.remove_event_listener(EventType.MessageAction, broken_handler)
+        manager.remove_event_listener(EventType.MessageAction, demo_plugin_handler)
+        manager.unbind_plugin_event_handlers("demo_plugin")
 
 
 def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():

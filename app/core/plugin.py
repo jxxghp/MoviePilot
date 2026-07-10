@@ -98,6 +98,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     # 如果是插件热更新实例，这里则进行替换
                     if plugin_id in self._plugins:
                         self._plugins[plugin_id] = plugin
+                    eventmanager.unbind_plugin_event_handlers(plugin_id)
                     continue
                 # 存储Class
                 self._plugins[plugin_id] = plugin
@@ -110,10 +111,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
                 # 启用的插件才设置事件注册状态可用
                 if plugin_obj.get_state():
+                    eventmanager.bind_plugin_event_handlers(plugin_id, plugin)
                     eventmanager.enable_event_handler(plugin)
                 else:
                     eventmanager.disable_event_handler(plugin)
+                    eventmanager.unbind_plugin_event_handlers(plugin_id)
             except Exception as err:
+                eventmanager.unbind_plugin_event_handlers(plugin_id)
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
         self.clear_plugin_agent_tools_cache()
 
@@ -126,15 +130,21 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         plugin = self._running_plugins.get(plugin_id)
         if not plugin:
             return
-        # 初始化插件
-        plugin.init_plugin(conf)
-        # 检查插件状态并启用/禁用事件处理器
-        if plugin.get_state():
-            # 启用插件类的事件处理器
-            eventmanager.enable_event_handler(type(plugin))
-        else:
-            # 禁用插件类的事件处理器
-            eventmanager.disable_event_handler(type(plugin))
+        try:
+            # 初始化插件
+            plugin.init_plugin(conf)
+            # 检查插件状态并启用/禁用事件处理器
+            if plugin.get_state():
+                # 启用插件类的事件处理器
+                eventmanager.bind_plugin_event_handlers(plugin_id, type(plugin))
+                eventmanager.enable_event_handler(type(plugin))
+            else:
+                # 禁用插件类的事件处理器
+                eventmanager.disable_event_handler(type(plugin))
+                eventmanager.unbind_plugin_event_handlers(plugin_id)
+        except Exception:
+            eventmanager.unbind_plugin_event_handlers(plugin_id)
+            raise
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -162,10 +172,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 plugins = {pid: plugin_obj}
         else:
             logger.info("正在停止所有插件...")
-            plugins = self._running_plugins
+            plugins = dict(self._running_plugins)
         for plugin_id, plugin in plugins.items():
-            eventmanager.disable_event_handler(type(plugin))
-            self.__stop_plugin(plugin)
+            try:
+                eventmanager.disable_event_handler(type(plugin))
+                self.__stop_plugin(plugin)
+            finally:
+                eventmanager.unbind_plugin_event_handlers(plugin_id)
+        if pid and not plugins:
+            eventmanager.unbind_plugin_event_handlers(pid)
+        elif not pid:
+            eventmanager.unbind_plugin_event_handlers()
         # 清空对象
         if pid:
             # 清空指定插件
