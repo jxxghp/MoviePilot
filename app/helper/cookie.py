@@ -1,4 +1,5 @@
 import base64
+import time
 from typing import Tuple, Optional
 
 from lxml import etree
@@ -58,6 +59,27 @@ class CookieHelper:
     }
 
     @staticmethod
+    def get_page_content(page: BrowserPage, retries: int = 3, interval: float = 1.0) -> Optional[str]:
+        """
+        获取页面源码，页面跳转中（如登录前后的重定向）会导致 page.content() 抛出
+        "Unable to retrieve content because the page is navigating" 异常，等待加载完成后重试
+        :param page: 浏览器页面
+        :param retries: 最大重试次数
+        :param interval: 重试间隔（秒）
+        :return: 页面源码
+        """
+        for i in range(retries):
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=10 * 1000)
+                return page.content()
+            except Exception as e:
+                if i >= retries - 1:
+                    raise
+                logger.warning(f"获取页面源码失败：{str(e)}，{interval}秒后重试 ({i + 1}/{retries - 1})")
+                time.sleep(interval)
+        return None
+
+    @staticmethod
     def parse_cookies(cookies: list) -> str:
         """
         将浏览器返回的cookies转化为字符串
@@ -93,7 +115,7 @@ class CookieHelper:
             :return: Cookie和UA
             """
             # 登录页面代码
-            html_text = page.content()
+            html_text = self.get_page_content(page)
             if not html_text:
                 return None, None, "获取源码失败"
             # 查找用户名输入框
@@ -189,7 +211,7 @@ class CookieHelper:
                 if "verify" in page.url:
                     if not otp_code:
                         return None, None, "需要二次验证码"
-                    html = etree.HTML(page.content())
+                    html = etree.HTML(self.get_page_content(page))
                     for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
                         if html.xpath(xpath):
                             try:
@@ -205,7 +227,7 @@ class CookieHelper:
                             break
 
                 # 登录后的源码
-                html_text = page.content()
+                html_text = self.get_page_content(page)
                 if not html_text:
                     return None, None, "获取网页源码失败"
                 if SiteUtils.is_logged_in(html_text):
