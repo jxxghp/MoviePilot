@@ -1993,6 +1993,14 @@ class SubscribeChain(ChainBase):
                     tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
                     subscribe_id=subscribe.id, scene="refresh")
                 old_total_episode = subscribe.total_episode or 0
+                if total_episode and total_episode < old_total_episode:
+                    total_episode = self.__resolve_total_episode_decrease(
+                        subscribe=subscribe,
+                        candidate_total=total_episode,
+                        meta=meta,
+                        mediainfo=mediainfo,
+                        mediakey=subscribe.tmdbid or subscribe.doubanid,
+                    )
                 if total_episode and total_episode != old_total_episode:
                     progress_update = self.__prepare_total_episode_change_fields(
                         subscribe=subscribe,
@@ -3655,7 +3663,12 @@ class SubscribeChain(ChainBase):
             - exist_flag (bool): 布尔值，表示媒体是否已经完全下载或已存在
             - no_exists (dict): 缺失的媒体信息，包含缺失的集数或其他相关信息
         """
-        self.__refresh_total_episode_before_completion(subscribe=subscribe, mediainfo=mediainfo)
+        self.__refresh_total_episode_before_completion(
+            subscribe=subscribe,
+            mediainfo=mediainfo,
+            meta=meta,
+            mediakey=mediakey,
+        )
 
         exist_flag, no_exists = self.resolve_subscribe_missing(
             subscribe=subscribe,
@@ -3759,6 +3772,66 @@ class SubscribeChain(ChainBase):
             return bool(downloaded), no_exists
         return False, no_exists
 
+    def __resolve_total_episode_decrease(
+            self,
+            subscribe: Subscribe,
+            candidate_total: int,
+            meta: MetaBase,
+            mediainfo: MediaInfo,
+            mediakey: Optional[Union[str, int]] = None,
+    ) -> int:
+        """以旧目标范围内已确认存在的最高集号限制总集数回落。"""
+        old_total = subscribe.total_episode or 0
+        if candidate_total >= old_total or not old_total:
+            return candidate_total
+        if subscribe.type != MediaType.TV.value or self.__is_full_best_version_enabled(subscribe):
+            return candidate_total
+
+        target_key = mediakey or subscribe.tmdbid or subscribe.doubanid
+        target_season = subscribe.season
+        target_start = subscribe.start_episode or 1
+        snapshot = copy.copy(subscribe)
+        snapshot.total_episode = old_total
+        try:
+            satisfied, no_exists = self.resolve_subscribe_missing(
+                subscribe=snapshot,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=target_key,
+                best_version_accept_downloaded=bool(subscribe.best_version),
+            )
+        except Exception as err:
+            logger.warning(f"订阅 {subscribe.name} 已存在分集事实查询失败，按元数据总集数继续：{err}")
+            return candidate_total
+
+        if satisfied:
+            return old_total
+        if not isinstance(no_exists, dict):
+            return candidate_total
+        seasons = no_exists.get(target_key)
+        if not isinstance(seasons, dict):
+            return candidate_total
+        missing_info = seasons.get(target_season)
+        if not missing_info:
+            return candidate_total
+        try:
+            scope_matches = missing_info.season == target_season \
+                and missing_info.start_episode == target_start \
+                and missing_info.total_episode == old_total
+            episodes = missing_info.episodes
+        except AttributeError:
+            return candidate_total
+        if not scope_matches:
+            return candidate_total
+        if not isinstance(episodes, list) or not episodes:
+            return candidate_total
+        if any(isinstance(episode, bool) or not isinstance(episode, int)
+               or episode < target_start or episode > old_total for episode in episodes):
+            return candidate_total
+
+        confirmed = set(range(target_start, old_total + 1)).difference(episodes)
+        return max(candidate_total, max(confirmed) if confirmed else 0)
+
     @staticmethod
     def __resolve_effective_total_episode(subscribe: Subscribe, mediainfo: MediaInfo) -> int:
         """
@@ -3828,7 +3901,13 @@ class SubscribeChain(ChainBase):
                 return result.total_episode
         return current_total
 
-    def __refresh_total_episode_before_completion(self, subscribe: Subscribe, mediainfo: MediaInfo):
+    def __refresh_total_episode_before_completion(
+            self,
+            subscribe: Subscribe,
+            mediainfo: MediaInfo,
+            meta: Optional[MetaBase] = None,
+            mediakey: Optional[Union[str, int]] = None,
+    ) -> None:
         """
         在完成判断前，按最新识别结果兜底修正订阅总集数，防止旧总集数导致误完成。
         """
@@ -3846,6 +3925,14 @@ class SubscribeChain(ChainBase):
             tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
             subscribe_id=subscribe.id, scene="precheck")
         old_total_episode = subscribe.total_episode or 0
+        if meta is not None and new_total_episode and new_total_episode < old_total_episode:
+            new_total_episode = self.__resolve_total_episode_decrease(
+                subscribe=subscribe,
+                candidate_total=new_total_episode,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=mediakey,
+            )
         if not new_total_episode or new_total_episode == old_total_episode:
             return
 
