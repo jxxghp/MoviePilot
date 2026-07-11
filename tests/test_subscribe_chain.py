@@ -1004,6 +1004,25 @@ class SubscribeChainTest(TestCase):
         self.assertTrue(satisfied)
         self.assertEqual(no_exists, {})
 
+    def test_total_episode_decrease_rejects_invalid_missing_scope(self):
+        subscribe = self._build_subscribe(best_version=0, total_episode=100, note=[])
+        missing_info = SimpleNamespace(
+            episodes=list(range(91, 101)),
+            require_complete_coverage=False,
+        )
+        chain = SubscribeChain()
+
+        with patch.object(chain, "resolve_subscribe_missing", return_value=(False, {1: {1: missing_info}})):
+            total_episode = chain._SubscribeChain__resolve_total_episode_decrease(
+                subscribe=subscribe,
+                candidate_total=1,
+                meta=SimpleNamespace(type=MediaType.TV, begin_season=1, season=1),
+                mediainfo=SimpleNamespace(type=MediaType.TV, seasons={1: [1]}),
+                mediakey=1,
+            )
+
+        self.assertEqual(total_episode, 1)
+
     def test_resolve_subscribe_missing_accepts_downloaded_legacy_current_priority_targets(self):
         """外部完成守卫读取按集事实时，应保留 current_priority 整体快照兼容。"""
         subscribe = self._build_subscribe(
@@ -1149,7 +1168,7 @@ class SubscribeChainTest(TestCase):
         mediainfo = SimpleNamespace(type=MediaType.TV, title_year="Test Show (2026)")
         calls = []
 
-        def fake_refresh(_self, subscribe, mediainfo):
+        def fake_refresh(_self, subscribe, mediainfo, meta=None, mediakey=None):
             calls.append(("refresh", subscribe.total_episode))
             subscribe.total_episode = 20
 
@@ -2548,7 +2567,7 @@ class SubscribeProgressConsolidationTest(TestCase):
         self.assertEqual(updates[-1][1]["lack_episode"], 2)
         self.assertEqual(updates[-1][1]["current_priority"], 0)
 
-    def test_refresh_total_episode_before_completion_follows_recognized_total_decrease(self):
+    def test_refresh_total_episode_before_completion_keeps_downloaded_best_version_floor(self):
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.Subscribe(
             id=34,
@@ -2558,10 +2577,10 @@ class SubscribeProgressConsolidationTest(TestCase):
             total_episode=100,
             start_episode=1,
             lack_episode=100,
-            best_version=0,
+            best_version=1,
             best_version_full=0,
             current_priority=None,
-            episode_priority={},
+            episode_priority={str(episode): 80 for episode in range(1, 101)},
             note=[],
             tmdbid=31034,
             doubanid=None,
@@ -2574,21 +2593,31 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
+        chain = SubscribeChain()
+        resolve_calls = []
+
+        def _resolve_missing(**kwargs):
+            resolve_calls.append(kwargs)
+            return True, {}
+
+        chain.resolve_subscribe_missing = _resolve_missing
+
         with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
         ):
-            SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
+            chain._SubscribeChain__refresh_total_episode_before_completion(
                 subscribe,
-                self._mediainfo(total_episode=90),
+                self._mediainfo(total_episode=1),
+                meta=SimpleNamespace(type=MediaType.TV, begin_season=1, season=1),
+                mediakey=31034,
             )
 
-        self.assertEqual(captured[0][1].current_total_episode, 90)
-        self.assertEqual(subscribe.total_episode, 90)
-        self.assertEqual(subscribe.lack_episode, 90)
-        self.assertEqual(updates[-1][1]["total_episode"], 90)
-        self.assertEqual(updates[-1][1]["lack_episode"], 90)
+        self.assertEqual(captured[0][1].current_total_episode, 1)
+        self.assertEqual(subscribe.total_episode, 100)
+        self.assertEqual(updates, [])
+        self.assertTrue(resolve_calls[0]["best_version_accept_downloaded"])
 
     def test_refresh_total_episode_before_completion_filters_best_version_priority_on_decrease(self):
         module, SubscribeChain = _load_subscribe_chain_class()
@@ -2950,7 +2979,7 @@ class SubscribeProgressConsolidationTest(TestCase):
         self.assertEqual(payload["total_episode"], 120)
         self.assertEqual(payload["lack_episode"], 120)
 
-    def test_check_total_refresh_follows_recognized_total_decrease(self):
+    def test_check_total_refresh_uses_confirmed_episode_floor(self):
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.Subscribe(
             id=43,
@@ -2982,7 +3011,21 @@ class SubscribeProgressConsolidationTest(TestCase):
                 updates.append((subscribe_id, payload))
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=90)
+        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=1)
+        chain.resolve_subscribe_missing = lambda **kwargs: (
+            False,
+            {
+                31043: {
+                    1: SimpleNamespace(
+                        season=1,
+                        episodes=list(range(91, 101)),
+                        total_episode=100,
+                        start_episode=1,
+                        require_complete_coverage=False,
+                    )
+                }
+            },
+        )
 
         with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
             module,
@@ -2992,7 +3035,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             chain.check()
 
         payload = updates[-1][1]
-        self.assertEqual(captured[0][1].current_total_episode, 90)
+        self.assertEqual(captured[0][1].current_total_episode, 1)
         self.assertEqual(payload["total_episode"], 90)
         self.assertEqual(payload["lack_episode"], 90)
 
