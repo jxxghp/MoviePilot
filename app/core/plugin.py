@@ -363,6 +363,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         logger.warn(f"检测到本地插件 {candidate.get('id')} 依赖文件变化，请重新安装本地插件以安装依赖")
                     continue
 
+                federated_change = self._get_federated_plugin_change(event_path)
+                if federated_change:
+                    pid, candidate, remote_entry_ready = federated_change
+                    # 运行目录由构建方直接写入；外部本地仓库只在入口完整时同步运行副本。
+                    if candidate and remote_entry_ready:
+                        if candidate.get("compatible") is False:
+                            logger.info(
+                                f"检测到本地插件 {pid} 联邦构建产物变化，"
+                                f"但跳过同步：{candidate.get('skip_reason')}"
+                            )
+                        elif pid not in local_plugins_to_sync:
+                            local_plugins_to_sync[pid] = (candidate, event_path, False)
+                    continue
+
                 # 跳过非 .py 文件
                 if not event_path.name.endswith(".py"):
                     continue
@@ -385,13 +399,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                             f"文件：{event_path}，但跳过同步：{local_candidate.get('skip_reason')}"
                         )
                         continue
-                    local_plugins_to_sync[local_candidate.get("id")] = (local_candidate, event_path)
+                    local_plugins_to_sync[local_candidate.get("id")] = (local_candidate, event_path, True)
 
-            for pid, (candidate, event_path) in local_plugins_to_sync.items():
+            for pid, (candidate, event_path, should_reload) in local_plugins_to_sync.items():
                 package_version = candidate.get("package_version")
                 source_root = f"plugins.{package_version}" if package_version else "plugins"
-                logger.info(f"检测到本地插件 {pid} 文件变化，来源：{source_root}，文件：{event_path}")
-                if self._sync_local_plugin_if_installed(pid, candidate):
+                change_name = "Python 文件" if should_reload else "联邦构建产物"
+                logger.info(f"检测到本地插件 {pid} {change_name}变化，来源：{source_root}，文件：{event_path}")
+                if self._sync_local_plugin_if_installed(pid, candidate) and should_reload:
                     plugins_to_reload.add(pid)
 
             # 触发重载
@@ -402,6 +417,71 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         self.reload_plugin(pid)
                     except Exception as e:
                         logger.error(f"插件 {pid} 热重载失败: {e}", exc_info=True)
+
+    def _get_federated_plugin_change(
+        self,
+        event_path: Path,
+    ) -> Optional[Tuple[str, Optional[dict], bool]]:
+        """
+        识别运行态 Vue 插件声明目录内的构建产物变化。
+
+        :return: 插件 ID、本地仓库候选和联邦入口是否完整；非联邦目录变化返回 None。
+        """
+        try:
+            event_path = event_path.resolve()
+            candidate = self._get_local_plugin_candidate_from_path(event_path)
+            if candidate:
+                pid = candidate.get("id")
+                plugin_dir = Path(candidate.get("path")).resolve()
+            else:
+                runtime_root = (settings.ROOT_PATH / "app" / "plugins").resolve()
+                if not event_path.is_relative_to(runtime_root):
+                    return None
+                relative_parts = event_path.relative_to(runtime_root).parts
+                if not relative_parts:
+                    return None
+                plugin_dir = runtime_root / relative_parts[0]
+                pid = next(
+                    (
+                        plugin_id
+                        for plugin_id in self._running_plugins
+                        if plugin_id.lower() == relative_parts[0].lower()
+                    ),
+                    None,
+                )
+
+            if not pid:
+                return None
+            plugin = self._running_plugins.get(pid)
+            if not plugin:
+                return None
+
+            render_mode, dist_path = plugin.get_render_mode()
+            if render_mode != "vue" or not isinstance(dist_path, str) or not dist_path:
+                return None
+
+            relative_dist_path = Path(dist_path)
+            if relative_dist_path.is_absolute() or ".." in relative_dist_path.parts or "\\" in dist_path:
+                return None
+
+            plugin_dir = plugin_dir.resolve()
+            dist_dir = (plugin_dir / relative_dist_path).resolve()
+            if (
+                dist_dir == plugin_dir
+                or not dist_dir.is_relative_to(plugin_dir)
+                or not event_path.is_relative_to(dist_dir)
+            ):
+                return None
+
+            remote_entry = dist_dir / "remoteEntry.js"
+            remote_entry_ready = (
+                remote_entry.is_file()
+                and remote_entry.resolve().is_relative_to(plugin_dir)
+            )
+            return pid, candidate, remote_entry_ready
+        except Exception as e:
+            logger.error(f"识别插件联邦构建产物变化时出错: {e}")
+            return None
 
     @staticmethod
     def _get_plugin_id_from_path(event_path: Path) -> Optional[str]:
