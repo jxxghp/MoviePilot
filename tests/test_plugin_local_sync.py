@@ -21,7 +21,7 @@ def plugin_manager() -> Iterator[PluginManager]:
 
 
 def _build_local_plugin_repo(tmp_path: Path) -> tuple[Path, Path]:
-    """构造带系统版本要求的本地 v2 插件仓库。"""
+    """构造带运行资产、构建依赖和系统版本要求的本地 v2 插件仓库。"""
     repo_path = tmp_path / "local-plugins"
     source_dir = repo_path / "plugins.v2" / "demoplugin"
     source_file = source_dir / "__init__.py"
@@ -32,6 +32,12 @@ def _build_local_plugin_repo(tmp_path: Path) -> tuple[Path, Path]:
         "    plugin_name = 'Demo'\n",
         encoding="utf-8",
     )
+    remote_entry = source_dir / "dist" / "assets" / "remoteEntry.js"
+    remote_entry.parent.mkdir(parents=True)
+    remote_entry.write_text("export default {}\n", encoding="utf-8")
+    dependency_file = source_dir / "node_modules" / "example" / "index.js"
+    dependency_file.parent.mkdir(parents=True)
+    dependency_file.write_text("module.exports = {}\n", encoding="utf-8")
     (repo_path / "package.v2.json").write_text(
         '{"DemoPlugin": {"version": "1.0.0", "system_version": ">=2.13.11"}}',
         encoding="utf-8",
@@ -62,6 +68,8 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
     assert candidate.get("compatible") is not False
     assert plugin_manager._sync_local_plugin_if_installed("DemoPlugin", candidate)
     assert (runtime_dir / "__init__.py").read_text(encoding="utf-8") == source_file.read_text(encoding="utf-8")
+    assert (runtime_dir / "dist" / "assets" / "remoteEntry.js").is_file()
+    assert not (runtime_dir / "node_modules").exists()
 
 
 def test_local_plugin_candidate_keeps_system_version_gate_outside_dev(

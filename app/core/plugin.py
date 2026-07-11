@@ -517,7 +517,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 source_dir,
                 dest_dir,
                 dirs_exist_ok=True,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store", "node_modules")
             )
             PluginManager()._recent_local_sync[pid] = time.time()
             logger.info(f"已同步本地插件 {pid}：{source_dir} -> {dest_dir}")
