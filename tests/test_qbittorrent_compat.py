@@ -541,6 +541,30 @@ def test_download_falls_back_to_tag_lookup_when_added_ids_missing():
     fake_server.get_torrent_id_by_tag.assert_called_once_with(tags="tmp-tag-01")
 
 
+def test_download_removes_temporary_tag_from_existing_torrent():
+    """重复添加任务时应从已存在的种子中删除本次临时标签。"""
+    fake_server = MagicMock()
+    fake_server.add_torrent.return_value = (False, [])
+    fake_server.get_content_layout.return_value = "Original"
+    fake_server.get_torrents.return_value = ([{
+        "name": "test",
+        "total_size": len(b"torrent-content"),
+        "hash": "existing123",
+        "tags": "tmp-tag-01,moviepilot-tag",
+    }], None)
+
+    module = _build_module(fake_server)
+    result = module.download(
+        content=b"torrent-content",
+        download_dir=Path("/downloads"),
+        cookie="",
+        downloader="qb",
+    )
+
+    assert result == ("qb", "existing123", "Original", "下载任务已存在")
+    fake_server.delete_torrents_tag.assert_called_once_with("existing123", "tmp-tag-01")
+
+
 def test_get_files_retries_until_qbittorrent_files_available():
     """qBittorrent 添加任务后文件列表短暂未就绪时应重试。"""
     torrent_files = [{"id": 12, "name": "Show.S01E12.mkv"}]

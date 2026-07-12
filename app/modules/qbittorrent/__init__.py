@@ -218,6 +218,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
                                 logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
                                 server.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
+                            server.delete_torrents_tag(torrent_hash, tag)
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
                 finally:
                     torrents.clear()
