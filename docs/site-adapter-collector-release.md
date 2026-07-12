@@ -33,4 +33,4 @@ chmod +x moviepilot-site-collector-linux
 
 ## 维护者发布流程
 
-`.github/workflows/site-adapter-collector.yml` 支持手动触发，也会在 Release 发布后自动构建 Windows、macOS 和 Linux 单文件程序。每个平台先执行 `--help` 启动检查，再上传程序及 SHA-256 摘要为 Workflow Artifact；Release 事件会在三个平台全部成功后，用 GitHub CLI 把同一组文件附加到触发本次任务的 Release。
+`.github/workflows/site-adapter-collector.yml` 支持手动触发，也会在 Release 发布后自动构建 Windows、macOS 和 Linux 单文件程序。每个平台先执行 `--help` 启动检查，再上传程序及 SHA-256 摘要为 Workflow Artifact。Release 事件会在三个平台全部成功后，把文件附加到触发本次任务的 Release；手动触发时填写已有的 `release_tag` 也会上传到该 Release，留空则只生成 3 天的测试 Artifact。

@@ -2,6 +2,11 @@ name: Site Adapter Collector
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to receive collector assets; leave empty for artifacts only
+        required: false
+        type: string
   release:
     types:
       - published
@@ -105,7 +110,7 @@ jobs:
 
   publish:
     name: Upload collectors to release
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: github.event_name == 'release' || inputs.release_tag != ''
     needs:
       - build
     runs-on: ubuntu-latest
@@ -123,6 +128,7 @@ jobs:
       - name: Upload assets to published release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
