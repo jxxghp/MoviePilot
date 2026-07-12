@@ -1,0 +1,4 @@
+beautifulsoup4~=4.15.0
+PyInstaller>=6.14,<7.0
+requests>=2.32,<3.0
+websocket-client~=1.9.0

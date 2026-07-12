@@ -37,6 +37,7 @@ coverage.json
 htmlcov/
 .vscode
 venv
+moviepilot-site-capture-*.zip
 
 # Pylint
 pylint-report.json

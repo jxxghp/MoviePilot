@@ -269,4 +269,20 @@ moviepilot help tool
 moviepilot help scheduler
 ```
 
-*Last Updated: 2026-05-25*
+---
+
+## Site Adapter Capture — macOS / Linux
+
+```bash
+# Run from a MoviePilot source checkout and reuse its virtual environment
+bash scripts/collect-site-adapter.sh
+```
+
+**Rules:**
+- The default collector asks only for the site HTTPS address, opens an isolated local Chrome/Edge profile, and reads the completed search page after the user confirms.
+- Users must not be asked to inspect HTML or copy Cookie/User-Agent values in the default flow. `--manual-cookie` is an advanced fallback only.
+- Run only the collector shipped with a trusted local MoviePilot source checkout or installation package. Do not pipe a remote branch script into a shell.
+- Never put a Cookie or other credential in command arguments or shell history.
+- Feature Request attachments are public. Review all four files in the generated ZIP before attaching it, and never attach raw HTML, HAR, or browser network archives.
+
+*Last Updated: 2026-07-12*
