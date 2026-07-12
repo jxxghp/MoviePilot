@@ -59,7 +59,6 @@ Before contributing, read the repository rules and local environment guide, keep
 - Development setup and local source run: [docs/development-setup.md](docs/development-setup.md)
 - Testing guide: [docs/testing.md](docs/testing.md)
 - New site adapter capture and Feature Request submission: [docs/site-adapter-capture.md](docs/site-adapter-capture.md)
-- Standalone site collector download and runtime: [docs/site-adapter-collector-release.md](docs/site-adapter-collector-release.md)
 - REST API documentation: https://api.movie-pilot.org
 - Plugin development guide: https://wiki.movie-pilot.org/zh/plugindev
 

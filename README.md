@@ -60,7 +60,6 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootst
 - 开发环境与本地源码运行：[docs/development-setup.md](docs/development-setup.md)
 - 测试说明：[docs/testing.md](docs/testing.md)
 - 新站点适配采集与 Feature Request 提交：[docs/site-adapter-capture.md](docs/site-adapter-capture.md)
-- 普通用户独立采集器下载与运行：[docs/site-adapter-collector-release.md](docs/site-adapter-collector-release.md)
 - REST API 文档：https://api.movie-pilot.org
 - 插件开发说明：https://wiki.movie-pilot.org/zh/plugindev
 
