@@ -3,7 +3,7 @@ import sys
 import types
 from enum import Enum
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import call, MagicMock, patch
 
 
 def _load_qbittorrent_modules():
@@ -518,6 +518,9 @@ def test_download_prefers_added_torrent_ids_before_tag_lookup():
     fake_server.delete_torrents_tag.assert_called_once_with("abc123", "tmp-tag-01")
     fake_server.get_torrent_id_by_tag.assert_not_called()
     assert fake_server.add_torrent.call_args.kwargs["tag"] == ["tmp-tag-01", "moviepilot-tag"]
+    assert fake_server.mock_calls.index(
+        call.delete_torrents_tag("abc123", "tmp-tag-01")
+    ) < fake_server.mock_calls.index(call.get_content_layout())
 
 
 def test_download_falls_back_to_tag_lookup_when_added_ids_missing():
@@ -550,7 +553,7 @@ def test_download_removes_temporary_tag_from_existing_torrent():
         "name": "test",
         "total_size": len(b"torrent-content"),
         "hash": "existing123",
-        "tags": "tmp-tag-01,moviepilot-tag",
+        "tags": None,
     }], None)
 
     module = _build_module(fake_server)
@@ -563,6 +566,23 @@ def test_download_removes_temporary_tag_from_existing_torrent():
 
     assert result == ("qb", "existing123", "Original", "下载任务已存在")
     fake_server.delete_torrents_tag.assert_called_once_with("existing123", "tmp-tag-01")
+    assert fake_server.mock_calls.index(
+        call.delete_torrents_tag("existing123", "tmp-tag-01")
+    ) < fake_server.mock_calls.index(call.get_content_layout())
+
+
+def test_delete_torrents_tag_uses_supported_qbittorrent_api_arguments():
+    """删除标签时应分别调用任务移除接口和全局标签删除接口。"""
+    fake_client = MagicMock()
+    downloader = Qbittorrent.__new__(Qbittorrent)
+    downloader.qbc = fake_client
+
+    assert downloader.delete_torrents_tag("abc123", "tmp-tag-01")
+    fake_client.torrents_remove_tags.assert_called_once_with(
+        torrent_hashes="abc123",
+        tags="tmp-tag-01",
+    )
+    fake_client.torrents_delete_tags.assert_called_once_with(tags="tmp-tag-01")
 
 
 def test_get_files_retries_until_qbittorrent_files_available():

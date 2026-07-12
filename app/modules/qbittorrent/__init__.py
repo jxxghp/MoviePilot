@@ -195,9 +195,6 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             ignore_category_check=False
         )
 
-        # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
-        torrent_layout = server.get_content_layout()
-
         if not state:
             # 查询所有下载器的种子
             torrents, error = server.get_torrents()
@@ -210,7 +207,8 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         if torrent.get("name") == getattr(torrent_from_file, 'name', '') \
                                 and torrent.get("total_size") == getattr(torrent_from_file, 'total_size', 0):
                             torrent_hash = torrent.get("hash")
-                            torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
+                            server.delete_torrents_tag(torrent_hash, tag)
+                            torrent_tags = [str(tag).strip() for tag in (torrent.get("tags") or "").split(',')]
                             logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
                             # 给种子打上标签
                             if "已整理" in torrent_tags:
@@ -218,7 +216,8 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
                                 logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
                                 server.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
-                            server.delete_torrents_tag(torrent_hash, tag)
+                            # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+                            torrent_layout = server.get_content_layout()
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
                 finally:
                     torrents.clear()
@@ -234,6 +233,8 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             if not torrent_hash:
                 return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
             else:
+                # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+                torrent_layout = server.get_content_layout()
                 if is_paused:
                     # 种子文件
                     torrent_files = server.get_files(

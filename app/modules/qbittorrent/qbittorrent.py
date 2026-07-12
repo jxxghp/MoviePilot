@@ -303,14 +303,16 @@ class Qbittorrent:
 
     def delete_torrents_tag(self, ids: Union[str, list], tag: Union[str, list]) -> bool:
         """
-        删除Tag
+        从指定种子移除标签，并删除全局标签定义
         :param ids: 种子Hash列表
         :param tag: 标签内容
+        :return: 是否删除成功
         """
         if not self.qbc:
             return False
         try:
-            self.qbc.torrents_delete_tags(torrent_hashes=ids, tags=tag)
+            self.qbc.torrents_remove_tags(torrent_hashes=ids, tags=tag)
+            self.qbc.torrents_delete_tags(tags=tag)
             return True
         except Exception as err:
             logger.error(f"删除种子Tag出错：{str(err)}")
