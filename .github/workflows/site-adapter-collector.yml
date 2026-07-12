@@ -39,10 +39,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -94,14 +94,14 @@ jobs:
           python -c "import hashlib, os; from pathlib import Path; path = Path('dist') / os.environ['ASSET_NAME']; path.with_name(path.name + '.sha256').write_text(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n', encoding='utf-8')"
 
       - name: Upload collector artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: |
             dist/${{ matrix.asset_name }}
             dist/${{ matrix.asset_name }}.sha256
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   publish:
     name: Upload collectors to release
@@ -114,7 +114,7 @@ jobs:
 
     steps:
       - name: Download collector artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: site-adapter-collector-*
           path: release-assets

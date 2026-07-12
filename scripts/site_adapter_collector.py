@@ -1409,8 +1409,21 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _configure_standard_streams() -> None:
+    """将可重配置的标准输出流统一为 UTF-8，避免 Windows 本地代码页无法输出中文。"""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (LookupError, OSError):
+            continue
+
+
 def main() -> int:
     """交互式读取采集参数并生成站点适配 ZIP。"""
+    _configure_standard_streams()
     args = _parse_args()
     print("MoviePilot 站点适配采集器")
     print("原始页面不会落盘；临时浏览器关闭后会清理登录状态，输出前会裁剪并脱敏。")

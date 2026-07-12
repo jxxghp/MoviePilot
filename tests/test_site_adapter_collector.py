@@ -1,5 +1,8 @@
 import hashlib
 import json
+import os
+import subprocess
+import sys
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -467,3 +470,20 @@ def test_browser_capture_builds_archive_without_manual_cookie_input(monkeypatch,
     assert manifest["collector_version"] == "1.0.1"
     assert request["params"]["search"] == "{keyword}"
     assert b"very-secret-cookie-value" not in combined
+
+
+def test_help_uses_utf8_when_parent_forces_legacy_code_page() -> None:
+    """父进程强制 cp1252 时，中文 argparse 帮助仍应以 UTF-8 正常输出。"""
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "cp1252"
+
+    result = subprocess.run(
+        [sys.executable, str(Path(collector.__file__)), "--help"],
+        check=False,
+        capture_output=True,
+        env=environment,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    assert "站点适配" in result.stdout.decode("utf-8")
