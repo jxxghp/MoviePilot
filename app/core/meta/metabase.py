@@ -28,7 +28,7 @@ SUBTITLE_EPISODE_ALL_RE = re.compile(
 # 存在以避免年份范围（如 2019-2020）误识别为集数；Fin/End 后不能紧跟字母数字，
 # 避免 Final/Ending 等单词前缀误匹配
 SUBTITLE_EPISODE_RANGE_FIN_RE = re.compile(
-    r"\[?\s*(\d{1,4})\s*-\s*(\d{1,4})\s*(?:(?:Fin|End)(?![a-z0-9])|完结?)\s*\]?",
+    r"(?<!\d)\[?\s*(\d{1,4})\s*-\s*(\d{1,4})\s*(?:(?:Fin|End)(?![a-z0-9])|完结(?![\u4e00-\u9fff]))\s*\]?(?!\d)",
     re.IGNORECASE,
 )
 VIDEO_BIT_RE = re.compile(
