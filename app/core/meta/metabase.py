@@ -24,6 +24,13 @@ SUBTITLE_EPISODE_ALL_RE = re.compile(
     r"([0-9一二三四五六七八九十百零]+)\s*集\s*全|[全共]\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]",
     re.IGNORECASE,
 )
+# 01-26Fin / [01-38 END] / 01-24完结 等"数字范围+完结标记"格式，完结标记必须
+# 存在以避免年份范围（如 2019-2020）误识别为集数；Fin/End 后不能紧跟字母数字，
+# 避免 Final/Ending 等单词前缀误匹配
+SUBTITLE_EPISODE_RANGE_FIN_RE = re.compile(
+    r"(?<!\d)\[?\s*(\d{1,4})\s*-\s*(\d{1,4})\s*(?:(?:Fin|End)(?![a-z0-9])|完结(?![\u4e00-\u9fff]))\s*\]?(?!\d)",
+    re.IGNORECASE,
+)
 VIDEO_BIT_RE = re.compile(
     r"(?<![A-Za-z0-9])(?P<bit>8|10|12|16)[\s._-]*bits?(?![A-Za-z0-9])",
     re.IGNORECASE,
@@ -292,6 +299,36 @@ class MetaBase(object):
                     self.type = MediaType.TV
                     self._subtitle_flag = True
                 return
+            # 01-26Fin 等数字范围+完结标记
+            self.__init_episode_range_fin(title_text)
+        else:
+            # 副标题无中文季集标记时，仍识别 01-26Fin 等数字范围+完结标记
+            self.__init_episode_range_fin(title_text)
+
+    def __init_episode_range_fin(self, title_text: str):
+        """
+        识别 01-26Fin / [01-38 END] 等"数字范围+完结标记"格式的集数信息
+        """
+        episode_range_str = SUBTITLE_EPISODE_RANGE_FIN_RE.search(title_text)
+        if not episode_range_str:
+            return
+        try:
+            begin_episode = int(episode_range_str.group(1))
+            end_episode = int(episode_range_str.group(2))
+        except Exception as err:
+            logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
+            return
+        if begin_episode < 1 or begin_episode > end_episode or end_episode >= 10000:
+            return
+        # 两个数字都落在常见年份区间时视为年份范围而非集数（如 2019-2020完结）
+        if begin_episode >= 1900 and end_episode <= 2155:
+            return
+        if self.begin_episode is None:
+            self.begin_episode = begin_episode
+            self.end_episode = end_episode
+            self.total_episode = end_episode
+            self.type = MediaType.TV
+            self._subtitle_flag = True
 
     @property
     def season(self) -> str:
