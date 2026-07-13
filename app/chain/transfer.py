@@ -1240,14 +1240,44 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             history_exists: bool = True,
     ):
         """
-        当同一种子的任务都已结束时，回写下载器已整理标签。
+        当同一种子的任务都已结束且种子已完成下载时，回写下载器已整理标签。
         """
         if (
-                history_exists
-                and download_hash
-                and self.jobview.is_torrent_done(download_hash)
+                not history_exists
+                or not download_hash
+                or not self.jobview.is_torrent_done(download_hash)
         ):
-            self.transfer_completed(hashs=download_hash, downloader=downloader)
+            return
+        # 作业视图只包含已登记的整理任务；多集种子部分文件先下载完成时，
+        # 剩余文件尚未产生任务，此时打已整理标签会使下载器轮询永久跳过
+        # 剩余文件（#6009），因此必须确认种子已整体下载完成。
+        if not self.__is_torrent_download_completed(download_hash, downloader):
+            logger.debug(
+                f"种子 {download_hash} 尚未下载完成或状态未知，暂不设置已整理标签"
+            )
+            return
+        if not self.jobview.is_torrent_done(download_hash):
+            logger.debug(
+                f"种子 {download_hash} 存在新登记的整理任务，暂不设置已整理标签"
+            )
+            return
+        self.transfer_completed(hashs=download_hash, downloader=downloader)
+
+    def __is_torrent_download_completed(
+            self, download_hash: str, downloader: Optional[str]
+    ) -> bool:
+        """
+        检查种子在下载器中是否已完成下载；查询不到或查询失败时视为未完成，
+        留待下载器定时轮询兜底，避免误打已整理标签。
+        """
+        try:
+            torrents = self.list_torrents(hashs=download_hash, downloader=downloader)
+            if not torrents:
+                return False
+            return all((torrent.progress or 0) >= 100 for torrent in torrents)
+        except Exception as e:
+            logger.error(f"检查种子 {download_hash} 下载进度失败：{e}")
+            return False
 
     def __send_metadata_scrape_event(
             self, task: TransferTask, transferinfo: TransferInfo
