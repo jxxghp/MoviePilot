@@ -318,7 +318,7 @@ class MetaBase(object):
         except Exception as err:
             logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
             return
-        if begin_episode >= end_episode or end_episode >= 10000:
+        if begin_episode < 1 or begin_episode > end_episode or end_episode >= 10000:
             return
         # 两个数字都落在常见年份区间时视为年份范围而非集数（如 2019-2020完结）
         if begin_episode >= 1900 and end_episode <= 2155:
