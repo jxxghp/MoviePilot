@@ -25,10 +25,11 @@ class DoubanCache(metaclass=WeakSingleton):
         "type": MediaType
     }
     """
-    # TMDB缓存过期
+    # 豆瓣缓存过期
     _douban_cache_expire: bool = True
 
     def __init__(self):
+        """初始化豆瓣识别缓存并恢复本地持久化数据。"""
         self.maxsize = settings.CONF.douban
         self.ttl = settings.CONF.meta
         self.region = "__douban_cache__"
@@ -46,6 +47,30 @@ class DoubanCache(metaclass=WeakSingleton):
         """
         with lock:
             self._cache.clear()
+            self.save(force=True)
+
+    def list_items(self) -> list[dict]:
+        """返回可供管理界面展示的豆瓣识别缓存列表。"""
+        with lock:
+            cache_items = []
+            for key, value in self._cache.items():
+                if not isinstance(value, dict):
+                    continue
+                media_type = value.get("type")
+                if not isinstance(media_type, MediaType):
+                    try:
+                        media_type = MediaType(media_type)
+                    except (TypeError, ValueError):
+                        media_type = None
+                cache_items.append({
+                    "key": key,
+                    "douban_id": value.get("id") or 0,
+                    "title": value.get("title") or "",
+                    "year": value.get("year") or "",
+                    "media_type": media_type.to_agent() if media_type else "unknown",
+                    "poster_path": value.get("poster_path") or "",
+                })
+            return sorted(cache_items, key=lambda item: item["key"])
 
     @staticmethod
     def __get_key(meta: MetaBase) -> str:
@@ -73,6 +98,7 @@ class DoubanCache(metaclass=WeakSingleton):
             redis_data = self._cache.get(key)
             if redis_data:
                 self._cache.delete(key)
+                self.save(force=True)
                 return redis_data
             return {}
 
@@ -169,4 +195,5 @@ class DoubanCache(metaclass=WeakSingleton):
             pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL)  # noqa
 
     def __del__(self):
+        """实例释放前保存非 Redis 缓存。"""
         self.save()
