@@ -317,10 +317,18 @@ class Jellyfin:
     def get_medias_count(self) -> schemas.Statistic:
         """
         获得电影、电视剧、动漫媒体数量
-        :return: MovieCount SeriesCount SongCount
+
+        优先遍历用户媒体库视图逐库统计：全局 `Items/Counts` 按数据库原始条目
+        计数，同一影片在库内有多个版本/多个文件夹拷贝时会重复累计（#5915），
+        而用户级 `Users/{user}/Items` 查询会折叠版本，与 Jellyfin 页面显示一致。
+        仅在用户视图不可用时回退到 `Items/Counts`。
+        :return: MovieCount SeriesCount EpisodeCount
         """
         if not self._host or not self._apikey:
             return schemas.Statistic()
+        stat = self.__count_medias_by_librarys()
+        if stat is not None:
+            return stat
         url = f"{self._host}Items/Counts"
         params = {
             'api_key': self._apikey
@@ -340,6 +348,32 @@ class Jellyfin:
         except Exception as e:
             logger.error(f"连接Items/Counts出错：" + str(e))
         return schemas.Statistic()
+
+    def __count_medias_by_librarys(self) -> Optional[schemas.Statistic]:
+        """
+        遍历用户媒体库视图逐库统计媒体数量
+
+        `Users/{user}/Views` 每个媒体库仅返回一条记录（库包含多个文件夹时
+        也不会重复），按 `CollectionType` 分桶后用用户级条目查询累计。
+        :return: 统计结果，用户或媒体库视图不可用时返回None（由调用方回退）
+        """
+        if not self.user:
+            return None
+        librarys = self.__get_jellyfin_librarys()
+        if not librarys:
+            return None
+        stat = schemas.Statistic()
+        for library in librarys:
+            library_id = library.get("Id")
+            if not library_id:
+                continue
+            collection_type = library.get("CollectionType")
+            if collection_type == "movies":
+                stat.movie_count += self.get_items_count(library_id, include_item_types="Movie") or 0
+            elif collection_type == "tvshows":
+                stat.tv_count += self.get_items_count(library_id, include_item_types="Series") or 0
+                stat.episode_count += self.get_items_count(library_id, include_item_types="Episode") or 0
+        return stat
 
     def __get_jellyfin_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
@@ -809,11 +843,13 @@ class Jellyfin:
             logger.error(f"连接Users/{self.user}/Items/{itemid}：" + str(e))
         return None
 
-    def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
+    def get_items_count(self, parent: Union[str, int],
+                        include_item_types: str = "Movie,Series") -> Optional[int]:
         """
-        获取指定媒体库可同步的电影和剧集总数
+        获取指定媒体库可同步的媒体条目总数
 
         :param parent: 媒体库ID
+        :param include_item_types: 统计的条目类型，默认电影和剧集
         :return: 媒体条目总数，查询失败时返回None
         """
         if not parent or not self._host or not self._apikey or not self.user:
@@ -822,7 +858,7 @@ class Jellyfin:
         params = {
             "ParentId": parent,
             "Recursive": "true",
-            "IncludeItemTypes": "Movie,Series",
+            "IncludeItemTypes": include_item_types,
             "Limit": 0,
             "api_key": self._apikey,
         }
