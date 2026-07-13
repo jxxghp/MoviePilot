@@ -1274,7 +1274,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             torrents = self.list_torrents(hashs=download_hash, downloader=downloader)
             if not torrents:
                 return False
-            return (torrents[0].progress or 0) >= 100
+            return all((torrent.progress or 0) >= 100 for torrent in torrents)
         except Exception as e:
             logger.error(f"检查种子 {download_hash} 下载进度失败：{e}")
             return False
