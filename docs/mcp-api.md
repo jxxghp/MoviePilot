@@ -157,6 +157,16 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | POST | `/api/v1/message/agent/mcp/servers` | 管理员保存 Agent 外部 MCP 服务器配置 |
 | POST | `/api/v1/message/agent/mcp/servers/test` | 管理员测试单个 Agent 外部 MCP 服务器并读取工具列表 |
 
+#### 缓存管理
+
+以下接口使用登录态鉴权，并要求当前用户为超级管理员。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/tmdb/cache` | 查询 TheMovieDb 识别缓存及识别成功、失败条目统计 |
+| DELETE | `/api/v1/tmdb/cache/{cache_key}` | 按缓存键删除单条 TheMovieDb 识别缓存，缓存键需要进行 URL 编码 |
+| DELETE | `/api/v1/tmdb/cache` | 清空全部 TheMovieDb 识别缓存 |
+
 ### 插件补充接口
 
 **GET** `/api/v1/plugin/history/{plugin_id}`
