@@ -1256,6 +1256,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 f"种子 {download_hash} 尚未下载完成或状态未知，暂不设置已整理标签"
             )
             return
+        if not self.jobview.is_torrent_done(download_hash):
+            logger.debug(
+                f"种子 {download_hash} 存在新登记的整理任务，暂不设置已整理标签"
+            )
+            return
         self.transfer_completed(hashs=download_hash, downloader=downloader)
 
     def __is_torrent_download_completed(
