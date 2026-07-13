@@ -184,6 +184,20 @@ def test_python_subtitle_episode_range_fin_with_chinese_season():
     assert meta.total_episode == 26
 
 
+def test_subtitle_episode_range_fin_with_default_parser():
+    """默认解析路径应识别副标题中 [01-26Fin] 格式的集数范围（#6103）。"""
+    meta = MetaInfo(
+        title="JoJos Bizarre Adventure S01 2012 1080i BluRay x264 FLAC 2.0-AnimeF@ADE",
+        subtitle="JOJO的奇妙冒险 第一季 / JoJo's Bizarre Adventure [01-26Fin] [简繁字幕]",
+    )
+
+    assert meta.type == MediaType.TV
+    assert meta.begin_season == 1
+    assert meta.begin_episode == 1
+    assert meta.end_episode == 26
+    assert meta.total_episode == 26
+
+
 def test_python_subtitle_episode_range_fin_without_chinese_marker():
     """副标题无中文季集标记时也应识别 [01-38Fin] 集数范围。"""
     with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
@@ -225,6 +239,19 @@ def test_python_subtitle_year_range_not_treated_as_episodes():
 
     assert meta.begin_episode is None
     assert meta.total_episode == 0
+
+
+def test_python_subtitle_episode_range_fin_rejects_numeric_suffix():
+    """Python 兜底解析不得把带数字后缀的完结范围截断识别为集数。"""
+    for subtitle in ("Some Show [01-26Fin]2", "Some Show 01-26Fin 2"):
+        with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+            meta = MetaInfo(
+                title="Some Show S01 2022 1080p WEB-DL H264-GRP",
+                subtitle=subtitle,
+            )
+
+        assert meta.begin_episode is None
+        assert meta.total_episode == 0
 
 
 def test_custom_words_replace_then_episode_offset():

@@ -257,6 +257,23 @@ def test_rust_metainfo_parser_handles_episode_group():
     assert result["begin_season"] == 1
 
 
+def test_rust_metainfo_parser_handles_subtitle_episode_range_fin():
+    """
+    Rust MetaInfo 入口应识别副标题中的数字范围完结标记。
+    """
+    result = rust_accel.parse_metainfo(
+        "JoJos Bizarre Adventure S01 2012 1080i BluRay x264 FLAC 2.0-AnimeF@ADE",
+        subtitle="JOJO的奇妙冒险 第一季 / JoJo's Bizarre Adventure [01-26Fin] [简繁字幕]",
+        options=_metainfo_options(),
+    )
+
+    assert result["type"] == MediaType.TV.value
+    assert result["begin_season"] == 1
+    assert result["begin_episode"] == 1
+    assert result["end_episode"] == 26
+    assert result["total_episode"] == 26
+
+
 def test_rust_metainfo_path_parser_merges_parent_title():
     """
     Rust MetaInfoPath 入口应在 Rust 内完成父目录标题合并。

@@ -24,11 +24,11 @@ SUBTITLE_EPISODE_ALL_RE = re.compile(
     r"([0-9一二三四五六七八九十百零]+)\s*集\s*全|[全共]\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]",
     re.IGNORECASE,
 )
-# 01-26Fin / [01-38 END] / 01-24完结 等"数字范围+完结标记"格式，完结标记必须
-# 存在以避免年份范围（如 2019-2020）误识别为集数；Fin/End 后不能紧跟字母数字，
-# 避免 Final/Ending 等单词前缀误匹配
+# 结尾分支显式区分有无右方括号，避免可选括号回溯后绕过数字后缀边界
 SUBTITLE_EPISODE_RANGE_FIN_RE = re.compile(
-    r"(?<!\d)\[?\s*(\d{1,4})\s*-\s*(\d{1,4})\s*(?:(?:Fin|End)(?![a-z0-9])|完结(?![\u4e00-\u9fff]))\s*\]?(?!\d)",
+    r"(?<!\d)\[?\s*(\d{1,4})\s*-\s*(\d{1,4})\s*"
+    r"(?:(?:Fin|End)(?![a-z0-9])|完结(?![\u4e00-\u9fff]))"
+    r"(?:\s*\](?!\d)|(?!\s*(?:\]\d|\d))\s*)",
     re.IGNORECASE,
 )
 VIDEO_BIT_RE = re.compile(
