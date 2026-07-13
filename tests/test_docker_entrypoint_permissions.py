@@ -228,3 +228,18 @@ def test_backend_ready_timeout_falls_back_to_default_for_invalid_value(tmp_path:
 
     assert "MOVIEPILOT_BACKEND_READY_TIMEOUT=invalid 无效，使用默认 300 秒" in output
     assert "后端服务启动完成探测已停止：后端进程已退出" in output
+
+
+def test_backend_ready_timeout_accepts_leading_zero_decimal(tmp_path: Path) -> None:
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        INFO() { printf '[INFO] %s\\n' "$1"; }
+        WARN() { printf '[WARN] %s\\n' "$1"; }
+        curl() { return 0; }
+        MOVIEPILOT_BACKEND_READY_TIMEOUT=08 wait_backend_ready 1 2 "$$"
+        """,
+    )
+
+    assert "MOVIEPILOT_BACKEND_READY_TIMEOUT=08 无效" not in output
+    assert "MoviePilot Web 已可访问" in output

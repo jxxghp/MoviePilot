@@ -68,9 +68,11 @@ function wait_backend_ready() {
     local timeout="${MOVIEPILOT_BACKEND_READY_TIMEOUT:-300}"
     local ready_url="http://127.0.0.1:${backend_port}/api/v1/system/global?token=moviepilot"
     local deadline
-    if ! [[ "${timeout}" =~ ^[0-9]+$ ]] || [ "${timeout}" -le 0 ]; then
+    if ! [[ "${timeout}" =~ ^[0-9]+$ ]] || [ "$((10#${timeout}))" -le 0 ]; then
         WARN "→ MOVIEPILOT_BACKEND_READY_TIMEOUT=${timeout} 无效，使用默认 300 秒。"
         timeout=300
+    else
+        timeout=$((10#${timeout}))
     fi
     deadline=$(( $(date +%s) + timeout ))
 
