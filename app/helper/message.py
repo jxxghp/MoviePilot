@@ -605,6 +605,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         self.check_interval = check_interval
 
         self._running = True
+        self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.thread.start()
 
@@ -752,13 +753,15 @@ class MessageQueueManager(metaclass=SingletonClass):
                         logger.info(f"队列剩余消息：{self.queue.qsize()}")
                     except queue.Empty:
                         break
-            time.sleep(self.check_interval)
+            if self._stop_event.wait(self.check_interval):
+                break
 
     def stop(self) -> None:
         """
         停止队列管理器
         """
         self._running = False
+        self._stop_event.set()
         logger.info("正在停止消息队列...")
         self.thread.join()
         logger.info("消息队列已停止")
@@ -841,7 +844,8 @@ def stop_message():
     """
     停止消息服务
     """
-    # 停止消息队列
-    MessageQueueManager().stop()
-    # 关闭消息演染器
-    TemplateHelper().close()
+    # 只关闭已启动的服务，避免清理路径反向创建后台线程和缓存
+    if queue_manager := MessageQueueManager.get_existing_instance():
+        queue_manager.stop()
+    if template_helper := TemplateHelper.get_existing_instance():
+        template_helper.close()

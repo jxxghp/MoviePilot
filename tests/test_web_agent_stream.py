@@ -183,7 +183,8 @@ def test_build_web_agent_command_items_returns_slash_commands():
 
 def test_build_web_agent_command_items_includes_sites_command():
     """WebAgent 命令建议应包含内建站点管理命令。"""
-    commands = _build_web_agent_command_items()
+    with patch("app.command.Scheduler"), patch("app.command.ThreadHelper"):
+        commands = _build_web_agent_command_items()
 
     assert any(command["command"] == "/sites" for command in commands)
 

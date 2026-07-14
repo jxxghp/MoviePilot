@@ -20,6 +20,16 @@ def clear_media_interactions():
     plugin_input_interaction_manager.clear()
 
 
+@pytest.fixture(autouse=True)
+def mock_default_media_search():
+    """未显式验证搜索结果的消息路由用例不访问真实媒体元数据服务"""
+    with patch(
+        "app.chain.media.MediaChain.search",
+        side_effect=lambda title: (_build_meta(title), []),
+    ):
+        yield
+
+
 def _build_meta(name: str) -> MetaBase:
     """构造媒体识别元数据。"""
     meta = MetaBase(name)

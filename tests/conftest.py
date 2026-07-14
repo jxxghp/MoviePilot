@@ -16,9 +16,11 @@ prepare_backend()
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
 
 
-def _report_session_cleanup_error(name: str, err: Exception) -> None:
-    """测试收尾清理失败只记录诊断，不覆盖原始 pytest 退出状态。"""
+def _report_session_cleanup_error(session, name: str, err: Exception) -> None:
+    """记录收尾错误；原测试绿色时将会话标记为失败。"""
     sys.stderr.write(f"\npytest session cleanup failed: {name}: {err!r}\n")
+    if session.exitstatus == 0:
+        session.exitstatus = 1
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -28,21 +30,27 @@ def pytest_sessionfinish(session, exitstatus):
 
         shutdown_blocking_executors(cancel_futures=True)
     except Exception as err:
-        _report_session_cleanup_error("agent blocking executors", err)
+        _report_session_cleanup_error(session, "agent blocking executors", err)
 
     try:
         from app.helper.thread import ThreadHelper
-        from app.utils.singleton import Singleton
 
-        helper = Singleton._instances.get((ThreadHelper, (), frozenset()))
+        helper = ThreadHelper.get_existing_instance()
         if helper:
             helper.shutdown()
     except Exception as err:
-        _report_session_cleanup_error("thread helper", err)
+        _report_session_cleanup_error(session, "thread helper", err)
+
+    try:
+        from app.helper.message import stop_message
+
+        stop_message()
+    except Exception as err:
+        _report_session_cleanup_error(session, "message service", err)
 
     try:
         from app.log import LoggerManager
 
         LoggerManager.shutdown()
     except Exception as err:
-        _report_session_cleanup_error("logger manager", err)
+        _report_session_cleanup_error(session, "logger manager", err)
