@@ -362,7 +362,7 @@ class SubscribeEndpointTest(TestCase):
         with patch(
             "app.api.endpoints.subscribe.Subscribe.async_list_by_username",
             new=AsyncMock(return_value=owned),
-        ):
+        ), patch("app.api.endpoints.subscribe.Scheduler") as scheduler_cls:
             response = asyncio.run(
                 search_subscribes(
                     background_tasks=background_tasks,
@@ -376,6 +376,7 @@ class SubscribeEndpointTest(TestCase):
             [task["kwargs"]["sid"] for task in background_tasks.tasks],
             [17, 18],
         )
+        self.assertEqual(scheduler_cls.return_value.start.call_count, 0)
 
     def test_subscribe_files_hides_other_user_row(self):
         """

@@ -102,6 +102,7 @@ class EmbyDashboardLinksTest(unittest.TestCase):
         with (
             patch.object(client, "_Emby__get_emby_librarys") as librarys,
             patch.object(client, "_Emby__get_local_image_by_id") as image_by_id,
+            patch.object(client, "get_items_count", return_value=0),
         ):
             librarys.return_value = [
                 {

@@ -137,6 +137,8 @@ async def stop_modules():
     EventManager().stop()
     # 停止虚拟显示
     DisplayHelper().stop()
+    # 停止 DoH 服务
+    DohHelper().shutdown()
     # 停止线程池
     ThreadHelper().shutdown()
     # 停止消息服务
