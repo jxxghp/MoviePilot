@@ -1339,12 +1339,7 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
     """
     if not SystemHelper.can_restart():
         return schemas.Response(success=False, message="当前运行环境不支持重启操作！")
-    # 标识停止事件
-    global_vars.stop_system()
-    # 执行重启
     ret, msg = SystemHelper.restart()
-    if not ret:
-        global_vars.resume_system()
     return schemas.Response(success=ret, message=msg)
 
 
@@ -1362,11 +1357,7 @@ def upgrade_system(
     if not SystemHelper.can_restart():
         return schemas.Response(success=False, message="当前运行环境不支持升级操作！")
 
-    # 标识停止事件
-    global_vars.stop_system()
     ret, msg = SystemHelper.upgrade(mode=mode or "release")
-    if not ret:
-        global_vars.resume_system()
     return schemas.Response(success=ret, message=msg)
 
 

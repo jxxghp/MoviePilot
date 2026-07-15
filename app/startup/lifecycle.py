@@ -1,5 +1,7 @@
 import asyncio
+import inspect
 from contextlib import asynccontextmanager
+from typing import Callable
 
 from fastapi import FastAPI
 
@@ -20,7 +22,7 @@ from app.chain.system import SystemChain
 from app.core.config import global_vars, settings
 from app.helper.server import MoviePilotServerHelper
 from app.helper.system import SystemHelper
-from app.log import LoggerManager
+from app.log import logger, LoggerManager
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
@@ -54,6 +56,16 @@ async def init_extra():
     SystemChain().restart_finish()
     # 上报当前安装版本
     await MoviePilotServerHelper.async_report_usage()
+
+
+async def run_shutdown_step(name: str, callback: Callable[[], object]) -> None:
+    """隔离单个关闭阶段的异常，确保后续资源仍有机会释放"""
+    try:
+        result = callback()
+        if inspect.isawaitable(result):
+            await result
+    except Exception as err:
+        logger.error(f"关闭{name}失败：{err}")
 
 
 @asynccontextmanager
@@ -90,6 +102,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         print("Shutting down...")
+        global_vars.stop_system()
         # 取消同步插件任务
         try:
             sync_plugins_task.cancel()
@@ -100,22 +113,19 @@ async def lifespan(app: FastAPI):
             print(str(e))
         try:
             if not settings.MOVIEPILOT_SAFE_MODE:
-                # 备份插件
-                SystemChain().backup_plugins()
-                # 停止工作流
-                stop_workflow()
-                # 停止命令
-                stop_command()
-                # 停止监控器
-                stop_monitor()
-                # 停止定时器
-                stop_scheduler()
-                # 停止插件
-                stop_plugins()
-            # 停止模块
-            await stop_modules()
-            # 关闭共享的异步 HTTP 连接池，释放底层连接资源
-            await aclose_shared_async_transports()
+                await run_shutdown_step(
+                    "插件备份", lambda: SystemChain().backup_plugins()
+                )
+                await run_shutdown_step("工作流", stop_workflow)
+                await run_shutdown_step("命令服务", stop_command)
+                await run_shutdown_step("监控器", stop_monitor)
+                await run_shutdown_step("定时器", stop_scheduler)
+                await run_shutdown_step("插件", stop_plugins)
+            await run_shutdown_step("模块服务", stop_modules)
+            await run_shutdown_step(
+                "共享异步 HTTP 连接池",
+                aclose_shared_async_transports,
+            )
         finally:
             # 日志最后关闭，确保其他组件的收尾信息已写入文件
             LoggerManager.shutdown()

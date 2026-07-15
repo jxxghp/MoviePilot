@@ -114,7 +114,6 @@ class TheTvDbModule(_ModuleBase):
         return 4
 
     def stop(self):
-        logger.info("TheTvDbModule 停止。正在清除 TVDB 会话。")
         with self.__auth_lock:
             self.tvdb = None
 
