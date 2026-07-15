@@ -60,10 +60,14 @@ class UgreenModule(_ModuleBase, _MediaServerBase[Ugreen]):
                 logger.info(f"绿联影视 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
 
-    def stop(self):
+    def stop(self) -> None:
+        """停止模块"""
         for server in self.get_instances().values():
-            if server.is_authenticated():
-                server.disconnect()
+            try:
+                if server.is_authenticated():
+                    server.disconnect()
+            except Exception as err:
+                logger.error(f"停止绿联影视模块实例失败：{err}")
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """

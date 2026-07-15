@@ -1,8 +1,10 @@
+import threading
 from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
 from app.helper.service import ServiceConfigHelper
+from app.log import logger
 from app.schemas import Notification, NotificationConf, MediaServerConf, DownloaderConf
 from app.schemas.types import ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
     OtherModulesType, SystemConfigKey
@@ -15,8 +17,21 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
     输入参数与输出参数一致的，或没有输出的，可以被多个模块重复实现
     """
 
-    def on_config_changed(self):
-        self.init_module()
+    def __init__(self) -> None:
+        """初始化模块生命周期锁"""
+        super().__init__()
+        self._reload_lock = threading.RLock()
+
+    def on_config_changed(self) -> None:
+        """串行停止旧资源并按最新配置重新初始化模块"""
+        with self._reload_lock:
+            try:
+                self.stop()
+            except Exception as err:
+                logger.error(
+                    f"停止 {self.get_reload_name()} 旧资源失败，继续按最新配置初始化：{err}"
+                )
+            self.init_module()
 
     def get_reload_name(self):
         return self.get_name()

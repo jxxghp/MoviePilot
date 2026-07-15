@@ -43,12 +43,6 @@ class TheMovieDbModule(_ModuleBase):
         self.category = CategoryHelper()
         self.scraper = TmdbScraper()
 
-    def on_config_changed(self):
-        # 停止模块
-        self.stop()
-        # 初始化模块
-        self.init_module()
-
     @staticmethod
     def get_name() -> str:
         return "TheMovieDb"
@@ -74,9 +68,13 @@ class TheMovieDbModule(_ModuleBase):
         """
         return 1
 
-    def stop(self):
-        self.cache.save()
-        self.tmdb.close()
+    def stop(self) -> None:
+        """停止模块"""
+        # 缓存持久化失败不能阻断 HTTP 客户端关闭
+        try:
+            self.cache.save()
+        finally:
+            self.tmdb.close()
 
     def test(self) -> Tuple[bool, str]:
         """

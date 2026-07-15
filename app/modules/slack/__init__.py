@@ -69,12 +69,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         """
         return 3
 
-    def stop(self):
-        """
-        停止模块
-        """
+    def stop(self) -> None:
+        """停止模块"""
         for client in self.get_instances().values():
-            client.stop()
+            try:
+                client.stop()
+            except Exception as err:
+                logger.error(f"停止Slack模块实例失败：{err}")
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """

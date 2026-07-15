@@ -24,7 +24,6 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         初始化模块
         """
-        self.stop()
         super().init_service(service_name=WeChat.__name__.lower(),
                              service_type=self._create_client)
         self._channel = MessageChannel.Wechat
@@ -54,13 +53,14 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         return 1
 
-    def stop(self):
+    def stop(self) -> None:
+        """停止模块"""
         for client in self.get_instances().values():
-            if hasattr(client, "stop"):
-                try:
+            try:
+                if hasattr(client, "stop"):
                     client.stop()
-                except Exception as err:
-                    logger.error(f"停止微信模块实例失败：{err}")
+            except Exception as err:
+                logger.error(f"停止微信模块实例失败：{err}")
 
     @staticmethod
     def _is_bot_mode(config: dict) -> bool:

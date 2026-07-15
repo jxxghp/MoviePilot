@@ -1536,14 +1536,19 @@ class Telegram:
         # 清理菜单命令
         self._bot.delete_my_commands()
 
-    def stop(self):
+    def stop(self) -> None:
         """
         停止Telegram消息接收服务
         """
         # 停止所有typing任务
         for chat_id in list(self._typing_tasks.keys()):
             self._stop_typing_task(chat_id)
-        if self._bot:
-            self._bot.stop_polling()
+        if not self._bot:
+            return
+
+        self._bot.stop_bot()
+        if self._polling_thread:
             self._polling_thread.join()
-            logger.info("Telegram消息接收服务已停止")
+        self._polling_thread = None
+        self._bot = None
+        logger.info("Telegram消息接收服务已停止")

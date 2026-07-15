@@ -46,7 +46,6 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
     )
 
     def init_module(self) -> None:
-        self.stop()
         super().init_service(service_name=QQBot.__name__.lower(), service_type=QQBot)
         self._channel = MessageChannel.QQ
 
@@ -67,9 +66,12 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
         return 10
 
     def stop(self) -> None:
+        """停止模块"""
         for client in self.get_instances().values():
-            if hasattr(client, "stop"):
+            try:
                 client.stop()
+            except Exception as err:
+                logger.error(f"停止QQ Bot模块实例失败：{err}")
 
     def test(self) -> Optional[Tuple[bool, str]]:
         if not self.get_instances():

@@ -58,12 +58,11 @@ class ModuleManager(metaclass=Singleton):
         """
         logger.info("正在停止所有模块...")
         for module_id, module in self._running_modules.items():
-            if hasattr(module, "stop"):
-                try:
-                    module.stop()
-                    logger.debug(f"Moudle Stoped：{module_id}")
-                except Exception as err:
-                    logger.error(f"Stop Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
+            try:
+                module.stop()
+                logger.debug(f"Moudle Stoped：{module_id}")
+            except Exception as err:
+                logger.error(f"Stop Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
         logger.info("所有模块停止完成")
 
     def reload(self):

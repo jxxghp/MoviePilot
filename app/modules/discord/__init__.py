@@ -58,7 +58,6 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
         if not Discord:
             logger.error("Discord 依赖未就绪（需要安装 discord.py==2.6.4），模块未启动")
             return
-        self.stop()
         super().init_service(
             service_name=Discord.__name__.lower(), service_type=Discord
         )
@@ -89,12 +88,13 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
         """
         return 4
 
-    def stop(self):
-        """
-        停止模块
-        """
+    def stop(self) -> None:
+        """停止模块"""
         for client in self.get_instances().values():
-            client.stop()
+            try:
+                client.stop()
+            except Exception as err:
+                logger.error(f"停止Discord模块实例失败：{err}")
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
