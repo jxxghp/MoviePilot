@@ -25,7 +25,7 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
 from app.core.config import settings, global_vars
-from app.core.event import eventmanager
+from app.core.event import Event, eventmanager
 from app.core.plugin import PluginManager
 from app.db import SessionFactory
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -986,6 +986,14 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         for pid in PluginManager().get_running_plugin_ids():
             self.update_plugin_job(pid)
+
+    @eventmanager.register(EventType.PluginReload)
+    def on_plugin_reload(self, event: Event) -> None:
+        """插件重载后按当前实例重新注册全部定时服务"""
+        plugin_id = event.event_data.get("plugin_id")
+        if not plugin_id:
+            return
+        self.update_plugin_job(plugin_id)
 
     def init_workflow_jobs(self):
         """
