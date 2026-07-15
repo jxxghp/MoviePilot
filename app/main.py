@@ -30,16 +30,31 @@ elif SystemUtils.is_frozen():
     sys.stderr = open(os.devnull, 'w')
 
 from app.factory import app
-from app.core.config import settings
+from app.core.config import global_vars, settings
 from app.db.init import init_db, update_db
 
 # 设置进程名
 setproctitle.setproctitle(settings.PROJECT_NAME)
 
+
+class MoviePilotServer(uvicorn.Server):
+    """在 Uvicorn 开始优雅退出前发布应用协作停止标志"""
+
+    def handle_exit(self, sig, frame) -> None:
+        global_vars.stop_system()
+        super().handle_exit(sig, frame)
+
+
 # uvicorn服务
-Server = uvicorn.Server(Config(app, host=settings.HOST, port=settings.PORT,
-                               reload=settings.DEV, workers=multiprocessing.cpu_count() * 2 + 1,
-                               timeout_graceful_shutdown=60))
+Server = MoviePilotServer(Config(app, host=settings.HOST, port=settings.PORT,
+                                 reload=settings.DEV, workers=multiprocessing.cpu_count() * 2 + 1,
+                                 timeout_graceful_shutdown=60))
+
+
+def request_shutdown() -> None:
+    """发布协作停止标志并请求 Uvicorn 退出"""
+    global_vars.stop_system()
+    Server.should_exit = True
 
 
 def start_tray():
@@ -64,8 +79,8 @@ def start_tray():
         """
         退出程序
         """
+        request_shutdown()
         TrayIcon.stop()
-        Server.should_exit = True
 
     import pystray
 
@@ -93,10 +108,11 @@ def signal_handler(signum, frame):
     信号处理函数，用于优雅停止服务
     """
     print(f"收到信号 {signum}，开始优雅停止服务...")
-    Server.should_exit = True
+    request_shutdown()
 
 
-if __name__ == '__main__':
+def run_application() -> None:
+    """初始化进程并启动 API 服务"""
     # 注册信号处理器
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
@@ -109,3 +125,7 @@ if __name__ == '__main__':
     update_db()
     # 启动API服务
     Server.run()
+
+
+if __name__ == '__main__':
+    run_application()
