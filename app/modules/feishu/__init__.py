@@ -10,7 +10,6 @@ from app.schemas.types import ModuleType
 
 class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
     def init_module(self) -> None:
-        self.stop()
         super().init_service(service_name=Feishu.__name__.lower(), service_type=Feishu)
         self._channel = MessageChannel.Feishu
 
@@ -30,13 +29,13 @@ class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
     def get_priority() -> int:
         return 2
 
-    def stop(self):
+    def stop(self) -> None:
+        """停止模块"""
         for client in self.get_instances().values():
-            if hasattr(client, "stop"):
-                try:
-                    client.stop()
-                except Exception as err:
-                    logger.error(f"停止飞书模块实例失败：{err}")
+            try:
+                client.stop()
+            except Exception as err:
+                logger.error(f"停止飞书模块实例失败：{err}")
 
     def test(self) -> Optional[Tuple[bool, str]]:
         if not self.get_instances():

@@ -43,12 +43,6 @@ class TheMovieDbModule(_ModuleBase):
         self.category = CategoryHelper()
         self.scraper = TmdbScraper()
 
-    def on_config_changed(self):
-        # 停止模块
-        self.stop()
-        # 初始化模块
-        self.init_module()
-
     @staticmethod
     def get_name() -> str:
         return "TheMovieDb"

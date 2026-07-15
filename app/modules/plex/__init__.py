@@ -44,13 +44,14 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         """
         return 3
 
-    def stop(self):
-        """
-        停止模块服务
-        """
+    def stop(self) -> None:
+        """停止模块"""
         for server in self.get_instances().values():
-            if server:
-                server.close()
+            try:
+                if server:
+                    server.close()
+            except Exception as err:
+                logger.error(f"停止Plex模块实例失败：{err}")
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
