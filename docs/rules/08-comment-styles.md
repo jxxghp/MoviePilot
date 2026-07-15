@@ -10,6 +10,8 @@ All **public classes**, **public methods**, and **public functions** in this pro
 
 ## Docstring Format
 
+Short, label-style docstrings should follow the surrounding code style and must not gain a period mechanically. Complete sentences that explain non-obvious behavior should use normal Chinese punctuation.
+
 ### Single-line (for simple, obvious descriptions)
 
 ```python
@@ -28,7 +30,7 @@ def download(
     download_dir: Path,
 ) -> Optional[str]:
     """
-    添加下载任务到下载器。
+    添加下载任务到下载器
 
     :param context: 当前媒体上下文，包含识别结果和种子选择信息
     :param torrent: 要下载的种子信息
@@ -43,7 +45,7 @@ def download(
 ```python
 class DownloadChain(ChainBase):
     """
-    下载处理链，负责协调搜索结果的种子选择、下载器调度和下载后处理。
+    下载处理链，负责协调搜索结果的种子选择、下载器调度和下载后处理
     """
 ```
 
