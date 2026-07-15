@@ -124,7 +124,7 @@ class NonBlockingFileHandler:
     """
     _instance = None
     _lock = threading.Lock()
-    _rotating_handlers = {}
+    _stop_sentinel = object()
 
     def __new__(cls):
         if cls._instance is None:
@@ -138,6 +138,9 @@ class NonBlockingFileHandler:
             return
 
         self._initialized = True
+        self._state_lock = threading.RLock()
+        self._handlers_lock = threading.Lock()
+        self._rotating_handlers = {}
         self._write_queue = queue.Queue(maxsize=log_settings.ASYNC_FILE_QUEUE_SIZE)
         self._executor = ThreadPoolExecutor(max_workers=log_settings.ASYNC_FILE_WORKERS,
                                             thread_name_prefix="LogWriter")
@@ -151,27 +154,28 @@ class NonBlockingFileHandler:
         """
         获取或创建RotatingFileHandler实例
         """
-        if file_path not in self._rotating_handlers:
-            # 确保目录存在
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._handlers_lock:
+            if file_path not in self._rotating_handlers:
+                # 确保目录存在
+                file_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 创建RotatingFileHandler
-            handler = RotatingFileHandler(
-                filename=str(file_path),
-                maxBytes=log_settings.LOG_MAX_FILE_SIZE_BYTES,
-                backupCount=log_settings.LOG_BACKUP_COUNT,
-                encoding='utf-8'
-            )
+                # 创建RotatingFileHandler
+                handler = RotatingFileHandler(
+                    filename=str(file_path),
+                    maxBytes=log_settings.LOG_MAX_FILE_SIZE_BYTES,
+                    backupCount=log_settings.LOG_BACKUP_COUNT,
+                    encoding='utf-8'
+                )
 
-            # 设置格式化器
-            formatter = logging.Formatter(log_settings.LOG_FILE_FORMAT)
-            handler.setFormatter(formatter)
+                # 设置格式化器
+                formatter = logging.Formatter(log_settings.LOG_FILE_FORMAT)
+                handler.setFormatter(formatter)
 
-            self._rotating_handlers[file_path] = handler
+                self._rotating_handlers[file_path] = handler
 
-        return self._rotating_handlers[file_path]
+            return self._rotating_handlers[file_path]
 
-    def write_log(self, level: str, message: str, file_path: Path):
+    def write_log(self, level: str, message: str, file_path: Path) -> None:
         """
         写入日志 - 自动检测协程环境并使用合适的方式
         """
@@ -181,8 +185,11 @@ class NonBlockingFileHandler:
         if self._is_in_event_loop():
             # 在协程环境中，使用非阻塞方式
             self._write_non_blocking(entry)
-        else:
-            # 不在协程环境中，直接同步写入
+            return
+        with self._state_lock:
+            if not self._running:
+                return
+            # 不在协程环境中，持锁同步写入，避免关闭文件处理器时仍有写操作进行
             self._write_sync(entry)
 
     @staticmethod
@@ -196,15 +203,19 @@ class NonBlockingFileHandler:
         except RuntimeError:
             return False
 
-    def _write_non_blocking(self, entry: LogEntry):
+    def _write_non_blocking(self, entry: LogEntry) -> bool:
         """
         非阻塞写入（用于协程环境）
         """
-        try:
-            self._write_queue.put_nowait(entry)
-        except queue.Full:
-            # 队列满时，使用线程池处理
-            self._executor.submit(self._write_sync, entry)
+        with self._state_lock:
+            if not self._running:
+                return False
+            try:
+                self._write_queue.put_nowait(entry)
+            except queue.Full:
+                # 队列满时，使用线程池处理
+                self._executor.submit(self._write_sync, entry)
+            return True
 
     @staticmethod
     def _write_sync(entry: LogEntry):
@@ -215,8 +226,7 @@ class NonBlockingFileHandler:
             # 获取RotatingFileHandler实例
             handler = NonBlockingFileHandler()._get_rotating_handler(entry.file_path)
 
-            # 使用RotatingFileHandler的emit方法，只传递原始消息
-            handler.emit(logging.LogRecord(
+            handler.handle(logging.LogRecord(
                 name='',
                 level=getattr(logging, entry.level.upper(), logging.INFO),
                 pathname='',
@@ -235,22 +245,28 @@ class NonBlockingFileHandler:
         """
         后台批量写入线程
         """
-        while self._running:
+        while True:
             try:
                 # 收集一批日志条目
                 batch = []
+                should_stop = False
                 end_time = time.time() + log_settings.WRITE_TIMEOUT
 
                 while len(batch) < log_settings.BATCH_WRITE_SIZE and time.time() < end_time:
                     try:
                         remaining_time = max(0, end_time - time.time())
                         entry = self._write_queue.get(timeout=remaining_time)
+                        if entry is self._stop_sentinel:
+                            should_stop = True
+                            break
                         batch.append(entry)
                     except queue.Empty:
                         break
 
                 if batch:
                     self._write_batch(batch)
+                if should_stop:
+                    break
 
             except Exception as e:
                 print(f"批量写入线程错误: {e}")
@@ -275,8 +291,7 @@ class NonBlockingFileHandler:
 
                 # 批量写入
                 for entry in entries:
-                    # 使用RotatingFileHandler的emit方法，只传递原始消息
-                    handler.emit(logging.LogRecord(
+                    handler.handle(logging.LogRecord(
                         name='',
                         level=getattr(logging, entry.level.upper(), logging.INFO),
                         pathname='',
@@ -294,15 +309,23 @@ class NonBlockingFileHandler:
 
     def shutdown(self):
         """
-        关闭文件处理器
+        排空异步日志并关闭文件处理器
         """
-        self._running = False
-        if hasattr(self, '_write_thread'):
-            self._write_thread.join(timeout=5)
+        with self._state_lock:
+            if not self._running:
+                return
+            self._running = False
+            if hasattr(self, '_write_thread') and self._write_thread.is_alive():
+                # 状态锁保证停止标记之后不会再有生产者入队
+                self._write_queue.put(self._stop_sentinel)
+        if hasattr(self, '_write_thread') and self._write_thread.is_alive():
+            self._write_thread.join()
         if self._executor:
             self._executor.shutdown(wait=True)
 
-        # 清理缓存
+        for handler in self._rotating_handlers.values():
+            handler.flush()
+            handler.close()
         self._rotating_handlers.clear()
 
 

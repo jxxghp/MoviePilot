@@ -18,8 +18,10 @@ from app.log import logger
 from app.utils.mixins import ConfigReloadMixin
 from app.utils.singleton import Singleton
 
-# 定义一个全局线程池执行器
-_executor = concurrent.futures.ThreadPoolExecutor()
+# DoH 关闭时需要释放线程池；保持惰性创建可避免未启用 DoH 时占用进程级资源
+_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_executor_lock = Lock()
+_doh_enabled = False
 
 # 定义默认的DoH配置
 _doh_timeout = 5
@@ -29,10 +31,20 @@ _doh_lock = Lock()
 _orig_getaddrinfo = socket.getaddrinfo
 
 
+def _get_executor_locked() -> concurrent.futures.ThreadPoolExecutor:
+    """在持有执行器锁时按需获取 DoH 查询线程池"""
+    global _executor
+    if _executor is None:
+        _executor = concurrent.futures.ThreadPoolExecutor()
+    return _executor
+
+
 def enable_doh(enable: bool) -> None:
     """
     对 socket.getaddrinfo 进行补丁
     """
+
+    global _doh_enabled
 
     def _patched_getaddrinfo(host: str, *args, **kwargs):
         """
@@ -47,9 +59,15 @@ def enable_doh(enable: bool) -> None:
             logger.info(f"已解析 [{host}] 为 [{ip}] (缓存)")
             return _orig_getaddrinfo(ip, *args, **kwargs)
         # 使用DoH解析主机
-        futures = []
-        for resolver in settings.DOH_RESOLVERS.split(","):
-            futures.append(_executor.submit(_doh_query, resolver, host))
+        with _executor_lock:
+            if not _doh_enabled:
+                return _orig_getaddrinfo(host, *args, **kwargs)
+            executor = _get_executor_locked()
+            # 一次解析的任务必须在同一临界区提交完，避免关闭过程中部分任务落入新线程池
+            futures = [
+                executor.submit(_doh_query, resolver, host)
+                for resolver in settings.DOH_RESOLVERS.split(",")
+            ]
         for future in concurrent.futures.as_completed(futures):
             ip = future.result()
             if ip is not None:
@@ -60,11 +78,9 @@ def enable_doh(enable: bool) -> None:
                 break
         return _orig_getaddrinfo(host, *args, **kwargs)
 
-    if enable:
-        # 替换 socket.getaddrinfo 方法
-        socket.getaddrinfo = _patched_getaddrinfo
-    else:
-        socket.getaddrinfo = _orig_getaddrinfo
+    with _executor_lock:
+        _doh_enabled = enable
+        socket.getaddrinfo = _patched_getaddrinfo if enable else _orig_getaddrinfo
 
 
 class DohHelper(ConfigReloadMixin, metaclass=Singleton):
@@ -77,13 +93,30 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
         enable_doh(settings.DOH_ENABLE)
 
     def on_config_changed(self) -> None:
+        if not settings.DOH_ENABLE:
+            self.shutdown()
+            return
         with _doh_lock:
             # DOH配置有变动的情况下，清空缓存
             _doh_cache.clear()
-        enable_doh(settings.DOH_ENABLE)
+        enable_doh(True)
 
     def get_reload_name(self) -> str:
         return 'DoH'
+
+    def shutdown(self) -> None:
+        """恢复系统 DNS 并释放 DoH 查询线程池"""
+        global _executor, _doh_enabled
+        with _executor_lock:
+            _doh_enabled = False
+            socket.getaddrinfo = _orig_getaddrinfo
+            executor = _executor
+            _executor = None
+        with _doh_lock:
+            _doh_cache.clear()
+        if executor:
+            executor.shutdown(wait=True)
+
 
 def _doh_query(resolver: str, host: str) -> Optional[str]:
     """

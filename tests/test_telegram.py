@@ -3,6 +3,7 @@
 Telegram 模块单元测试（pytest 原生）。
 """
 import json
+import warnings
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
@@ -286,13 +287,29 @@ def test_send_msg_markdown_escaping(telegram):
     assert send_kwargs["text"].startswith("*测试标题*\n")
 
 
-def test_telegramify_new_content_fields_are_used_directly():
-    """新版telegramify对象应直接使用已渲染的MarkdownV2字段"""
-    text_item = SimpleNamespace(content="已转义\\_文本")
-    file_item = SimpleNamespace(caption="已转义\\_说明")
+def test_telegramify_current_fields_are_used_directly():
+    """telegramify 对象直接使用当前 MarkdownV2 字段"""
+    from telegramify_markdown.content import ContentTrace, File, Text
 
-    assert Telegram._telegramify_item_text(text_item) == "已转义\\_文本"
-    assert Telegram._telegramify_item_caption(file_item) == "已转义\\_说明"
+    text_item = Text(
+        text="已转义_文本",
+        entities=[],
+        content_trace=ContentTrace(source_type="test"),
+    )
+    file_item = File(
+        file_name="test.txt",
+        file_data=b"test",
+        caption_text="已转义_说明",
+        caption_entities=[],
+        content_trace=ContentTrace(source_type="test"),
+    )
+
+    with warnings.catch_warnings(record=True) as warning_records:
+        warnings.simplefilter("always")
+        assert Telegram._telegramify_item_text(text_item) == "已转义\\_文本"
+        assert Telegram._telegramify_item_caption(file_item) == "已转义\\_说明"
+
+    assert not warning_records
 
 
 def test_send_msg_with_html_parse_mode_keeps_html(telegram):

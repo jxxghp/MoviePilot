@@ -20,6 +20,8 @@ function WARN() {
     echo -e "${WARN} ${1}"
 }
 
+ENTRYPOINT_START_TIME="$(date +%s)"
+
 function normalize_env_value() {
     printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
@@ -55,6 +57,42 @@ function run_package_command() {
     else
         "$@"
     fi
+}
+
+function wait_backend_ready() {
+    local entrypoint_start_time="${1:-$(date +%s)}"
+    local backend_start_time="${2:-$(date +%s)}"
+    local python_pid="${3:-}"
+    local backend_port="${PORT:-3001}"
+    local web_port="${NGINX_PORT:-3000}"
+    local timeout="${MOVIEPILOT_BACKEND_READY_TIMEOUT:-300}"
+    local ready_url="http://127.0.0.1:${backend_port}/api/v1/system/global?token=moviepilot"
+    local deadline
+    if ! [[ "${timeout}" =~ ^[0-9]+$ ]] || [ "$((10#${timeout}))" -le 0 ]; then
+        WARN "→ MOVIEPILOT_BACKEND_READY_TIMEOUT=${timeout} 无效，使用默认 300 秒。"
+        timeout=300
+    else
+        timeout=$((10#${timeout}))
+    fi
+    deadline=$(( $(date +%s) + timeout ))
+
+    while [ "$(date +%s)" -lt "${deadline}" ]; do
+        if [ -n "${python_pid}" ] && ! kill -0 "${python_pid}" >/dev/null 2>&1; then
+            WARN "→ 后端服务启动完成探测已停止：后端进程已退出。"
+            return 1
+        fi
+
+        if curl -fsS --max-time 2 "${ready_url}" >/dev/null 2>&1; then
+            local now
+            now="$(date +%s)"
+            INFO "→ MoviePilot Web 已可访问，启动总耗时 $(( now - entrypoint_start_time )) 秒，后端就绪耗时 $(( now - backend_start_time )) 秒，后端端口 ${backend_port}，前端端口 ${web_port}。"
+            return 0
+        fi
+        sleep 1
+    done
+
+    WARN "→ 后端服务启动完成探测超时，已等待 ${timeout} 秒，后端端口 ${backend_port}，继续等待进程日志..."
+    return 1
 }
 
 # 环境变量补全
@@ -480,12 +518,14 @@ umask "${UMASK}"
 
 # 启动后端服务
 INFO "→ 启动后端服务..."
+BACKEND_START_TIME="$(date +%s)"
 if [ "${START_NOGOSU:-false}" = "true" ]; then
     "${VENV_PATH}/bin/python3" app/main.py > /dev/stdout 2> /dev/stderr &
 else
     gosu moviepilot:moviepilot "${VENV_PATH}/bin/python3" app/main.py > /dev/stdout 2> /dev/stderr &
 fi
 PYTHON_PID=$!
+wait_backend_ready "${ENTRYPOINT_START_TIME}" "${BACKEND_START_TIME}" "${PYTHON_PID}" &
 
 # 等待 Python 进程退出。
 # 如果收到信号，trap 会中断 wait，并执行 graceful_exit。

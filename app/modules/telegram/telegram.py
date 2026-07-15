@@ -279,8 +279,6 @@ class Telegram:
     @staticmethod
     def _telegramify_item_text(item: Text) -> str:
         """将 telegramify 文本片段转换为 Telegram MarkdownV2 字符串。"""
-        if hasattr(item, "content"):
-            return item.content
         if entities_to_markdownv2:
             return entities_to_markdownv2(item.text, item.entities)
         return standardize(item.text)
@@ -290,8 +288,6 @@ class Telegram:
         """将 telegramify 文本或媒体片段转换为 Telegram MarkdownV2 caption。"""
         if isinstance(item, Text):
             return Telegram._telegramify_item_text(item)
-        if hasattr(item, "caption"):
-            return item.caption
         if entities_to_markdownv2:
             return entities_to_markdownv2(item.caption_text, item.caption_entities)
         return standardize(item.caption_text)

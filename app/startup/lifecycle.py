@@ -20,6 +20,7 @@ from app.chain.system import SystemChain
 from app.core.config import global_vars, settings
 from app.helper.server import MoviePilotServerHelper
 from app.helper.system import SystemHelper
+from app.log import LoggerManager
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
@@ -97,20 +98,24 @@ async def lifespan(app: FastAPI):
             pass
         except Exception as e:
             print(str(e))
-        if not settings.MOVIEPILOT_SAFE_MODE:
-            # 备份插件
-            SystemChain().backup_plugins()
-            # 停止工作流
-            stop_workflow()
-            # 停止命令
-            stop_command()
-            # 停止监控器
-            stop_monitor()
-            # 停止定时器
-            stop_scheduler()
-            # 停止插件
-            stop_plugins()
-        # 停止模块
-        await stop_modules()
-        # 关闭共享的异步 HTTP 连接池，释放底层连接资源
-        await aclose_shared_async_transports()
+        try:
+            if not settings.MOVIEPILOT_SAFE_MODE:
+                # 备份插件
+                SystemChain().backup_plugins()
+                # 停止工作流
+                stop_workflow()
+                # 停止命令
+                stop_command()
+                # 停止监控器
+                stop_monitor()
+                # 停止定时器
+                stop_scheduler()
+                # 停止插件
+                stop_plugins()
+            # 停止模块
+            await stop_modules()
+            # 关闭共享的异步 HTTP 连接池，释放底层连接资源
+            await aclose_shared_async_transports()
+        finally:
+            # 日志最后关闭，确保其他组件的收尾信息已写入文件
+            LoggerManager.shutdown()

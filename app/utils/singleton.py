@@ -10,6 +10,11 @@ class Singleton(abc.ABCMeta, type):
 
     _instances: dict = {}
 
+    def get_existing_instance(cls, *args, **kwargs):
+        """按相同参数返回已创建实例，不触发初始化"""
+        key = (cls, args, frozenset(kwargs.items()))
+        return cls._instances.get(key)
+
     def __call__(cls, *args, **kwargs):
         key = (cls, args, frozenset(kwargs.items()))
         if key not in cls._instances:
@@ -30,6 +35,10 @@ class SingletonClass(abc.ABCMeta, type):
     """
 
     _instances: dict = {}
+
+    def get_existing_instance(cls):
+        """返回已创建实例，不触发初始化"""
+        return cls._instances.get(cls)
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
