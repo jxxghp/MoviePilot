@@ -161,13 +161,14 @@ class Api:
 
     def _common_headers(self) -> dict[str, str]:
         """
-        获取绿联 Web 端通用请求头。
+        获取绿联 Web 端通用请求头，兼容新版登录客户端标识。
         """
         return {
             "Accept": "application/json, text/plain, */*",
             "Client-Id": self._client_id,
             "Client-Version": self._client_version,
             "UG-Agent": self._ug_agent,
+            "UG-Client-Id": self._client_id,
             "X-Specify-Language": self._language,
         }
 

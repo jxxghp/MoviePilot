@@ -101,8 +101,8 @@ def test_request_json_default_verify_ssl_true() -> None:
     assert fake_session.calls[1][1].get("verify") is True
 
 
-def test_login_logout_follow_verify_ssl_flag() -> None:
-    """登录与登出请求应沿用用户配置的证书校验开关"""
+def test_login_logout_requests_follow_client_configuration() -> None:
+    """登录与登出请求应沿用证书配置并携带一致的客户端标识"""
     api = Api(host="https://example.com", verify_ssl=False)
     fake_session = _FakeSession(
         get_responses=[_FakeResponse({})],
@@ -141,6 +141,10 @@ def test_login_logout_follow_verify_ssl_flag() -> None:
     assert fake_session.calls[0][1].get("verify") is False
     assert fake_session.calls[1][1].get("verify") is False
     assert fake_session.calls[2][1].get("verify") is False
+    check_headers = fake_session.calls[0][1]["headers"]
+    login_headers = fake_session.calls[1][1]["headers"]
+    assert check_headers["UG-Client-Id"] == check_headers["Client-Id"]
+    assert login_headers["UG-Client-Id"] == check_headers["UG-Client-Id"]
 
 
 def test_login_accepts_token_id_and_reuses_check_public_key() -> None:
