@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Iterator
@@ -7,9 +8,11 @@ import pytest
 from packaging.version import Version
 from watchfiles import Change
 
+from app.core.event import Event, eventmanager
 from app.core.plugin import PluginManager
 from app.helper.plugin import PluginHelper
-from app.schemas.types import SystemConfigKey
+from app.scheduler import Scheduler
+from app.schemas.types import EventType, SystemConfigKey
 from app.utils.singleton import Singleton
 
 
@@ -77,6 +80,34 @@ def _set_running_render_mode(
     plugin_manager.running_plugins["DemoPlugin"] = SimpleNamespace(
         get_render_mode=lambda: (render_mode, dist_path),
     )
+
+
+class _FakeSchedulerBackend:
+    """提供插件服务增删所需的最小 APScheduler 契约。"""
+
+    def __init__(self, job_ids: list[str]):
+        self.jobs = {job_id: {"id": job_id} for job_id in job_ids}
+
+    def get_jobs(self):
+        """返回当前注册的 APScheduler job。"""
+        return [SimpleNamespace(id=job_id) for job_id in self.jobs]
+
+    def remove_job(self, job_id: str) -> None:
+        """移除指定 APScheduler job。"""
+        self.jobs.pop(job_id)
+
+    def add_job(self, func, trigger, **kwargs) -> None:
+        """记录并替换指定 APScheduler job。"""
+        self.jobs[kwargs["id"]] = {"func": func, "trigger": trigger, **kwargs}
+
+
+def _build_scheduler_for_plugin_reload(jobs: dict, backend) -> Scheduler:
+    """构造不启动后台线程的插件服务 Scheduler。"""
+    scheduler = object.__new__(Scheduler)
+    scheduler._lock = threading.RLock()
+    scheduler._jobs = jobs
+    scheduler._scheduler = backend
+    return scheduler
 
 
 def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_lags(
@@ -511,3 +542,53 @@ def test_local_python_and_federated_changes_share_one_batch_sync(
 
     assert sync_spy.call_count == 1
     reload_spy.assert_called_once_with("DemoPlugin")
+
+
+def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
+    """插件重载事件必须按当前服务拓扑幂等刷新 Scheduler。"""
+    current_func = Mock()
+    plugin_manager = Mock()
+    plugin_manager.get_plugin_services.return_value = [
+        {
+            "id": "new",
+            "name": "新服务",
+            "func": current_func,
+            "trigger": "interval",
+            "kwargs": {"minutes": 5},
+            "func_kwargs": {"marker": "new"},
+        }
+    ]
+    plugin_manager.get_plugin_attr.return_value = "测试插件"
+    monkeypatch.setattr("app.scheduler.PluginManager", lambda: plugin_manager)
+    backend = _FakeSchedulerBackend(["DemoPlugin_old"])
+    scheduler = _build_scheduler_for_plugin_reload(
+        jobs={
+            "DemoPlugin_old": {
+                "func": Mock(),
+                "name": "旧服务",
+                "pid": "DemoPlugin",
+            }
+        },
+        backend=backend,
+    )
+    event = Event(EventType.PluginReload, {"plugin_id": "DemoPlugin"})
+
+    reload_handlers = {
+        item["handler_identifier"]
+        for item in eventmanager.visualize_handlers()
+        if item["event_type"] == EventType.PluginReload.value
+        and item["status"] == "enabled"
+    }
+    assert "app.scheduler.Scheduler.on_plugin_reload" in reload_handlers
+    scheduler.on_plugin_reload(event)
+    scheduler.on_plugin_reload(event)
+
+    assert set(scheduler._jobs) == {"DemoPlugin_new"}
+    service = scheduler._jobs["DemoPlugin_new"]
+    assert service["func"] is current_func
+    assert service["kwargs"] == {"marker": "new"}
+    assert set(backend.jobs) == {"DemoPlugin_new"}
+    registered_job = backend.jobs["DemoPlugin_new"]
+    assert registered_job["trigger"] == "interval"
+    assert registered_job["minutes"] == 5
+    assert registered_job["kwargs"] == {"job_id": "DemoPlugin_new"}
