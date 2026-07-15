@@ -68,9 +68,13 @@ class TheMovieDbModule(_ModuleBase):
         """
         return 1
 
-    def stop(self):
-        self.cache.save()
-        self.tmdb.close()
+    def stop(self) -> None:
+        """停止模块"""
+        # 缓存持久化失败不能阻断 HTTP 客户端关闭
+        try:
+            self.cache.save()
+        finally:
+            self.tmdb.close()
 
     def test(self) -> Tuple[bool, str]:
         """

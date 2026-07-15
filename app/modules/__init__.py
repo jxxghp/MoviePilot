@@ -17,12 +17,12 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
     输入参数与输出参数一致的，或没有输出的，可以被多个模块重复实现
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化模块生命周期锁"""
         super().__init__()
         self._reload_lock = threading.RLock()
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
         """串行停止旧资源并按最新配置重新初始化模块"""
         with self._reload_lock:
             try:

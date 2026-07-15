@@ -92,13 +92,6 @@ class FilterModule(_ModuleBase):
         self.rule_set = deepcopy(self.builtin_rule_set)
         self.__init_custom_rules()
 
-    def on_config_changed(self) -> None:
-        """
-        自定义过滤或 Meta 识别配置变更后重建规则集并刷新 Rust Meta 配置缓存。
-        """
-        clear_rust_parse_options_cache()
-        self.init_module()
-
     def __init_custom_rules(self):
         """
         加载用户自定义规则，如跟内置规则冲突，以用户自定义规则为准
@@ -137,10 +130,8 @@ class FilterModule(_ModuleBase):
         return 4
 
     def stop(self) -> None:
-        """
-        停止过滤器模块。
-        """
-        pass
+        """停止模块"""
+        clear_rust_parse_options_cache()
 
     def test(self) -> None:
         """
