@@ -1058,6 +1058,29 @@ class LLMHelper:
                 http_async_client=_build_httpx_client(llm_proxy, async_client=True),
                 **thinking_kwargs,
             )
+        elif runtime["runtime"] == "bedrock":
+            from langchain_aws import ChatBedrockConverse
+
+            from app.agent.llm.provider import LLMProviderManager
+
+            aws_region = runtime.get("aws_region") or "us-east-1"
+            aws_auth = runtime.get("aws_auth") or {}
+            # Bearer 认证需要跳过 SigV4 签名并注入 Authorization 头，SigV4 认证
+            # 直接以 AK/SK 签名；两种方式统一由 provider 管理器构造 boto3 客户端。
+            bedrock_client = LLMProviderManager().create_bedrock_client(
+                "bedrock-runtime",
+                region=aws_region,
+                credentials=aws_auth,
+                base_url=runtime.get("base_url"),
+                use_proxy=use_proxy,
+                read_timeout=settings.LLM_TOOL_TIMEOUT,
+            )
+            model = ChatBedrockConverse(
+                model_id=model_name,
+                client=bedrock_client,
+                temperature=temperature_value,
+                disable_streaming=not streaming,
+            )
         elif runtime["runtime"] in {"anthropic_compatible", "copilot_anthropic"}:
             from langchain_anthropic import ChatAnthropic
 
@@ -1107,7 +1130,11 @@ class LLMHelper:
         # 优先使用 provider / models.dev 目录中的上下文上限，减少用户手填成本。
         model_profile = getattr(model, "profile", None)
         if model_profile:
-            logger.debug(f"使用LLM模型: {model.model}，Profile: {model.profile}")
+            # ChatBedrockConverse 等模型类没有 model 属性，模型名存放在 model_id。
+            logged_model_name = getattr(model, "model", None) or getattr(
+                model, "model_id", model_name
+            )
+            logger.debug(f"使用LLM模型: {logged_model_name}，Profile: {model_profile}")
         else:
             model_record = runtime.get("model_record") or {}
             model_metadata = runtime.get("model_metadata") or {}
