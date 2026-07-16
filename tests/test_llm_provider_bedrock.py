@@ -73,10 +73,12 @@ def test_parse_bedrock_credentials_malformed_colon_rejected():
 
 
 def test_extract_bedrock_region_from_base_url():
+    """应从标准、FIPS 与 PrivateLink Bedrock 端点提取 Region"""
     extract = LLMProviderManager._extract_bedrock_region
 
     assert extract("https://bedrock-runtime.us-east-1.amazonaws.com") == "us-east-1"
     assert extract("https://bedrock-runtime.ap-northeast-1.amazonaws.com/") == "ap-northeast-1"
+    assert extract("https://bedrock-runtime.mx-central-1.amazonaws.com") == "mx-central-1"
     assert extract("https://bedrock.eu-central-1.amazonaws.com") == "eu-central-1"
     # FIPS 与 PrivateLink（VPCE）端点同样能识别 Region
     assert extract("https://bedrock-runtime-fips.us-east-1.amazonaws.com") == "us-east-1"
@@ -190,10 +192,17 @@ def test_resolve_runtime_bedrock_missing_credentials_rejected():
 
 
 def test_bedrock_model_matches_region():
+    """目录模型应按 Profile 分区及裸模型 ON_DEMAND Region 过滤"""
     matches = LLMProviderManager._bedrock_model_matches_region
 
-    # 裸模型 ID 与 global Profile 不按 Region 过滤
-    assert matches("anthropic.claude-3-5-sonnet-20241022-v2:0", "us-east-1")
+    # 已知裸模型 ID 仅在其支持 ON_DEMAND 的 Region 保留
+    assert matches("anthropic.claude-3-5-sonnet-20241022-v2:0", "us-west-2")
+    assert matches("anthropic.claude-3-5-sonnet-20241022-v2:0", "ap-southeast-2")
+    assert not matches("anthropic.claude-3-5-sonnet-20241022-v2:0", "ap-northeast-1")
+    assert not matches("anthropic.claude-sonnet-4-5-20250929-v1:0", "us-west-2")
+    assert not matches("amazon.nova-premier-v1:0", "ap-northeast-1")
+    # 未明确限制的裸模型与 global Profile 维持可用
+    assert matches("amazon.nova-lite-v1:0", "ap-northeast-1")
     assert matches("global.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-northeast-1")
     # 地理前缀只在对应分区 Region 可调用
     assert matches("us.anthropic.claude-haiku-4-5-20251001-v1:0", "us-west-2")
@@ -217,13 +226,13 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
                     "name": "Claude Sonnet 3.5 v2",
                     "limit": {"context": 200000, "output": 8192},
                 },
-                "amazon.nova-premier-v1:0": {
-                    "name": "Nova Premier",
-                    "limit": {"context": 1000000, "output": 10000},
+                "amazon.nova-lite-v1:0": {
+                    "name": "Nova Lite",
+                    "limit": {"context": 300000, "output": 5000},
                 },
-                "apac.amazon.nova-premier-v1:0": {
-                    "name": "Nova Premier (APAC)",
-                    "limit": {"context": 1000000, "output": 10000},
+                "apac.amazon.nova-lite-v1:0": {
+                    "name": "Nova Lite (APAC)",
+                    "limit": {"context": 300000, "output": 5000},
                 },
                 "anthropic.claude-sonnet-4-5-20250929-v1:0": {
                     "name": "Claude Sonnet 4.5",
@@ -258,11 +267,11 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
             )
         )
 
-    # 降级后模型来自 models.dev 目录，且 us. Profile 在东京 Region 被过滤
+    # 降级后仅保留东京 Region 可调用的裸模型与 Profile
     model_ids = {m["id"] for m in models}
-    assert "anthropic.claude-3-5-sonnet-20241022-v2:0" in model_ids
-    assert "amazon.nova-premier-v1:0" in model_ids
-    assert "apac.amazon.nova-premier-v1:0" in model_ids
+    assert "anthropic.claude-3-5-sonnet-20241022-v2:0" not in model_ids
+    assert "amazon.nova-lite-v1:0" in model_ids
+    assert "apac.amazon.nova-lite-v1:0" in model_ids
     assert "global.anthropic.claude-sonnet-4-5-20250929-v1:0" in model_ids
     assert "us.anthropic.claude-haiku-4-5-20251001-v1:0" not in model_ids
     assert "anthropic.claude-sonnet-4-5-20250929-v1:0" not in model_ids

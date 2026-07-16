@@ -110,6 +110,7 @@ class LLMProviderManager(metaclass=Singleton):
     _BEDROCK_DEFAULT_REGION = "us-east-1"
     _BEDROCK_API_KEY_PREFIX = "bedrock-api-key-"
     _BEDROCK_PROFILE_REQUIRED_MODEL_IDS = {
+        "amazon.nova-premier-v1:0",
         "anthropic.claude-haiku-4-5-20251001-v1:0",
         "anthropic.claude-opus-4-1-20250805-v1:0",
         "anthropic.claude-opus-4-20250514-v1:0",
@@ -119,6 +120,29 @@ class LLMProviderManager(metaclass=Singleton):
         "anthropic.claude-sonnet-4-20250514-v1:0",
         "anthropic.claude-sonnet-4-5-20250929-v1:0",
         "anthropic.claude-sonnet-4-6",
+    }
+    _BEDROCK_ON_DEMAND_MODEL_REGIONS = {
+        "anthropic.claude-3-5-haiku-20241022-v1:0": (
+            "us-west-2",
+        ),
+        "anthropic.claude-3-5-sonnet-20240620-v1:0": (
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "ap-southeast-1",
+            "eu-central-1",
+            "eu-central-2",
+            "us-east-1",
+            "us-gov-west-1",
+            "us-west-2",
+        ),
+        "anthropic.claude-3-5-sonnet-20241022-v2:0": (
+            "ap-southeast-2",
+            "us-west-2",
+        ),
+        "anthropic.claude-3-7-sonnet-20250219-v1:0": (
+            "eu-west-2",
+            "us-gov-west-1",
+        ),
     }
     _CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     _CHATGPT_ISSUER = "https://auth.openai.com"
@@ -1814,7 +1838,8 @@ class LLMProviderManager(metaclass=Singleton):
         """
         hostname = urlsplit((base_url or "").strip().lower()).hostname or ""
         match = re.search(
-            r"(?:^|\.)((?:us|eu|ap|ca|sa|me|af|il)(?:-gov)?-[a-z]+-\d+)(?:\.|$)",
+            r"(?:^|\.)(?:bedrock(?:-runtime)?(?:-fips)?)"
+            r"\.([a-z0-9-]+-\d+)(?:\.|$)",
             hostname,
         )
         if match:
@@ -1840,7 +1865,8 @@ class LLMProviderManager(metaclass=Singleton):
 
         models.dev 目录同时收录裸模型 ID（直连调用）与带地理前缀的
         Inference Profile ID（us./eu./apac./global. 等）。带前缀的条目只在
-        对应地理分区的 Region 可用；global 与裸 ID 不做限制。
+        对应地理分区的 Region 可用；Profile-only 裸 ID 不可用，已知具有
+        Region 限制的裸 ID 仅在 AWS 支持的 ON_DEMAND Region 可用。
 
         :param model_id: 目录中的模型 ID
         :param region: 当前 Base URL 对应的 AWS Region
@@ -1848,10 +1874,12 @@ class LLMProviderManager(metaclass=Singleton):
         """
         prefix = model_id.split(".", 1)[0]
         region_prefixes = cls._BEDROCK_GEO_PREFIXES.get(prefix)
-        if region_prefixes is None or not region_prefixes:
-            # 裸模型 ID 或 global Profile：不按 Region 过滤。
-            return True
-        return region.startswith(region_prefixes)
+        if region_prefixes is not None:
+            return not region_prefixes or region.startswith(region_prefixes)
+        if model_id in cls._BEDROCK_PROFILE_REQUIRED_MODEL_IDS:
+            return False
+        on_demand_regions = cls._BEDROCK_ON_DEMAND_MODEL_REGIONS.get(model_id)
+        return on_demand_regions is None or region in on_demand_regions
 
     @classmethod
     def _parse_bedrock_credentials(cls, api_key: Optional[str]) -> dict[str, Any]:
@@ -2165,21 +2193,10 @@ class LLMProviderManager(metaclass=Singleton):
                 provider_id="amazon-bedrock",
                 use_proxy=use_proxy,
             )
-            profile_required_base_ids: set[str] = set()
-            for model in models:
-                prefix, separator, base_model_id = model["id"].partition(".")
-                if (
-                        separator
-                        and prefix in self._BEDROCK_GEO_PREFIXES
-                        and base_model_id in self._BEDROCK_PROFILE_REQUIRED_MODEL_IDS
-                ):
-                    profile_required_base_ids.add(base_model_id)
             return [
                 model
                 for model in models
                 if self._bedrock_model_matches_region(model["id"], region)
-                # 仅过滤明确要求 Profile 的裸 ID，避免误删仍支持 ON_DEMAND 的模型。
-                and model["id"] not in profile_required_base_ids
             ]
         finally:
             await asyncio.to_thread(client.close)
