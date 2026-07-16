@@ -1,6 +1,7 @@
 """Amazon Bedrock provider 的凭证解析、Region 提取与运行时解析测试"""
 
 import asyncio
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -124,3 +125,29 @@ def test_resolve_runtime_bedrock_missing_credentials_rejected():
                 api_key=None,
             )
         )
+
+
+def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
+    """控制面被拒（如 API Key 仅授权 bedrock-runtime）时降级 models.dev 目录"""
+    manager = LLMProviderManager()
+
+    denied_client = MagicMock()
+    denied_client.get_paginator.side_effect = Exception(
+        "AccessDeniedException: not authorized to perform bedrock:ListInferenceProfiles"
+    )
+
+    with patch.object(
+        LLMProviderManager, "create_bedrock_client", return_value=denied_client
+    ):
+        models = asyncio.run(
+            manager._list_models_from_bedrock(
+                api_key="bedrock-api-key-runtime-only",
+                base_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+                use_proxy=False,
+            )
+        )
+
+    # 降级后模型来自 bundled models.json 的 amazon-bedrock 目录
+    assert models, "降级路径应返回 models.dev 目录中的模型"
+    assert all(m["source"] == "models.dev" for m in models)
+    denied_client.close.assert_called_once()

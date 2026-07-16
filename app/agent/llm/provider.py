@@ -2075,7 +2075,15 @@ class LLMProviderManager(metaclass=Singleton):
         try:
             profile_summaries, foundation_summaries = await asyncio.to_thread(_fetch)
         except Exception as err:
-            raise LLMProviderError(f"获取 Amazon Bedrock 模型列表失败: {err}") from err
+            # 部分 Bedrock API Key 的授权范围仅覆盖 bedrock-runtime 推理接口，
+            # 控制面查询被拒时降级到 models.dev 目录，保证仍能选择模型。
+            logger.warning(
+                f"获取 Amazon Bedrock 控制面模型列表失败，降级 models.dev 目录: {err}"
+            )
+            return await self._list_models_from_models_dev_only(
+                provider_id="amazon-bedrock",
+                use_proxy=use_proxy,
+            )
         finally:
             await asyncio.to_thread(client.close)
 
