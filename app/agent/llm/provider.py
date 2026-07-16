@@ -109,7 +109,35 @@ class LLMProviderManager(metaclass=Singleton):
     _AUTH_SESSION_DONE_RETENTION = 300
     _BEDROCK_DEFAULT_REGION = "us-east-1"
     _BEDROCK_API_KEY_PREFIX = "bedrock-api-key-"
+    _BEDROCK_GPT_OSS_BASE_REGIONS = (
+        "ap-northeast-1",
+        "ap-south-1",
+        "ap-southeast-2",
+        "eu-central-1",
+        "eu-north-1",
+        "eu-west-1",
+        "eu-west-2",
+        "sa-east-1",
+        "us-east-1",
+        "us-east-2",
+        "us-west-2",
+    )
+    _BEDROCK_GPT_OSS_SAFEGUARD_REGIONS = (
+        "ap-northeast-1",
+        "ap-south-1",
+        "ap-southeast-2",
+        "eu-west-1",
+        "eu-west-2",
+        "sa-east-1",
+        "us-east-1",
+        "us-east-2",
+        "us-west-2",
+    )
     _BEDROCK_ON_DEMAND_MODEL_REGIONS = {
+        "openai.gpt-oss-120b-1:0": _BEDROCK_GPT_OSS_BASE_REGIONS,
+        "openai.gpt-oss-20b-1:0": _BEDROCK_GPT_OSS_BASE_REGIONS,
+        "openai.gpt-oss-safeguard-120b": _BEDROCK_GPT_OSS_SAFEGUARD_REGIONS,
+        "openai.gpt-oss-safeguard-20b": _BEDROCK_GPT_OSS_SAFEGUARD_REGIONS,
         "amazon.nova-lite-v1:0": (
             "ap-northeast-1",
             "ap-southeast-2",
@@ -2280,15 +2308,14 @@ class LLMProviderManager(metaclass=Singleton):
                 str(profile.get("inferenceProfileId") or "").strip(),
                 profile.get("inferenceProfileName"),
             )
+        # 控制面已按当前 Region 和 ON_DEMAND 筛选，不能复用仅面向
+        # models.dev 降级目录的静态白名单，否则 AWS 新增模型会被遗漏。
         for summary in foundation_summaries:
             lifecycle = (summary.get("modelLifecycle") or {}).get("status") or "ACTIVE"
             if lifecycle != "ACTIVE":
                 continue
-            model_id = str(summary.get("modelId") or "").strip()
-            if not self._bedrock_model_matches_region(model_id, region):
-                continue
             _append_record(
-                model_id,
+                str(summary.get("modelId") or "").strip(),
                 summary.get("modelName"),
             )
 

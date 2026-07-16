@@ -204,6 +204,8 @@ def test_bedrock_model_matches_region():
     assert not matches("meta.llama4-maverick-17b-instruct-v1:0", "ap-northeast-1")
     # 已确认支持 ON_DEMAND 的裸模型与 global Profile 维持可用
     assert matches("amazon.nova-lite-v1:0", "ap-northeast-1")
+    assert matches("openai.gpt-oss-20b-1:0", "ap-northeast-1")
+    assert not matches("openai.gpt-oss-20b-1:0", "ap-southeast-1")
     assert matches("global.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-northeast-1")
     assert not matches(
         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -263,8 +265,8 @@ def test_list_models_bedrock_custom_endpoint_skips_control_plane():
     ]
 
 
-def test_list_models_bedrock_filters_foundation_model_summaries():
-    """控制面基础模型摘要应按当前 Region 的直连资格过滤"""
+def test_list_models_bedrock_keeps_control_plane_on_demand_models():
+    """控制面返回的 ON_DEMAND 基础模型不应被静态降级规则遗漏"""
     manager = LLMProviderManager()
     client = MagicMock()
     client.get_paginator.return_value.paginate.return_value = [
@@ -283,8 +285,8 @@ def test_list_models_bedrock_filters_foundation_model_summaries():
     client.list_foundation_models.return_value = {
         "modelSummaries": [
             {
-                "modelId": "anthropic.claude-sonnet-4-5-20250929-v1:0",
-                "modelName": "Claude Sonnet 4.5",
+                "modelId": "openai.gpt-oss-20b-1:0",
+                "modelName": "GPT OSS 20B",
                 "modelLifecycle": {"status": "ACTIVE"},
             },
             {
@@ -309,6 +311,7 @@ def test_list_models_bedrock_filters_foundation_model_summaries():
     assert {model["id"] for model in models} == {
         "amazon.nova-lite-v1:0",
         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "openai.gpt-oss-20b-1:0",
     }
     client.close.assert_called_once()
 
@@ -329,6 +332,10 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
                 "amazon.nova-lite-v1:0": {
                     "name": "Nova Lite",
                     "limit": {"context": 300000, "output": 5000},
+                },
+                "openai.gpt-oss-20b-1:0": {
+                    "name": "GPT OSS 20B",
+                    "limit": {"context": 131072, "output": 16384},
                 },
                 "apac.amazon.nova-lite-v1:0": {
                     "name": "Nova Lite (APAC)",
@@ -375,6 +382,7 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     model_ids = {m["id"] for m in models}
     assert "anthropic.claude-3-5-sonnet-20241022-v2:0" not in model_ids
     assert "amazon.nova-lite-v1:0" in model_ids
+    assert "openai.gpt-oss-20b-1:0" in model_ids
     assert "apac.amazon.nova-lite-v1:0" in model_ids
     assert "meta.llama4-maverick-17b-instruct-v1:0" not in model_ids
     assert "global.anthropic.claude-sonnet-4-5-20250929-v1:0" in model_ids
