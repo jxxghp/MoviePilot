@@ -205,13 +205,19 @@ def test_bedrock_model_matches_region():
     # 已确认支持 ON_DEMAND 的裸模型与 global Profile 维持可用
     assert matches("amazon.nova-lite-v1:0", "ap-northeast-1")
     assert matches("global.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-northeast-1")
+    assert not matches(
+        "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "us-gov-west-1",
+    )
     # 地理前缀只在对应分区 Region 可调用
     assert matches("us.anthropic.claude-haiku-4-5-20251001-v1:0", "us-west-2")
     assert not matches("us.anthropic.claude-haiku-4-5-20251001-v1:0", "ap-northeast-1")
+    assert not matches("us.anthropic.claude-haiku-4-5-20251001-v1:0", "us-gov-west-1")
     assert matches("apac.amazon.nova-micro-v1:0", "ap-southeast-1")
     assert not matches("apac.amazon.nova-micro-v1:0", "eu-central-1")
     assert matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1")
     assert not matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "us-east-1")
+    assert not matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-isoe-west-1")
 
 
 def test_bedrock_au_profile_matches_melbourne_region():
@@ -220,6 +226,41 @@ def test_bedrock_au_profile_matches_melbourne_region():
 
     assert matches("au.amazon.nova-lite-v1:0", "ap-southeast-2")
     assert matches("au.amazon.nova-lite-v1:0", "ap-southeast-4")
+
+
+def test_list_models_bedrock_custom_endpoint_skips_control_plane():
+    """自定义 runtime 端点刷新模型时应直接使用离线目录"""
+    manager = LLMProviderManager()
+    manager._models_dev_data = {
+        "amazon-bedrock": {
+            "id": "amazon-bedrock",
+            "name": "Amazon Bedrock",
+            "models": {
+                "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+                    "name": "Claude Sonnet 4.5 (Global)",
+                    "limit": {"context": 200000, "output": 64000},
+                },
+            },
+        }
+    }
+    manager._models_dev_loaded_at = time.time()
+
+    with patch.object(
+        LLMProviderManager,
+        "create_bedrock_client",
+        side_effect=AssertionError("不应访问控制面"),
+    ):
+        models = asyncio.run(
+            manager._list_models_from_bedrock(
+                api_key="bedrock-api-key-runtime-only",
+                base_url="https://bedrock-runtime-fips.us-east-1.amazonaws.com",
+                use_proxy=False,
+            )
+        )
+
+    assert [model["id"] for model in models] == [
+        "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    ]
 
 
 def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():

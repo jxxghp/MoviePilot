@@ -1868,14 +1868,21 @@ class LLMProviderManager(metaclass=Singleton):
     # Inference Profile 的地理前缀与可用 Region 的对应关系，用于降级目录按
     # 当前 Region 过滤掉不可调用的 Profile 条目。
     _BEDROCK_GEO_PREFIXES: dict[str, tuple[str, ...]] = {
-        "us": ("us-",),
+        "us": ("us-east-", "us-west-"),
         "eu": ("eu-",),
         "apac": ("ap-",),
         "au": ("ap-southeast-2", "ap-southeast-4"),
         "jp": ("ap-northeast-1", "ap-northeast-3"),
         "ca": ("ca-",),
-        "global": (),
     }
+    _BEDROCK_NON_COMMERCIAL_REGION_PREFIXES = (
+        "cn-",
+        "eu-isoe-",
+        "us-gov-",
+        "us-iso-",
+        "us-isob-",
+        "us-isof-",
+    )
 
     @classmethod
     def _bedrock_model_matches_region(cls, model_id: str, region: str) -> bool:
@@ -1884,17 +1891,23 @@ class LLMProviderManager(metaclass=Singleton):
 
         models.dev 目录同时收录裸模型 ID（直连调用）与带地理前缀的
         Inference Profile ID（us./eu./apac./global. 等）。带前缀的条目只在
-        对应地理分区的 Region 可用；裸 ID 仅在明确记录的 ON_DEMAND Region
-        可用，未知条目按不可直连处理。
+        对应地理分区和 AWS 分区的 Region 可用；global Profile 仅允许商业
+        AWS 分区。裸 ID 仅在明确记录的 ON_DEMAND Region 可用，未知条目
+        按不可直连处理。
 
         :param model_id: 目录中的模型 ID
         :param region: 当前 Base URL 对应的 AWS Region
         :return: 该模型在当前 Region 可调用时返回 True
         """
         prefix = model_id.split(".", 1)[0]
+        if prefix == "global":
+            return not region.startswith(cls._BEDROCK_NON_COMMERCIAL_REGION_PREFIXES)
         region_prefixes = cls._BEDROCK_GEO_PREFIXES.get(prefix)
         if region_prefixes is not None:
-            return not region_prefixes or region.startswith(region_prefixes)
+            return (
+                    not region.startswith(cls._BEDROCK_NON_COMMERCIAL_REGION_PREFIXES)
+                    and region.startswith(region_prefixes)
+            )
         on_demand_regions = cls._BEDROCK_ON_DEMAND_MODEL_REGIONS.get(model_id)
         return on_demand_regions is not None and region in on_demand_regions
 
@@ -2161,6 +2174,28 @@ class LLMProviderManager(metaclass=Singleton):
         )
         return client
 
+    async def _list_models_from_bedrock_fallback(
+            self,
+            region: str,
+            use_proxy: Optional[bool] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        从 models.dev 目录筛选当前 Region 可调用的 Bedrock 模型
+
+        :param region: 当前 Base URL 对应的 AWS Region
+        :param use_proxy: 是否使用系统代理
+        :return: 过滤后的标准化模型记录列表
+        """
+        models = await self._list_models_from_models_dev_only(
+            provider_id="amazon-bedrock",
+            use_proxy=use_proxy,
+        )
+        return [
+            model
+            for model in models
+            if self._bedrock_model_matches_region(model["id"], region)
+        ]
+
     async def _list_models_from_bedrock(
             self,
             api_key: str,
@@ -2180,6 +2215,10 @@ class LLMProviderManager(metaclass=Singleton):
         """
         credentials = self._parse_bedrock_credentials(api_key)
         region = self._extract_bedrock_region(base_url)
+        # runtime VPCE 无法安全推导对应的控制面 VPCE；FIPS 端点也不能绕回
+        # 公有非 FIPS 控制面，因此直接使用本地目录。
+        if self._bedrock_endpoint_url("bedrock-runtime", base_url):
+            return await self._list_models_from_bedrock_fallback(region, use_proxy)
         client = self.create_bedrock_client(
             "bedrock",
             region=region,
@@ -2206,15 +2245,7 @@ class LLMProviderManager(metaclass=Singleton):
             logger.warning(
                 f"获取 Amazon Bedrock 控制面模型列表失败，降级 models.dev 目录: {err}"
             )
-            models = await self._list_models_from_models_dev_only(
-                provider_id="amazon-bedrock",
-                use_proxy=use_proxy,
-            )
-            return [
-                model
-                for model in models
-                if self._bedrock_model_matches_region(model["id"], region)
-            ]
+            return await self._list_models_from_bedrock_fallback(region, use_proxy)
         finally:
             await asyncio.to_thread(client.close)
 
