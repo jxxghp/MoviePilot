@@ -1809,7 +1809,7 @@ class LLMProviderManager(metaclass=Singleton):
 
     # Inference Profile 的地理前缀与可用 Region 的对应关系，用于降级目录按
     # 当前 Region 过滤掉不可调用的 Profile 条目。
-    _BEDROCK_GEO_PREFIXES = {
+    _BEDROCK_GEO_PREFIXES: dict[str, tuple[str, ...]] = {
         "us": ("us-",),
         "eu": ("eu-",),
         "apac": ("ap-",),
@@ -1992,7 +1992,10 @@ class LLMProviderManager(metaclass=Singleton):
             )
         return sorted(results, key=lambda item: item["name"].lower())
 
-    def _build_bedrock_boto3_config(self, use_proxy: Optional[bool] = None):
+    def _build_bedrock_boto3_config(
+            self,
+            use_proxy: Optional[bool] = None,
+    ) -> Any:
         """
         构造 Bedrock boto3 客户端配置，统一超时、重试与代理策略
 
@@ -2019,7 +2022,7 @@ class LLMProviderManager(metaclass=Singleton):
             credentials: dict[str, Any],
             use_proxy: Optional[bool] = None,
             read_timeout: Optional[int] = None,
-    ):
+    ) -> Any:
         """
         按解析后的凭证创建 Bedrock boto3 客户端，Bearer 方式注入 Authorization 头
 
@@ -2058,7 +2061,7 @@ class LLMProviderManager(metaclass=Singleton):
             config=config,
         )
 
-        def _inject_bearer(request, **_kwargs):
+        def _inject_bearer(request: Any, **_kwargs: Any) -> None:
             request.headers["Authorization"] = f"Bearer {bearer_token}"
 
         client.meta.events.register(
@@ -2116,10 +2119,17 @@ class LLMProviderManager(metaclass=Singleton):
                 provider_id="amazon-bedrock",
                 use_proxy=use_proxy,
             )
+            profile_base_ids: set[str] = set()
+            for model in models:
+                prefix, separator, base_model_id = model["id"].partition(".")
+                if separator and prefix in self._BEDROCK_GEO_PREFIXES:
+                    profile_base_ids.add(base_model_id)
             return [
                 model
                 for model in models
                 if self._bedrock_model_matches_region(model["id"], region)
+                # 新模型存在 Profile 变体时，裸 ID 通常无法按 ON_DEMAND 直连。
+                and model["id"] not in profile_base_ids
             ]
         finally:
             await asyncio.to_thread(client.close)

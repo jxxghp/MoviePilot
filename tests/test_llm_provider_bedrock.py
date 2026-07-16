@@ -156,6 +156,10 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
                     "name": "Claude Sonnet 3.5 v2",
                     "limit": {"context": 200000, "output": 8192},
                 },
+                "anthropic.claude-sonnet-4-5-20250929-v1:0": {
+                    "name": "Claude Sonnet 4.5",
+                    "limit": {"context": 200000, "output": 64000},
+                },
                 "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
                     "name": "Claude Sonnet 4.5 (Global)",
                     "limit": {"context": 200000, "output": 64000},
@@ -190,5 +194,6 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     assert "anthropic.claude-3-5-sonnet-20241022-v2:0" in model_ids
     assert "global.anthropic.claude-sonnet-4-5-20250929-v1:0" in model_ids
     assert "us.anthropic.claude-haiku-4-5-20251001-v1:0" not in model_ids
+    assert "anthropic.claude-sonnet-4-5-20250929-v1:0" not in model_ids
     assert all(m["source"] == "models.dev" for m in models)
     denied_client.close.assert_called_once()
