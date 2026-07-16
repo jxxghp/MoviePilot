@@ -1071,6 +1071,7 @@ class LLMHelper:
                 "bedrock-runtime",
                 region=aws_region,
                 credentials=aws_auth,
+                base_url=runtime.get("base_url"),
                 use_proxy=use_proxy,
                 read_timeout=settings.LLM_TOOL_TIMEOUT,
             )

@@ -78,10 +78,71 @@ def test_extract_bedrock_region_from_base_url():
     assert extract("https://bedrock-runtime.us-east-1.amazonaws.com") == "us-east-1"
     assert extract("https://bedrock-runtime.ap-northeast-1.amazonaws.com/") == "ap-northeast-1"
     assert extract("https://bedrock.eu-central-1.amazonaws.com") == "eu-central-1"
+    # FIPS 与 PrivateLink（VPCE）端点同样能识别 Region
+    assert extract("https://bedrock-runtime-fips.us-east-1.amazonaws.com") == "us-east-1"
+    assert (
+        extract("https://vpce-0abc123-xyz.bedrock-runtime.us-west-2.vpce.amazonaws.com")
+        == "us-west-2"
+    )
     # 无法识别时回退默认 Region
+    assert extract("https://example.com/us-west-2") == "us-east-1"
+    assert extract("https://example.com?region=.us-west-2.") == "us-east-1"
     assert extract("https://example.com") == "us-east-1"
     assert extract(None) == "us-east-1"
     assert extract("") == "us-east-1"
+
+
+def test_bedrock_endpoint_url_passthrough():
+    """自定义 Bedrock 端点应透传，标准端点交由 boto3 推导"""
+    resolve = LLMProviderManager._bedrock_endpoint_url
+
+    # 标准公有端点交由 boto3 推导，不显式透传
+    assert resolve("bedrock-runtime", "https://bedrock-runtime.us-east-1.amazonaws.com") is None
+    assert resolve("bedrock", "https://bedrock.eu-central-1.amazonaws.com") is None
+    assert resolve("bedrock-runtime", None) is None
+    assert resolve("bedrock-runtime", "") is None
+    # FIPS / PrivateLink 等非标准端点需要显式生效
+    assert (
+        resolve("bedrock-runtime", "https://bedrock-runtime-fips.us-east-1.amazonaws.com")
+        == "https://bedrock-runtime-fips.us-east-1.amazonaws.com"
+    )
+    assert (
+        resolve(
+            "bedrock-runtime",
+            "https://vpce-0abc123-xyz.bedrock-runtime.us-west-2.vpce.amazonaws.com/",
+        )
+        == "https://vpce-0abc123-xyz.bedrock-runtime.us-west-2.vpce.amazonaws.com"
+    )
+    # runtime 端点填给控制面服务名时不匹配标准形态，同样透传
+    assert (
+        resolve("bedrock", "https://bedrock-runtime.us-east-1.amazonaws.com")
+        == "https://bedrock-runtime.us-east-1.amazonaws.com"
+    )
+
+
+def test_create_bedrock_client_uses_custom_endpoint():
+    """创建 Bedrock 客户端时应把 PrivateLink 地址传给 boto3"""
+    manager = LLMProviderManager()
+    endpoint_url = (
+        "https://vpce-0abc123-xyz.bedrock-runtime.us-west-2.vpce.amazonaws.com"
+    )
+    client = MagicMock()
+
+    with patch("boto3.client", return_value=client) as create_client:
+        result = manager.create_bedrock_client(
+            service_name="bedrock-runtime",
+            region="us-west-2",
+            credentials={
+                "auth_scheme": "sigv4",
+                "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+                "secret_access_key": "secret",
+            },
+            base_url=endpoint_url,
+            use_proxy=False,
+        )
+
+    assert result is client
+    assert create_client.call_args.kwargs["endpoint_url"] == endpoint_url
 
 
 def test_resolve_runtime_bedrock_bearer():
@@ -156,6 +217,14 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
                     "name": "Claude Sonnet 3.5 v2",
                     "limit": {"context": 200000, "output": 8192},
                 },
+                "amazon.nova-premier-v1:0": {
+                    "name": "Nova Premier",
+                    "limit": {"context": 1000000, "output": 10000},
+                },
+                "apac.amazon.nova-premier-v1:0": {
+                    "name": "Nova Premier (APAC)",
+                    "limit": {"context": 1000000, "output": 10000},
+                },
                 "anthropic.claude-sonnet-4-5-20250929-v1:0": {
                     "name": "Claude Sonnet 4.5",
                     "limit": {"context": 200000, "output": 64000},
@@ -192,6 +261,8 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     # 降级后模型来自 models.dev 目录，且 us. Profile 在东京 Region 被过滤
     model_ids = {m["id"] for m in models}
     assert "anthropic.claude-3-5-sonnet-20241022-v2:0" in model_ids
+    assert "amazon.nova-premier-v1:0" in model_ids
+    assert "apac.amazon.nova-premier-v1:0" in model_ids
     assert "global.anthropic.claude-sonnet-4-5-20250929-v1:0" in model_ids
     assert "us.anthropic.claude-haiku-4-5-20251001-v1:0" not in model_ids
     assert "anthropic.claude-sonnet-4-5-20250929-v1:0" not in model_ids

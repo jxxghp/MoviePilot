@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import aiofiles
 import httpx
@@ -109,6 +109,17 @@ class LLMProviderManager(metaclass=Singleton):
     _AUTH_SESSION_DONE_RETENTION = 300
     _BEDROCK_DEFAULT_REGION = "us-east-1"
     _BEDROCK_API_KEY_PREFIX = "bedrock-api-key-"
+    _BEDROCK_PROFILE_REQUIRED_MODEL_IDS = {
+        "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "anthropic.claude-opus-4-1-20250805-v1:0",
+        "anthropic.claude-opus-4-20250514-v1:0",
+        "anthropic.claude-opus-4-5-20251101-v1:0",
+        "anthropic.claude-opus-4-6-v1",
+        "anthropic.claude-opus-4-7",
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "anthropic.claude-sonnet-4-6",
+    }
     _CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     _CHATGPT_ISSUER = "https://auth.openai.com"
     _CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
@@ -1795,13 +1806,16 @@ class LLMProviderManager(metaclass=Singleton):
         """
         从 Bedrock 运行时端点 URL 中提取 AWS Region
 
+        兼容标准端点、FIPS 端点与 PrivateLink（VPCE）端点等主机名形态，
+        从中识别 Region 段。
+
         :param base_url: 形如 https://bedrock-runtime.us-east-1.amazonaws.com 的端点地址
         :return: 提取到的 Region，无法识别时回退 us-east-1
         """
-        normalized = (base_url or "").strip().lower()
+        hostname = urlsplit((base_url or "").strip().lower()).hostname or ""
         match = re.search(
-            r"bedrock(?:-runtime)?\.([a-z0-9-]+)\.amazonaws\.com",
-            normalized,
+            r"(?:^|\.)((?:us|eu|ap|ca|sa|me|af|il)(?:-gov)?-[a-z]+-\d+)(?:\.|$)",
+            hostname,
         )
         if match:
             return match.group(1)
@@ -2015,11 +2029,36 @@ class LLMProviderManager(metaclass=Singleton):
             proxies=proxies,
         )
 
+    @staticmethod
+    def _bedrock_endpoint_url(
+            service_name: str, base_url: Optional[str]
+    ) -> Optional[str]:
+        """
+        解析应传给 boto3 客户端的自定义端点 URL
+
+        标准公有端点交由 boto3 按 Region 自行推导；用户填写 PrivateLink、
+        FIPS 等非标准端点时才显式透传，保证所选网络路径实际生效。
+
+        :param service_name: boto3 服务名（bedrock 或 bedrock-runtime）
+        :param base_url: 用户配置的 Base URL
+        :return: 需要显式指定端点时返回 URL，否则返回 None
+        """
+        normalized = (base_url or "").strip().rstrip("/")
+        if not normalized:
+            return None
+        if re.fullmatch(
+                rf"https://{service_name}\.[a-z0-9-]+\.amazonaws\.com",
+                normalized,
+        ):
+            return None
+        return normalized
+
     def create_bedrock_client(
             self,
             service_name: str,
             region: str,
             credentials: dict[str, Any],
+            base_url: Optional[str] = None,
             use_proxy: Optional[bool] = None,
             read_timeout: Optional[int] = None,
     ) -> Any:
@@ -2029,6 +2068,7 @@ class LLMProviderManager(metaclass=Singleton):
         :param service_name: boto3 服务名（bedrock 或 bedrock-runtime）
         :param region: AWS Region
         :param credentials: `_parse_bedrock_credentials` 的解析结果
+        :param base_url: 用户配置的 Base URL，非标准端点（PrivateLink/FIPS 等）时透传给 boto3
         :param use_proxy: 是否使用系统代理
         :param read_timeout: 读取超时秒数，None 时使用默认值
         :return: boto3 客户端实例
@@ -2039,6 +2079,10 @@ class LLMProviderManager(metaclass=Singleton):
         config = self._build_bedrock_boto3_config(use_proxy)
         if read_timeout:
             config = config.merge(type(config)(read_timeout=read_timeout))
+        endpoint_kwargs: dict[str, Any] = {}
+        endpoint_url = self._bedrock_endpoint_url(service_name, base_url)
+        if endpoint_url:
+            endpoint_kwargs["endpoint_url"] = endpoint_url
 
         if credentials["auth_scheme"] == "sigv4":
             return boto3.client(
@@ -2048,6 +2092,7 @@ class LLMProviderManager(metaclass=Singleton):
                 aws_secret_access_key=credentials["secret_access_key"],
                 aws_session_token=credentials.get("session_token"),
                 config=config,
+                **endpoint_kwargs,
             )
 
         # Bearer 认证：以 UNSIGNED 跳过 SigV4 签名，再把 API Key 注入 Authorization 头。
@@ -2059,6 +2104,7 @@ class LLMProviderManager(metaclass=Singleton):
             aws_access_key_id="unsigned",
             aws_secret_access_key="unsigned",
             config=config,
+            **endpoint_kwargs,
         )
 
         def _inject_bearer(request: Any, **_kwargs: Any) -> None:
@@ -2119,17 +2165,21 @@ class LLMProviderManager(metaclass=Singleton):
                 provider_id="amazon-bedrock",
                 use_proxy=use_proxy,
             )
-            profile_base_ids: set[str] = set()
+            profile_required_base_ids: set[str] = set()
             for model in models:
                 prefix, separator, base_model_id = model["id"].partition(".")
-                if separator and prefix in self._BEDROCK_GEO_PREFIXES:
-                    profile_base_ids.add(base_model_id)
+                if (
+                        separator
+                        and prefix in self._BEDROCK_GEO_PREFIXES
+                        and base_model_id in self._BEDROCK_PROFILE_REQUIRED_MODEL_IDS
+                ):
+                    profile_required_base_ids.add(base_model_id)
             return [
                 model
                 for model in models
                 if self._bedrock_model_matches_region(model["id"], region)
-                # 新模型存在 Profile 变体时，裸 ID 通常无法按 ON_DEMAND 直连。
-                and model["id"] not in profile_base_ids
+                # 仅过滤明确要求 Profile 的裸 ID，避免误删仍支持 ON_DEMAND 的模型。
+                and model["id"] not in profile_required_base_ids
             ]
         finally:
             await asyncio.to_thread(client.close)
