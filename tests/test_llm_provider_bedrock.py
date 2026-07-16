@@ -263,6 +263,56 @@ def test_list_models_bedrock_custom_endpoint_skips_control_plane():
     ]
 
 
+def test_list_models_bedrock_filters_foundation_model_summaries():
+    """控制面基础模型摘要应按当前 Region 的直连资格过滤"""
+    manager = LLMProviderManager()
+    client = MagicMock()
+    client.get_paginator.return_value.paginate.return_value = [
+        {
+            "inferenceProfileSummaries": [
+                {
+                    "inferenceProfileId": (
+                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    ),
+                    "inferenceProfileName": "Claude Sonnet 4.5 (Global)",
+                    "status": "ACTIVE",
+                }
+            ]
+        }
+    ]
+    client.list_foundation_models.return_value = {
+        "modelSummaries": [
+            {
+                "modelId": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+                "modelName": "Claude Sonnet 4.5",
+                "modelLifecycle": {"status": "ACTIVE"},
+            },
+            {
+                "modelId": "amazon.nova-lite-v1:0",
+                "modelName": "Nova Lite",
+                "modelLifecycle": {"status": "ACTIVE"},
+            },
+        ]
+    }
+
+    with patch.object(
+        LLMProviderManager, "create_bedrock_client", return_value=client
+    ):
+        models = asyncio.run(
+            manager._list_models_from_bedrock(
+                api_key="bedrock-api-key-runtime-only",
+                base_url="https://bedrock-runtime.ap-northeast-1.amazonaws.com",
+                use_proxy=False,
+            )
+        )
+
+    assert {model["id"] for model in models} == {
+        "amazon.nova-lite-v1:0",
+        "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    }
+    client.close.assert_called_once()
+
+
 def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     """控制面被拒（如 API Key 仅授权 bedrock-runtime）时降级 models.dev 目录"""
     manager = LLMProviderManager()

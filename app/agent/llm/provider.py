@@ -2284,8 +2284,11 @@ class LLMProviderManager(metaclass=Singleton):
             lifecycle = (summary.get("modelLifecycle") or {}).get("status") or "ACTIVE"
             if lifecycle != "ACTIVE":
                 continue
+            model_id = str(summary.get("modelId") or "").strip()
+            if not self._bedrock_model_matches_region(model_id, region):
+                continue
             _append_record(
-                str(summary.get("modelId") or "").strip(),
+                model_id,
                 summary.get("modelName"),
             )
 
