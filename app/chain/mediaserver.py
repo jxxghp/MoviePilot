@@ -1,6 +1,6 @@
 import threading
 from datetime import datetime
-from typing import Callable, List, Union, Optional, Generator, Any
+from typing import Callable, Dict, List, Union, Optional, Generator, Any
 
 from app.chain import ChainBase
 from app.core.config import global_vars
@@ -209,6 +209,24 @@ class MediaServerChain(ChainBase):
         获取播放地址
         """
         return self.run_module("mediaserver_play_url", server=server, item_id=item_id)
+
+    def get_season_episode_ids(self, server: str, item_id: Union[str, int],
+                               season: int) -> Dict[int, str]:
+        """
+        获取指定季的集号到媒体服务器条目 ID 映射
+
+        :param server: 媒体服务器名称
+        :param item_id: 剧集在媒体服务器中的条目 ID
+        :param season: 季号
+        :return: 集号到条目 ID 的映射，无数据时返回空字典
+        """
+        result = self.run_module(
+            "mediaserver_season_episode_ids",
+            server=server,
+            item_id=item_id,
+            season=season,
+        )
+        return result or {}
 
     def get_image_cookies(
         self, server: Optional[str], image_url: str

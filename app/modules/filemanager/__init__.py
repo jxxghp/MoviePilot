@@ -606,8 +606,12 @@ class FileManagerModule(_ModuleBase):
         """
         判断媒体文件是否存在于文件系统（网盘或本地文件），只支持标准媒体库结构
         :param mediainfo:  识别的媒体信息
+        :param server:  指定媒体服务器名称时跳过本地文件系统检查
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
+        if kwargs.get("server"):
+            return None
+
         if not settings.LOCAL_EXISTS_SEARCH:
             return None
 

@@ -523,6 +523,38 @@ class Jellyfin:
             return None, None
         return None, {}
 
+    def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
+        """
+        获取指定季的集号到媒体服务器条目 ID 映射
+        :param item_id: 剧集在 Jellyfin 中的 ID
+        :param season: 季号
+        :return: {集号: episode_item_id}
+        """
+        if not item_id or not self._host or not self._apikey or not self.user:
+            return {}
+        try:
+            url = f"{self._host}Shows/{item_id}/Episodes"
+            params = {
+                "season": season,
+                "userId": self.user,
+                "isMissing": "false",
+                "api_key": self._apikey
+            }
+            res_json = RequestUtils().get_res(url, params)
+            if not res_json:
+                return {}
+            episode_ids: Dict[int, str] = {}
+            for res_item in res_json.json().get("Items") or []:
+                episode_index = res_item.get("IndexNumber")
+                episode_id = res_item.get("Id")
+                if episode_index is None or not episode_id:
+                    continue
+                episode_ids[int(episode_index)] = str(episode_id)
+            return episode_ids
+        except Exception as e:
+            logger.error(f"获取 Jellyfin 季集条目 ID 出错：{str(e)}")
+            return {}
+
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
         根据ItemId从Jellyfin查询TMDB图片地址

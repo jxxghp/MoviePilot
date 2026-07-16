@@ -217,6 +217,12 @@ class SubscribeLibraryFileInfo(BaseModel):
     storage: Optional[str] = "local"
     # 文件路径
     file_path: Optional[str] = None
+    # 媒体服务器名称
+    server: Optional[str] = None
+    # 媒体服务器类型：emby、jellyfin、plex 等
+    server_type: Optional[str] = None
+    # 媒体服务器条目 ID
+    itemid: Optional[str] = None
 
 
 class SubscribeEpisodeInfo(BaseModel):
