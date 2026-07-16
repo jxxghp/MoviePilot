@@ -1,4 +1,4 @@
-from typing import Any, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -299,6 +299,21 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         if not server_obj:
             return None
         return server_obj.get_play_url(item_id)
+
+    def mediaserver_season_episode_ids(self, server: str, item_id: Union[str, int],
+                                       season: int) -> Optional[Dict[int, str]]:
+        """
+        获取指定季的集号到条目 ID 映射
+
+        :param server: Emby 媒体服务器名称
+        :param item_id: 剧集在 Emby 中的条目 ID
+        :param season: 季号
+        :return: 集号到条目 ID 的映射，服务器不可用或无数据时返回 None
+        """
+        server_obj: Emby = self.get_instance(server)
+        if not server_obj:
+            return None
+        return server_obj.get_season_episode_ids(str(item_id), season)
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
                            username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:

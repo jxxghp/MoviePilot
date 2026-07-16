@@ -293,6 +293,31 @@ class Plex:
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
 
+    def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
+        """
+        获取指定季的集号到媒体服务器条目 ID 映射
+        :param item_id: 剧集在 Plex 中的 ID / key
+        :param season: 季号
+        :return: {集号: episode_item_key}
+        """
+        if not self._plex or not item_id:
+            return {}
+        try:
+            videos = self.__fetch_item(item_id)
+            if not videos:
+                return {}
+            episode_ids: Dict[int, str] = {}
+            for episode in videos.episodes():
+                if episode.seasonNumber != int(season):
+                    continue
+                if episode.index is None or not episode.key:
+                    continue
+                episode_ids[int(episode.index)] = str(episode.key)
+            return episode_ids
+        except Exception as e:
+            logger.error(f"获取 Plex 季集条目 ID 出错：{str(e)}")
+            return {}
+
     def __search_show(self,
                       title: Optional[str] = None,
                       original_title: Optional[str] = None,
