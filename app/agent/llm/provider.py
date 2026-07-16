@@ -109,19 +109,26 @@ class LLMProviderManager(metaclass=Singleton):
     _AUTH_SESSION_DONE_RETENTION = 300
     _BEDROCK_DEFAULT_REGION = "us-east-1"
     _BEDROCK_API_KEY_PREFIX = "bedrock-api-key-"
-    _BEDROCK_PROFILE_REQUIRED_MODEL_IDS = {
-        "amazon.nova-premier-v1:0",
-        "anthropic.claude-haiku-4-5-20251001-v1:0",
-        "anthropic.claude-opus-4-1-20250805-v1:0",
-        "anthropic.claude-opus-4-20250514-v1:0",
-        "anthropic.claude-opus-4-5-20251101-v1:0",
-        "anthropic.claude-opus-4-6-v1",
-        "anthropic.claude-opus-4-7",
-        "anthropic.claude-sonnet-4-20250514-v1:0",
-        "anthropic.claude-sonnet-4-5-20250929-v1:0",
-        "anthropic.claude-sonnet-4-6",
-    }
     _BEDROCK_ON_DEMAND_MODEL_REGIONS = {
+        "amazon.nova-lite-v1:0": (
+            "ap-northeast-1",
+            "ap-southeast-2",
+            "eu-west-2",
+            "us-east-1",
+            "us-gov-west-1",
+        ),
+        "amazon.nova-micro-v1:0": (
+            "ap-southeast-2",
+            "eu-west-2",
+            "us-east-1",
+            "us-gov-west-1",
+        ),
+        "amazon.nova-pro-v1:0": (
+            "ap-southeast-2",
+            "eu-west-2",
+            "us-east-1",
+            "us-gov-west-1",
+        ),
         "anthropic.claude-3-5-haiku-20241022-v1:0": (
             "us-west-2",
         ),
@@ -142,6 +149,18 @@ class LLMProviderManager(metaclass=Singleton):
         "anthropic.claude-3-7-sonnet-20250219-v1:0": (
             "eu-west-2",
             "us-gov-west-1",
+        ),
+        "anthropic.claude-3-haiku-20240307-v1:0": (
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "ap-south-1",
+            "ap-southeast-2",
+            "eu-central-1",
+            "eu-west-1",
+            "eu-west-3",
+            "us-east-1",
+            "us-gov-west-1",
+            "us-west-2",
         ),
     }
     _CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -1852,7 +1871,7 @@ class LLMProviderManager(metaclass=Singleton):
         "us": ("us-",),
         "eu": ("eu-",),
         "apac": ("ap-",),
-        "au": ("ap-southeast-2",),
+        "au": ("ap-southeast-2", "ap-southeast-4"),
         "jp": ("ap-northeast-1", "ap-northeast-3"),
         "ca": ("ca-",),
         "global": (),
@@ -1865,8 +1884,8 @@ class LLMProviderManager(metaclass=Singleton):
 
         models.dev 目录同时收录裸模型 ID（直连调用）与带地理前缀的
         Inference Profile ID（us./eu./apac./global. 等）。带前缀的条目只在
-        对应地理分区的 Region 可用；Profile-only 裸 ID 不可用，已知具有
-        Region 限制的裸 ID 仅在 AWS 支持的 ON_DEMAND Region 可用。
+        对应地理分区的 Region 可用；裸 ID 仅在明确记录的 ON_DEMAND Region
+        可用，未知条目按不可直连处理。
 
         :param model_id: 目录中的模型 ID
         :param region: 当前 Base URL 对应的 AWS Region
@@ -1876,10 +1895,8 @@ class LLMProviderManager(metaclass=Singleton):
         region_prefixes = cls._BEDROCK_GEO_PREFIXES.get(prefix)
         if region_prefixes is not None:
             return not region_prefixes or region.startswith(region_prefixes)
-        if model_id in cls._BEDROCK_PROFILE_REQUIRED_MODEL_IDS:
-            return False
         on_demand_regions = cls._BEDROCK_ON_DEMAND_MODEL_REGIONS.get(model_id)
-        return on_demand_regions is None or region in on_demand_regions
+        return on_demand_regions is not None and region in on_demand_regions
 
     @classmethod
     def _parse_bedrock_credentials(cls, api_key: Optional[str]) -> dict[str, Any]:

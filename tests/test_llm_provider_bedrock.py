@@ -201,7 +201,8 @@ def test_bedrock_model_matches_region():
     assert not matches("anthropic.claude-3-5-sonnet-20241022-v2:0", "ap-northeast-1")
     assert not matches("anthropic.claude-sonnet-4-5-20250929-v1:0", "us-west-2")
     assert not matches("amazon.nova-premier-v1:0", "ap-northeast-1")
-    # 未明确限制的裸模型与 global Profile 维持可用
+    assert not matches("meta.llama4-maverick-17b-instruct-v1:0", "ap-northeast-1")
+    # 已确认支持 ON_DEMAND 的裸模型与 global Profile 维持可用
     assert matches("amazon.nova-lite-v1:0", "ap-northeast-1")
     assert matches("global.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-northeast-1")
     # 地理前缀只在对应分区 Region 可调用
@@ -211,6 +212,14 @@ def test_bedrock_model_matches_region():
     assert not matches("apac.amazon.nova-micro-v1:0", "eu-central-1")
     assert matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1")
     assert not matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "us-east-1")
+
+
+def test_bedrock_au_profile_matches_melbourne_region():
+    """AU Inference Profile 应允许从悉尼和墨尔本 Region 调用"""
+    matches = LLMProviderManager._bedrock_model_matches_region
+
+    assert matches("au.amazon.nova-lite-v1:0", "ap-southeast-2")
+    assert matches("au.amazon.nova-lite-v1:0", "ap-southeast-4")
 
 
 def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
@@ -233,6 +242,10 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
                 "apac.amazon.nova-lite-v1:0": {
                     "name": "Nova Lite (APAC)",
                     "limit": {"context": 300000, "output": 5000},
+                },
+                "meta.llama4-maverick-17b-instruct-v1:0": {
+                    "name": "Llama 4 Maverick",
+                    "limit": {"context": 1000000, "output": 8192},
                 },
                 "anthropic.claude-sonnet-4-5-20250929-v1:0": {
                     "name": "Claude Sonnet 4.5",
@@ -272,6 +285,7 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     assert "anthropic.claude-3-5-sonnet-20241022-v2:0" not in model_ids
     assert "amazon.nova-lite-v1:0" in model_ids
     assert "apac.amazon.nova-lite-v1:0" in model_ids
+    assert "meta.llama4-maverick-17b-instruct-v1:0" not in model_ids
     assert "global.anthropic.claude-sonnet-4-5-20250929-v1:0" in model_ids
     assert "us.anthropic.claude-haiku-4-5-20251001-v1:0" not in model_ids
     assert "anthropic.claude-sonnet-4-5-20250929-v1:0" not in model_ids
