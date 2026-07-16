@@ -1,6 +1,7 @@
 """Amazon Bedrock provider 的凭证解析、Region 提取与运行时解析测试"""
 
 import asyncio
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -130,6 +131,20 @@ def test_resolve_runtime_bedrock_missing_credentials_rejected():
 def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     """控制面被拒（如 API Key 仅授权 bedrock-runtime）时降级 models.dev 目录"""
     manager = LLMProviderManager()
+    # 预填 models.dev 内存缓存，降级路径不触发真实网络请求
+    manager._models_dev_data = {
+        "amazon-bedrock": {
+            "id": "amazon-bedrock",
+            "name": "Amazon Bedrock",
+            "models": {
+                "anthropic.claude-haiku-4-5-20251001-v1:0": {
+                    "name": "Claude Haiku 4.5",
+                    "limit": {"context": 200000, "output": 64000},
+                },
+            },
+        }
+    }
+    manager._models_dev_loaded_at = time.time()
 
     denied_client = MagicMock()
     denied_client.get_paginator.side_effect = Exception(
@@ -147,7 +162,8 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
             )
         )
 
-    # 降级后模型来自 bundled models.json 的 amazon-bedrock 目录
+    # 降级后模型来自 models.dev 的 amazon-bedrock 目录
     assert models, "降级路径应返回 models.dev 目录中的模型"
     assert all(m["source"] == "models.dev" for m in models)
+    assert models[0]["id"] == "anthropic.claude-haiku-4-5-20251001-v1:0"
     denied_client.close.assert_called_once()
