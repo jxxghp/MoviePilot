@@ -128,6 +128,21 @@ def test_resolve_runtime_bedrock_missing_credentials_rejected():
         )
 
 
+def test_bedrock_model_matches_region():
+    matches = LLMProviderManager._bedrock_model_matches_region
+
+    # 裸模型 ID 与 global Profile 不按 Region 过滤
+    assert matches("anthropic.claude-3-5-sonnet-20241022-v2:0", "us-east-1")
+    assert matches("global.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-northeast-1")
+    # 地理前缀只在对应分区 Region 可调用
+    assert matches("us.anthropic.claude-haiku-4-5-20251001-v1:0", "us-west-2")
+    assert not matches("us.anthropic.claude-haiku-4-5-20251001-v1:0", "ap-northeast-1")
+    assert matches("apac.amazon.nova-micro-v1:0", "ap-southeast-1")
+    assert not matches("apac.amazon.nova-micro-v1:0", "eu-central-1")
+    assert matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1")
+    assert not matches("eu.anthropic.claude-haiku-4-5-20251001-v1:0", "us-east-1")
+
+
 def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
     """控制面被拒（如 API Key 仅授权 bedrock-runtime）时降级 models.dev 目录"""
     manager = LLMProviderManager()
@@ -137,8 +152,16 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
             "id": "amazon-bedrock",
             "name": "Amazon Bedrock",
             "models": {
-                "anthropic.claude-haiku-4-5-20251001-v1:0": {
-                    "name": "Claude Haiku 4.5",
+                "anthropic.claude-3-5-sonnet-20241022-v2:0": {
+                    "name": "Claude Sonnet 3.5 v2",
+                    "limit": {"context": 200000, "output": 8192},
+                },
+                "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+                    "name": "Claude Sonnet 4.5 (Global)",
+                    "limit": {"context": 200000, "output": 64000},
+                },
+                "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
+                    "name": "Claude Haiku 4.5 (US)",
                     "limit": {"context": 200000, "output": 64000},
                 },
             },
@@ -157,13 +180,15 @@ def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
         models = asyncio.run(
             manager._list_models_from_bedrock(
                 api_key="bedrock-api-key-runtime-only",
-                base_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+                base_url="https://bedrock-runtime.ap-northeast-1.amazonaws.com",
                 use_proxy=False,
             )
         )
 
-    # 降级后模型来自 models.dev 的 amazon-bedrock 目录
-    assert models, "降级路径应返回 models.dev 目录中的模型"
+    # 降级后模型来自 models.dev 目录，且 us. Profile 在东京 Region 被过滤
+    model_ids = {m["id"] for m in models}
+    assert "anthropic.claude-3-5-sonnet-20241022-v2:0" in model_ids
+    assert "global.anthropic.claude-sonnet-4-5-20250929-v1:0" in model_ids
+    assert "us.anthropic.claude-haiku-4-5-20251001-v1:0" not in model_ids
     assert all(m["source"] == "models.dev" for m in models)
-    assert models[0]["id"] == "anthropic.claude-haiku-4-5-20251001-v1:0"
     denied_client.close.assert_called_once()

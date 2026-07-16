@@ -1807,6 +1807,38 @@ class LLMProviderManager(metaclass=Singleton):
             return match.group(1)
         return cls._BEDROCK_DEFAULT_REGION
 
+    # Inference Profile 的地理前缀与可用 Region 的对应关系，用于降级目录按
+    # 当前 Region 过滤掉不可调用的 Profile 条目。
+    _BEDROCK_GEO_PREFIXES = {
+        "us": ("us-",),
+        "eu": ("eu-",),
+        "apac": ("ap-",),
+        "au": ("ap-southeast-2",),
+        "jp": ("ap-northeast-1", "ap-northeast-3"),
+        "ca": ("ca-",),
+        "global": (),
+    }
+
+    @classmethod
+    def _bedrock_model_matches_region(cls, model_id: str, region: str) -> bool:
+        """
+        判断目录中的模型 ID 在指定 Region 是否可调用
+
+        models.dev 目录同时收录裸模型 ID（直连调用）与带地理前缀的
+        Inference Profile ID（us./eu./apac./global. 等）。带前缀的条目只在
+        对应地理分区的 Region 可用；global 与裸 ID 不做限制。
+
+        :param model_id: 目录中的模型 ID
+        :param region: 当前 Base URL 对应的 AWS Region
+        :return: 该模型在当前 Region 可调用时返回 True
+        """
+        prefix = model_id.split(".", 1)[0]
+        region_prefixes = cls._BEDROCK_GEO_PREFIXES.get(prefix)
+        if region_prefixes is None or not region_prefixes:
+            # 裸模型 ID 或 global Profile：不按 Region 过滤。
+            return True
+        return region.startswith(region_prefixes)
+
     @classmethod
     def _parse_bedrock_credentials(cls, api_key: Optional[str]) -> dict[str, Any]:
         """
@@ -2080,10 +2112,15 @@ class LLMProviderManager(metaclass=Singleton):
             logger.warning(
                 f"获取 Amazon Bedrock 控制面模型列表失败，降级 models.dev 目录: {err}"
             )
-            return await self._list_models_from_models_dev_only(
+            models = await self._list_models_from_models_dev_only(
                 provider_id="amazon-bedrock",
                 use_proxy=use_proxy,
             )
+            return [
+                model
+                for model in models
+                if self._bedrock_model_matches_region(model["id"], region)
+            ]
         finally:
             await asyncio.to_thread(client.close)
 
