@@ -26,13 +26,17 @@ router = APIRouter()
 async def recognize(
     title: str,
     subtitle: Optional[str] = None,
+    custom_words: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据标题、副标题识别媒体信息
+    :param custom_words: 临时识别词（每行一条规则），传入时仅在本次识别中生效，不会保存到系统配置
     """
-    # 识别媒体信息
-    metainfo = MetaInfo(title, subtitle)
+    # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
+    metainfo = MetaInfo(
+        title, subtitle, custom_words=custom_words.split("\n") if custom_words else None
+    )
     mediainfo = await MediaChain().async_recognize_by_meta(metainfo)
     if mediainfo:
         return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
@@ -48,12 +52,13 @@ async def recognize2(
     _: Annotated[str, Depends(verify_apitoken)],
     title: str,
     subtitle: Optional[str] = None,
+    custom_words: Optional[str] = None,
 ) -> Any:
     """
     根据标题、副标题识别媒体信息 API_TOKEN认证（?token=xxx）
     """
     # 识别媒体信息
-    return await recognize(title, subtitle)
+    return await recognize(title, subtitle, custom_words)
 
 
 @router.get(
