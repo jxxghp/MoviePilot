@@ -135,6 +135,8 @@ class TransferDirectoryConf(BaseModel):
     monitor_type: Optional[str] = None
     # 监控模式 fast / compatibility
     monitor_mode: Optional[str] = "fast"
+    # 是否删除源目录中的空文件夹
+    delete_empty_dirs: Optional[bool] = True
     # 整理方式 move/copy/link/softlink
     transfer_type: Optional[str] = None
     # 文件覆盖模式 always/size/never/latest

@@ -1188,7 +1188,14 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                     logger.info(
                                         f"移动模式删除种子成功：{t.download_hash}"
                                     )
-                    if not t.download_hash and t.fileitem:
+                    if (
+                            not t.download_hash
+                            and t.fileitem
+                            and (
+                                not t.target_directory
+                                or t.target_directory.delete_empty_dirs is not False
+                            )
+                    ):
                         # 删除剩余空目录
                         StorageChain().delete_media_file(t.fileitem, delete_self=False)
 
