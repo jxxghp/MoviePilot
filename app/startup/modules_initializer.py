@@ -1,4 +1,6 @@
+import inspect
 import sys
+from typing import Callable
 
 from app.helper.redis import RedisHelper, AsyncRedisHelper
 
@@ -129,29 +131,27 @@ async def stop_modules():
     """
     服务关闭
     """
-    # 停止AI智能体
-    await stop_agent()
-    # 停止模块
-    ModuleManager().stop()
-    # 停止事件消费
-    EventManager().stop()
-    # 停止虚拟显示
-    DisplayHelper().stop()
-    # 停止 DoH 服务
-    DohHelper().shutdown()
-    # 停止线程池
-    ThreadHelper().shutdown()
-    # 停止消息服务
-    stop_message()
-    # 关闭Redis缓存连接
-    RedisHelper().close()
-    await AsyncRedisHelper().close()
-    # 停止数据库连接
-    await close_database()
-    # 停止前端服务
-    stop_frontend()
-    # 清理临时文件
-    clear_temp()
+    async def run_step(name: str, callback: Callable[[], object]) -> None:
+        """单个模块资源关闭失败时继续执行后续阶段"""
+        try:
+            result = callback()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as err:
+            logger.error(f"关闭{name}失败：{err}")
+
+    await run_step("AI智能体", stop_agent)
+    await run_step("模块", lambda: ModuleManager().stop())
+    await run_step("事件消费", lambda: EventManager().stop())
+    await run_step("虚拟显示", lambda: DisplayHelper().stop())
+    await run_step("DoH服务", lambda: DohHelper().shutdown())
+    await run_step("线程池", lambda: ThreadHelper().shutdown())
+    await run_step("消息服务", stop_message)
+    await run_step("Redis缓存连接", lambda: RedisHelper().close())
+    await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
+    await run_step("数据库连接", close_database)
+    await run_step("前端服务", stop_frontend)
+    await run_step("临时文件", clear_temp)
 
 
 def init_modules():

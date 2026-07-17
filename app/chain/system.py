@@ -38,8 +38,6 @@ class SystemChain(ChainBase):
         """
         重启系统
         """
-        from app.core.config import global_vars
-
         if channel and userid:
             self.post_message(Notification(
                 channel=channel,
@@ -54,8 +52,6 @@ class SystemChain(ChainBase):
             }, self._restart_file)
         # 主动备份一次插件
         self.backup_plugins()
-        # 设置停止标志，通知所有模块准备停止
-        global_vars.stop_system()
         # 重启
         SystemHelper.restart()
 

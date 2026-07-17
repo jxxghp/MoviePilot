@@ -76,6 +76,14 @@ _REQUESTS_RETRY_IDEMPOTENT_METHODS = ("GET", "HEAD", "OPTIONS")
 _pending_eviction_tasks: set[asyncio.Task] = set()
 
 
+def _discard_pending_eviction_task(task: asyncio.Task) -> None:
+    """从跨线程共享集合移除已完成的 transport 关闭任务"""
+    with _shared_async_transports_lock:
+        _pending_eviction_tasks.discard(task)
+    if not task.cancelled() and (error := task.exception()):
+        logger.debug(f"LRU 淘汰共享 transport 时关闭失败: {error!r}")
+
+
 def _get_shared_async_transport(
     proxy: Optional[str],
     verify: Union[bool, str],
@@ -140,8 +148,9 @@ def _get_shared_async_transport(
         try:
             task = loop.create_task(evicted_transport.aclose())
             # 强引用避免 task 仅被 loop 弱持有而触发 "Task was destroyed but pending"
-            _pending_eviction_tasks.add(task)
-            task.add_done_callback(_pending_eviction_tasks.discard)
+            with _shared_async_transports_lock:
+                _pending_eviction_tasks.add(task)
+            task.add_done_callback(_discard_pending_eviction_task)
         except Exception as e:  # pragma: no cover - 防御性
             logger.debug(f"LRU 淘汰共享 transport 时调度关闭失败: {e!r}")
 
@@ -160,17 +169,27 @@ async def aclose_shared_async_transports() -> None:
     # 弹出而非 get+clear，避免外层 dict 残留空 OrderedDict 占位
     with _shared_async_transports_lock:
         per_loop = _shared_async_transports.pop(loop, None)
-    if not per_loop:
+        pending_evictions = [
+            task
+            for task in _pending_eviction_tasks
+            if task.get_loop() is loop
+        ]
+    transports = list(per_loop.values()) if per_loop else []
+    if per_loop:
+        per_loop.clear()
+    if not transports and not pending_evictions:
         return
-    transports = list(per_loop.values())
-    per_loop.clear()
     # 并行关闭：每个 transport 的 TLS close_notify 各占一个 RTT，
     # 顺序等待会线性放大 shutdown 耗时；return_exceptions 让单点失败
     # 不影响其他 transport 的释放
     results = await asyncio.gather(
-        *(t.aclose() for t in transports), return_exceptions=True
+        *pending_evictions,
+        *(t.aclose() for t in transports),
+        return_exceptions=True,
     )
-    for result in results:
+    with _shared_async_transports_lock:
+        _pending_eviction_tasks.difference_update(pending_evictions)
+    for result in results[len(pending_evictions):]:
         if isinstance(result, BaseException):
             logger.debug(f"关闭共享 AsyncHTTPTransport 失败: {result!r}")
 

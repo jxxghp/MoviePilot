@@ -7,13 +7,14 @@ import base64
 import copy
 import hashlib
 import json
+import re
 import secrets
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import aiofiles
 import httpx
@@ -106,6 +107,90 @@ class LLMProviderManager(metaclass=Singleton):
     _MODELS_DEV_BUNDLED_PATH = Path(__file__).with_name("models.json")
     _MODELS_DEV_CACHE_TTL = 7 * 24 * 60 * 60
     _AUTH_SESSION_DONE_RETENTION = 300
+    _BEDROCK_DEFAULT_REGION = "us-east-1"
+    _BEDROCK_API_KEY_PREFIX = "bedrock-api-key-"
+    _BEDROCK_GPT_OSS_BASE_REGIONS = (
+        "ap-northeast-1",
+        "ap-south-1",
+        "ap-southeast-2",
+        "eu-central-1",
+        "eu-north-1",
+        "eu-west-1",
+        "eu-west-2",
+        "sa-east-1",
+        "us-east-1",
+        "us-east-2",
+        "us-west-2",
+    )
+    _BEDROCK_GPT_OSS_SAFEGUARD_REGIONS = (
+        "ap-northeast-1",
+        "ap-south-1",
+        "ap-southeast-2",
+        "eu-west-1",
+        "eu-west-2",
+        "sa-east-1",
+        "us-east-1",
+        "us-east-2",
+        "us-west-2",
+    )
+    _BEDROCK_ON_DEMAND_MODEL_REGIONS = {
+        "openai.gpt-oss-120b-1:0": _BEDROCK_GPT_OSS_BASE_REGIONS,
+        "openai.gpt-oss-20b-1:0": _BEDROCK_GPT_OSS_BASE_REGIONS,
+        "openai.gpt-oss-safeguard-120b": _BEDROCK_GPT_OSS_SAFEGUARD_REGIONS,
+        "openai.gpt-oss-safeguard-20b": _BEDROCK_GPT_OSS_SAFEGUARD_REGIONS,
+        "amazon.nova-lite-v1:0": (
+            "ap-northeast-1",
+            "ap-southeast-2",
+            "eu-west-2",
+            "us-east-1",
+            "us-gov-west-1",
+        ),
+        "amazon.nova-micro-v1:0": (
+            "ap-southeast-2",
+            "eu-west-2",
+            "us-east-1",
+            "us-gov-west-1",
+        ),
+        "amazon.nova-pro-v1:0": (
+            "ap-southeast-2",
+            "eu-west-2",
+            "us-east-1",
+            "us-gov-west-1",
+        ),
+        "anthropic.claude-3-5-haiku-20241022-v1:0": (
+            "us-west-2",
+        ),
+        "anthropic.claude-3-5-sonnet-20240620-v1:0": (
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "ap-southeast-1",
+            "eu-central-1",
+            "eu-central-2",
+            "us-east-1",
+            "us-gov-west-1",
+            "us-west-2",
+        ),
+        "anthropic.claude-3-5-sonnet-20241022-v2:0": (
+            "ap-southeast-2",
+            "us-west-2",
+        ),
+        "anthropic.claude-3-7-sonnet-20250219-v1:0": (
+            "eu-west-2",
+            "us-gov-west-1",
+        ),
+        "anthropic.claude-3-haiku-20240307-v1:0": (
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "ap-south-1",
+            "ap-southeast-2",
+            "eu-central-1",
+            "eu-west-1",
+            "eu-west-3",
+            "us-east-1",
+            "us-gov-west-1",
+            "us-west-2",
+        ),
+    }
     _CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     _CHATGPT_ISSUER = "https://auth.openai.com"
     _CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
@@ -366,6 +451,50 @@ class LLMProviderManager(metaclass=Singleton):
                 sort_order=30,
                 api_key_hint="填写 Anthropic API Key。",
                 description="Anthropic Claude 官方端点。",
+            ),
+            ProviderSpec(
+                id="amazon-bedrock",
+                name="Amazon Bedrock",
+                runtime="bedrock",
+                models_dev_provider_id="amazon-bedrock",
+                default_base_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+                base_url_presets=(
+                    url_preset(
+                        id="bedrock-us-east-1",
+                        label="美东（弗吉尼亚北部）us-east-1",
+                        value="https://bedrock-runtime.us-east-1.amazonaws.com",
+                    ),
+                    url_preset(
+                        id="bedrock-us-west-2",
+                        label="美西（俄勒冈）us-west-2",
+                        value="https://bedrock-runtime.us-west-2.amazonaws.com",
+                    ),
+                    url_preset(
+                        id="bedrock-eu-central-1",
+                        label="欧洲（法兰克福）eu-central-1",
+                        value="https://bedrock-runtime.eu-central-1.amazonaws.com",
+                    ),
+                    url_preset(
+                        id="bedrock-ap-northeast-1",
+                        label="亚太（东京）ap-northeast-1",
+                        value="https://bedrock-runtime.ap-northeast-1.amazonaws.com",
+                    ),
+                    url_preset(
+                        id="bedrock-ap-southeast-1",
+                        label="亚太（新加坡）ap-southeast-1",
+                        value="https://bedrock-runtime.ap-southeast-1.amazonaws.com",
+                    ),
+                ),
+                base_url_editable=True,
+                api_key_label="Bedrock API Key / AK:SK",
+                api_key_hint=(
+                    "支持两种认证方式：填写 Amazon Bedrock API Key（bedrock-api-key- 开头，"
+                    "Bearer 认证）；或填写 Access Key ID:Secret Access Key（可选追加 :Session Token，"
+                    "SigV4 认证）。Base URL 决定 AWS Region。"
+                ),
+                model_list_strategy="bedrock",
+                description="Amazon Bedrock 托管模型服务，支持 Bedrock API Key 与 AK/SK 双认证。",
+                sort_order=35,
             ),
             ProviderSpec(
                 id="deepseek",
@@ -1743,6 +1872,112 @@ class LLMProviderManager(metaclass=Singleton):
             return normalized[:-3]
         return normalized
 
+    @classmethod
+    def _extract_bedrock_region(cls, base_url: Optional[str]) -> str:
+        """
+        从 Bedrock 运行时端点 URL 中提取 AWS Region
+
+        兼容标准端点、FIPS 端点与 PrivateLink（VPCE）端点等主机名形态，
+        从中识别 Region 段。
+
+        :param base_url: 形如 https://bedrock-runtime.us-east-1.amazonaws.com 的端点地址
+        :return: 提取到的 Region，无法识别时回退 us-east-1
+        """
+        hostname = urlsplit((base_url or "").strip().lower()).hostname or ""
+        match = re.search(
+            r"(?:^|\.)(?:bedrock(?:-runtime)?(?:-fips)?)"
+            r"\.([a-z0-9-]+-\d+)(?:\.|$)",
+            hostname,
+        )
+        if match:
+            return match.group(1)
+        return cls._BEDROCK_DEFAULT_REGION
+
+    # Inference Profile 的地理前缀与可用 Region 的对应关系，用于降级目录按
+    # 当前 Region 过滤掉不可调用的 Profile 条目。
+    _BEDROCK_GEO_PREFIXES: dict[str, tuple[str, ...]] = {
+        "us": ("us-east-", "us-west-"),
+        "eu": ("eu-",),
+        "apac": ("ap-",),
+        "au": ("ap-southeast-2", "ap-southeast-4"),
+        "jp": ("ap-northeast-1", "ap-northeast-3"),
+        "ca": ("ca-",),
+    }
+    _BEDROCK_NON_COMMERCIAL_REGION_PREFIXES = (
+        "cn-",
+        "eu-isoe-",
+        "us-gov-",
+        "us-iso-",
+        "us-isob-",
+        "us-isof-",
+    )
+
+    @classmethod
+    def _bedrock_model_matches_region(cls, model_id: str, region: str) -> bool:
+        """
+        判断目录中的模型 ID 在指定 Region 是否可调用
+
+        models.dev 目录同时收录裸模型 ID（直连调用）与带地理前缀的
+        Inference Profile ID（us./eu./apac./global. 等）。带前缀的条目只在
+        对应地理分区和 AWS 分区的 Region 可用；global Profile 仅允许商业
+        AWS 分区。裸 ID 仅在明确记录的 ON_DEMAND Region 可用，未知条目
+        按不可直连处理。
+
+        :param model_id: 目录中的模型 ID
+        :param region: 当前 Base URL 对应的 AWS Region
+        :return: 该模型在当前 Region 可调用时返回 True
+        """
+        prefix = model_id.split(".", 1)[0]
+        if prefix == "global":
+            return not region.startswith(cls._BEDROCK_NON_COMMERCIAL_REGION_PREFIXES)
+        region_prefixes = cls._BEDROCK_GEO_PREFIXES.get(prefix)
+        if region_prefixes is not None:
+            return (
+                    not region.startswith(cls._BEDROCK_NON_COMMERCIAL_REGION_PREFIXES)
+                    and region.startswith(region_prefixes)
+            )
+        on_demand_regions = cls._BEDROCK_ON_DEMAND_MODEL_REGIONS.get(model_id)
+        return on_demand_regions is not None and region in on_demand_regions
+
+    @classmethod
+    def _parse_bedrock_credentials(cls, api_key: Optional[str]) -> dict[str, Any]:
+        """
+        解析 Bedrock 凭证字符串，识别 Bearer 与 SigV4 两种认证方式
+
+        - Bedrock API Key（bedrock-api-key- 开头的长期 Key，或控制台生成的短期
+          Token）走 Bearer 认证；
+        - `AccessKeyId:SecretAccessKey` 或 `AccessKeyId:SecretAccessKey:SessionToken`
+          走 SigV4 认证，AWS Access Key ID 均以 "AKIA"/"ASIA" 开头。
+
+        :param api_key: 用户在 API Key 输入框填写的凭证内容
+        :return: 含 auth_scheme 及对应凭证字段的字典
+        """
+        normalized = str(api_key or "").strip()
+        if not normalized:
+            raise LLMProviderAuthError(
+                "Amazon Bedrock 需要填写 Bedrock API Key 或 Access Key ID:Secret Access Key"
+            )
+
+        if not normalized.startswith(cls._BEDROCK_API_KEY_PREFIX):
+            parts = [part.strip() for part in normalized.split(":")]
+            if len(parts) in {2, 3} and all(parts):
+                credentials = {
+                    "auth_scheme": "sigv4",
+                    "access_key_id": parts[0],
+                    "secret_access_key": parts[1],
+                }
+                if len(parts) == 3:
+                    credentials["session_token"] = parts[2]
+                return credentials
+            if ":" in normalized:
+                raise LLMProviderAuthError(
+                    "Amazon Bedrock AK/SK 凭证格式不正确，"
+                    "请按 AccessKeyId:SecretAccessKey 或 "
+                    "AccessKeyId:SecretAccessKey:SessionToken 填写"
+                )
+
+        return {"auth_scheme": "bearer", "bearer_token": normalized}
+
     async def _list_models_from_google(
             self,
             api_key: str,
@@ -1855,6 +2090,235 @@ class LLMProviderManager(metaclass=Singleton):
                     source="models.dev",
                 )
             )
+        return sorted(results, key=lambda item: item["name"].lower())
+
+    def _build_bedrock_boto3_config(
+            self,
+            use_proxy: Optional[bool] = None,
+    ) -> Any:
+        """
+        构造 Bedrock boto3 客户端配置，统一超时、重试与代理策略
+
+        :param use_proxy: 是否使用系统代理，None 时读取 LLM_USE_PROXY 配置
+        :return: botocore Config 实例
+        """
+        from botocore.config import Config
+
+        should_use_proxy = settings.LLM_USE_PROXY if use_proxy is None else use_proxy
+        proxies = None
+        if should_use_proxy and settings.PROXY_HOST:
+            proxies = {"http": settings.PROXY_HOST, "https": settings.PROXY_HOST}
+        return Config(
+            connect_timeout=10,
+            read_timeout=60,
+            retries={"max_attempts": 3, "mode": "standard"},
+            proxies=proxies,
+        )
+
+    @staticmethod
+    def _bedrock_endpoint_url(
+            service_name: str, base_url: Optional[str]
+    ) -> Optional[str]:
+        """
+        解析应传给 boto3 客户端的自定义端点 URL
+
+        标准公有端点交由 boto3 按 Region 自行推导；用户填写 PrivateLink、
+        FIPS 等非标准端点时才显式透传，保证所选网络路径实际生效。
+
+        :param service_name: boto3 服务名（bedrock 或 bedrock-runtime）
+        :param base_url: 用户配置的 Base URL
+        :return: 需要显式指定端点时返回 URL，否则返回 None
+        """
+        normalized = (base_url or "").strip().rstrip("/")
+        if not normalized:
+            return None
+        if re.fullmatch(
+                rf"https://{service_name}\.[a-z0-9-]+\.amazonaws\.com",
+                normalized,
+        ):
+            return None
+        return normalized
+
+    def create_bedrock_client(
+            self,
+            service_name: str,
+            region: str,
+            credentials: dict[str, Any],
+            base_url: Optional[str] = None,
+            use_proxy: Optional[bool] = None,
+            read_timeout: Optional[int] = None,
+    ) -> Any:
+        """
+        按解析后的凭证创建 Bedrock boto3 客户端，Bearer 方式注入 Authorization 头
+
+        :param service_name: boto3 服务名（bedrock 或 bedrock-runtime）
+        :param region: AWS Region
+        :param credentials: `_parse_bedrock_credentials` 的解析结果
+        :param base_url: 用户配置的 Base URL，非标准端点（PrivateLink/FIPS 等）时透传给 boto3
+        :param use_proxy: 是否使用系统代理
+        :param read_timeout: 读取超时秒数，None 时使用默认值
+        :return: boto3 客户端实例
+        """
+        import boto3
+        from botocore import UNSIGNED
+
+        config = self._build_bedrock_boto3_config(use_proxy)
+        if read_timeout:
+            config = config.merge(type(config)(read_timeout=read_timeout))
+        endpoint_kwargs: dict[str, Any] = {}
+        endpoint_url = self._bedrock_endpoint_url(service_name, base_url)
+        if endpoint_url:
+            endpoint_kwargs["endpoint_url"] = endpoint_url
+
+        if credentials["auth_scheme"] == "sigv4":
+            return boto3.client(
+                service_name,
+                region_name=region,
+                aws_access_key_id=credentials["access_key_id"],
+                aws_secret_access_key=credentials["secret_access_key"],
+                aws_session_token=credentials.get("session_token"),
+                config=config,
+                **endpoint_kwargs,
+            )
+
+        # Bearer 认证：以 UNSIGNED 跳过 SigV4 签名，再把 API Key 注入 Authorization 头。
+        bearer_token = credentials["bearer_token"]
+        config = config.merge(type(config)(signature_version=UNSIGNED))
+        client = boto3.client(
+            service_name,
+            region_name=region,
+            aws_access_key_id="unsigned",
+            aws_secret_access_key="unsigned",
+            config=config,
+            **endpoint_kwargs,
+        )
+
+        def _inject_bearer(request: Any, **_kwargs: Any) -> None:
+            request.headers["Authorization"] = f"Bearer {bearer_token}"
+
+        client.meta.events.register(
+            f"request-created.{service_name}",
+            _inject_bearer,
+        )
+        return client
+
+    async def _list_models_from_bedrock_fallback(
+            self,
+            region: str,
+            use_proxy: Optional[bool] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        从 models.dev 目录筛选当前 Region 可调用的 Bedrock 模型
+
+        :param region: 当前 Base URL 对应的 AWS Region
+        :param use_proxy: 是否使用系统代理
+        :return: 过滤后的标准化模型记录列表
+        """
+        models = await self._list_models_from_models_dev_only(
+            provider_id="amazon-bedrock",
+            use_proxy=use_proxy,
+        )
+        return [
+            model
+            for model in models
+            if self._bedrock_model_matches_region(model["id"], region)
+        ]
+
+    async def _list_models_from_bedrock(
+            self,
+            api_key: str,
+            base_url: Optional[str],
+            use_proxy: Optional[bool] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        从 Bedrock 控制面拉取模型目录，聚合跨区 Inference Profile 与直连模型
+
+        Bedrock 多数新模型仅允许通过 Inference Profile（us./eu./apac./global. 前缀）
+        调用，因此优先列出 Profile，再补充支持 ON_DEMAND 直连的基础模型。
+
+        :param api_key: 用户填写的凭证内容（Bedrock API Key 或 AK/SK）
+        :param base_url: Bedrock 运行时端点，决定 Region
+        :param use_proxy: 是否使用系统代理
+        :return: 标准化后的模型记录列表
+        """
+        credentials = self._parse_bedrock_credentials(api_key)
+        region = self._extract_bedrock_region(base_url)
+        # runtime VPCE 无法安全推导对应的控制面 VPCE；FIPS 端点也不能绕回
+        # 公有非 FIPS 控制面，因此直接使用本地目录。
+        if self._bedrock_endpoint_url("bedrock-runtime", base_url):
+            return await self._list_models_from_bedrock_fallback(region, use_proxy)
+        client = self.create_bedrock_client(
+            "bedrock",
+            region=region,
+            credentials=credentials,
+            use_proxy=use_proxy,
+        )
+
+        def _fetch() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            profiles: list[dict[str, Any]] = []
+            paginator = client.get_paginator("list_inference_profiles")
+            for page in paginator.paginate(typeEquals="SYSTEM_DEFINED"):
+                profiles.extend(page.get("inferenceProfileSummaries") or [])
+            foundation = client.list_foundation_models(
+                byOutputModality="TEXT",
+                byInferenceType="ON_DEMAND",
+            ).get("modelSummaries") or []
+            return profiles, foundation
+
+        try:
+            profile_summaries, foundation_summaries = await asyncio.to_thread(_fetch)
+        except Exception as err:
+            # 部分 Bedrock API Key 的授权范围仅覆盖 bedrock-runtime 推理接口，
+            # 控制面查询被拒时降级到 models.dev 目录，保证仍能选择模型。
+            logger.warning(
+                f"获取 Amazon Bedrock 控制面模型列表失败，降级 models.dev 目录: {err}"
+            )
+            return await self._list_models_from_bedrock_fallback(region, use_proxy)
+        finally:
+            await asyncio.to_thread(client.close)
+
+        results: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        def _append_record(model_id: str, display_name: Optional[str]) -> None:
+            if not model_id or model_id in seen_ids:
+                return
+            seen_ids.add(model_id)
+            # Inference Profile 带区域前缀，models.dev 目录按基础模型 ID 收录，
+            # 去掉首个前缀段再查一次元数据。
+            metadata = self._cached_models_dev_model("amazon-bedrock", model_id)
+            if not metadata and "." in model_id:
+                metadata = self._cached_models_dev_model(
+                    "amazon-bedrock",
+                    model_id.split(".", 1)[1],
+                )
+            results.append(
+                self._normalize_model_record(
+                    model_id=model_id,
+                    display_name=display_name or (metadata or {}).get("name") or model_id,
+                    metadata=metadata or {},
+                    source="provider",
+                )
+            )
+
+        for profile in profile_summaries:
+            if (profile.get("status") or "ACTIVE") != "ACTIVE":
+                continue
+            _append_record(
+                str(profile.get("inferenceProfileId") or "").strip(),
+                profile.get("inferenceProfileName"),
+            )
+        # 控制面已按当前 Region 和 ON_DEMAND 筛选，不能复用仅面向
+        # models.dev 降级目录的静态白名单，否则 AWS 新增模型会被遗漏。
+        for summary in foundation_summaries:
+            lifecycle = (summary.get("modelLifecycle") or {}).get("status") or "ACTIVE"
+            if lifecycle != "ACTIVE":
+                continue
+            _append_record(
+                str(summary.get("modelId") or "").strip(),
+                summary.get("modelName"),
+            )
+
         return sorted(results, key=lambda item: item["name"].lower())
 
     @staticmethod
@@ -2061,6 +2525,13 @@ class LLMProviderManager(metaclass=Singleton):
                     runtime.get("default_headers"),
                     user_agent,
                 ),
+                use_proxy=use_proxy,
+            )
+
+        if resolved_model_list_strategy == "bedrock":
+            return await self._list_models_from_bedrock(
+                api_key=runtime["api_key"],
+                base_url=runtime.get("base_url"),
                 use_proxy=use_proxy,
             )
 
@@ -2726,6 +3197,22 @@ class LLMProviderManager(metaclass=Singleton):
                 {
                     "api_key": normalized_api_key,
                     "base_url": None,
+                    "auth_mode": "api_key",
+                }
+            )
+            return result
+
+        if resolved_runtime == "bedrock":
+            effective_base_url = normalized_base_url or self._default_base_url_for_provider(
+                spec
+            )
+            credentials = self._parse_bedrock_credentials(normalized_api_key)
+            result.update(
+                {
+                    "api_key": normalized_api_key,
+                    "base_url": effective_base_url,
+                    "aws_region": self._extract_bedrock_region(effective_base_url),
+                    "aws_auth": credentials,
                     "auth_mode": "api_key",
                 }
             )
