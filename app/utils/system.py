@@ -550,47 +550,76 @@ class SystemUtils:
         return _calc_dir_size(path) if path.is_dir() else path.stat().st_size
 
     @staticmethod
-    def _is_btrfs(dir_path: Path) -> bool:
+    def _unescape_proc_mounts_field(field: str) -> str:
         """
-        判断目录所在文件系统是否为 Btrfs（仅 Linux 下生效，其它平台一律返回 False）
+        还原 /proc/mounts 字段里的八进制转义序列（空格、Tab、反斜杠、换行会被转义为 \\NNN）
         """
+        return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
+
+    @staticmethod
+    def _read_proc_mounts() -> List[Tuple[str, str]]:
+        """
+        读取并解析 /proc/mounts，返回 (设备来源, 挂载点) 列表，挂载点已还原转义字符。
+        仅 Linux 下有效；读取失败（如非 Linux 环境、无权限）时返回空列表。
+        """
+        mounts: List[Tuple[str, str]] = []
         if os.name == "nt":
-            return False
+            return mounts
         try:
-            best_match_len = -1
-            fstype = ""
             with open("/proc/mounts", "r", encoding="utf-8") as mounts_file:
                 for line in mounts_file:
                     parts = line.split()
-                    if len(parts) < 3:
+                    if len(parts) < 2:
                         continue
-                    mount_point, mount_fstype = parts[1], parts[2]
-                    if str(dir_path).startswith(mount_point) and len(mount_point) > best_match_len:
-                        best_match_len = len(mount_point)
-                        fstype = mount_fstype
-            return fstype == "btrfs"
+                    mount_source = parts[0]
+                    mount_point = SystemUtils._unescape_proc_mounts_field(parts[1])
+                    mounts.append((mount_source, mount_point))
         except OSError:
-            return False
+            pass
+        return mounts
+
+    @staticmethod
+    def _match_mount_source(dir_path: Path, mounts: List[Tuple[str, str]]) -> Optional[str]:
+        """
+        在已解析的挂载列表中，找出与目录路径匹配的最长挂载点，返回其设备来源。
+
+        这是一个稳定、不随容量或读写变化的真实存储身份标识：Btrfs 等场景下，
+        同一个存储池里的不同子卷（常见于群晖 DSM 的每个共享文件夹）在 os.stat
+        层面会返回不同的 st_dev，但它们在 /proc/mounts 里的设备来源字段完全一致。
+
+        多个挂载点长度相同时，以列表中出现顺序更靠后的为准——Linux 允许在同一路径
+        叠加挂载多层，/proc/mounts 中排在后面的记录才是当前实际生效的那一层。
+        """
+        dir_str = str(dir_path)
+        best_match_len = -1
+        source = None
+        for mount_source, mount_point in mounts:
+            if dir_str == mount_point or dir_str.startswith(mount_point.rstrip("/") + "/"):
+                if len(mount_point) >= best_match_len:
+                    best_match_len = len(mount_point)
+                    source = mount_source
+        return source
 
     @staticmethod
     def space_usage(dir_list: Union[Path, List[Path]]) -> Tuple[float, float]:
         """
         计算多个目录的总可用空间/剩余空间（单位：Byte），并去除重复磁盘
 
-        注意：Btrfs 存储池下，同一个池里的不同子卷（常见于群晖 DSM 的每个共享文件夹）
-        会各自返回不同的 st_dev，但汇报的总容量和剩余空间完全一致。仅靠 st_dev 去重会把
-        同一块物理磁盘误判成多块不同磁盘，导致总容量被重复累加，因此额外用总容量+剩余空间
-        的组合兜底去重。这个兜底判断只在确认目录属于 Btrfs 文件系统时才启用，避免把两块
-        总容量恰好相同、但并非 Btrfs 子卷关系的独立磁盘错误合并。
+        注意：Btrfs 等场景下，同一个存储池里的不同子卷（常见于群晖 DSM 的每个共享
+        文件夹）在 os.stat 层面会返回不同的 st_dev，但本质上是同一块物理存储，仅靠
+        st_dev 去重会把它们误判成多块不同磁盘，导致总容量被重复累加。优先使用
+        /proc/mounts 里挂载点对应的设备来源字段去重（真实、稳定的存储身份标识，
+        不受容量/并发写入影响）；无法获取挂载信息时（如 Windows）才回退到
+        st_dev/驱动器号。
         """
         if not dir_list:
             return 0.0, 0.0
         if not isinstance(dir_list, list):
             dir_list = [dir_list]
+        # /proc/mounts 只需要读取解析一次，供本次调用里所有目录复用
+        mounts = SystemUtils._read_proc_mounts()
         # 存储不重复的磁盘
         disk_set = set()
-        # 存储已计入总量的（总容量, 剩余空间）组合，用于识别同一存储池下的不同 Btrfs 子卷
-        counted_usages = set()
         # 存储总剩余空间
         total_free_space = 0.0
         # 存储总空间
@@ -600,25 +629,17 @@ class SystemUtils:
                 continue
             if not dir_path.exists():
                 continue
-            # 获取目录所在磁盘
+            # 获取目录所在磁盘：优先用挂载设备来源，取不到时回退到 st_dev/驱动器号
             if os.name == "nt":
                 disk = dir_path.drive
             else:
-                disk = os.stat(dir_path).st_dev
+                mount_source = SystemUtils._match_mount_source(dir_path, mounts)
+                disk = mount_source if mount_source is not None else os.stat(dir_path).st_dev
             if disk in disk_set:
                 continue
             disk_set.add(disk)
-            this_total = SystemUtils.total_space(dir_path)
-            this_free = SystemUtils.free_space(dir_path)
-            if SystemUtils._is_btrfs(dir_path):
-                usage_key = (this_total, this_free)
-                if usage_key in counted_usages:
-                    # 确认是 Btrfs，且总容量和剩余空间都与已计入的某块磁盘完全一致，
-                    # 视为同一存储池的另一个子卷，不重复累加
-                    continue
-                counted_usages.add(usage_key)
-            total_space += this_total
-            total_free_space += this_free
+            total_space += SystemUtils.total_space(dir_path)
+            total_free_space += SystemUtils.free_space(dir_path)
         return total_space, total_free_space
 
     @staticmethod

@@ -1,3 +1,4 @@
+import io
 import subprocess
 import tempfile
 from pathlib import Path
@@ -7,6 +8,9 @@ from unittest.mock import MagicMock, patch
 from app.helper.system import SystemHelper
 from app.core.config import settings
 from app.utils.system import SystemUtils
+
+# 在任何 mock 生效前保存真实的 open，供测试内需要放行非 /proc/mounts 路径的场景使用
+_real_open = open
 
 
 class SystemUtilsTest(TestCase):
@@ -175,11 +179,24 @@ def test_execute_with_subprocess_redacts_unknown_error_userinfo_and_invalid_port
     assert "user:pass" not in message
 
 
-def test_space_usage_dedupes_btrfs_subvolumes_sharing_one_pool():
+def _fake_open_with_proc_mounts(fake_mounts_content):
+    """
+    构造一个 open 的 side_effect：命中 /proc/mounts 时返回构造好的内容，
+    其它路径放行给真实 open，避免影响测试框架自身的文件读写。
+    """
+    def _fake_open(path, *args, **kwargs):
+        if str(path) == "/proc/mounts":
+            return io.StringIO(fake_mounts_content)
+        return _real_open(path, *args, **kwargs)
+    return _fake_open
+
+
+def test_space_usage_dedupes_btrfs_subvolumes_sharing_one_mount_source():
     """
     Btrfs 存储池下，不同共享文件夹通常各自是独立子卷，os.stat 返回的 st_dev
-    因此互不相同，但它们汇报的池总容量应该完全一致。仅靠 st_dev 去重会把同一块
-    物理磁盘误判成多块不同磁盘，导致总容量被重复累加。
+    因此互不相同，但它们在 /proc/mounts 里的设备来源字段是完全一致的（同一个
+    /dev/mdX）。这是真实生产环境（群晖 DSM）实测确认过的现象，用它去重比比较
+    容量数值更可靠，不受并发写入、剩余空间变化的影响。
     """
     single_disk_total = 3.49 * 1024 ** 4
     single_disk_free = 1.97 * 1024 ** 4
@@ -188,77 +205,101 @@ def test_space_usage_dedupes_btrfs_subvolumes_sharing_one_pool():
             tempfile.TemporaryDirectory() as tmp2, \
             tempfile.TemporaryDirectory() as tmp3:
         paths = [Path(tmp1), Path(tmp2), Path(tmp3)]
-        fake_dev_by_path = {str(paths[0]): 1001, str(paths[1]): 1002, str(paths[2]): 1003}
+        fake_mounts = (
+            f"/dev/md3 {tmp1} btrfs rw,relatime,subvolid=375 0 0\n"
+            f"/dev/md3 {tmp2} btrfs rw,relatime,subvolid=259 0 0\n"
+            f"/dev/md3 {tmp3} btrfs rw,relatime,subvolid=806 0 0\n"
+        )
 
-        def fake_stat(path, *_args, **_kwargs):
-            stat_result = MagicMock()
-            stat_result.st_dev = fake_dev_by_path[str(path)]
-            return stat_result
-
-        with patch("app.utils.system.os.stat", side_effect=fake_stat), \
+        with patch("builtins.open", side_effect=_fake_open_with_proc_mounts(fake_mounts)), \
                 patch.object(SystemUtils, "total_space", return_value=single_disk_total), \
-                patch.object(SystemUtils, "free_space", return_value=single_disk_free), \
-                patch.object(SystemUtils, "_is_btrfs", return_value=True):
+                patch.object(SystemUtils, "free_space", return_value=single_disk_free):
             total, free = SystemUtils.space_usage(paths)
 
     assert total == single_disk_total
     assert free == single_disk_free
 
 
-def test_space_usage_does_not_merge_two_disks_with_same_total_but_different_free():
+def test_space_usage_keeps_different_mount_sources_separate():
     """
-    两块型号、分区方式相同的独立物理磁盘可能恰好总容量完全相等，但此刻的剩余空间
-    几乎不会也恰好一致。回归保护：仅总容量相同不应被误判为同一块磁盘，必须总容量
-    和剩余空间同时相同才去重，否则会把两块真正独立的磁盘错误合并，反而低估总容量。
+    基线正确性：两个真正独立的挂载（不同设备来源）必须分别计入总量，
+    即使 st_dev 和容量数值都是虚构的、互不冲突，也不应该被误合并。
     """
-    same_total = 4.0 * 1024 ** 4
+    with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+        paths = [Path(tmp1), Path(tmp2)]
+        fake_mounts = (
+            f"/dev/md3 {tmp1} btrfs rw,relatime 0 0\n"
+            f"/dev/sdb1 {tmp2} ext4 rw,relatime 0 0\n"
+        )
+        fake_total_by_path = {str(paths[0]): 3.0 * 1024 ** 4, str(paths[1]): 1.0 * 1024 ** 4}
+        fake_free_by_path = {str(paths[0]): 1.5 * 1024 ** 4, str(paths[1]): 0.4 * 1024 ** 4}
+
+        with patch("builtins.open", side_effect=_fake_open_with_proc_mounts(fake_mounts)), \
+                patch.object(SystemUtils, "total_space", side_effect=lambda p: fake_total_by_path[str(p)]), \
+                patch.object(SystemUtils, "free_space", side_effect=lambda p: fake_free_by_path[str(p)]):
+            total, free = SystemUtils.space_usage(paths)
+
+    assert total == 3.0 * 1024 ** 4 + 1.0 * 1024 ** 4
+    assert free == 1.5 * 1024 ** 4 + 0.4 * 1024 ** 4
+
+
+def test_read_proc_mounts_unescapes_octal_sequences_in_mount_point():
+    """
+    /proc/mounts 会把挂载点里的空格等特殊字符转义成八进制序列（如空格 -> \\040），
+    _read_proc_mounts 必须先还原转义，否则合法但含特殊字符的挂载点永远匹配不上，
+    去重会退化回旧的 st_dev 方式（对应代码审查中指出的"挂载点未解码"问题）。
+    """
+    fake_mounts = "/dev/md3 /mnt/My\\040Disk btrfs rw,relatime 0 0\n"
+
+    with patch("builtins.open", side_effect=_fake_open_with_proc_mounts(fake_mounts)):
+        mounts = SystemUtils._read_proc_mounts()
+        source = SystemUtils._match_mount_source(Path("/mnt/My Disk/subdir/video"), mounts)
+
+    assert mounts == [("/dev/md3", "/mnt/My Disk")]
+    assert source == "/dev/md3"
+
+
+def test_match_mount_source_prefers_later_entry_on_equal_length_mount_point():
+    """
+    Linux 允许在同一路径叠加挂载多层，/proc/mounts 里排在后面的记录才是当前实际
+    生效的那一层。两条挂载点长度完全相同的记录，必须以列表中更靠后的为准，
+    而不是先出现的那条——否则挂载栈叠加场景下会拿到已经被覆盖、不再生效的旧挂载。
+    """
+    mounts = [
+        ("/dev/overlay-old", "/data"),
+        ("/dev/overlay-new", "/data"),
+    ]
+
+    source = SystemUtils._match_mount_source(Path("/data/sub"), mounts)
+
+    assert source == "/dev/overlay-new"
+
+
+def test_space_usage_falls_back_to_st_dev_when_proc_mounts_unavailable():
+    """
+    /proc/mounts 不可读（比如非 Linux 环境或权限问题）时，_get_mount_source
+    应该安静地返回 None，space_usage 平滑回退到原有的 st_dev 去重方式，
+    而不是抛异常或者把所有目录错误合并成一块。
+    """
+    def fake_open_raises(path, *args, **kwargs):
+        if str(path) == "/proc/mounts":
+            raise OSError("/proc/mounts not available")
+        return _real_open(path, *args, **kwargs)
 
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
-        fake_dev_by_path = {str(paths[0]): 2001, str(paths[1]): 2002}
-        fake_free_by_path = {str(paths[0]): 1.0 * 1024 ** 4, str(paths[1]): 2.5 * 1024 ** 4}
+        fake_dev_by_path = {str(paths[0]): 9001, str(paths[1]): 9002}
 
         def fake_stat(path, *_args, **_kwargs):
             stat_result = MagicMock()
             stat_result.st_dev = fake_dev_by_path[str(path)]
             return stat_result
 
-        def fake_free_space(path):
-            return fake_free_by_path[str(path)]
-
-        with patch("app.utils.system.os.stat", side_effect=fake_stat), \
-                patch.object(SystemUtils, "total_space", return_value=same_total), \
-                patch.object(SystemUtils, "free_space", side_effect=fake_free_space), \
-                patch.object(SystemUtils, "_is_btrfs", return_value=True):
+        with patch("builtins.open", side_effect=fake_open_raises), \
+                patch("app.utils.system.os.stat", side_effect=fake_stat), \
+                patch.object(SystemUtils, "total_space", return_value=1.0 * 1024 ** 4), \
+                patch.object(SystemUtils, "free_space", return_value=0.5 * 1024 ** 4):
             total, free = SystemUtils.space_usage(paths)
 
-    assert total == same_total * 2
-    assert free == 1.0 * 1024 ** 4 + 2.5 * 1024 ** 4
-
-
-def test_space_usage_never_merges_non_btrfs_disks_even_with_identical_usage():
-    """
-    针对代码审查意见的回归测试：两块非 Btrfs 的独立磁盘（例如两块刚格式化的同规格
-    空盘）即使总容量和剩余空间恰好完全相同，也不应该被合并——容量+剩余空间兜底去重
-    只应该在确认是 Btrfs 文件系统时才生效，否则应严格按 st_dev 分别计入。
-    """
-    identical_total = 4.0 * 1024 ** 4
-    identical_free = 4.0 * 1024 ** 4
-
-    with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
-        paths = [Path(tmp1), Path(tmp2)]
-        fake_dev_by_path = {str(paths[0]): 3001, str(paths[1]): 3002}
-
-        def fake_stat(path, *_args, **_kwargs):
-            stat_result = MagicMock()
-            stat_result.st_dev = fake_dev_by_path[str(path)]
-            return stat_result
-
-        with patch("app.utils.system.os.stat", side_effect=fake_stat), \
-                patch.object(SystemUtils, "total_space", return_value=identical_total), \
-                patch.object(SystemUtils, "free_space", return_value=identical_free), \
-                patch.object(SystemUtils, "_is_btrfs", return_value=False):
-            total, free = SystemUtils.space_usage(paths)
-
-    assert total == identical_total * 2
-    assert free == identical_free * 2
+    assert total == 2.0 * 1024 ** 4
+    assert free == 1.0 * 1024 ** 4
