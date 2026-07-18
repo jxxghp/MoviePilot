@@ -41,6 +41,43 @@ class DirectoryHelper:
         """
         return [d for d in self.get_download_dirs() if d.storage == "local"]
 
+    def get_download_dir_by_save_path(
+            self,
+            media: Optional[MediaInfo],
+            save_path: str,
+    ) -> Optional[schemas.TransferDirectoryConf]:
+        """
+        按媒体信息和精确保存根路径匹配下载目录配置。
+
+        仅配置根目录本身继承自动分类规则；根目录下的自定义子目录保持调用方指定的完整路径。
+
+        :param media: 媒体信息
+        :param save_path: 已选择的下载保存目录，支持本地路径或远端 FileURI
+        :return: 匹配的下载目录配置
+        """
+        value = str(save_path or "").strip()
+        try:
+            storage, raw_path = _split_file_uri(value)
+            target_style, target_path = _normalize_download_path(raw_path, storage)
+        except ValueError:
+            return None
+
+        media_type = media.type.value if media else None
+        for dir_info in self.get_download_dirs():
+            root = _normalize_download_root(dir_info)
+            if not root:
+                continue
+            root_storage, root_style, root_path = root
+            if storage != root_storage or target_style != root_style or target_path != root_path:
+                continue
+            if not media_type or not dir_info.media_type:
+                return dir_info
+            if dir_info.media_type == media_type and not dir_info.media_category:
+                return dir_info
+            if dir_info.media_type == media_type and dir_info.media_category == media.category:
+                return dir_info
+        return None
+
     def get_library_dirs(self) -> List[schemas.TransferDirectoryConf]:
         """
         获取所有媒体库目录
