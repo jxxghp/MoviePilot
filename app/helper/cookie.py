@@ -139,9 +139,10 @@ class CookieHelper:
                         username_xpath = xpath
                         break
                 if not username_xpath:
-                    # 登录页可能为JS动态渲染（如SPA），等待输入框出现后重试
+                    # 登录页可能为JS动态渲染（如SPA），等待用户名输入框出现后重试
                     try:
-                        page.wait_for_selector("input", timeout=5000)
+                        username_union_xpath = " | ".join(self._SITE_LOGIN_XPATH.get("username"))
+                        page.wait_for_selector(f"xpath={username_union_xpath}", timeout=5000)
                     except Exception:
                         pass
                     html_text = self.get_page_content(page)
@@ -271,10 +272,11 @@ class CookieHelper:
                     # 保留首个快照用于失败时解析错误信息，避免提示被后续跳转或自动消失覆盖
                     if html_text is None:
                         html_text = latest_text
-                    # 页面已出现明确的登录错误信息时提前结束重试
+                    # 页面已出现明确的登录错误信息时，以该快照为准并提前结束重试
                     latest_html = etree.HTML(latest_text)
                     if latest_html is not None and \
                             any(latest_html.xpath(x) for x in self._SITE_LOGIN_XPATH.get("error")):
+                        html_text = latest_text
                         break
                 if not html_text:
                     return None, None, "获取网页源码失败"
