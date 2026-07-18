@@ -52,6 +52,10 @@ class CookieHelper:
         "error": [
             "//table[@class='main']//td[@class='text']/text()",
         ],
+        "remember": [
+            '//input[@type="checkbox"][contains(@name,"remember") or contains(@id,"remember")]',
+            '//*[@role="checkbox"][contains(.,"保持登录") or contains(.,"记住我") or contains(.,"自动登录")]',
+        ],
         "twostep": [
             '//input[@name="two_step_code"]',
             '//input[@name="2fa_secret"]',
@@ -204,6 +208,22 @@ class CookieHelper:
                     page.fill(username_xpath, username)
                     # 输入密码
                     page.fill(password_xpath, password)
+                    # 勾选“记住我/保持登录”等选项，获取长期会话（部分站点默认发放短期会话）
+                    for xpath in self._SITE_LOGIN_XPATH.get("remember"):
+                        remember_element = page.query_selector(xpath)
+                        if not remember_element:
+                            continue
+                        try:
+                            checked = remember_element.get_attribute("aria-checked")
+                            if checked is None:
+                                checked = "true" if remember_element.is_checked() else "false"
+                            if checked != "true":
+                                remember_element.click(timeout=3000)
+                            break
+                        except Exception as e:
+                            # 当前候选不可操作（如隐藏元素）时继续尝试后续候选
+                            logger.warning(f"勾选记住登录选项失败：{str(e)}，尝试下一候选")
+                            continue
                     # 输入二步验证码
                     if twostep_xpath:
                         page.fill(twostep_xpath, otp_code)
