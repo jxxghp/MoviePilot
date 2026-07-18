@@ -197,7 +197,8 @@ def test_space_usage_dedupes_btrfs_subvolumes_sharing_one_pool():
 
         with patch("app.utils.system.os.stat", side_effect=fake_stat), \
                 patch.object(SystemUtils, "total_space", return_value=single_disk_total), \
-                patch.object(SystemUtils, "free_space", return_value=single_disk_free):
+                patch.object(SystemUtils, "free_space", return_value=single_disk_free), \
+                patch.object(SystemUtils, "_is_btrfs", return_value=True):
             total, free = SystemUtils.space_usage(paths)
 
     assert total == single_disk_total
@@ -227,8 +228,37 @@ def test_space_usage_does_not_merge_two_disks_with_same_total_but_different_free
 
         with patch("app.utils.system.os.stat", side_effect=fake_stat), \
                 patch.object(SystemUtils, "total_space", return_value=same_total), \
-                patch.object(SystemUtils, "free_space", side_effect=fake_free_space):
+                patch.object(SystemUtils, "free_space", side_effect=fake_free_space), \
+                patch.object(SystemUtils, "_is_btrfs", return_value=True):
             total, free = SystemUtils.space_usage(paths)
 
     assert total == same_total * 2
     assert free == 1.0 * 1024 ** 4 + 2.5 * 1024 ** 4
+
+
+def test_space_usage_never_merges_non_btrfs_disks_even_with_identical_usage():
+    """
+    针对代码审查意见的回归测试：两块非 Btrfs 的独立磁盘（例如两块刚格式化的同规格
+    空盘）即使总容量和剩余空间恰好完全相同，也不应该被合并——容量+剩余空间兜底去重
+    只应该在确认是 Btrfs 文件系统时才生效，否则应严格按 st_dev 分别计入。
+    """
+    identical_total = 4.0 * 1024 ** 4
+    identical_free = 4.0 * 1024 ** 4
+
+    with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+        paths = [Path(tmp1), Path(tmp2)]
+        fake_dev_by_path = {str(paths[0]): 3001, str(paths[1]): 3002}
+
+        def fake_stat(path, *_args, **_kwargs):
+            stat_result = MagicMock()
+            stat_result.st_dev = fake_dev_by_path[str(path)]
+            return stat_result
+
+        with patch("app.utils.system.os.stat", side_effect=fake_stat), \
+                patch.object(SystemUtils, "total_space", return_value=identical_total), \
+                patch.object(SystemUtils, "free_space", return_value=identical_free), \
+                patch.object(SystemUtils, "_is_btrfs", return_value=False):
+            total, free = SystemUtils.space_usage(paths)
+
+    assert total == identical_total * 2
+    assert free == identical_free * 2
