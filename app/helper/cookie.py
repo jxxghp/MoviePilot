@@ -20,6 +20,7 @@ class CookieHelper:
             '//input[@name="username"]',
             '//input[@id="form_item_username"]',
             '//input[@id="username"]',
+            '//input[contains(@placeholder,"用户名")]',
         ],
         "password": [
             '//input[@name="password"]',
@@ -138,6 +139,21 @@ class CookieHelper:
                         username_xpath = xpath
                         break
                 if not username_xpath:
+                    # 登录页可能为JS动态渲染（如SPA），等待用户名输入框出现后重试
+                    try:
+                        username_union_xpath = " | ".join(self._SITE_LOGIN_XPATH.get("username"))
+                        page.wait_for_selector(f"xpath={username_union_xpath}", timeout=5000)
+                    except Exception:
+                        pass
+                    html_text = self.get_page_content(page)
+                    html = etree.HTML(html_text) if html_text else None
+                    if html is None:
+                        return None, None, "解析网页源码失败"
+                    for xpath in self._SITE_LOGIN_XPATH.get("username"):
+                        if html.xpath(xpath):
+                            username_xpath = xpath
+                            break
+                if not username_xpath:
                     return None, None, "未找到用户名输入框"
                 # 查找密码输入框
                 password_xpath = None
@@ -242,13 +258,28 @@ class CookieHelper:
                                 return None, None, f"二次验证码输入失败：{str(e)}"
                             break
 
-                # 登录后的源码
-                html_text = self.get_page_content(page)
+                # 登录后的源码（部分站点登录成功后由前端脚本延迟跳转，等待并重试判定）
+                html_text = None
+                for i in range(3):
+                    if i:
+                        time.sleep(2)
+                    latest_text = self.get_page_content(page)
+                    if not latest_text:
+                        continue
+                    if SiteUtils.is_logged_in(latest_text):
+                        return self.parse_cookies(page.context.cookies()), \
+                            page.evaluate("() => window.navigator.userAgent"), ""
+                    # 保留首个快照用于失败时解析错误信息，避免提示被后续跳转或自动消失覆盖
+                    if html_text is None:
+                        html_text = latest_text
+                    # 页面已出现明确的登录错误信息时，以该快照为准并提前结束重试
+                    latest_html = etree.HTML(latest_text)
+                    if latest_html is not None and \
+                            any(latest_html.xpath(x) for x in self._SITE_LOGIN_XPATH.get("error")):
+                        html_text = latest_text
+                        break
                 if not html_text:
                     return None, None, "获取网页源码失败"
-                if SiteUtils.is_logged_in(html_text):
-                    return self.parse_cookies(page.context.cookies()), \
-                        page.evaluate("() => window.navigator.userAgent"), ""
                 else:
                     # 从登录后的页面读取错误信息
                     html = etree.HTML(html_text)
