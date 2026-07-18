@@ -553,6 +553,13 @@ class SystemUtils:
     def space_usage(dir_list: Union[Path, List[Path]]) -> Tuple[float, float]:
         """
         计算多个目录的总可用空间/剩余空间（单位：Byte），并去除重复磁盘
+
+        注意：Btrfs 存储池下，同一个池里的不同子卷（常见于群晖 DSM 的每个共享文件夹）
+        会各自返回不同的 st_dev，但汇报的总容量和剩余空间完全一致。仅靠 st_dev 去重会把
+        同一块物理磁盘误判成多块不同磁盘，导致总容量被重复累加，因此额外用总容量+剩余空间
+        的组合兜底去重。只比较总容量会有误判风险（两块型号、分区方式相同的独立磁盘可能总
+        容量恰好相等），叠加剩余空间可以大幅降低这种误判概率：两块真正独立的磁盘，即使
+        总容量相同，此刻的剩余空间几乎不会恰好也完全一致。
         """
         if not dir_list:
             return 0.0, 0.0
@@ -560,6 +567,8 @@ class SystemUtils:
             dir_list = [dir_list]
         # 存储不重复的磁盘
         disk_set = set()
+        # 存储已计入总量的（总容量, 剩余空间）组合，用于识别同一存储池下的不同 Btrfs 子卷
+        counted_usages = set()
         # 存储总剩余空间
         total_free_space = 0.0
         # 存储总空间
@@ -574,11 +583,18 @@ class SystemUtils:
                 disk = dir_path.drive
             else:
                 disk = os.stat(dir_path).st_dev
-            # 如果磁盘未出现过，则计算其剩余空间并加入总剩余空间中
-            if disk not in disk_set:
-                disk_set.add(disk)
-                total_space += SystemUtils.total_space(dir_path)
-                total_free_space += SystemUtils.free_space(dir_path)
+            if disk in disk_set:
+                continue
+            disk_set.add(disk)
+            this_total = SystemUtils.total_space(dir_path)
+            this_free = SystemUtils.free_space(dir_path)
+            usage_key = (this_total, this_free)
+            if usage_key in counted_usages:
+                # 总容量和剩余空间都与已计入的某块磁盘完全一致，视为同一存储池的另一个子卷，不重复累加
+                continue
+            counted_usages.add(usage_key)
+            total_space += this_total
+            total_free_space += this_free
         return total_space, total_free_space
 
     @staticmethod
