@@ -218,10 +218,12 @@ class CookieHelper:
                             if checked is None:
                                 checked = "true" if remember_element.is_checked() else "false"
                             if checked != "true":
-                                remember_element.click()
+                                remember_element.click(timeout=3000)
+                            break
                         except Exception as e:
-                            logger.warning(f"勾选记住登录选项失败：{str(e)}")
-                        break
+                            # 当前候选不可操作（如隐藏元素）时继续尝试后续候选
+                            logger.warning(f"勾选记住登录选项失败：{str(e)}，尝试下一候选")
+                            continue
                     # 输入二步验证码
                     if twostep_xpath:
                         page.fill(twostep_xpath, otp_code)
