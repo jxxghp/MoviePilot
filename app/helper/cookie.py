@@ -20,6 +20,7 @@ class CookieHelper:
             '//input[@name="username"]',
             '//input[@id="form_item_username"]',
             '//input[@id="username"]',
+            '//input[contains(@placeholder,"用户名")]',
         ],
         "password": [
             '//input[@name="password"]',
@@ -138,6 +139,20 @@ class CookieHelper:
                         username_xpath = xpath
                         break
                 if not username_xpath:
+                    # 登录页可能为JS动态渲染（如SPA），等待输入框出现后重试
+                    try:
+                        page.wait_for_selector("input", timeout=5000)
+                    except Exception:
+                        pass
+                    html_text = self.get_page_content(page)
+                    html = etree.HTML(html_text) if html_text else None
+                    if html is None:
+                        return None, None, "解析网页源码失败"
+                    for xpath in self._SITE_LOGIN_XPATH.get("username"):
+                        if html.xpath(xpath):
+                            username_xpath = xpath
+                            break
+                if not username_xpath:
                     return None, None, "未找到用户名输入框"
                 # 查找密码输入框
                 password_xpath = None
@@ -242,13 +257,17 @@ class CookieHelper:
                                 return None, None, f"二次验证码输入失败：{str(e)}"
                             break
 
-                # 登录后的源码
-                html_text = self.get_page_content(page)
+                # 登录后的源码（部分站点登录成功后由前端脚本延迟跳转，等待并重试判定）
+                html_text = None
+                for i in range(3):
+                    if i:
+                        time.sleep(2)
+                    html_text = self.get_page_content(page)
+                    if html_text and SiteUtils.is_logged_in(html_text):
+                        return self.parse_cookies(page.context.cookies()), \
+                            page.evaluate("() => window.navigator.userAgent"), ""
                 if not html_text:
                     return None, None, "获取网页源码失败"
-                if SiteUtils.is_logged_in(html_text):
-                    return self.parse_cookies(page.context.cookies()), \
-                        page.evaluate("() => window.navigator.userAgent"), ""
                 else:
                     # 从登录后的页面读取错误信息
                     html = etree.HTML(html_text)
