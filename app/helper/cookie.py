@@ -262,10 +262,20 @@ class CookieHelper:
                 for i in range(3):
                     if i:
                         time.sleep(2)
-                    html_text = self.get_page_content(page)
-                    if html_text and SiteUtils.is_logged_in(html_text):
+                    latest_text = self.get_page_content(page)
+                    if not latest_text:
+                        continue
+                    if SiteUtils.is_logged_in(latest_text):
                         return self.parse_cookies(page.context.cookies()), \
                             page.evaluate("() => window.navigator.userAgent"), ""
+                    # 保留首个快照用于失败时解析错误信息，避免提示被后续跳转或自动消失覆盖
+                    if html_text is None:
+                        html_text = latest_text
+                    # 页面已出现明确的登录错误信息时提前结束重试
+                    latest_html = etree.HTML(latest_text)
+                    if latest_html is not None and \
+                            any(latest_html.xpath(x) for x in self._SITE_LOGIN_XPATH.get("error")):
+                        break
                 if not html_text:
                     return None, None, "获取网页源码失败"
                 else:
