@@ -342,6 +342,7 @@ AUTOSTART_RUNTIME_DIR = RUNTIME_DIR / "startup"
 AUTOSTART_UNIX_LAUNCHER = AUTOSTART_RUNTIME_DIR / "moviepilot-start.sh"
 AUTOSTART_WINDOWS_LAUNCHER = AUTOSTART_RUNTIME_DIR / "moviepilot-start.cmd"
 AUTOSTART_TIMEOUT = 120
+LINUX_SYSTEMD_RESTART_DELAY = 10
 MACOS_LAUNCH_AGENT_LABEL = "org.moviepilot.localcli"
 LINUX_SYSTEMD_UNIT_NAME = "moviepilot-autostart.service"
 LINUX_XDG_AUTOSTART_FILENAME = "moviepilot.desktop"
@@ -3065,6 +3066,10 @@ def _enable_autostart_linux_systemd(
 
         [Service]
         Type=oneshot
+        RemainAfterExit=yes
+        TimeoutStartSec=infinity
+        Restart=on-failure
+        RestartSec={LINUX_SYSTEMD_RESTART_DELAY}
         WorkingDirectory={ROOT}
         ExecStart=/bin/bash {_double_quote(launcher)}
 
@@ -3194,13 +3199,20 @@ def disable_autostart() -> dict[str, Any]:
         desktop_path = _linux_xdg_autostart_path()
         if systemctl_bin:
             _run_optional_command(
-                [systemctl_bin, "--user", "disable", LINUX_SYSTEMD_UNIT_NAME]
+                [
+                    systemctl_bin,
+                    "--user",
+                    "disable",
+                    "--now",
+                    LINUX_SYSTEMD_UNIT_NAME,
+                ]
             )
-            _run_optional_command([systemctl_bin, "--user", "daemon-reload"])
         for path in (unit_path, desktop_path):
             if path.exists():
                 _remove_path(path)
                 removed_paths.append(path)
+        if systemctl_bin:
+            _run_optional_command([systemctl_bin, "--user", "daemon-reload"])
         _cleanup_startup_launchers(system_name)
     elif system_name == "Windows":
         startup_path = _windows_startup_path()
