@@ -195,14 +195,12 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: fake_scheduler)
 
     create_tool = _build_tool(CreateAgentTaskTool, user_id)
-    created = json.loads(
-        await create_tool.run(
-            name="十分钟后检查",
-            content="检查示例电影是否有资源，不要自动下载",
-            trigger_type="date",
-            delay_minutes=10,
-        )
-    )
+    created = json.loads(await create_tool.ainvoke({
+        "name": "十分钟后检查",
+        "content": "检查示例电影是否有资源，不要自动下载",
+        "trigger_type": "date",
+        "delay_minutes": 10,
+    }))
     task_id = created["id"]
     assert created["enabled"] is True
     assert datetime.fromisoformat(created["run_at"]) > datetime.now(
@@ -217,6 +215,16 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
     assert queried["tasks"][0]["content"].startswith("检查示例电影")
 
     update_tool = _build_tool(UpdateAgentTaskTool, user_id)
+    delayed_update = json.loads(await update_tool.ainvoke({
+        "task_id": task_id,
+        "trigger_type": "date",
+        "delay_minutes": 20,
+    }))
+    assert delayed_update["trigger_type"] == "date"
+    assert datetime.fromisoformat(delayed_update["run_at"]) > datetime.now(
+        pytz.timezone(settings.TZ)
+    )
+
     updated = json.loads(
         await update_tool.run(
             task_id=task_id,
