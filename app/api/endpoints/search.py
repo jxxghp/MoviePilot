@@ -40,6 +40,16 @@ def _parse_media_type(mtype: Optional[str]) -> Optional[MediaType]:
     return MediaType.from_agent(mtype) or MediaType(mtype)
 
 
+def _resolve_media_season(
+        explicit_season: Optional[int],
+        recognized_season: Optional[int],
+) -> Optional[int]:
+    """
+    合并显式季号与识别结果，显式值优先且季 0 属于有效业务值。
+    """
+    return explicit_season if explicit_season is not None else recognized_season
+
+
 def _sse_event(data: dict, locale: Optional[str] = None) -> str:
     """
     转换为SSE事件
@@ -298,8 +308,10 @@ async def search_by_id_stream(
                     doubanid=doubanid, mtype=media_type
                 )
                 if tmdbinfo:
-                    if tmdbinfo.get("season") and not media_season:
-                        media_season = tmdbinfo.get("season")
+                    media_season = _resolve_media_season(
+                        explicit_season=media_season,
+                        recognized_season=tmdbinfo.get("season"),
+                    )
                     torrents = search_chain.async_search_by_id_stream(
                         tmdbid=tmdbinfo.get("id"),
                         mtype=media_type,
@@ -404,7 +416,7 @@ async def search_by_id_stream(
                     meta.year = year
                 if media_type:
                     meta.type = media_type
-                if media_season:
+                if media_season is not None:
                     meta.type = MediaType.TV
                     meta.begin_season = media_season
                 mediainfo = await media_chain.async_recognize_by_meta(
@@ -505,8 +517,10 @@ async def search_by_id(
                 doubanid=doubanid, mtype=media_type
             )
             if tmdbinfo:
-                if tmdbinfo.get("season") and not media_season:
-                    media_season = tmdbinfo.get("season")
+                media_season = _resolve_media_season(
+                    explicit_season=media_season,
+                    recognized_season=tmdbinfo.get("season"),
+                )
                 torrents = await search_chain.async_search_by_id(
                     tmdbid=tmdbinfo.get("id"),
                     mtype=media_type,
@@ -598,7 +612,7 @@ async def search_by_id(
                 meta.year = year
             if media_type:
                 meta.type = media_type
-            if media_season:
+            if media_season is not None:
                 meta.type = MediaType.TV
                 meta.begin_season = media_season
             mediainfo = await media_chain.async_recognize_by_meta(
@@ -770,8 +784,10 @@ async def _build_subtitle_search_source(
             )
             if not tmdbinfo:
                 return None, "未识别到TMDB媒体信息"
-            if tmdbinfo.get("season") and not media_season:
-                media_season = tmdbinfo.get("season")
+            media_season = _resolve_media_season(
+                explicit_season=media_season,
+                recognized_season=tmdbinfo.get("season"),
+            )
             return call_search(tmdbid=tmdbinfo.get("id")), ""
         return call_search(doubanid=doubanid), ""
 
@@ -813,7 +829,7 @@ async def _build_subtitle_search_source(
         meta.year = year
     if media_type:
         meta.type = media_type
-    if media_season:
+    if media_season is not None:
         meta.type = MediaType.TV
         meta.begin_season = media_season
     mediainfo = await media_chain.async_recognize_by_meta(

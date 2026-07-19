@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.core.metainfo import MetaInfo, MetaInfoPath, find_metainfo
+from app.core.meta.metaanime import MetaAnime
 from app.helper.torrent import TorrentHelper
 from app.schemas.types import MediaType
 from tests.cases.meta import meta_cases
@@ -355,6 +356,60 @@ def test_video_bit_extracted_for_video_title():
     meta = MetaInfo(title="The 355 2022 BluRay 1080p DTS-HD MA5.1 X265.10bit-BeiTai")
     assert meta.video_encode == "x265 10bit"
     assert meta.video_bit == "10bit"
+
+
+def test_special_season_zero_enables_whole_season_resource_parsing():
+    """只有 S00、没有集号的整季标题仍应识别后续编码信息。"""
+    with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+        meta = MetaInfo(title="Demo Show S00 X265 AAC")
+
+    assert meta.begin_season == 0
+    assert meta.video_encode == "x265"
+    assert meta.audio_encode == "AAC"
+
+
+def test_anime_parser_preserves_numeric_special_season_zero():
+    """第三方动漫解析器返回整数 0 时也应保留特别季。"""
+    parsed = {
+        "anime_title": "Demo Anime",
+        "anime_season": 0,
+        "episode_number": "1",
+    }
+    with patch("app.core.meta.metaanime.anitopy.parse", return_value=parsed):
+        meta = MetaAnime(title="Demo Anime S00E01")
+
+    assert meta.begin_season == 0
+    assert meta.begin_episode == 1
+    assert meta.type == MediaType.TV
+
+    parsed["anime_season"] = [0, "1"]
+    with patch("app.core.meta.metaanime.anitopy.parse", return_value=parsed):
+        ranged_meta = MetaAnime(title="Demo Anime S00-S01")
+
+    assert ranged_meta.begin_season == 0
+    assert ranged_meta.end_season == 1
+
+
+def test_anime_parser_ignores_empty_and_invalid_season_values():
+    """第三方动漫季号的空值和非法列表项应按未指定处理且不得抛错。"""
+    empty = {
+        "anime_title": "Demo Anime",
+        "anime_season": "",
+        "episode_number": "1",
+    }
+    invalid_list = {
+        "anime_title": "Demo Anime",
+        "anime_season": ["", "invalid"],
+        "episode_number": "1",
+    }
+
+    with patch("app.core.meta.metaanime.anitopy.parse", return_value=empty):
+        empty_meta = MetaAnime(title="Demo Anime E01")
+    with patch("app.core.meta.metaanime.anitopy.parse", return_value=invalid_list):
+        invalid_meta = MetaAnime(title="Demo Anime E01")
+
+    assert empty_meta.begin_season is None
+    assert invalid_meta.begin_season is None
 
 
 def test_hdr_vivid_effect_extracted_for_video_title():

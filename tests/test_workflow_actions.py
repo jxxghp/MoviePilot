@@ -4,8 +4,10 @@ from app.schemas import ActionContext, DownloadTask, FileItem
 from app.schemas.workflow import ActionResult
 from app.workflow.actions import BaseAction
 from app.workflow.actions import fetch_downloads as fetch_downloads_module
+from app.workflow.actions import fetch_torrents as fetch_torrents_module
 from app.workflow.actions import scrape_file as scrape_file_module
 from app.workflow.actions.fetch_downloads import FetchDownloadsAction
+from app.workflow.actions.fetch_torrents import FetchTorrentsAction
 from app.workflow.actions.scrape_file import ScrapeFileAction
 from app.workflow.actions.fetch_rss import FetchRssAction
 from app.workflow import WorkFlowManager
@@ -40,6 +42,40 @@ def test_fetch_downloads_updates_context_downloads(monkeypatch):
     assert calls == [(["hash-1"], "qbittorrent")]
     assert result.downloads[0].completed is True
     assert result.downloads[0].path == "/downloads/movie.mkv"
+
+
+def test_fetch_torrents_filters_special_season_zero(monkeypatch):
+    """工作流显式选择季 0 时只能保留特别季资源。"""
+
+    class FakeSearchChain:
+        """返回特别季和第一季候选，验证动作层季过滤。"""
+
+        def search_by_title(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    meta_info=SimpleNamespace(year=None, begin_season=0),
+                    media_info=None,
+                    torrent_info=SimpleNamespace(title="Test S00"),
+                ),
+                SimpleNamespace(
+                    meta_info=SimpleNamespace(year=None, begin_season=1),
+                    media_info=None,
+                    torrent_info=SimpleNamespace(title="Test S01"),
+                ),
+            ]
+
+    monkeypatch.setattr(fetch_torrents_module, "SearchChain", FakeSearchChain)
+    monkeypatch.setattr(fetch_torrents_module.global_vars, "is_workflow_stopped", lambda _workflow_id: False)
+
+    action = FetchTorrentsAction("fetch-torrents")
+    action.job_done = lambda *_args, **_kwargs: None
+    result = action.execute(
+        workflow_id=1,
+        params={"search_type": "keyword", "name": "Test", "season": 0},
+        context=ActionContext(),
+    )
+
+    assert [item.meta_info.begin_season for item in result.torrents] == [0]
 
 
 def test_scrape_file_keeps_workflow_action_context(monkeypatch):

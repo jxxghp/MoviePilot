@@ -26,6 +26,10 @@ class _MemoryCacheStub:
         """删除指定缓存条目。"""
         self.data.pop(key, None)
 
+    def set(self, key: str, value):
+        """写入指定缓存条目。"""
+        self.data[key] = value
+
     def clear(self):
         """清空全部缓存条目。"""
         self.data.clear()
@@ -77,6 +81,19 @@ def test_douban_cache_list_items_normalizes_media_type_and_sorting():
     assert [item["media_type"] for item in items] == ["movie", "unknown", "tv"]
     assert items[0]["poster_path"] == "https://example.com/alpha.jpg"
     assert items[1]["douban_id"] == 0
+
+
+def test_douban_cache_infers_special_season_title_as_tv():
+    """缺少显式类型时，S00 标题仍应按电视剧写入缓存。"""
+    cache = _build_douban_cache({})
+
+    cache.update(
+        meta=None,
+        info={"id": "special", "title": "测试剧 S00", "year": "2024"},
+    )
+
+    cached = next(iter(cache._cache.data.values()))
+    assert cached["type"] == MediaType.TV
 
 
 def test_douban_cache_delete_and_clear_persist_immediately(monkeypatch):

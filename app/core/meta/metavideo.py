@@ -251,7 +251,7 @@ class MetaVideo(MetaBase):
         if name.isdecimal() \
                 and int(name) < 1800 \
                 and not self.year \
-                and not self.begin_season \
+                and self.begin_season is None \
                 and not self.resource_pix \
                 and not self.resource_type \
                 and not self.audio_encode \
@@ -259,7 +259,7 @@ class MetaVideo(MetaBase):
             if self.begin_episode is None:
                 self.begin_episode = int(name)
                 name = None
-            elif self.is_in_episode(int(name)) and not self.begin_season:
+            elif self.is_in_episode(int(name)) and self.begin_season is None:
                 name = None
         return name
 
@@ -366,7 +366,7 @@ class MetaVideo(MetaBase):
         if not self.name:
             return
         if not self.year \
-                and not self.begin_season \
+                and self.begin_season is None \
                 and not self.begin_episode \
                 and not self.resource_pix \
                 and not self.resource_type:
@@ -690,7 +690,7 @@ class MetaVideo(MetaBase):
         if not self.year \
                 and not self.resource_pix \
                 and not self.resource_type \
-                and not self.begin_season \
+                and self.begin_season is None \
                 and not self.begin_episode:
             return
         re_res = self._video_encode_pattern.search(token)
@@ -738,7 +738,7 @@ class MetaVideo(MetaBase):
         if not self.year \
                 and not self.resource_pix \
                 and not self.resource_type \
-                and not self.begin_season \
+                and self.begin_season is None \
                 and not self.begin_episode:
             return
         video_bit = self.extract_video_bit(token)
@@ -759,7 +759,7 @@ class MetaVideo(MetaBase):
         if not self.year \
                 and not self.resource_pix \
                 and not self.resource_type \
-                and not self.begin_season \
+                and self.begin_season is None \
                 and not self.begin_episode:
             return
         re_res = self._audio_encode_pattern.search(token)

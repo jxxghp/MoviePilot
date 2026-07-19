@@ -632,7 +632,7 @@ class FileManagerModule(_ModuleBase):
             seasons: Dict[int, list] = {}
             for fileitem in fileitems:
                 file_meta = MetaInfo(fileitem.basename)
-                season_index = file_meta.begin_season or 1
+                season_index = file_meta.begin_season if file_meta.begin_season is not None else 1
                 episode_index = file_meta.begin_episode
                 if not episode_index:
                     continue

@@ -118,7 +118,7 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                 # 处理标题
                 title = sub.get("name")
                 season = sub.get("season")
-                if season and int(season) > 1 and media.tmdb_id:
+                if season not in (None, "") and int(season) != 1 and media.tmdb_id:
                     # 小写数据转大写
                     season_str = cn2an.an2cn(season, "low")
                     title = f"{title} 第{season_str}季"

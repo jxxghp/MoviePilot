@@ -38,6 +38,14 @@ class MetaAnime(MetaBase):
     _name_nostring_pattern = re.compile(_name_nostring_re, re.IGNORECASE)
     _fps_pattern = re.compile(r"(%s)" % _fps_re, re.IGNORECASE)
 
+    @staticmethod
+    def _parse_season_number(value):
+        """解析第三方动漫季号，仅接受整数或纯数字字符串并保留数值 0。"""
+        if value is None:
+            return None
+        text = str(value).strip()
+        return int(text) if text.isdigit() else None
+
     def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
         super().__init__(title, subtitle, isfile)
         if not title:
@@ -111,22 +119,19 @@ class MetaAnime(MetaBase):
                 # 季号
                 anime_season = anitopy_info.get("anime_season")
                 if isinstance(anime_season, list):
-                    if len(anime_season) == 1:
-                        begin_season = anime_season[0]
-                        end_season = None
-                    else:
-                        begin_season = anime_season[0]
-                        end_season = anime_season[-1]
-                elif anime_season:
-                    begin_season = anime_season
-                    end_season = None
+                    seasons = [
+                        season for item in anime_season
+                        if (season := self._parse_season_number(item)) is not None
+                    ]
+                    begin_season = seasons[0] if seasons else None
+                    end_season = seasons[-1] if len(seasons) > 1 else None
                 else:
-                    begin_season = None
+                    begin_season = self._parse_season_number(anime_season)
                     end_season = None
-                if begin_season:
-                    self.begin_season = int(begin_season)
-                    if end_season and int(end_season) != self.begin_season:
-                        self.end_season = int(end_season)
+                if begin_season is not None:
+                    self.begin_season = begin_season
+                    if end_season is not None and end_season != self.begin_season:
+                        self.end_season = end_season
                         self.total_season = (self.end_season - self.begin_season) + 1
                     else:
                         self.total_season = 1

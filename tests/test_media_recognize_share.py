@@ -243,6 +243,28 @@ class TestMediaRecognizeShare(unittest.TestCase):
         self.assertEqual(report_payload["year"], "2024")
         self.assertEqual(report_payload["season"], 2)
 
+    def test_query_and_report_preserve_special_season_zero(self):
+        """共享识别查询和上报都必须保留显式特别季。"""
+        meta = self._build_meta("测试剧特别篇", MediaType.TV)
+        meta.begin_season = 0
+        mediainfo = MediaInfo(title="测试剧", tmdb_id=402, type=MediaType.TV, season=0)
+
+        query_params = MoviePilotServerHelper._build_recognize_query_params(meta=meta)
+        report_payload = MoviePilotServerHelper._build_recognize_report_payload(
+            meta=meta,
+            mediainfo=mediainfo,
+        )
+
+        self.assertEqual(query_params["season"], 0)
+        self.assertEqual(report_payload["season"], 0)
+
+    def test_plugin_recognize_number_parser_preserves_zero(self):
+        """插件辅助识别应同时接受整数和字符串形式的季 0。"""
+        self.assertEqual(self.media_chain._parse_recognize_event_number(0), 0)
+        self.assertEqual(self.media_chain._parse_recognize_event_number("0"), 0)
+        self.assertIsNone(self.media_chain._parse_recognize_event_number(None))
+        self.assertIsNone(self.media_chain._parse_recognize_event_number("invalid"))
+
     def test_report_shared_result_with_distinct_keyword_meta(self):
         """
         辅助识别成功后应按辅助前名称上报共享结果。

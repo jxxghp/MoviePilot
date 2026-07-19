@@ -97,7 +97,7 @@ class AddSubscribeTool(MoviePilotTool):
             message += f" ({year})"
         if media_type:
             message += f" [{media_type}]"
-        if season:
+        if season is not None:
             message += f" 第{season}季"
         elif media_type == "tv":
             message += " 第1季(默认)"
