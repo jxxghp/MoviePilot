@@ -5,6 +5,7 @@ import platform
 import re
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -13,10 +14,22 @@ import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
 import psutil
 
 from app import schemas
 from version import APP_VERSION
+
+
+# Linux amd64/arm64 UAPI: _IOR(BTRFS_IOCTL_MAGIC, 31, struct btrfs_ioctl_fs_info_args)
+_BTRFS_IOC_FS_INFO = 0x8400941F
+_BTRFS_FS_INFO_SIZE = 1024
+_BTRFS_FSID_OFFSET = 16
+_BTRFS_FSID_SIZE = 16
 
 
 class SystemUtils:
@@ -550,31 +563,92 @@ class SystemUtils:
         return _calc_dir_size(path) if path.is_dir() else path.stat().st_size
 
     @staticmethod
-    def space_usage(dir_list: Union[Path, List[Path]]) -> Tuple[float, float]:
+    def _get_btrfs_fsid(dir_path: Path) -> Optional[bytes]:
+        """读取目录所属 Btrfs 文件系统的 FSID，无法确认时返回 None。"""
+        if not sys.platform.startswith("linux") or fcntl is None \
+                or not (SystemUtils.is_x86_64() or SystemUtils.is_aarch64()):
+            return None
+
+        fd = None
+        try:
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+            fd = os.open(dir_path, flags)
+            fs_info = bytearray(_BTRFS_FS_INFO_SIZE)
+            fcntl.ioctl(fd, _BTRFS_IOC_FS_INFO, fs_info, True)
+            if len(fs_info) != _BTRFS_FS_INFO_SIZE:
+                return None
+            num_devices = struct.unpack_from("=Q", fs_info, 8)[0]
+            fsid = bytes(fs_info[_BTRFS_FSID_OFFSET:_BTRFS_FSID_OFFSET + _BTRFS_FSID_SIZE])
+            if num_devices == 0 or fsid == bytes(_BTRFS_FSID_SIZE):
+                return None
+            return fsid
+        except (OSError, OverflowError, ValueError, struct.error):
+            return None
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def space_usage(dir_list: Union[Path, List[Path]], btrfs_fsid_dedup: bool = False) -> Tuple[float, float]:
         """
         计算多个目录的总可用空间/剩余空间（单位：Byte），并去除重复磁盘
+
+        :param dir_list: 待统计的目录或目录列表
+        :param btrfs_fsid_dedup: 是否在 Linux amd64/arm64 下以 Btrfs FSID 辅助去重
+
+        默认保持原有的驱动器号/st_dev 去重。显式启用后，st_dev 仍作为基础依据，
+        FSID 仅用于合并同一 Btrfs 文件系统中的不同子卷；证据缺失或冲突时
+        保守回退 st_dev，允许多计而不猜测合并独立存储。
         """
         if not dir_list:
             return 0.0, 0.0
         if not isinstance(dir_list, list):
             dir_list = [dir_list]
-        # 存储不重复的磁盘
-        disk_set = set()
-        # 存储总剩余空间
+
+        use_btrfs_fsid = btrfs_fsid_dedup and sys.platform.startswith("linux") \
+            and (SystemUtils.is_x86_64() or SystemUtils.is_aarch64())
+        if not use_btrfs_fsid:
+            # 默认分支保留原有行为，不打开目录或调用 ioctl。
+            disk_set = set()
+            total_free_space = 0.0
+            total_space = 0.0
+            for dir_path in dir_list:
+                if not dir_path:
+                    continue
+                if not dir_path.exists():
+                    continue
+                if os.name == "nt":
+                    disk = dir_path.drive
+                else:
+                    disk = os.stat(dir_path).st_dev
+                if disk not in disk_set:
+                    disk_set.add(disk)
+                    total_space += SystemUtils.total_space(dir_path)
+                    total_free_space += SystemUtils.free_space(dir_path)
+            return total_space, total_free_space
+
         total_free_space = 0.0
-        # 存储总空间
         total_space = 0.0
+        # 先按 st_dev 恢复原有去重语义，再用组内唯一可信的 FSID 合并 Btrfs 子卷。
+        disk_groups = {}
         for dir_path in dir_list:
-            if not dir_path:
+            if not dir_path or not dir_path.exists():
                 continue
-            if not dir_path.exists():
-                continue
-            # 获取目录所在磁盘
-            if os.name == "nt":
-                disk = dir_path.drive
-            else:
-                disk = os.stat(dir_path).st_dev
-            # 如果磁盘未出现过，则计算其剩余空间并加入总剩余空间中
+            st_dev = os.stat(dir_path).st_dev
+            if st_dev not in disk_groups:
+                disk_groups[st_dev] = (dir_path, set())
+            btrfs_fsid = SystemUtils._get_btrfs_fsid(dir_path)
+            if btrfs_fsid:
+                disk_groups[st_dev][1].add(btrfs_fsid)
+
+        disk_set = set()
+        for st_dev, (dir_path, fsids) in disk_groups.items():
+            # 同一 st_dev 出现冲突 FSID 可能是挂载变化导致的不一致快照，
+            # 此时禁止跨 st_dev 合并，避免少计独立存储。
+            disk = ("btrfs_fsid", next(iter(fsids))) if len(fsids) == 1 else ("st_dev", st_dev)
             if disk not in disk_set:
                 disk_set.add(disk)
                 total_space += SystemUtils.total_space(dir_path)

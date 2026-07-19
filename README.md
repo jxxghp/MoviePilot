@@ -31,6 +31,10 @@
 - 官方 Wiki：https://wiki.movie-pilot.org
 - PostgreSQL 部署说明：[docs/postgresql-setup.md](docs/postgresql-setup.md)
 
+默认情况下，多目录存储容量仍按系统设备号去重。若 Btrfs 子卷在容器内显示为
+不同设备号，导致容量重复统计，可在 Linux amd64/arm64 部署中显式设置
+`BTRFS_FSID_DEDUP=true`。该开关默认关闭；ioctl 不可用时会回退原有设备号逻辑。
+
 也可以使用本地 CLI 以源码模式安装和管理 MoviePilot：
 
 ```shell
