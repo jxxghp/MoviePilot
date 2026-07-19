@@ -339,6 +339,8 @@ async def reset_subscribes(
                 "lack_episode": subscribe.total_episode,
                 "current_priority": None,
                 "episode_priority": {},
+                # 重置代表放弃手动总集数，后续订阅检查重新按 TMDB 集数更新。
+                "manual_total_episode": 0,
                 "state": "R",
             },
         )
