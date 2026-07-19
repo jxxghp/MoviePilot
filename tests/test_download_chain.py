@@ -444,6 +444,40 @@ def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target
     chain.download_single.assert_not_called()
 
 
+def test_batch_download_preserves_special_season_zero(monkeypatch):
+    """特别季整季需求必须以季 0 匹配候选，不能回退成第 1 季。"""
+    _FakeBatchTorrentHelper.episodes = list(range(1, 7))
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context()
+    context.meta_info.season_list = [0]
+    context.meta_info.season_episode = "S00"
+    context.meta_info.org_string = "Test Show S00 2160p"
+    context.torrent_info.title = "Test Show S00 2160p"
+    no_exists = {
+        1: {
+            0: NotExistMediaInfo(
+                season=0,
+                episodes=[],
+                total_episode=6,
+                start_episode=1,
+                require_complete_coverage=True,
+            )
+        }
+    }
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == [context]
+    assert lefts == {}
+    chain.download_single.assert_called_once()
+
+
 def test_batch_download_rejects_complete_coverage_when_only_missing_episodes_match(monkeypatch):
     """
     完整覆盖要求目标范围全集，不能只覆盖当前缺口集。
@@ -632,6 +666,33 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
     assert captured["site"] == 12
     assert captured["error_message"] == error_msg
     assert captured["next_retry_at"] > captured["now_time"]
+
+
+def test_download_failure_fingerprint_distinguishes_special_season_zero():
+    """失败冷却指纹应区分特别季与未指定季，避免错误共享冷却状态。"""
+    def build_context(season):
+        return SimpleNamespace(
+            media_info=SimpleNamespace(
+                type=MediaType.TV,
+                title="Demo Show",
+                year="2026",
+                tmdb_id=1,
+                season=None,
+            ),
+            meta_info=SimpleNamespace(season=season, episode=None, episode_list=[]),
+            torrent_info=SimpleNamespace(
+                site=12,
+                title="Demo Show Specials",
+                torrent_id="484660",
+            ),
+        )
+
+    special_fingerprint = DownloadChain._build_download_failure_fingerprint(build_context(0))
+    unspecified_fingerprint = DownloadChain._build_download_failure_fingerprint(build_context(None))
+
+    assert special_fingerprint
+    assert unspecified_fingerprint
+    assert special_fingerprint != unspecified_fingerprint
 
 
 def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkeypatch):

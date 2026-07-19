@@ -98,7 +98,7 @@ class DoubanModule(_ModuleBase):
                 continue
             ret_medias.append(MediaInfo(douban_info=item_obj.get("target")))
         # 将搜索词中的季写入标题中
-        if ret_medias and meta.begin_season:
+        if ret_medias and meta.begin_season is not None:
             # 小写数据转大写
             season_str = cn2an.an2cn(meta.begin_season, "low")
             for media in ret_medias:
@@ -155,7 +155,7 @@ class DoubanModule(_ModuleBase):
             elif meta:
                 info = {}
                 for name in self._prepare_search_names(meta):
-                    if meta.begin_season:
+                    if meta.begin_season is not None:
                         logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")
                     else:
                         logger.info(f"正在识别 {name} ...")
@@ -255,7 +255,7 @@ class DoubanModule(_ModuleBase):
             elif meta:
                 info = {}
                 for name in self._prepare_search_names(meta):
-                    if meta.begin_season:
+                    if meta.begin_season is not None:
                         logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")
                     else:
                         logger.info(f"正在识别 {name} ...")

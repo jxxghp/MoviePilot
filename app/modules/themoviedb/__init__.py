@@ -162,7 +162,7 @@ class TheMovieDbModule(_ModuleBase):
         if not results:
             return []
         medias = [MediaInfo(tmdb_info=info) for info in results]
-        if meta.begin_season:
+        if meta.begin_season is not None:
             # 小写数据转大写
             season_str = cn2an.an2cn(meta.begin_season, "low")
             for media in medias:
@@ -267,7 +267,7 @@ class TheMovieDbModule(_ModuleBase):
         """
         根据名称搜索媒体信息
         """
-        if meta.begin_season:
+        if meta.begin_season is not None:
             logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")
         else:
             logger.info(f"正在识别 {name} ...")
@@ -303,7 +303,7 @@ class TheMovieDbModule(_ModuleBase):
         """
         根据名称搜索媒体信息（异步版本）
         """
-        if meta.begin_season:
+        if meta.begin_season is not None:
             logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")
         else:
             logger.info(f"正在识别 {name} ...")
@@ -630,7 +630,7 @@ class TheMovieDbModule(_ModuleBase):
         :param name:  名称
         :param mtype:  类型
         :param year:  年份
-        :param season:  季号
+        :param season: 用于匹配指定季，0 表示特别季
         """
         # 搜索
         logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
@@ -651,7 +651,7 @@ class TheMovieDbModule(_ModuleBase):
         :param name:  名称
         :param mtype:  类型
         :param year:  年份
-        :param season:  季号
+        :param season: 用于匹配指定季，0 表示特别季
         """
         # 搜索
         logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
@@ -670,10 +670,10 @@ class TheMovieDbModule(_ModuleBase):
         获取TMDB信息
         :param tmdbid: int
         :param mtype:  媒体类型
-        :param season:  季号
-        :return: TVDB信息
+        :param season: 季号；TV 的显式值（含 0）读取季详情，None 或电影的 0 读取媒体详情
+        :return: TMDB信息
         """
-        if not season:
+        if season is None or (season == 0 and mtype != MediaType.TV):
             return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
         else:
             return self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
@@ -683,10 +683,10 @@ class TheMovieDbModule(_ModuleBase):
         异步获取TMDB信息
         :param tmdbid: int
         :param mtype:  媒体类型
-        :param season:  季号
-        :return: TVDB信息
+        :param season: 季号；TV 的显式值（含 0）读取季详情，None 或电影的 0 读取媒体详情
+        :return: TMDB信息
         """
-        if not season:
+        if season is None or (season == 0 and mtype != MediaType.TV):
             return await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid)
         else:
             return await self.tmdb.async_get_tv_season_detail(tmdbid=tmdbid, season=season)

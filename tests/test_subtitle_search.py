@@ -1,6 +1,6 @@
 import pytest
 
-from app.api.endpoints.search import _parse_media_type
+from app.api.endpoints.search import _parse_media_type, _resolve_media_season
 from app.chain.search import SearchChain
 from app.core.context import MediaInfo, SubtitleInfo
 from app.modules.indexer import IndexerModule
@@ -23,6 +23,12 @@ AUDIENCES_SUBTITLE_HTML = """
 </tr>
 </tbody></table>
 """
+
+
+def test_explicit_special_season_zero_overrides_recognized_season():
+    """精确搜索中显式季 0 必须优先于跨源识别返回的其它季号。"""
+    assert _resolve_media_season(explicit_season=0, recognized_season=1) == 0
+    assert _resolve_media_season(explicit_season=None, recognized_season=1) == 1
 
 HHANCLUB_SUBTITLE_HTML = """
 <div class="flex flex-col w-full items-center mt-[25px] gap-y-[10px] bg-[#F1F3F5] !rounded-md p-5" id="subtitles-table">

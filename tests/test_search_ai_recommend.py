@@ -447,6 +447,14 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(any(filename == "__search_result__" for filename, _ in cached))
 
+    def test_search_params_preserve_special_season_zero(self):
+        """最近搜索参数必须把显式季 0 保存为字符串 0，供页面刷新后重放。"""
+        params = SearchChain._normalize_search_params(
+            {"keyword": "tmdb:123", "season": 0}
+        )
+
+        self.assertEqual(params["season"], "0")
+
     def test_tool_factory_excludes_message_tools_when_disabled(self):
         with patch(
             "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",

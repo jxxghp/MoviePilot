@@ -1464,7 +1464,8 @@ class MoviePilotServerHelper:
             params["type"] = media_type
         if year := cls._extract_year(meta=meta):
             params["year"] = year
-        if season := cls._extract_season(media_type=media_type, meta=meta):
+        season = cls._extract_season(media_type=media_type, meta=meta)
+        if season is not None:
             params["season"] = season
         return params
 
