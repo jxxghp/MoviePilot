@@ -726,6 +726,7 @@ class SubscribeEndpointTest(TestCase):
             name="测试订阅",
             total_episode=10,
             lack_episode=3,
+            manual_total_episode=92,
             note=[1, 2],
             current_priority=80,
             episode_priority={"1": 80},
@@ -754,10 +755,18 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(payload["scene"], "reset")
         self.assertEqual(
             payload["fields"],
-            ["current_priority", "episode_priority", "lack_episode", "note", "state"],
+            [
+                "current_priority",
+                "episode_priority",
+                "lack_episode",
+                "manual_total_episode",
+                "note",
+                "state",
+            ],
         )
         self.assertEqual(payload["subscribe_info"]["note"], [])
         self.assertEqual(payload["subscribe_info"]["lack_episode"], 10)
+        self.assertEqual(payload["subscribe_info"]["manual_total_episode"], 0)
 
     def test_update_subscribe_sends_modified_event_payload_without_progress_refresh(self):
         """
