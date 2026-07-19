@@ -28,6 +28,7 @@ from app.core.config import settings, global_vars
 from app.core.event import Event, eventmanager
 from app.core.plugin import PluginManager
 from app.db import SessionFactory
+from app.db.agenttask_oper import AgentTaskOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
@@ -48,6 +49,7 @@ from app.utils.timer import TimerUtils
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
+AGENT_TASK_JOB_PREFIX = "agent-task"
 
 
 class SchedulerChain(ChainBase):
@@ -705,6 +707,10 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             # 初始化工作流服务
             self.init_workflow_jobs()
 
+            # 恢复 Agent 自主定时任务
+            if settings.AI_AGENT_ENABLE:
+                self.init_agent_task_jobs()
+
             # 初始化插件服务
             self.init_plugin_jobs()
 
@@ -979,6 +985,145 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             if not deferred_finish:
                 # 运行结束
                 self.__finish_job(job_id=job_id, success=success, error=error)
+
+    @staticmethod
+    def _get_agent_task_job_id(task_id: int) -> str:
+        """生成 Agent 自主定时任务的调度器 Job ID。"""
+        return f"{AGENT_TASK_JOB_PREFIX}-{task_id}"
+
+    def init_agent_task_jobs(self) -> None:
+        """
+        从数据库恢复所有启用的 Agent 自主定时任务。
+        """
+        oper = AgentTaskOper()
+        for task in oper.list(enabled=True):
+            if task.last_status == "running":
+                oper.update(
+                    task_id=task.id,
+                    payload={
+                        "last_status": "waiting",
+                        "last_result": "服务重启后恢复调度",
+                    },
+                )
+            self.update_agent_task_job(task.id)
+
+    def update_agent_task_job(self, task_id: int) -> Optional[str]:
+        """
+        按数据库中的最新配置新增或替换 Agent 自主定时任务。
+
+        :param task_id: Agent 定时任务 ID
+        :return: 下一次执行时间，不可调度时返回 None
+        """
+        self.remove_agent_task_job(task_id)
+        task = AgentTaskOper().get(task_id)
+        if (
+                not settings.AI_AGENT_ENABLE
+                or not task
+                or not task.enabled
+                or not self._scheduler
+        ):
+            return None
+
+        trigger_value = (
+            task.cron_expression if task.trigger_type == "cron" else task.run_at
+        )
+        try:
+            trigger = TimerUtils.build_schedule_trigger(
+                trigger_type=task.trigger_type,
+                trigger_value=trigger_value,
+                timezone_name=settings.TZ,
+            )
+        except (TypeError, ValueError) as err:
+            logger.error(f"Agent 定时任务 {task_id} 的触发配置无效：{str(err)}")
+            return None
+
+        job_id = self._get_agent_task_job_id(task_id)
+        with self._lock:
+            self._jobs[job_id] = {
+                "name": task.name,
+                "provider_name": "[Agent]",
+                "func": self.execute_agent_task,
+                "running": False,
+                "kwargs": {"task_id": task_id},
+            }
+            self._scheduler.add_job(
+                self.start,
+                trigger=trigger,
+                id=job_id,
+                name=task.name,
+                kwargs={"job_id": job_id, "task_id": task_id},
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=None,
+                replace_existing=True,
+            )
+        return self.get_agent_task_next_run(task_id)
+
+    def remove_agent_task_job(self, task_id: int) -> None:
+        """
+        从运行时调度器移除 Agent 自主定时任务。
+
+        :param task_id: Agent 定时任务 ID
+        """
+        job_id = self._get_agent_task_job_id(task_id)
+        with self._lock:
+            self._jobs.pop(job_id, None)
+            if not self._scheduler:
+                return
+            try:
+                self._scheduler.remove_job(job_id)
+            except JobLookupError:
+                pass
+
+    def get_agent_task_next_run(self, task_id: int) -> Optional[str]:
+        """
+        查询 Agent 自主定时任务的下一次执行时间。
+
+        :param task_id: Agent 定时任务 ID
+        :return: 带时区的 ISO 8601 时间，不再执行时返回 None
+        """
+        job_id = self._get_agent_task_job_id(task_id)
+        if self._scheduler:
+            job = self._scheduler.get_job(job_id)
+            next_run_time = getattr(job, "next_run_time", None) if job else None
+            if next_run_time:
+                return next_run_time.isoformat(timespec="seconds")
+
+        task = AgentTaskOper().get(task_id)
+        if not task or not task.enabled:
+            return None
+        trigger_value = (
+            task.cron_expression if task.trigger_type == "cron" else task.run_at
+        )
+        try:
+            next_run_time = TimerUtils.get_schedule_next_run_time(
+                trigger_type=task.trigger_type,
+                trigger_value=trigger_value,
+                timezone_name=settings.TZ,
+            )
+        except (TypeError, ValueError):
+            return None
+        return (
+            next_run_time.isoformat(timespec="seconds")
+            if next_run_time
+            else None
+        )
+
+    async def execute_agent_task(self, task_id: int) -> tuple[bool, str]:
+        """
+        唤醒 Agent 执行指定自主定时任务。
+
+        :param task_id: Agent 定时任务 ID
+        :return: 执行是否成功及结果摘要
+        """
+        from app.agent import agent_manager
+
+        try:
+            return await agent_manager.execute_scheduled_task(task_id)
+        finally:
+            task = AgentTaskOper().get(task_id)
+            if task and task.trigger_type == "date" and not task.enabled:
+                self.remove_agent_task_job(task_id)
 
     def init_plugin_jobs(self):
         """

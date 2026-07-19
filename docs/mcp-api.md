@@ -181,6 +181,35 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 
 工具的 `inputSchema` 只包含实际执行业务所需的参数，不包含用于解释调用原因的通用 `explanation` 参数，以减少 Agent 上下文消耗。
 
+#### Agent 自主定时任务工具
+
+以下工具用于管理会在指定时间重新唤醒 Agent 的持久化任务，均为管理员级工具：
+
+| 工具 | 说明 |
+| :--- | :--- |
+| `create_agent_task` | 创建单次或周期任务，并保存任务内容及当前用户、会话和消息渠道 |
+| `query_agent_tasks` | 查询任务配置、启用状态、下次执行时间及最近执行结果 |
+| `update_agent_task` | 修改任务内容或触发器，也可通过 `enabled` 暂停、恢复任务 |
+| `delete_agent_task` | 永久删除任务并立即移除运行时调度 |
+
+`trigger_type=date` 表示单次执行：“30 分钟后检查”这类相对时间传 `delay_minutes=30`，由后端计算精确时间；固定时间则传 ISO 8601 `trigger`，支持精确到秒。`trigger_type=cron` 使用标准五段 cron（分、时、日、月、周），适合周期检查。未显式携带时区的时间按 MoviePilot 的 `TZ` 配置解释。任务由内存调度器精确触发，配置持久化到数据库，服务重启后会自动恢复；触发后 Agent 在原会话中执行 `content` 并把结果发送到原消息渠道。通过无会话上下文的 MCP/CLI 创建时，结果改发到 MoviePilot 已配置的管理员通知渠道。
+
+创建单次任务的参数示例：
+
+```json
+{
+  "tool_name": "create_agent_task",
+  "arguments": {
+    "name": "检查电影资源",
+    "content": "搜索电影《示例电影》是否已有可下载资源，并报告站点、版本和大小；不要自动下载。",
+    "trigger_type": "date",
+    "delay_minutes": 30
+  }
+}
+```
+
+创建每天 20:30 执行的周期任务时，使用 `trigger_type=cron` 和 `trigger="30 20 * * *"`。
+
 **认证**: 需要API KEY，在请求头中添加 `X-API-KEY: <api_key>` 或在查询参数中添加 `apikey=<api_key>`
 
 **响应示例**:

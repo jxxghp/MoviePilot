@@ -1,9 +1,117 @@
 import datetime
 import random
-from typing import List
+from typing import List, Optional, Tuple, Union
+
+import pytz
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 
 
 class TimerUtils:
+    """
+    定时与时间差计算工具。
+    """
+
+    SCHEDULE_TRIGGER_TYPES = ("date", "cron")
+
+    @staticmethod
+    def normalize_schedule_trigger(
+            trigger_type: str,
+            trigger_value: str,
+            timezone_name: str,
+            require_future: bool = False,
+    ) -> Tuple[str, str]:
+        """
+        校验并规范化单次时间或五段 cron 表达式。
+
+        :param trigger_type: 触发类型，支持 date 或 cron
+        :param trigger_value: 带时区或本地时间字符串，或五段 cron 表达式
+        :param timezone_name: 无显式时区时使用的系统时区
+        :param require_future: 单次任务是否必须安排在未来
+        :return: 规范化后的触发类型和触发值
+        """
+        normalized_type = str(trigger_type or "").strip().lower()
+        normalized_value = str(trigger_value or "").strip()
+        if normalized_type not in TimerUtils.SCHEDULE_TRIGGER_TYPES:
+            raise ValueError("trigger_type 仅支持 date 或 cron")
+        if not normalized_value:
+            raise ValueError("trigger 不能为空")
+
+        timezone = pytz.timezone(timezone_name)
+        if normalized_type == "cron":
+            normalized_value = " ".join(normalized_value.split())
+            if len(normalized_value.split()) != 5:
+                raise ValueError("cron 必须是标准五段表达式：分 时 日 月 周")
+            CronTrigger.from_crontab(normalized_value, timezone=timezone)
+            return normalized_type, normalized_value
+
+        try:
+            run_at = datetime.datetime.fromisoformat(normalized_value)
+        except ValueError as err:
+            raise ValueError(
+                "date 时间必须使用 ISO 8601 格式，例如 2026-07-19 20:30:00"
+            ) from err
+        if run_at.tzinfo is None:
+            run_at = timezone.localize(run_at)
+        else:
+            run_at = run_at.astimezone(timezone)
+        if require_future and run_at <= datetime.datetime.now(timezone):
+            raise ValueError("单次任务的触发时间必须晚于当前时间")
+        return normalized_type, run_at.isoformat(timespec="seconds")
+
+    @staticmethod
+    def build_schedule_trigger(
+            trigger_type: str,
+            trigger_value: str,
+            timezone_name: str,
+    ) -> Union[CronTrigger, DateTrigger]:
+        """
+        构建 APScheduler 单次或 cron 触发器。
+
+        :param trigger_type: 触发类型，支持 date 或 cron
+        :param trigger_value: 已配置的触发时间或 cron 表达式
+        :param timezone_name: 调度器使用的系统时区
+        :return: APScheduler 触发器
+        """
+        normalized_type, normalized_value = TimerUtils.normalize_schedule_trigger(
+            trigger_type=trigger_type,
+            trigger_value=trigger_value,
+            timezone_name=timezone_name,
+        )
+        timezone = pytz.timezone(timezone_name)
+        if normalized_type == "cron":
+            return CronTrigger.from_crontab(normalized_value, timezone=timezone)
+        return DateTrigger(
+            run_date=datetime.datetime.fromisoformat(normalized_value),
+            timezone=timezone,
+        )
+
+    @staticmethod
+    def get_schedule_next_run_time(
+            trigger_type: str,
+            trigger_value: str,
+            timezone_name: str,
+            now: Optional[datetime.datetime] = None,
+    ) -> Optional[datetime.datetime]:
+        """
+        计算指定触发配置的下一次执行时间。
+
+        :param trigger_type: 触发类型，支持 date 或 cron
+        :param trigger_value: 已配置的触发时间或 cron 表达式
+        :param timezone_name: 调度器使用的系统时区
+        :param now: 可选的计算基准时间
+        :return: 下一次执行时间，不再触发时返回 None
+        """
+        timezone = pytz.timezone(timezone_name)
+        current_time = now or datetime.datetime.now(timezone)
+        if current_time.tzinfo is None:
+            current_time = timezone.localize(current_time)
+        trigger = TimerUtils.build_schedule_trigger(
+            trigger_type=trigger_type,
+            trigger_value=trigger_value,
+            timezone_name=timezone_name,
+        )
+        return trigger.get_next_fire_time(None, current_time)
 
     @staticmethod
     def random_scheduler(num_executions: int = 1,
