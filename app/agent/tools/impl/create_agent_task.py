@@ -60,13 +60,12 @@ class CreateAgentTaskInput(BaseModel):
         if not self.name or not self.content:
             raise ValueError("name 和 content 不能只包含空白字符")
         if self.trigger_type == "date":
-            if (self.trigger is None) == (self.delay_minutes is None):
-                raise ValueError("date 任务必须且只能提供 trigger 或 delay_minutes 之一")
             if self.delay_minutes is not None:
-                timezone = pytz.timezone(settings.TZ)
-                self.trigger = (
-                    datetime.now(timezone) + timedelta(minutes=self.delay_minutes)
-                ).isoformat(timespec="seconds")
+                # LangChain 会在 run() 前后各校验一次，延迟时间在持久化前统一计算。
+                self.trigger = None
+                return self
+            if self.trigger is None:
+                raise ValueError("date 任务必须提供 trigger 或 delay_minutes")
         elif self.trigger is None or self.delay_minutes is not None:
             raise ValueError("cron 任务必须提供 trigger，且不能提供 delay_minutes")
         self.trigger_type, self.trigger = TimerUtils.normalize_schedule_trigger(
@@ -102,6 +101,18 @@ class CreateAgentTaskTool(MoviePilotTool):
         """持久化任务并立即注册到运行时调度器。"""
         from app.scheduler import Scheduler
 
+        trigger_value = payload.trigger
+        if payload.trigger_type == "date" and payload.delay_minutes is not None:
+            timezone = pytz.timezone(settings.TZ)
+            trigger_value = (
+                datetime.now(timezone) + timedelta(minutes=payload.delay_minutes)
+            ).isoformat(timespec="seconds")
+        _, trigger_value = TimerUtils.normalize_schedule_trigger(
+            trigger_type=payload.trigger_type,
+            trigger_value=trigger_value,
+            timezone_name=settings.TZ,
+            require_future=True,
+        )
         chat = AgentChatOper().get(
             session_id=self._session_id,
             user_id=self._user_id,
@@ -110,8 +121,8 @@ class CreateAgentTaskTool(MoviePilotTool):
             name=payload.name.strip(),
             content=payload.content.strip(),
             trigger_type=payload.trigger_type,
-            cron_expression=payload.trigger if payload.trigger_type == "cron" else None,
-            run_at=payload.trigger if payload.trigger_type == "date" else None,
+            cron_expression=trigger_value if payload.trigger_type == "cron" else None,
+            run_at=trigger_value if payload.trigger_type == "date" else None,
             user_id=str(self._user_id),
             username=self._username or (chat.username if chat else None),
             session_id=str(self._session_id),

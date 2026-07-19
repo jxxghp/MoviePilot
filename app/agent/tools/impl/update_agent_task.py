@@ -61,13 +61,11 @@ class UpdateAgentTaskInput(BaseModel):
             if self.trigger_type is None:
                 raise ValueError("修改触发配置时必须提供 trigger_type")
             if self.trigger_type == "date":
-                if (self.trigger is None) == (self.delay_minutes is None):
-                    raise ValueError("date 任务必须且只能提供 trigger 或 delay_minutes 之一")
                 if self.delay_minutes is not None:
-                    timezone = pytz.timezone(settings.TZ)
-                    self.trigger = (
-                        datetime.now(timezone) + timedelta(minutes=self.delay_minutes)
-                    ).isoformat(timespec="seconds")
+                    # 保持校验幂等，具体绝对时间在更新调度前只计算一次。
+                    self.trigger = None
+                elif self.trigger is None:
+                    raise ValueError("date 任务必须提供 trigger 或 delay_minutes")
             elif self.trigger is None or self.delay_minutes is not None:
                 raise ValueError("cron 任务必须提供 trigger，且不能提供 delay_minutes")
         if all(
@@ -112,9 +110,16 @@ class UpdateAgentTaskTool(MoviePilotTool):
             return {"error": f"Agent 定时任务 {payload.task_id} 正在执行，请稍后再修改"}
 
         trigger_type = payload.trigger_type or task.trigger_type
-        trigger_value = payload.trigger or (
-            task.cron_expression if trigger_type == "cron" else task.run_at
-        )
+        trigger_value = payload.trigger
+        if trigger_type == "date" and payload.delay_minutes is not None:
+            timezone = pytz.timezone(settings.TZ)
+            trigger_value = (
+                datetime.now(timezone) + timedelta(minutes=payload.delay_minutes)
+            ).isoformat(timespec="seconds")
+        if trigger_value is None:
+            trigger_value = (
+                task.cron_expression if trigger_type == "cron" else task.run_at
+            )
         enabled = task.enabled if payload.enabled is None else payload.enabled
         normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
             trigger_type=trigger_type,
@@ -128,7 +133,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
             update_payload["name"] = payload.name.strip()
         if payload.content is not None:
             update_payload["content"] = payload.content.strip()
-        if payload.trigger is not None:
+        if payload.trigger_type is not None:
             update_payload.update(
                 {
                     "trigger_type": normalized_type,
