@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, ClassVar
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
@@ -44,6 +44,12 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
 
 
 class Subscribe(BaseModel):
+    # 公共创建和更新接口不得接收系统字段和运行事实；其余字段默认作为订阅输入透传。
+    PUBLIC_WRITE_EXCLUDED_FIELDS: ClassVar[frozenset[str]] = frozenset({
+        "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode",
+        "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
+    })
+
     id: Optional[int] = None
     # 订阅名称
     name: Optional[str] = None
@@ -135,6 +141,10 @@ class Subscribe(BaseModel):
             return self
         self.completed_episode = compute_subscribe_completed_episode(self)
         return self
+
+    def to_public_write_payload(self) -> Dict[str, Any]:
+        """裁剪公共订阅写入字段，避免请求体覆盖下载事实和运行状态。"""
+        return self.model_dump(exclude=self.PUBLIC_WRITE_EXCLUDED_FIELDS)
 
 
 class SubscribeShare(BaseModel):
