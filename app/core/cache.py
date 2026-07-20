@@ -431,7 +431,7 @@ class MemoryBackend(CacheBackend):
 
         :param key: 缓存的键
         :param value: 缓存的值
-        :param ttl: 缓存的存活时间，不传入为永久缓存，单位秒
+        :param ttl: 缓存的存活时间，未传入则使用 backend 默认值，单位秒
         :param region: 缓存的区
         """
         ttl = self.ttl if ttl is None else ttl
@@ -564,7 +564,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
 
         :param key: 缓存的键
         :param value: 缓存的值
-        :param ttl: 缓存的存活时间，不传入为永久缓存，单位秒
+        :param ttl: 缓存的存活时间，未传入则使用 backend 默认值，单位秒
         :param region: 缓存的区
         """
         return self._backend.set(key=key, value=value, ttl=ttl, region=region, **kwargs)
@@ -644,7 +644,7 @@ class RedisBackend(CacheBackend):
 
         :param key: 缓存的键
         :param value: 缓存的值
-        :param ttl: 缓存的存活时间，未传入则为永久缓存，单位秒
+        :param ttl: 缓存的存活时间，未传入则使用 backend 默认值，单位秒
         :param region: 缓存的区
         :param kwargs: kwargs
         """
@@ -728,7 +728,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
 
         :param key: 缓存的键
         :param value: 缓存的值
-        :param ttl: 缓存的存活时间，未传入则为永久缓存，单位秒
+        :param ttl: 缓存的存活时间，未传入则使用 backend 默认值，单位秒
         :param region: 缓存的区
         :param kwargs: kwargs
         """
@@ -1125,11 +1125,11 @@ def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
 def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Optional[int] = None,
            skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None):
     """
-    自定义缓存装饰器，支持为每个 key 动态传递 maxsize 和 ttl
+    自定义缓存装饰器，支持配置缓存区域的 maxsize 和每个 key 的 ttl
 
     :param region: 缓存区域的标识符，默认根据模块名、函数名等自动生成标识
     :param maxsize: 缓存区内的最大条目数
-    :param ttl: 缓存的存活时间，单位秒，未传入则为永久缓存，单位秒
+    :param ttl: 缓存的存活时间，单位秒；未传入时使用 LRU 缓存
     :param skip_none: 跳过 None 缓存，默认为 True
     :param skip_empty: 跳过空值缓存（如 None, [], {}, "", set()），默认为 False
     :param shared_key: 同步/异步函数共享缓存的键，默认使用函数名（异步函数名会标准化为同步格式，如移除 `async_` 前缀）
