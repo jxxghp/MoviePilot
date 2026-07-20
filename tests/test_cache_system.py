@@ -272,6 +272,26 @@ def test_memory_lru_backend_keeps_capacity_eviction_behavior():
     assert list(cache.items(region=region)) == [("second", 2), ("third", 3)]
 
 
+def test_memory_backend_rejects_region_cache_type_conflicts():
+    """
+    同名 region 不得同时作为 TTL 和 LRU 缓存使用。
+    """
+    region = "cache_type_conflict"
+    ttl_cache = MemoryBackend(cache_type="ttl")
+    lru_cache = MemoryBackend(cache_type="lru")
+    ttl_cache.set("ttl", 1, ttl=10, region=region)
+
+    try:
+        lru_cache.set("lru", 2, region=region)
+    except ValueError as err:
+        assert "different cache type" in str(err)
+    else:
+        raise AssertionError("cache type conflict must be rejected")
+
+    assert ttl_cache.get("ttl", region=region) == 1
+    assert ttl_cache.get("lru", region=region) is None
+
+
 def test_memory_backend_reuses_existing_region_cache():
     """
     同一 region 的后续写入应复用首次创建的底层缓存对象。

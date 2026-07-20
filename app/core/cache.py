@@ -446,6 +446,10 @@ class MemoryBackend(CacheBackend):
                     else MemoryLRUCache(maxsize=maxsize)
                 )
                 self._region_caches[region] = region_cache
+            elif isinstance(region_cache, _MemoryTLRUCache) != (self.cache_type == 'ttl'):
+                raise ValueError(
+                    f"Cache region {region!r} already uses a different cache type"
+                )
             if isinstance(region_cache, _MemoryTLRUCache):
                 region_cache.set(key, value, ttl=ttl)
             else:
