@@ -303,23 +303,36 @@ def validate_download_save_path(save_path: str) -> str:
     """
     校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。
 
-    :param save_path: 下载保存目录，支持本地 /path 或远端 <storage>:/path
+    :param save_path: 下载保存目录，支持本地 /path、远端 <storage>:/path 和旧版订阅中的无前缀远程路径
     :return: 可直接传给下载接口的规范化保存目录
     """
     value = str(save_path or "").strip()
+    has_storage_prefix = any(value.startswith(f"{item.value}:") for item in StorageSchema)
     storage, raw_path = _split_file_uri(value)
     target_style, target_path = _normalize_download_path(raw_path, storage)
 
+    download_roots = []
     for dir_info in DirectoryHelper().get_download_dirs():
         root = _normalize_download_root(dir_info)
-        if not root:
-            continue
-        root_storage, root_style, root_path = root
+        if root:
+            download_roots.append(root)
+
+    for root_storage, root_style, root_path in download_roots:
         if storage != root_storage:
             continue
         if target_style != root_style:
             continue
         if target_path == root_path or target_path.is_relative_to(root_path):
             return _download_path_uri(storage, target_path)
+
+    # 旧版订阅界面只持久化 download_path，需要从已配置根目录恢复远程存储类型。
+    if (not has_storage_prefix
+            and storage == StorageSchema.Local.value
+            and target_style == "posix"):
+        for root_storage, root_style, root_path in download_roots:
+            if root_storage == StorageSchema.Local.value or target_style != root_style:
+                continue
+            if target_path == root_path or target_path.is_relative_to(root_path):
+                return _download_path_uri(root_storage, target_path)
 
     raise ValueError("保存路径不在允许的下载目录范围内")
