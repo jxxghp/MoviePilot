@@ -64,14 +64,15 @@ class SubscribeChain(ChainBase):
 
     订阅链路同时服务电影、普通电视剧、分集洗版和全集洗版。普通电视剧订阅与
     分集洗版共享按集事实：note 表示目标集已经存在或已经下载，
-    episode_priority 表示每集已知下载质量；二者可以互相切换。全集洗版关注
-    完整目标范围的整体质量，只有下载层确认整包完整覆盖目标范围后，才把资源
-    写成目标范围内的按集事实。
+    episode_priority 表示每集已知下载质量；二者可以互相切换。current_priority
+    表示当前洗版模式的资源准入基线：分集洗版按目标范围内的最低按集优先级派生，
+    全集洗版由下载层确认完整覆盖后按整包优先级维护。
 
-    实现上保持三个入口分离：下载事实入口只写 note / episode_priority；
-    progress 刷新入口只把当前事实计算为 lack_episode 和电视剧洗版
-    current_priority；完成入口只根据最终事实和完成策略收敛订阅状态。电影没有
-    按集事实，电影洗版的 current_priority 由电影下载优先级 writer 单独维护。
+    实现上保持三个入口分离：下载事实入口写 note / episode_priority，并在确认
+    全集覆盖时写全集 current_priority；progress 刷新入口计算 lack_episode，且仅
+    分集洗版从按集事实派生 current_priority；完成入口只根据当前模式的最终事实
+    和完成策略收敛订阅状态。电影没有按集事实，电影洗版的 current_priority 由
+    电影下载优先级 writer 单独维护。
     """
 
     _rlock = threading.RLock()
@@ -108,7 +109,12 @@ class SubscribeChain(ChainBase):
         if episode_priority:
             return episode_priority
 
-        if subscribe.best_version and subscribe.type == MediaType.TV.value and subscribe.current_priority is not None:
+        if (
+                subscribe.best_version
+                and not cls.__is_full_best_version_enabled(subscribe)
+                and subscribe.type == MediaType.TV.value
+                and subscribe.current_priority is not None
+        ):
             target_episodes = cls.__get_best_version_target_episodes(subscribe, total_episode=total_episode)
             return {
                 str(episode): int(subscribe.current_priority)
@@ -270,6 +276,8 @@ class SubscribeChain(ChainBase):
         """
         if not subscribe.best_version or subscribe.type != MediaType.TV.value:
             return subscribe.current_priority or 0
+        if cls.__is_full_best_version_enabled(subscribe):
+            return subscribe.current_priority or 0
 
         target_episodes = cls.__get_best_version_target_episodes(subscribe)
         if not target_episodes:
@@ -305,7 +313,11 @@ class SubscribeChain(ChainBase):
                 subscribe,
                 total_episode=old_total_episode,
             )
-            if not episode_priority and subscribe.current_priority is not None:
+            if (
+                    not cls.__is_full_best_version_enabled(subscribe)
+                    and not episode_priority
+                    and subscribe.current_priority is not None
+            ):
                 episode_priority = {
                     str(episode): int(subscribe.current_priority)
                     for episode in cls.__get_best_version_target_episodes(
@@ -315,6 +327,9 @@ class SubscribeChain(ChainBase):
                 }
             subscribe.episode_priority = episode_priority
             update_data["episode_priority"] = episode_priority
+            if cls.__is_full_best_version_enabled(subscribe):
+                subscribe.current_priority = 0
+                update_data["current_priority"] = 0
 
         update_data.update(cls.__prepare_subscribe_progress_fields(subscribe=subscribe, no_exists={}))
         return update_data
@@ -348,10 +363,13 @@ class SubscribeChain(ChainBase):
         }
         subscribe.total_episode = total_episode
         subscribe.episode_priority = filtered_priority
-        current_priority = 0 if not target_episodes else cls.get_best_version_current_priority(
-            subscribe,
-            episode_priority=filtered_priority,
-        )
+        if cls.__is_full_best_version_enabled(subscribe):
+            current_priority = 0 if total_episode > old_total_episode else subscribe.current_priority
+        else:
+            current_priority = 0 if not target_episodes else cls.get_best_version_current_priority(
+                subscribe,
+                episode_priority=filtered_priority,
+            )
         subscribe.current_priority = current_priority
         update_data["episode_priority"] = filtered_priority
         update_data["current_priority"] = current_priority
@@ -393,6 +411,8 @@ class SubscribeChain(ChainBase):
             return False
         if subscribe.type != MediaType.TV.value:
             return subscribe.current_priority == 100
+        if cls.__is_full_best_version_enabled(subscribe):
+            return subscribe.current_priority == 100
 
         target_episodes = cls.__get_best_version_target_episodes(subscribe)
         if not target_episodes:
@@ -420,6 +440,8 @@ class SubscribeChain(ChainBase):
         if not subscribe.best_version:
             return False
         if subscribe.type != MediaType.TV.value:
+            return subscribe.current_priority == 100
+        if cls.__is_full_best_version_enabled(subscribe):
             return subscribe.current_priority == 100
 
         target_episodes = cls.__get_best_version_target_episodes(subscribe)
@@ -502,6 +524,34 @@ class SubscribeChain(ChainBase):
         return sorted(set(interested))
 
     @classmethod
+    def __prepare_best_version_tv_candidate(
+            cls,
+            subscribe: Subscribe,
+            context: Context,
+            priority: int,
+    ) -> bool:
+        """
+        校验电视剧洗版候选，并为分集模式设置允许下载的剧集范围。
+
+        全集模式按当前准入基线筛选；分集模式设置能严格提升质量的目标集范围。
+        """
+        if cls.__is_full_best_version_enabled(subscribe):
+            try:
+                return int(priority or 0) > int(subscribe.current_priority or 0)
+            except (TypeError, ValueError):
+                return False
+
+        interested_episodes = cls.__get_best_version_interested_episodes(
+            subscribe=subscribe,
+            context=context,
+            priority=priority,
+        )
+        if not interested_episodes:
+            return False
+        context.allowed_episodes = set(interested_episodes)
+        return True
+
+    @classmethod
     def __is_full_best_version_enabled(cls, subscribe: Subscribe) -> bool:
         """
         判断当前订阅是否启用了电视剧全集洗版。
@@ -544,11 +594,20 @@ class SubscribeChain(ChainBase):
         return cls.__is_full_season_resource(meta=meta, subscribe=subscribe)
 
     @classmethod
-    def __is_full_season_priority_higher_than_all_targets(cls, subscribe: Subscribe, priority: int) -> bool:
+    def __should_prefer_full_pack_for_episode_best_version(
+            cls,
+            subscribe: Subscribe,
+            priority: int,
+    ) -> bool:
         """
-        判断整季资源优先级是否高于订阅目标范围的整体优先级门槛。
+        判断分集洗版是否应优先下载整包。
+
+        整包优先级必须严格高于每个目标集；否则交回按集路径，只下载能提升质量的集。
         """
-        if subscribe.type != MediaType.TV.value:
+        if (
+                subscribe.type != MediaType.TV.value
+                or cls.__is_full_best_version_enabled(subscribe)
+        ):
             return False
 
         target_episodes = cls.__get_best_version_target_episodes(subscribe)
@@ -560,13 +619,11 @@ class SubscribeChain(ChainBase):
         except (TypeError, ValueError):
             resource_priority = 0
 
-        try:
-            current_priority = int(subscribe.current_priority) if subscribe.current_priority is not None \
-                else cls.get_best_version_current_priority(subscribe)
-        except (TypeError, ValueError):
-            current_priority = 0
-
-        return resource_priority > current_priority
+        episode_priority = cls.__get_episode_priority(subscribe)
+        return all(
+            resource_priority > episode_priority.get(str(episode), 0)
+            for episode in target_episodes
+        )
 
     @classmethod
     def __build_full_pack_first_no_exists(
@@ -622,28 +679,24 @@ class SubscribeChain(ChainBase):
         ] if full_pack_no_exists else []
         target_episodes = self.__get_best_version_target_episodes(subscribe)
         target_range = f"{target_episodes[0]}-{target_episodes[-1]}" if target_episodes else "empty"
-        try:
-            current_priority_gate = int(subscribe.current_priority) if subscribe.current_priority is not None \
-                else self.get_best_version_current_priority(subscribe)
-        except (TypeError, ValueError):
-            current_priority_gate = 0
+        episode_priority_gate = self.__get_episode_priority(subscribe)
         full_pack_contexts = []
         for context in full_season_contexts:
-            candidate_priority = getattr(context.torrent_info, "pri_order", 0)
-            accepted = self.__is_full_season_priority_higher_than_all_targets(
+            candidate_priority = context.torrent_info.pri_order
+            accepted = self.__should_prefer_full_pack_for_episode_best_version(
                 subscribe=subscribe,
                 priority=candidate_priority,
             )
             logger.info(
                 f"{subscribe.name} 整包候选优先级判断：candidate_priority={candidate_priority}，"
-                f"current_priority={current_priority_gate}，target_range={target_range}，"
+                f"episode_priority={episode_priority_gate}，target_range={target_range}，"
                 f"decision={'accept' if accepted else 'reject'}"
             )
             if accepted:
                 full_pack_contexts.append(context)
 
         if full_season_contexts and not full_pack_contexts:
-            logger.info(f"{subscribe.name} 全集候选优先级未高于 current_priority 门槛，回退到分集洗版")
+            logger.info(f"{subscribe.name} 全集候选优先级未高于全部目标集，回退到分集洗版")
 
         if full_pack_contexts:
             logger.info(f"{subscribe.name} 分集洗版优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
@@ -1291,20 +1344,17 @@ class SubscribeChain(ChainBase):
                                             f"{subscribe.name} 正在洗版，{torrent_info.title} 不符合订阅集数范围"
                                         )
                                         continue
-                                    # 洗版时，只保留至少能提升一集优先级的资源
+                                    # 全集洗版按整包准入基线过滤；分集洗版按可提升剧集过滤。
                                     if torrent_mediainfo.type == MediaType.TV:
-                                        interested_episodes = self.__get_best_version_interested_episodes(
-                                            subscribe=subscribe,
-                                            context=context,
-                                            priority=torrent_info.pri_order,
-                                        )
-                                        if not interested_episodes:
+                                        if not self.__prepare_best_version_tv_candidate(
+                                                subscribe=subscribe,
+                                                context=context,
+                                                priority=torrent_info.pri_order,
+                                        ):
                                             logger.info(
-                                                f'{subscribe.name} 正在洗版，{torrent_info.title} 不包含可提升优先级的剧集')
+                                                f'{subscribe.name} 正在洗版，{torrent_info.title} '
+                                                f'优先级未达到当前模式的升级条件')
                                             continue
-                                        # 将"本候选实际能升级到的集"作为允许下载集合下传到下载层，
-                                        # 防止标题元数据与实际种子文件错位导致同优先级集被重复下载。
-                                        context.allowed_episodes = set(interested_episodes)
                                     if (
                                             torrent_mediainfo.type != MediaType.TV
                                             and subscribe.current_priority
@@ -1773,7 +1823,7 @@ class SubscribeChain(ChainBase):
                                     continue
                                 logger.info(
                                     f'{mediainfo.title_year} 通过媒体ID匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                match_source = getattr(_context, "match_source", "unknown")
+                                match_source = _context.match_source
                                 if match_source == "title":
                                     # 标题兜底使用的是订阅目标 media_info，不能标记为候选自身识别结果。
                                     _context.candidate_recognized = False
@@ -1865,18 +1915,15 @@ class SubscribeChain(ChainBase):
                             # 洗版时，优先级小于已下载优先级的不要
                             if subscribe.best_version:
                                 if meta.type == MediaType.TV:
-                                    interested_episodes = self.__get_best_version_interested_episodes(
-                                        subscribe=subscribe,
-                                        context=_context,
-                                        priority=torrent_info.pri_order,
-                                    )
-                                    if not interested_episodes:
+                                    if not self.__prepare_best_version_tv_candidate(
+                                            subscribe=subscribe,
+                                            context=_context,
+                                            priority=torrent_info.pri_order,
+                                    ):
                                         logger.info(
-                                            f'{subscribe.name} 正在洗版，{torrent_info.title} 不包含可提升优先级的剧集')
+                                            f'{subscribe.name} 正在洗版，{torrent_info.title} '
+                                            f'优先级未达到当前模式的升级条件')
                                         continue
-                                    # 与 search() 路径对称：把"本候选实际能升级到的集"作为允许下载集合下传到下载层，
-                                    # 避免 RSS / 订阅刷新场景下标题元数据与种子文件错位导致同优先级集重复下载。
-                                    _context.allowed_episodes = set(interested_episodes)
                                 if (
                                         meta.type != MediaType.TV
                                         and subscribe.current_priority
@@ -2306,7 +2353,7 @@ class SubscribeChain(ChainBase):
             if no_exists is None and not subscribe.best_version:
                 no_exists = {}
             update_data["lack_episode"] = cls.compute_lack_episode(subscribe, no_exists=no_exists)
-            if subscribe.best_version:
+            if subscribe.best_version and not cls.__is_full_best_version_enabled(subscribe):
                 update_data["current_priority"] = cls.get_best_version_current_priority(subscribe)
         if update_data and touch_last_update:
             update_data["last_update"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -2374,8 +2421,8 @@ class SubscribeChain(ChainBase):
                 mtype=meta.type,
                 tmdbid=subscribe.tmdbid,
                 doubanid=subscribe.doubanid,
-                bangumiid=getattr(subscribe, "bangumiid", None),
-                episode_group=getattr(subscribe, "episode_group", None),
+                bangumiid=subscribe.bangumiid,
+                episode_group=subscribe.episode_group,
                 cache=False,
             )
             if not mediainfo:
@@ -2513,9 +2560,9 @@ class SubscribeChain(ChainBase):
 
         for download in downloads:
             media = download.media_info
-            if subscribe.tmdbid and getattr(media, "tmdb_id", None) and media.tmdb_id != subscribe.tmdbid:
+            if subscribe.tmdbid and media.tmdb_id and media.tmdb_id != subscribe.tmdbid:
                 continue
-            if subscribe.doubanid and getattr(media, "douban_id", None) and media.douban_id != subscribe.doubanid:
+            if subscribe.doubanid and media.douban_id and media.douban_id != subscribe.doubanid:
                 continue
 
             if subscribe.type == MediaType.MOVIE.value and media.type == MediaType.MOVIE:
@@ -2529,9 +2576,9 @@ class SubscribeChain(ChainBase):
             selected_episodes = getattr(download, "selected_episodes", None)
             if selected_episodes:
                 episodes = selected_episodes
-            elif getattr(download, "meta_info", None) and download.meta_info.episode_list:
+            elif download.meta_info and download.meta_info.episode_list:
                 episodes = download.meta_info.episode_list
-            elif getattr(download, "confirmed_full_coverage", False):
+            elif download.confirmed_full_coverage:
                 episodes = self.__get_best_version_target_episodes(subscribe)
                 used_full_coverage_fallback = True
             else:
@@ -2549,7 +2596,16 @@ class SubscribeChain(ChainBase):
             if not valid_episodes:
                 continue
 
-            priority = getattr(download.torrent_info, "pri_order", None)
+            priority = download.torrent_info.pri_order
+            if (
+                    self.__is_full_best_version_enabled(subscribe)
+                    and download.confirmed_full_coverage
+                    and isinstance(priority, int)
+                    and not isinstance(priority, bool)
+                    and priority > (subscribe.current_priority or 0)
+            ):
+                subscribe.current_priority = priority
+                update_data["current_priority"] = priority
             for episode_number in valid_episodes:
                 note_set.add(episode_number)
                 covered_episodes.add(episode_number)
