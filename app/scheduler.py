@@ -180,16 +180,16 @@ class SchedulerChain(ChainBase):
 
         message_cutoff = (
                 started_at - timedelta(days=message_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime("%Y-%m-%d")
         download_history_cutoff = (
                 started_at - timedelta(days=download_history_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime("%Y-%m-%d")
         site_userdata_cutoff = (
                 started_at - timedelta(days=site_userdata_days)
         ).strftime("%Y-%m-%d")
         transfer_history_cutoff = (
                 started_at - timedelta(days=transfer_history_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime("%Y-%m-%d")
 
         return [
             {
