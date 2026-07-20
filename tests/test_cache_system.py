@@ -272,6 +272,20 @@ def test_memory_lru_backend_keeps_capacity_eviction_behavior():
     assert list(cache.items(region=region)) == [("second", 2), ("third", 3)]
 
 
+def test_memory_backend_reuses_existing_region_cache():
+    """
+    同一 region 的后续写入应复用首次创建的底层缓存对象。
+    """
+    region = "reuse_region_cache"
+    cache = MemoryBackend()
+    cache.set("first", 1, ttl=10, region=region)
+    first_region_cache = MemoryBackend._region_caches[cache.get_region(region)]
+
+    cache.set("second", 2, ttl=20, region=region)
+
+    assert MemoryBackend._region_caches[cache.get_region(region)] is first_region_cache
+
+
 def test_memory_backend_preserves_zero_ttl():
     """
     显式 ttl=0 不应回退到默认 TTL，并应删除已有同名值。

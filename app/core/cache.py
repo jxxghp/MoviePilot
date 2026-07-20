@@ -439,12 +439,13 @@ class MemoryBackend(CacheBackend):
         region = self.get_region(region)
         # 设置缓存值
         with self._lock:
-            # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
-            region_cache = self._region_caches.setdefault(
-                region,
-                _MemoryTLRUCache(maxsize=maxsize, ttl=ttl) if self.cache_type == 'ttl'
-                else MemoryLRUCache(maxsize=maxsize)
-            )
+            region_cache = self._region_caches.get(region)
+            if region_cache is None:
+                region_cache = (
+                    _MemoryTLRUCache(maxsize=maxsize, ttl=ttl) if self.cache_type == 'ttl'
+                    else MemoryLRUCache(maxsize=maxsize)
+                )
+                self._region_caches[region] = region_cache
             if isinstance(region_cache, _MemoryTLRUCache):
                 region_cache.set(key, value, ttl=ttl)
             else:
