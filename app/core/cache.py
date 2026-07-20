@@ -13,7 +13,7 @@ import aiofiles
 import aioshutil
 from anyio import Path as AsyncPath
 from cachetools import LRUCache as MemoryLRUCache
-from cachetools import TTLCache as MemoryTTLCache
+from cachetools import TLRUCache as MemoryTLRUCache
 from cachetools.keys import hashkey
 
 from app.core.config import settings
@@ -357,15 +357,46 @@ class AsyncCacheBackend(CacheBackend):
         pass
 
 
+class _MemoryTLRUCache(MemoryTLRUCache):
+    """
+    支持为每个 key 设置独立 TTL 的内存缓存
+    """
+
+    def __init__(self, maxsize: int, ttl: int):
+        self.__ttl = ttl
+        self.__setting_ttls: Dict[str, int] = {}
+        super().__init__(maxsize=maxsize, ttu=self._get_expiration)
+
+    def _get_expiration(self, key: str, _value: Any, now: float) -> float:
+        return now + self.__setting_ttls.get(key, self.__ttl)
+
+    @property
+    def ttl(self) -> int:
+        """
+        默认缓存存活时间，单位秒
+        """
+        return self.__ttl
+
+    def set(self, key: str, value: Any, ttl: int) -> None:
+        """
+        使用指定 TTL 设置缓存值
+        """
+        self.__setting_ttls[key] = ttl
+        try:
+            super().__setitem__(key, value)
+        finally:
+            self.__setting_ttls.pop(key, None)
+
+
 class MemoryBackend(CacheBackend):
     """
-    基于 `cachetools.TTLCache` 实现的缓存后端
+    基于 `cachetools.TLRUCache` 实现的缓存后端
     """
 
     # 类变量 _region_caches 的互斥锁
     _lock = threading.Lock()
-    # 存储各个 region 的缓存实例，region -> TTLCache
-    _region_caches: Dict[str, Union[MemoryTTLCache, MemoryLRUCache]] = {}
+    # 存储各个 region 的缓存实例，region -> TLRUCache/LRUCache
+    _region_caches: Dict[str, Union[_MemoryTLRUCache, MemoryLRUCache]] = {}
 
     def __init__(self, cache_type: Literal['ttl', 'lru'] = 'ttl',
                  maxsize: Optional[int] = None, ttl: Optional[int] = None):
@@ -380,7 +411,7 @@ class MemoryBackend(CacheBackend):
         self.maxsize = maxsize or DEFAULT_CACHE_SIZE
         self.ttl = ttl or DEFAULT_CACHE_TTL
 
-    def __get_region_cache(self, region: str) -> Optional[Union[MemoryTTLCache, MemoryLRUCache]]:
+    def __get_region_cache(self, region: str) -> Optional[Union[_MemoryTLRUCache, MemoryLRUCache]]:
         """
         获取指定区域的缓存实例，如果不存在则返回 None
         """
@@ -405,10 +436,13 @@ class MemoryBackend(CacheBackend):
             # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
             region_cache = self._region_caches.setdefault(
                 region,
-                MemoryTTLCache(maxsize=maxsize, ttl=ttl) if self.cache_type == 'ttl'
+                _MemoryTLRUCache(maxsize=maxsize, ttl=ttl) if self.cache_type == 'ttl'
                 else MemoryLRUCache(maxsize=maxsize)
             )
-            region_cache[key] = value
+            if isinstance(region_cache, _MemoryTLRUCache):
+                region_cache.set(key, value, ttl=ttl)
+            else:
+                region_cache[key] = value
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
