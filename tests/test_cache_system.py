@@ -9,6 +9,7 @@ from app.core.cache import (
     FileBackend,
     MemoryBackend,
     RedisBackend,
+    cached,
 )
 from app.core.config import settings
 from app.helper.redis import AsyncRedisHelper, RedisHelper
@@ -270,6 +271,40 @@ def test_memory_lru_backend_keeps_capacity_eviction_behavior():
 
     assert cache.get("first", region=region) is None
     assert list(cache.items(region=region)) == [("second", 2), ("third", 3)]
+
+
+def test_cached_zero_ttl_does_not_cache_sync_result():
+    """
+    同步 cached(ttl=0) 应立即过期，不能退化为 LRU 永久缓存。
+    """
+    calls = 0
+
+    @cached(region="sync_zero_ttl", ttl=0)
+    def load_value():
+        nonlocal calls
+        calls += 1
+        return calls
+
+    assert load_value() == 1
+    assert load_value() == 2
+
+
+def test_cached_zero_ttl_does_not_cache_async_result():
+    """
+    异步 cached(ttl=0) 应与同步路径保持一致。
+    """
+    calls = 0
+
+    @cached(region="async_zero_ttl", ttl=0)
+    async def load_value():
+        nonlocal calls
+        calls += 1
+        return calls
+
+    async def run_test():
+        return await load_value(), await load_value()
+
+    assert asyncio.run(run_test()) == (1, 2)
 
 
 def test_memory_backend_rejects_region_cache_type_conflicts():
