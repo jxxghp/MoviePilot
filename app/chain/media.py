@@ -845,7 +845,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             tmdbinfo = self._match_tmdb_with_names(
                 meta_names=meta_names,
                 year=year,
-                mtype=MediaType.TV,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
                 season=meta.begin_season,
             )
             return tmdbinfo
@@ -885,7 +885,10 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             year = self._extract_year_from_bangumi(bangumiinfo)
             # 使用名称识别豆瓣媒体信息
             return self.match_doubaninfo(
-                name=meta.name, year=year, mtype=MediaType.TV, season=meta.begin_season
+                name=meta.name,
+                year=year,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
+                season=meta.begin_season,
             )
         return None
 
@@ -1861,7 +1864,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             tmdbinfo = await self._async_match_tmdb_with_names(
                 meta_names=meta_names,
                 year=year,
-                mtype=MediaType.TV,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
                 season=meta.begin_season,
             )
             return tmdbinfo
@@ -1901,6 +1904,9 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             year = self._extract_year_from_bangumi(bangumiinfo)
             # 使用名称识别豆瓣媒体信息
             return await self.async_match_doubaninfo(
-                name=meta.name, year=year, mtype=MediaType.TV, season=meta.begin_season
+                name=meta.name,
+                year=year,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
+                season=meta.begin_season,
             )
         return None
