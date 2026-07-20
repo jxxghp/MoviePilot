@@ -2,7 +2,14 @@ import asyncio
 import os
 import time
 
-from app.core.cache import AsyncFileBackend, AsyncMemoryBackend, FileBackend, MemoryBackend
+from app.core.cache import (
+    AsyncFileBackend,
+    AsyncMemoryBackend,
+    AsyncRedisBackend,
+    FileBackend,
+    MemoryBackend,
+    RedisBackend,
+)
 from app.core.config import settings
 from app.helper.redis import AsyncRedisHelper, RedisHelper
 
@@ -263,6 +270,89 @@ def test_memory_lru_backend_keeps_capacity_eviction_behavior():
 
     assert cache.get("first", region=region) is None
     assert list(cache.items(region=region)) == [("second", 2), ("third", 3)]
+
+
+def test_memory_backend_preserves_zero_ttl():
+    """
+    显式 ttl=0 不应回退到默认 TTL，并应删除已有同名值。
+    """
+    cache = MemoryBackend(ttl=30)
+    cache.set("key", "old", region="zero_ttl")
+    cache.set("key", "new", ttl=0, region="zero_ttl")
+
+    assert cache.get("key", region="zero_ttl") is None
+
+
+def test_memory_backend_preserves_negative_ttl():
+    """
+    显式负 TTL 应保持立即过期语义，并删除已有同名值。
+    """
+    cache = MemoryBackend(ttl=30)
+    cache.set("key", "old", region="negative_ttl")
+    cache.set("key", "new", ttl=-1, region="negative_ttl")
+
+    assert cache.get("key", region="negative_ttl") is None
+
+
+def test_memory_backend_uses_zero_default_ttl():
+    """
+    backend 的默认 ttl=0 应保持立即过期语义。
+    """
+    cache = MemoryBackend(ttl=0)
+    cache.set("key", "value", region="zero_default_ttl")
+
+    assert cache.get("key", region="zero_default_ttl") is None
+
+
+def test_redis_backend_treats_zero_ttl_as_expired():
+    """
+    Redis backend 应删除 ttl=0 的同名 key，避免向 Redis 发送无效 EX 0。
+    """
+    class RedisHelperStub:
+        deleted = None
+        set_called = False
+
+        def set(self, key, value, ttl, region, **kwargs):
+            self.set_called = True
+
+        def delete(self, key, region):
+            self.deleted = (key, region)
+
+    cache = object.__new__(RedisBackend)
+    cache.ttl = 30
+    cache.redis_helper = RedisHelperStub()
+
+    cache.set("key", "value", ttl=0, region="zero_ttl")
+
+    assert cache.redis_helper.deleted == ("key", "zero_ttl")
+    assert not cache.redis_helper.set_called
+
+
+def test_async_redis_backend_treats_zero_ttl_as_expired():
+    """
+    异步 Redis backend 应删除 ttl=0 的同名 key，不发送无效 EX 0。
+    """
+    class AsyncRedisHelperStub:
+        deleted = None
+        set_called = False
+
+        async def set(self, key, value, ttl, region, **kwargs):
+            self.set_called = True
+
+        async def delete(self, key, region):
+            self.deleted = (key, region)
+
+    async def run_test():
+        cache = object.__new__(AsyncRedisBackend)
+        cache.ttl = 30
+        cache.redis_helper = AsyncRedisHelperStub()
+        await cache.set("key", "value", ttl=0, region="zero_ttl")
+        return cache.redis_helper
+
+    helper = asyncio.run(run_test())
+
+    assert helper.deleted == ("key", "zero_ttl")
+    assert not helper.set_called
 
 
 def test_redis_original_key_decodes_quoted_key():

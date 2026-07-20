@@ -381,6 +381,12 @@ class _MemoryTLRUCache(MemoryTLRUCache):
         """
         使用指定 TTL 设置缓存值
         """
+        if ttl <= 0:
+            try:
+                del self[key]
+            except KeyError:
+                pass
+            return
         self.__setting_ttls[key] = ttl
         try:
             super().__setitem__(key, value)
@@ -409,7 +415,7 @@ class MemoryBackend(CacheBackend):
         """
         self.cache_type = cache_type
         self.maxsize = maxsize or DEFAULT_CACHE_SIZE
-        self.ttl = ttl or DEFAULT_CACHE_TTL
+        self.ttl = DEFAULT_CACHE_TTL if ttl is None else ttl
 
     def __get_region_cache(self, region: str) -> Optional[Union[_MemoryTLRUCache, MemoryLRUCache]]:
         """
@@ -428,7 +434,7 @@ class MemoryBackend(CacheBackend):
         :param ttl: 缓存的存活时间，不传入为永久缓存，单位秒
         :param region: 缓存的区
         """
-        ttl = ttl or self.ttl
+        ttl = self.ttl if ttl is None else ttl
         maxsize = kwargs.get("maxsize", self.maxsize)
         region = self.get_region(region)
         # 设置缓存值
@@ -638,7 +644,10 @@ class RedisBackend(CacheBackend):
         :param region: 缓存的区
         :param kwargs: kwargs
         """
-        ttl = ttl or self.ttl
+        ttl = self.ttl if ttl is None else ttl
+        if ttl is not None and ttl <= 0:
+            self.redis_helper.delete(key, region=region)
+            return
         self.redis_helper.set(key, value, ttl=ttl, region=region, **kwargs)
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
@@ -719,7 +728,10 @@ class AsyncRedisBackend(AsyncCacheBackend):
         :param region: 缓存的区
         :param kwargs: kwargs
         """
-        ttl = ttl or self.ttl
+        ttl = self.ttl if ttl is None else ttl
+        if ttl is not None and ttl <= 0:
+            await self.redis_helper.delete(key, region=region)
+            return
         await self.redis_helper.set(key, value, ttl=ttl, region=region, **kwargs)
 
     async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
