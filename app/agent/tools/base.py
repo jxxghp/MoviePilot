@@ -620,7 +620,8 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         发送工具通知消息。
 
         WebAgent 渠道没有后端模块实例，前端流式面板通过 Agent 上下文中的
-        回调直接接收通知；其它渠道继续走统一消息链。
+        回调直接接收通知；无渠道的后台任务清空渠道侧定位信息后交由消息链广播，
+        其它渠道继续走统一消息链。
         """
         callback = self._agent_context.get("notification_callback")
         if (
@@ -629,6 +630,20 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         ):
             callback(notification)
             return
+
+        if not self._channel or not self._source:
+            notification = notification.model_copy(
+                update={
+                    "channel": None,
+                    "source": None,
+                    "userid": None,
+                    "username": notification.username
+                    or self._username
+                    or settings.SUPERUSER,
+                    "original_message_id": None,
+                    "original_chat_id": None,
+                }
+            )
 
         await ToolChain().async_post_message(notification)
 

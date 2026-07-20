@@ -46,6 +46,7 @@ from app.agent.tools.impl.create_agent_task import CreateAgentTaskTool
 from app.agent.tools.impl.delete_agent_task import DeleteAgentTaskTool
 from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
 from app.agent.tools.impl.query_schedulers import QuerySchedulersTool
+from app.agent.tools.impl.run_agent_task import RunAgentTaskTool
 from app.agent.tools.impl.run_scheduler import RunSchedulerTool
 from app.agent.tools.impl.update_agent_task import UpdateAgentTaskTool
 from app.agent.tools.impl.query_workflows import QueryWorkflowsTool
@@ -148,6 +149,7 @@ class MoviePilotToolFactory:
         CreateAgentTaskTool,
         QueryAgentTasksTool,
         UpdateAgentTaskTool,
+        RunAgentTaskTool,
         DeleteAgentTaskTool,
         QuerySchedulersTool,
         RunSchedulerTool,

@@ -296,6 +296,21 @@ def test_web_agent_admin_context_uses_current_user_id():
         user_oper.return_value.async_get_by_id.assert_awaited_once_with(7)
 
 
+def test_web_agent_reused_for_background_task_disables_streaming():
+    """Web Agent 被后台任务复用且渠道已清空时应改用非流式广播。"""
+    agent = _WebAgentMoviePilotAgent(
+        session_id="web-agent:scheduled-session",
+        user_id="7",
+        channel=None,
+        source=None,
+        username="admin",
+        replay_mode=ReplyMode.DISPATCH,
+    )
+
+    assert agent.is_background is True
+    assert agent._should_stream() is False
+
+
 def test_web_agent_channel_supports_streaming_and_attachments():
     """WebAgent 渠道应声明流式、多媒体和文件发送能力。"""
     assert ChannelCapabilityManager.supports_capability(

@@ -25,6 +25,7 @@ class ToolTag(str, Enum):
     Plugin = "plugin"
     Workflow = "workflow"
     Scheduler = "scheduler"
+    AgentTask = "agent_task"
     File = "file"
     Directory = "directory"
     Web = "web"

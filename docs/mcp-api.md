@@ -187,12 +187,17 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 
 | 工具 | 说明 |
 | :--- | :--- |
-| `create_agent_task` | 创建单次或周期任务，并保存任务内容及当前用户、会话和消息渠道 |
+| `create_agent_task` | 创建单次或周期任务，并保存任务内容及当前用户、会话上下文 |
 | `query_agent_tasks` | 查询任务配置、启用状态、下次执行时间及最近执行结果 |
 | `update_agent_task` | 修改任务内容或触发器，也可通过 `enabled` 暂停、恢复任务 |
+| `run_agent_task` | 使用整数 `task_id` 将当前用户已启用的任务提交为立即执行 |
 | `delete_agent_task` | 永久删除任务并立即移除运行时调度 |
 
-`trigger_type=date` 表示单次执行：“30 分钟后检查”这类相对时间传 `delay_minutes=30`，由后端计算精确时间；固定时间则传 ISO 8601 `trigger`，支持精确到秒。`trigger_type=cron` 使用标准五段 cron（分、时、日、月、周），适合周期检查。未显式携带时区的时间按 MoviePilot 的 `TZ` 配置解释。任务由内存调度器精确触发，配置持久化到数据库，服务重启后会自动恢复；触发后 Agent 在原会话中执行 `content` 并把结果发送到原消息渠道。通过无会话上下文的 MCP/CLI 创建时，结果改发到 MoviePilot 已配置的管理员通知渠道。
+`trigger_type=date` 表示单次执行：“30 分钟后检查”这类相对时间传 `delay_minutes=30`，由后端计算精确时间；固定时间则传 ISO 8601 `trigger`，支持精确到秒。`trigger_type=cron` 使用标准五段 cron（分、时、日、月、周），适合周期检查。未显式携带时区的时间按 MoviePilot 的 `TZ` 配置解释。任务由内存调度器精确触发，配置持久化到数据库，服务重启后会自动恢复；触发后 Agent 在原会话中执行 `content`，执行过程及最终结果均不绑定创建任务时的消息渠道，而是通过 MoviePilot 已配置的通知渠道广播。如果 Agent 在执行过程中已通过消息工具发送完整结果，任务结束时不会再次发送相同的最终回复。
+
+Agent 自主任务工具使用数据库中的整数 `task_id`。`query_schedulers` 与 `run_scheduler` 仅面向系统、插件和工作流注册的运行时定时服务，使用字符串 `job_id`，不会返回或执行 `agent-task-*`。两类 ID 不可混用；需要立即执行自主任务时，应先通过 `query_agent_tasks` 确认归属和状态，再调用 `run_agent_task`。立即执行只提交任务，不在当前工具调用内等待结果，从而避免同一 Agent 会话互相等待；执行结果仍按上述通知规则广播。
+
+上述过滤只约束 Agent 工具，避免模型混用两类任务。前端系统设置和仪表盘使用的 `/api/v1/dashboard/schedule` 仍返回完整运行时列表，其中包含 `provider=[Agent]` 的自主任务；前端通过 `/api/v1/system/runscheduler` 立即执行这类列表项的行为也保持不变。
 
 创建单次任务的参数示例：
 

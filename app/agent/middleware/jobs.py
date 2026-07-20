@@ -205,8 +205,11 @@ You have a scheduled jobs system for user-requested delayed or recurring work.
 
 Rules:
 - For new delayed, recurring, reminder, or monitoring work, use the dedicated
-  `create_agent_task`, `query_agent_tasks`, `update_agent_task`, and
-  `delete_agent_task` tools. Do not create or edit JOB.md files for new tasks.
+  `create_agent_task`, `query_agent_tasks`, `update_agent_task`, `run_agent_task`,
+  and `delete_agent_task` tools. These tools use integer task IDs. Do not create
+  or edit JOB.md files for new tasks.
+- Use `query_schedulers` and `run_scheduler` only for MoviePilot system, plugin,
+  or workflow runtime services; never pass their string job IDs to Agent task tools.
 - Do not create tasks for immediate one-time work or work already handled by MoviePilot schedulers.
 - Entries listed above are legacy JOB.md tasks. Read their files only when a heartbeat asks you to execute them.
 - During heartbeat checks, act only on `pending` or `in_progress` jobs, update status/last_run/logs, and leave recurring jobs `pending` after each run.

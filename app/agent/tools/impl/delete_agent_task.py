@@ -17,7 +17,7 @@ class DeleteAgentTaskTool(MoviePilotTool):
     """永久删除 Agent 自主定时任务。"""
 
     name: str = "delete_agent_task"
-    tags: list[str] = [ToolTag.Write, ToolTag.Scheduler, ToolTag.Admin]
+    tags: list[str] = [ToolTag.Write, ToolTag.AgentTask, ToolTag.Admin]
     description: str = (
         "Permanently delete an autonomous agent task and remove its runtime schedule. "
         "Use update_agent_task with enabled=false when the user only wants to pause it."

@@ -81,14 +81,14 @@ class CreateAgentTaskTool(MoviePilotTool):
     """创建可精确唤醒当前 Agent 会话的自主定时任务。"""
 
     name: str = "create_agent_task"
-    tags: list[str] = [ToolTag.Write, ToolTag.Scheduler, ToolTag.Admin]
+    tags: list[str] = [ToolTag.Write, ToolTag.AgentTask, ToolTag.Admin]
     description: str = (
         "Create a persistent autonomous agent task only when the user explicitly asks "
         "for delayed, scheduled, recurring, reminder, or monitoring work. Use trigger_type "
         "'date' with delay_minutes for requests such as 'check in 30 minutes', an exact "
         "trigger time for other one-time work, and 'cron' for recurring schedules. When "
         "fired, MoviePilot wakes the agent in this conversation, executes content, and "
-        "sends the result to the user."
+        "broadcasts user-facing messages through the configured notification channels."
     )
     args_schema: Type[BaseModel] = CreateAgentTaskInput
     require_admin: bool = True

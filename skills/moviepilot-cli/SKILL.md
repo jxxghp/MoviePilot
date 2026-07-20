@@ -1,6 +1,6 @@
 ---
 name: moviepilot-cli
-version: 4
+version: 6
 description: >-
   Use this skill when the user asks to operate MoviePilot through the local
   `moviepilot tool` MCP CLI for normal product workflows: media search, torrent
@@ -58,7 +58,7 @@ Always run `show <command>` before calling a command — parameter names are not
 | Library | query_library_exists, query_library_latest, transfer_file, scrape_metadata, query_transfer_history |
 | Files | list_directory, query_directory_settings |
 | Sites | query_sites, query_site_userdata, test_site, update_site, update_site_cookie |
-| System | query_schedulers, run_scheduler, create_agent_task, query_agent_tasks, update_agent_task, delete_agent_task, query_workflows, run_workflow, query_rule_groups, query_episode_schedule, send_message |
+| System | query_schedulers, run_scheduler, create_agent_task, query_agent_tasks, update_agent_task, run_agent_task, delete_agent_task, query_workflows, run_workflow, query_rule_groups, query_episode_schedule, send_message |
 
 ## Workflows
 
@@ -192,6 +192,17 @@ Use autonomous tasks only when the user explicitly requests delayed, recurring,
 reminder, or monitoring behavior. Immediate work should run directly. Use the
 MoviePilot `TZ` setting for local times.
 
+Scheduled runs reuse the original Agent session context, but user-facing
+messages are broadcast through MoviePilot's configured notification channels
+instead of being tied to the channel that created the task. If the Agent sends
+the complete result with a message tool during execution, it does not send the
+same final reply again when the run finishes.
+
+Autonomous task tools use the integer `task_id` returned by
+`query_agent_tasks`. `query_schedulers` and `run_scheduler` are only for
+MoviePilot system, plugin, and workflow runtime services and use string
+`job_id` values; never mix these IDs or use those tools for autonomous tasks.
+
 For a relative one-time request, use `date` with `delay_minutes`; MoviePilot
 calculates and persists the exact run time:
 `moviepilot tool run create_agent_task name="检查电影资源" content="搜索电影《示例电影》是否有资源并报告，不要自动下载。" trigger_type=date delay_minutes=30`
@@ -208,6 +219,10 @@ List tasks and inspect `next_run_at` and the latest result:
 
 Pause or resume a task:
 `moviepilot tool run update_agent_task task_id=1 enabled=false`
+
+Queue an enabled task for immediate execution without waiting in the current
+Agent turn:
+`moviepilot tool run run_agent_task task_id=1`
 
 Delete a task only after confirming permanent removal with the user:
 `moviepilot tool run delete_agent_task task_id=1`
