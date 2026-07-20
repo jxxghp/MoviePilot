@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 import time
 
 from app.core.cache import (
@@ -292,6 +293,48 @@ def test_cached_zero_ttl_does_not_cache_async_result():
         return await load_value(), await load_value()
 
     assert asyncio.run(run_test()) == (1, 2)
+
+
+def test_memory_backend_global_clear_is_safe_during_region_creation():
+    """
+    全局清理与新 region 创建应由同一把锁串行化，不能并发修改注册表。
+    """
+    cache = MemoryBackend()
+    cache.set("existing", 1, region="clear_existing")
+    started = threading.Event()
+    release = threading.Event()
+    region_cache = MemoryBackend._region_caches[cache.get_region("clear_existing")]
+    original_clear = region_cache.clear
+
+    def blocking_clear():
+        started.set()
+        release.wait(timeout=5)
+        original_clear()
+
+    region_cache.clear = blocking_clear
+    clear_thread = threading.Thread(target=cache.clear, args=(None,))
+    clear_thread.start()
+    assert started.wait(timeout=5)
+
+    set_thread = threading.Thread(
+        target=cache.set,
+        args=("new", 2),
+        kwargs={"region": "clear_new"},
+    )
+    set_thread.start()
+    set_thread.join(timeout=0.1)
+
+    assert set_thread.is_alive()
+
+    release.set()
+    clear_thread.join(timeout=5)
+    set_thread.join(timeout=5)
+
+    assert not clear_thread.is_alive()
+    assert not set_thread.is_alive()
+    assert cache.get("existing", region="clear_existing") is None
+    assert cache.get("new", region="clear_new") == 2
+
 
 def test_memory_backend_rejects_region_cache_type_conflicts():
     """

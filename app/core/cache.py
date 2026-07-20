@@ -503,19 +503,18 @@ class MemoryBackend(CacheBackend):
 
         :param region: 缓存的区，为None时清空所有区缓存
         """
-        if region:
-            # 清理指定缓存区
-            region_cache = self.__get_region_cache(region)
-            if region_cache:
-                with self._lock:
+        with self._lock:
+            if region:
+                # 清理指定缓存区
+                region_cache = self.__get_region_cache(region)
+                if region_cache is not None:
                     region_cache.clear()
-                logger.debug(f"Cleared cache for region: {region}")
-        else:
-            # 清除所有区域的缓存
-            for region_cache in self._region_caches.values():
-                with self._lock:
+                    logger.debug(f"Cleared cache for region: {region}")
+            else:
+                # 清除所有区域的缓存
+                for region_cache in self._region_caches.values():
                     region_cache.clear()
-            logger.info("Cleared all cache")
+                logger.info("Cleared all cache")
 
     def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> Generator[Tuple[str, Any], None, None]:
         """
