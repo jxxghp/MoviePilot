@@ -435,7 +435,7 @@ class MemoryBackend(CacheBackend):
         :param region: 缓存的区
         """
         ttl = self.ttl if ttl is None else ttl
-        maxsize = kwargs.get("maxsize", self.maxsize)
+        maxsize = kwargs.get("maxsize") or self.maxsize
         region = self.get_region(region)
         # 设置缓存值
         with self._lock:

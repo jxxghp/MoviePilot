@@ -325,6 +325,21 @@ def test_memory_backend_reuses_existing_region_cache():
 
     assert MemoryBackend._region_caches[cache.get_region(region)] is first_region_cache
 
+
+def test_memory_backend_uses_default_maxsize_for_zero_override():
+    """
+    动态 maxsize=0 应与构造参数一致，回退到 backend 默认容量。
+    """
+    region = "zero_maxsize_override"
+    cache = MemoryBackend(maxsize=8)
+    cache.set("key", "value", maxsize=0, region=region)
+
+    region_cache = MemoryBackend._region_caches[cache.get_region(region)]
+
+    assert region_cache.maxsize == 8
+    assert cache.get("key", region=region) == "value"
+
+
 def test_memory_backend_preserves_zero_ttl():
     """
     显式 ttl=0 不应回退到默认 TTL，并应删除已有同名值。
