@@ -46,6 +46,8 @@ Doctor 默认执行只读检查：
 
 `--deep` 会启用可能较慢或更依赖环境的检查，例如 PostgreSQL TCP 连通性。
 
+整体状态只聚合会影响 MoviePilot 核心运行的诊断项。插件独立日志以及主日志中可明确识别的插件子系统异常仍会作为 `warn/degraded` 诊断项保留，但其 `affects_report_status` 为 `false`，不会单独把整体状态从 `healthy` 降为 `degraded`；同一日志中若还存在核心错误，核心错误仍会参与状态聚合。
+
 ## 自救能力
 
 `moviepilot doctor --fix` 只做白名单安全修复：

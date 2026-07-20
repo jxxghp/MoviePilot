@@ -243,6 +243,10 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 ]
 ```
 
+#### 系统诊断工具
+
+`query_doctor_report` 以只读方式返回 MoviePilot Doctor 诊断报告，可通过 `deep` 启用深度检查，并通过 `include_details` 控制是否返回完整详情。每条诊断项的 `affects_report_status` 表示其是否参与整体状态聚合；插件日志异常会保留为 `warn/degraded` 线索，但该字段为 `false`，不会单独把系统整体状态降为 `degraded`。
+
 ### 2. 调用工具
 
 **POST** `/api/v1/mcp/tools/call`

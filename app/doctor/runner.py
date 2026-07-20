@@ -67,10 +67,23 @@ class DoctorRunner:
         recommendation: str,
         fixable: bool = False,
         fixed: bool = False,
+        affects_report_status: bool = True,
         context: Optional[dict[str, Any]] = None,
     ) -> DoctorFinding:
         """
         添加诊断发现并返回该对象。
+
+        :param finding_id: 诊断项稳定标识
+        :param severity: 诊断严重级别
+        :param status: 单项诊断状态
+        :param title: 诊断项标题
+        :param detail: 诊断详情
+        :param recommendation: 处理建议
+        :param fixable: 是否支持 Doctor 自动修复
+        :param fixed: 本次运行是否已修复
+        :param affects_report_status: 是否参与整体报告状态聚合
+        :param context: 可选结构化上下文
+        :return: 新增的诊断发现
         """
         finding = DoctorFinding(
             id=finding_id,
@@ -81,6 +94,7 @@ class DoctorRunner:
             recommendation=recommendation,
             fixable=fixable,
             fixed=fixed,
+            affects_report_status=affects_report_status,
             context=context or {},
         )
         self.report.add_finding(finding)
@@ -88,6 +102,7 @@ class DoctorRunner:
 
     @staticmethod
     def _environment() -> dict[str, Any]:
+        """收集 Doctor 报告所需的本地运行环境信息。"""
         return {
             "runtime": "Docker" if SystemUtils.is_docker() else platform.system(),
             "platform": platform.platform(),

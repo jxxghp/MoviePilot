@@ -988,7 +988,7 @@ def logs(lines: int, follow: bool, stdio: bool, frontend_log: bool) -> None:
 @click.option("--fix", is_flag=True, help="执行白名单安全修复")
 @click.option("--deep", is_flag=True, help="执行可能较慢的深度检查")
 def doctor(json_output: bool, fix: bool, deep: bool) -> None:
-    """离线诊断本地 MoviePilot 运行环境"""
+    """离线诊断本地 MoviePilot 运行环境，插件日志告警不影响整体状态"""
     from app.doctor import run_doctor
     from app.doctor.formatters import format_json_report, format_text_report
 

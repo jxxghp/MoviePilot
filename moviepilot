@@ -249,6 +249,7 @@ Options:
 
 说明:
   - doctor 是离线诊断入口，不依赖后端服务已经启动
+  - 插件日志异常会保留为告警，但不会单独降低系统整体状态
   - Docker 环境可执行 docker exec <container> moviepilot doctor
 EOF
 }

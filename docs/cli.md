@@ -392,6 +392,7 @@ moviepilot doctor --deep
 - `--json` 输出稳定 JSON，可供 Agent、脚本或 Issue 流程收集
 - `--fix` 只执行白名单安全修复，例如清理过期 runtime 文件或补齐不合法的 `API_TOKEN`
 - `--deep` 执行可能较慢的深度探测，例如 PostgreSQL TCP 连通性检查
+- 插件日志异常会保留为诊断告警并标记 `affects_report_status=false`，但不会单独降低系统整体状态；核心错误仍正常参与状态聚合
 - Docker 环境可使用 `docker exec <container> moviepilot doctor`；如果容器已退出，也可用镜像挂载同一配置目录运行 `python -m app.cli doctor`
 
 日志：

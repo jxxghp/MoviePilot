@@ -52,6 +52,7 @@ class DoctorFinding:
     recommendation: str
     fixable: bool = False
     fixed: bool = False
+    affects_report_status: bool = True
     context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,6 +68,7 @@ class DoctorFinding:
             "recommendation": self.recommendation,
             "fixable": self.fixable,
             "fixed": self.fixed,
+            "affects_report_status": self.affects_report_status,
         }
         if self.context:
             payload["context"] = self.context
@@ -90,7 +92,11 @@ class DoctorReport:
         """
         根据诊断发现计算整体状态。
         """
-        unresolved = [finding for finding in self.findings if not finding.fixed]
+        unresolved = [
+            finding
+            for finding in self.findings
+            if not finding.fixed and finding.affects_report_status
+        ]
         if any(finding.severity == DoctorSeverity.Error for finding in unresolved):
             return DoctorReportStatus.Failed
         if any(finding.severity == DoctorSeverity.Warn for finding in unresolved):

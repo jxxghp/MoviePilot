@@ -260,5 +260,6 @@ Use `air_date` to find a block of recently-aired episodes that likely correspond
 ## Error handling
 
 Missing configuration or authentication failure: run `moviepilot doctor` to
-verify the local MoviePilot installation and settings. Do not ask the user to
-paste the API key into the prompt for local CLI usage.
+verify the local MoviePilot installation and settings. Plugin-only log findings
+remain visible but do not by themselves downgrade the overall Doctor status.
+Do not ask the user to paste the API key into the prompt for local CLI usage.

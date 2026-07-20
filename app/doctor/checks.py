@@ -45,6 +45,14 @@ LOG_ERROR_PATTERNS = (
     re.compile(r"加载插件.+出错"),
     re.compile(r"数据库更新失败"),
 )
+LOG_RECORD_PATTERN = re.compile(
+    r"(?:【(?:DEBUG|INFO|WARNING|ERROR|CRITICAL)】|(?:DEBUG|INFO|WARNING|ERROR|CRITICAL):)"
+)
+CONSOLE_LOGGER_PATTERN = re.compile(r"\[([^\]]+)]")
+PLUGIN_ERROR_PATTERNS = (
+    re.compile(r"(?:^|\s-\s)plugin\.py\s+-\s", re.IGNORECASE),
+    re.compile(r"插件.+(?:出错|失败|异常|错误)"),
+)
 SENSITIVE_PATTERNS = (
     re.compile(r"(?i)(api[_-]?token|token|password|secret|cookie)(\s*[:=]\s*)[^\s&]+"),
     re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
@@ -92,10 +100,23 @@ class DoctorRunnerProtocol:
         recommendation: str,
         fixable: bool = False,
         fixed: bool = False,
+        affects_report_status: bool = True,
         context: Optional[dict[str, Any]] = None,
     ) -> DoctorFinding:
         """
         添加诊断发现。
+
+        :param finding_id: 诊断项稳定标识
+        :param severity: 诊断严重级别
+        :param status: 单项诊断状态
+        :param title: 诊断项标题
+        :param detail: 诊断详情
+        :param recommendation: 处理建议
+        :param fixable: 是否支持 Doctor 自动修复
+        :param fixed: 本次运行是否已修复
+        :param affects_report_status: 是否参与整体报告状态聚合
+        :param context: 可选结构化上下文
+        :return: 新增的诊断发现
         """
         raise NotImplementedError
 
@@ -275,11 +296,45 @@ def _tail_lines(path: Path, max_lines: int = 120, max_bytes: int = 256 * 1024) -
 
 
 def _find_error_lines(lines: list[str], max_matches: int = 12) -> list[str]:
+    """从近期日志中提取错误关键词命中的行。"""
     matches: list[str] = []
     for line in lines:
         if any(pattern.search(line) for pattern in LOG_ERROR_PATTERNS):
             matches.append(line)
     return matches[-max_matches:]
+
+
+def _partition_error_lines(
+    lines: list[str],
+    plugin_logger_names: set[str],
+    max_matches: int = 12,
+) -> tuple[list[str], list[str]]:
+    """
+    将主日志错误线索拆分为核心错误和插件子系统错误。
+
+    :param lines: 近期日志行
+    :param plugin_logger_names: 已发现的插件控制台 logger 名称
+    :param max_matches: 每类最多保留的错误行数
+    :return: 核心错误行和插件错误行
+    """
+    core_matches: list[str] = []
+    plugin_matches: list[str] = []
+    plugin_context = False
+    for line in lines:
+        if LOG_RECORD_PATTERN.search(line):
+            logger_match = CONSOLE_LOGGER_PATTERN.search(line)
+            console_logger = logger_match.group(1).strip().lower() if logger_match else ""
+            plugin_context = (
+                console_logger in plugin_logger_names
+                or any(pattern.search(line) for pattern in PLUGIN_ERROR_PATTERNS)
+            )
+        if not any(pattern.search(line) for pattern in LOG_ERROR_PATTERNS):
+            continue
+        if plugin_context or any(pattern.search(line) for pattern in PLUGIN_ERROR_PATTERNS):
+            plugin_matches.append(line)
+        else:
+            core_matches.append(line)
+    return core_matches[-max_matches:], plugin_matches[-max_matches:]
 
 
 def _frontend_dir() -> Path:
@@ -687,14 +742,18 @@ def _check_frontend_assets(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_logs(runner: DoctorRunnerProtocol) -> None:
+    """扫描近期日志，并区分核心运行异常与插件扩展异常。"""
     log_files = [
         _backend_app_log_file(),
         _backend_stdio_log_file(),
         _frontend_stdio_log_file(),
     ]
     plugin_log_dir = settings.LOG_PATH / "plugins"
+    plugin_logger_names: set[str] = set()
     if plugin_log_dir.exists():
-        log_files.extend(sorted(plugin_log_dir.rglob("*.log"))[:20])
+        plugin_log_files = sorted(plugin_log_dir.rglob("*.log"))
+        plugin_logger_names = {path.stem.lower() for path in plugin_log_files}
+        log_files.extend(plugin_log_files[:20])
 
     found_any = False
     for path in log_files:
@@ -702,23 +761,44 @@ def _check_logs(runner: DoctorRunnerProtocol) -> None:
             continue
         found_any = True
         lines = _tail_lines(path)
-        errors = _find_error_lines(lines)
-        if not errors:
+        is_plugin_log = plugin_log_dir in path.parents
+        if is_plugin_log:
+            scoped_errors = [(True, _find_error_lines(lines))]
+        else:
+            core_errors, plugin_errors = _partition_error_lines(
+                lines,
+                plugin_logger_names,
+            )
+            scoped_errors = [(False, core_errors), (True, plugin_errors)]
+        if not any(errors for _, errors in scoped_errors):
             continue
-        is_plugin = plugin_log_dir in path.parents
-        runner.add(
-            finding_id=f"logs.{path.stem}.recent_errors",
-            severity=DoctorSeverity.Warn,
-            status=DoctorFindingStatus.Degraded,
-            title="最近日志存在插件异常" if is_plugin else "最近日志存在错误线索",
-            detail="\n".join(errors),
-            recommendation=(
-                "可使用安全模式启动后检查插件配置。"
-                if is_plugin
-                else "结合前后的启动日志定位异常；必要时执行 `moviepilot doctor --json` 交给 Agent 或 Issue 流程。"
-            ),
-            context={"log_file": str(path), "matches": len(errors)},
-        )
+        has_core_errors = bool(scoped_errors[0][1]) if not is_plugin_log else False
+        for is_plugin_error, errors in scoped_errors:
+            if not errors:
+                continue
+            finding_suffix = (
+                "plugin_errors"
+                if is_plugin_error and has_core_errors
+                else "recent_errors"
+            )
+            runner.add(
+                finding_id=f"logs.{path.stem}.{finding_suffix}",
+                severity=DoctorSeverity.Warn,
+                status=DoctorFindingStatus.Degraded,
+                title="最近日志存在插件异常" if is_plugin_error else "最近日志存在错误线索",
+                detail="\n".join(errors),
+                recommendation=(
+                    "可使用安全模式启动后检查插件配置。"
+                    if is_plugin_error
+                    else "结合前后的启动日志定位异常；必要时执行 `moviepilot doctor --json` 交给 Agent 或 Issue 流程。"
+                ),
+                affects_report_status=not is_plugin_error,
+                context={
+                    "log_file": str(path),
+                    "matches": len(errors),
+                    "component": "plugin" if is_plugin_error else "core",
+                },
+            )
 
     if not found_any:
         runner.add(
