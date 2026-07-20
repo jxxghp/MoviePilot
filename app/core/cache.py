@@ -1069,7 +1069,7 @@ def FileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -> Cac
     """
     if settings.CACHE_BACKEND_TYPE == "redis":
         # 如果使用 Redis，则设置缓存的存活时间为配置的天数转换为秒
-        return RedisBackend(ttl=ttl or settings.TEMP_FILE_DAYS * 24 * 3600)
+        return RedisBackend(ttl=ttl if ttl is not None else settings.TEMP_FILE_DAYS * 24 * 3600)
     else:
         # 如果使用文件系统，在停止服务时会自动清理过期文件
         return FileBackend(base=base)
@@ -1081,7 +1081,7 @@ def AsyncFileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -
     """
     if settings.CACHE_BACKEND_TYPE == "redis":
         # 如果使用 Redis，则设置缓存的存活时间为配置的天数转换为秒
-        return AsyncRedisBackend(ttl=ttl or settings.TEMP_FILE_DAYS * 24 * 3600)
+        return AsyncRedisBackend(ttl=ttl if ttl is not None else settings.TEMP_FILE_DAYS * 24 * 3600)
     else:
         # 如果使用文件系统，在停止服务时会自动清理过期文件
         return AsyncFileBackend(base=base)
