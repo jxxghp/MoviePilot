@@ -1420,6 +1420,10 @@ class PluginHelper(metaclass=WeakSingleton):
     def __run_runtime_healthcheck(cls) -> Tuple[bool, str]:
         """
         安装完成后立即执行运行环境自检，尽量在插件加载前发现依赖图已被污染。
+
+        对于环境中预先存在的「损坏包」类报错（例如 dist-info 缺失 METADATA），
+        pip check 会以非零返回码退出。此类问题与本次插件依赖安装无关，仅记录警告，
+        不阻断安装流程；只有真正的依赖冲突才会触发主程序依赖恢复。
         """
         checks = [
             ("pip check", cls.__build_runtime_pip_command("check")),
@@ -1428,8 +1432,49 @@ class PluginHelper(metaclass=WeakSingleton):
         for check_name, command in checks:
             success, message = SystemUtils.execute_with_subprocess(command)
             if not success:
+                if check_name == "pip check":
+                    broken_packages, real_conflicts = cls.__parse_pip_check_output(message)
+                    if broken_packages and not real_conflicts:
+                        logger.warning(
+                            "[PIP] 检测到环境中存在损坏的包，但与当前插件依赖安装无关，已跳过阻断。"
+                            "建议手动清理对应 dist-info 目录后重新执行 pip check：\n"
+                            + "\n".join(broken_packages)
+                        )
+                        continue
                 return False, f"{check_name}失败：{message}"
         return True, ""
+
+    @staticmethod
+    def __parse_pip_check_output(output: str) -> Tuple[List[str], List[str]]:
+        """
+        解析 pip check 输出，将其中的「损坏包」警告与真正的依赖冲突分开。
+
+        pip check 对损坏包的典型输出形如：
+            The package `pip-hello-world` is broken or incomplete (unable to read `METADATA`).
+        这类问题与本次插件依赖安装无关，不作为阻断依据。
+
+        :param output: pip check 失败时由 execute_with_subprocess 包装后的完整信息
+        :return: (损坏包警告列表, 真正依赖冲突列表)
+        """
+        broken_packages = []
+        real_conflicts = []
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if "is broken or incomplete" in stripped:
+                broken_packages.append(stripped)
+                continue
+            # 跳过 pip check 自身的统计与提示行
+            if stripped.startswith((
+                    "Using ", "Checked ", "Found ", "No broken",
+            )):
+                continue
+            # 跳过 execute_with_subprocess / __run_runtime_healthcheck 包装行
+            if stripped.startswith(("命令：", "标准输出：", "错误输出：", "pip check失败")):
+                continue
+            real_conflicts.append(stripped)
+        return broken_packages, real_conflicts
 
     @classmethod
     def __repair_main_runtime_dependencies(cls, snapshot_file: Optional[Path] = None) -> Tuple[bool, str]:

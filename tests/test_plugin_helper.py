@@ -1059,6 +1059,169 @@ class TestPluginHelper:
         assert 1 == len(repair_commands)
         assert "runtime-constraints-" in repair_commands[0][-1]
 
+    def test_pip_install_skips_broken_package_warning_in_pip_check(self):
+        """
+        当 pip check 仅报告无关包损坏（如 pip-hello-world METADATA 缺失）时，
+        不应触发主程序依赖恢复或阻断插件依赖安装流程。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        repair_commands = []
+        pip_check_cmd = PluginHelper._PluginHelper__build_runtime_pip_command("check")
+        broken_pip_check_message = (
+            "命令：/opt/venv/bin/pip check，执行失败，返回码：1，错误输出："
+            "Using Python 3.12.13 environment at: /opt/venv\n"
+            "Checked 237 packages in 4ms\n"
+            "Found 1 incompatibility\n"
+            "The package `pip-hello-world` is broken or incomplete "
+            "(unable to read `METADATA`). Consider recreating the virtualenv, "
+            "or removing the package directory at: "
+            "/opt/venv/lib/python3.12/site-packages/pip_hello_world-0.1.dist-info."
+        )
+
+        def fake_execute(cmd, env=None, safe_command=None):
+            if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
+                if "-c" not in cmd:
+                    repair_commands.append(cmd)
+                return True, "installed"
+            if cmd == pip_check_cmd:
+                return False, broken_pip_check_message
+            if len(cmd) >= 3 and cmd[1] == "-c":
+                return True, "probe ok"
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            with patch.object(
+                    PluginHelper,
+                    "_PluginHelper__get_protected_runtime_packages",
+                    return_value={"fastapi": Version("0.115.14")}
+            ):
+                with patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                    with patch("app.helper.package._find_uv", return_value=None):
+                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert success
+        assert "installed" in message
+        # 不应触发主程序依赖恢复
+        assert repair_commands == []
+
+    def test_pip_install_blocks_when_real_dependency_conflict_remains(self):
+        """
+        pip check 同时报告损坏包和真正的依赖冲突时，仍然应阻断安装并触发恢复。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        repair_commands = []
+        pip_check_cmd = PluginHelper._PluginHelper__build_runtime_pip_command("check")
+        mixed_pip_check_message = (
+            "命令：/opt/venv/bin/pip check，执行失败，返回码：1，错误输出："
+            "Using Python 3.12.13 environment at: /opt/venv\n"
+            "Checked 237 packages in 4ms\n"
+            "Found 2 incompatibilities\n"
+            "The package `pip-hello-world` is broken or incomplete "
+            "(unable to read `METADATA`).\n"
+            "moviepilot 1.0 requires fastapi>=0.110, but you have fastapi 0.100."
+        )
+
+        def fake_execute(cmd, env=None, safe_command=None):
+            if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
+                if "-c" not in cmd:
+                    repair_commands.append(cmd)
+                    return True, "repaired"
+                return True, "installed"
+            if cmd == pip_check_cmd:
+                return False, mixed_pip_check_message
+            if len(cmd) >= 3 and cmd[1] == "-c":
+                return True, "probe ok"
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            with patch.object(
+                    PluginHelper,
+                    "_PluginHelper__get_protected_runtime_packages",
+                    return_value={"fastapi": Version("0.115.14")}
+            ):
+                with patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                    with patch("app.helper.package._find_uv", return_value=None):
+                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert not success
+        # 检测到真正的依赖冲突，应触发主程序依赖恢复
+        assert repair_commands
+
+    def test_parse_pip_check_output_classifies_broken_vs_conflict(self):
+        """
+        __parse_pip_check_output 应将「损坏包」警告与依赖冲突分开。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        parse = PluginHelper._PluginHelper__parse_pip_check_output
+
+        # 仅损坏包：应只返回 broken_packages
+        broken_only = (
+            "命令：/opt/venv/bin/pip check，执行失败，返回码：1，错误输出："
+            "Using Python 3.12.13 environment at: /opt/venv\n"
+            "Checked 237 packages in 4ms\n"
+            "Found 1 incompatibility\n"
+            "The package `pip-hello-world` is broken or incomplete "
+            "(unable to read `METADATA`). Consider recreating the virtualenv."
+        )
+        broken, conflicts = parse(broken_only)
+        assert len(broken) == 1
+        assert "pip-hello-world" in broken[0]
+        assert conflicts == []
+
+        # 仅依赖冲突
+        conflict_only = (
+            "命令：/opt/venv/bin/pip check，执行失败，返回码：1，错误输出："
+            "Using Python 3.12.13 environment at: /opt/venv\n"
+            "Checked 237 packages in 4ms\n"
+            "Found 1 incompatibility\n"
+            "moviepilot 1.0 requires fastapi>=0.110, but you have fastapi 0.100."
+        )
+        broken, conflicts = parse(conflict_only)
+        assert broken == []
+        assert len(conflicts) == 1
+        assert "fastapi" in conflicts[0]
+
+        # 两者并存
+        mixed = (
+            "命令：/opt/venv/bin/pip check，执行失败，返回码：1，错误输出："
+            "Using Python 3.12.13 environment at: /opt/venv\n"
+            "Checked 237 packages in 4ms\n"
+            "Found 2 incompatibilities\n"
+            "The package `pip-hello-world` is broken or incomplete "
+            "(unable to read `METADATA`).\n"
+            "moviepilot 1.0 requires fastapi>=0.110, but you have fastapi 0.100."
+        )
+        broken, conflicts = parse(mixed)
+        assert len(broken) == 1
+        assert len(conflicts) == 1
+
+        # 缺失依赖也应被视为真实冲突
+        missing_dep = (
+            "Using Python 3.12.13 environment at: /opt/venv\n"
+            "Checked 237 packages in 4ms\n"
+            "Found 1 incompatibility\n"
+            "moviepilot 1.0 requires some-package, which is not installed"
+        )
+        broken, conflicts = parse(missing_dep)
+        assert broken == []
+        assert len(conflicts) == 1
+
     def test_failed_install_repairs_runtime_before_returning_error(self):
         """
         安装策略失败后如果主运行环境异常，应先恢复主程序依赖再返回失败。
