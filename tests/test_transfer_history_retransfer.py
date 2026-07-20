@@ -55,7 +55,7 @@ def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
 
 
 def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatch):
-    """从历史重新识别时应忽略旧 Hash，但保留下载器上下文。"""
+    """从历史重新识别时应忽略旧下载上下文。"""
     history = SimpleNamespace(
         status=0,
         mode="copy",
@@ -101,7 +101,7 @@ def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatc
     )
 
     assert resp.success is True
-    assert captured["downloader"] == "qbittorrent"
+    assert captured["downloader"] is None
     assert captured["download_hash"] is None
     assert captured["tmdbid"] is None
     assert captured["doubanid"] is None

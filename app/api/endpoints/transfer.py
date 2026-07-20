@@ -269,8 +269,8 @@ def manual_transfer(
             )
         # 强制转移
         force = True
-        downloader = history.downloader
-        # 仅复用历史识别信息时才传入旧 Hash，否则由当前文件路径重新匹配下载记录。
+        # 下载器与 Hash 是同一组下载上下文，重新识别时由当前文件路径重新匹配。
+        downloader = history.downloader if transer_item.from_history else None
         download_hash = history.download_hash if transer_item.from_history else None
         if history.status and ("move" in history.mode):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
