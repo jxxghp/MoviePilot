@@ -37,7 +37,7 @@ PROFILE_VIEW_HTML = """
 """
 
 
-def _build_parser(site_cookie: str = "tluid=1901693; tlpass=masked") -> TorrentLeechSiteUserInfo:
+def _build_parser(site_cookie: str = "session=masked") -> TorrentLeechSiteUserInfo:
     """
     构造 TorrentLeech 解析器测试实例
 
@@ -107,7 +107,7 @@ def test_torrent_leech_falls_back_to_generic_profile_link_without_topbar():
     """
     首页没有新版顶栏时应继续兼容通用资料链接中的用户 ID
     """
-    parser = _build_parser(site_cookie="tlpass=masked")
+    parser = _build_parser()
 
     parser._parse_site_page('<a href="/profile/42/marketplace">Profile</a>')
 
