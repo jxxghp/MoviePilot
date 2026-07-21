@@ -86,6 +86,36 @@ def test_handle_changes_skips_missing_paths(tmp_path):
     assert callback.events == []
 
 
+def test_handle_changes_expands_added_directory_files(tmp_path):
+    """
+    整体移入的新增目录应递归转换成内部文件事件且不重复分发。
+    """
+    added_dir = tmp_path / "task"
+    nested_dir = added_dir / "season"
+    nested_dir.mkdir(parents=True)
+    movie_file = added_dir / "movie.mkv"
+    episode_file = nested_dir / "episode.mkv"
+    ignored_file = added_dir / ".DS_Store"
+    movie_file.write_bytes(b"movie")
+    episode_file.write_bytes(b"episode")
+    ignored_file.write_bytes(b"ignored")
+
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=False)
+    watcher._handle_changes({
+        (Change.added, added_dir.as_posix()),
+        (Change.added, movie_file.as_posix()),
+    })
+
+    assert [
+        (event.change_type, event_path, file_size)
+        for event, _, event_path, file_size in callback.events
+    ] == [
+        (Change.added, movie_file.as_posix(), 5),
+        (Change.added, episode_file.as_posix(), 7),
+    ]
+
+
 def test_event_handler_routes_file_events_to_transfer_handler():
     """
     文件事件应继续按 local 存储交给整理流程。

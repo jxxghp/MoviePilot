@@ -159,6 +159,7 @@ class LocalDirectoryWatcher:
         将 watchfiles 原始变更转换为目录监控事件。
         :param changes: watchfiles 返回的变更集合
         """
+        changes = self._expand_added_directories(changes)
         for change_type, path_str in sorted(changes, key=lambda item: item[1]):
             if change_type not in self._HANDLE_CHANGES:
                 continue
@@ -179,6 +180,30 @@ class LocalDirectoryWatcher:
                 )
             except Exception as err:
                 logger.error(f"处理本地目录监控事件失败: {path_str} - {err}")
+
+    def _expand_added_directories(self, changes: set[tuple[Change, str]]) -> set[tuple[Change, str]]:
+        """
+        将整体移入监控范围的新增目录展开为内部文件事件。
+        :param changes: watchfiles 返回的变更集合
+        :return: 包含目录内新增文件的变更集合
+        """
+        expanded_changes = set(changes)
+        for change_type, path_str in changes:
+            if change_type != Change.added:
+                continue
+            event_path = Path(path_str)
+            try:
+                if not event_path.is_dir():
+                    continue
+                for nested_path in event_path.rglob("*"):
+                    if not nested_path.is_file():
+                        continue
+                    nested_path_str = nested_path.as_posix()
+                    if self._watch_filter(Change.added, nested_path_str):
+                        expanded_changes.add((Change.added, nested_path_str))
+            except OSError as err:
+                logger.debug(f"扫描新增目录失败: {event_path} - {err}")
+        return expanded_changes
 
     @staticmethod
     def _build_event(change_type: Change, event_path: Path) -> Optional[DirectoryChangeEvent]:
