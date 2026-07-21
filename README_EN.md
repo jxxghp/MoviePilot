@@ -31,12 +31,6 @@ Docker is the recommended deployment model. Common images include `jxxghp/moviep
 - Official wiki: https://wiki.movie-pilot.org
 - PostgreSQL setup: [docs/postgresql-setup.md](docs/postgresql-setup.md)
 
-By default, storage capacity across multiple directories continues to be deduplicated by the
-system device identifier. If Btrfs subvolumes expose different device identifiers inside a
-container and capacity is counted repeatedly, Linux amd64/arm64 deployments can explicitly set
-`BTRFS_FSID_DEDUP=true`. The option is disabled by default and falls back to the original device
-identifier behavior when the ioctl is unavailable.
-
 MoviePilot can also be installed and managed from source with the local CLI:
 
 ```shell
