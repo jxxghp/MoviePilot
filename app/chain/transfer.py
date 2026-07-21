@@ -141,7 +141,19 @@ class JobManager:
         """
         if not media:
             return None, season
-        return media.tmdb_id or media.douban_id, season
+        media_ids = {
+            "themoviedb": getattr(media, "tmdb_id", None),
+            "douban": getattr(media, "douban_id", None),
+            "bangumi": getattr(media, "bangumi_id", None),
+            "anilist": getattr(media, "anilist_id", None),
+        }
+        source = getattr(media, "source", None)
+        if not source or media_ids.get(source) is None:
+            source = next(
+                (name for name, media_id in media_ids.items() if media_id is not None),
+                source,
+            )
+        return (source, media_ids.get(source)), season
 
     @staticmethod
     def __get_file_key(fileitem: FileItem) -> Optional[Tuple[str, str]]:
@@ -1600,22 +1612,29 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                 f"{task.fileitem.name} 文件年份 {task.meta.year} 与下载记录年份 "
                                 f"{download_history.year} 不一致，按文件名重新识别"
                             )
+                        recognize_kwargs = {"obtain_images": True}
+                        if task.media_source:
+                            recognize_kwargs["source"] = task.media_source
                         mediainfo = MediaChain().recognize_by_meta(
-                            task.meta,
-                            obtain_images=True,
+                            task.meta, **recognize_kwargs
                         )
                         if mediainfo and download_history.media_category:
                             mediainfo.category = download_history.media_category
                 else:
                     # 识别媒体信息
+                    recognize_kwargs = {"obtain_images": True}
+                    if task.media_source:
+                        recognize_kwargs["source"] = task.media_source
                     mediainfo = MediaChain().recognize_by_meta(
-                        task.meta,
-                        obtain_images=True,
+                        task.meta, **recognize_kwargs
                     )
 
                 # 按名称识别时已在识别链路补图，这里只补齐显式ID识别的场景。
                 if mediainfo and need_obtain_images:
                     self.obtain_images(mediainfo=mediainfo)
+
+                if mediainfo and task.media_source:
+                    mediainfo.scrape_source = task.media_source
 
                 if not mediainfo:
                     if task.preview:
@@ -2572,6 +2591,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             fileitem: FileItem,
             meta: MetaBase = None,
             mediainfo: MediaInfo = None,
+            media_source: Optional[str] = None,
             target_directory: TransferDirectoryConf = None,
             target_storage: Optional[str] = None,
             target_path: Path = None,
@@ -2597,6 +2617,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param fileitem: 文件项
         :param meta: 元数据
         :param mediainfo: 媒体信息
+        :param media_source: 请求级识别与刮削数据源
         :param target_directory:  目标目录配置
         :param target_storage: 目标存储器
         :param target_path: 目标路径
@@ -3115,6 +3136,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     fileitem=file_item,
                     meta=file_meta,
                     mediainfo=task_mediainfo,
+                    media_source=media_source,
                     target_directory=target_directory,
                     target_storage=target_storage,
                     target_path=target_path,
@@ -3474,6 +3496,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             target_path: Path = None,
             tmdbid: Optional[int] = None,
             doubanid: Optional[str] = None,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             mtype: MediaType = None,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
@@ -3498,6 +3522,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param target_path: 目标路径
         :param tmdbid: TMDB ID
         :param doubanid: 豆瓣ID
+        :param media_source: 媒体数据源
+        :param media_id: 数据源原生ID
         :param mtype: 媒体类型
         :param season: 季度
         :param episode_group: 剧集组
@@ -3516,21 +3542,27 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         """
         logger.info(f"手动整理：{fileitem.path} ...")
-        if tmdbid or doubanid:
-            # 有输入TMDBID时单个识别
+        if tmdbid or doubanid or media_id:
+            # 有输入媒体ID时单个识别
             # 识别媒体信息
             mediainfo: MediaInfo = MediaChain().recognize_media(
                 tmdbid=tmdbid,
                 doubanid=doubanid,
+                source=media_source,
+                mediaid=media_id,
                 mtype=mtype,
                 episode_group=episode_group,
             )
             if not mediainfo:
                 return (
                     False,
-                    f"媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {mtype.value if mtype else None}",
+                    f"媒体信息识别失败，source：{media_source}，media_id：{media_id}，"
+                    f"tmdbid：{tmdbid}，doubanid：{doubanid}，"
+                    f"type: {mtype.value if mtype else None}",
                 )
             else:
+                if media_source:
+                    mediainfo.scrape_source = media_source
                 # 更新媒体图片
                 self.obtain_images(mediainfo=mediainfo)
 
@@ -3540,6 +3572,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 target_storage=target_storage,
                 target_path=target_path,
                 mediainfo=mediainfo,
+                media_source=media_source,
                 transfer_type=transfer_type,
                 season=season,
                 epformat=epformat,
@@ -3567,6 +3600,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 fileitem=fileitem,
                 target_storage=target_storage,
                 target_path=target_path,
+                media_source=media_source,
                 transfer_type=transfer_type,
                 season=season,
                 epformat=epformat,

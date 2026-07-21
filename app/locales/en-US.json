@@ -1103,6 +1103,10 @@
       "target": "Data table {name} cleanup completed"
     },
     {
+      "source": "同步媒体服务器 - {name} 开始执行 ...",
+      "target": "Starting media server sync - {name} ..."
+    },
+    {
       "source": "{name} 开始执行 ...",
       "target": "Starting {name_i18n} ..."
     },
@@ -1121,6 +1125,10 @@
     {
       "source": "正在同步媒体服务器（{index}/{total}）{name} ...",
       "target": "Syncing media server ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "媒体服务器 {name} 未启用或不存在",
+      "target": "Media server {name} is disabled or does not exist"
     },
     {
       "source": "媒体服务器 {name} 无可同步媒体库",
@@ -1325,6 +1333,18 @@
     {
       "source": "工作流 {name} 执行完成",
       "target": "Workflow {name} completed"
+    },
+    {
+      "source": "同步媒体服务器 - {name} 执行完成",
+      "target": "Media server sync - {name} completed"
+    },
+    {
+      "source": "同步媒体服务器 - {name} 执行失败",
+      "target": "Media server sync - {name} failed"
+    },
+    {
+      "source": "同步媒体服务器 - {name}",
+      "target": "Sync Media Server - {name}"
     },
     {
       "source": "{name} 执行完成",

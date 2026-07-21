@@ -38,6 +38,8 @@ class SystemConfModel(BaseModel):
     douban: int = 0
     # Bangumi请求缓存数量
     bangumi: int = 0
+    # AniList请求缓存数量
+    anilist: int = 0
     # Fanart请求缓存数量
     fanart: int = 0
     # 元数据缓存过期时间（秒）
@@ -197,11 +199,11 @@ class ConfigModel(BaseModel):
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
 
     # ==================== 媒体元数据配置 ====================
-    # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
+    # 媒体搜索来源 themoviedb/douban/bangumi/anilist，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb"
-    # 媒体识别来源 themoviedb/douban
+    # 媒体识别来源 themoviedb/douban/bangumi/anilist
     RECOGNIZE_SOURCE: str = "themoviedb"
-    # 刮削来源 themoviedb/douban
+    # 刮削来源 themoviedb/douban/bangumi/anilist
     SCRAP_SOURCE: str = "themoviedb"
     # 电视剧动漫的分类genre_ids
     ANIME_GENREIDS: List[int] = Field(default=[16])

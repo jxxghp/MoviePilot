@@ -37,6 +37,8 @@ class MediaServerConf(BaseModel):
     enabled: Optional[bool] = False
     # 同步媒体体库列表
     sync_libraries: Optional[list] = Field(default_factory=list)
+    # 自动同步间隔（小时），未设置时使用旧全局配置
+    sync_interval: Optional[int] = None
 
 
 class DownloaderConf(BaseModel):

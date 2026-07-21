@@ -48,6 +48,9 @@ class TransferHistory(Base):
     imdbid = Column(String)
     tvdbid = Column(Integer)
     doubanid = Column(String)
+    # 统一媒体数据源与原生ID
+    media_source = Column(String, index=True)
+    media_id = Column(String, index=True)
     # Sxx
     seasons = Column(String)
     # Exx

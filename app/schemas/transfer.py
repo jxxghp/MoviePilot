@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, List, Any, Callable
+from typing import Any, Callable, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,9 @@ class TransferTask(BaseModel):
     fileitem: FileItem
     meta: Optional[Any] = None
     mediainfo: Optional[Any] = None
+    media_source: Optional[
+        Literal["themoviedb", "douban", "bangumi", "anilist"]
+    ] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None
@@ -192,6 +195,10 @@ class EpisodeFormatRecommendItem(BaseModel):
 
 
 class ManualTransferItem(BaseModel):
+    """
+    手动整理请求，兼容历史数据源ID字段并支持统一来源与原生ID
+    """
+
     # 文件项
     fileitem: FileItem = None
     # 文件项列表（前端多选时传入）
@@ -208,6 +215,12 @@ class ManualTransferItem(BaseModel):
     tmdbid: Optional[int] = None
     # 豆瓣ID
     doubanid: Optional[str] = None
+    # 媒体数据源
+    media_source: Optional[
+        Literal["themoviedb", "douban", "bangumi", "anilist"]
+    ] = None
+    # 数据源原生ID
+    media_id: Optional[str] = None
     # 类型
     type_name: Optional[str] = None
     # 季号

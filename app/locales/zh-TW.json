@@ -1103,6 +1103,10 @@
       "target": "資料表 {name} 清理處理完成"
     },
     {
+      "source": "同步媒体服务器 - {name} 开始执行 ...",
+      "target": "開始同步媒體伺服器 - {name} ..."
+    },
+    {
       "source": "{name} 开始执行 ...",
       "target": "{name_i18n} 開始執行 ..."
     },
@@ -1121,6 +1125,10 @@
     {
       "source": "正在同步媒体服务器（{index}/{total}）{name} ...",
       "target": "正在同步媒體伺服器（{index}/{total}）{name} ..."
+    },
+    {
+      "source": "媒体服务器 {name} 未启用或不存在",
+      "target": "媒體伺服器 {name} 未啟用或不存在"
     },
     {
       "source": "媒体服务器 {name} 无可同步媒体库",
@@ -1325,6 +1333,18 @@
     {
       "source": "工作流 {name} 执行完成",
       "target": "工作流 {name} 執行完成"
+    },
+    {
+      "source": "同步媒体服务器 - {name} 执行完成",
+      "target": "同步媒體伺服器 - {name} 執行完成"
+    },
+    {
+      "source": "同步媒体服务器 - {name} 执行失败",
+      "target": "同步媒體伺服器 - {name} 執行失敗"
+    },
+    {
+      "source": "同步媒体服务器 - {name}",
+      "target": "同步媒體伺服器 - {name}"
     },
     {
       "source": "{name} 执行完成",

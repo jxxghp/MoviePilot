@@ -317,6 +317,18 @@ def test_schedule_info_auto_fills_i18n_display_fields():
     assert schedule.progress_detail.text_i18n == "Media server Emby has no libraries to sync"
     assert schedule.progress_detail.error_i18n == "Background service does not exist"
 
+    token = LocaleHelper.set_current_locale("en-US")
+    try:
+        dynamic_schedule = ScheduleInfo(
+            id="mediaserver_sync_example",
+            name="同步媒体服务器 - Plex",
+            progress_text="同步媒体服务器 - Plex 开始执行 ...",
+        )
+    finally:
+        LocaleHelper.reset_current_locale(token)
+    assert dynamic_schedule.name_i18n == "Sync Media Server - Plex"
+    assert dynamic_schedule.progress_text_i18n == "Starting media server sync - Plex ..."
+
 
 def test_scheduler_progress_patterns_translate_dynamic_texts():
     """定时任务进度动态模板应翻译固定词并保留业务变量。"""

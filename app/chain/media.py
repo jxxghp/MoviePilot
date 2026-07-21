@@ -592,14 +592,21 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def recognize_by_meta(
             self,
             metainfo: MetaBase,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
+
+        :param metainfo: 标题解析元数据
+        :param source: 请求级识别数据源
+        :param episode_group: 剧集组
+        :param obtain_images: 是否补充图片
         """
         mediainfo = self._recognize_with_fallback_by_meta(
             metainfo=metainfo,
+            source=source,
             episode_group=episode_group,
             obtain_images=obtain_images,
         )
@@ -610,11 +617,18 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _recognize_with_fallback_by_meta(
             self,
             metainfo: MetaBase,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
     ) -> Optional[MediaInfo]:
         """
         根据标题识别媒体信息，必要时回退到辅助识别。
+
+        :param metainfo: 标题解析元数据
+        :param source: 请求级识别数据源
+        :param episode_group: 剧集组
+        :param obtain_images: 是否补充图片
+        :return: 统一媒体信息
         """
         if not metainfo:
             return None
@@ -622,17 +636,21 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         share_meta = deepcopy(metainfo)
 
         def native_recognize() -> Optional[MediaInfo]:
+            """使用请求级数据源执行原生识别。"""
             return self.recognize_media(
                 meta=metainfo,
+                source=source,
                 share_meta=share_meta,
                 episode_group=episode_group,
             )
 
         def plugin_recognize() -> Optional[MediaInfo]:
+            """执行辅助识别并保持请求级数据源约束。"""
             return self.recognize_help(
                 title=title,
                 org_meta=metainfo,
                 share_meta=share_meta,
+                source=source,
                 episode_group=episode_group,
             )
 
@@ -668,6 +686,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             title: str,
             org_meta: MetaBase,
             share_meta: MetaBase = None,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
@@ -676,6 +695,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param title: 标题
         :param org_meta: 原始元数据
         :param share_meta: 共享识别查询/上报使用的原始元数据
+        :param source: 请求级识别数据源
         :param episode_group: 剧集组
         """
         # 发送请求事件，等待结果
@@ -718,6 +738,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 重新识别
         return self.recognize_media(
             meta=org_meta,
+            source=source,
             share_meta=share_meta,
             episode_group=episode_group,
         )
@@ -725,11 +746,18 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def recognize_by_path(
             self,
             path: str,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
     ) -> Optional[Context]:
         """
         根据文件路径识别媒体信息
+
+        :param path: 文件路径
+        :param source: 请求级识别数据源
+        :param episode_group: 剧集组
+        :param obtain_images: 是否补充图片
+        :return: 识别上下文
         """
         logger.info(f"开始识别媒体信息，文件：{path} ...")
         file_path = Path(path)
@@ -737,6 +765,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_meta = MetaInfoPath(file_path)
         mediainfo = self._recognize_with_fallback_by_meta(
             metainfo=file_meta,
+            source=source,
             episode_group=episode_group,
             obtain_images=obtain_images,
         )
@@ -746,11 +775,14 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 返回上下文
         return Context(meta_info=file_meta, media_info=mediainfo)
 
-    def search(self, title: str) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
+    def search(
+        self, title: str, source: Optional[str] = None
+    ) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
         """
         搜索媒体/人物信息
 
         :param title: 搜索内容
+        :param source: 请求级搜索数据源
         :return: 识别元数据，媒体信息列表
         """
         # 提取要素
@@ -772,7 +804,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta.year = year
         # 开始搜索
         logger.info(f"开始搜索媒体信息：{meta.name}")
-        medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
+        medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta, source=source)
         if not medias:
             logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
             return meta, []
@@ -1553,14 +1585,22 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     async def async_recognize_by_meta(
             self,
             metainfo: MetaBase,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息（异步版本）
+
+        :param metainfo: 标题解析元数据
+        :param source: 请求级识别数据源
+        :param episode_group: 剧集组
+        :param obtain_images: 是否补充图片
+        :return: 统一媒体信息
         """
         mediainfo = await self._async_recognize_with_fallback_by_meta(
             metainfo=metainfo,
+            source=source,
             episode_group=episode_group,
             obtain_images=obtain_images,
         )
@@ -1571,29 +1611,40 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     async def _async_recognize_with_fallback_by_meta(
             self,
             metainfo: MetaBase,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
     ) -> Optional[MediaInfo]:
         """
         异步根据标题识别媒体信息，必要时回退到辅助识别。
+
+        :param metainfo: 标题解析元数据
+        :param source: 请求级识别数据源
+        :param episode_group: 剧集组
+        :param obtain_images: 是否补充图片
+        :return: 统一媒体信息
         """
         if not metainfo:
             return None
         title = metainfo.title
         share_meta = deepcopy(metainfo)
 
-        async def native_recognize():
+        async def native_recognize() -> Optional[MediaInfo]:
+            """异步使用请求级数据源执行原生识别。"""
             return await self.async_recognize_media(
                 meta=metainfo,
+                source=source,
                 share_meta=share_meta,
                 episode_group=episode_group,
             )
 
-        async def plugin_recognize():
+        async def plugin_recognize() -> Optional[MediaInfo]:
+            """异步执行辅助识别并保持请求级数据源约束。"""
             return await self.async_recognize_help(
                 title=title,
                 org_meta=metainfo,
                 share_meta=share_meta,
+                source=source,
                 episode_group=episode_group,
             )
 
@@ -1618,6 +1669,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             title: str,
             org_meta: MetaBase,
             share_meta: MetaBase = None,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
@@ -1626,6 +1678,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param title: 标题
         :param org_meta: 原始元数据
         :param share_meta: 共享识别查询/上报使用的原始元数据
+        :param source: 请求级识别数据源
         :param episode_group: 剧集组
         """
         # 发送请求事件，等待结果
@@ -1668,6 +1721,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 重新识别
         return await self.async_recognize_media(
             meta=org_meta,
+            source=source,
             share_meta=share_meta,
             episode_group=episode_group,
         )
@@ -1675,11 +1729,18 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     async def async_recognize_by_path(
             self,
             path: str,
+            source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
     ) -> Optional[Context]:
         """
         根据文件路径识别媒体信息（异步版本）
+
+        :param path: 文件路径
+        :param source: 请求级识别数据源
+        :param episode_group: 剧集组
+        :param obtain_images: 是否补充图片
+        :return: 识别上下文
         """
         logger.info(f"开始识别媒体信息，文件：{path} ...")
         file_path = Path(path)
@@ -1687,6 +1748,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_meta = MetaInfoPath(file_path)
         mediainfo = await self._async_recognize_with_fallback_by_meta(
             metainfo=file_meta,
+            source=source,
             episode_group=episode_group,
             obtain_images=obtain_images,
         )
@@ -1697,12 +1759,13 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return Context(meta_info=file_meta, media_info=mediainfo)
 
     async def async_search(
-            self, title: str
+            self, title: str, source: Optional[str] = None
     ) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
         """
         搜索媒体/人物信息（异步版本）
 
         :param title: 搜索内容
+        :param source: 请求级搜索数据源
         :return: 识别元数据，媒体信息列表
         """
         # 提取要素
@@ -1724,7 +1787,9 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta.year = year
         # 开始搜索
         logger.info(f"开始搜索媒体信息：{meta.name}")
-        medias: Optional[List[MediaInfo]] = await self.async_search_medias(meta=meta)
+        medias: Optional[List[MediaInfo]] = await self.async_search_medias(
+            meta=meta, source=source
+        )
         if not medias:
             logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
             return meta, []

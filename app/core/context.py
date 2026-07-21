@@ -10,6 +10,7 @@ from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
+ANILIST_MOVIE_FORMATS = frozenset({"MOVIE"})
 
 
 @dataclass
@@ -251,8 +252,10 @@ class MediaInfo:
 
     # 内部标记：是否命中本地识别缓存，不参与序列化
     recognize_cache_hit = False
-    # 来源：themoviedb、douban、bangumi
+    # 来源：themoviedb、douban、bangumi、anilist
     source: str = None
+    # 请求级刮削来源；为空时使用系统设置
+    scrape_source: str = None
     # 类型 电影、电视剧
     type: MediaType = None
     # 媒体标题
@@ -279,6 +282,10 @@ class MediaInfo:
     douban_id: str = None
     # Bangumi ID
     bangumi_id: int = None
+    # AniList ID
+    anilist_id: int = None
+    # AniDB ID（AniList外部映射）
+    anidb_id: int = None
     # 合集ID
     collection_id: int = None
     # 媒体原语种
@@ -315,6 +322,8 @@ class MediaInfo:
     douban_info: dict = field(default_factory=dict)
     # Bangumi INFO
     bangumi_info: dict = field(default_factory=dict)
+    # AniList INFO
+    anilist_info: dict = field(default_factory=dict)
     # 导演
     directors: List[dict] = field(default_factory=list)
     # 演员
@@ -380,6 +389,8 @@ class MediaInfo:
             self.set_douban_info(self.douban_info)
         if self.bangumi_info:
             self.set_bangumi_info(self.bangumi_info)
+        if self.anilist_info:
+            self.set_anilist_info(self.anilist_info)
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
@@ -750,7 +761,7 @@ class MediaInfo:
         self.source = "bangumi"
         # 本体
         self.bangumi_info = info
-        # 豆瓣ID
+        # Bangumi ID
         self.bangumi_id = info.get("id")
         # 类型
         if not self.type:
@@ -804,12 +815,165 @@ class MediaInfo:
         if self.type == MediaType.TV and not self.seasons:
             meta = MetaInfo(self.title)
             season = meta.begin_season if meta.begin_season is not None else 1
-            episodes_count = info.get("total_episodes")
+            episodes_count = info.get("total_episodes") or info.get("eps")
             if episodes_count:
                 self.seasons[season] = list(range(1, episodes_count + 1))
+                self.number_of_episodes = episodes_count
+                self.number_of_seasons = 1
+        # 风格
+        if not self.genres:
+            self.genres = [
+                {"id": tag.get("name"), "name": tag.get("name")}
+                for tag in info.get("tags") or []
+                if tag.get("name")
+            ]
+        # 制作公司与导演
+        if info.get("infobox"):
+            companies = []
+            directors = []
+            for item in info.get("infobox"):
+                values = item.get("value")
+                if not isinstance(values, list):
+                    values = [values]
+                normalized_values = [
+                    value.get("v") if isinstance(value, dict) else value
+                    for value in values
+                    if value
+                ]
+                if item.get("key") in {"动画制作", "制作"}:
+                    companies.extend({"name": value} for value in normalized_values)
+                elif item.get("key") == "导演":
+                    directors.extend({"name": value} for value in normalized_values)
+            if companies and not self.production_companies:
+                self.production_companies = companies
+            if directors and not self.directors:
+                self.directors = directors
         # 演员
         if not self.actors:
             self.actors = info.get("actors") or []
+
+    @staticmethod
+    def get_anilist_media_type(info: dict) -> MediaType:
+        """
+        根据 AniList 发布格式获取标准媒体类型。
+
+        :param info: AniList 媒体信息
+        :return: 标准媒体类型
+        """
+        return (
+            MediaType.MOVIE
+            if str(info.get("format") or "").upper() in ANILIST_MOVIE_FORMATS
+            else MediaType.TV
+        )
+
+    @staticmethod
+    def _anilist_date(date_info: dict) -> Optional[str]:
+        """
+        将 AniList 模糊日期转换为标准日期文本。
+
+        :param date_info: AniList FuzzyDate 字段
+        :return: YYYY、YYYY-MM 或 YYYY-MM-DD 日期文本
+        """
+        if not date_info or not date_info.get("year"):
+            return None
+        values = [str(date_info.get("year"))]
+        if date_info.get("month"):
+            values.append(str(date_info.get("month")).zfill(2))
+        if date_info.get("day"):
+            values.append(str(date_info.get("day")).zfill(2))
+        return "-".join(values)
+
+    def set_anilist_info(self, info: dict) -> None:
+        """
+        初始化 AniList 媒体信息。
+
+        :param info: AniList 媒体详情
+        """
+        if not info:
+            return
+        self.source = "anilist"
+        self.anilist_info = info
+        self.anilist_id = info.get("id")
+        self.type = self.type or self.get_anilist_media_type(info)
+
+        titles = info.get("title") or {}
+        self.title = self.title or titles.get("english") or titles.get("romaji") or titles.get("native")
+        self.en_title = self.en_title or titles.get("english")
+        self.original_title = self.original_title or titles.get("native") or titles.get("romaji")
+        self.names = list(
+            dict.fromkeys(
+                value
+                for value in [
+                    titles.get("english"),
+                    titles.get("romaji"),
+                    titles.get("native"),
+                    *(info.get("synonyms") or []),
+                ]
+                if value and value != self.title
+            )
+        )
+
+        self.release_date = self.release_date or self._anilist_date(info.get("startDate") or {})
+        self.first_air_date = self.first_air_date or self.release_date
+        self.last_air_date = self.last_air_date or self._anilist_date(info.get("endDate") or {})
+        self.year = self.year or (
+            str(info.get("startDate", {}).get("year"))
+            if info.get("startDate", {}).get("year")
+            else str(info.get("seasonYear")) if info.get("seasonYear") else None
+        )
+
+        cover = info.get("coverImage") or {}
+        self.poster_path = self.poster_path or cover.get("extraLarge") or cover.get("large")
+        self.backdrop_path = self.backdrop_path or info.get("bannerImage")
+        self.overview = self.overview or re.sub(
+            r"<[^>]+>",
+            "",
+            str(info.get("description") or "").replace("<br>", "\n").replace("<br />", "\n"),
+        ).strip()
+        self.vote_average = self.vote_average or (
+            round(float(info.get("averageScore")) / 10, 1)
+            if info.get("averageScore") is not None
+            else 0
+        )
+        self.popularity = self.popularity or info.get("popularity")
+        self.runtime = self.runtime or info.get("duration")
+        self.adult = self.adult or bool(info.get("isAdult"))
+        self.status = self.status or info.get("status")
+        self.original_language = self.original_language or (
+            "ja" if info.get("countryOfOrigin") == "JP" else None
+        )
+        self.origin_country = self.origin_country or (
+            [info.get("countryOfOrigin")] if info.get("countryOfOrigin") else []
+        )
+        self.production_companies = self.production_companies or [
+            {"name": studio.get("name")}
+            for studio in info.get("studios", {}).get("nodes") or []
+            if studio.get("name")
+        ]
+        self.genres = self.genres or [
+            {"id": genre, "name": genre} for genre in info.get("genres") or []
+        ]
+        self.actors = self.actors or info.get("actors") or []
+        self.directors = self.directors or info.get("directors") or []
+
+        if self.season is None:
+            self.season = MetaInfo(self.title).begin_season if self.title else None
+        episodes_count = info.get("episodes")
+        if self.type == MediaType.TV and episodes_count:
+            season = self.season if self.season is not None else 1
+            self.seasons[season] = list(range(1, episodes_count + 1))
+            self.number_of_episodes = episodes_count
+            self.number_of_seasons = 1
+            if self.year:
+                self.season_years[season] = self.year
+
+        for external_link in info.get("externalLinks") or []:
+            if str(external_link.get("site") or "").casefold() != "anidb":
+                continue
+            match = re.search(r"\d+", external_link.get("url") or "")
+            if match:
+                self.anidb_id = int(match.group())
+                break
 
     @property
     def title_year(self):
@@ -831,6 +995,8 @@ class MediaInfo:
             return "https://movie.douban.com/subject/%s" % self.douban_id
         elif self.bangumi_id:
             return "http://bgm.tv/subject/%s" % self.bangumi_id
+        elif self.anilist_id:
+            return "https://anilist.co/anime/%s" % self.anilist_id
         return ""
 
     @property
@@ -895,6 +1061,16 @@ class MediaInfo:
         dicts["tmdb_info"] = None
         dicts["douban_info"] = None
         dicts["bangumi_info"] = None
+        dicts["anilist_info"] = None
+        dicts["mediaid_prefix"] = self.source
+        source_ids = {
+            "themoviedb": self.tmdb_id,
+            "douban": self.douban_id,
+            "bangumi": self.bangumi_id,
+            "anilist": self.anilist_id,
+        }
+        media_id = source_ids.get(self.source)
+        dicts["media_id"] = str(media_id) if media_id is not None else None
         return dicts
 
     def clear(self):
@@ -904,6 +1080,7 @@ class MediaInfo:
         self.tmdb_info = {}
         self.douban_info = {}
         self.bangumi_info = {}
+        self.anilist_info = {}
         self.seasons = {}
         self.genres = []
         self.season_info = []

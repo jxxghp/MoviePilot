@@ -248,3 +248,33 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
     assert media_progress[2]["data"]["media_finished"] == 3
     progress_values = [snapshot["value"] for snapshot in progress_snapshots]
     assert progress_values == sorted(progress_values)
+
+
+def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeypatch):
+    """定向同步只访问目标服务器，缓存清理仍保留其他已启用服务器。"""
+    chain = object.__new__(MediaServerChain)
+    library_calls = []
+    excluded_server_calls = []
+
+    class FakeMediaServerOper:
+        """记录媒体服务器缓存清理参数的测试替身。"""
+
+        def delete_excluded_servers(self, servers):
+            """记录应保留的全部已启用服务器名称。"""
+            excluded_server_calls.append(servers)
+
+    chain.librarys = lambda server: library_calls.append(server) or []
+    monkeypatch.setattr(MEDIA_SERVER_CHAIN_MODULE, "MediaServerOper", FakeMediaServerOper)
+    monkeypatch.setattr(
+        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+        "get_mediaserver_configs",
+        lambda: [
+            SimpleNamespace(name="plex-a", enabled=True, sync_libraries=["all"]),
+            SimpleNamespace(name="plex-b", enabled=True, sync_libraries=["all"]),
+        ],
+    )
+
+    chain.sync(server="plex-a")
+
+    assert library_calls == ["plex-a"]
+    assert excluded_server_calls == [["plex-a", "plex-b"]]

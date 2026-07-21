@@ -97,6 +97,8 @@ class MetaBase(object):
     # 附加信息
     tmdbid: int = None
     doubanid: str = None
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
     episode_group: Optional[str] = None
     # 帧率信息（纯数值）
     fps: Optional[int] = None
@@ -683,6 +685,11 @@ class MetaBase(object):
         # doubanid
         if not self.doubanid and meta.doubanid:
             self.doubanid = meta.doubanid
+        # 通用媒体来源与ID
+        if not self.media_source and meta.media_source:
+            self.media_source = meta.media_source
+        if not self.media_id and meta.media_id:
+            self.media_id = meta.media_id
         # 剧集组
         if not self.episode_group and meta.episode_group:
             self.episode_group = meta.episode_group

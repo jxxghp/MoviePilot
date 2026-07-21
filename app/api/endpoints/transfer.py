@@ -292,6 +292,14 @@ def manual_transfer(
             transer_item.doubanid = (
                 str(history.doubanid) if history.doubanid else transer_item.doubanid
             )
+            transer_item.media_source = (
+                getattr(history, "media_source", None)
+                or transer_item.media_source
+            )
+            transer_item.media_id = (
+                getattr(history, "media_id", None)
+                or transer_item.media_id
+            )
             transer_item.season = (
                 int(str(history.seasons).replace("S", ""))
                 if history.seasons
@@ -409,6 +417,8 @@ def manual_transfer(
                 target_path=target_path,
                 tmdbid=transer_item.tmdbid,
                 doubanid=transer_item.doubanid,
+                media_source=transer_item.media_source,
+                media_id=transer_item.media_id,
                 mtype=mtype,
                 season=transer_item.season,
                 episode_group=transer_item.episode_group,
@@ -491,6 +501,8 @@ def manual_transfer(
         target_path=target_path,
         tmdbid=transer_item.tmdbid,
         doubanid=transer_item.doubanid,
+        media_source=transer_item.media_source,
+        media_id=transer_item.media_id,
         mtype=mtype,
         season=transer_item.season,
         episode_group=transer_item.episode_group,

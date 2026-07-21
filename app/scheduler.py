@@ -1,5 +1,6 @@
 import asyncio
 import gc
+import hashlib
 import inspect
 import json
 import multiprocessing
@@ -38,6 +39,7 @@ from app.helper.image import WallpaperHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.server import MoviePilotServerHelper
+from app.helper.service import ServiceConfigHelper
 from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.schemas import Notification, NotificationType, Workflow
@@ -280,6 +282,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         "DEV",
         "COOKIECLOUD_INTERVAL",
         "MEDIASERVER_SYNC_INTERVAL",
+        SystemConfigKey.MediaServers.value,
         "SUBSCRIBE_SEARCH",
         "SUBSCRIBE_SEARCH_INTERVAL",
         "SUBSCRIBE_MODE",
@@ -324,6 +327,58 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         return "定时服务"
 
     @staticmethod
+    def _get_mediaserver_sync_interval(
+            mediaserver: schemas.MediaServerConf,
+            default_interval: Optional[int],
+    ) -> Optional[int]:
+        """
+        获取媒体服务器的有效同步间隔，未设置时回退旧全局配置。
+        """
+        interval = mediaserver.sync_interval
+        if interval is None:
+            interval = default_interval
+        try:
+            interval = int(interval)
+        except (TypeError, ValueError):
+            return None
+        return interval if interval > 0 else None
+
+    @classmethod
+    def _build_mediaserver_sync_schedules(
+            cls,
+            mediaservers: List[schemas.MediaServerConf],
+            default_interval: Optional[int],
+    ) -> List[dict]:
+        """
+        构建已启用媒体服务器的独立自动同步任务描述。
+        """
+        schedules = []
+        job_ids = set()
+        for mediaserver in mediaservers:
+            if not mediaserver or not mediaserver.enabled or not mediaserver.name:
+                continue
+            interval = cls._get_mediaserver_sync_interval(
+                mediaserver=mediaserver,
+                default_interval=default_interval,
+            )
+            if not interval:
+                continue
+            digest = hashlib.sha256(mediaserver.name.encode("utf-8")).hexdigest()[:12]
+            job_id = f"mediaserver_sync_{digest}"
+            if job_id in job_ids:
+                continue
+            job_ids.add(job_id)
+            schedules.append(
+                {
+                    "id": job_id,
+                    "name": f"同步媒体服务器 - {mediaserver.name}",
+                    "server": mediaserver.name,
+                    "interval": interval,
+                }
+            )
+        return schedules
+
+    @staticmethod
     def _get_progress_key(job_id: str) -> str:
         """
         获取定时服务进度缓存键。
@@ -351,6 +406,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
         with lock:
             # 各服务的运行状态
+            mediaserver_chain = MediaServerChain()
             self._jobs = {
                 "cookiecloud": {
                     "name": "同步CookieCloud站点",
@@ -359,7 +415,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 },
                 "mediaserver_sync": {
                     "name": "同步媒体服务器",
-                    "func": MediaServerChain().sync,
+                    "func": mediaserver_chain.sync,
                     "running": False,
                 },
                 "subscribe_tmdb": {
@@ -478,19 +534,27 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     kwargs={"job_id": "cookiecloud"},
                 )
 
-            # 媒体服务器同步
-            if (
-                    settings.MEDIASERVER_SYNC_INTERVAL
-                    and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit()
-            ):
+            # 按媒体服务器分别注册自动同步任务
+            mediaserver_schedules = self._build_mediaserver_sync_schedules(
+                mediaservers=ServiceConfigHelper.get_mediaserver_configs(),
+                default_interval=settings.MEDIASERVER_SYNC_INTERVAL,
+            )
+            for mediaserver_schedule in mediaserver_schedules:
+                job_id = mediaserver_schedule["id"]
+                self._jobs[job_id] = {
+                    "name": mediaserver_schedule["name"],
+                    "func": mediaserver_chain.sync,
+                    "running": False,
+                    "kwargs": {"server": mediaserver_schedule["server"]},
+                }
                 self._scheduler.add_job(
                     self.start,
                     "interval",
-                    id="mediaserver_sync",
-                    name="同步媒体服务器",
-                    hours=int(settings.MEDIASERVER_SYNC_INTERVAL),
+                    id=job_id,
+                    name=mediaserver_schedule["name"],
+                    hours=mediaserver_schedule["interval"],
                     next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=10),
-                    kwargs={"job_id": "mediaserver_sync"},
+                    kwargs={"job_id": job_id},
                 )
 
             # 新增订阅时搜索（5分钟检查一次）

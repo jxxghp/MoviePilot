@@ -127,8 +127,11 @@ class DoubanModule(_ModuleBase):
         if not doubanid and not meta:
             return None
 
-        if meta and not doubanid \
-                and settings.RECOGNIZE_SOURCE != "douban":
+        if (
+            meta
+            and not doubanid
+            and (kwargs.get("source") or settings.RECOGNIZE_SOURCE) != "douban"
+        ):
             return None
 
         if not meta:
@@ -227,8 +230,11 @@ class DoubanModule(_ModuleBase):
         if not doubanid and not meta:
             return None
 
-        if meta and not doubanid \
-                and settings.RECOGNIZE_SOURCE != "douban":
+        if (
+            meta
+            and not doubanid
+            and (kwargs.get("source") or settings.RECOGNIZE_SOURCE) != "douban"
+        ):
             return None
 
         if not meta:
@@ -927,13 +933,18 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    def search_medias(
+        self, meta: MetaBase, source: Optional[str] = None
+    ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
-        :reutrn: 媒体信息
+        :param source: 请求级搜索数据源
+        :return: 媒体信息
         """
-        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if source and source != "douban":
+            return None
+        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
             return None
         if not meta.name:
             return []
@@ -943,13 +954,18 @@ class DoubanModule(_ModuleBase):
         # 返回数据
         return self._build_search_medias_result(meta, result.get("items"))
 
-    async def async_search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    async def async_search_medias(
+        self, meta: MetaBase, source: Optional[str] = None
+    ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
         :param meta:  识别的元数据
-        :reutrn: 媒体信息
+        :param source: 请求级搜索数据源
+        :return: 媒体信息
         """
-        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if source and source != "douban":
+            return None
+        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
             return None
         if not meta.name:
             return []
@@ -1147,7 +1163,7 @@ class DoubanModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :param season: 季号
         """
-        if settings.SCRAP_SOURCE != "douban":
+        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "douban":
             return None
         return self.scraper.get_metadata_nfo(mediainfo=mediainfo, season=season)
 
@@ -1158,7 +1174,7 @@ class DoubanModule(_ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if settings.SCRAP_SOURCE != "douban":
+        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "douban":
             return None
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
@@ -1169,7 +1185,7 @@ class DoubanModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :return: None 表示不处理，MediaInfo 表示继续处理
         """
-        if settings.RECOGNIZE_SOURCE != "douban":
+        if mediainfo.source != "douban" and settings.RECOGNIZE_SOURCE != "douban":
             return None
         if not mediainfo.douban_id:
             return None

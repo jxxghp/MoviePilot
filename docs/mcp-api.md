@@ -110,6 +110,19 @@ MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所�
 
 FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返回 `detail_i18n`；新版前端优先展示 `detail_i18n`，缺失时回退 `detail`。
 
+#### 媒体识别 / 整理
+
+媒体识别、搜索和手动整理支持 `themoviedb`、`douban`、`bangumi`、`anilist` 四种数据源。请求未指定 `source` 时继续使用后台配置；显式指定时仅在该数据源中识别或搜索。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/media/search` | 按标题搜索媒体，参数：`title`、`type`、`page`、`count`，可选 `source` |
+| GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `source` |
+| GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `source` |
+| GET | `/api/v1/media/{mediaid}` | 查询媒体详情，`mediaid` 支持 `tmdb:`、`douban:`、`bangumi:`、`anilist:` 前缀 |
+| POST | `/api/v1/transfer/manual/target-path` | 匹配手动整理目标路径；请求体可用 `media_source` + `media_id` 指定数据源原生ID |
+| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源，同时兼容 `tmdbid`、`doubanid` |
+
 #### 搜索 / 种子 / 字幕
 
 | 方法 | 路径 | 说明 |
@@ -132,8 +145,8 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | :--- | :--- | :--- |
 | GET | `/api/v1/download/` | 查询正在下载的任务，参数：`name` |
 | POST | `/api/v1/download/` | 添加含媒体信息的下载任务，请求体包含媒体信息和种子信息 |
-| POST | `/api/v1/download/add` | 添加不含媒体信息的下载任务，请求体包含 `torrent_in`，可选 `tmdbid`、`doubanid`、`downloader`、`save_path` |
-| POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，可选 `tmdbid`、`doubanid`、`save_path` |
+| POST | `/api/v1/download/add` | 添加不含媒体信息的下载任务，请求体包含 `torrent_in`，可选 `media_source` + `media_id`；继续兼容 `tmdbid`、`doubanid`，并支持 `downloader`、`save_path` |
+| POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，可选 `media_source` + `media_id`；继续兼容 `tmdbid`、`doubanid`，并支持 `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | 恢复下载任务，参数：`name` |
 | GET | `/api/v1/download/stop/{hashString}` | 暂停下载任务，参数：`name` |
 | GET | `/api/v1/download/clients` | 查询可用下载器 |

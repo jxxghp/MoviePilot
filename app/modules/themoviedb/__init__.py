@@ -92,14 +92,23 @@ class TheMovieDbModule(_ModuleBase):
         pass
 
     @staticmethod
-    def _validate_recognize_params(meta: MetaBase, tmdbid: Optional[int]) -> bool:
+    def _validate_recognize_params(
+        meta: MetaBase,
+        tmdbid: Optional[int],
+        source: Optional[str] = None,
+    ) -> bool:
         """
         验证识别参数
+
+        :param meta: 标题解析元数据
+        :param tmdbid: TMDB ID
+        :param source: 请求级识别数据源
+        :return: 参数是否可用于TMDB识别
         """
         if not tmdbid and not meta:
             return False
 
-        if meta and not tmdbid and settings.RECOGNIZE_SOURCE != "themoviedb":
+        if meta and not tmdbid and (source or settings.RECOGNIZE_SOURCE) != "themoviedb":
             return False
 
         if meta and not meta.name and not tmdbid:
@@ -467,7 +476,7 @@ class TheMovieDbModule(_ModuleBase):
         :return: 识别的媒体信息，包括剧集信息
         """
         # 验证参数
-        if not self._validate_recognize_params(meta, tmdbid):
+        if not self._validate_recognize_params(meta, tmdbid, kwargs.get("source")):
             return None
 
         if not meta:
@@ -553,7 +562,7 @@ class TheMovieDbModule(_ModuleBase):
         :return: 识别的媒体信息，包括剧集信息
         """
         # 验证参数
-        if not self._validate_recognize_params(meta, tmdbid):
+        if not self._validate_recognize_params(meta, tmdbid, kwargs.get("source")):
             return None
 
         if not meta:
@@ -726,13 +735,18 @@ class TheMovieDbModule(_ModuleBase):
             MediaType.TV.value: list(self.category.tv_categorys)
         }
 
-    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    def search_medias(
+        self, meta: MetaBase, source: Optional[str] = None
+    ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
-        :reutrn: 媒体信息列表
+        :param source: 请求级搜索数据源
+        :return: 媒体信息列表
         """
-        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if source and source != "themoviedb":
+            return None
+        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
             return None
         if not meta.name:
             return []
@@ -822,7 +836,7 @@ class TheMovieDbModule(_ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if settings.SCRAP_SOURCE != "themoviedb":
+        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "themoviedb":
             return None
         return self.scraper.get_metadata_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
 
@@ -834,7 +848,7 @@ class TheMovieDbModule(_ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if settings.SCRAP_SOURCE != "themoviedb":
+        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "themoviedb":
             return None
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
@@ -955,7 +969,7 @@ class TheMovieDbModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :return: None 表示不处理，MediaInfo 表示继续处理
         """
-        if settings.RECOGNIZE_SOURCE != "themoviedb":
+        if mediainfo.source != "themoviedb" and settings.RECOGNIZE_SOURCE != "themoviedb":
             return None
         if not mediainfo.tmdb_id:
             return mediainfo
@@ -1181,13 +1195,18 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     # 异步方法
-    async def async_search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    async def async_search_medias(
+        self, meta: MetaBase, source: Optional[str] = None
+    ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
         :param meta:  识别的元数据
-        :reutrn: 媒体信息列表
+        :param source: 请求级搜索数据源
+        :return: 媒体信息列表
         """
-        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if source and source != "themoviedb":
+            return None
+        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
             return None
         if not meta.name:
             return []

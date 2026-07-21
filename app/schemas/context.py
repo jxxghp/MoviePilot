@@ -63,14 +63,20 @@ class MetaInfo(BaseModel):
     apply_words: Optional[List[str]] = None
     # 剧集组
     episode_group: Optional[str] = None
+    # 显式媒体数据源
+    media_source: Optional[str] = None
+    # 显式媒体数据源原生ID
+    media_id: Optional[str] = None
 
 
 class MediaInfo(BaseModel):
     """
     识别媒体信息
     """
-    # 来源：themoviedb、douban、bangumi
+    # 来源：themoviedb、douban、bangumi、anilist
     source: Optional[str] = None
+    # 请求级刮削来源
+    scrape_source: Optional[str] = None
     # 类型 电影、电视剧、合集
     type: Optional[str] = None
     # 媒体标题
@@ -93,6 +99,10 @@ class MediaInfo(BaseModel):
     douban_id: Optional[str] = None
     # Bangumi ID
     bangumi_id: Optional[int] = None
+    # AniList ID
+    anilist_id: Optional[int] = None
+    # AniDB ID
+    anidb_id: Optional[int] = None
     # 合集ID
     collection_id: Optional[int] = None
     # 其它媒体ID前缀

@@ -238,11 +238,16 @@ class MediaServerChain(ChainBase):
             "mediaserver_image_cookies", server=server, image_url=image_url
         )
 
-    def sync(self, progress_callback: Optional[Callable[..., None]] = None) -> None:
+    def sync(
+            self,
+            progress_callback: Optional[Callable[..., None]] = None,
+            server: Optional[str] = None,
+    ) -> None:
         """
-        同步媒体库所有数据到本地数据库
+        同步全部或指定媒体服务器的媒体库数据到本地数据库
 
         :param progress_callback: 定时服务进度更新回调
+        :param server: 指定媒体服务器名称，为空时同步全部已启用服务器
         """
         # 设置的媒体服务器
         mediaservers = ServiceConfigHelper.get_mediaserver_configs()
@@ -257,7 +262,14 @@ class MediaServerChain(ChainBase):
             enabled_servers = [mediaserver.name for mediaserver in mediaservers
                                if mediaserver and mediaserver.enabled and mediaserver.name]
             dboper.delete_excluded_servers(enabled_servers)
+            if server:
+                mediaservers = [
+                    mediaserver for mediaserver in mediaservers
+                    if mediaserver and mediaserver.enabled and mediaserver.name == server
+                ]
             total_servers = len(enabled_servers)
+            if server:
+                total_servers = len(mediaservers)
             if progress_callback:
                 progress_callback(
                     value=0,
@@ -266,7 +278,13 @@ class MediaServerChain(ChainBase):
                 )
             if not total_servers:
                 if progress_callback:
-                    progress_callback(value=100, text="没有已启用的媒体服务器")
+                    progress_callback(
+                        value=100,
+                        text=(
+                            f"媒体服务器 {server} 未启用或不存在"
+                            if server else "没有已启用的媒体服务器"
+                        ),
+                    )
                 return
 
             server_sync_contexts = {}

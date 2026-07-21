@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Any, Union, Annotated, Optional
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from fastapi import APIRouter, Depends
 
@@ -18,6 +18,7 @@ from app.schemas.category import CategoryConfig
 from app.schemas.types import ChainEventType
 
 router = APIRouter()
+MediaSource = Literal["themoviedb", "douban", "bangumi", "anilist"]
 
 
 @router.get(
@@ -27,17 +28,22 @@ async def recognize(
     title: str,
     subtitle: Optional[str] = None,
     custom_words: Optional[str] = None,
+    source: Optional[MediaSource] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据标题、副标题识别媒体信息
     :param custom_words: 临时识别词（每行一条规则），传入时仅在本次识别中生效，不会保存到系统配置
+    :param source: 请求级识别数据源
     """
     # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
     metainfo = MetaInfo(
         title, subtitle, custom_words=custom_words.split("\n") if custom_words else None
     )
-    mediainfo = await MediaChain().async_recognize_by_meta(metainfo)
+    mediainfo = await MediaChain().async_recognize_by_meta(
+        metainfo,
+        source=source,
+    )
     if mediainfo:
         return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
     return schemas.Context()
@@ -53,25 +59,28 @@ async def recognize2(
     title: str,
     subtitle: Optional[str] = None,
     custom_words: Optional[str] = None,
+    source: Optional[MediaSource] = None,
 ) -> Any:
     """
     根据标题、副标题识别媒体信息 API_TOKEN认证（?token=xxx）
     """
     # 识别媒体信息
-    return await recognize(title, subtitle, custom_words)
+    return await recognize(title, subtitle, custom_words, source)
 
 
 @router.get(
     "/recognize_file", summary="识别媒体信息（文件）", response_model=schemas.Context
 )
 async def recognize_file(
-    path: str, _: schemas.TokenPayload = Depends(verify_token)
+    path: str,
+    source: Optional[MediaSource] = None,
+    _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据文件路径识别媒体信息
     """
     # 识别媒体信息
-    context = await MediaChain().async_recognize_by_path(path)
+    context = await MediaChain().async_recognize_by_path(path, source=source)
     if context:
         return context.to_dict()
     return schemas.Context()
@@ -83,13 +92,15 @@ async def recognize_file(
     response_model=schemas.Context,
 )
 async def recognize_file2(
-    path: str, _: Annotated[str, Depends(verify_apitoken)]
+    path: str,
+    _: Annotated[str, Depends(verify_apitoken)],
+    source: Optional[MediaSource] = None,
 ) -> Any:
     """
     根据文件路径识别媒体信息 API_TOKEN认证（?token=xxx）
     """
     # 识别媒体信息
-    return await recognize_file(path)
+    return await recognize_file(path, source)
 
 
 @router.get("/search", summary="搜索媒体/人物信息", response_model=List[dict])
@@ -98,6 +109,7 @@ async def search(
     type: Optional[str] = "media",
     page: int = 1,
     count: int = 8,
+    source: Optional[MediaSource] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -114,7 +126,7 @@ async def search(
 
     media_chain = MediaChain()
     if type == "media":
-        _, medias = await media_chain.async_search(title=title)
+        _, medias = await media_chain.async_search(title=title, source=source)
         result = [media.to_dict() for media in medias] if medias else []
     elif type == "collection":
         collections = await media_chain.async_search_collections(name=title)
@@ -294,7 +306,7 @@ async def detail(
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
+    根据带来源前缀的媒体ID查询媒体信息，type_name: 电影/电视剧
     """
     mtype = MediaType(type_name)
     mediainfo = None
@@ -310,6 +322,10 @@ async def detail(
     elif mediaid.startswith("bangumi:"):
         mediainfo = await mediachain.async_recognize_media(
             bangumiid=int(mediaid[8:]), mtype=mtype
+        )
+    elif mediaid.startswith("anilist:"):
+        mediainfo = await mediachain.async_recognize_media(
+            anilistid=int(mediaid[8:]), mtype=mtype
         )
     else:
         # 广播事件解析媒体信息

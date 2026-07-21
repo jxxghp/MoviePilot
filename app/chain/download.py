@@ -324,6 +324,8 @@ class DownloadChain(ChainBase):
     def download_subtitle(
             self,
             subtitle: SubtitleInfo,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             tmdbid: Optional[int] = None,
             doubanid: Optional[str] = None,
             save_path: Optional[str] = None,
@@ -333,6 +335,8 @@ class DownloadChain(ChainBase):
         下载字幕文件并保存到媒体对应的下载目录。
 
         :param subtitle: 字幕搜索结果
+        :param media_source: 媒体数据源
+        :param media_id: 数据源原生ID
         :param tmdbid: TMDB ID
         :param doubanid: 豆瓣 ID
         :param save_path: 保存路径
@@ -345,6 +349,8 @@ class DownloadChain(ChainBase):
         metainfo = MetaInfo(title=subtitle.title, subtitle=subtitle.description)
         mediainfo = self.recognize_media(
             meta=metainfo,
+            source=media_source,
+            mediaid=media_id,
             tmdbid=tmdbid,
             doubanid=doubanid,
         )

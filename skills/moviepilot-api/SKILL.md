@@ -91,11 +91,11 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/media/search` | Search media/person by title. Params: `title` (required), `type`, `page`, `count` |
-| GET | `/api/v1/media/recognize` | Recognize media from torrent title. Params: `title` (required), `subtitle` |
-| GET | `/api/v1/media/recognize2` | Recognize media (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle` |
-| GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required) |
-| GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path` |
+| GET | `/api/v1/media/search` | Search media/person by title. Params: `title` (required), `type`, `page`, `count`, optional `source` (`themoviedb`, `douban`, `bangumi`, `anilist`) |
+| GET | `/api/v1/media/recognize` | Recognize media from torrent title. Params: `title` (required), `subtitle`, `custom_words`, optional `source` |
+| GET | `/api/v1/media/recognize2` | Recognize media (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `source` |
+| GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `source` |
+| GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path`, optional `source` |
 | POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON |
 | GET | `/api/v1/media/category/config` | Get category strategy config |
 | POST | `/api/v1/media/category/config` | Save category strategy config. Body: CategoryConfig |
@@ -103,7 +103,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/media/group/seasons/{episode_group}` | Get episode group seasons |
 | GET | `/api/v1/media/groups/{tmdbid}` | Get media episode groups |
 | GET | `/api/v1/media/seasons` | Get media season info. Params: `mediaid`, `title`, `year`, `season` |
-| GET | `/api/v1/media/{mediaid}` | Get media detail. Params: `type_name` (required: movie/tv), `title`, `year` |
+| GET | `/api/v1/media/{mediaid}` | Get media detail. `mediaid` supports `tmdb:`, `douban:`, `bangumi:`, and `anilist:`. Params: `type_name` (required: movie/tv), `title`, `year` |
 
 ### TMDB (8 endpoints)
 
@@ -160,8 +160,8 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 |--------|------|-------------|
 | GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name) |
 | POST | `/api/v1/download/` | Add download (with media info). Body: JSON |
-| POST | `/api/v1/download/add` | Add download (without media info). Body: JSON with `torrent_url` |
-| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, optional `tmdbid`, `doubanid`, `save_path` |
+| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional `media_source` + `media_id` (legacy `tmdbid`/`doubanid` remain supported), `downloader`, `save_path` |
+| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, optional `media_source` + `media_id` (legacy `tmdbid`/`doubanid` remain supported), `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | Resume download task |
 | GET | `/api/v1/download/stop/{hashString}` | Pause download task |
 | GET | `/api/v1/download/clients` | List available download clients |
@@ -278,8 +278,8 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/transfer/name` | Preview transfer name. Params: `path` (required), `filetype` (required) |
 | GET | `/api/v1/transfer/queue` | Transfer queue |
 | DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
-| POST | `/api/v1/transfer/manual/target-path` | Match manual transfer target path. Body: ManualTransferItem JSON |
-| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON |
+| POST | `/api/v1/transfer/manual/target-path` | Match manual transfer target path. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select the recognition source |
+| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source |
 | GET | `/api/v1/transfer/now` | Run immediate transfer |
 
 ### Dashboard (19 endpoints)
