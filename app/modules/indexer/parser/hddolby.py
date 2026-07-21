@@ -2,7 +2,9 @@
 import json
 from typing import Optional, Tuple
 
+from app.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.utils.string import StringUtils
 
 
@@ -146,12 +148,44 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
         """
-        解析未读消息链接，这里直接读出详情
+        解析未读消息链接
+        HDDolby 使用 API 模式，消息正文通过 _pase_unread_msgs 走网页接口读取。
         """
-        pass
+        return None
 
     def _parse_message_content(self, html_text) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         解析消息内容
+        HDDolby 使用 API 模式，消息正文通过 _pase_unread_msgs 走网页接口读取。
         """
-        pass
+        return None, None, None
+
+    def _pase_unread_msgs(self):
+        """
+        HDDolby API 仅返回未读消息数量，正文需通过 NexusPHP 网页接口读取。
+        """
+        if not self._site_cookie:
+            if self.message_unread:
+                logger.warn(
+                    f"{self._site_name} 未配置 Cookie，无法读取站点消息正文"
+                    f"（API 仅提供未读数量：{self.message_unread}）"
+                )
+            return
+
+        nexus = NexusPhpSiteUserInfo(
+            site_name=self._site_name,
+            url=self._site_url,
+            site_cookie=self._site_cookie,
+            apikey=self.apikey,
+            token=self.token,
+            session=self._session,
+            ua=self._ua,
+            emulate=self._emulate,
+            proxy=self._proxy,
+        )
+        nexus.message_unread = self.message_unread
+        nexus.message_read_force = self.message_unread > 0
+        nexus._pase_unread_msgs()
+        self.message_unread_contents = nexus.message_unread_contents.copy()
+        if self.message_unread_contents and not self.message_unread:
+            self.message_unread = len(self.message_unread_contents)
