@@ -110,6 +110,10 @@ function install_backend_and_download_resources() {
             if ! ${VENV_PATH}/bin/python -m cloakbrowser install; then
                 WARN "CloakBrowser 浏览器内核更新失败，后续首次使用时可能重新下载"
             fi
+            # pip/cloakbrowser 以 root 写入 venv，标记本次启动已更新依赖，
+            # 由 entrypoint 在完成 usermod 后据此校正 venv 属主，避免降权后读取被拒
+            mkdir -p "${CONFIG_DIR}/temp"
+            : > "${CONFIG_DIR}/temp/moviepilot.venv_updated"
             INFO "依赖更新成功"
         else
             INFO "依赖无变化，跳过依赖更新"

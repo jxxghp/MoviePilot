@@ -409,6 +409,18 @@ function chown_plugin_runtime_path() {
     chown -h moviepilot:moviepilot "${plugin_path}"
 }
 
+# 依赖更新以 root 写入 venv 后，update.sh 会留下标记，此处据此把 venv 属主
+# 校正为 moviepilot，避免后续降权进程（如 cloakbrowser install、后端主进程）读取被拒。
+# 仅在真正发生过依赖更新时才递归 chown，不拖慢常规启动。
+function correct_venv_permissions_if_updated() {
+    local flag="${CONFIG_DIR}/temp/moviepilot.venv_updated"
+    [ -f "${flag}" ] || return 0
+    rm -f "${flag}"
+    [ -d "${VENV_PATH}" ] || return 0
+    INFO "→ 检测到依赖已更新，正在校正虚拟环境权限..."
+    chown -R moviepilot:moviepilot "${VENV_PATH}"
+}
+
 function correct_file_permissions() {
     local chown_start
     local chown_end
@@ -418,6 +430,7 @@ function correct_file_permissions() {
     force_chown_image_paths_if_requested /app /public
     chown_plugin_runtime_path /app/app/plugins
     correct_home_permissions
+    correct_venv_permissions_if_updated
     chown -R moviepilot:moviepilot \
         "${CONFIG_DIR}" \
         /var/lib/nginx \
