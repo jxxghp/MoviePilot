@@ -9,7 +9,7 @@ from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import Context
 from app.core.event import eventmanager
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db.models import User
 from app.db.user_oper import get_current_active_user, get_current_active_superuser
@@ -154,26 +154,64 @@ async def search(
 def scrape(
     fileitem: schemas.FileItem,
     storage: Optional[str] = "local",
+    media_source: Optional[MediaSource] = None,
+    media_id: Optional[str] = None,
+    type_name: Optional[MediaType] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    刮削媒体信息
+    刮削媒体信息，可按请求指定媒体数据源及其原生ID
+
+    :param fileitem: 待刮削文件项
+    :param storage: 文件所在存储
+    :param media_source: 请求级媒体数据源
+    :param media_id: 数据源原生ID
+    :param type_name: 媒体类型
+    :param _: Token校验
     """
     if not fileitem or not fileitem.path:
         return schemas.Response(success=False, message="刮削路径无效")
+    normalized_media_id = media_id.strip() if media_id else None
+    if normalized_media_id and not media_source:
+        return schemas.Response(
+            success=False, message="指定媒体ID时必须同时指定媒体数据源"
+        )
+    if normalized_media_id and not normalized_media_id.isdigit():
+        return schemas.Response(success=False, message="媒体ID格式无效")
+
     chain = MediaChain()
-    # 识别媒体信息
-    context = chain.recognize_by_path(fileitem.path, obtain_images=True)
-    if not context or not context.media_info:
+    if normalized_media_id:
+        meta_info = MetaInfoPath(Path(fileitem.path))
+        media_info = chain.recognize_media(
+            meta=meta_info,
+            mtype=type_name,
+            source=media_source,
+            mediaid=normalized_media_id,
+        )
+        if media_info:
+            media_info.scrape_source = media_source
+            chain.obtain_images(mediainfo=media_info)
+    else:
+        context = chain.recognize_by_path(
+            fileitem.path,
+            source=media_source,
+            obtain_images=True,
+        )
+        meta_info = context.meta_info if context else None
+        media_info = context.media_info if context else None
+
+    if not media_info:
         return schemas.Response(success=False, message="刮削失败，无法识别媒体信息")
+    if media_source:
+        media_info.scrape_source = media_source
     if storage == "local":
         if not Path(fileitem.path).exists():
             return schemas.Response(success=False, message="刮削路径不存在")
     # 手动刮削 (暂时使用同步版本，可以后续优化为异步)
     chain.scrape_metadata(
         fileitem=fileitem,
-        meta=context.meta_info,
-        mediainfo=context.media_info,
+        meta=meta_info,
+        mediainfo=media_info,
         overwrite=True,
     )
     return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")

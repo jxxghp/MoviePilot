@@ -96,7 +96,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/media/recognize2` | Recognize media (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `source` |
 | GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `source` |
 | GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path`, optional `source` |
-| POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON |
+| POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON. Optional params: `media_source`, `media_id`, `type_name` (`电影`/`电视剧`) |
 | GET | `/api/v1/media/category/config` | Get category strategy config |
 | POST | `/api/v1/media/category/config` | Save category strategy config. Body: CategoryConfig |
 | GET | `/api/v1/media/category` | Get auto-categorization config |

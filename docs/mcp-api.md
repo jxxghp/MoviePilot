@@ -120,6 +120,7 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `source` |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `source` |
 | GET | `/api/v1/media/{mediaid}` | 查询媒体详情，`mediaid` 支持 `tmdb:`、`douban:`、`bangumi:`、`anilist:` 前缀 |
+| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧）可指定本次刮削媒体 |
 | POST | `/api/v1/transfer/manual/target-path` | 匹配手动整理目标路径；请求体可用 `media_source` + `media_id` 指定数据源原生ID |
 | POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源，同时兼容 `tmdbid`、`doubanid` |
 
