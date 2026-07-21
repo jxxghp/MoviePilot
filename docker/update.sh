@@ -90,6 +90,11 @@ function install_backend_and_download_resources() {
     if [ -f "${TMP_PATH}/App/requirements.in" ]; then
         if ! cmp -s /app/requirements.in "${TMP_PATH}/App/requirements.in"; then
             INFO "检测到依赖变化，正在更新虚拟环境..."
+            # 在任何 root 写入 venv 之前先建立待校正标记，覆盖整个更新过程：
+            # 即使 pip 部分写入后失败、或容器在内核安装期间被停止，下次启动
+            # 仍会看到标记并重新校正 venv 属主（由 entrypoint 校正成功后清除）。
+            mkdir -p "${CONFIG_DIR}/temp"
+            : > "${CONFIG_DIR}/temp/moviepilot.venv_updated"
             # 备份当前requirements.txt
             cp /app/requirements.txt /tmp/requirements.txt.backup
             # 复制新的requirements.in
@@ -110,10 +115,6 @@ function install_backend_and_download_resources() {
             if ! ${VENV_PATH}/bin/python -m cloakbrowser install; then
                 WARN "CloakBrowser 浏览器内核更新失败，后续首次使用时可能重新下载"
             fi
-            # pip/cloakbrowser 以 root 写入 venv，标记本次启动已更新依赖，
-            # 由 entrypoint 在完成 usermod 后据此校正 venv 属主，避免降权后读取被拒
-            mkdir -p "${CONFIG_DIR}/temp"
-            : > "${CONFIG_DIR}/temp/moviepilot.venv_updated"
             INFO "依赖更新成功"
         else
             INFO "依赖无变化，跳过依赖更新"

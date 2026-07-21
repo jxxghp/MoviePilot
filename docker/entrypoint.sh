@@ -415,10 +415,16 @@ function chown_plugin_runtime_path() {
 function correct_venv_permissions_if_updated() {
     local flag="${CONFIG_DIR}/temp/moviepilot.venv_updated"
     [ -f "${flag}" ] || return 0
-    rm -f "${flag}"
+    # venv 目录不存在则保留标记，留待下次启动重试
     [ -d "${VENV_PATH}" ] || return 0
     INFO "→ 检测到依赖已更新，正在校正虚拟环境权限..."
-    chown -R moviepilot:moviepilot "${VENV_PATH}"
+    # 仅在递归 chown 成功后才清除标记；若 chown 失败或进程被终止，
+    # 标记保留，下次启动会重新校正，避免降权进程读取 root 属主文件失败
+    if chown -R moviepilot:moviepilot "${VENV_PATH}"; then
+        rm -f "${flag}"
+    else
+        WARN "→ 虚拟环境权限校正失败，标记已保留，将在下次启动时重试。"
+    fi
 }
 
 function correct_file_permissions() {
