@@ -92,6 +92,17 @@ class TemplateContextBuilder:
         if not mediainfo:
             return
         season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None else None
+        source_ids = {
+            "themoviedb": mediainfo.tmdb_id,
+            "douban": mediainfo.douban_id,
+            "bangumi": mediainfo.bangumi_id,
+            "anilist": mediainfo.anilist_id,
+        }
+        media_source = mediainfo.source or next(
+            (source for source, media_id in source_ids.items() if media_id is not None),
+            None,
+        )
+        media_id = mediainfo.media_id or source_ids.get(media_source)
         base_info = {
             # 标题
             "title": cls.__convert_invalid_characters(mediainfo.title),
@@ -135,6 +146,14 @@ class TemplateContextBuilder:
             "imdbid": mediainfo.imdb_id,
             # 豆瓣ID
             "doubanid": mediainfo.douban_id,
+            # Bangumi ID
+            "bangumiid": mediainfo.bangumi_id,
+            # AniList ID
+            "anilistid": mediainfo.anilist_id,
+            # 当前媒体数据源
+            "media_source": media_source,
+            # 当前数据源原生ID
+            "media_id": str(media_id) if media_id is not None else None,
         }
         context.update({**base_info, **media_info})
 

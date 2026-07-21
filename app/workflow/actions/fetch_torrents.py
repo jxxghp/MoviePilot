@@ -93,6 +93,10 @@ class FetchTorrentsAction(BaseAction):
                     break
                 torrents = searchchain.search_by_id(tmdbid=media.tmdb_id,
                                                     doubanid=media.douban_id,
+                                                    bangumiid=media.bangumi_id,
+                                                    anilistid=media.anilist_id,
+                                                    source=media.source,
+                                                    mediaid=media.media_id,
                                                     mtype=MediaType(media.type),
                                                     sites=params.sites)
                 for torrent in torrents:

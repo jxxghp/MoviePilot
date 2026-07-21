@@ -593,6 +593,10 @@ class SubscribeEpisodesRefreshEventData(ChainEventData):
     # 输入参数
     tmdbid: Optional[int] = Field(default=None, description="TMDB ID")
     doubanid: Optional[str] = Field(default=None, description="豆瓣 ID")
+    bangumiid: Optional[int] = Field(default=None, description="Bangumi ID")
+    anilistid: Optional[int] = Field(default=None, description="AniList ID")
+    media_source: Optional[str] = Field(default=None, description="媒体数据源")
+    media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
     season: Optional[int] = Field(default=None, description="季号")
     mediainfo: Any = Field(default=None, description="媒体信息")
     current_total_episode: int = Field(default=0, description="主程序本次识别到的 TMDB 当前季总集数")

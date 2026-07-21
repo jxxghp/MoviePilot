@@ -11,6 +11,7 @@ from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.chain.bangumi import BangumiChain
 from app.log import logger
+from app.utils.media import resolve_media_identity
 
 
 class SearchPersonCreditsInput(BaseModel):
@@ -59,6 +60,7 @@ class SearchPersonCreditsTool(MoviePilotTool):
                 # 精简字段，只保留关键信息
                 simplified_results = []
                 for media in limited_medias:
+                    media_source, media_id = resolve_media_identity(media=media)
                     simplified = {
                         "title": media.title,
                         "en_title": media.en_title,
@@ -68,6 +70,10 @@ class SearchPersonCreditsTool(MoviePilotTool):
                         "tmdb_id": media.tmdb_id,
                         "imdb_id": media.imdb_id,
                         "douban_id": media.douban_id,
+                        "bangumi_id": media.bangumi_id,
+                        "anilist_id": media.anilist_id,
+                        "media_source": media_source,
+                        "media_id": media_id,
                         "overview": media.overview[:200] + "..." if media.overview and len(media.overview) > 200 else media.overview,
                         "vote_average": media.vote_average,
                         "poster_path": media.poster_path,

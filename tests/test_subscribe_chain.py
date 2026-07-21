@@ -293,6 +293,10 @@ def _load_subscribe_chain_class():
         def __init__(self, **kwargs):
             self.best_version_full = 0
             self.bangumiid = None
+            self.anilistid = None
+            self.media_source = None
+            self.media_id = None
+            self.mediaid = None
             self.episode_group = None
             for key, value in kwargs.items():
                 setattr(self, key, value)
@@ -391,6 +395,10 @@ class SubscribeChainTest(TestCase):
             "imdbid": None,
             "tvdbid": None,
             "bangumiid": None,
+            "anilistid": None,
+            "media_source": "themoviedb",
+            "media_id": "1",
+            "mediaid": "tmdb:1",
             "episode_group": None,
             "poster": None,
             "backdrop": None,
@@ -1776,6 +1784,11 @@ class SubscribeChainTest(TestCase):
             overview="overview",
             imdb_id="tt1234567",
             tvdb_id=99,
+            source="themoviedb",
+            tmdb_id=1,
+            douban_id=None,
+            bangumi_id=None,
+            anilist_id=None,
             get_poster_image=lambda: "poster",
             get_backdrop_image=lambda: "backdrop",
         )
@@ -1970,6 +1983,8 @@ class SubscribeNoteTrackingTest(TestCase):
                 type=MediaType.TV,
                 tmdb_id=1,
                 douban_id=None,
+                bangumi_id=None,
+                anilist_id=None,
             ),
             torrent_info=SimpleNamespace(pri_order=99, title="fake-torrent"),
             selected_episodes=list(episodes),
@@ -2467,7 +2482,7 @@ class SubscribeProgressEntrypointTest(TestCase):
         self.assertEqual(kwargs["meta"].name, subscribe.name)
         self.assertEqual(kwargs["meta"].season_seq, "1")
         self.assertIs(kwargs["mediainfo"], mediainfo)
-        self.assertEqual(kwargs["mediakey"], 10001)
+        self.assertEqual(kwargs["mediakey"], "tmdb:10001")
         self.assertTrue(summary["updated"])
         self.assertEqual(summary["lack_episode"], 2)
         self.assertEqual(subscribe.lack_episode, 2)
@@ -2550,6 +2565,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             tmdb_id=31000,
             douban_id=None,
             bangumi_id=None,
+            anilist_id=None,
+            source="themoviedb",
             vote_average=9.5,
             overview="overview",
             imdb_id="tt1234567",
@@ -3395,7 +3412,13 @@ class SubscribeDownloadFactsTest(TestCase):
             confirmed_full_coverage=confirmed_full_coverage,
             torrent_info=SimpleNamespace(pri_order=pri_order),
             meta_info=SimpleNamespace(episode_list=episodes or [], season_list=[1]),
-            media_info=SimpleNamespace(type=MediaType.TV, tmdb_id=30003, douban_id=None),
+            media_info=SimpleNamespace(
+                type=MediaType.TV,
+                tmdb_id=30003,
+                douban_id=None,
+                bangumi_id=None,
+                anilist_id=None,
+            ),
         )
 
     def test_normal_tv_download_records_note_and_episode_priority_without_current_priority(self):
@@ -3553,7 +3576,10 @@ class SubscribeDownloadFactsTest(TestCase):
             lack_episode=1,
         )
         download = self._download(episodes=[], pri_order=90)
-        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.media_info = SimpleNamespace(
+            type=MediaType.MOVIE, tmdb_id=30003, douban_id=None,
+            bangumi_id=None, anilist_id=None,
+        )
         download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
         updates = []
 
@@ -3589,7 +3615,10 @@ class SubscribeDownloadFactsTest(TestCase):
             lack_episode=1,
         )
         download = self._download(episodes=[], pri_order=90)
-        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.media_info = SimpleNamespace(
+            type=MediaType.MOVIE, tmdb_id=30003, douban_id=None,
+            bangumi_id=None, anilist_id=None,
+        )
         download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
         chain = self.SubscribeChain()
 
@@ -3622,7 +3651,10 @@ class SubscribeDownloadFactsTest(TestCase):
             lack_episode=1,
         )
         download = self._download(episodes=[], pri_order=90)
-        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.media_info = SimpleNamespace(
+            type=MediaType.MOVIE, tmdb_id=30003, douban_id=None,
+            bangumi_id=None, anilist_id=None,
+        )
         download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
         chain = self.SubscribeChain()
 
@@ -3655,7 +3687,10 @@ class SubscribeDownloadFactsTest(TestCase):
             lack_episode=1,
         )
         download = self._download(episodes=[], pri_order=90)
-        download.media_info = SimpleNamespace(type=MediaType.MOVIE, tmdb_id=30003, douban_id=None)
+        download.media_info = SimpleNamespace(
+            type=MediaType.MOVIE, tmdb_id=30003, douban_id=None,
+            bangumi_id=None, anilist_id=None,
+        )
         download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
         updates = []
         finished = []

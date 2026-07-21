@@ -48,6 +48,8 @@ class TransferHistory(Base):
     imdbid = Column(String)
     tvdbid = Column(Integer)
     doubanid = Column(String)
+    bangumiid = Column(Integer, index=True)
+    anilistid = Column(Integer, index=True)
     # 统一媒体数据源与原生ID
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
@@ -75,6 +77,7 @@ class TransferHistory(Base):
     __table_args__ = (
         Index('ix_transferhistory_status_date', 'status', 'date'),
         Index('ix_transferhistory_date_id', 'date', 'id'),
+        Index('ix_transferhistory_media_identity', 'media_source', 'media_id'),
     )
 
     @classmethod

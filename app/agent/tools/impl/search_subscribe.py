@@ -70,7 +70,11 @@ class SearchSubscribeTool(MoviePilotTool):
                 "total_episode": subscribe.total_episode,
                 "lack_episode": subscribe.lack_episode,
                 "tmdbid": subscribe.tmdbid,
-                "doubanid": subscribe.doubanid
+                "doubanid": subscribe.doubanid,
+                "bangumiid": subscribe.bangumiid,
+                "anilistid": subscribe.anilistid,
+                "media_source": subscribe.media_source,
+                "media_id": subscribe.media_id,
             }
 
             # 检查订阅状态

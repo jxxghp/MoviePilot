@@ -152,8 +152,8 @@ def test_rebuild_download_scope_keeps_special_season_zero():
 
     no_exists = MediaInteractionChain._get_noexits_info(meta, mediainfo)
 
-    assert list(no_exists[1]) == [0]
-    assert no_exists[1][0].total_episode == 2
+    assert list(no_exists["tmdb:1"]) == [0]
+    assert no_exists["tmdb:1"][0].total_episode == 2
 
 
 def test_message_routes_text_reply_to_media_interaction_before_ai():

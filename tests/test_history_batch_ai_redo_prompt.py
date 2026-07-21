@@ -24,6 +24,10 @@ def test_batch_manual_redo_prompt_requires_plain_text_result():
         mode="copy",
         tmdbid=123,
         doubanid=None,
+        bangumiid=None,
+        anilistid=None,
+        media_source="themoviedb",
+        media_id="123",
         errmsg="识别失败",
     )
 

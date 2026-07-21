@@ -16,6 +16,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.mediaserver import MediaServerHelper
 from app.schemas import MediaType, NotExistMediaInfo
 from app.schemas.types import SystemConfigKey
+from app.utils.media import build_media_key, resolve_media_identity
 
 router = APIRouter()
 
@@ -130,7 +131,8 @@ def not_exists(
     exist_flag, no_exists = DownloadChain().get_no_exists_info(
         meta=meta, mediainfo=mediainfo
     )
-    mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+    media_source, media_id = resolve_media_identity(media=mediainfo)
+    mediakey = build_media_key(media_source, media_id)
     if mediainfo.type == MediaType.MOVIE:
         # 电影已存在时返回空列表，不存在时返回空对像列表
         return [] if exist_flag else [NotExistMediaInfo()]

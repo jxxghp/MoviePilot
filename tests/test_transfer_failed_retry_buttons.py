@@ -94,6 +94,10 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             mode="copy",
             tmdbid=123,
             doubanid=None,
+            bangumiid=None,
+            anilistid=None,
+            media_source="themoviedb",
+            media_id="123",
             errmsg="未识别到媒体信息",
         )
 
@@ -151,6 +155,10 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             mode="move",
             tmdbid=123,
             doubanid=None,
+            bangumiid=None,
+            anilistid=None,
+            media_source="themoviedb",
+            media_id="123",
             errmsg=None,
         )
 

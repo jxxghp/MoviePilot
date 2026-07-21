@@ -307,6 +307,10 @@ def test_manual_redo_context_uses_dest_path_for_successful_move_record():
         mode="move",
         tmdbid=100,
         doubanid=None,
+        bangumiid=None,
+        anilistid=None,
+        media_source="themoviedb",
+        media_id="100",
         errmsg=None,
     )
 
@@ -346,6 +350,10 @@ def test_manual_redo_context_only_treats_exact_move_as_dest_source():
         mode="not-move",
         tmdbid=100,
         doubanid=None,
+        bangumiid=None,
+        anilistid=None,
+        media_source="themoviedb",
+        media_id="100",
         errmsg=None,
     )
 

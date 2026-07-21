@@ -21,6 +21,9 @@ def _build_subscribe(**overrides):
         "imdbid": None,
         "tvdbid": None,
         "bangumiid": None,
+        "anilistid": None,
+        "media_source": None,
+        "media_id": None,
         "episode_group": None,
         "start_episode": 1,
         "total_episode": 2,
@@ -39,6 +42,10 @@ def _build_mediainfo():
         year="2026",
         tmdb_id=None,
         douban_id=None,
+        bangumi_id=None,
+        anilist_id=None,
+        source=None,
+        media_id=None,
     )
 
 

@@ -103,7 +103,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/media/group/seasons/{episode_group}` | Get episode group seasons |
 | GET | `/api/v1/media/groups/{tmdbid}` | Get media episode groups |
 | GET | `/api/v1/media/seasons` | Get media season info. Params: `mediaid`, `title`, `year`, `season` |
-| GET | `/api/v1/media/{mediaid}` | Get media detail. `mediaid` supports `tmdb:`, `douban:`, `bangumi:`, and `anilist:`. Params: `type_name` (required: movie/tv), `title`, `year` |
+| GET | `/api/v1/media/{mediaid}` | Get media detail. `mediaid` supports `tmdb:`, `douban:`, `bangumi:`, `anilist:`, and plugin-defined source prefixes. Params: `type_name` (required: movie/tv), `title`, `year` |
 
 ### TMDB (8 endpoints)
 
@@ -142,13 +142,13 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/search/media/{mediaid}` | Search torrents by media ID (format: `tmdb:123` / `douban:123` / `bangumi:123`). Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
+| GET | `/api/v1/search/media/{mediaid}` | Search torrents by media ID (four built-in prefixes or a plugin-defined source prefix). Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
 | GET | `/api/v1/search/media/{mediaid}/stream` | Stream torrent search by media ID with SSE. Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
 | GET | `/api/v1/search/title` | Fuzzy search torrents by keyword. Params: `keyword`, `page`, `sites` |
 | GET | `/api/v1/search/title/stream` | Stream fuzzy torrent search with SSE. Params: `keyword`, `page`, `sites` |
 | GET | `/api/v1/search/subtitle/title` | Fuzzy search site subtitles by keyword. Params: `keyword`, `page`, `sites` |
 | GET | `/api/v1/search/subtitle/title/stream` | Stream fuzzy site subtitle search with SSE. Params: `keyword`, `page`, `sites` |
-| GET | `/api/v1/search/subtitle/media/{mediaid}` | Exact subtitle search by media ID (format: `tmdb:123` / `douban:123` / `bangumi:123`). Params: `mtype`, `title`, `year`, `season`, `episode`, `sites` |
+| GET | `/api/v1/search/subtitle/media/{mediaid}` | Exact subtitle search by media ID (four built-in prefixes or a plugin-defined source prefix). Params: `mtype`, `title`, `year`, `season`, `episode`, `sites` |
 | GET | `/api/v1/search/subtitle/media/{mediaid}/stream` | Stream exact subtitle search by media ID with SSE. Params: `mtype`, `title`, `year`, `season`, `episode`, `sites` |
 | GET | `/api/v1/search/last` | Get latest search results |
 | GET | `/api/v1/search/last/context` | Get latest search results with replayable params. `params.result_type` is `torrent` or `subtitle` |
@@ -160,8 +160,8 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 |--------|------|-------------|
 | GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name) |
 | POST | `/api/v1/download/` | Add download (with media info). Body: JSON |
-| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional `media_source` + `media_id` (legacy `tmdbid`/`doubanid` remain supported), `downloader`, `save_path` |
-| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, optional `media_source` + `media_id` (legacy `tmdbid`/`doubanid` remain supported), `save_path` |
+| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional `media_source` + `media_id` (all four dedicated IDs remain supported), `downloader`, `save_path` |
+| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, optional `media_source` + `media_id` (all four dedicated IDs remain supported), `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | Resume download task |
 | GET | `/api/v1/download/stop/{hashString}` | Pause download task |
 | GET | `/api/v1/download/clients` | List available download clients |
@@ -172,14 +172,14 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/subscribe/` | List all subscriptions |
-| POST | `/api/v1/subscribe/` | Add subscription. Body: Subscribe JSON |
+| POST | `/api/v1/subscribe/` | Add subscription. Body accepts `media_source` + `media_id` and compatible `tmdbid`, `doubanid`, `bangumiid`, `anilistid` fields |
 | PUT | `/api/v1/subscribe/` | Update subscription. Body: Subscribe JSON |
 | GET | `/api/v1/subscribe/list` | List subscriptions (API_TOKEN auth, use `--token-param`) |
 | GET | `/api/v1/subscribe/{subscribe_id}` | Subscription detail |
 | DELETE | `/api/v1/subscribe/{subscribe_id}` | Delete subscription |
 | PUT | `/api/v1/subscribe/status/{subid}` | Update subscription status. Params: `state` (required) |
-| GET | `/api/v1/subscribe/media/{mediaid}` | Query subscription by media ID. Params: `season`, `title` |
-| DELETE | `/api/v1/subscribe/media/{mediaid}` | Delete subscription by media ID. Params: `season` |
+| GET | `/api/v1/subscribe/media/{mediaid}` | Query subscription by a built-in or plugin-prefixed media ID. Params: `season`, `title` |
+| DELETE | `/api/v1/subscribe/media/{mediaid}` | Delete subscription by a built-in or plugin-prefixed media ID. Params: `season` |
 | GET | `/api/v1/subscribe/refresh` | Refresh all subscriptions |
 | GET | `/api/v1/subscribe/reset/{subid}` | Reset subscription |
 | GET | `/api/v1/subscribe/check` | Refresh subscription TMDB info |

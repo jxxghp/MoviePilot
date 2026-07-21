@@ -215,6 +215,10 @@ class ManualTransferItem(BaseModel):
     tmdbid: Optional[int] = None
     # 豆瓣ID
     doubanid: Optional[str] = None
+    # Bangumi ID
+    bangumiid: Optional[int] = None
+    # AniList ID
+    anilistid: Optional[int] = None
     # 媒体数据源
     media_source: Optional[
         Literal["themoviedb", "douban", "bangumi", "anilist"]

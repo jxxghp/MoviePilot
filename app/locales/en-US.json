@@ -118,6 +118,8 @@
     "模型响应为空": "Model response is empty",
     "LLM 调用超时": "LLM call timed out",
     "刮削路径无效": "Scraping path is invalid",
+    "指定媒体ID时必须同时指定媒体数据源": "The media source must be specified together with the media ID",
+    "媒体ID格式无效": "Invalid media ID format",
     "刮削失败，无法识别媒体信息": "Scraping failed: unable to recognize media information",
     "刮削路径不存在": "Scraping path does not exist",
     "保存成功": "Saved successfully",

@@ -396,6 +396,8 @@ def _build_tv_context(episode_list=None):
             title_year="Test Show (2026)",
             tmdb_id=1,
             douban_id=None,
+            bangumi_id=None,
+            anilist_id=None,
         ),
         meta_info=SimpleNamespace(
             season_list=[1],

@@ -254,6 +254,8 @@ class MediaInfo:
     recognize_cache_hit = False
     # 来源：themoviedb、douban、bangumi、anilist
     source: str = None
+    # 当前数据源原生ID，主要用于保留插件自定义数据源身份
+    media_id: str = None
     # 请求级刮削来源；为空时使用系统设置
     scrape_source: str = None
     # 类型 电影、电视剧
@@ -1062,14 +1064,19 @@ class MediaInfo:
         dicts["douban_info"] = None
         dicts["bangumi_info"] = None
         dicts["anilist_info"] = None
-        dicts["mediaid_prefix"] = self.source
         source_ids = {
             "themoviedb": self.tmdb_id,
             "douban": self.douban_id,
             "bangumi": self.bangumi_id,
             "anilist": self.anilist_id,
         }
-        media_id = source_ids.get(self.source)
+        media_source = self.source or next(
+            (source for source, media_id in source_ids.items() if media_id is not None),
+            None,
+        )
+        dicts["source"] = media_source
+        dicts["mediaid_prefix"] = media_source
+        media_id = self.media_id or source_ids.get(media_source)
         dicts["media_id"] = str(media_id) if media_id is not None else None
         return dicts
 
@@ -1111,7 +1118,7 @@ class Context:
     media_recognize_fail_count: int = 0
     # 候选资源来源：rss、spider、search、unknown。
     resource_source: str = "unknown"
-    # 候选匹配来源：tmdbid、doubanid、imdbid、title、plugin、unknown。
+    # 候选匹配来源：tmdbid、doubanid、bangumiid、anilistid、imdbid、title、plugin、unknown。
     match_source: str = "unknown"
     # 候选自身是否已经识别出有效媒体 ID。
     candidate_recognized: bool = False

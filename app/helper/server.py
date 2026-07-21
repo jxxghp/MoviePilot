@@ -15,6 +15,7 @@ from app.db.workflow_oper import WorkflowOper
 from app.log import logger
 from app.schemas.types import MediaType, SystemConfigKey, media_type_to_agent
 from app.utils.http import AsyncRequestUtils, RequestUtils
+from app.utils.media import resolve_media_identity
 from app.utils.system import SystemUtils
 from version import APP_VERSION, FRONTEND_VERSION
 
@@ -1332,7 +1333,10 @@ class MoviePilotServerHelper:
         tmdbid = item.get("tmdbid")
         doubanid = item.get("doubanid")
         bangumiid = item.get("bangumiid")
-        if not any([tmdbid, doubanid, bangumiid]):
+        anilistid = item.get("anilistid")
+        media_source = item.get("media_source")
+        media_id = item.get("media_id")
+        if not any([tmdbid, doubanid, bangumiid, anilistid, media_id]):
             return None
 
         return {
@@ -1340,6 +1344,9 @@ class MoviePilotServerHelper:
             "tmdbid": tmdbid,
             "doubanid": doubanid,
             "bangumiid": bangumiid,
+            "anilistid": anilistid,
+            "source": media_source,
+            "mediaid": media_id,
             "season": item.get("season"),
         }
 
@@ -1486,7 +1493,8 @@ class MoviePilotServerHelper:
         media_type = cls._extract_media_type(meta=meta, mediainfo=mediainfo)
         if not keyword or not media_type:
             return None
-        if not any([mediainfo.tmdb_id, mediainfo.douban_id, mediainfo.bangumi_id]):
+        media_source, media_id = resolve_media_identity(media=mediainfo)
+        if not media_id:
             return None
 
         return {
@@ -1502,6 +1510,9 @@ class MoviePilotServerHelper:
             "tmdbid": mediainfo.tmdb_id,
             "doubanid": mediainfo.douban_id,
             "bangumiid": mediainfo.bangumi_id,
+            "anilistid": mediainfo.anilist_id,
+            "media_source": media_source,
+            "media_id": media_id,
         }
 
     @classmethod

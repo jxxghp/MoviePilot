@@ -54,7 +54,14 @@ class DeleteSubscribeTool(MoviePilotTool):
             await subscribe_oper.async_delete(subscribe_id)
             # 分享订阅统计刷新本身已异步化，这里只需要在删除后触发即可。
             MoviePilotServerHelper.sub_done_async(
-                {"tmdbid": subscribe.tmdbid, "doubanid": subscribe.doubanid}
+                {
+                    "tmdbid": subscribe.tmdbid,
+                    "doubanid": subscribe.doubanid,
+                    "bangumiid": subscribe.bangumiid,
+                    "anilistid": subscribe.anilistid,
+                    "media_source": subscribe.media_source,
+                    "media_id": subscribe.media_id,
+                }
             )
 
             # 发送事件

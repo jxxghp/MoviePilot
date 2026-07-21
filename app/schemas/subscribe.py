@@ -62,7 +62,10 @@ class Subscribe(BaseModel):
     tmdbid: Optional[int] = None
     doubanid: Optional[str] = None
     bangumiid: Optional[int] = None
+    anilistid: Optional[int] = None
     mediaid: Optional[str] = None
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
     # 季号
     season: Optional[int] = None
     # 海报
@@ -171,6 +174,9 @@ class SubscribeShare(BaseModel):
     tmdbid: Optional[int] = None
     doubanid: Optional[str] = None
     bangumiid: Optional[int] = None
+    anilistid: Optional[int] = None
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
     # 季号
     season: Optional[int] = None
     # 海报

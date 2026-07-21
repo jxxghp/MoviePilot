@@ -120,6 +120,14 @@ class QueryTransferHistoryTool(MoviePilotTool):
                     simplified["imdbid"] = record.imdbid
                 if record.doubanid:
                     simplified["doubanid"] = record.doubanid
+                if record.bangumiid:
+                    simplified["bangumiid"] = record.bangumiid
+                if record.anilistid:
+                    simplified["anilistid"] = record.anilistid
+                if record.media_source:
+                    simplified["media_source"] = record.media_source
+                if record.media_id:
+                    simplified["media_id"] = record.media_id
                 simplified_records.append(simplified)
 
             result_json = json.dumps(simplified_records, ensure_ascii=False, indent=2)

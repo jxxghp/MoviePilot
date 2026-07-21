@@ -32,6 +32,10 @@ def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
         "transfer_mode": history.mode or "unknown",
         "tmdbid": history.tmdbid or "none",
         "doubanid": history.doubanid or "none",
+        "bangumiid": history.bangumiid or "none",
+        "anilistid": history.anilistid or "none",
+        "media_source": history.media_source or "none",
+        "media_id": history.media_id or "none",
         "error_message": history.errmsg or "none",
     }
 
@@ -55,6 +59,10 @@ def format_manual_redo_record_context(history: Any) -> str:
             f"- Transfer mode: {context['transfer_mode']}",
             f"- Current TMDB ID: {context['tmdbid']}",
             f"- Current Douban ID: {context['doubanid']}",
+            f"- Current Bangumi ID: {context['bangumiid']}",
+            f"- Current AniList ID: {context['anilistid']}",
+            f"- Current media source: {context['media_source']}",
+            f"- Current source-native ID: {context['media_id']}",
             f"- Error message: {context['error_message']}",
         ]
     )

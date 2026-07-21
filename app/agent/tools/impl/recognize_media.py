@@ -142,6 +142,9 @@ class RecognizeMediaTool(MoviePilotTool):
                 "imdb_id": media_info.get("imdb_id"),
                 "douban_id": media_info.get("douban_id"),
                 "bangumi_id": media_info.get("bangumi_id"),
+                "anilist_id": media_info.get("anilist_id"),
+                "media_source": media_info.get("source"),
+                "media_id": media_info.get("media_id"),
                 "overview": media_info.get("overview"),
                 "vote_average": media_info.get("vote_average"),
                 "poster_path": media_info.get("poster_path"),
@@ -167,7 +170,11 @@ class RecognizeMediaTool(MoviePilotTool):
                 "season_episode": meta_info.get("season_episode"),
                 "episode_list": meta_info.get("episode_list"),
                 "tmdbid": meta_info.get("tmdbid"),
-                "doubanid": meta_info.get("doubanid")
+                "doubanid": meta_info.get("doubanid"),
+                "bangumiid": meta_info.get("bangumiid"),
+                "anilistid": meta_info.get("anilistid"),
+                "media_source": meta_info.get("media_source"),
+                "media_id": meta_info.get("media_id"),
             }
         
         return json.dumps(result, ensure_ascii=False, indent=2)

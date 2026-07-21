@@ -397,7 +397,10 @@ class TorrentHelper:
         :param torrent: 种子信息
         """
         # 比对词条指定的tmdbid
-        if torrent_meta.tmdbid or torrent_meta.doubanid:
+        if any((
+                torrent_meta.tmdbid, torrent_meta.doubanid,
+                torrent_meta.bangumiid, torrent_meta.anilistid,
+        )):
             if torrent_meta.tmdbid and torrent_meta.tmdbid == mediainfo.tmdb_id:
                 logger.info(
                     f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
@@ -405,6 +408,14 @@ class TorrentHelper:
             if torrent_meta.doubanid and torrent_meta.doubanid == mediainfo.douban_id:
                 logger.info(
                     f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
+                return True
+            if torrent_meta.bangumiid and torrent_meta.bangumiid == mediainfo.bangumi_id:
+                logger.info(
+                    f'{mediainfo.title} 通过词表指定 Bangumi ID 匹配到资源：{torrent.site_name} - {torrent.title}')
+                return True
+            if torrent_meta.anilistid and torrent_meta.anilistid == mediainfo.anilist_id:
+                logger.info(
+                    f'{mediainfo.title} 通过词表指定 AniList ID 匹配到资源：{torrent.site_name} - {torrent.title}')
                 return True
         # 要匹配的媒体标题、原标题
         media_titles = {

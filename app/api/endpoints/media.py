@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Any, List, Literal, Optional, Union
+from typing import Annotated, Any, List, Optional, Union
 
 from fastapi import APIRouter, Depends
 
@@ -16,9 +16,53 @@ from app.db.user_oper import get_current_active_user, get_current_active_superus
 from app.schemas import MediaType, MediaRecognizeConvertEventData
 from app.schemas.category import CategoryConfig
 from app.schemas.types import ChainEventType
+from app.utils.media import parse_media_key
 
 router = APIRouter()
-MediaSource = Literal["themoviedb", "douban", "bangumi", "anilist"]
+MediaSource = str
+
+
+def _build_media_seasons(
+        mediainfo: Any, season: Optional[int] = None,
+) -> List[schemas.MediaSeason]:
+    """将任意数据源的统一媒体信息转换为季信息响应。"""
+    seasons_info = []
+    for item in mediainfo.season_info or []:
+        season_number = item.get("season_number")
+        if season is not None and season_number != season:
+            continue
+        seasons_info.append(schemas.MediaSeason(
+            air_date=item.get("air_date"),
+            episode_count=item.get("episode_count"),
+            name=item.get("name"),
+            overview=item.get("overview"),
+            poster_path=item.get("poster_path"),
+            season_number=season_number,
+            vote_average=item.get("vote_average"),
+        ))
+    if seasons_info:
+        return seasons_info
+
+    season_numbers = sorted((mediainfo.seasons or {}).keys())
+    if season is not None:
+        season_numbers = [season]
+    elif not season_numbers:
+        season_numbers = [mediainfo.season or 1]
+    return [
+        schemas.MediaSeason(
+            season_number=season_number,
+            poster_path=mediainfo.poster_path,
+            name=f"第 {season_number} 季",
+            air_date=mediainfo.release_date,
+            overview=mediainfo.overview,
+            vote_average=mediainfo.vote_average,
+            episode_count=(
+                len((mediainfo.seasons or {}).get(season_number) or [])
+                or mediainfo.number_of_episodes
+            ),
+        )
+        for season_number in season_numbers
+    ]
 
 
 @router.get(
@@ -33,8 +77,11 @@ async def recognize(
 ) -> Any:
     """
     根据标题、副标题识别媒体信息
+    :param title: 标题
+    :param subtitle: 副标题
     :param custom_words: 临时识别词（每行一条规则），传入时仅在本次识别中生效，不会保存到系统配置
     :param source: 请求级识别数据源
+    :param _:
     """
     # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
     metainfo = MetaInfo(
@@ -292,13 +339,23 @@ async def seasons(
     查询媒体季信息
     """
     if mediaid:
-        if mediaid.startswith("tmdb:"):
-            tmdbid = int(mediaid[5:])
+        media_source, source_media_id = parse_media_key(mediaid)
+        if media_source == "themoviedb":
+            tmdbid = int(source_media_id)
             seasons_info = await TmdbChain().async_tmdb_seasons(tmdbid=tmdbid)
             if seasons_info:
                 if season is not None:
                     return [sea for sea in seasons_info if sea.season_number == season]
                 return seasons_info
+        elif media_source and source_media_id:
+            mediainfo = await MediaChain().async_recognize_media(
+                source=media_source,
+                mediaid=source_media_id,
+                mtype=MediaType.TV,
+                cache=False,
+            )
+            if mediainfo:
+                return _build_media_seasons(mediainfo, season)
     if title:
         meta = MetaInfo(title)
         if year:
@@ -309,7 +366,7 @@ async def seasons(
             obtain_images=False,
         )
         if mediainfo:
-            if settings.RECOGNIZE_SOURCE == "themoviedb":
+            if mediainfo.source == "themoviedb" and mediainfo.tmdb_id:
                 seasons_info = await TmdbChain().async_tmdb_seasons(
                     tmdbid=mediainfo.tmdb_id
                 )
@@ -319,19 +376,7 @@ async def seasons(
                             sea for sea in seasons_info if sea.season_number == season
                         ]
                     return seasons_info
-            else:
-                sea = season if season is not None else 1
-                return [
-                    schemas.MediaSeason(
-                        season_number=sea,
-                        poster_path=mediainfo.poster_path,
-                        name=f"第 {sea} 季",
-                        air_date=mediainfo.release_date,
-                        overview=mediainfo.overview,
-                        vote_average=mediainfo.vote_average,
-                        episode_count=mediainfo.number_of_episodes,
-                    )
-                ]
+            return _build_media_seasons(mediainfo, season)
     return []
 
 
@@ -349,21 +394,12 @@ async def detail(
     mtype = MediaType(type_name)
     mediainfo = None
     mediachain = MediaChain()
-    if mediaid.startswith("tmdb:"):
+    media_source, source_media_id = parse_media_key(mediaid)
+    if media_source and source_media_id:
         mediainfo = await mediachain.async_recognize_media(
-            tmdbid=int(mediaid[5:]), mtype=mtype
-        )
-    elif mediaid.startswith("douban:"):
-        mediainfo = await mediachain.async_recognize_media(
-            doubanid=mediaid[7:], mtype=mtype
-        )
-    elif mediaid.startswith("bangumi:"):
-        mediainfo = await mediachain.async_recognize_media(
-            bangumiid=int(mediaid[8:]), mtype=mtype
-        )
-    elif mediaid.startswith("anilist:"):
-        mediainfo = await mediachain.async_recognize_media(
-            anilistid=int(mediaid[8:]), mtype=mtype
+            source=media_source,
+            mediaid=source_media_id,
+            mtype=mtype,
         )
     else:
         # 广播事件解析媒体信息
@@ -377,13 +413,11 @@ async def detail(
         if event and event.event_data and event.event_data.media_dict:
             event_data: MediaRecognizeConvertEventData = event.event_data
             new_id = event_data.media_dict.get("id")
-            if event_data.convert_type == "themoviedb":
+            if new_id is not None and event_data.convert_type:
                 mediainfo = await mediachain.async_recognize_media(
-                    tmdbid=new_id, mtype=mtype
-                )
-            elif event_data.convert_type == "douban":
-                mediainfo = await mediachain.async_recognize_media(
-                    doubanid=new_id, mtype=mtype
+                    source=event_data.convert_type,
+                    mediaid=str(new_id),
+                    mtype=mtype,
                 )
         elif title:
             # 使用名称识别兜底

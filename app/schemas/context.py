@@ -67,6 +67,14 @@ class MetaInfo(BaseModel):
     media_source: Optional[str] = None
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
+    # TMDB ID
+    tmdbid: Optional[int] = None
+    # 豆瓣 ID
+    doubanid: Optional[str] = None
+    # Bangumi ID
+    bangumiid: Optional[int] = None
+    # AniList ID
+    anilistid: Optional[int] = None
 
 
 class MediaInfo(BaseModel):
@@ -318,7 +326,7 @@ class Context(BaseModel):
     torrent_info: Optional[TorrentInfo] = None
     # 候选资源来源：rss、spider、search、unknown
     resource_source: Optional[str] = "unknown"
-    # 候选匹配来源：tmdbid、doubanid、imdbid、title、plugin、unknown
+    # 候选匹配来源：tmdbid、doubanid、bangumiid、anilistid、imdbid、title、plugin、unknown
     match_source: Optional[str] = "unknown"
     # 候选自身是否已经识别出有效媒体 ID
     candidate_recognized: Optional[bool] = False

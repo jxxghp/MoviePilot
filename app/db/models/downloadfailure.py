@@ -24,6 +24,13 @@ class DownloadFailure(Base):
     tmdbid = Column(Integer)
     # 豆瓣ID
     doubanid = Column(String)
+    # Bangumi ID
+    bangumiid = Column(Integer)
+    # AniList ID
+    anilistid = Column(Integer)
+    # 统一媒体数据源与原生ID
+    media_source = Column(String)
+    media_id = Column(String)
     # Sxx
     seasons = Column(String)
     # Exx
@@ -57,6 +64,7 @@ class DownloadFailure(Base):
         Index("ux_downloadfailure_fingerprint", "fingerprint", unique=True),
         Index("ix_downloadfailure_next_retry_at", "next_retry_at"),
         Index("ix_downloadfailure_media_site", "type", "tmdbid", "doubanid", "site"),
+        Index("ix_downloadfailure_media_identity_site", "type", "media_source", "media_id", "site"),
     )
 
     @classmethod

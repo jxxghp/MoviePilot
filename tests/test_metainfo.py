@@ -128,6 +128,8 @@ def test_torrent_title_match_ignores_question_mark_variants():
     torrent_meta = SimpleNamespace(
         tmdbid=None,
         doubanid=None,
+        bangumiid=None,
+        anilistid=None,
         cn_name=None,
         en_name="Otaku ni Yasashii Gal wa Inai",
         type=MediaType.TV,

@@ -30,6 +30,7 @@ from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTo
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
 from app.utils.http import RequestUtils
+from app.utils.media import build_media_key, resolve_media_identity
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -58,6 +59,23 @@ class DownloadChain(ChainBase):
         ".zip": "zip",
         ".rar": "rar",
     }
+
+    @staticmethod
+    def _media_identity_keys(media: Optional[MediaInfo]) -> Set[str]:
+        """返回媒体的统一身份键及全部兼容 ID，用于临时缺失集映射匹配。"""
+        if not media:
+            return set()
+        source, media_id = resolve_media_identity(media=media)
+        values = {
+            media.tmdb_id, media.douban_id, media.bangumi_id, media.anilist_id,
+            build_media_key(source, media_id),
+        }
+        return {str(value) for value in values if value is not None and str(value)}
+
+    @classmethod
+    def _matches_media_identity(cls, media: Optional[MediaInfo], media_key: object) -> bool:
+        """判断媒体是否命中统一身份键或任一兼容 ID。"""
+        return media_key is not None and str(media_key) in cls._media_identity_keys(media)
 
     @staticmethod
     def _safe_subtitle_file_name(file_name: str, fallback_name: str) -> str:
@@ -330,6 +348,8 @@ class DownloadChain(ChainBase):
             doubanid: Optional[str] = None,
             save_path: Optional[str] = None,
             username: Optional[str] = None,
+            bangumiid: Optional[int] = None,
+            anilistid: Optional[int] = None,
     ) -> Tuple[bool, str, List[str]]:
         """
         下载字幕文件并保存到媒体对应的下载目录。
@@ -339,6 +359,8 @@ class DownloadChain(ChainBase):
         :param media_id: 数据源原生ID
         :param tmdbid: TMDB ID
         :param doubanid: 豆瓣 ID
+        :param bangumiid: Bangumi ID
+        :param anilistid: AniList ID
         :param save_path: 保存路径
         :param username: 调用下载的用户名
         :return: 成功状态、提示消息、保存文件列表
@@ -353,6 +375,8 @@ class DownloadChain(ChainBase):
             mediaid=media_id,
             tmdbid=tmdbid,
             doubanid=doubanid,
+            bangumiid=bangumiid,
+            anilistid=anilistid,
         )
         if not mediainfo:
             return False, "无法识别媒体信息", []
@@ -485,10 +509,11 @@ class DownloadChain(ChainBase):
             return None
 
         media_type = getattr(getattr(media, "type", None), "value", getattr(media, "type", None))
+        media_source, media_id = resolve_media_identity(media=media)
         media_key = (
-            getattr(media, "tmdb_id", None)
-            or getattr(media, "douban_id", None)
-            or getattr(media, "imdb_id", None)
+            f"{media_source}:{media_id}"
+            if media_source and media_id
+            else getattr(media, "imdb_id", None)
             or getattr(media, "tvdb_id", None)
             or f"{getattr(media, 'title', '')}:{getattr(media, 'year', '')}"
         )
@@ -542,6 +567,7 @@ class DownloadChain(ChainBase):
             time.localtime(now_timestamp + self._download_failure_ttl(error_msg)),
         )
         media = context.media_info
+        media_source, media_id = resolve_media_identity(media=media)
         meta = context.meta_info
         torrent = context.torrent_info
         site = getattr(torrent, "site", None)
@@ -555,6 +581,10 @@ class DownloadChain(ChainBase):
                 year=getattr(media, "year", None),
                 tmdbid=getattr(media, "tmdb_id", None),
                 doubanid=getattr(media, "douban_id", None),
+                bangumiid=media.bangumi_id,
+                anilistid=media.anilist_id,
+                media_source=media_source,
+                media_id=media_id,
                 seasons=getattr(meta, "season", None),
                 episodes=StringUtils.format_ep(list(episodes)) if episodes else self._format_failure_episodes(meta),
                 site=site if isinstance(site, int) else None,
@@ -785,6 +815,7 @@ class DownloadChain(ChainBase):
         if not _media.genre_ids:
             new_media = self.recognize_media(mtype=_media.type, tmdbid=_media.tmdb_id,
                                              doubanid=_media.douban_id, bangumiid=_media.bangumi_id,
+                                             anilistid=_media.anilist_id,
                                              episode_group=_media.episode_group)
             if new_media:
                 _media = new_media
@@ -867,6 +898,7 @@ class DownloadChain(ChainBase):
 
             # 登记下载记录
             downloadhis = DownloadHistoryOper()
+            media_source, media_id = resolve_media_identity(media=_media)
             downloadhis.add(
                 path=download_path.as_posix(),
                 type=_media.type.value,
@@ -876,6 +908,10 @@ class DownloadChain(ChainBase):
                 imdbid=_media.imdb_id,
                 tvdbid=_media.tvdb_id,
                 doubanid=_media.douban_id,
+                bangumiid=_media.bangumi_id,
+                anilistid=_media.anilist_id,
+                media_source=media_source,
+                media_id=media_id,
                 seasons=_meta.season,
                 episodes=download_episodes or _meta.episode,
                 image=_media.get_backdrop_image(),
@@ -1212,7 +1248,7 @@ class DownloadChain(ChainBase):
                     if meta.episode_list:
                         continue
                     # 匹配TMDBID
-                    if need_mid == media.tmdb_id or need_mid == media.douban_id:
+                    if self._matches_media_identity(media, need_mid):
                         # 不重复添加
                         if context in downloaded_list:
                             continue
@@ -1343,7 +1379,7 @@ class DownloadChain(ChainBase):
                         if media.type != MediaType.TV:
                             continue
                         # 匹配TMDB
-                        if media.tmdb_id == need_mid or media.douban_id == need_mid:
+                        if self._matches_media_identity(media, need_mid):
                             # 不重复添加
                             if context in downloaded_list:
                                 continue
@@ -1445,7 +1481,7 @@ class DownloadChain(ChainBase):
                         if not effective_need:
                             continue
                         # 选中一个单季整季的或单季包括需要的所有集的
-                        if (media.tmdb_id == need_mid or media.douban_id == need_mid) \
+                        if self._matches_media_identity(media, need_mid) \
                                 and (not meta.episode_list
                                      or set(meta.episode_list).intersection(effective_need)) \
                                 and len(meta.season_list) == 1 \
@@ -1523,6 +1559,7 @@ class DownloadChain(ChainBase):
         :param totals: 电视剧每季的总集数
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
         """
+        media_source, media_id = resolve_media_identity(media=mediainfo)
 
         def __append_no_exists(_season: int, _episodes: list, _total: int, _start: int):
             """
@@ -1534,7 +1571,7 @@ class DownloadChain(ChainBase):
                 "start_episode": int
             ]}
             """
-            mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+            mediakey = build_media_key(media_source, media_id)
             if not no_exists.get(mediakey):
                 no_exists[mediakey] = {
                     _season: NotExistMediaInfo(
@@ -1575,6 +1612,10 @@ class DownloadChain(ChainBase):
                 mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
                                                             tmdbid=mediainfo.tmdb_id,
                                                             doubanid=mediainfo.douban_id,
+                                                            bangumiid=mediainfo.bangumi_id,
+                                                            anilistid=mediainfo.anilist_id,
+                                                            source=media_source,
+                                                            mediaid=media_id,
                                                             episode_group=mediainfo.episode_group)
                 if not mediainfo:
                     logger.error(f"媒体信息识别失败！")

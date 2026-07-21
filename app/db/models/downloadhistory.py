@@ -31,6 +31,10 @@ class DownloadHistory(Base):
     imdbid = Column(String)
     tvdbid = Column(Integer)
     doubanid = Column(String)
+    bangumiid = Column(Integer, index=True)
+    anilistid = Column(Integer, index=True)
+    media_source = Column(String, index=True)
+    media_id = Column(String, index=True)
     # Sxx
     seasons = Column(String)
     # Exx
@@ -67,6 +71,7 @@ class DownloadHistory(Base):
     __table_args__ = (
         Index('ix_downloadhistory_download_hash_date', 'download_hash', 'date'),
         Index('ix_downloadhistory_date_id', 'date', 'id'),
+        Index('ix_downloadhistory_media_identity', 'media_source', 'media_id'),
     )
 
     @classmethod
@@ -115,17 +120,27 @@ class DownloadHistory(Base):
 
     @classmethod
     @db_query
-    def get_by_mediaid(cls, db: Session, tmdbid: int, doubanid: str):
-        if tmdbid:
-            return (
-                db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid).all()
-            )
-        elif doubanid:
-            return (
-                db.query(DownloadHistory)
-                .filter(DownloadHistory.doubanid == doubanid)
-                .all()
-            )
+    def get_by_mediaid(
+            cls, db: Session, tmdbid: Optional[int] = None,
+            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
+            anilistid: Optional[int] = None, media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
+    ):
+        """按统一媒体身份或兼容 ID 查询下载历史。"""
+        query = db.query(DownloadHistory)
+        if media_source and media_id:
+            return query.filter(
+                DownloadHistory.media_source == media_source,
+                DownloadHistory.media_id == str(media_id),
+            ).all()
+        if tmdbid is not None:
+            return query.filter(DownloadHistory.tmdbid == tmdbid).all()
+        if doubanid:
+            return query.filter(DownloadHistory.doubanid == doubanid).all()
+        if bangumiid is not None:
+            return query.filter(DownloadHistory.bangumiid == bangumiid).all()
+        if anilistid is not None:
+            return query.filter(DownloadHistory.anilistid == anilistid).all()
         return []
 
     @classmethod

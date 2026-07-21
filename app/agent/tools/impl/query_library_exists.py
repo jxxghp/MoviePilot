@@ -77,8 +77,12 @@ def _build_tv_server_result(existing_seasons: OrderedDict, total_seasons: Ordere
 
 class QueryLibraryExistsInput(BaseModel):
     """查询媒体库工具的输入参数模型"""
-    tmdb_id: Optional[int] = Field(None, description="TMDB ID (can be obtained from search_media tool). Either tmdb_id or douban_id must be provided.")
-    douban_id: Optional[str] = Field(None, description="Douban ID (can be obtained from search_media tool). Either tmdb_id or douban_id must be provided.")
+    tmdb_id: Optional[int] = Field(None, description="TMDB media ID")
+    douban_id: Optional[str] = Field(None, description="Douban media ID")
+    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
+    anilist_id: Optional[int] = Field(None, description="AniList media ID")
+    media_source: Optional[str] = Field(None, description="Media metadata source")
+    media_id: Optional[str] = Field(None, description="Native ID for media_source")
     media_type: Optional[str] = Field(None, description="Allowed values: movie, tv")
 
 
@@ -89,21 +93,24 @@ class QueryLibraryExistsTool(MoviePilotTool):
         ToolTag.Library,
         ToolTag.Media,
     ]
-    description: str = "Check whether media already exists in Plex, Emby, or Jellyfin by media ID. Results are grouped by media server; TV results include existing episodes, total episodes, and missing episodes/seasons. Requires tmdb_id or douban_id from search_media."
+    description: str = "Check whether media already exists in Plex, Emby, or Jellyfin by a TMDB, Douban, Bangumi, AniList, or source-native media ID. Results are grouped by media server; TV results include existing episodes, total episodes, and missing episodes/seasons."
     args_schema: Type[BaseModel] = QueryLibraryExistsInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据查询参数生成友好的提示消息"""
-        tmdb_id = kwargs.get("tmdb_id")
-        douban_id = kwargs.get("douban_id")
         media_type = kwargs.get("media_type")
-
-        if tmdb_id:
-            message = f"查询媒体库: TMDB={tmdb_id}"
-        elif douban_id:
-            message = f"查询媒体库: 豆瓣={douban_id}"
-        else:
-            message = "查询媒体库"
+        identities = (
+            ("TMDB", kwargs.get("tmdb_id")),
+            ("豆瓣", kwargs.get("douban_id")),
+            ("Bangumi", kwargs.get("bangumi_id")),
+            ("AniList", kwargs.get("anilist_id")),
+            (kwargs.get("media_source") or "媒体源", kwargs.get("media_id")),
+        )
+        label, identity = next(
+            ((label, identity) for label, identity in identities if identity is not None),
+            (None, None),
+        )
+        message = f"查询媒体库: {label}={identity}" if label else "查询媒体库"
         if media_type:
             message += f" [{media_type}]"
         return message
@@ -119,11 +126,13 @@ class QueryLibraryExistsTool(MoviePilotTool):
         return MediaServerChain().media_exists(mediainfo=mediainfo, server=server)
 
     async def run(self, tmdb_id: Optional[int] = None, douban_id: Optional[str] = None,
+                  bangumi_id: Optional[int] = None, anilist_id: Optional[int] = None,
+                  media_source: Optional[str] = None, media_id: Optional[str] = None,
                   media_type: Optional[str] = None, **kwargs) -> str:
         logger.info(f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}")
         try:
-            if not tmdb_id and not douban_id:
-                return "参数错误：tmdb_id 和 douban_id 至少需要提供一个，请先使用 search_media 工具获取媒体 ID。"
+            if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
+                return "参数错误：至少需要提供一个媒体 ID，请先使用 search_media 工具获取媒体信息。"
 
             media_type_enum = None
             if media_type:
@@ -135,11 +144,15 @@ class QueryLibraryExistsTool(MoviePilotTool):
             mediainfo = await media_chain.async_recognize_media(
                 tmdbid=tmdb_id,
                 doubanid=douban_id,
+                bangumiid=bangumi_id,
+                anilistid=anilist_id,
+                source=media_source,
+                mediaid=media_id,
                 mtype=media_type_enum,
             )
             if not mediainfo:
-                media_id = f"TMDB={tmdb_id}" if tmdb_id else f"豆瓣={douban_id}"
-                return f"未识别到媒体信息: {media_id}"
+                identity = media_id or tmdb_id or douban_id or bangumi_id or anilist_id
+                return f"未识别到媒体信息: {identity}"
 
             # 2. 遍历所有媒体服务器，分别查询存在性信息
             server_results = OrderedDict()

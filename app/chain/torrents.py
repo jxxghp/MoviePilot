@@ -17,6 +17,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
+from app.utils.media import resolve_media_identity
 from app.utils.string import StringUtils
 
 
@@ -131,12 +132,21 @@ class TorrentsChain(ChainBase):
 
         subscribe_tmdbid = cls._normalize_id(getattr(subscribe, "tmdbid", None))
         subscribe_doubanid = cls._normalize_id(getattr(subscribe, "doubanid", None))
+        subscribe_bangumiid = cls._normalize_id(subscribe.bangumiid)
+        subscribe_anilistid = cls._normalize_id(subscribe.anilistid)
         context_tmdbids = cls._context_tmdb_ids(context)
         context_doubanids = cls._context_douban_ids(context)
+        context_bangumiids = cls._context_bangumi_ids(context)
+        context_anilistids = cls._context_anilist_ids(context)
+        subscribe_identity = resolve_media_identity(media=subscribe)
+        context_identities = cls._context_media_identities(context)
 
         return bool(
             subscribe_tmdbid and subscribe_tmdbid in context_tmdbids
             or subscribe_doubanid and subscribe_doubanid in context_doubanids
+            or subscribe_bangumiid and subscribe_bangumiid in context_bangumiids
+            or subscribe_anilistid and subscribe_anilistid in context_anilistids
+            or all(subscribe_identity) and subscribe_identity in context_identities
         )
 
     @classmethod
@@ -181,6 +191,9 @@ class TorrentsChain(ChainBase):
             title=getattr(subscribe, "name", None),
             tmdb_id=getattr(subscribe, "tmdbid", None),
             douban_id=getattr(subscribe, "doubanid", None),
+            bangumi_id=subscribe.bangumiid,
+            anilist_id=subscribe.anilistid,
+            source=subscribe.media_source,
             season=getattr(subscribe, "season", None),
         )
 
@@ -255,7 +268,26 @@ class TorrentsChain(ChainBase):
         """
         判断候选是否已经带有明确媒体 ID。
         """
-        return bool(TorrentsChain._context_tmdb_ids(context) or TorrentsChain._context_douban_ids(context))
+        return bool(
+            TorrentsChain._context_tmdb_ids(context)
+            or TorrentsChain._context_douban_ids(context)
+            or TorrentsChain._context_bangumi_ids(context)
+            or TorrentsChain._context_anilist_ids(context)
+            or TorrentsChain._context_media_identities(context)
+        )
+
+    @staticmethod
+    def _context_media_identities(context: Context) -> set[tuple[str, str]]:
+        """提取候选媒体信息与标题标签中的通用媒体身份。"""
+        identities = {
+            resolve_media_identity(media=getattr(context, "media_info", None)),
+            resolve_media_identity(media=getattr(context, "meta_info", None)),
+        }
+        return {
+            (source, media_id)
+            for source, media_id in identities
+            if source and media_id
+        }
 
     @staticmethod
     def _context_tmdb_ids(context: Context) -> set[str]:
@@ -282,6 +314,30 @@ class TorrentsChain(ChainBase):
             value for value in (
                 TorrentsChain._normalize_id(getattr(media_info, "douban_id", None)),
                 TorrentsChain._normalize_id(getattr(meta_info, "doubanid", None)),
+            ) if value
+        }
+
+    @staticmethod
+    def _context_bangumi_ids(context: Context) -> set[str]:
+        """提取候选已有 Bangumi ID，兼容媒体信息与标题显式标签。"""
+        media_info = getattr(context, "media_info", None)
+        meta_info = getattr(context, "meta_info", None)
+        return {
+            value for value in (
+                TorrentsChain._normalize_id(media_info.bangumi_id if media_info else None),
+                TorrentsChain._normalize_id(meta_info.bangumiid if meta_info else None),
+            ) if value
+        }
+
+    @staticmethod
+    def _context_anilist_ids(context: Context) -> set[str]:
+        """提取候选已有 AniList ID，兼容媒体信息与标题显式标签。"""
+        media_info = getattr(context, "media_info", None)
+        meta_info = getattr(context, "meta_info", None)
+        return {
+            value for value in (
+                TorrentsChain._normalize_id(media_info.anilist_id if media_info else None),
+                TorrentsChain._normalize_id(meta_info.anilistid if meta_info else None),
             ) if value
         }
 
@@ -556,7 +612,9 @@ class TorrentsChain(ChainBase):
                             mediainfo = MediaInfo()
                         # 清理多余数据，减少内存占用
                         mediainfo.clear()
-                        candidate_recognized = bool(mediainfo and (mediainfo.tmdb_id or mediainfo.douban_id))
+                        candidate_recognized = bool(
+                            mediainfo and all(resolve_media_identity(media=mediainfo))
+                        )
                         match_source = self._get_media_id_match_source(mediainfo)
                         # 上下文
                         context = Context(
@@ -569,7 +627,7 @@ class TorrentsChain(ChainBase):
                             media_info_is_target=False,
                         )
                         # 如果未识别到媒体信息，设置初始失败次数为1
-                        if not mediainfo or (not mediainfo.tmdb_id and not mediainfo.douban_id):
+                        if not mediainfo or not all(resolve_media_identity(media=mediainfo)):
                             context.media_recognize_fail_count = 1
                         # 添加到缓存
                         if not torrents_cache.get(domain):
@@ -616,14 +674,16 @@ class TorrentsChain(ChainBase):
                 if "media_recognize_fail_count" not in context_fields:
                     context.media_recognize_fail_count = 0
                     # 如果媒体信息未识别，设置初始失败次数
-                    if (not context.media_info or
-                            (not context.media_info.tmdb_id and not context.media_info.douban_id)):
+                    if not context.media_info or not all(
+                            resolve_media_identity(media=context.media_info)
+                    ):
                         context.media_recognize_fail_count = 1
                 if "resource_source" not in context_fields:
                     context.resource_source = "spider" if stype == "spider" else "rss"
                 if "candidate_recognized" not in context_fields:
                     context.candidate_recognized = bool(
-                        context.media_info and (context.media_info.tmdb_id or context.media_info.douban_id)
+                        context.media_info
+                        and all(resolve_media_identity(media=context.media_info))
                     )
                 if "match_source" not in context_fields:
                     context.match_source = (
@@ -642,6 +702,12 @@ class TorrentsChain(ChainBase):
             return "tmdbid"
         if mediainfo and mediainfo.douban_id:
             return "doubanid"
+        if mediainfo and mediainfo.bangumi_id:
+            return "bangumiid"
+        if mediainfo and mediainfo.anilist_id:
+            return "anilistid"
+        if mediainfo and all(resolve_media_identity(media=mediainfo)):
+            return "plugin"
         return "unknown"
 
     def __renew_rss_url(self, domain: str, site: dict):

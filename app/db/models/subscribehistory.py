@@ -25,7 +25,10 @@ class SubscribeHistory(Base):
     tvdbid = Column(Integer)
     doubanid = Column(String, index=True)
     bangumiid = Column(Integer, index=True)
+    anilistid = Column(Integer, index=True)
     mediaid = Column(String, index=True)
+    media_source = Column(String, index=True)
+    media_id = Column(String, index=True)
     # 季号
     season = Column(Integer)
     # 海报
@@ -79,6 +82,7 @@ class SubscribeHistory(Base):
 
     __table_args__ = (
         Index('ix_subscribehistory_type_date', 'type', 'date'),
+        Index('ix_subscribehistory_media_identity', 'media_source', 'media_id'),
     )
 
     @classmethod
@@ -128,35 +132,63 @@ class SubscribeHistory(Base):
         return result.scalars().all()
 
     @classmethod
-    @db_query
-    def exists(cls, db: Session, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-               season: Optional[int] = None):
-        if tmdbid:
-            if season is not None:
-                return db.query(cls).filter(cls.tmdbid == tmdbid,
-                                            cls.season == season).first()
-            return db.query(cls).filter(cls.tmdbid == tmdbid).first()
-        elif doubanid:
-            return db.query(cls).filter(cls.doubanid == doubanid).first()
+    def _identity_condition(
+            cls,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
+            tmdbid: Optional[int] = None,
+            doubanid: Optional[str] = None,
+            bangumiid: Optional[int] = None,
+            anilistid: Optional[int] = None,
+    ):
+        """按统一媒体身份优先级构造订阅历史查询条件。"""
+        if media_source and media_id:
+            return (cls.media_source == media_source) & (cls.media_id == str(media_id))
+        if tmdbid is not None:
+            return cls.tmdbid == tmdbid
+        if doubanid:
+            return cls.doubanid == doubanid
+        if bangumiid is not None:
+            return cls.bangumiid == bangumiid
+        if anilistid is not None:
+            return cls.anilistid == anilistid
         return None
 
     @classmethod
-    @async_db_query
-    async def async_exists(cls, db: AsyncSession, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-                           season: Optional[int] = None):
-        if tmdbid:
-            if season is not None:
-                result = await db.execute(
-                    select(cls).filter(cls.tmdbid == tmdbid, cls.season == season)
-                )
-            else:
-                result = await db.execute(
-                    select(cls).filter(cls.tmdbid == tmdbid)
-                )
-        elif doubanid:
-            result = await db.execute(
-                select(cls).filter(cls.doubanid == doubanid)
-            )
-        else:
+    @db_query
+    def exists(
+            cls, db: Session, tmdbid: Optional[int] = None,
+            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
+            anilistid: Optional[int] = None, media_source: Optional[str] = None,
+            media_id: Optional[str] = None, season: Optional[int] = None,
+    ):
+        """按媒体身份与季号查询订阅历史。"""
+        condition = cls._identity_condition(
+            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid
+        )
+        if condition is None:
             return None
+        query = db.query(cls).filter(condition)
+        if season is not None:
+            query = query.filter(cls.season == season)
+        return query.first()
+
+    @classmethod
+    @async_db_query
+    async def async_exists(
+            cls, db: AsyncSession, tmdbid: Optional[int] = None,
+            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
+            anilistid: Optional[int] = None, media_source: Optional[str] = None,
+            media_id: Optional[str] = None, season: Optional[int] = None,
+    ):
+        """异步按媒体身份与季号查询订阅历史。"""
+        condition = cls._identity_condition(
+            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid
+        )
+        if condition is None:
+            return None
+        query = select(cls).filter(condition)
+        if season is not None:
+            query = query.filter(cls.season == season)
+        result = await db.execute(query)
         return result.scalars().first()

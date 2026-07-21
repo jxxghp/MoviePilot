@@ -42,6 +42,7 @@ from app.schemas.message import ChannelCapabilityManager, ChannelCapability
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import EventType, MessageChannel, MediaType
 from app.utils.http import RequestUtils
+from app.utils.media import build_media_key, resolve_media_identity
 from app.utils.string import StringUtils
 
 
@@ -2071,6 +2072,10 @@ class MediaInteractionChain(ChainBase):
                     mtype=mediainfo.type,
                     tmdbid=mediainfo.tmdb_id,
                     doubanid=mediainfo.douban_id,
+                    bangumiid=mediainfo.bangumi_id,
+                    anilistid=mediainfo.anilist_id,
+                    source=resolve_media_identity(media=mediainfo)[0],
+                    mediaid=resolve_media_identity(media=mediainfo)[1],
                     cache=False,
                 )
                 if not mediainfo:
@@ -2085,7 +2090,8 @@ class MediaInteractionChain(ChainBase):
                     )
                     return {}
 
-            mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+            media_source, media_id = resolve_media_identity(media=mediainfo)
+            mediakey = build_media_key(media_source, media_id)
             no_exists = {mediakey: {}}
             if meta.begin_season is not None:
                 episodes = mediainfo.seasons.get(meta.begin_season)
@@ -3528,7 +3534,8 @@ class MediaInteractionChain(ChainBase):
         """
         if not no_exists:
             return []
-        mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+        media_source, media_id = resolve_media_identity(media=mediainfo)
+        mediakey = build_media_key(media_source, media_id)
         season_map = no_exists.get(mediakey) or {}
         if show_missing_only:
             return [

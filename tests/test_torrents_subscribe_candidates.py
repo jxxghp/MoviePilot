@@ -14,6 +14,10 @@ def _subscribe(**kwargs):
     defaults = {
         "tmdbid": 100,
         "doubanid": None,
+        "bangumiid": None,
+        "anilistid": None,
+        "media_source": None,
+        "media_id": None,
         "season": 1,
         "name": "测试剧",
         "type": MediaType.TV.value,
@@ -41,6 +45,10 @@ def _ctx(
             type=meta_type,
             tmdbid=meta_tmdbid,
             doubanid=meta_doubanid,
+            bangumiid=None,
+            anilistid=None,
+            media_source=None,
+            media_id=None,
             begin_season=begin_season,
             end_season=end_season,
             begin_episode=5,
@@ -107,6 +115,12 @@ def test_cache_candidates_ignore_default_meta_season_list_when_no_explicit_meta_
         title = "测试剧 E05"
         name = "测试剧"
         type = MediaType.TV
+        tmdbid = None
+        doubanid = None
+        bangumiid = None
+        anilistid = None
+        media_source = None
+        media_id = None
         begin_season = None
         end_season = None
 

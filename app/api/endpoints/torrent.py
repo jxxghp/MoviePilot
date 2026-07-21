@@ -174,6 +174,10 @@ async def reidentify_cache(
     torrent_hash: str,
     tmdbid: Optional[int] = None,
     doubanid: Optional[str] = None,
+    bangumiid: Optional[int] = None,
+    anilistid: Optional[int] = None,
+    media_source: Optional[str] = None,
+    media_id: Optional[str] = None,
     _: User = Depends(get_current_active_superuser_async),
 ):
     """
@@ -182,6 +186,10 @@ async def reidentify_cache(
     :param torrent_hash: 种子hash（使用title+description的md5）
     :param tmdbid: 手动指定的TMDB ID
     :param doubanid: 手动指定的豆瓣ID
+    :param bangumiid: 手动指定的 Bangumi ID
+    :param anilistid: 手动指定的 AniList ID
+    :param media_source: 媒体数据源
+    :param media_id: 数据源原生 ID
     :param _: 当前用户，必须是超级用户
     """
 
@@ -215,10 +223,16 @@ async def reidentify_cache(
             title=target_context.torrent_info.title,
             subtitle=target_context.torrent_info.description,
         )
-        if tmdbid or doubanid:
+        if tmdbid or doubanid or bangumiid or anilistid or media_source or media_id:
             # 手动指定媒体信息
             mediainfo = await media_chain.async_recognize_media(
-                meta=meta, tmdbid=tmdbid, doubanid=doubanid
+                meta=meta,
+                tmdbid=tmdbid,
+                doubanid=doubanid,
+                bangumiid=bangumiid,
+                anilistid=anilistid,
+                source=media_source,
+                mediaid=media_id,
             )
         else:
             # 自动重新识别

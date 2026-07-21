@@ -20,6 +20,10 @@ class QueryMediaDetailInput(BaseModel):
     """查询媒体详情工具的输入参数模型"""
     tmdb_id: Optional[int] = Field(None, description="TMDB ID of the media (movie or TV series, can be obtained from search_media tool)")
     douban_id: Optional[str] = Field(None, description="Douban ID of the media (alternative to tmdb_id)")
+    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
+    anilist_id: Optional[int] = Field(None, description="AniList media ID")
+    media_source: Optional[str] = Field(None, description="Media metadata source")
+    media_id: Optional[str] = Field(None, description="Native ID for media_source")
     media_type: str = Field(..., description="Allowed values: movie, tv")
 
 
@@ -29,24 +33,37 @@ class QueryMediaDetailTool(MoviePilotTool):
         ToolTag.Read,
         ToolTag.Media,
     ]
-    description: str = "Query supplementary media details from TMDB by ID and media_type. Accepts tmdb_id or douban_id (at least one required). media_type accepts 'movie' or 'tv'. Returns non-duplicated detail fields such as status, genres, directors, actors, and season info for TV series."
+    description: str = "Query supplementary media details from a metadata source by ID and media_type. Accepts a TMDB, Douban, Bangumi, AniList, or source-native media ID. media_type accepts 'movie' or 'tv'. Returns non-duplicated detail fields such as status, genres, directors, actors, and season info for TV series."
     args_schema: Type[BaseModel] = QueryMediaDetailInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据查询参数生成友好的提示消息"""
-        tmdb_id = kwargs.get("tmdb_id")
-        douban_id = kwargs.get("douban_id")
-        if tmdb_id:
-            return f"查询媒体详情: TMDB ID {tmdb_id}"
-        return f"查询媒体详情: 豆瓣 ID {douban_id}"
+        identities = (
+            ("TMDB", kwargs.get("tmdb_id")),
+            ("豆瓣", kwargs.get("douban_id")),
+            ("Bangumi", kwargs.get("bangumi_id")),
+            ("AniList", kwargs.get("anilist_id")),
+        )
+        for label, identity in identities:
+            if identity is not None:
+                return f"查询媒体详情: {label} ID {identity}"
+        return (
+            f"查询媒体详情: {kwargs.get('media_source') or '媒体源'} "
+            f"ID {kwargs.get('media_id')}"
+        )
 
-    async def run(self, media_type: str, tmdb_id: Optional[int] = None, douban_id: Optional[str] = None, **kwargs) -> str:
+    async def run(
+            self, media_type: str, tmdb_id: Optional[int] = None,
+            douban_id: Optional[str] = None, bangumi_id: Optional[int] = None,
+            anilist_id: Optional[int] = None, media_source: Optional[str] = None,
+            media_id: Optional[str] = None, **kwargs,
+    ) -> str:
         logger.info(f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}")
 
-        if tmdb_id is None and douban_id is None:
+        if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
             return json.dumps({
                 "success": False,
-                "message": "必须提供 tmdb_id 或 douban_id 之一"
+                "message": "必须提供至少一个媒体 ID"
             }, ensure_ascii=False)
 
         try:
@@ -59,10 +76,22 @@ class QueryMediaDetailTool(MoviePilotTool):
                     "message": f"无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
                 }, ensure_ascii=False)
 
-            mediainfo = await media_chain.async_recognize_media(tmdbid=tmdb_id, doubanid=douban_id, mtype=media_type_enum)
+            mediainfo = await media_chain.async_recognize_media(
+                tmdbid=tmdb_id,
+                doubanid=douban_id,
+                bangumiid=bangumi_id,
+                anilistid=anilist_id,
+                source=media_source,
+                mediaid=media_id,
+                mtype=media_type_enum,
+            )
 
             if not mediainfo:
-                id_info = f"TMDB ID {tmdb_id}" if tmdb_id else f"豆瓣 ID {douban_id}"
+                id_info = (
+                    f"{media_source or '媒体源'} ID {media_id}"
+                    if media_id else
+                    f"媒体 ID {tmdb_id or douban_id or bangumi_id or anilist_id}"
+                )
                 return json.dumps({
                     "success": False,
                     "message": f"未找到 {id_info} 的媒体信息"
@@ -139,5 +168,9 @@ class QueryMediaDetailTool(MoviePilotTool):
                 "success": False,
                 "message": error_message,
                 "tmdb_id": tmdb_id,
-                "douban_id": douban_id
+                "douban_id": douban_id,
+                "bangumi_id": bangumi_id,
+                "anilist_id": anilist_id,
+                "media_source": media_source,
+                "media_id": media_id,
             }, ensure_ascii=False)

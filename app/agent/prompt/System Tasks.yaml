@@ -79,6 +79,10 @@ task_types:
       - "- Transfer mode: {transfer_mode}"
       - "- Current TMDB ID: {tmdbid}"
       - "- Current Douban ID: {doubanid}"
+      - "- Current Bangumi ID: {bangumiid}"
+      - "- Current AniList ID: {anilistid}"
+      - "- Current media source: {media_source}"
+      - "- Current source-native ID: {media_id}"
       - "- Error message: {error_message}"
     steps_title: "Required workflow"
     steps:
@@ -90,7 +94,7 @@ task_types:
       - "Only continue when you have high confidence in the target media."
       - "Before re-organizing, delete the old transfer history record with `delete_transfer_history` so the system will not skip the source file."
       - "Then use `transfer_file` to organize the source path directly."
-      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, tmdbid or doubanid, and media_type."
+      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, and media_type."
       - "If this record is already correct and no re-organize is needed, do not perform destructive actions; simply report that no change is necessary."
     task_rules:
       - "Do NOT rely on previous chat context. Work only from the record above."
@@ -116,7 +120,7 @@ task_types:
       - "If a source file no longer exists or cannot be safely processed, skip that record and note the reason."
       - "Before re-organizing a record, delete the old transfer history record with `delete_transfer_history` so the system will not skip the source file."
       - "Then use `transfer_file` to organize the source path directly."
-      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, tmdbid or doubanid, and media_type."
+      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, and media_type."
       - "If a record is already correct and no re-organize is needed, do not perform destructive actions; simply mark it as skipped."
       - "Report only the aggregate outcome, including how many records succeeded, skipped, and failed."
     task_rules:

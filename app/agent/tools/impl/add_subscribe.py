@@ -39,6 +39,10 @@ class AddSubscribeInput(BaseModel):
         None,
         description="Douban ID for precise media identification (optional, alternative to tmdb_id)",
     )
+    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
+    anilist_id: Optional[int] = Field(None, description="AniList media ID")
+    media_source: Optional[str] = Field(None, description="Media metadata source")
+    media_id: Optional[str] = Field(None, description="Native ID for media_source")
     start_episode: Optional[int] = Field(
         None,
         description="Starting episode number for TV shows (optional, defaults to 1 if not specified)",
@@ -144,6 +148,10 @@ class AddSubscribeTool(MoviePilotTool):
         season: Optional[int] = None,
         tmdb_id: Optional[int] = None,
         douban_id: Optional[str] = None,
+        bangumi_id: Optional[int] = None,
+        anilist_id: Optional[int] = None,
+        media_source: Optional[str] = None,
+        media_id: Optional[str] = None,
         start_episode: Optional[int] = None,
         total_episode: Optional[int] = None,
         quality: Optional[str] = None,
@@ -197,6 +205,10 @@ class AddSubscribeTool(MoviePilotTool):
                 year=year,
                 tmdbid=tmdb_id,
                 doubanid=douban_id,
+                bangumiid=bangumi_id,
+                anilistid=anilist_id,
+                media_source=media_source,
+                media_id=media_id,
                 season=season,
                 username=subscribe_username,
                 **subscribe_kwargs,

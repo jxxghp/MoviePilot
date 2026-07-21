@@ -76,6 +76,9 @@ class AddSubscribeAction(BaseAction):
                                               season=mediainfo.season,
                                               doubanid=mediainfo.douban_id,
                                               bangumiid=mediainfo.bangumi_id,
+                                              anilistid=mediainfo.anilist_id,
+                                              media_source=mediainfo.source,
+                                              media_id=mediainfo.to_dict().get("media_id"),
                                               username=settings.SUPERUSER)
             if sid:
                 self._added_subscribes.append(sid)

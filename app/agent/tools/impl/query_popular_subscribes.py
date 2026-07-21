@@ -126,6 +126,8 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                 media.year = sub.get("year")
                 media.douban_id = sub.get("doubanid")
                 media.bangumi_id = sub.get("bangumiid")
+                media.anilist_id = sub.get("anilistid")
+                media.source = sub.get("media_source")
                 media.tvdb_id = sub.get("tvdbid")
                 media.imdb_id = sub.get("imdbid")
                 media.season = sub.get("season")
@@ -149,6 +151,9 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                     "tmdb_id": media_dict.get("tmdb_id"),
                     "douban_id": media_dict.get("douban_id"),
                     "bangumi_id": media_dict.get("bangumi_id"),
+                    "anilist_id": media_dict.get("anilist_id"),
+                    "media_source": media_dict.get("source"),
+                    "media_id": media_dict.get("media_id"),
                     "tvdb_id": media_dict.get("tvdb_id"),
                     "imdb_id": media_dict.get("imdb_id"),
                     "season": media_dict.get("season"),

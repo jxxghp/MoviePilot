@@ -98,6 +98,8 @@ def add(
     torrent_in: schemas.TorrentInfo,
     tmdbid: Annotated[int | None, Body()] = None,
     doubanid: Annotated[str | None, Body()] = None,
+    bangumiid: Annotated[int | None, Body()] = None,
+    anilistid: Annotated[int | None, Body()] = None,
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     downloader: Annotated[str | None, Body()] = None,
@@ -111,13 +113,15 @@ def add(
     # 元数据
     metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
     # 媒体信息
-    if tmdbid or doubanid or media_id:
+    if tmdbid or doubanid or bangumiid or anilistid or media_id:
         mediainfo = MediaChain().recognize_media(
             meta=metainfo,
             source=media_source,
             mediaid=media_id,
             tmdbid=tmdbid,
             doubanid=doubanid,
+            bangumiid=bangumiid,
+            anilistid=anilistid,
         )
     else:
         mediainfo = MediaChain().recognize_by_meta(
@@ -152,6 +156,8 @@ def download_subtitle(
     subtitle_in: schemas.SubtitleInfo,
     tmdbid: Annotated[int | None, Body()] = None,
     doubanid: Annotated[str | None, Body()] = None,
+    bangumiid: Annotated[int | None, Body()] = None,
+    anilistid: Annotated[int | None, Body()] = None,
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
@@ -172,6 +178,8 @@ def download_subtitle(
         media_id=media_id,
         tmdbid=tmdbid,
         doubanid=doubanid,
+        bangumiid=bangumiid,
+        anilistid=anilistid,
         save_path=save_path,
         username=current_user.name,
     )

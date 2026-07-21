@@ -1025,6 +1025,7 @@ class _EndpointMediaInfo:
     tvdb_id = 456
     douban_id = "douban-1"
     bangumi_id = 789
+    anilist_id = 154587
     episode_group = None
     vote_average = 8.0
     overview = "测试简介"
