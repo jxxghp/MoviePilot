@@ -1,27 +1,17 @@
 import io
-import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from types import ModuleType
 from unittest.mock import patch
 
-sys.modules.setdefault("qbittorrentapi", ModuleType("qbittorrentapi"))
-setattr(sys.modules["qbittorrentapi"], "TorrentFilesList", list)
-sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
-setattr(sys.modules["transmission_rpc"], "File", object)
-sys.modules.setdefault("psutil", ModuleType("psutil"))
-sys.modules.setdefault("aioshutil", ModuleType("aioshutil"))
-sys.modules.setdefault("pyquery", ModuleType("pyquery"))
-setattr(sys.modules["pyquery"], "PyQuery", object)
-sys.modules.setdefault("dateparser", ModuleType("dateparser"))
-setattr(sys.modules["dateparser"], "parse", lambda *args, **kwargs: None)
-sys.modules.setdefault("dateutil", ModuleType("dateutil"))
-dateutil_parser = ModuleType("dateutil.parser")
-setattr(dateutil_parser, "parse", lambda *args, **kwargs: None)
-sys.modules.setdefault("dateutil.parser", dateutil_parser)
-setattr(sys.modules["dateutil"], "parser", dateutil_parser)
+from app.testing.bootstrap import ensure_optional_stub
+
+ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
+ensure_optional_stub("transmission_rpc", File=object)
+ensure_optional_stub("psutil")
+ensure_optional_stub("aioshutil")
+ensure_optional_stub("pyquery", PyQuery=object)
 
 from app.chain.message import MessageChain
 from app.chain.skills import SkillsChain, skills_interaction_manager

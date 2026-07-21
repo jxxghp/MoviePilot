@@ -71,6 +71,7 @@ def test_query_doctor_report_returns_readonly_report():
     assert payload["report"]["status"] == "degraded"
     assert payload["report"]["environment"]["runtime"] == "Docker"
     assert payload["report"]["findings"][0]["detail"] == "ERROR demo Cookie: <REDACTED>"
+    assert payload["report"]["findings"][0]["affects_report_status"] is True
     run_doctor.assert_called_once_with(deep=True)
 
 
@@ -88,6 +89,7 @@ def test_query_doctor_report_compact_mode_omits_details():
     finding = payload["report"]["findings"][0]
     assert finding["id"] == "logs.moviepilot.recent_errors"
     assert finding["title"] == "最近日志存在错误线索"
+    assert finding["affects_report_status"] is True
     assert "detail" not in finding
     assert "context" not in finding
 

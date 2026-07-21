@@ -9,30 +9,80 @@ from app.utils.string import StringUtils
 
 
 class TorrentLeechSiteUserInfo(SiteParserBase):
+    """
+    TorrentLeech 站点用户信息解析器
+    """
+
     schema = SiteSchema.TorrentLeech
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: str) -> None:
+        """
+        解析当前用户 ID 并初始化用户资料页面地址
+
+        :param html_text: 站点首页 HTML
+        """
         html_text = self._prepare_html_text(html_text)
 
+        html = etree.HTML(html_text)
+        current_userid = None
+        try:
+            if StringUtils.is_valid_html_element(html):
+                profile_routes = html.xpath(
+                    '//span[contains(concat(" ", normalize-space(@class), " "), " centerTopBar ")]'
+                    '//*[@onclick]/@onclick'
+                )
+                for route in profile_routes:
+                    profile_view = re.search(r"/profile/([^/]+)/view", route)
+                    if profile_view:
+                        current_userid = profile_view.group(1).strip()
+                        break
+        finally:
+            if html is not None:
+                del html
+
         user_detail = re.search(r"/profile/([^/]+)/", html_text)
-        if user_detail and user_detail.group().strip():
-            self._user_detail_page = user_detail.group().strip().lstrip('/')
-            self.userid = user_detail.group(1)
-        self._user_traffic_page = f"profile/{self.userid}/view"
+        fallback_userid = user_detail.group(1).strip() if user_detail else None
+        self.userid = current_userid or fallback_userid
+        if not self.userid:
+            self.err_msg = "未获取到用户ID"
+            self._user_detail_page = None
+            self._user_traffic_page = None
+            self._torrent_seeding_page = None
+            return
+
+        self._user_detail_page = f"profile/{self.userid}/view"
+        self._user_traffic_page = None
         self._torrent_seeding_page = f"profile/{self.userid}/seeding"
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: str) -> None:
+        """
+        使用用户 ID 初始化基础用户名
+
+        :param html_text: 站点首页 HTML
+        """
         self.username = self.userid
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        上传/下载/分享率 [做种数/魔力值]
-        :param html_text:
-        :return:
+        解析用户资料页中的用户名、流量、等级、注册时间和积分
+
+        :param html_text: 用户资料页 HTML
         """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
+            if not StringUtils.is_valid_html_element(html):
+                return
+
+            username_html = html.xpath('//div[contains(concat(" ", normalize-space(@class), " "), '
+                                       '" profile-username ")]/text()')
+            if not username_html:
+                username_html = html.xpath('//table[contains(@class, "profileViewTable")]'
+                                           '//tr/td[normalize-space()="Username"]/'
+                                           'following-sibling::td[1]/text()')
+            if username_html and username_html[0].strip():
+                self.username = username_html[0].strip()
+
             upload_html = html.xpath('//div[contains(@class,"profile-uploaded")]//span/text()')
             if upload_html:
                 self.upload = StringUtils.num_filesize(upload_html[0])
@@ -44,12 +94,14 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
                 self.ratio = StringUtils.str_float(ratio_html[0].replace('∞', '0'))
 
             user_level_html = html.xpath('//table[contains(@class, "profileViewTable")]'
-                                         '//tr/td[text()="Class"]/following-sibling::td/text()')
+                                         '//tr/td[normalize-space()="Class"]/'
+                                         'following-sibling::td[1]/text()')
             if user_level_html:
                 self.user_level = user_level_html[0].strip()
 
             join_at_html = html.xpath('//table[contains(@class, "profileViewTable")]'
-                                      '//tr/td[text()="Registration date"]/following-sibling::td/text()')
+                                      '//tr/td[normalize-space()="Registration date"]/'
+                                      'following-sibling::td[1]/text()')
             if join_at_html:
                 self.join_at = StringUtils.unify_datetime_str(join_at_html[0].strip())
 
@@ -60,8 +112,13 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
             if html is not None:
                 del html
 
-    def _parse_user_detail_info(self, html_text: str):
-        pass
+    def _parse_user_detail_info(self, html_text: str) -> None:
+        """
+        解析包含流量和账户属性的用户资料页
+
+        :param html_text: 用户资料页 HTML
+        """
+        self._parse_user_traffic_info(html_text)
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
@@ -106,7 +163,20 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+        """
+        TorrentLeech 暂不解析未读消息链接
+
+        :param html_text: 消息页面 HTML
+        :param msg_links: 已解析的消息链接列表
+        :return: 始终返回 None
+        """
         return None
 
-    def _parse_message_content(self, html_text):
+    def _parse_message_content(self, html_text: str) -> tuple[None, None, None]:
+        """
+        TorrentLeech 暂不解析消息正文
+
+        :param html_text: 消息正文页面 HTML
+        :return: 空标题、时间和正文
+        """
         return None, None, None

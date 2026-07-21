@@ -1,31 +1,36 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, ClassVar
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from app.schemas.types import MediaType
 
 
-def compute_subscribe_completed_episode(subscribe: Any) -> Optional[int]:
+def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]:
     """
     计算订阅"已完成"集数派生值，仅用于响应填充，不入库。
 
-    普通电视剧按 ``total_episode - lack_episode`` 计算；洗版电视剧按订阅目标范围内
-    priority==100 的分集数量，加上起始集前的逻辑完成集数计算。
+    普通电视剧按 ``total_episode - lack_episode`` 计算；分集洗版按订阅目标范围内
+    priority==100 的分集数量计算；全集洗版按整包准入基线是否达到 100 计算。
     """
-    total_episode = getattr(subscribe, "total_episode", None) or 0
-    if getattr(subscribe, "type", None) != MediaType.TV.value or not total_episode:
+    total_episode = subscribe.total_episode or 0
+    if subscribe.type != MediaType.TV.value or not total_episode:
         return None
 
-    start_episode = getattr(subscribe, "start_episode", None) or 1
-    if not getattr(subscribe, "best_version", None):
-        lack = getattr(subscribe, "lack_episode", None) or 0
+    start_episode = subscribe.start_episode or 1
+    if not subscribe.best_version:
+        lack = subscribe.lack_episode or 0
         return max(total_episode - lack, 0)
 
-    episode_priority = getattr(subscribe, "episode_priority", None) or {}
-    if not episode_priority and getattr(subscribe, "current_priority", None) is not None:
+    if subscribe.best_version_full:
+        completed_targets = max(total_episode - start_episode + 1, 0) \
+            if subscribe.current_priority == 100 else 0
+        return min(min(max(start_episode - 1, 0), total_episode) + completed_targets, total_episode)
+
+    episode_priority = subscribe.episode_priority or {}
+    if not episode_priority and subscribe.current_priority is not None:
         # 兼容只有整体优先级的洗版快照，响应派生值需与链路侧按集口径保持一致。
         episode_priority = {
-            str(episode): int(getattr(subscribe, "current_priority"))
+            str(episode): int(subscribe.current_priority)
             for episode in range(start_episode, total_episode + 1)
         }
     priority_completed = sum(
@@ -39,6 +44,12 @@ def compute_subscribe_completed_episode(subscribe: Any) -> Optional[int]:
 
 
 class Subscribe(BaseModel):
+    # 公共创建和更新接口不得接收系统字段和运行事实；其余字段默认作为订阅输入透传。
+    PUBLIC_WRITE_EXCLUDED_FIELDS: ClassVar[frozenset[str]] = frozenset({
+        "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode",
+        "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
+    })
+
     id: Optional[int] = None
     # 订阅名称
     name: Optional[str] = None
@@ -130,6 +141,10 @@ class Subscribe(BaseModel):
             return self
         self.completed_episode = compute_subscribe_completed_episode(self)
         return self
+
+    def to_public_write_payload(self) -> Dict[str, Any]:
+        """裁剪公共订阅写入字段，避免请求体覆盖下载事实和运行状态。"""
+        return self.model_dump(exclude=self.PUBLIC_WRITE_EXCLUDED_FIELDS)
 
 
 class SubscribeShare(BaseModel):

@@ -593,15 +593,20 @@ class SubscribeEndpointTest(TestCase):
             self.assertTrue(response.success)
             scheduler.return_value.start.assert_called_once_with(job_id)
 
-    def test_create_subscribe_excludes_completed_episode_from_write_payload(self):
+    def test_create_subscribe_excludes_system_fields_from_write_payload(self):
         """
-        新增订阅时不应把 completed_episode 派生字段传入持久化链路。
+        新增订阅时不应把历史 ID、媒体元数据和响应派生字段传入持久化链路。
         """
         subscribe_in = Subscribe(
+            id=99,
             name="测试剧集",
             year="2026",
             type=MediaType.TV.value,
             season=1,
+            poster="old-poster.jpg",
+            backdrop="old-backdrop.jpg",
+            vote=8.0,
+            description="旧历史简介",
             total_episode=10,
             lack_episode=3,
         )
@@ -620,9 +625,57 @@ class SubscribeEndpointTest(TestCase):
             )
 
         self.assertTrue(response.success)
-        self.assertNotIn("completed_episode", async_add.await_args.kwargs)
-        self.assertEqual(async_add.await_args.kwargs["username"], "moviepilot-user")
-        self.assertTrue(async_add.await_args.kwargs["owner_scope"])
+        payload = async_add.await_args.kwargs
+        for field in ("id", "poster", "backdrop", "vote", "description", "completed_episode"):
+            self.assertNotIn(field, payload)
+        self.assertEqual(payload["username"], "moviepilot-user")
+        self.assertTrue(payload["owner_scope"])
+
+    def test_create_subscribe_ignores_runtime_fact_fields(self):
+        """
+        公共新增接口只能写目标和配置，调用方携带的运行事实不得进入新增链路。
+        """
+        subscribe_in = Subscribe(
+            name="测试剧集",
+            year="2026",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=10,
+            lack_episode=3,
+            note=[1, 2, 3],
+            state="S",
+            last_update="2026-07-20 12:00:00",
+            username="forged-user",
+            current_priority=90,
+            episode_priority={"1": 90},
+            date="2026-07-19 12:00:00",
+        )
+
+        with patch(
+            "app.api.endpoints.subscribe.SubscribeChain.async_add",
+            new=AsyncMock(return_value=(1, "新增订阅成功")),
+        ) as async_add:
+            response = asyncio.run(
+                create_subscribe(
+                    subscribe_in=subscribe_in,
+                    current_user=_EndpointUser(name="moviepilot-user", is_superuser=False),
+                )
+            )
+
+        self.assertTrue(response.success)
+        payload = async_add.await_args.kwargs
+        self.assertEqual(payload["username"], "moviepilot-user")
+        for field in (
+            "lack_episode",
+            "note",
+            "state",
+            "last_update",
+            "current_priority",
+            "episode_priority",
+            "date",
+            "completed_episode",
+        ):
+            self.assertNotIn(field, payload)
 
     def test_create_subscribe_preserves_special_season_zero_with_doubanid(self):
         """
@@ -811,6 +864,107 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(payload["fields"], ["name"])
         self.assertEqual(payload["old_subscribe_info"]["name"], "旧标题")
         self.assertEqual(payload["subscribe_info"]["name"], "新标题")
+
+    def test_update_subscribe_ignores_runtime_fact_fields(self):
+        """
+        公共普通更新不得覆盖运行事实，状态调整继续由专用接口负责。
+        """
+        from app.api.endpoints.subscribe import update_subscribe
+
+        subscribe = _EndpointSubscribe(
+            id=8,
+            username="alice",
+            name="旧标题",
+            total_episode=10,
+            lack_episode=5,
+            state="R",
+            note=[1, 2, 3, 4, 5],
+            current_priority=60,
+            episode_priority={"1": 60},
+            last_update="2026-07-19 12:00:00",
+            date="2026-07-18 12:00:00",
+            sites=[],
+            search_imdbid=0,
+            filter_groups=[],
+            start_episode=0,
+        )
+        subscribe_in = Subscribe(
+            id=8,
+            name="新标题",
+            total_episode=10,
+            lack_episode=0,
+            state="S",
+            note=[],
+            current_priority=100,
+            episode_priority={"1": 100},
+            last_update="2026-07-20 12:00:00",
+            date="2026-07-20 12:00:00",
+        )
+
+        with patch(
+            "app.api.endpoints.subscribe.Subscribe.async_get",
+            new=AsyncMock(side_effect=[subscribe, subscribe]),
+        ), patch(
+            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ):
+            response = asyncio.run(
+                update_subscribe(
+                    subscribe_in=subscribe_in,
+                    db=object(),
+                    current_user=_EndpointUser(name="admin", is_superuser=True),
+                )
+            )
+
+        self.assertTrue(response.success)
+        self.assertEqual(subscribe.name, "新标题")
+        self.assertEqual(subscribe.lack_episode, 5)
+        self.assertEqual(subscribe.state, "R")
+        self.assertEqual(subscribe.note, [1, 2, 3, 4, 5])
+        self.assertEqual(subscribe.current_priority, 60)
+        self.assertEqual(subscribe.episode_priority, {"1": 60})
+        self.assertEqual(subscribe.last_update, "2026-07-19 12:00:00")
+        self.assertEqual(subscribe.date, "2026-07-18 12:00:00")
+
+    def test_update_subscribe_derives_lack_when_total_episode_increases(self):
+        """
+        公共更新扩大目标范围时，缺失集数与人工总集数标记仍由服务端派生。
+        """
+        from app.api.endpoints.subscribe import update_subscribe
+
+        subscribe = _EndpointSubscribe(
+            id=9,
+            username="alice",
+            name="测试剧集",
+            total_episode=10,
+            lack_episode=2,
+            manual_total_episode=0,
+            sites=[],
+            search_imdbid=0,
+            filter_groups=[],
+            start_episode=0,
+        )
+        subscribe_in = Subscribe(id=9, name="测试剧集", total_episode=12, lack_episode=0)
+
+        with patch(
+            "app.api.endpoints.subscribe.Subscribe.async_get",
+            new=AsyncMock(side_effect=[subscribe, subscribe]),
+        ), patch(
+            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ):
+            response = asyncio.run(
+                update_subscribe(
+                    subscribe_in=subscribe_in,
+                    db=object(),
+                    current_user=_EndpointUser(name="admin", is_superuser=True),
+                )
+            )
+
+        self.assertTrue(response.success)
+        self.assertEqual(subscribe.total_episode, 12)
+        self.assertEqual(subscribe.lack_episode, 4)
+        self.assertEqual(subscribe.manual_total_episode, 1)
 
 
 class _EndpointUser(SimpleNamespace):

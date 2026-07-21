@@ -152,14 +152,8 @@ async def create_subscribe(
         title = subscribe_in.name
     else:
         title = None
-    # 订阅用户
-    subscribe_in.username = current_user.name
-    # 转化为字典
-    subscribe_dict = subscribe_in.model_dump()
-    if subscribe_in.id:
-        subscribe_dict.pop("id", None)
-    # completed_episode 是响应派生字段，禁止写入持久层
-    subscribe_dict.pop("completed_episode", None)
+    subscribe_dict = subscribe_in.to_public_write_payload()
+    subscribe_dict["username"] = current_user.name
     sid, message = await SubscribeChain().async_add(
         mtype=mtype,
         title=title,
@@ -183,23 +177,14 @@ async def update_subscribe(
     subscribe = await get_accessible_subscribe(db, subscribe_in.id, current_user)
     if not subscribe:
         return schemas.Response(success=False, message="订阅不存在")
-    # 避免更新缺失集数
     old_subscribe_dict = subscribe.to_dict()
-    subscribe_dict = subscribe_in.model_dump()
+    subscribe_dict = subscribe_in.to_public_write_payload()
     subscribe_dict["username"] = subscribe.username
-    if subscribe_in.episode_priority is None:
-        subscribe_dict.pop("episode_priority", None)
-    # completed_episode 是响应派生字段，禁止写入持久层
-    subscribe_dict.pop("completed_episode", None)
-    if not subscribe_in.lack_episode:
-        # 没有缺失集数时，缺失集数清空，避免更新为0
-        subscribe_dict.pop("lack_episode")
-    elif subscribe_in.total_episode:
-        # 总集数增加时，缺失集数也要增加
-        if subscribe_in.total_episode > (subscribe.total_episode or 0):
-            subscribe_dict["lack_episode"] = subscribe.lack_episode + (
-                subscribe_in.total_episode - (subscribe.total_episode or 0)
-            )
+    if subscribe_in.total_episode and subscribe_in.total_episode > (subscribe.total_episode or 0):
+        # 扩大目标范围时，新增加的集数尚无下载事实，应同步计入缺失集数。
+        subscribe_dict["lack_episode"] = (subscribe.lack_episode or 0) + (
+            subscribe_in.total_episode - (subscribe.total_episode or 0)
+        )
     # 是否手动修改过总集数
     if subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
@@ -639,7 +624,7 @@ async def popular_subscribes(
             # 处理标题
             title = sub.get("name")
             season = sub.get("season")
-            if season and int(season) > 1 and media.tmdb_id:
+            if season not in (None, "") and int(season) != 1 and media.tmdb_id:
                 # 小写数据转大写
                 season_str = cn2an.an2cn(season, "low")
                 title = f"{title} 第{season_str}季"

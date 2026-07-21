@@ -254,3 +254,59 @@ class MediaRecognizeModulesTest(TestCase):
         )
 
         self.assertEqual(matched["id"], "201")
+
+    def test_search_result_builders_preserve_special_season_zero(self):
+        """TMDB 与豆瓣搜索结果都必须携带显式特别季。"""
+        meta = MetaBase("测试剧")
+        meta.name = "测试剧"
+        meta.begin_season = 0
+        meta.type = MediaType.TV
+
+        tmdb_results = TheMovieDbModule._build_search_medias_result(
+            meta,
+            [{"id": 100, "name": "测试剧", "media_type": "tv", "first_air_date": "2024-01-01"}],
+        )
+        douban_results = DoubanModule._build_search_medias_result(
+            meta,
+            [{
+                "type_name": MediaType.TV.value,
+                "target": {"id": "200", "title": "测试剧", "type": "tv", "year": "2024"},
+            }],
+        )
+
+        self.assertEqual(tmdb_results[0].season, 0)
+        self.assertEqual(douban_results[0].season, 0)
+
+    def test_tmdb_info_treats_special_season_zero_as_season_detail(self):
+        """TV 的显式季 0 读取特别季，None 及电影的 0 读取媒体详情。"""
+        module = TheMovieDbModule()
+        module.tmdb = Mock()
+        module.tmdb.get_info.return_value = {"scope": "series"}
+        module.tmdb.get_tv_season_detail.return_value = {"scope": "season", "season_number": 0}
+
+        special = module.tmdb_info(tmdbid=100, mtype=MediaType.TV, season=0)
+        series = module.tmdb_info(tmdbid=100, mtype=MediaType.TV, season=None)
+        movie = module.tmdb_info(tmdbid=200, mtype=MediaType.MOVIE, season=0)
+
+        self.assertEqual(special["scope"], "season")
+        self.assertEqual(series["scope"], "series")
+        self.assertEqual(movie["scope"], "series")
+        module.tmdb.get_tv_season_detail.assert_called_once_with(tmdbid=100, season=0)
+
+    def test_async_tmdb_info_treats_special_season_zero_as_season_detail(self):
+        """异步 TMDB 接口必须与同步接口保持相同的季 0 契约。"""
+        module = TheMovieDbModule()
+        module.tmdb = Mock()
+        module.tmdb.async_get_info = AsyncMock(return_value={"scope": "series"})
+        module.tmdb.async_get_tv_season_detail = AsyncMock(
+            return_value={"scope": "season", "season_number": 0}
+        )
+
+        special = asyncio.run(module.async_tmdb_info(tmdbid=100, mtype=MediaType.TV, season=0))
+        series = asyncio.run(module.async_tmdb_info(tmdbid=100, mtype=MediaType.TV, season=None))
+        movie = asyncio.run(module.async_tmdb_info(tmdbid=200, mtype=MediaType.MOVIE, season=0))
+
+        self.assertEqual(special["scope"], "season")
+        self.assertEqual(series["scope"], "series")
+        self.assertEqual(movie["scope"], "series")
+        module.tmdb.async_get_tv_season_detail.assert_awaited_once_with(tmdbid=100, season=0)

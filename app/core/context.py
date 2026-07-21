@@ -9,6 +9,8 @@ from app.core.metainfo import MetaInfo
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
+BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
+
 
 @dataclass
 class TorrentInfo:
@@ -243,6 +245,10 @@ class SubtitleInfo:
 
 @dataclass
 class MediaInfo:
+    """
+    统一媒体信息，负责聚合各元数据源的标准字段
+    """
+
     # 内部标记：是否命中本地识别缓存，不参与序列化
     recognize_cache_hit = False
     # 来源：themoviedb、douban、bangumi
@@ -721,7 +727,20 @@ class MediaInfo:
             elif type(current_value) is type(value):
                 setattr(self, key, value)
 
-    def set_bangumi_info(self, info: dict):
+    @staticmethod
+    def get_bangumi_media_type(info: dict) -> MediaType:
+        """
+        根据Bangumi媒介平台获取标准媒体类型，未知平台兼容回退为电视剧
+
+        :param info: Bangumi条目信息
+        :return: 标准媒体类型
+        """
+        platform = str(info.get("platform") or "").strip().casefold()
+        if platform in BANGUMI_MOVIE_PLATFORMS:
+            return MediaType.MOVIE
+        return MediaType.TV
+
+    def set_bangumi_info(self, info: dict) -> None:
         """
         初始化Bangumi信息
         """
@@ -735,7 +754,7 @@ class MediaInfo:
         self.bangumi_id = info.get("id")
         # 类型
         if not self.type:
-            self.type = MediaType.TV
+            self.type = self.get_bangumi_media_type(info)
         # 标题
         if not self.title:
             self.title = info.get("name_cn") or info.get("name")

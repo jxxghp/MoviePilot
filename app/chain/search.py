@@ -203,7 +203,7 @@ class SearchChain(ChainBase):
             "area": str(params.get("area") or ""),
             "title": str(params.get("title") or ""),
             "year": str(params.get("year") or ""),
-            "season": str(params.get("season") or ""),
+            "season": str(params["season"]) if params.get("season") is not None else "",
             "episode": str(params.get("episode") or ""),
             "sites": str(params.get("sites") or ""),
             "result_type": str(params.get("result_type") or "torrent"),

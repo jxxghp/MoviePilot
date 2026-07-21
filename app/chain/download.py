@@ -488,10 +488,13 @@ class DownloadChain(ChainBase):
         )
         meta = getattr(context, "meta_info", None)
         site = getattr(torrent, "site", None) or getattr(torrent, "site_name", None)
+        meta_season = getattr(meta, "season", None)
+        media_season = getattr(media, "season", None)
+        season = meta_season if meta_season is not None else media_season
         payload = {
             "media_type": str(media_type or ""),
             "media_key": str(media_key or ""),
-            "season": str(getattr(meta, "season", None) or getattr(media, "season", None) or ""),
+            "season": str(season) if season is not None else "",
             "episodes": cls._format_failure_episodes(meta) or "",
             "site": str(site or ""),
             "resource": cls._torrent_resource_key(torrent),
@@ -1177,7 +1180,7 @@ class DownloadChain(ChainBase):
                     if not tv.episodes:
                         if not need_seasons.get(need_mid):
                             need_seasons[need_mid] = []
-                        need_seasons[need_mid].append(tv.season or 1)
+                        need_seasons[need_mid].append(tv.season if tv.season is not None else 1)
             logger.info(f"缺失整季：{need_seasons}")
             # 查找整季包含的种子，只处理整季没集的种子或者是集数超过季的种子
             for need_mid, need_season in need_seasons.items():

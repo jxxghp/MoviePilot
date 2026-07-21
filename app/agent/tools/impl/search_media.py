@@ -43,7 +43,7 @@ class SearchMediaTool(MoviePilotTool):
             message += f" ({year})"
         if media_type:
             message += f" [{media_type}]"
-        if season:
+        if season is not None:
             message += f" 第{season}季"
         
         return message

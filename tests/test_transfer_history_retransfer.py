@@ -10,6 +10,7 @@ from app.schemas import EpisodeFormatRecommendItem, ManualTransferItem, Transfer
 
 
 def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
+    """复用历史识别信息时应传递原下载上下文。"""
     history = SimpleNamespace(
         status=0,
         mode="copy",
@@ -51,6 +52,60 @@ def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
     assert captured["download_hash"] == "abc123"
     assert captured["episode_group"] == "WEB-DL"
     assert captured["season"] == 1
+
+
+def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatch):
+    """从历史重新识别时应忽略旧下载上下文。"""
+    history = SimpleNamespace(
+        status=0,
+        mode="copy",
+        src_fileitem={
+            "storage": "local",
+            "path": "/downloads/test.mkv",
+            "name": "test.mkv",
+            "type": "file",
+        },
+        dest_fileitem=None,
+        downloader="qbittorrent",
+        download_hash="polluted-hash",
+        type="电视剧",
+        tmdbid="100",
+        doubanid="200",
+        seasons="S01",
+        episodes="E01",
+        episode_group="WEB-DL",
+    )
+    captured = {}
+
+    def fake_get(_db, logid):
+        """返回受污染的历史记录。"""
+        assert logid == 1
+        return history
+
+    class FakeTransferChain:
+        """记录 API 传入整理链的参数。"""
+
+        def manual_transfer(self, **kwargs):
+            """记录手动整理参数。"""
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferHistory.get", fake_get)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    resp = manual_transfer(
+        transer_item=ManualTransferItem(logid=1, from_history=False),
+        background=True,
+        db=object(),
+        _="token",
+    )
+
+    assert resp.success is True
+    assert captured["downloader"] is None
+    assert captured["download_hash"] is None
+    assert captured["tmdbid"] is None
+    assert captured["doubanid"] is None
+    assert captured["episode_group"] is None
 
 
 def test_manual_transfer_from_history_passes_old_dest_cleanup_to_chain(monkeypatch):

@@ -782,6 +782,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     }
 
     def __init__(self):
+        """初始化文件整理处理链。"""
         super().__init__()
         # 主要媒体文件后缀
         self._media_exts = settings.RMT_MEDIAEXT
@@ -841,6 +842,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         logger.info("文件整理线程已停止")
 
     def on_config_changed(self):
+        """配置变更时重启文件整理线程。"""
         self.__stop()
         self.__init()
 
@@ -2213,6 +2215,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         shared_roots: set[str] = set()
         media_type_dirs = {mtype.value for mtype in MediaType}
+        media_categories = None
 
         for dir_info in DirectoryHelper().get_download_dirs():
             if not dir_info.download_path:
@@ -2226,6 +2229,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             relative_parts = file_path.relative_to(download_root).parts
             current_root = download_root
             part_index = 0
+            media_type = dir_info.media_type
 
             if (
                     not dir_info.media_type
@@ -2235,6 +2239,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             ):
                 current_root = current_root / relative_parts[part_index]
                 shared_roots.add(current_root.as_posix())
+                media_type = relative_parts[part_index]
                 part_index += 1
 
             if (
@@ -2242,8 +2247,32 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     and dir_info.download_category_folder
                     and len(relative_parts) > part_index
             ):
-                current_root = current_root / relative_parts[part_index]
-                shared_roots.add(current_root.as_posix())
+                category_root = current_root / relative_parts[part_index]
+                shared_roots.add(category_root.as_posix())
+                if media_categories is None:
+                    media_categories = MediaChain().media_category() or {}
+                if media_type:
+                    category_names = media_categories.get(media_type, [])
+                else:
+                    category_names = {
+                        category
+                        for categories in media_categories.values()
+                        for category in categories
+                    }
+                category_paths = sorted(
+                    (Path(category).parts for category in category_names if category),
+                    key=len,
+                )
+                for category_parts in category_paths:
+                    relative_category_parts = tuple(
+                        relative_parts[part_index:part_index + len(category_parts)]
+                    )
+                    if relative_category_parts != category_parts:
+                        continue
+                    category_root = current_root
+                    for category_part in category_parts:
+                        category_root = category_root / category_part
+                        shared_roots.add(category_root.as_posix())
 
         return shared_roots
 

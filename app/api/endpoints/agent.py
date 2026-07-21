@@ -219,7 +219,9 @@ class _WebAgentMoviePilotAgent(MoviePilotAgent):
         self.stream_handler = _WebAgentStreamingHandler(self._emit_output)
 
     def _should_stream(self) -> bool:
-        """Web 面板需要实时输出，即使 Web 渠道本身不支持消息编辑。"""
+        """Web 对话实时输出，复用会话执行后台任务时改用非流式广播。"""
+        if self.is_background:
+            return False
         return True
 
     def set_notification_callback(

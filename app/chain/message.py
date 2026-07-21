@@ -2087,7 +2087,7 @@ class MediaInteractionChain(ChainBase):
 
             mediakey = mediainfo.tmdb_id or mediainfo.douban_id
             no_exists = {mediakey: {}}
-            if meta.begin_season:
+            if meta.begin_season is not None:
                 episodes = mediainfo.seasons.get(meta.begin_season)
                 if not episodes:
                     return {}

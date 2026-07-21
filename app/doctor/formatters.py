@@ -47,6 +47,8 @@ def _format_finding(finding: DoctorFinding) -> list[str]:
     marker = finding.severity.value.upper()
     if finding.fixed:
         marker = "FIXED"
+    elif not finding.affects_report_status:
+        marker = f"{marker}/ADVISORY"
     lines = [f"[{marker}] {finding.title}", f"ID: {finding.id}"]
     if finding.detail:
         lines.append(f"原因: {finding.detail}")

@@ -653,6 +653,16 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self.obtain_images(mediainfo=mediainfo)
         return mediainfo
 
+    @staticmethod
+    def _parse_recognize_event_number(value) -> Optional[int]:
+        """
+        解析辅助识别返回的季集号，兼容整数和数字字符串并保留数值 0。
+        """
+        if value is None:
+            return None
+        text = str(value).strip()
+        return int(text) if text.isdigit() else None
+
     def recognize_help(
             self,
             title: str,
@@ -686,10 +696,8 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             title = str(event_data["name"]).split("/")[0].strip().replace(".", " ")
         if event_data.get("year"):
             year = str(event_data["year"]).split("/")[0].strip()
-        if event_data.get("season") and str(event_data["season"]).isdigit():
-            season_number = int(event_data["season"])
-        if event_data.get("episode") and str(event_data["episode"]).isdigit():
-            episode_number = int(event_data["episode"])
+        season_number = self._parse_recognize_event_number(event_data.get("season"))
+        episode_number = self._parse_recognize_event_number(event_data.get("episode"))
         if not title:
             return None
         if title == "Unknown":
@@ -837,7 +845,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             tmdbinfo = self._match_tmdb_with_names(
                 meta_names=meta_names,
                 year=year,
-                mtype=MediaType.TV,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
                 season=meta.begin_season,
             )
             return tmdbinfo
@@ -877,7 +885,10 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             year = self._extract_year_from_bangumi(bangumiinfo)
             # 使用名称识别豆瓣媒体信息
             return self.match_doubaninfo(
-                name=meta.name, year=year, mtype=MediaType.TV, season=meta.begin_season
+                name=meta.name,
+                year=year,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
+                season=meta.begin_season,
             )
         return None
 
@@ -1635,10 +1646,8 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             title = str(event_data["name"]).split("/")[0].strip().replace(".", " ")
         if event_data.get("year"):
             year = str(event_data["year"]).split("/")[0].strip()
-        if event_data.get("season") and str(event_data["season"]).isdigit():
-            season_number = int(event_data["season"])
-        if event_data.get("episode") and str(event_data["episode"]).isdigit():
-            episode_number = int(event_data["episode"])
+        season_number = self._parse_recognize_event_number(event_data.get("season"))
+        episode_number = self._parse_recognize_event_number(event_data.get("episode"))
         if not title:
             return None
         if title == "Unknown":
@@ -1654,7 +1663,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         org_meta.year = year
         org_meta.begin_season = season_number
         org_meta.begin_episode = episode_number
-        if org_meta.begin_season or org_meta.begin_episode:
+        if org_meta.begin_season is not None or org_meta.begin_episode is not None:
             org_meta.type = MediaType.TV
         # 重新识别
         return await self.async_recognize_media(
@@ -1855,7 +1864,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             tmdbinfo = await self._async_match_tmdb_with_names(
                 meta_names=meta_names,
                 year=year,
-                mtype=MediaType.TV,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
                 season=meta.begin_season,
             )
             return tmdbinfo
@@ -1895,6 +1904,9 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             year = self._extract_year_from_bangumi(bangumiinfo)
             # 使用名称识别豆瓣媒体信息
             return await self.async_match_doubaninfo(
-                name=meta.name, year=year, mtype=MediaType.TV, season=meta.begin_season
+                name=meta.name,
+                year=year,
+                mtype=MediaInfo.get_bangumi_media_type(bangumiinfo),
+                season=meta.begin_season,
             )
         return None

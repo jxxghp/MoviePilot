@@ -135,6 +135,34 @@ def test_validate_download_save_path_accepts_configured_roots_and_children(save_
     assert validate_download_save_path(save_path) == expected
 
 
+def test_validate_download_save_path_accepts_legacy_remote_path_without_storage_prefix():
+    """旧版订阅保存的远程原始路径应恢复为带存储前缀的 FileURI。"""
+    assert validate_download_save_path("/media/anime/sub") == "rclone:/media/anime/sub"
+
+
+def test_validate_download_save_path_prefers_configured_local_root(monkeypatch):
+    """无前缀路径同时命中本地和远程根目录时应保持本地语义。"""
+    monkeypatch.setattr(
+        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        lambda _self: [
+            TransferDirectoryConf(
+                name="远程下载",
+                priority=1,
+                storage="rclone",
+                download_path="/shared",
+            ),
+            TransferDirectoryConf(
+                name="本地下载",
+                priority=2,
+                storage="local",
+                download_path="/shared",
+            ),
+        ],
+    )
+
+    assert validate_download_save_path("/shared/movie") == "/shared/movie"
+
+
 @pytest.mark.parametrize(
     ("save_path", "expected"),
     [
@@ -251,6 +279,23 @@ def test_resolve_media_download_dir_applies_remote_root_classification(monkeypat
     storage, target_dir, error_msg = DownloadChain._resolve_media_download_dir(
         media_info=_build_tv_media(),
         save_path="rclone:/media",
+    )
+
+    assert storage == "rclone"
+    assert target_dir == Path("/media/电视剧/动漫")
+    assert error_msg == ""
+
+
+def test_resolve_media_download_dir_accepts_legacy_remote_root_without_storage_prefix(monkeypatch):
+    """订阅中的旧版远程根路径应按对应存储和分类配置解析。"""
+    monkeypatch.setattr(
+        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        lambda _self: _classified_download_dirs(),
+    )
+
+    storage, target_dir, error_msg = DownloadChain._resolve_media_download_dir(
+        media_info=_build_tv_media(),
+        save_path="/media",
     )
 
     assert storage == "rclone"
@@ -384,6 +429,27 @@ def test_download_single_applies_configured_root_classification(monkeypatch):
     )
 
     assert chain.download.call_args.kwargs["download_dir"] == Path("/downloads/电视剧/动漫")
+
+
+def test_download_single_accepts_legacy_remote_root_without_storage_prefix(monkeypatch):
+    """旧订阅的无前缀远程根应以正确 FileURI 提交给下载模块。"""
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        lambda _self: _classified_download_dirs(),
+    )
+    chain = _build_download_chain()
+    chain.download.return_value = ("qb", None, "Original", "test stop")
+    context = _build_context()
+    context.media_info = _build_tv_media()
+
+    chain.download_single(
+        context=context,
+        torrent_content=b"torrent-content",
+        save_path="/media",
+    )
+
+    assert chain.download.call_args.kwargs["download_dir"] == Path("rclone:/media/电视剧/动漫")
 
 
 @pytest.mark.parametrize("save_path", ["", "   "])

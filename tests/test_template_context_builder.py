@@ -10,7 +10,10 @@ TemplateContextBuilder 的并发安全单元测试。
 """
 import threading
 
+from app.core.context import MediaInfo
+from app.core.metainfo import MetaInfo
 from app.helper.message import TemplateContextBuilder
+from app.schemas.types import MediaType
 from app.schemas.tmdb import TmdbEpisode
 
 
@@ -118,3 +121,20 @@ def test_build_exposes_total_episodes_from_current_season() -> None:
     )
 
     assert context.get("total_episodes") == 3
+
+
+def test_build_preserves_special_season_context() -> None:
+    """显式 S00 必须优先于媒体回退季，并使用特别季年份。"""
+    meta = MetaInfo("Test Show S00E01")
+    mediainfo = MediaInfo(
+        title="Test Show",
+        type=MediaType.TV,
+        season=1,
+        season_years={0: "2024", 1: "2025"},
+    )
+
+    context = TemplateContextBuilder().build(meta=meta, mediainfo=mediainfo)
+
+    assert context["season"] == "0"
+    assert context["season_fmt"] == "S00"
+    assert context["season_year"] == "2024"

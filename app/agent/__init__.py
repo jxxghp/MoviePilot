@@ -1628,20 +1628,21 @@ class MoviePilotAgent:
             if not streaming_stopped:
                 await self.stream_handler.stop_streaming()
 
-    async def send_agent_message(self, message: str, title: str = ""):
+    async def send_agent_message(self, message: str, title: str = "") -> None:
         """
-        通过原渠道发送消息给用户
+        发送 Agent 消息；后台任务不绑定原渠道，交由通知链广播。
         """
+        broadcast = self.is_background
         self._save_assistant_display_message_once(message)
         await AgentChain().async_post_message(
             Notification(
-                channel=self.channel,
-                source=self.source,
+                channel=None if broadcast else self.channel,
+                source=None if broadcast else self.source,
                 mtype=NotificationType.Agent,
-                userid=self.user_id,
-                username=self.username,
-                original_message_id=self.original_message_id,
-                original_chat_id=self.original_chat_id,
+                userid=None if broadcast else self.user_id,
+                username=self.username or (settings.SUPERUSER if broadcast else None),
+                original_message_id=None if broadcast else self.original_message_id,
+                original_chat_id=None if broadcast else self.original_chat_id,
                 title=title,
                 text=message,
                 save_history=False,
@@ -2001,12 +2002,11 @@ class AgentManager:
         else:
             agent = self.active_agents[session_id]
             agent.user_id = task.user_id
-            if task.channel:
-                agent.channel = task.channel
-            if task.source:
-                agent.source = task.source
-            if task.username:
-                agent.username = task.username
+            # 每条队列任务都携带完整消息上下文，None 也必须覆盖，避免后台任务
+            # 复用会话 Agent 时继续沿用上一条入站消息的渠道。
+            agent.channel = task.channel
+            agent.source = task.source
+            agent.username = task.username
             agent.original_message_id = task.original_message_id
             agent.original_chat_id = task.original_chat_id
             agent.reply_mode = task.reply_mode
@@ -2147,24 +2147,20 @@ class AgentManager:
             f"任务内容：{task.content}\n\n"
             "完成后请直接向用户报告本次执行结果；如果无法完成，请说明原因。"
         )
-        has_message_context = bool(task.channel and task.source)
         success = True
         result = ""
+        notification_username = task.username or settings.SUPERUSER
         try:
             result = await self.process_message(
                 session_id=task.session_id,
                 user_id=task.user_id,
                 message=task_message,
-                channel=task.channel,
-                source=task.source,
-                username=task.username,
-                original_chat_id=task.original_chat_id,
-                reply_mode=(
-                    ReplyMode.DISPATCH
-                    if has_message_context
-                    else ReplyMode.CAPTURE_ONLY
-                ),
-                allow_message_tools=has_message_context,
+                channel=None,
+                source=None,
+                username=notification_username,
+                original_chat_id=None,
+                reply_mode=ReplyMode.DISPATCH,
+                allow_message_tools=True,
                 wait_for_completion=True,
             )
             result_text = str(result or "").strip()
@@ -2175,28 +2171,10 @@ class AgentManager:
                 result = "定时任务已执行，但 Agent 未返回结果"
                 await AgentChain().async_post_message(
                     Notification(
-                        channel=task.channel if has_message_context else None,
-                        source=task.source if has_message_context else None,
                         mtype=NotificationType.Agent,
-                        userid=task.user_id if has_message_context else None,
-                        username=(
-                            task.username
-                            if has_message_context
-                            else settings.SUPERUSER
-                        ),
-                        original_chat_id=task.original_chat_id,
+                        username=notification_username,
                         title=f"定时任务：{task.name}",
                         text=result,
-                        save_history=False,
-                    )
-                )
-            elif not has_message_context:
-                await AgentChain().async_post_message(
-                    Notification(
-                        mtype=NotificationType.Agent,
-                        username=settings.SUPERUSER,
-                        title=f"定时任务：{task.name}",
-                        text=result_text,
                         save_history=False,
                     )
                 )
@@ -2206,16 +2184,8 @@ class AgentManager:
             logger.error(f"Agent 定时任务 {task_id} 执行失败: {str(err)}")
             await AgentChain().async_post_message(
                 Notification(
-                    channel=task.channel if has_message_context else None,
-                    source=task.source if has_message_context else None,
                     mtype=NotificationType.Agent,
-                    userid=task.user_id if has_message_context else None,
-                    username=(
-                        task.username
-                        if has_message_context
-                        else settings.SUPERUSER
-                    ),
-                    original_chat_id=task.original_chat_id,
+                    username=notification_username,
                     title=f"定时任务执行失败：{task.name}",
                     text=result,
                     save_history=False,

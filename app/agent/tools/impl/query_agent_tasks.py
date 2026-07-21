@@ -27,10 +27,12 @@ class QueryAgentTasksTool(MoviePilotTool):
     """查询当前用户创建的 Agent 自主定时任务。"""
 
     name: str = "query_agent_tasks"
-    tags: list[str] = [ToolTag.Read, ToolTag.Scheduler, ToolTag.Admin]
+    tags: list[str] = [ToolTag.Read, ToolTag.AgentTask, ToolTag.Admin]
     description: str = (
-        "Query persistent autonomous agent tasks, including their task content, exact "
-        "date or cron trigger, enabled state, next run time, and latest execution result."
+        "Query persistent autonomous agent tasks owned by the current user, including "
+        "reminders, monitoring tasks, and recurring agent work. Returns the integer "
+        "task_id, instructions, trigger, enabled state, next run time, and latest result. "
+        "Do not use this for MoviePilot system, plugin, or workflow scheduler services."
     )
     args_schema: Type[BaseModel] = QueryAgentTasksInput
     require_admin: bool = True

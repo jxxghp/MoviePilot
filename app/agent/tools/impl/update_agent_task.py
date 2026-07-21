@@ -85,7 +85,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
     """修改、暂停或恢复 Agent 自主定时任务。"""
 
     name: str = "update_agent_task"
-    tags: list[str] = [ToolTag.Write, ToolTag.Scheduler, ToolTag.Admin]
+    tags: list[str] = [ToolTag.Write, ToolTag.AgentTask, ToolTag.Admin]
     description: str = (
         "Update an autonomous agent task's name, instructions, exact date or cron "
         "trigger, relative delay_minutes, or enabled state. Use enabled=false to pause "

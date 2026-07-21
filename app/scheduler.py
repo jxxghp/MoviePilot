@@ -180,16 +180,16 @@ class SchedulerChain(ChainBase):
 
         message_cutoff = (
                 started_at - timedelta(days=message_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime("%Y-%m-%d")
         download_history_cutoff = (
                 started_at - timedelta(days=download_history_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime("%Y-%m-%d")
         site_userdata_cutoff = (
                 started_at - timedelta(days=site_userdata_days)
         ).strftime("%Y-%m-%d")
         transfer_history_cutoff = (
                 started_at - timedelta(days=transfer_history_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime("%Y-%m-%d")
 
         return [
             {
@@ -990,6 +990,21 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
     def _get_agent_task_job_id(task_id: int) -> str:
         """生成 Agent 自主定时任务的调度器 Job ID。"""
         return f"{AGENT_TASK_JOB_PREFIX}-{task_id}"
+
+    def start_agent_task(self, task_id: int) -> bool:
+        """
+        将指定 Agent 自主定时任务提交到运行时调度器立即执行。
+
+        :param task_id: Agent 自主定时任务 ID
+        :return: 任务存在且未运行时返回 True，否则返回 False
+        """
+        job_id = self._get_agent_task_job_id(task_id)
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.get("running"):
+                return False
+        self.start(job_id)
+        return True
 
     def init_agent_task_jobs(self) -> None:
         """

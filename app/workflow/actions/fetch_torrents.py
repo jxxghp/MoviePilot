@@ -74,7 +74,7 @@ class FetchTorrentsAction(BaseAction):
                     continue
                 if params.type and torrent.media_info and torrent.media_info.type != MediaType(params.type):
                     continue
-                if params.season and torrent.meta_info.begin_season != params.season:
+                if params.season is not None and torrent.meta_info.begin_season != params.season:
                     continue
                 # 识别媒体信息
                 if params.match_media:
