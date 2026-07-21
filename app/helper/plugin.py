@@ -1401,35 +1401,62 @@ class PluginHelper(metaclass=WeakSingleton):
         )
 
     @classmethod
-    def __repair_if_runtime_broken(cls, snapshot_file: Optional[Path] = None) -> Tuple[bool, str]:
+    def __repair_if_runtime_broken(
+            cls,
+            snapshot_file: Optional[Path] = None,
+            baseline_health: Optional[Dict[str, Tuple[bool, str]]] = None
+    ) -> Tuple[bool, str]:
         """
-        安装失败后检查主运行环境；若已异常，先恢复主程序依赖再继续向上返回安装失败。
+        安装失败后检查主运行环境；若相对安装前新增异常，先恢复主程序依赖再返回。
         """
-        health_ok, health_message = cls.__run_runtime_healthcheck()
-        if health_ok:
+        current_health = cls.__run_runtime_healthcheck()
+        health_message = cls.__runtime_health_regression_message(
+            baseline_health or {},
+            current_health
+        )
+        if not health_message:
             return True, ""
         repair_ok, repair_message = cls.__repair_main_runtime_dependencies(snapshot_file)
         if not repair_ok:
             return False, f"插件依赖安装失败后主运行环境异常，且恢复失败：{health_message}; {repair_message}"
-        restored, restored_message = cls.__run_runtime_healthcheck()
-        if not restored:
+        restored_health = cls.__run_runtime_healthcheck()
+        restored_message = cls.__runtime_health_regression_message(
+            baseline_health or {},
+            restored_health
+        )
+        if restored_message:
             return False, f"插件依赖安装失败后主运行环境异常，恢复后仍异常：{restored_message}"
         return True, "主运行环境已恢复"
 
     @classmethod
-    def __run_runtime_healthcheck(cls) -> Tuple[bool, str]:
+    def __run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
         """
-        安装完成后立即执行运行环境自检，尽量在插件加载前发现依赖图已被污染。
+        执行全部运行环境自检并返回逐项结果，避免前一项失败遮蔽后续异常。
         """
         checks = [
             ("pip check", cls.__build_runtime_pip_command("check")),
             ("核心依赖导入检查", [sys.executable, "-c", cls._runtime_import_probe]),
         ]
+        health_snapshot = {}
         for check_name, command in checks:
             success, message = SystemUtils.execute_with_subprocess(command)
-            if not success:
-                return False, f"{check_name}失败：{message}"
-        return True, ""
+            health_snapshot[check_name] = (success, message)
+        return health_snapshot
+
+    @staticmethod
+    def __runtime_health_regression_message(
+            baseline_health: Dict[str, Tuple[bool, str]],
+            current_health: Dict[str, Tuple[bool, str]]
+    ) -> str:
+        """
+        汇总相对基线从正常变为异常的检查项，不解析第三方工具的错误文本。
+        """
+        regressions = []
+        for check_name, (success, message) in current_health.items():
+            baseline_success = baseline_health.get(check_name, (True, ""))[0]
+            if baseline_success and not success:
+                regressions.append(f"{check_name}失败：{message}")
+        return "；".join(regressions)
 
     @classmethod
     def __repair_main_runtime_dependencies(cls, snapshot_file: Optional[Path] = None) -> Tuple[bool, str]:
@@ -1526,6 +1553,12 @@ class PluginHelper(metaclass=WeakSingleton):
             # pip 会修改当前解释器的 site-packages，安装与缓存刷新必须串行，避免运行态模块被并发安装窗口污染。
             with cls._pip_install_lock:
                 loaded_modules_before_install = set(sys.modules.keys())
+                baseline_health = cls.__run_runtime_healthcheck()
+                baseline_health_message = cls.__runtime_health_regression_message({}, baseline_health)
+                if baseline_health_message:
+                    logger.warning(
+                        f"[PIP] 安装前运行环境已存在异常，本次安装仅拦截新增异常：{baseline_health_message}"
+                    )
                 # 遍历策略进行安装
                 last_error = ""
                 for strategy in strategies:
@@ -1540,15 +1573,23 @@ class PluginHelper(metaclass=WeakSingleton):
                     )
                     if success:
                         logger.debug(f"[PIP] 策略：{strategy.strategy_name} 安装依赖成功，输出：{message}")
-                        health_ok, health_message = cls.__run_runtime_healthcheck()
-                        if not health_ok:
+                        current_health = cls.__run_runtime_healthcheck()
+                        health_message = cls.__runtime_health_regression_message(
+                            baseline_health,
+                            current_health
+                        )
+                        if health_message:
                             logger.error(f"[PIP] 依赖安装后运行环境自检失败：{health_message}")
                             repair_ok, repair_message = cls.__repair_main_runtime_dependencies(
                                 constraints_file if protected_packages else None
                             )
                             if repair_ok:
-                                health_restored, restored_message = cls.__run_runtime_healthcheck()
-                                if health_restored:
+                                restored_health = cls.__run_runtime_healthcheck()
+                                restored_message = cls.__runtime_health_regression_message(
+                                    baseline_health,
+                                    restored_health
+                                )
+                                if not restored_message:
                                     cls.__refresh_import_system()
                                     return False, (
                                         f"依赖安装后运行环境自检失败，已自动恢复主程序依赖：{health_message}"
@@ -1565,6 +1606,13 @@ class PluginHelper(metaclass=WeakSingleton):
                                 f"{repair_message}"
                             )
 
+                        remaining_health_message = cls.__runtime_health_regression_message({}, current_health)
+                        if remaining_health_message:
+                            logger.warning(
+                                f"[PIP] 依赖安装成功，安装前已有的运行环境异常仍然存在："
+                                f"{remaining_health_message}"
+                            )
+
                         cls.__refresh_import_system()
                         loaded_modules_after_install = set(sys.modules.keys())
                         loaded_modules_during_install = loaded_modules_after_install - loaded_modules_before_install
@@ -1573,7 +1621,8 @@ class PluginHelper(metaclass=WeakSingleton):
 
                     last_error = message
                     repair_ok, repair_message = cls.__repair_if_runtime_broken(
-                        constraints_file if protected_packages else None
+                        constraints_file if protected_packages else None,
+                        baseline_health
                     )
                     logger.error(f"[PIP] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}")
                     if not repair_ok or repair_message:

@@ -807,7 +807,11 @@ class TestPluginHelper:
 
             with patch("app.helper.package._find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
-                    patch.object(PluginHelper, "_PluginHelper__run_runtime_healthcheck", return_value=(True, "")), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__run_runtime_healthcheck",
+                        return_value={"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                    ), \
                     patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute), \
                     patch("app.helper.plugin.settings.PROXY_HOST", "http://proxy.example:7890"), \
                     patch("app.helper.plugin.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"):
@@ -1023,19 +1027,19 @@ class TestPluginHelper:
             pytest.skip(f"missing dependency: {exc}")
 
         repair_commands = []
-        healthcheck_failed = False
+        pip_check_count = 0
         pip_check_cmd = PluginHelper._PluginHelper__build_runtime_pip_command("check")
 
         def fake_execute(cmd, env=None, safe_command=None):
-            nonlocal healthcheck_failed
+            nonlocal pip_check_count
             if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
                 if "-c" not in cmd:
                     repair_commands.append(cmd)
                     return True, "repaired"
                 return True, "installed"
             if cmd == pip_check_cmd:
-                if not healthcheck_failed:
-                    healthcheck_failed = True
+                pip_check_count += 1
+                if pip_check_count == 2:
                     return False, "broken"
                 return True, "healthy"
             if len(cmd) >= 3 and cmd[1] == "-c":
@@ -1058,6 +1062,96 @@ class TestPluginHelper:
         assert "已自动恢复主程序依赖" in message
         assert 1 == len(repair_commands)
         assert "runtime-constraints-" in repair_commands[0][-1]
+
+    def test_pip_install_allows_preexisting_healthcheck_failure(self):
+        """
+        安装前已存在且安装后未新增的环境异常不应归因于本次插件依赖安装。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        health_snapshots = [
+            {
+                "pip check": (False, "existing issue before install"),
+                "核心依赖导入检查": (True, "ok"),
+            },
+            {
+                "pip check": (False, "same issue with different command summary"),
+                "核心依赖导入检查": (True, "ok"),
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            with patch("app.helper.package._find_uv", return_value=None), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__run_runtime_healthcheck",
+                        side_effect=health_snapshots,
+                    ), \
+                    patch.object(PluginHelper, "_PluginHelper__repair_main_runtime_dependencies") as repair_mock, \
+                    patch(
+                        "app.helper.plugin.SystemUtils.execute_with_subprocess",
+                        return_value=(True, "installed"),
+                    ):
+                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert success
+        assert message == "installed"
+        repair_mock.assert_not_called()
+
+    def test_preexisting_healthcheck_failure_does_not_hide_new_core_failure(self):
+        """
+        既有全局依赖异常不能遮蔽本次安装新造成的核心依赖导入失败。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        health_snapshots = [
+            {
+                "pip check": (False, "existing issue"),
+                "核心依赖导入检查": (True, "ok"),
+            },
+            {
+                "pip check": (False, "existing issue"),
+                "核心依赖导入检查": (False, "import failed"),
+            },
+            {
+                "pip check": (False, "existing issue"),
+                "核心依赖导入检查": (True, "ok"),
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            with patch("app.helper.package._find_uv", return_value=None), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__run_runtime_healthcheck",
+                        side_effect=health_snapshots,
+                    ), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__repair_main_runtime_dependencies",
+                        return_value=(True, "repaired"),
+                    ) as repair_mock, \
+                    patch(
+                        "app.helper.plugin.SystemUtils.execute_with_subprocess",
+                        return_value=(True, "installed"),
+                    ):
+                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert not success
+        assert "核心依赖导入检查失败" in message
+        repair_mock.assert_called_once()
 
     def test_failed_install_repairs_runtime_before_returning_error(self):
         """
@@ -1085,7 +1179,11 @@ class TestPluginHelper:
                     patch.object(
                         PluginHelper,
                         "_PluginHelper__run_runtime_healthcheck",
-                        side_effect=[(False, "broken"), (True, "")],
+                        side_effect=[
+                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                            {"pip check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
+                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                        ],
                     ), \
                     patch.object(
                         PluginHelper,
@@ -1133,7 +1231,11 @@ class TestPluginHelper:
                     patch.object(
                         PluginHelper,
                         "_PluginHelper__run_runtime_healthcheck",
-                        side_effect=[(False, "broken"), (True, "")],
+                        side_effect=[
+                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                            {"pip check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
+                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                        ],
                     ), \
                     patch.object(
                         PluginHelper,
