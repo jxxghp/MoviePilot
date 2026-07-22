@@ -975,11 +975,18 @@ class DoubanModule(_ModuleBase):
         # 返回数据
         return self._build_search_medias_result(meta, result.get("items"))
 
-    def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+    def search_persons(
+        self, name: str, source: Optional[str] = None
+    ) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息
+        :param name: 人物名称
+        :param source: 请求级搜索数据源
+        :return: 人物信息列表
         """
-        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if source and source != "douban":
+            return None
+        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
             return None
         if not name:
             return []
@@ -995,11 +1002,18 @@ class DoubanModule(_ModuleBase):
             }) for item in result.get('items') if name in item.get('target', {}).get('title')]
         return []
 
-    async def async_search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+    async def async_search_persons(
+        self, name: str, source: Optional[str] = None
+    ) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息（异步版本）
+        :param name: 人物名称
+        :param source: 请求级搜索数据源
+        :return: 人物信息列表
         """
-        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if source and source != "douban":
+            return None
+        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
             return None
         if not name:
             return []

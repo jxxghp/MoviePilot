@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 2
+version: 4
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -91,7 +91,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/media/search` | Search media/person by title. Params: `title` (required), `type`, `page`, `count`, optional `source` (`themoviedb`, `douban`, `bangumi`, `anilist`) |
+| GET | `/api/v1/media/search` | Search media, collections, or people by title. Params: `title` (required), `type`, `page`, `count`, optional `source`. Supported sources: `media` = `themoviedb`, `douban`, `bangumi`, `anilist`; `collection` = `themoviedb`; `person` = `themoviedb`, `douban` |
 | GET | `/api/v1/media/recognize` | Recognize media from torrent title. Params: `title` (required), `subtitle`, `custom_words`, optional `source` |
 | GET | `/api/v1/media/recognize2` | Recognize media (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `source` |
 | GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `source` |
@@ -137,6 +137,21 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | GET | `/api/v1/bangumi/recommend/{bangumiid}` | Recommendations. Params: `page`, `count` |
 | GET | `/api/v1/bangumi/person/{person_id}` | Person detail |
 | GET | `/api/v1/bangumi/person/credits/{person_id}` | Person filmography. Params: `page`, `count` |
+
+### AniList (8 endpoints)
+
+AniList endpoints prefer the `anilist-chinese` proxy and fall back to official AniList GraphQL plus the project's daily translation dataset when the public proxy is unavailable. Media titles prefer the provided Chinese title and fall back to the native-language title.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/anilist/trending` | TRENDING NOW. Params: `page`, `count` |
+| GET | `/api/v1/anilist/popular-this-season` | POPULAR THIS SEASON. Params: `page`, `count` |
+| GET | `/api/v1/anilist/discover` | Explore anime. Params: `search`, `genre`, `format`, `season`, `season_year`, `status`, `country`, `sort`, `page`, `count` |
+| GET | `/api/v1/anilist/{anilist_id}` | AniList media detail |
+| GET | `/api/v1/anilist/credits/{anilist_id}` | Japanese voice cast. Params: `page`, `count` |
+| GET | `/api/v1/anilist/recommend/{anilist_id}` | Recommendations. Params: `page`, `count` |
+| GET | `/api/v1/anilist/person/{person_id}` | Staff detail |
+| GET | `/api/v1/anilist/person/credits/{person_id}` | Staff anime credits. Params: `page`, `count` |
 
 ### Search / Torrents / Subtitles (11 endpoints)
 

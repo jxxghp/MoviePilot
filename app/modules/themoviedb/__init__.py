@@ -769,11 +769,18 @@ class TheMovieDbModule(_ModuleBase):
         # 将搜索词中的季写入标题中
         return self._build_search_medias_result(meta, results)
 
-    def search_persons(self, name: str) -> Optional[List[schemas.MediaPerson]]:
+    def search_persons(
+        self, name: str, source: Optional[str] = None
+    ) -> Optional[List[schemas.MediaPerson]]:
         """
         搜索人物信息
+        :param name: 人物名称
+        :param source: 请求级搜索数据源
+        :return: 人物信息列表
         """
-        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if source and source != "themoviedb":
+            return None
+        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
             return None
         if not name:
             return []
@@ -782,11 +789,18 @@ class TheMovieDbModule(_ModuleBase):
             return [schemas.MediaPerson(source='themoviedb', **person) for person in results]
         return []
 
-    async def async_search_persons(self, name: str) -> Optional[List[schemas.MediaPerson]]:
+    async def async_search_persons(
+        self, name: str, source: Optional[str] = None
+    ) -> Optional[List[schemas.MediaPerson]]:
         """
         异步搜索人物信息
+        :param name: 人物名称
+        :param source: 请求级搜索数据源
+        :return: 人物信息列表
         """
-        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if source and source != "themoviedb":
+            return None
+        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
             return None
         if not name:
             return []
@@ -795,10 +809,17 @@ class TheMovieDbModule(_ModuleBase):
             return [schemas.MediaPerson(source='themoviedb', **person) for person in results]
         return []
 
-    def search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+    def search_collections(
+        self, name: str, source: Optional[str] = None
+    ) -> Optional[List[MediaInfo]]:
         """
         搜索集合信息
+        :param name: 合集名称
+        :param source: 请求级搜索数据源
+        :return: 合集信息列表
         """
+        if source and source != "themoviedb":
+            return None
         if not name:
             return []
         results = self.tmdb.search_collections(name)
@@ -806,10 +827,17 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in results]
         return []
 
-    async def async_search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+    async def async_search_collections(
+        self, name: str, source: Optional[str] = None
+    ) -> Optional[List[MediaInfo]]:
         """
         异步搜索集合信息
+        :param name: 合集名称
+        :param source: 请求级搜索数据源
+        :return: 合集信息列表
         """
+        if source and source != "themoviedb":
+            return None
         if not name:
             return []
         results = await self.tmdb.async_search_collections(name)

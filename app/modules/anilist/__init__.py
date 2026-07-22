@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
+from app import schemas
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -111,6 +112,7 @@ class AniListModule(_ModuleBase):
                 continue
             actors.append(
                 {
+                    "id": actor.get("id"),
                     "name": actor_name,
                     "character": character.get("name", {}).get("full")
                     or character.get("name", {}).get("native"),
@@ -128,6 +130,7 @@ class AniListModule(_ModuleBase):
             staff = edge.get("node") or {}
             directors.append(
                 {
+                    "id": staff.get("id"),
                     "name": staff.get("name", {}).get("full"),
                     "job": role,
                     "avatar": {"large": staff.get("image", {}).get("large")},
@@ -136,6 +139,79 @@ class AniListModule(_ModuleBase):
             )
         enriched["directors"] = directors
         return enriched
+
+    @staticmethod
+    def _person_name(name_info: dict) -> Optional[str]:
+        """
+        按原语言、通用名顺序选择 AniList 人物姓名。
+
+        :param name_info: AniList 人物姓名字段
+        :return: 可展示姓名
+        """
+        return name_info.get("native") or name_info.get("full")
+
+    @staticmethod
+    def _person_date(date_info: dict) -> Optional[str]:
+        """
+        将 AniList 人物模糊日期转换为标准日期文本。
+
+        :param date_info: AniList FuzzyDate 字段
+        :return: 日期文本
+        """
+        return MediaInfo._anilist_date(date_info)
+
+    @classmethod
+    def _build_credit_person(cls, edge: dict) -> Optional[schemas.MediaPerson]:
+        """
+        将 AniList 角色配音关系转换为统一人物信息。
+
+        :param edge: AniList 角色关系边
+        :return: 媒体人物信息
+        """
+        actor = next(iter(edge.get("voiceActors") or []), None)
+        if not actor:
+            return None
+        name_info = actor.get("name") or {}
+        character_name = (edge.get("node") or {}).get("name") or {}
+        images = actor.get("image") or {}
+        return schemas.MediaPerson(
+            source="anilist",
+            id=actor.get("id"),
+            name=cls._person_name(name_info),
+            original_name=name_info.get("full"),
+            also_known_as=name_info.get("alternative") or [],
+            character=character_name.get("native") or character_name.get("full"),
+            images=images,
+            avatar=images,
+            url=actor.get("siteUrl"),
+        )
+
+    @classmethod
+    def _build_person_detail(cls, info: dict) -> schemas.MediaPerson:
+        """
+        将 AniList 人物详情转换为统一人物信息。
+
+        :param info: AniList 人物详情
+        :return: 媒体人物信息
+        """
+        name_info = info.get("name") or {}
+        images = info.get("image") or {}
+        return schemas.MediaPerson(
+            source="anilist",
+            id=info.get("id"),
+            name=cls._person_name(name_info),
+            original_name=name_info.get("full"),
+            also_known_as=name_info.get("alternative") or [],
+            images=images,
+            avatar=images,
+            biography=info.get("description"),
+            birthday=cls._person_date(info.get("dateOfBirth") or {}),
+            deathday=cls._person_date(info.get("dateOfDeath") or {}),
+            gender=info.get("gender"),
+            place_of_birth=info.get("homeTown"),
+            career=info.get("primaryOccupations") or [],
+            url=info.get("siteUrl"),
+        )
 
     def recognize_media(
         self,
@@ -266,6 +342,186 @@ class AniListModule(_ModuleBase):
             for info in await self.anilist_api.async_search(meta.name)
             if self._matches_meta(meta, info)
         ]
+
+    def anilist_info(self, anilist_id: int) -> Optional[dict]:
+        """
+        获取 AniList 动画详情。
+
+        :param anilist_id: AniList 媒体 ID
+        :return: AniList 媒体详情
+        """
+        return self.anilist_api.detail(anilist_id) if anilist_id else None
+
+    async def async_anilist_info(self, anilist_id: int) -> Optional[dict]:
+        """
+        异步获取 AniList 动画详情。
+
+        :param anilist_id: AniList 媒体 ID
+        :return: AniList 媒体详情
+        """
+        return await self.anilist_api.async_detail(anilist_id) if anilist_id else None
+
+    def anilist_trending(self, page: int = 1, count: int = 20) -> List[MediaInfo]:
+        """
+        获取 AniList 当前趋势榜。
+
+        :return: 统一媒体信息列表
+        """
+        return [
+            MediaInfo(anilist_info=info)
+            for info in self.anilist_api.trending(page=page, count=count)
+        ]
+
+    async def async_anilist_trending(self, page: int = 1, count: int = 20) -> List[MediaInfo]:
+        """
+        异步获取 AniList 当前趋势榜。
+
+        :return: 统一媒体信息列表
+        """
+        return [
+            MediaInfo(anilist_info=info)
+            for info in await self.anilist_api.async_trending(page=page, count=count)
+        ]
+
+    def anilist_popular_this_season(self, page: int = 1, count: int = 20) -> List[MediaInfo]:
+        """
+        获取 AniList 本季热门榜。
+
+        :return: 统一媒体信息列表
+        """
+        return [
+            MediaInfo(anilist_info=info)
+            for info in self.anilist_api.popular_this_season(page=page, count=count)
+        ]
+
+    async def async_anilist_popular_this_season(
+        self, page: int = 1, count: int = 20
+    ) -> List[MediaInfo]:
+        """
+        异步获取 AniList 本季热门榜。
+
+        :return: 统一媒体信息列表
+        """
+        infos = await self.anilist_api.async_popular_this_season(page=page, count=count)
+        return [MediaInfo(anilist_info=info) for info in infos]
+
+    def anilist_discover(self, **kwargs) -> List[MediaInfo]:
+        """
+        按组合条件探索 AniList 动画。
+
+        :return: 统一媒体信息列表
+        """
+        return [
+            MediaInfo(anilist_info=info)
+            for info in self.anilist_api.discover(**kwargs)
+        ]
+
+    async def async_anilist_discover(self, **kwargs) -> List[MediaInfo]:
+        """
+        异步按组合条件探索 AniList 动画。
+
+        :return: 统一媒体信息列表
+        """
+        return [
+            MediaInfo(anilist_info=info)
+            for info in await self.anilist_api.async_discover(**kwargs)
+        ]
+
+    def anilist_credits(
+        self, anilist_id: int, page: int = 1, count: int = 20
+    ) -> List[schemas.MediaPerson]:
+        """
+        获取 AniList 动画配音演员。
+
+        :return: 媒体人物列表
+        """
+        persons = (
+            self._build_credit_person(edge)
+            for edge in self.anilist_api.credits(anilist_id, page=page, count=count)
+        )
+        return [person for person in persons if person]
+
+    async def async_anilist_credits(
+        self, anilist_id: int, page: int = 1, count: int = 20
+    ) -> List[schemas.MediaPerson]:
+        """
+        异步获取 AniList 动画配音演员。
+
+        :return: 媒体人物列表
+        """
+        edges = await self.anilist_api.async_credits(anilist_id, page=page, count=count)
+        persons = (self._build_credit_person(edge) for edge in edges)
+        return [person for person in persons if person]
+
+    def anilist_recommendations(
+        self, anilist_id: int, page: int = 1, count: int = 20
+    ) -> List[MediaInfo]:
+        """
+        获取 AniList 动画相关推荐。
+
+        :return: 统一媒体信息列表
+        """
+        infos = self.anilist_api.recommendations(anilist_id, page=page, count=count)
+        return [MediaInfo(anilist_info=info) for info in infos]
+
+    async def async_anilist_recommendations(
+        self, anilist_id: int, page: int = 1, count: int = 20
+    ) -> List[MediaInfo]:
+        """
+        异步获取 AniList 动画相关推荐。
+
+        :return: 统一媒体信息列表
+        """
+        infos = await self.anilist_api.async_recommendations(
+            anilist_id, page=page, count=count
+        )
+        return [MediaInfo(anilist_info=info) for info in infos]
+
+    def anilist_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+        """
+        获取 AniList 人物详情。
+
+        :param person_id: AniList 人物 ID
+        :return: 媒体人物信息
+        """
+        info = self.anilist_api.person_detail(person_id)
+        return self._build_person_detail(info) if info else None
+
+    async def async_anilist_person_detail(
+        self, person_id: int
+    ) -> Optional[schemas.MediaPerson]:
+        """
+        异步获取 AniList 人物详情。
+
+        :param person_id: AniList 人物 ID
+        :return: 媒体人物信息
+        """
+        info = await self.anilist_api.async_person_detail(person_id)
+        return self._build_person_detail(info) if info else None
+
+    def anilist_person_credits(
+        self, person_id: int, page: int = 1, count: int = 20
+    ) -> List[MediaInfo]:
+        """
+        获取 AniList 人物参与的动画作品。
+
+        :return: 统一媒体信息列表
+        """
+        infos = self.anilist_api.person_credits(person_id, page=page, count=count)
+        return [MediaInfo(anilist_info=info) for info in infos]
+
+    async def async_anilist_person_credits(
+        self, person_id: int, page: int = 1, count: int = 20
+    ) -> List[MediaInfo]:
+        """
+        异步获取 AniList 人物参与的动画作品。
+
+        :return: 统一媒体信息列表
+        """
+        infos = await self.anilist_api.async_person_credits(
+            person_id, page=page, count=count
+        )
+        return [MediaInfo(anilist_info=info) for info in infos]
 
     def metadata_nfo(
         self,

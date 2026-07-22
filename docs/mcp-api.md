@@ -118,7 +118,7 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/media/search` | 按标题搜索媒体，参数：`title`、`type`、`page`、`count`，可选 `source` |
+| GET | `/api/v1/media/search` | 按标题搜索媒体、合集或人物，参数：`title`、`type`、`page`、`count`，可选 `source`；`media` 支持 `themoviedb`、`douban`、`bangumi`、`anilist`，`collection` 支持 `themoviedb`，`person` 支持 `themoviedb`、`douban` |
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `source` |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `source` |
 | GET | `/api/v1/media/{mediaid}` | 查询媒体详情，`mediaid` 支持 `tmdb:`、`douban:`、`bangumi:`、`anilist:` 及插件自定义来源前缀 |
@@ -141,6 +141,21 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | GET | `/api/v1/search/last` | 获取上一次种子搜索结果 |
 | GET | `/api/v1/search/last/context` | 获取上一次搜索结果及可复用搜索参数，`params.result_type` 为 `torrent` 或 `subtitle` |
 | POST | `/api/v1/search/recommend` | 获取 AI 推荐资源，请求体：`filtered_indices`、`check_only`、`force` |
+
+#### AniList 榜单 / 探索
+
+AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-chinese` 代理查询。代理不可用时自动回退 AniList 官方 GraphQL，并合并 `anilist-chinese` 每日数据集；媒体标题优先使用项目提供的中文标题，未提供中文标题时回退 AniList 原语言标题。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/anilist/trending` | 查询 TRENDING NOW 榜单，参数：`page`、`count` |
+| GET | `/api/v1/anilist/popular-this-season` | 查询 POPULAR THIS SEASON 榜单，参数：`page`、`count` |
+| GET | `/api/v1/anilist/discover` | 组合探索动画，参数：`search`、`genre`、`format`、`season`、`season_year`、`status`、`country`、`sort`、`page`、`count` |
+| GET | `/api/v1/anilist/{anilist_id}` | 查询动画详情 |
+| GET | `/api/v1/anilist/credits/{anilist_id}` | 查询日语配音演员，参数：`page`、`count` |
+| GET | `/api/v1/anilist/recommend/{anilist_id}` | 查询相关推荐，参数：`page`、`count` |
+| GET | `/api/v1/anilist/person/{person_id}` | 查询人物详情 |
+| GET | `/api/v1/anilist/person/credits/{person_id}` | 查询人物参与的动画作品，参数：`page`、`count` |
 
 #### 下载
 

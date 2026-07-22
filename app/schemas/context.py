@@ -353,7 +353,7 @@ class MediaPerson(BaseModel):
     """
     媒体人物信息
     """
-    # 来源：themoviedb、douban、bangumi
+    # 来源：themoviedb、douban、bangumi、anilist
     source: Optional[str] = None
     # 公共
     id: Optional[int] = None

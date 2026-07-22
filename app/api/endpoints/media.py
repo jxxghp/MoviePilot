@@ -160,7 +160,15 @@ async def search(
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    模糊搜索媒体/人物信息列表 media：媒体信息，person：人物信息
+    模糊搜索媒体、合集或人物信息列表。
+
+    :param title: 搜索关键词
+    :param type: 搜索类型，支持 media、collection、person
+    :param page: 页码
+    :param count: 每页数量
+    :param source: 请求级搜索数据源
+    :param _: Token校验
+    :return: 搜索结果列表
     """
 
     def __get_source(obj: Union[schemas.MediaInfo, schemas.MediaPerson, dict]):
@@ -176,12 +184,14 @@ async def search(
         _, medias = await media_chain.async_search(title=title, source=source)
         result = [media.to_dict() for media in medias] if medias else []
     elif type == "collection":
-        collections = await media_chain.async_search_collections(name=title)
+        collections = await media_chain.async_search_collections(
+            name=title, source=source
+        )
         result = (
             [collection.to_dict() for collection in collections] if collections else []
         )
     else:  # person
-        persons = await media_chain.async_search_persons(name=title)
+        persons = await media_chain.async_search_persons(name=title, source=source)
         result = [person.model_dump() for person in persons] if persons else []
 
     if not result:

@@ -11,6 +11,8 @@ from app.utils.string import StringUtils
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
 ANILIST_MOVIE_FORMATS = frozenset({"MOVIE"})
+ANILIST_CHINESE_TITLE_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+ANILIST_JAPANESE_KANA_PATTERN = re.compile(r"[\u3040-\u30ff]")
 
 
 @dataclass
@@ -885,6 +887,30 @@ class MediaInfo:
             values.append(str(date_info.get("day")).zfill(2))
         return "-".join(values)
 
+    @staticmethod
+    def _anilist_chinese_title(info: dict) -> Optional[str]:
+        """
+        从 anilist-chinese 注入的标题和别名中选择中文标题。
+
+        :param info: AniList 媒体信息
+        :return: 中文标题，未找到时返回 None
+        """
+        translated_title = (info.get("title") or {}).get("chinese")
+        if not translated_title:
+            return None
+        if (
+            ANILIST_CHINESE_TITLE_PATTERN.search(str(translated_title))
+            and not ANILIST_JAPANESE_KANA_PATTERN.search(str(translated_title))
+        ):
+            return str(translated_title)
+        for synonym in reversed(info.get("synonyms") or []):
+            if (
+                ANILIST_CHINESE_TITLE_PATTERN.search(str(synonym))
+                and not ANILIST_JAPANESE_KANA_PATTERN.search(str(synonym))
+            ):
+                return str(synonym)
+        return str(translated_title)
+
     def set_anilist_info(self, info: dict) -> None:
         """
         初始化 AniList 媒体信息。
@@ -899,7 +925,13 @@ class MediaInfo:
         self.type = self.type or self.get_anilist_media_type(info)
 
         titles = info.get("title") or {}
-        self.title = self.title or titles.get("english") or titles.get("romaji") or titles.get("native")
+        self.title = (
+            self.title
+            or self._anilist_chinese_title(info)
+            or titles.get("native")
+            or titles.get("romaji")
+            or titles.get("english")
+        )
         self.en_title = self.en_title or titles.get("english")
         self.original_title = self.original_title or titles.get("native") or titles.get("romaji")
         self.names = list(

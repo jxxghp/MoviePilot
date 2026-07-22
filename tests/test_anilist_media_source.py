@@ -21,6 +21,7 @@ def anilist_info() -> dict:
             "romaji": "Sousou no Frieren",
             "english": "Frieren: Beyond Journey's End",
             "native": "葬送のフリーレン",
+            "chinese": "葬送的芙莉莲",
         },
         "format": "TV",
         "status": "FINISHED",
@@ -33,7 +34,7 @@ def anilist_info() -> dict:
         "coverImage": {"extraLarge": "https://img.example/poster.jpg"},
         "bannerImage": "https://img.example/backdrop.png",
         "genres": ["Adventure", "Fantasy"],
-        "synonyms": ["Frieren"],
+        "synonyms": ["葬送的芙莉莲", "Frieren"],
         "averageScore": 91,
         "popularity": 300000,
         "isAdult": False,
@@ -81,6 +82,7 @@ def test_anilist_id_recognition_normalizes_media_info(anilist_info: dict) -> Non
     assert media is not None
     assert media.source == "anilist"
     assert media.anilist_id == 154587
+    assert media.title == "葬送的芙莉莲"
     assert media.anidb_id == 17617
     assert media.type == MediaType.TV
     assert media.year == "2023"
@@ -160,3 +162,25 @@ def test_anilist_api_extracts_graphql_errors_without_network() -> None:
     response.json.return_value = {"errors": [{"message": "invalid"}]}
 
     assert AniListApi._extract_response(response) is None
+
+
+def test_anilist_title_falls_back_to_native_language(anilist_info: dict) -> None:
+    """anilist-chinese 未注入中文标题时应优先回退原语言标题。"""
+    anilist_info["synonyms"] = ["Frieren"]
+    anilist_info["title"].pop("chinese")
+
+    media = MediaInfo(anilist_info=anilist_info)
+
+    assert media.title == "葬送のフリーレン"
+
+
+def test_anilist_title_uses_injected_chinese_synonym_for_latin_title(
+    anilist_info: dict,
+) -> None:
+    """代理主标题仍为拉丁字母时应选择其追加的中文别名。"""
+    anilist_info["title"]["chinese"] = "Frieren"
+    anilist_info["synonyms"] = ["Official Alias", "葬送的芙莉莲"]
+
+    media = MediaInfo(anilist_info=anilist_info)
+
+    assert media.title == "葬送的芙莉莲"
