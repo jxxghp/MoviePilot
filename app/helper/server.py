@@ -668,7 +668,7 @@ class MoviePilotServerHelper:
         return params
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=5, ttl=1800, skip_empty=True)
+    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     def get_subscribe_statistic(
             cls,
             stype: str,
@@ -696,7 +696,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.subscribe_statistic(params))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=5, ttl=1800, skip_empty=True)
+    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     async def async_get_subscribe_statistic(
             cls,
             stype: str,
@@ -882,7 +882,7 @@ class MoviePilotServerHelper:
         return cls._handle_response(await cls.async_subscribe_fork(share_id))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=1, ttl=1800, skip_empty=True)
+    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     def get_subscribe_shares(
             cls,
             name: Optional[str] = None,
@@ -910,7 +910,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.subscribe_shares(params))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=1, ttl=1800, skip_empty=True)
+    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     async def async_get_subscribe_shares(
             cls,
             name: Optional[str] = None,
@@ -938,7 +938,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(await cls.async_subscribe_shares(params))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=1, ttl=1800, skip_empty=True)
+    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     def get_subscribe_share_statistics(cls) -> List[dict]:
         """
         获取订阅分享统计数据。
@@ -948,7 +948,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.subscribe_share_statistics())
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=1, ttl=1800, skip_empty=True)
+    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     async def async_get_subscribe_share_statistics(cls) -> List[dict]:
         """
         异步获取订阅分享统计数据。
