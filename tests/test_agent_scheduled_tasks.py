@@ -592,40 +592,6 @@ async def test_agent_manager_runs_contextless_task_in_broadcast_mode(
 
 
 @pytest.mark.anyio
-async def test_agent_manager_broadcasts_empty_task_result(monkeypatch) -> None:
-    """Agent 未返回内容时，调度器应广播一次兜底消息。"""
-    user_id = f"empty-{uuid4().hex}"
-    task = AgentTaskOper().add(
-        name="空结果检查",
-        content="执行检查",
-        trigger_type="cron",
-        cron_expression="0 * * * *",
-        run_at=None,
-        user_id=user_id,
-        username="admin",
-        session_id=f"session-{user_id}",
-        channel="Telegram",
-        source="telegram-test",
-        original_chat_id="chat-123",
-    )
-    manager = AgentManager()
-    manager.process_message = AsyncMock(return_value="")
-    post_message = AsyncMock()
-    monkeypatch.setattr(AgentChain, "async_post_message", post_message)
-
-    success, result = await manager.execute_scheduled_task(task.id)
-
-    assert success is False
-    assert result == "定时任务已执行，但 Agent 未返回结果"
-    notification = post_message.await_args.args[0]
-    assert notification.channel is None
-    assert notification.source is None
-    assert notification.userid is None
-    assert notification.original_chat_id is None
-    assert notification.username == "admin"
-
-
-@pytest.mark.anyio
 async def test_cached_agent_clears_channel_for_background_task() -> None:
     """复用会话 Agent 时，后台任务必须覆盖上一轮保留的渠道信息。"""
     manager = AgentManager()

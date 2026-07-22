@@ -2145,7 +2145,7 @@ class AgentManager:
             f"也不要重复创建同一个定时任务。\n\n"
             f"任务名称：{task.name}\n"
             f"任务内容：{task.content}\n\n"
-            "完成后请直接向用户报告本次执行结果；如果无法完成，请说明原因。"
+            "完成后请直接向用户发送消息报告本次执行结果；如果无法完成，也需发送消息说明原因。"
         )
         success = True
         result = ""
@@ -2164,20 +2164,9 @@ class AgentManager:
                 wait_for_completion=True,
             )
             result_text = str(result or "").strip()
-            success = bool(result_text) and not result_text.startswith(
+            success = not result_text.startswith(
                 (AGENT_EXECUTION_ERROR_PREFIX, "处理消息时发生错误")
             )
-            if not result_text:
-                result = "定时任务已执行，但 Agent 未返回结果"
-                await AgentChain().async_post_message(
-                    Notification(
-                        mtype=NotificationType.Agent,
-                        username=notification_username,
-                        title=f"定时任务：{task.name}",
-                        text=result,
-                        save_history=False,
-                    )
-                )
         except Exception as err:
             success = False
             result = f"Agent 定时任务执行失败：{str(err)}"
