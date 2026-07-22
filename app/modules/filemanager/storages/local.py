@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
-from app.core.config import global_vars
+from app.core.config import global_vars, settings
 from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -341,7 +341,8 @@ class LocalStorage(StorageBase):
         directory_helper = DirectoryHelper()
         total_storage, free_storage = SystemUtils.space_usage(
             [Path(d.download_path) for d in directory_helper.get_local_download_dirs() if d.download_path] +
-            [Path(d.library_path) for d in directory_helper.get_local_library_dirs() if d.library_path]
+            [Path(d.library_path) for d in directory_helper.get_local_library_dirs() if d.library_path],
+            btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
         )
         return schemas.StorageUsage(
             total=total_storage,

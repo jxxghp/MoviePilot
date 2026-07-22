@@ -78,6 +78,8 @@ class ConfigModel(BaseModel):
     CONFIG_DIR: Optional[str] = None
     # 安全模式，仅保留核心 API，跳过插件、调度器、监控、命令和工作流等扩展启动项
     MOVIEPILOT_SAFE_MODE: bool = False
+    # 是否启用 Btrfs FSID 子卷容量去重（仅 Linux amd64/arm64）
+    BTRFS_FSID_DEDUP: bool = False
     # 是否调试模式
     DEBUG: bool = False
     # 是否开发模式
