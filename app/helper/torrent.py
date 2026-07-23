@@ -60,16 +60,24 @@ class TorrentHelper:
     """
 
     def __init__(self):
+        """初始化种子失败地址缓存"""
         self._invalid_torrents = TTLCache(region="invalid_torrents", maxsize=128, ttl=3600 * 24)
 
     def download_torrent(self, url: str,
                          cookie: Optional[str] = None,
                          ua: Optional[str] = None,
                          referer: Optional[str] = None,
-                         proxy: Optional[bool] = False) \
+                         proxy: Optional[bool] = False,
+                         cache_invalid: bool = True) \
             -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
         """
         把种子下载到本地
+        :param url: 种子下载地址
+        :param cookie: 站点 Cookie
+        :param ua: 请求 User-Agent
+        :param referer: 请求来源地址
+        :param proxy: 是否使用系统代理
+        :param cache_invalid: 是否缓存失败地址；短时凭证地址必须关闭
         :return: 种子缓存相对路径【用于索引缓存】, 种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
@@ -142,16 +150,16 @@ class TorrentHelper:
                                 # 检查是不是种子文件，如果不是抛出异常
                                 Torrent.from_string(req.content)
                                 # 跳过成功
-                                logger.info(f"触发了站点首次种子下载，已自动跳过：{url}")
+                                logger.info("触发了站点首次种子下载，已自动跳过")
                                 skip_flag = True
                             elif req is not None:
                                 logger.warn(f"触发了站点首次种子下载，且无法自动跳过，"
                                             f"返回码：{req.status_code}，错误原因：{req.reason}")
                             else:
-                                logger.warn(f"触发了站点首次种子下载，且无法自动跳过：{url}")
+                                logger.warn("触发了站点首次种子下载，且无法自动跳过")
                         break
                 except Exception as err:
-                    logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}，链接：{url}")
+                    logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}")
                 if not skip_flag:
                     return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
             # 种子内容
@@ -177,7 +185,8 @@ class TorrentHelper:
             return cache_path, None, "", [], "触发站点流控，请稍后重试"
         else:
             # 把错误的种子记下来，避免重复使用
-            self.add_invalid(url)
+            if cache_invalid:
+                self.add_invalid(url)
             return cache_path, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
     def get_torrent_info(self, torrent_path: Path) -> Tuple[str, List[str]]:

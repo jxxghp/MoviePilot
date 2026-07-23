@@ -46,6 +46,7 @@ class SiteChain(ChainBase):
     _text_page_size = 10
 
     def __init__(self):
+        """初始化站点管理处理链及特殊站点测试器"""
         super().__init__()
 
         # 特殊站点登录验证
@@ -59,6 +60,7 @@ class SiteChain(ChainBase):
             "yemapt.org": self.__yema_test,
             "hddolby.com": self.__hddolby_test,
             "rousi.pro": self.__rousi_test,
+            "sunnypt.top": self.__sunnypt_test,
         }
 
     def refresh_userdata(self, site: dict = None) -> Optional[SiteUserData]:
@@ -232,6 +234,41 @@ class SiteChain(ChainBase):
             return False, user_info.get("message", "鉴权已过期或无效")
         else:
             return False, f"错误：{res.status_code} {res.reason}"
+
+    @staticmethod
+    def __sunnypt_test(site: Site) -> Tuple[bool, str]:
+        """
+        通过 profile 接口测试 SunnyPT API Key 和下载权限
+
+        :param site: SunnyPT 站点配置
+        :return: 是否可用及状态信息
+        """
+        indexer = SitesHelper().get_indexer(site.domain) or {}
+        api_url = str(
+            indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
+        ).rstrip("/")
+        res = RequestUtils(
+            headers={
+                "Accept": "application/json",
+                "User-Agent": site.ua or settings.USER_AGENT,
+                "X-API-Key": site.apikey,
+            },
+            proxies=settings.PROXY if site.proxy else None,
+            timeout=site.timeout or 15,
+        ).get_res(url=f"{api_url}/profile")
+        if res is None:
+            return False, "无法连接 SunnyPT API 服务"
+        if res.status_code != 200:
+            return False, f"错误：{res.status_code} {res.reason}"
+        try:
+            payload = res.json() or {}
+        except (TypeError, ValueError):
+            return False, "SunnyPT API 响应不是有效 JSON"
+        if str(payload.get("code")) != "0" or not isinstance(payload.get("data"), dict):
+            return False, payload.get("msg") or "API Key 已过期或无效"
+        if payload["data"].get("download_allowed") is False:
+            return False, "当前账号没有下载权限"
+        return True, "连接成功"
 
     @staticmethod
     def __yema_test(site: Site) -> Tuple[bool, str]:

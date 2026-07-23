@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from app import schemas
 from app.chain import ChainBase
@@ -59,6 +59,28 @@ class DownloadChain(ChainBase):
         ".zip": "zip",
         ".rar": "rar",
     }
+
+    @staticmethod
+    def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
+        """
+        将两段式下载结果约束到索引器配置的可信 API 地址。
+
+        :param url: 换票接口返回的临时下载地址
+        :param base_url: 索引器配置的可信 API Base URL
+        :return: 使用可信 API 来源的临时下载地址
+        """
+        if not url or not base_url:
+            return url
+        base_parts = urlparse(base_url)
+        if not base_parts.scheme or not base_parts.netloc:
+            return url
+        url_parts = urlparse(url)
+        if not url_parts.netloc:
+            return urljoin(f"{base_url.rstrip('/')}/", url)
+        return url_parts._replace(
+            scheme=base_parts.scheme,
+            netloc=base_parts.netloc,
+        ).geturl()
 
     @staticmethod
     def _media_identity_keys(media: Optional[MediaInfo]) -> Set[str]:
@@ -693,7 +715,11 @@ class DownloadChain(ChainBase):
                         data = data.get(key)
                         if not data:
                             return None
-                    logger.info(f"获取到下载地址：{data}")
+                    data = self._normalize_indirect_download_url(
+                        url=data,
+                        base_url=req_params.get('result_base_url'),
+                    )
+                    logger.info("已获取到站点临时下载地址")
                     return data
             return None
 
@@ -704,7 +730,8 @@ class DownloadChain(ChainBase):
             return torrent.enclosure, "", []
         # Cookie
         site_cookie = torrent.site_cookie
-        if torrent.enclosure.startswith("["):
+        indirect_download = torrent.enclosure.startswith("[")
+        if indirect_download:
             # 需要解码获取下载地址
             torrent_url = __get_redict_url(url=torrent.enclosure,
                                            ua=torrent.site_ua,
@@ -714,21 +741,22 @@ class DownloadChain(ChainBase):
         else:
             torrent_url = torrent.enclosure
         if not torrent_url:
-            logger.error(f"{torrent.title} 无法获取下载地址：{torrent.enclosure}！")
+            logger.error(f"{torrent.title} 无法获取下载地址！")
             return None, "", []
         # 下载种子文件
         _, content, download_folder, files, error_msg = TorrentHelper().download_torrent(
             url=torrent_url,
             cookie=site_cookie,
             ua=torrent.site_ua or settings.USER_AGENT,
-            proxy=torrent.site_proxy)
+            proxy=torrent.site_proxy,
+            cache_invalid=not indirect_download)
 
         if isinstance(content, str):
             # 磁力链
             return content, "", []
 
         if not content:
-            logger.error(f"下载种子文件失败：{torrent.title} - {torrent_url}")
+            logger.error(f"下载种子文件失败：{torrent.title}")
             self.post_message(Notification(
                 channel=channel,
                 source=source if channel else None,

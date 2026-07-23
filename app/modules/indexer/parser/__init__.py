@@ -18,6 +18,8 @@ from app.utils.string import StringUtils
 
 # 站点框架
 class SiteSchema(Enum):
+    """站点用户数据解析框架类型"""
+
     DiscuzX = "DiscuzX"
     Gazelle = "Gazelle"
     Ipt = "IPTorrents"
@@ -37,9 +39,12 @@ class SiteSchema(Enum):
     Zhixing = "Zhixing"
     Bitpt = "Bitpt"
     RousiPro = "RousiPro"
+    SunnyPT = "SunnyPT"
 
 
 class SiteParserBase(metaclass=ABCMeta):
+    """站点用户数据解析器基类"""
+
     # 站点模版
     schema = None
     # 请求模式 cookie/apikey
@@ -53,7 +58,22 @@ class SiteParserBase(metaclass=ABCMeta):
                  session: Session = None,
                  ua: Optional[str] = None,
                  emulate: bool = False,
-                 proxy: bool = None):
+                 proxy: bool = None,
+                 api_url: Optional[str] = None):
+        """
+        初始化站点用户数据解析器
+
+        :param site_name: 站点名称
+        :param url: 站点前端地址
+        :param site_cookie: 站点 Cookie
+        :param apikey: 站点 API Key
+        :param token: 站点 Token
+        :param session: 可复用的 HTTP 会话
+        :param ua: 请求 User-Agent
+        :param emulate: 是否使用浏览器仿真
+        :param proxy: 是否使用系统代理
+        :param api_url: 站点独立 API Base URL
+        """
         super().__init__()
 
         # 站点信息
@@ -65,6 +85,7 @@ class SiteParserBase(metaclass=ABCMeta):
         self._site_domain = __split_url.netloc
         self._base_url = f"{__split_url.scheme}://{__split_url.netloc}"
         self._site_cookie = site_cookie
+        self._api_url = api_url
         self._session = session if session else None
         self._ua = ua
         self._emulate = emulate
