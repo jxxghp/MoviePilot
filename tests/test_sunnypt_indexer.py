@@ -9,10 +9,11 @@ from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
 from app.core.config import settings
 from app.core.context import TorrentInfo
+from app.db.message_oper import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
-from app.schemas import MediaType
+from app.schemas import MediaType, NotificationType
 
 
 class _FakeResponse:
@@ -286,9 +287,45 @@ def test_sunnypt_user_parser_reads_profile_and_messages_without_marking_read(mon
     assert parser.leeching_size == 10737418240
     assert parser.message_unread == 1
     assert parser.message_unread_contents == [
-        ("种子审核通过", "2026-07-21 16:30:00", "你发布的种子已审核通过。")
+        (
+            "种子审核通过",
+            "2026-07-21 16:30:00",
+            "你发布的种子已审核通过。",
+            "sunnypt-message:9001",
+        )
     ]
     assert not any(url.endswith("/read") or url.endswith("/read-all") for url in requested_urls)
+
+
+def test_site_messages_are_deduplicated_by_persisted_source(monkeypatch):
+    """站点消息应使用解析器保留的消息 ID 来源标识做持久化去重。"""
+    duplicate_source = "sunnypt-message:9001-dedup-test"
+    MessageOper().add(
+        source=duplicate_source,
+        mtype=NotificationType.SiteMessage,
+        title="existing",
+        text="existing",
+    )
+    sent_messages = []
+    chain = object.__new__(SiteChain)
+    chain.messageoper = MessageOper()
+    monkeypatch.setattr(chain, "post_message", sent_messages.append)
+    userdata = SimpleNamespace(
+        message_unread=2,
+        message_unread_contents=[
+            ("重复消息", "2026-07-21 16:30:00", "旧内容", duplicate_source),
+            ("新消息", "2026-07-22 16:30:00", "新内容", "sunnypt-message:9002-dedup-test"),
+        ],
+    )
+
+    chain._post_site_messages(
+        site={"name": "Sunny", "url": "https://sunnypt.top/"},
+        userdata=userdata,
+    )
+
+    assert len(sent_messages) == 1
+    assert sent_messages[0].source == "sunnypt-message:9002-dedup-test"
+    assert sent_messages[0].title == "【站点 Sunny 消息】"
 
 
 def test_indexer_module_dispatches_sunnypt_search(monkeypatch):

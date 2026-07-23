@@ -78,23 +78,7 @@ class SiteChain(ChainBase):
             eventmanager.send_event(EventType.SiteRefreshed, {
                 "site_id": site.get("id")
             })
-            # 发送站点消息
-            if userdata.message_unread:
-                if userdata.message_unread_contents and len(userdata.message_unread_contents) > 0:
-                    for head, date, content in userdata.message_unread_contents:
-                        msg_title = f"【站点 {site.get('name')} 消息】"
-                        msg_text = f"时间：{date}\n标题：{head}\n内容：\n{content}"
-                        self.post_message(Notification(
-                            mtype=NotificationType.SiteMessage,
-                            title=msg_title, text=msg_text, link=site.get("url")
-                        ))
-                else:
-                    self.post_message(Notification(
-                        mtype=NotificationType.SiteMessage,
-                        title=f"站点 {site.get('name')} 收到 "
-                              f"{userdata.message_unread} 条新消息，请登陆查看",
-                        link=site.get("url")
-                    ))
+            self._post_site_messages(site=site, userdata=userdata)
             # 低分享率警告
             if userdata.ratio and float(userdata.ratio) < 1 and not bool(
                     re.search(r"(贵宾|VIP?)", userdata.user_level or "", re.IGNORECASE)):
@@ -104,6 +88,38 @@ class SiteChain(ChainBase):
                     text=f"站点 {site.get('name')} 分享率 {userdata.ratio}，请注意！"
                 ))
         return userdata
+
+    def _post_site_messages(self, site: dict, userdata: SiteUserData) -> None:
+        """
+        发送站点未读消息，并按解析器提供的来源标识做持久化去重。
+
+        :param site: 站点索引配置
+        :param userdata: 本次刷新的站点用户数据
+        """
+        if not userdata.message_unread:
+            return
+        if not userdata.message_unread_contents:
+            self.post_message(Notification(
+                mtype=NotificationType.SiteMessage,
+                title=f"站点 {site.get('name')} 收到 "
+                      f"{userdata.message_unread} 条新消息，请登陆查看",
+                link=site.get("url")
+            ))
+            return
+        for message in userdata.message_unread_contents:
+            head, date, content, *metadata = message
+            message_source = metadata[0] if metadata else None
+            if message_source and self.messageoper.exists_by_source(message_source):
+                continue
+            msg_title = f"【站点 {site.get('name')} 消息】"
+            msg_text = f"时间：{date}\n标题：{head}\n内容：\n{content}"
+            self.post_message(Notification(
+                source=message_source,
+                mtype=NotificationType.SiteMessage,
+                title=msg_title,
+                text=msg_text,
+                link=site.get("url")
+            ))
 
     def refresh_userdatas(
             self,

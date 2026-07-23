@@ -123,8 +123,12 @@ class SunnyPTSiteUserInfo(SiteParserBase):
             title = message.get("title")
             content = message.get("content")
             created_at = StringUtils.unify_datetime_str(message.get("created_at"))
+            message_id = message.get("id")
             if title and content and created_at:
-                self.message_unread_contents.append((title, created_at, content))
+                message_source = f"sunnypt-message:{message_id}" if message_id is not None else None
+                self.message_unread_contents.append(
+                    (title, created_at, content, message_source)
+                )
         return "next" if messages_data.get("has_more") else None
 
     def _parse_user_traffic_info(self, html_text: str) -> None:

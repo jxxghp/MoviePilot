@@ -63,6 +63,18 @@ class Message(Base):
         )
 
     @classmethod
+    @db_query
+    def exists_by_source(cls, db: Session, source: str) -> bool:
+        """
+        判断指定来源标识的消息记录是否存在。
+
+        :param db: 数据库会话
+        :param source: 消息来源唯一标识
+        :return: 是否存在匹配记录
+        """
+        return db.query(cls.id).filter(cls.source == source).first() is not None
+
+    @classmethod
     @async_db_query
     async def async_list_by_page(
             cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30
