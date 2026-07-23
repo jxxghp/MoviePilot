@@ -244,6 +244,19 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             logger.error(f"Failed to get key: {key} in region: {region}, error: {e}")
             return None
 
+    def pop(self, key: str, region: Optional[str] = "DEFAULT") -> Optional[Any]:
+        """原子读取并删除缓存值。"""
+        try:
+            self._connect()
+            redis_key = self.__make_redis_key(region, key)
+            value = self.client.getdel(redis_key)
+            return deserialize(value) if value is not None else None
+        except Exception as e:
+            logger.error(
+                f"Failed to pop key: {key} in region: {region}, error: {e}"
+            )
+            return None
+
     def delete(self, key: str, region: Optional[str] = "DEFAULT") -> None:
         """
         删除缓存

@@ -15,7 +15,7 @@ from app.core.cache import (
     cached,
 )
 from app.core.config import settings
-from app.helper.redis import AsyncRedisHelper, RedisHelper
+from app.helper.redis import AsyncRedisHelper, RedisHelper, serialize
 
 def test_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
     """
@@ -547,6 +547,27 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
     assert ("maxmemory-policy", "allkeys-lru") in helper.client.config_calls
 
     helper.close()
+
+
+def test_redis_helper_pop_uses_atomic_getdel():
+    """Redis 缓存领取必须通过单条 GETDEL 命令完成。"""
+    calls = []
+
+    class FakeClient:
+        def getdel(self, key):
+            calls.append(key)
+            return serialize({"challenge": "value"})
+
+    helper = RedisHelper()
+    helper.client = FakeClient()
+    try:
+        value = helper.pop("token", region="passkey_challenge")
+    finally:
+        helper.client = None
+
+    assert value == {"challenge": "value"}
+    assert calls == ["region:passkey_challenge:key:token"]
+
 
 def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     """
