@@ -38,13 +38,17 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
     fake_bin = _write_fake_chown(tmp_path)
     chown_log = tmp_path / "chown.log"
     app_dir = tmp_path / "app"
+    helper_dir = app_dir / "app" / "helper"
     public_dir = tmp_path / "public"
     home_dir = tmp_path / "home"
     (app_dir / "app" / "plugins").mkdir(parents=True)
+    helper_dir.mkdir(parents=True)
     public_dir.mkdir()
     (home_dir / ".cloakbrowser").mkdir(parents=True)
     (home_dir / "runtime").mkdir()
     (app_dir / "app" / "plugins" / "plugin.py").write_text("# plugin\n", encoding="utf-8")
+    (helper_dir / "user.sites.v2.bin").write_text("resources\n", encoding="utf-8")
+    (helper_dir / "sites.cpython-312-x86_64-linux-gnu.so").write_text("plugin\n", encoding="utf-8")
     (public_dir / "index.html").write_text("<!doctype html>\n", encoding="utf-8")
     (home_dir / ".cloakbrowser" / "chrome").write_text("browser cache\n", encoding="utf-8")
     (home_dir / "runtime" / "state").write_text("state\n", encoding="utf-8")
@@ -60,6 +64,7 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
         "APP_DIR": str(app_dir),
         "PUBLIC_DIR": str(public_dir),
         "HOME_DIR": str(home_dir),
+        "IMAGE_HELPER_DIR": str(helper_dir),
         "CONFIG_DIR": str(tmp_path / "config"),
         "PUID": str(os.getuid()),
         "PGID": str(os.getgid()),
@@ -187,9 +192,22 @@ def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
     assert f"-R moviepilot:moviepilot {tmp_path}/home/runtime" in lines
     assert f"-R moviepilot:moviepilot {tmp_path}/config /var/lib/nginx /var/log/nginx" in lines
     assert "moviepilot:moviepilot /etc/hosts /tmp" in lines
+    assert f"-R moviepilot:moviepilot {tmp_path}/app/app/helper" in lines
     assert not any(line.startswith("-R ") and ".cloakbrowser" in line for line in lines)
     assert not any(f"{tmp_path}/app " in line for line in lines)
     assert not any(f"{tmp_path}/public" in line for line in lines)
+
+
+def test_helper_resource_permissions_are_repaired_even_when_owner_matches(tmp_path: Path) -> None:
+    log = _run_permission_case(
+        tmp_path,
+        'correct_helper_resource_permissions',
+    )
+
+    lines = log.splitlines()
+    assert f"-R moviepilot:moviepilot {tmp_path}/app/app/helper" in lines
+    assert not any(line.startswith("-R ") and f"{tmp_path}/app " in line for line in lines)
+    assert not any(line.startswith("-R ") and f"{tmp_path}/public" in line for line in lines)
 
 
 def test_backend_ready_log_uses_configured_ports(tmp_path: Path) -> None:
