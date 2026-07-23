@@ -26,9 +26,18 @@ from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria
 )
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
+from webauthn.helpers.exceptions import InvalidRegistrationResponse
 
 from app.core.config import settings
 from app.log import logger
+
+
+class PassKeyRegistrationVerificationError(Exception):
+    """Passkey 注册响应未通过 WebAuthn 安全校验。"""
+
+
+class PassKeyRegistrationOriginMismatchError(PassKeyRegistrationVerificationError):
+    """浏览器来源与系统配置的 Passkey 注册来源不一致。"""
 
 
 class PassKeyHelper:
@@ -269,6 +278,11 @@ class PassKeyHelper:
 
             return credential_id, public_key, sign_count, aaguid
 
+        except InvalidRegistrationResponse as e:
+            logger.error(f"验证注册响应失败: {e}")
+            if str(e).startswith("Unexpected client data origin "):
+                raise PassKeyRegistrationOriginMismatchError() from e
+            raise PassKeyRegistrationVerificationError() from e
         except Exception as e:
             logger.error(f"验证注册响应失败: {e}")
             raise
