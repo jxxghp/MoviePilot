@@ -127,8 +127,19 @@ def filter_contexts(items: List[Context],
     return filtered_items
 
 
-def simplify_search_result(context: Context, index: int) -> dict:
-    """精简单条搜索结果"""
+def simplify_search_result(
+    context: Context,
+    index: int,
+    include_description: bool = False,
+) -> dict:
+    """
+    精简单条搜索结果
+
+    :param context: 搜索结果上下文
+    :param index: 搜索结果在原始缓存中的序号
+    :param include_description: 是否返回种子简介
+    :return: 精简后的搜索结果
+    """
     simplified = {}
     torrent_info = context.torrent_info
     meta_info = context.meta_info
@@ -147,6 +158,8 @@ def simplify_search_result(context: Context, index: int) -> dict:
             "freedate_diff": torrent_info.freedate_diff,
             "pubdate": torrent_info.pubdate,
         }
+        if include_description:
+            simplified["torrent_info"]["description"] = torrent_info.description
 
     if media_info:
         simplified["media_info"] = {

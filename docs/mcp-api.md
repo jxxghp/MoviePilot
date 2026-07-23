@@ -214,6 +214,8 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 媒体相关 MCP 工具（如 `query_media_detail`、`search_torrents`、`query_library_exists`、`add_subscribe`、`transfer_file`）接受 `tmdb_id`/`tmdbid`、`douban_id`/`doubanid`、`bangumi_id`/`bangumiid`、`anilist_id`/`anilistid`，也接受 `media_source` + `media_id`。工具返回的媒体、订阅、下载和整理记录会同步带回可用的四种专用 ID 及通用主身份。
 
+`get_search_results` 可使用 `title_pattern` 对种子标题执行正则筛选，也可使用 `content_pattern` 联合匹配种子标题、简介和标签。`title_pattern` 保持仅匹配标题的兼容语义；需要在结果中查看种子简介时，传入 `include_description=true`。两种正则参数与站点、分辨率等结构化筛选条件同时传入时按 AND 关系组合。
+
 #### Agent 自主定时任务工具
 
 以下工具用于管理会在指定时间重新唤醒 Agent 的持久化任务，均为管理员级工具：

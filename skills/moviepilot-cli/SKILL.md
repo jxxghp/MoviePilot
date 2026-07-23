@@ -99,6 +99,9 @@ Filter values must come from the `filter_options` returned by `search_torrents` 
 Fetch results with selected filters:
 `moviepilot tool run get_search_results resolution='1080p,2160p' free_state='免费,50%'`
 
+To filter subtitle, audio, DIY, translation, or release notes that may appear outside the title, use `content_pattern`. It matches the torrent title, description, and labels while `title_pattern` continues to match the title only. Set `include_description=true` when the description is needed to explain why a result matched:
+`moviepilot tool run get_search_results content_pattern='特效字幕|国语|DIY' include_description=true`
+
 If empty, tell the user which filter to relax and ask before retrying.
 
 #### 4. Present results as a numbered list
