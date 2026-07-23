@@ -22,8 +22,8 @@ from app.helper.passkey import (
     PassKeyHelper,
     PassKeyRegistrationOriginMismatchError,
     PassKeyRegistrationVerificationError,
+    PasskeyChallengeStore,
 )
-from app.helper.passkey_challenge import PasskeyChallengeStore
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.otp import OtpUtils
