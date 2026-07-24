@@ -18,6 +18,21 @@ from app.schemas import DownloaderTorrent, TransferDirectoryConf
 from app.schemas.types import MediaType
 
 
+@pytest.fixture(autouse=True)
+def _mock_tmdb_supplement(monkeypatch):
+    """隔离下载路径用例中的 TMDB 辅助识别外部边界。"""
+
+    class _NoopMediaChain:
+        """保持原媒体对象不变的 TMDB 辅助识别替身。"""
+
+        @staticmethod
+        def supplement_tmdb_info(media, _meta):
+            """返回原媒体对象。"""
+            return media
+
+    monkeypatch.setattr(download_module, "MediaChain", _NoopMediaChain)
+
+
 def _download_dirs():
     return [
         TransferDirectoryConf(

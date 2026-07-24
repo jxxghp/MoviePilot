@@ -55,7 +55,7 @@ from app.schemas.types import (
     ContentType,
 )
 from app.utils.mixins import ConfigReloadMixin
-from app.utils.media import parse_media_key
+from app.utils.media import normalize_media_source, parse_media_key, resolve_media_identity
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -142,19 +142,8 @@ class JobManager:
         """
         if not media:
             return None, season
-        media_ids = {
-            "themoviedb": media.tmdb_id,
-            "douban": media.douban_id,
-            "bangumi": media.bangumi_id,
-            "anilist": media.anilist_id,
-        }
-        source = media.source
-        if not source or media_ids.get(source) is None:
-            source = next(
-                (name for name, media_id in media_ids.items() if media_id is not None),
-                source,
-            )
-        return (source, media_ids.get(source)), season
+        source, media_id = resolve_media_identity(media=media)
+        return (source, media_id), season
 
     @staticmethod
     def __get_file_key(fileitem: FileItem) -> Optional[Tuple[str, str]]:
@@ -793,6 +782,23 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     CONFIG_WATCH = {
         "TRANSFER_THREADS",
     }
+
+    @staticmethod
+    def _requires_automatic_category(task: TransferTask) -> bool:
+        """
+        判断当前整理任务是否需要根据媒体识别结果自动创建类别目录。
+
+        :param task: 整理任务
+        :return: 是否必须具备自动分类结果
+        """
+        target_directory = task.target_directory
+        if target_directory and target_directory.media_category:
+            return False
+        if task.library_category_folder is not None:
+            return bool(task.library_category_folder)
+        return bool(
+            target_directory and target_directory.library_category_folder
+        )
 
     def __init__(self):
         """初始化文件整理处理链。"""
@@ -1709,8 +1715,15 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
                 mediainfo_changed = True
 
-            # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
-            if not settings.SCRAP_FOLLOW_TMDB:
+            # TMDB 仅作为辅助信息合并，不能改变原识别源的主身份和标题。
+            mediainfo = MediaChain().supplement_tmdb_info(mediainfo, task.meta)
+            task.mediainfo = mediainfo
+
+            # 只有 TMDB 主源沿用历史 TMDB 标题，避免辅助 ID 改写其它识别源标题。
+            if (
+                    not settings.SCRAP_FOLLOW_TMDB
+                    and normalize_media_source(mediainfo.source) == "themoviedb"
+            ):
                 transfer_history = transferhis.get_by_type_tmdbid(
                     tmdbid=mediainfo.tmdb_id, mtype=mediainfo.type.value
                 )
@@ -1727,7 +1740,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     return False, f"{task.fileitem.name} 已在整理队列中"
 
             # 获取集数据
-            if task.mediainfo.type == MediaType.TV and not task.episodes_info:
+            if (
+                    task.mediainfo.type == MediaType.TV
+                    and task.mediainfo.tmdb_id
+                    and not task.episodes_info
+            ):
                 # 判断注意season为0的情况
                 season_num = task.mediainfo.season
                 if season_num is None and task.meta.season_seq:
@@ -1761,6 +1778,24 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     )
             if not task.target_storage and task.target_directory:
                 task.target_storage = task.target_directory.library_storage
+
+            if self._requires_automatic_category(task) and not task.mediainfo.category:
+                if task.mediainfo.tmdb_id:
+                    error_message = "TMDB 信息未匹配到媒体分类，无法按媒体类别整理"
+                else:
+                    error_message = "未识别到 TMDB 辅助信息，无法按媒体类别整理"
+                logger.error(f"{task.fileitem.name} {error_message}")
+                if callback:
+                    return callback(
+                        task,
+                        TransferInfo(
+                            success=False,
+                            fileitem=task.fileitem,
+                            transfer_type=task.transfer_type,
+                            message=error_message,
+                        ),
+                    )
+                return False, error_message
 
             # 正在处理
             self.jobview.running_task(task)

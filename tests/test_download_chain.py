@@ -2,6 +2,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 import app.chain.download as download_module
 from app.chain.download import DownloadChain
 from app.core.config import settings
@@ -9,6 +11,21 @@ from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.schemas import FileItem, NotExistMediaInfo, TransferDirectoryConf
 from app.schemas.types import MediaType
+
+
+@pytest.fixture(autouse=True)
+def _mock_tmdb_supplement(monkeypatch):
+    """隔离下载用例中的 TMDB 辅助识别外部边界。"""
+
+    class _NoopMediaChain:
+        """保持原媒体对象不变的 TMDB 辅助识别替身。"""
+
+        @staticmethod
+        def supplement_tmdb_info(media, _meta):
+            """返回原媒体对象。"""
+            return media
+
+    monkeypatch.setattr(download_module, "MediaChain", _NoopMediaChain)
 
 
 class _FakeDownloadHistoryOper:
@@ -174,6 +191,54 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
         download_dir=Path("/downloads"),
         torrent_content=b"torrent-content",
     )
+
+
+def test_download_single_supplements_category_before_download_event(monkeypatch):
+    """下载事件和目录选择前应已有 TMDB 分类，同时保留原识别源身份。"""
+    captured = {}
+
+    class _FakeMediaChain:
+        """模拟 TMDB 辅助识别并记录调用。"""
+
+        @staticmethod
+        def supplement_tmdb_info(media, _meta):
+            """给原媒体对象补充下载分类。"""
+            media.tmdb_id = 12345
+            media.category = "日本动画"
+            return media
+
+    def cancel_download(_event_type, event_data):
+        """捕获下载事件后取消，避免进入真实下载流程。"""
+        captured["event_data"] = event_data
+        event_data.cancel = True
+        return SimpleNamespace(event_data=event_data)
+
+    monkeypatch.setattr(download_module, "MediaChain", _FakeMediaChain)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", cancel_download)
+    media = MediaInfo(
+        source="bangumi",
+        media_id="40000",
+        bangumi_id=40000,
+        type=MediaType.TV,
+        title="测试动画",
+    )
+    context = Context(
+        meta_info=MetaInfo("测试动画 S01"),
+        media_info=media,
+        torrent_info=TorrentInfo(title="测试动画 S01"),
+    )
+
+    result = DownloadChain.__new__(DownloadChain).download_single(
+        context=context,
+        torrent_content="magnet:?xt=urn:btih:test",
+        return_detail=True,
+    )
+
+    assert result == (None, "下载被事件取消")
+    assert captured["event_data"].options["media_category"] == "日本动画"
+    assert context.media_info.source == "bangumi"
+    assert context.media_info.media_id == "40000"
+    assert context.media_info.tmdb_id == 12345
 
 
 def test_download_single_persists_custom_words_snapshot(monkeypatch):

@@ -614,6 +614,113 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"{metainfo.title} 未识别到媒体信息")
         return mediainfo
 
+    @staticmethod
+    def _build_tmdb_supplement_meta(
+            mediainfo: MediaInfo,
+            metainfo: Optional[MetaBase] = None,
+    ) -> MetaBase:
+        """
+        根据主识别结果构造 TMDB 辅助识别参数。
+
+        :param mediainfo: 主识别源返回的媒体信息
+        :param metainfo: 原始标题解析信息
+        :return: 不携带主识别源身份的 TMDB 查询参数
+        """
+        title = mediainfo.title or getattr(metainfo, "name", None) or ""
+        tmdb_meta = MetaInfo(title)
+        if not tmdb_meta.cn_name and getattr(metainfo, "cn_name", None):
+            tmdb_meta.cn_name = metainfo.cn_name
+        if not tmdb_meta.en_name:
+            tmdb_meta.en_name = mediainfo.en_title or (
+                getattr(metainfo, "en_name", None)
+            )
+        tmdb_meta.type = mediainfo.type or (
+            getattr(metainfo, "type", None) or MediaType.UNKNOWN
+        )
+        season = (
+            mediainfo.season
+            if mediainfo.season is not None
+            else getattr(metainfo, "begin_season", None)
+        )
+        tmdb_meta.begin_season = season
+        season_year = None
+        if season is not None and mediainfo.season_years:
+            season_year = (
+                mediainfo.season_years.get(season)
+                or mediainfo.season_years.get(str(season))
+            )
+        tmdb_meta.year = (
+            season_year
+            or mediainfo.year
+            or getattr(metainfo, "year", None)
+        )
+        return tmdb_meta
+
+    @staticmethod
+    def _merge_tmdb_auxiliary(
+            mediainfo: MediaInfo,
+            tmdb_media: MediaInfo,
+    ) -> MediaInfo:
+        """
+        将 TMDB 兼容字段合并到主识别结果，不改变主数据源身份和展示信息。
+
+        :param mediainfo: 主识别源返回的媒体信息
+        :param tmdb_media: TMDB 辅助识别结果
+        :return: 已补充 TMDB 兼容字段的主媒体信息
+        """
+        if not tmdb_media or tmdb_media.source != "themoviedb" or not tmdb_media.tmdb_id:
+            return mediainfo
+
+        mediainfo.tmdb_id = tmdb_media.tmdb_id
+        mediainfo.tmdb_info = tmdb_media.tmdb_info or mediainfo.tmdb_info
+        if not mediainfo.category:
+            mediainfo.category = tmdb_media.category
+        if not mediainfo.genre_ids:
+            mediainfo.genre_ids = list(tmdb_media.genre_ids or [])
+        for field in ("imdb_id", "tvdb_id", "collection_id"):
+            if not getattr(mediainfo, field, None):
+                setattr(mediainfo, field, getattr(tmdb_media, field, None))
+        return mediainfo
+
+    def supplement_tmdb_info(
+            self,
+            mediainfo: Optional[MediaInfo],
+            metainfo: Optional[MetaBase] = None,
+    ) -> Optional[MediaInfo]:
+        """
+        为任意主识别源补充 TMDB 辅助信息，同时保留原始媒体身份。
+
+        :param mediainfo: 主识别源返回的媒体信息
+        :param metainfo: 原始标题解析信息
+        :return: 已补充 TMDB 辅助字段的原媒体对象
+        """
+        if not mediainfo:
+            return None
+        if mediainfo.tmdb_id and mediainfo.tmdb_info and mediainfo.genre_ids:
+            return mediainfo
+        tmdb_meta = self._build_tmdb_supplement_meta(mediainfo, metainfo)
+        tmdb_module = self.modulemanager.get_running_module("TheMovieDbModule")
+        if not tmdb_module:
+            logger.warn("TMDB 模块未启用，无法补充 TMDB 辅助信息")
+            return mediainfo
+        try:
+            tmdb_media = tmdb_module.recognize_media(
+                meta=tmdb_meta,
+                mtype=mediainfo.type,
+                source="themoviedb",
+                mediaid=str(mediainfo.tmdb_id) if mediainfo.tmdb_id else None,
+                tmdbid=mediainfo.tmdb_id,
+                episode_group=mediainfo.episode_group,
+                cache=True,
+            )
+        except Exception as err:
+            logger.warn(f"{mediainfo.title_year} 补充 TMDB 辅助信息失败：{err}")
+            return mediainfo
+        if not tmdb_media:
+            logger.warn(f"{mediainfo.title_year} 未匹配到 TMDB 辅助信息")
+            return mediainfo
+        return self._merge_tmdb_auxiliary(mediainfo, tmdb_media)
+
     def _recognize_with_fallback_by_meta(
             self,
             metainfo: MetaBase,

@@ -61,6 +61,7 @@ class DeleteSubscribeTool(MoviePilotTool):
                     "anilistid": subscribe.anilistid,
                     "media_source": subscribe.media_source,
                     "media_id": subscribe.media_id,
+                    "season": subscribe.season,
                 }
             )
 

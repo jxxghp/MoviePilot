@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 from app import schemas
 from app.chain import ChainBase
+from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.core.cache import FileCache
 from app.core.config import settings, global_vars
@@ -402,6 +403,7 @@ class DownloadChain(ChainBase):
         )
         if not mediainfo:
             return False, "无法识别媒体信息", []
+        mediainfo = MediaChain().supplement_tmdb_info(mediainfo, metainfo)
 
         storage, target_dir, error_msg = self._resolve_media_download_dir(
             media_info=mediainfo,
@@ -804,6 +806,10 @@ class DownloadChain(ChainBase):
         _meta = context.meta_info
         _site_downloader = _torrent.site_downloader
 
+        # 下载目录和下载器分类依赖 TMDB 辅助分类，但媒体主身份保持不变。
+        _media = MediaChain().supplement_tmdb_info(_media, _meta)
+        context.media_info = _media
+
         # 发送资源下载事件，允许外部拦截下载
         event_data = ResourceDownloadEventData(
             context=context,
@@ -838,15 +844,6 @@ class DownloadChain(ChainBase):
             except ValueError as err:
                 logger.warn(str(err))
                 return (None, str(err)) if return_detail else None
-
-        # 补充完整的media数据
-        if not _media.genre_ids:
-            new_media = self.recognize_media(mtype=_media.type, tmdbid=_media.tmdb_id,
-                                             doubanid=_media.douban_id, bangumiid=_media.bangumi_id,
-                                             anilistid=_media.anilist_id,
-                                             episode_group=_media.episode_group)
-            if new_media:
-                _media = new_media
 
         # 实际下载的集数
         download_episodes = StringUtils.format_ep(list(episodes)) if episodes else None
