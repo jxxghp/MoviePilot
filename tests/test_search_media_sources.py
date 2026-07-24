@@ -122,6 +122,7 @@ def test_media_seasons_builds_anilist_season_response(monkeypatch) -> None:
         type=MediaType.TV,
         title="Frieren",
         anilist_id=154587,
+        poster_path="https://images.example.com/frieren.jpg",
         season_info=[{
             "season_number": 1,
             "name": "Season 1",
@@ -146,5 +147,6 @@ def test_media_seasons_builds_anilist_season_response(monkeypatch) -> None:
     assert len(result) == 1
     assert result[0].season_number == 1
     assert result[0].episode_count == 28
+    assert result[0].poster_path == media.poster_path
     assert captured["source"] == "anilist"
     assert captured["mediaid"] == "154587"
