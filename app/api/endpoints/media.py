@@ -36,7 +36,7 @@ def _build_media_seasons(
             episode_count=item.get("episode_count"),
             name=item.get("name"),
             overview=item.get("overview"),
-            poster_path=item.get("poster_path"),
+            poster_path=item.get("poster_path") or mediainfo.poster_path,
             season_number=season_number,
             vote_average=item.get("vote_average"),
         ))
