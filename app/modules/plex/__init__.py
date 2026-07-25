@@ -293,23 +293,23 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            **kwargs) -> List[schemas.MediaServerPlayItem]:
+                            **kwargs) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
-            return []
+            return None
         return server_obj.get_resume(num=count)
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           **kwargs) -> List[schemas.MediaServerPlayItem]:
+                           **kwargs) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
-            return []
+            return None
         return server_obj.get_latest(num=count)
 
     def mediaserver_latest_images(self,
@@ -331,8 +331,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             return []
 
         links = []
-        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(server=server, count=count,
-                                                                           username=username)
+        items = self.mediaserver_latest(server=server, count=count, username=username) or []
         for item in items:
             link = server_obj.get_remote_image_by_id(item_id=item.id,
                                                      image_type="Backdrop",

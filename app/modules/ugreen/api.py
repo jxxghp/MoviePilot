@@ -489,15 +489,15 @@ class Api:
             return None
         return dict(result.data)
 
-    def media_list(self) -> list[dict]:
+    def media_list(self) -> Optional[list[dict]]:
         """
         获取首页媒体库列表（`media_lib_info_list`）。
         """
         result = self.request("v1/video/homepage/media_list")
         if not result.success or not isinstance(result.data, Mapping):
-            return []
+            return None
         items = result.data.get("media_lib_info_list")
-        return items if isinstance(items, list) else []
+        return items if isinstance(items, list) else None
 
     def media_lib_users(self) -> list[dict]:
         """

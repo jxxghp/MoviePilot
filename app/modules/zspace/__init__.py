@@ -276,13 +276,13 @@ class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:
+                            username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
         server_obj: ZSpace = self.get_instance(server)
         if not server_obj:
-            return []
+            return None
         return server_obj.get_resume(num=count, username=username)
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
@@ -295,13 +295,13 @@ class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
         return server_obj.get_play_url(item_id)
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           username: Optional[str] = None) -> List[schemas.MediaServerPlayItem]:
+                           username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """
         server_obj: ZSpace = self.get_instance(server)
         if not server_obj:
-            return []
+            return None
         return server_obj.get_latest(num=count, username=username)
 
     def mediaserver_latest_images(self,
@@ -324,8 +324,7 @@ class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
             return []
 
         links = []
-        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(server=server, count=count,
-                                                                           username=username)
+        items = self.mediaserver_latest(server=server, count=count, username=username) or []
         for item in items:
             if item.BackdropImageTags:
                 image_url = server_obj.get_backdrop_url(item_id=item.id,

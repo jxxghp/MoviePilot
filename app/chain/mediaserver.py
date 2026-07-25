@@ -27,11 +27,13 @@ class MediaServerChain(ChainBase):
 
     def _sign_library_images(
         self, libraries: Optional[List[MediaServerLibrary]]
-    ) -> List[MediaServerLibrary]:
+    ) -> Optional[List[MediaServerLibrary]]:
         """
-        给媒体库列表中的封面和封面组添加代理签名。
+        给媒体库列表中的封面和封面组添加代理签名，并保留提供方失败状态。
         """
-        for library in libraries or []:
+        if libraries is None:
+            return None
+        for library in libraries:
             if library.image:
                 library.image = self._sign_image_url(library.image)
             if library.image_list:
@@ -40,21 +42,23 @@ class MediaServerChain(ChainBase):
                     for image in library.image_list
                     if image
                 ]
-        return libraries or []
+        return libraries
 
     def _sign_play_item_images(
         self, items: Optional[List[MediaServerPlayItem]]
-    ) -> List[MediaServerPlayItem]:
+    ) -> Optional[List[MediaServerPlayItem]]:
         """
-        给媒体服务器播放条目中的图片 URL 添加代理签名。
+        给媒体服务器播放条目中的图片 URL 添加代理签名，并保留提供方失败状态。
         """
-        for item in items or []:
+        if items is None:
+            return None
+        for item in items:
             if item.image:
                 item.image = self._sign_image_url(item.image)
-        return items or []
+        return items
 
     def librarys(self, server: str, username: Optional[str] = None,
-                 hidden: bool = False) -> List[MediaServerLibrary]:
+                 hidden: bool = False) -> Optional[List[MediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库
         """
@@ -151,7 +155,7 @@ class MediaServerChain(ChainBase):
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
 
     def playing(self, server: str, count: Optional[int] = 20,
-                username: Optional[str] = None) -> List[MediaServerPlayItem]:
+                username: Optional[str] = None) -> Optional[List[MediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
@@ -165,7 +169,7 @@ class MediaServerChain(ChainBase):
         )
 
     def latest(self, server: str, count: Optional[int] = 20,
-               username: Optional[str] = None) -> List[MediaServerPlayItem]:
+               username: Optional[str] = None) -> Optional[List[MediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """

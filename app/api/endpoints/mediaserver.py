@@ -1,6 +1,6 @@
 from typing import Any, List, Dict, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
@@ -19,6 +19,18 @@ from app.schemas.types import SystemConfigKey
 from app.utils.media import build_media_key, resolve_media_identity
 
 router = APIRouter()
+
+
+def _require_mediaserver_result(result: Optional[List[Any]]) -> List[Any]:
+    """
+    保留媒体服务器成功空列表，并把提供方失败转换为明确的网关错误。
+    """
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="媒体服务器请求失败",
+        )
+    return result
 
 
 @router.get("/play/{itemid:path}", summary="在线播放")
@@ -153,11 +165,12 @@ def latest(
     """
     获取媒体服务器最新入库条目
     """
-    return (
+    return _require_mediaserver_result(
         MediaServerChain().latest(
-            server=server, count=count, username=userinfo.username
+            server=server,
+            count=count,
+            username=userinfo.username,
         )
-        or []
     )
 
 
@@ -172,11 +185,12 @@ def playing(
     """
     获取媒体服务器正在播放条目
     """
-    return (
+    return _require_mediaserver_result(
         MediaServerChain().playing(
-            server=server, count=count, username=userinfo.username
+            server=server,
+            count=count,
+            username=userinfo.username,
         )
-        or []
     )
 
 
@@ -191,11 +205,12 @@ def library(
     """
     获取媒体服务器媒体库列表
     """
-    return (
+    return _require_mediaserver_result(
         MediaServerChain().librarys(
-            server=server, username=userinfo.username, hidden=hidden
+            server=server,
+            username=userinfo.username,
+            hidden=hidden,
         )
-        or []
     )
 
 

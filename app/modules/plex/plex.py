@@ -122,17 +122,17 @@ class Plex:
         return [f"{self._host.rstrip('/') + url}?X-Plex-Token={self._token}" for url in
                 list(poster_urls.keys())[:total_size]]
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
         if not self._plex:
-            return []
+            return None
         try:
             self._libraries = self._plex.library.sections()
         except Exception as err:
             logger.error(f"获取媒体服务器所有媒体库列表出错：{str(err)}")
-            return []
+            return None
         libraries = []
         for library in self._libraries:
             if hidden and self._sync_libraries and "all" not in self._sync_libraries \
@@ -171,7 +171,7 @@ class Plex:
         sections = self._plex.library.sections()
         movie_count = tv_count = episode_count = 0
         # 媒体库白名单
-        allow_library = [str(lib.id) for lib in self.get_librarys(hidden=True)]
+        allow_library = [str(lib.id) for lib in self.get_librarys(hidden=True) or []]
         for sec in sections:
             if str(sec.key) not in allow_library:
                 continue
@@ -832,9 +832,12 @@ class Plex:
         获取继续观看的媒体
         """
         if not self._plex:
-            return []
+            return None
         # 媒体库白名单
-        allow_library = ",".join(map(str, (lib.id for lib in self.get_librarys(hidden=True))))
+        libraries = self.get_librarys(hidden=True)
+        if libraries is None:
+            return None
+        allow_library = ",".join(map(str, (lib.id for lib in libraries)))
         params = {"contentDirectoryID": allow_library}
         items = self._plex.fetchItems("/hubs/continueWatching/items",
                                       container_start=0,
@@ -871,7 +874,10 @@ class Plex:
         if not self._plex:
             return None
         # 请求参数（除黑名单）
-        allow_library = ",".join(map(str, (lib.id for lib in self.get_librarys(hidden=True))))
+        libraries = self.get_librarys(hidden=True)
+        if libraries is None:
+            return None
+        allow_library = ",".join(map(str, (lib.id for lib in libraries)))
         params = {
             "contentDirectoryID": allow_library,
             "count": num,

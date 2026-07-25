@@ -99,6 +99,8 @@
   "messages": {
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
+    "TMDB请求失败": "TMDB request failed",
+    "媒体服务器请求失败": "Media server request failed",
     "附件保存失败": "Failed to save attachment",
     "该选择已失效，请重新发起选择": "This selection has expired. Please start the selection again",
     "会话不存在或无权访问": "The conversation does not exist or you do not have access",

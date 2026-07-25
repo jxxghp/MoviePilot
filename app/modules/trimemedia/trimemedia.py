@@ -163,16 +163,18 @@ class TrimeMedia:
 
     def get_librarys(
         self, hidden: Optional[bool] = False
-    ) -> List[schemas.MediaServerLibrary]:
+    ) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
         if not self.is_authenticated():
-            return []
+            return None
         if self._userinfo.is_admin == 1:
-            mdb_list = self._api.mdb_list() or []
+            mdb_list = self._api.mdb_list()
         else:
-            mdb_list = self._api.mediadb_list() or []
+            mdb_list = self._api.mediadb_list()
+        if mdb_list is None:
+            return None
         self._libraries = {lib.guid: lib for lib in mdb_list}
         libraries = []
         for library in self._libraries.values():
@@ -584,8 +586,11 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        items = self._api.play_list()
+        if items is None:
+            return None
         ret_resume = []
-        for item in self._api.play_list() or []:
+        for item in items:
             if len(ret_resume) == num:
                 break
             if self.__is_library_blocked(item.ancestor_guid):
@@ -599,14 +604,13 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
-        items = (
-            self._api.item_list(
-                page=1,
-                page_size=max(100, num * 5),
-                types=[fnapi.Type.MOVIE, fnapi.Type.TV],
-            )
-            or []
+        items = self._api.item_list(
+            page=1,
+            page_size=max(100, num * 5),
+            types=[fnapi.Type.MOVIE, fnapi.Type.TV],
         )
+        if items is None:
+            return None
         latest = []
         for item in items:
             if len(latest) == num:
