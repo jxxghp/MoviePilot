@@ -44,13 +44,18 @@ def test_copy_with_progress_does_not_force_source_mode_onto_dest(tmp_path):
     src = tmp_path / "src2.bin"
     dest = tmp_path / "dest2.bin"
     src.write_bytes(b"data")
-    # 故意给源文件设置一个不常见的严格权限
-    src.chmod(0o600)
 
-    # 用一个哨兵文件确定当前 umask 下、新建文件本该有的默认权限
+    # 用一个哨兵文件确定当前 umask 下、新建文件本该有的默认权限，
+    # 再让源文件权限刻意偏离这个值——不管当前测试环境 umask 是什么，
+    # 都能保证"源文件权限"与"默认创建权限"不同，断言不依赖任何硬编码的
+    # 具体权限数值，避免在限制性 umask 环境下产生误报。
     sentinel = tmp_path / "sentinel.bin"
     sentinel.write_bytes(b"")
     default_mode = sentinel.stat().st_mode & 0o777
+    # 属主始终保留读权限（测试进程自己要能读源文件），只让它与默认权限
+    # 不同，具体数值不依赖任何硬编码假设，避免限制性 umask 环境下误报
+    source_mode = 0o600 if default_mode != 0o600 else 0o640
+    src.chmod(source_mode)
 
     storage = _make_storage()
     with patch.object(local_storage_module, "transfer_process", return_value=lambda *a, **k: None):
@@ -59,4 +64,4 @@ def test_copy_with_progress_does_not_force_source_mode_onto_dest(tmp_path):
     assert result is True
     dest_mode = dest.stat().st_mode & 0o777
     assert dest_mode == default_mode
-    assert dest_mode != 0o600
+    assert dest_mode != source_mode
