@@ -3112,17 +3112,23 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             """
             if not mediainfo:
                 return True
-            current_source = mediainfo.source
             current_media_id = mediainfo.to_dict().get("media_id")
-            if transferd.media_source and transferd.media_id:
-                if current_source and current_media_id:
-                    return (
-                        transferd.media_source == current_source
-                        and transferd.media_id == current_media_id
-                    )
-                return True
-            # 兼容未记录统一媒体标识的历史数据，回退比较各来源的ID
+            # 统一媒体标识(来源+原生ID)与各来源专属ID都作为独立的一项，
+            # 任一相同即视为同一媒体；必须比较完所有项后仍无一致才判定
+            # 为不同媒体，避免比较到第一个不一致的项就短路误判。
+            # 统一标识用元组而非字符串拼接比较，避免不同 (来源, ID) 组合
+            # 拼接后恰好得到相同字符串这一理论上的碰撞可能。
+            unified_current = (
+                (mediainfo.source, current_media_id)
+                if mediainfo.source and current_media_id else None
+            )
+            unified_history = (
+                (transferd.media_source, transferd.media_id)
+                if transferd.media_source and transferd.media_id else None
+            )
+            has_comparable_id = False
             for current_id, history_id in (
+                    (unified_current, unified_history),
                     (mediainfo.tmdb_id, transferd.tmdbid),
                     (mediainfo.douban_id, transferd.doubanid),
                     (mediainfo.imdb_id, transferd.imdbid),
@@ -3130,9 +3136,16 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     (mediainfo.bangumi_id, transferd.bangumiid),
                     (mediainfo.anilist_id, transferd.anilistid),
             ):
-                if current_id and history_id:
-                    return str(current_id) == str(history_id)
-            return True
+                if not current_id or not history_id:
+                    continue
+                has_comparable_id = True
+                if isinstance(current_id, tuple):
+                    if current_id == history_id:
+                        return True
+                elif str(current_id) == str(history_id):
+                    return True
+            # 没有任何可比较的ID时无法判断，保守回退为同一媒体
+            return not has_comparable_id
 
         # 整理所有文件
         transfer_tasks: List[TransferTask] = []

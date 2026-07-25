@@ -55,15 +55,16 @@ class FakeMeta:
 
 
 class FakeMedia:
-    def __init__(self, tmdb_id: int = 12345):
+    def __init__(self, tmdb_id: int = 12345, imdb_id: str = None, source: str = "themoviedb",
+                 douban_id: str = None):
         """构造与正式 MediaInfo 身份字段一致的测试媒体对象。"""
         self.tmdb_id = tmdb_id
-        self.douban_id = None
-        self.imdb_id = None
+        self.douban_id = douban_id
+        self.imdb_id = imdb_id
         self.tvdb_id = None
         self.bangumi_id = None
         self.anilist_id = None
-        self.source = "themoviedb"
+        self.source = source
         self.type = MediaType.TV
         self.title_year = "Test Show (2026)"
 
@@ -82,6 +83,7 @@ class FakeMedia:
             "douban_id": self.douban_id,
             "bangumi_id": self.bangumi_id,
             "anilist_id": self.anilist_id,
+            "media_id": str(self.tmdb_id) if self.source == "themoviedb" else self.douban_id,
         }
 
 
@@ -449,10 +451,17 @@ class TransferJobManagerTest(unittest.TestCase):
         # 手动集数偏移只能应用一次，避免 E14 + (-1) 被二次处理成 E12。
         self.assertEqual([13], planned_episodes)
 
-    def _run_manual_reorganize_with_history(self, history_tmdbid: int, current_tmdbid: int):
+    def _run_manual_reorganize_with_history(
+            self, history_tmdbid: int, current_tmdbid: int,
+            history_imdbid: str = None, current_imdbid: str = None,
+            history_media_source: str = None, history_media_id: str = None,
+            current_source: str = "themoviedb", current_doubanid: str = None,
+    ):
         """
-        构造一次手动整理，源文件已有历史记录（tmdbid=history_tmdbid），
-        本次指定的媒体信息 tmdbid=current_tmdbid，返回 (state, errmsg, handled)。
+        构造一次手动整理，源文件已有历史记录（tmdbid=history_tmdbid[, imdbid=history_imdbid,
+        media_source=history_media_source, media_id=history_media_id]），
+        本次指定的媒体信息 tmdbid=current_tmdbid[, imdbid=current_imdbid, source=current_source]，
+        返回 (state, errmsg, handled)。
         """
         chain = make_transfer_chain()
         source_fileitem = make_fileitem("/downloads/Test.Show.2026.S01E14.mkv")
@@ -470,11 +479,11 @@ class TransferJobManagerTest(unittest.TestCase):
             status=True,
             download_hash=None,
             downloader=None,
-            media_source=None,
-            media_id=None,
+            media_source=history_media_source,
+            media_id=history_media_id,
             tmdbid=history_tmdbid,
             doubanid=None,
-            imdbid=None,
+            imdbid=history_imdbid,
             tvdbid=None,
             bangumiid=None,
             anilistid=None,
@@ -494,7 +503,10 @@ class TransferJobManagerTest(unittest.TestCase):
                 patch("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
             state, errmsg = chain.do_transfer(
                 fileitem=source_fileitem,
-                mediainfo=FakeMedia(tmdb_id=current_tmdbid),
+                mediainfo=FakeMedia(
+                    tmdb_id=current_tmdbid, imdb_id=current_imdbid,
+                    source=current_source, douban_id=current_doubanid,
+                ),
                 target_path=Path("/library"),
                 manual=True,
                 background=False,
@@ -521,6 +533,35 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(state, errmsg)
         self.assertEqual("", errmsg)
         self.assertEqual(1, len(handled))
+
+    def test_manual_reorganize_skips_when_any_legacy_id_matches_despite_tmdbid_mismatch(self):
+        # 旧历史记录同时存有 tmdbid 和 imdbid：tmdbid 不同但 imdbid 相同，
+        # 只要任一来源ID一致就应判定为同一媒体，继续拦截，而不能在比较到
+        # 第一个不一致的ID（tmdbid）时就短路判定为不同媒体。
+        state, errmsg, handled = self._run_manual_reorganize_with_history(
+            history_tmdbid=99999, current_tmdbid=12345,
+            history_imdbid="tt0000001", current_imdbid="tt0000001",
+        )
+
+        self.assertTrue(state)
+        self.assertEqual("Test.Show.2026.S01E14.mkv 已整理过", errmsg)
+        self.assertEqual([], handled)
+
+    def test_manual_reorganize_skips_when_tmdbid_matches_despite_different_media_source(self):
+        # 历史记录的统一媒体标识(media_source="themoviedb")与本次指定的
+        # 媒体信息(source="douban")不同，但两者的 tmdbid 实际相同（同一部剧，
+        # 只是这次换了个数据源重新识别）。统一标识和各来源专属ID是平等的
+        # 比较项，只要其中任一相同就应判定为同一媒体，继续拦截，而不能
+        # 仅凭统一标识不同就判定为不同媒体。
+        state, errmsg, handled = self._run_manual_reorganize_with_history(
+            history_tmdbid=12345, current_tmdbid=12345,
+            history_media_source="themoviedb", history_media_id="12345",
+            current_source="douban", current_doubanid="36516448",
+        )
+
+        self.assertTrue(state)
+        self.assertEqual("Test.Show.2026.S01E14.mkv 已整理过", errmsg)
+        self.assertEqual([], handled)
 
     def test_completed_media_job_is_removed_after_last_meta_task_fails(self):
         jobview = JobManager()
