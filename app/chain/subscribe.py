@@ -904,6 +904,16 @@ class SubscribeChain(ChainBase):
             metainfo.begin_season = season
         if not media_source and not media_id and mediaid:
             media_source, media_id = parse_media_key(mediaid)
+        resolved_source, resolved_media_id = resolve_media_identity(
+            source=media_source,
+            media_id=media_id,
+            tmdbid=tmdbid,
+            doubanid=doubanid,
+            bangumiid=bangumiid,
+            anilistid=anilistid,
+        )
+        if resolved_source and resolved_media_id:
+            media_source, media_id = resolved_source, resolved_media_id
         if any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
             mediainfo = self.recognize_media(
                 meta=metainfo,
@@ -926,10 +936,11 @@ class SubscribeChain(ChainBase):
             if season is None:
                 season = meta.begin_season
 
-        # 使用名称识别兜底
+        # 明确来源时只允许在同一来源内按名称兜底，不能切换主识别源。
         if not mediainfo:
             mediainfo = MediaChain().recognize_by_meta(
                 metainfo,
+                source=media_source,
                 episode_group=episode_group,
                 obtain_images=False,
             )
@@ -1099,6 +1110,16 @@ class SubscribeChain(ChainBase):
             metainfo.begin_season = season
         if not media_source and not media_id and mediaid:
             media_source, media_id = parse_media_key(mediaid)
+        resolved_source, resolved_media_id = resolve_media_identity(
+            source=media_source,
+            media_id=media_id,
+            tmdbid=tmdbid,
+            doubanid=doubanid,
+            bangumiid=bangumiid,
+            anilistid=anilistid,
+        )
+        if resolved_source and resolved_media_id:
+            media_source, media_id = resolved_source, resolved_media_id
         if any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
             mediainfo = await self.async_recognize_media(
                 meta=metainfo,
@@ -1121,10 +1142,11 @@ class SubscribeChain(ChainBase):
             if season is None:
                 season = meta.begin_season
 
-        # 使用名称识别兜底
+        # 明确来源时只允许在同一来源内按名称兜底，不能切换主识别源。
         if not mediainfo:
             mediainfo = await MediaChain().async_recognize_by_meta(
                 metainfo,
+                source=media_source,
                 episode_group=episode_group,
                 obtain_images=False,
             )
