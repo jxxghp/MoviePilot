@@ -304,14 +304,14 @@ class UgreenModule(_ModuleBase, _MediaServerBase[Ugreen]):
 
     def mediaserver_playing(
         self, server: str, count: Optional[int] = 20, **kwargs
-    ) -> List[schemas.MediaServerPlayItem]:
+    ) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
-            return []
-        return server_obj.get_resume(num=count) or []
+            return None
+        return server_obj.get_resume(num=count)
 
     def mediaserver_play_url(
         self, server: str, item_id: Union[str, int]
@@ -331,14 +331,14 @@ class UgreenModule(_ModuleBase, _MediaServerBase[Ugreen]):
         server: Optional[str] = None,
         count: Optional[int] = 20,
         **kwargs,
-    ) -> List[schemas.MediaServerPlayItem]:
+    ) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
-            return []
-        return server_obj.get_latest(num=count) or []
+            return None
+        return server_obj.get_latest(num=count)
 
     def mediaserver_latest_images(
         self,

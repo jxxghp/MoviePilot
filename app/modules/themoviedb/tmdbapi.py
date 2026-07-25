@@ -1758,7 +1758,9 @@ class TmdbApi:
                 ret_infos.append(tv)
         return ret_infos
 
-    async def async_discover_movies(self, params: dict) -> List[dict]:
+    async def async_discover_movies(
+            self, params: dict, raise_exception: bool = False
+    ) -> List[dict]:
         """
         发现电影（异步版本）
         """
@@ -1771,9 +1773,13 @@ class TmdbApi:
             return items
         except Exception as e:
             logger.error(f"获取电影发现失败：{str(e)}")
+            if raise_exception:
+                raise
             return []
 
-    async def async_discover_tvs(self, params: dict) -> List[dict]:
+    async def async_discover_tvs(
+            self, params: dict, raise_exception: bool = False
+    ) -> List[dict]:
         """
         发现电视剧（异步版本）
         """
@@ -1786,6 +1792,8 @@ class TmdbApi:
             return items
         except Exception as e:
             logger.error(f"获取电视剧发现失败：{str(e)}")
+            if raise_exception:
+                raise
             return []
 
     async def async_search_persons(self, name: str) -> List[dict]:
@@ -2006,7 +2014,9 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    async def async_discover_trending(self, page: Optional[int] = 1) -> List[dict]:
+    async def async_discover_trending(
+            self, page: Optional[int] = 1, raise_exception: bool = False
+    ) -> List[dict]:
         """
         流行趋势（异步版本）
         """
@@ -2018,6 +2028,8 @@ class TmdbApi:
             return self._normalize_trending_infos(tmdbinfo)
         except Exception as e:
             logger.error(str(e))
+            if raise_exception:
+                raise
             return []
 
     async def async_get_movie_images(

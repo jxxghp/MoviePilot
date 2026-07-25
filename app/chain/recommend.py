@@ -313,7 +313,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                 vote_average: Optional[float] = 0.0,
                                 vote_count: Optional[int] = 0,
                                 release_date: Optional[str] = "",
-                                page: Optional[int] = 1) -> List[dict]:
+                                page: Optional[int] = 1,
+                                raise_exception: bool = False) -> List[dict]:
         """
         异步TMDB热门电影
         """
@@ -326,7 +327,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                                     vote_average=vote_average,
                                                     vote_count=vote_count,
                                                     release_date=release_date,
-                                                    page=page)
+                                                    page=page,
+                                                    raise_exception=raise_exception)
         return [movie.to_dict() for movie in movies] if movies else []
 
     @log_execution_time(logger=logger)
@@ -339,7 +341,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                              vote_average: Optional[float] = 0.0,
                              vote_count: Optional[int] = 0,
                              release_date: Optional[str] = "",
-                             page: Optional[int] = 1) -> List[dict]:
+                             page: Optional[int] = 1,
+                             raise_exception: bool = False) -> List[dict]:
         """
         异步TMDB热门电视剧
         """
@@ -352,16 +355,23 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                                  vote_average=vote_average,
                                                  vote_count=vote_count,
                                                  release_date=release_date,
-                                                 page=page)
+                                                 page=page,
+                                                 raise_exception=raise_exception)
         return [tv.to_dict() for tv in tvs] if tvs else []
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
-    async def async_tmdb_trending(self, page: Optional[int] = 1) -> List[dict]:
+    async def async_tmdb_trending(
+            self, page: Optional[int] = 1, raise_exception: bool = False
+    ) -> List[dict]:
         """
         异步TMDB流行趋势
         """
-        infos = await TmdbChain().async_run_module("async_tmdb_trending", page=page)
+        infos = await TmdbChain().async_run_module(
+            "async_tmdb_trending",
+            page=page,
+            raise_exception=raise_exception,
+        )
         return [info.to_dict() for info in infos] if infos else []
 
     @log_execution_time(logger=logger)

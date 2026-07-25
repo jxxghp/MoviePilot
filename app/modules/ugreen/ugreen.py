@@ -520,7 +520,7 @@ class Ugreen:
 
         return paths
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         获取绿联影视媒体库列表
 
@@ -528,9 +528,11 @@ class Ugreen:
         :return: 媒体库列表
         """
         if not self.is_authenticated() or not self._api:
-            return []
+            return None
 
         media_libs = self._api.media_list()
+        if media_libs is None:
+            return None
         self._library_paths = self.__load_library_paths()
         libraries = []
         self._libraries = {}
@@ -957,8 +959,8 @@ class Ugreen:
 
         page_size = max(1, num or 12)
         data = self._api.recently_played(page=1, page_size=page_size)
-        if not data:
-            return []
+        if data is None:
+            return None
 
         ret_resume = []
         for item in data.get("video_arr") or []:
@@ -982,8 +984,8 @@ class Ugreen:
 
         page_size = max(1, num)
         data = self._api.recently_updated(page=1, page_size=page_size)
-        if not data:
-            return []
+        if data is None:
+            return None
 
         latest = []
         for item in data.get("video_arr") or []:

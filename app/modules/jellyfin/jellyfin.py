@@ -114,42 +114,50 @@ class Jellyfin:
             logger.error(f"连接Library/VirtualFolders 出错：" + str(e))
             return []
 
-    def __get_jellyfin_librarys(self, username: Optional[str] = None) -> List[dict]:
+    def __get_jellyfin_librarys(self, username: Optional[str] = None) -> Optional[List[dict]]:
         """
         获取Jellyfin媒体库的信息
         """
         if not self._host or not self._apikey:
-            return []
+            return None
         if username:
             user = self.get_user(username)
         else:
             user = self.user
         if not user:
-            return []
+            return None
         # 使用标准库路径拼接结合统一 URL 规整，避免 host 尾部斜杠缺失导致的寻址偏移。
         url = UrlUtils.combine_url(self._host, posixpath.join("Users", str(user), "Views"))
         if not url:
-            return []
+            return None
         params = {"api_key": self._apikey}
         try:
             res = RequestUtils().get_res(url, params)
             if res:
-                return res.json().get("Items")
+                items = res.json().get("Items")
+                return items if isinstance(items, list) else None
             else:
                 logger.error(f"Users/Views 未获取到返回数据")
-                return []
+                return None
         except Exception as e:
             logger.error(f"连接Users/Views 出错：" + str(e))
-            return []
+            return None
 
-    def get_librarys(self, username: Optional[str] = None, hidden: Optional[bool] = False) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(
+        self,
+        username: Optional[str] = None,
+        hidden: Optional[bool] = False,
+    ) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
         if not self._host or not self._apikey:
-            return []
+            return None
+        source_libraries = self.__get_jellyfin_librarys(username)
+        if source_libraries is None:
+            return None
         libraries = []
-        for library in self.__get_jellyfin_librarys(username) or []:
+        for library in source_libraries:
             if hidden and self._sync_libraries and "all" not in self._sync_libraries \
                     and library.get("Id") not in self._sync_libraries:
                 continue
@@ -1027,6 +1035,8 @@ class Jellyfin:
             user = self.get_user(username)
         else:
             user = self.user
+        if not user:
+            return None
 
         url = f"{self._host}Users/{user}/Items/Resume"
         params = {
@@ -1083,7 +1093,7 @@ class Jellyfin:
                 logger.error(f"Users/Items/Resume 未获取到返回数据")
         except Exception as e:
             logger.error(f"连接Users/Items/Resume出错：" + str(e))
-        return []
+        return None
 
     def get_latest(self, num=20, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
@@ -1095,6 +1105,8 @@ class Jellyfin:
             user = self.get_user(username)
         else:
             user = self.user
+        if not user:
+            return None
         url = f"{self._host}Users/{user}/Items/Latest"
         params = {
             "Limit": 100,
@@ -1136,7 +1148,7 @@ class Jellyfin:
                 logger.error(f"Users/Items/Latest 未获取到返回数据")
         except Exception as e:
             logger.error(f"连接Users/Items/Latest出错：" + str(e))
-        return []
+        return None
 
     def get_user_library_folders(self):
         """

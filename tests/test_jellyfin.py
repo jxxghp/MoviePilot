@@ -131,14 +131,14 @@ class JellyfinUserResolutionTest(unittest.TestCase):
             )
         )
 
-    def test_get_jellyfin_librarys_returns_empty_when_user_missing(self):
+    def test_get_jellyfin_librarys_reports_failure_when_user_missing(self):
         client = self._build_client()
         client.user = None
 
         with patch.object(jellyfin_module, "RequestUtils") as request_utils_cls:
             libraries = client._Jellyfin__get_jellyfin_librarys()
 
-        self.assertEqual(libraries, [])
+        self.assertIsNone(libraries)
         request_utils_cls.assert_not_called()
 
     def test_get_jellyfin_librarys_uses_normalized_views_url(self):

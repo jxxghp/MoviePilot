@@ -1,15 +1,27 @@
-from typing import Any, List, Optional
+from typing import Any, Awaitable, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app import schemas
 from app.chain.recommend import RecommendChain
 from app.core.event import eventmanager
 from app.core.security import verify_token
+from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
 from app.schemas import RecommendSourceEventData
 from app.schemas.types import ChainEventType
 
 router = APIRouter()
+
+
+async def _require_tmdb_result(operation: Awaitable[List[Any]]) -> List[Any]:
+    """保留 TMDB 成功空列表，并把上游请求异常转换为明确的网关错误。"""
+    try:
+        return await operation
+    except TMDbException as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="TMDB请求失败",
+        ) from error
 
 
 @router.get(
@@ -204,16 +216,19 @@ async def tmdb_movies(
     """
     浏览TMDB电影信息
     """
-    return await RecommendChain().async_tmdb_movies(
-        sort_by=sort_by,
-        with_genres=with_genres,
-        with_original_language=with_original_language,
-        with_keywords=with_keywords,
-        with_watch_providers=with_watch_providers,
-        vote_average=vote_average,
-        vote_count=vote_count,
-        release_date=release_date,
-        page=page,
+    return await _require_tmdb_result(
+        RecommendChain().async_tmdb_movies(
+            sort_by=sort_by,
+            with_genres=with_genres,
+            with_original_language=with_original_language,
+            with_keywords=with_keywords,
+            with_watch_providers=with_watch_providers,
+            vote_average=vote_average,
+            vote_count=vote_count,
+            release_date=release_date,
+            page=page,
+            raise_exception=True,
+        )
     )
 
 
@@ -233,16 +248,19 @@ async def tmdb_tvs(
     """
     浏览TMDB剧集信息
     """
-    return await RecommendChain().async_tmdb_tvs(
-        sort_by=sort_by,
-        with_genres=with_genres,
-        with_original_language=with_original_language,
-        with_keywords=with_keywords,
-        with_watch_providers=with_watch_providers,
-        vote_average=vote_average,
-        vote_count=vote_count,
-        release_date=release_date,
-        page=page,
+    return await _require_tmdb_result(
+        RecommendChain().async_tmdb_tvs(
+            sort_by=sort_by,
+            with_genres=with_genres,
+            with_original_language=with_original_language,
+            with_keywords=with_keywords,
+            with_watch_providers=with_watch_providers,
+            vote_average=vote_average,
+            vote_count=vote_count,
+            release_date=release_date,
+            page=page,
+            raise_exception=True,
+        )
     )
 
 
@@ -255,4 +273,6 @@ async def tmdb_trending(
     """
     TMDB流行趋势
     """
-    return await RecommendChain().async_tmdb_trending(page=page)
+    return await _require_tmdb_result(
+        RecommendChain().async_tmdb_trending(page=page, raise_exception=True)
+    )
