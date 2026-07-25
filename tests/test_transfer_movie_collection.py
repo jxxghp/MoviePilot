@@ -98,7 +98,8 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         lambda: SimpleNamespace(
             recognize_by_meta=lambda meta, obtain_images: (
                 recognized_meta.append(meta) or fallback_media
-            )
+            ),
+            supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
     task = TransferTask(

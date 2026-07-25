@@ -863,6 +863,7 @@ async def delete_subscribe(
                 "anilistid": subscribe_info.get("anilistid"),
                 "media_source": subscribe_info.get("media_source"),
                 "media_id": subscribe_info.get("media_id"),
+                "season": subscribe_info.get("season"),
             }
         )
     return schemas.Response(success=True)

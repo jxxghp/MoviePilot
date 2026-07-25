@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Optional
+from typing import Any, Callable, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -60,9 +60,7 @@ class TransferTask(BaseModel):
     fileitem: FileItem
     meta: Optional[Any] = None
     mediainfo: Optional[Any] = None
-    media_source: Optional[
-        Literal["themoviedb", "douban", "bangumi", "anilist"]
-    ] = None
+    media_source: Optional[str] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None
@@ -220,9 +218,7 @@ class ManualTransferItem(BaseModel):
     # AniList ID
     anilistid: Optional[int] = None
     # 媒体数据源
-    media_source: Optional[
-        Literal["themoviedb", "douban", "bangumi", "anilist"]
-    ] = None
+    media_source: Optional[str] = None
     # 数据源原生ID
     media_id: Optional[str] = None
     # 类型
