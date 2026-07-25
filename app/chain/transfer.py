@@ -3102,6 +3102,38 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         else:
             logger.info(f"正在计划整理 {planned_file_count} 个文件...")
 
+        def _same_history_media(transferd: TransferHistory) -> bool:
+            """
+            判断当前手动整理指定的媒体信息是否与历史记录一致。
+
+            手动整理时用户会重新指定媒体信息（如修正误识别的年份/季），
+            此时历史记录的源路径虽未变化，但所属媒体已不同，不应被当作
+            "已整理过"拦截，否则用户永远无法用手动整理修正误识别的结果。
+            """
+            if not mediainfo:
+                return True
+            current_source = mediainfo.source
+            current_media_id = mediainfo.to_dict().get("media_id")
+            if transferd.media_source and transferd.media_id:
+                if current_source and current_media_id:
+                    return (
+                        transferd.media_source == current_source
+                        and transferd.media_id == current_media_id
+                    )
+                return True
+            # 兼容未记录统一媒体标识的历史数据，回退比较各来源的ID
+            for current_id, history_id in (
+                    (mediainfo.tmdb_id, transferd.tmdbid),
+                    (mediainfo.douban_id, transferd.doubanid),
+                    (mediainfo.imdb_id, transferd.imdbid),
+                    (mediainfo.tvdb_id, transferd.tvdbid),
+                    (mediainfo.bangumi_id, transferd.bangumiid),
+                    (mediainfo.anilist_id, transferd.anilistid),
+            ):
+                if current_id and history_id:
+                    return str(current_id) == str(history_id)
+            return True
+
         # 整理所有文件
         transfer_tasks: List[TransferTask] = []
         skipped_history_count = 0
@@ -3114,12 +3146,13 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     raise OperationInterrupted()
                 file_path = Path(file_item.path)
 
-                # 整理成功的不再处理
+                # 整理成功的不再处理，但手动整理时如果本次指定的媒体信息
+                # 与历史记录不一致（用户在修正误识别的媒体），则不视为已整理过
                 if not force and not preview:
                     transferd = TransferHistoryOper().get_by_src(
                         file_item.path, storage=file_item.storage
                     )
-                    if transferd:
+                    if transferd and (not manual or _same_history_media(transferd)):
                         skipped_history_count += 1
                         if not transferd.status:
                             all_success = False

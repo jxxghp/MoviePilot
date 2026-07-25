@@ -59,6 +59,8 @@ class FakeMedia:
         """构造与正式 MediaInfo 身份字段一致的测试媒体对象。"""
         self.tmdb_id = tmdb_id
         self.douban_id = None
+        self.imdb_id = None
+        self.tvdb_id = None
         self.bangumi_id = None
         self.anilist_id = None
         self.source = "themoviedb"
@@ -446,6 +448,79 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(state, errmsg)
         # 手动集数偏移只能应用一次，避免 E14 + (-1) 被二次处理成 E12。
         self.assertEqual([13], planned_episodes)
+
+    def _run_manual_reorganize_with_history(self, history_tmdbid: int, current_tmdbid: int):
+        """
+        构造一次手动整理，源文件已有历史记录（tmdbid=history_tmdbid），
+        本次指定的媒体信息 tmdbid=current_tmdbid，返回 (state, errmsg, handled)。
+        """
+        chain = make_transfer_chain()
+        source_fileitem = make_fileitem("/downloads/Test.Show.2026.S01E14.mkv")
+        handled = []
+
+        chain._TransferChain__get_trans_fileitems = lambda fileitem, predicate: [
+            (source_fileitem, False)
+        ]
+        chain._TransferChain__put_to_jobview = lambda task: True
+        chain._TransferChain__register_scrape_batch_task = lambda task: None
+        chain._TransferChain__close_scrape_batch = lambda batch_id: None
+        chain._TransferChain__handle_transfer = lambda task, callback=None: handled.append(task) or (True, "")
+
+        history = SimpleNamespace(
+            status=True,
+            download_hash=None,
+            downloader=None,
+            media_source=None,
+            media_id=None,
+            tmdbid=history_tmdbid,
+            doubanid=None,
+            imdbid=None,
+            tvdbid=None,
+            bangumiid=None,
+            anilistid=None,
+        )
+        transfer_history_oper = SimpleNamespace(get_by_src=lambda src, storage=None: history)
+        download_history_oper = SimpleNamespace(
+            get_by_hash=lambda download_hash: None,
+            get_file_by_fullpath=lambda fullpath: None,
+            get_files_by_savepath=lambda savepath: [],
+            get_by_path=lambda path: None,
+        )
+        system_config_oper = SimpleNamespace(get=lambda key: None)
+
+        with patch("app.chain.transfer.TransferHistoryOper", return_value=transfer_history_oper), \
+                patch("app.chain.transfer.DownloadHistoryOper", return_value=download_history_oper), \
+                patch("app.chain.transfer.SystemConfigOper", return_value=system_config_oper), \
+                patch("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
+            state, errmsg = chain.do_transfer(
+                fileitem=source_fileitem,
+                mediainfo=FakeMedia(tmdb_id=current_tmdbid),
+                target_path=Path("/library"),
+                manual=True,
+                background=False,
+            )
+        return state, errmsg, handled
+
+    def test_manual_reorganize_skips_when_history_media_matches(self):
+        # 手动整理未修正媒体信息（同一部剧），历史记录应继续拦截，避免重复整理。
+        state, errmsg, handled = self._run_manual_reorganize_with_history(
+            history_tmdbid=12345, current_tmdbid=12345
+        )
+
+        self.assertTrue(state)
+        self.assertEqual("Test.Show.2026.S01E14.mkv 已整理过", errmsg)
+        self.assertEqual([], handled)
+
+    def test_manual_reorganize_proceeds_when_history_media_differs(self):
+        # 用户在手动整理中修正了误识别的媒体（tmdbid 变化），
+        # 不应被旧的整理记录拦截，否则手动整理无法用于纠错。
+        state, errmsg, handled = self._run_manual_reorganize_with_history(
+            history_tmdbid=99999, current_tmdbid=12345
+        )
+
+        self.assertTrue(state, errmsg)
+        self.assertEqual("", errmsg)
+        self.assertEqual(1, len(handled))
 
     def test_completed_media_job_is_removed_after_last_meta_task_fails(self):
         jobview = JobManager()
