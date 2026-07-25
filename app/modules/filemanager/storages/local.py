@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 from typing import Optional, List
@@ -217,8 +218,10 @@ class LocalStorage(StorageBase):
                     if progress_callback:
                         percent = copied_size / total_size * 100
                         progress_callback(percent)
-            # 保留文件时间戳、权限等信息
-            shutil.copystat(src, dest)
+            # 保留文件时间戳（不使用 shutil.copystat，避免在支持 ACL 的文件系统上
+            # 因显式 chmod 而清除目标文件继承自父目录的 ACL 权限）
+            src_stat = src.stat()
+            os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
             return True
         except Exception as e:
             logger.error(f"【本地】复制文件 {src} 失败：{e}")
