@@ -749,8 +749,9 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                     converted = int(value)
                     return converted, str(converted) != str(original_value)
             elif expected_type is float:
-                if isinstance(value, float):
-                    return value, str(value) != str(original_value)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    converted = float(value)
+                    return converted, str(converted) != str(original_value)
                 if isinstance(value, str):
                     converted = float(value)
                     return converted, str(converted) != str(original_value)

@@ -68,6 +68,8 @@ from app.utils.identity import SYSTEM_INTERNAL_USER_ID
 
 
 class AgentChain(ChainBase):
+    """Agent 业务处理链。"""
+
     pass
 
 
@@ -713,7 +715,7 @@ class MoviePilotAgent:
         """
         通过链式事件解析本次 Agent 可用的 LLM 运行时配置。
 
-        若没有插件返回 selected_provider_id，则沿用系统配置，保持既有行为。
+        插件未返回有效配置时沿用系统配置，显式返回的配置优先。
         """
         if self._llm_runtime_config is not None:
             return self._llm_runtime_config
@@ -726,7 +728,7 @@ class MoviePilotAgent:
             base_url_preset=settings.LLM_BASE_URL_PRESET,
             user_agent=settings.LLM_USER_AGENT,
             use_proxy=settings.LLM_USE_PROXY,
-            thinking_level=None,
+            thinking_level=settings.LLM_THINKING_LEVEL,
         )
         selected_event = await eventmanager.async_send_event(
             ChainEventType.AgentLLMProvider,
@@ -761,8 +763,11 @@ class MoviePilotAgent:
         use_proxy = self._get_event_value(resolved_data, "use_proxy")
         if use_proxy is None:
             use_proxy = settings.LLM_USE_PROXY
-        thinking_level = self._clean_optional_text(
-            self._get_event_value(resolved_data, "thinking_level")
+        thinking_level = (
+                self._clean_optional_text(
+                    self._get_event_value(resolved_data, "thinking_level")
+                )
+                or settings.LLM_THINKING_LEVEL
         )
         selected_provider_id = self._clean_optional_text(
             self._get_event_value(resolved_data, "selected_provider_id")
@@ -1040,6 +1045,7 @@ class MoviePilotAgent:
             self.has_message_context,
             self.is_background,
             settings.AI_AGENT_VERBOSE,
+            settings.LLM_TEMPERATURE,
             settings.LLM_MAX_TOOLS,
             settings.LLM_MAX_ITERATIONS,
             self._public_runtime_config_signature(runtime_config),

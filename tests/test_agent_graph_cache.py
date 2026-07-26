@@ -8,6 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent import MoviePilotAgent, ReplyMode, _CompiledAgentBundle
+from app.core.config import settings
 
 
 @pytest.fixture
@@ -62,6 +63,34 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
     assert graph is cached_graph
     assert agent._last_agent_cache_hit is True
     create_agent.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_agent_bundle_signature_changes_with_temperature(monkeypatch) -> None:
+    """温度配置变化时应使会话内 Agent 图缓存失效。"""
+    agent = MoviePilotAgent(session_id="temperature-change", user_id="user-1")
+    runtime_config = {
+        "provider": "openai",
+        "model": "gpt-test",
+        "api_key": "test-key",
+        "base_url": "https://llm.example.com/v1",
+        "base_url_preset": None,
+        "user_agent": None,
+        "use_proxy": False,
+        "thinking_level": "off",
+    }
+
+    with patch.object(
+        agent,
+        "_resolve_llm_runtime_config",
+        new=AsyncMock(return_value=runtime_config),
+    ):
+        monkeypatch.setattr(settings, "LLM_TEMPERATURE", 0.3)
+        initial_signature = await agent._agent_bundle_signature(streaming=False)
+        monkeypatch.setattr(settings, "LLM_TEMPERATURE", 1.0)
+        updated_signature = await agent._agent_bundle_signature(streaming=False)
+
+    assert updated_signature != initial_signature
 
 
 @pytest.mark.anyio
