@@ -1,6 +1,8 @@
 import asyncio
 import json
-from typing import List, Any, Optional, AsyncIterator
+import time
+from typing import Any, AsyncIterator, Iterator, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Body, Request
 from fastapi.responses import StreamingResponse
@@ -23,6 +25,12 @@ router = APIRouter()
 
 _SSE_APPEND_FLUSH_INTERVAL = 1
 _SSE_APPEND_MAX_ITEMS = 48
+_SSE_HEARTBEAT_INTERVAL = 15
+_SSE_REPLACE_MAX_ITEMS = 48
+_SSE_RESPONSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+}
 
 
 def _parse_site_list(sites: Optional[str]) -> Optional[List[int]]:
@@ -180,11 +188,40 @@ def _merge_append_event(pending_event: Optional[dict], event: dict) -> dict:
     return merged_event
 
 
+def _iter_replace_event_batches(event: dict) -> Iterator[dict]:
+    """
+    将超大的最终替换事件拆成有序批次，避免单个 SSE 消息承载全部完整对象。
+    """
+    items = event.get("items")
+    if (
+        event.get("type") != "replace"
+        or not isinstance(items, list)
+        or len(items) <= _SSE_REPLACE_MAX_ITEMS
+    ):
+        yield event
+        return
+
+    batch_count = (len(items) + _SSE_REPLACE_MAX_ITEMS - 1) // _SSE_REPLACE_MAX_ITEMS
+    for batch_index in range(batch_count):
+        start = batch_index * _SSE_REPLACE_MAX_ITEMS
+        batch_event = dict(event)
+        batch_event.update(
+            {
+                "type": "replace" if batch_index == 0 else "append",
+                "items": items[start:start + _SSE_REPLACE_MAX_ITEMS],
+                "replace_batch": True,
+                "batch_index": batch_index,
+                "batch_count": batch_count,
+            }
+        )
+        yield batch_event
+
+
 async def _iter_batched_search_events(
     event_source: AsyncIterator[dict],
 ) -> AsyncIterator[dict]:
     """
-    对搜索流事件做轻量批处理，避免站点结果集中返回时产生过密 SSE。
+    对搜索流事件做轻量批处理，并在上游长时间静默时发送心跳。
     """
     iterator = event_source.__aiter__()
     pending_append_event: Optional[dict] = None
@@ -195,13 +232,19 @@ async def _iter_batched_search_events(
             if next_event_task is None:
                 next_event_task = asyncio.create_task(anext(iterator))
 
-            timeout = _SSE_APPEND_FLUSH_INTERVAL if pending_append_event else None
+            timeout = (
+                _SSE_APPEND_FLUSH_INTERVAL
+                if pending_append_event
+                else _SSE_HEARTBEAT_INTERVAL
+            )
             done, _ = await asyncio.wait({next_event_task}, timeout=timeout)
 
             if not done:
                 if pending_append_event:
                     yield pending_append_event
                     pending_append_event = None
+                else:
+                    yield {"type": "heartbeat"}
                 continue
 
             try:
@@ -227,7 +270,8 @@ async def _iter_batched_search_events(
                 yield pending_append_event
                 pending_append_event = None
 
-            yield event
+            for batched_event in _iter_replace_event_batches(event):
+                yield batched_event
     finally:
         if next_event_task and not next_event_task.done():
             next_event_task.cancel()
@@ -239,13 +283,29 @@ async def _iter_batched_search_events(
 
 async def _stream_search_events(request: Request, event_source: AsyncIterator[dict]):
     """
-    输出搜索SSE事件
+    输出搜索 SSE 事件，并记录连接生命周期与传输规模。
     """
     locale = LocaleHelper.get_locale_from_request(request)
+    search_id = uuid4().hex[:12]
+    request_path = getattr(getattr(request, "url", None), "path", "unknown")
+    started_at = time.monotonic()
+    event_count = 0
+    transmitted_bytes = 0
+    last_event_type = "none"
+    last_stage = "none"
+    termination_reason = "source_exhausted"
+    logger.info(f"渐进式搜索流已建立，搜索ID：{search_id}，路径：{request_path}")
     try:
         has_sent_final_replace = False
         async for event in _iter_batched_search_events(event_source):
+            last_event_type = event.get("type") or "unknown"
+            last_stage = event.get("stage") or last_stage
             if await request.is_disconnected():
+                termination_reason = "client_disconnected"
+                logger.warning(
+                    f"渐进式搜索客户端已断开，搜索ID：{search_id}，路径：{request_path}，"
+                    f"事件：{last_event_type}，阶段：{last_stage}"
+                )
                 break
             # 精确搜索会先发送 replace，再发送 done。done 再带整包 items 只会重复占用带宽和前端内存。
             if event.get("type") == "replace" and event.get("items"):
@@ -257,12 +317,35 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
                 and event.get("items")
             ):
                 event = {key: value for key, value in event.items() if key != "items"}
-            yield _sse_event(event, locale=locale)
+            payload = _sse_event(event, locale=locale)
+            event_count += 1
+            transmitted_bytes += len(payload.encode("utf-8"))
+            if event.get("type") == "done":
+                termination_reason = "completed"
+            yield payload
+    except asyncio.CancelledError:
+        termination_reason = "cancelled"
+        logger.warning(
+            f"渐进式搜索流已取消，搜索ID：{search_id}，路径：{request_path}，"
+            f"事件：{last_event_type}，阶段：{last_stage}"
+        )
+        raise
     except Exception as err:
+        termination_reason = "error"
         logger.error(f"渐进式搜索出错：{err}", exc_info=True)
-        yield _sse_event(
+        payload = _sse_event(
             {"type": "error", "success": False, "message": str(err)},
             locale=locale,
+        )
+        event_count += 1
+        transmitted_bytes += len(payload.encode("utf-8"))
+        yield payload
+    finally:
+        elapsed = time.monotonic() - started_at
+        logger.info(
+            f"渐进式搜索流结束，搜索ID：{search_id}，路径：{request_path}，"
+            f"状态：{termination_reason}，事件数：{event_count}，"
+            f"发送字节：{transmitted_bytes}，耗时：{elapsed:.2f}秒"
         )
 
 
@@ -319,6 +402,7 @@ async def search_by_id_stream(
     search_chain = SearchChain()
 
     async def event_source():
+        """解析媒体身份并输出精确搜索流事件。"""
         search_params, message = await _resolve_media_search_params(
             mediaid=mediaid,
             media_type=media_type,
@@ -341,7 +425,9 @@ async def search_by_id_stream(
             yield event
 
     return StreamingResponse(
-        _stream_search_events(request, event_source()), media_type="text/event-stream"
+        _stream_search_events(request, event_source()),
+        media_type="text/event-stream",
+        headers=_SSE_RESPONSE_HEADERS,
     )
 
 
@@ -401,7 +487,9 @@ async def search_by_title_stream(
         title=keyword, page=page, sites=_parse_site_list(sites), cache_local=True
     )
     return StreamingResponse(
-        _stream_search_events(request, event_source), media_type="text/event-stream"
+        _stream_search_events(request, event_source),
+        media_type="text/event-stream",
+        headers=_SSE_RESPONSE_HEADERS,
     )
 
 
@@ -446,6 +534,7 @@ async def search_subtitle_by_title_stream(
             _iter_signed_subtitle_search_events(event_source),
         ),
         media_type="text/event-stream",
+        headers=_SSE_RESPONSE_HEADERS,
     )
 
 
@@ -558,6 +647,7 @@ async def search_subtitle_by_id_stream(
             _iter_signed_subtitle_search_events(event_source()),
         ),
         media_type="text/event-stream",
+        headers=_SSE_RESPONSE_HEADERS,
     )
 
 

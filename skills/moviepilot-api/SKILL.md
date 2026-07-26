@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 4
+version: 5
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -168,6 +168,8 @@ AniList endpoints prefer the `anilist-chinese` proxy and fall back to official A
 | GET | `/api/v1/search/last` | Get latest search results |
 | GET | `/api/v1/search/last/context` | Get latest search results with replayable params. `params.result_type` is `torrent` or `subtitle` |
 | POST | `/api/v1/search/recommend` | AI recommended resources. Body: `filtered_indices`, `check_only`, `force` |
+
+Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business events; use it only to keep the connection alive. Final `replace` payloads above 48 items are batched: the first event uses `type=replace`, later events use `type=append`, and every batch includes `replace_batch=true`, zero-based `batch_index`, `batch_count`, and final `total_items`. Collect all batches in order and replace the visible result atomically. After a `replace`, the final `done` event omits duplicate `items`.
 
 ### Download (8 endpoints)
 
