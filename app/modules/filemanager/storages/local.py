@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 from typing import Optional, List
@@ -195,11 +196,31 @@ class LocalStorage(StorageBase):
         """
         return Path(fileitem.path)
 
-    def _copy_with_progress(self, src: Path, dest: Path):
+    @staticmethod
+    def _copy_with_target_permissions(src: Path, dest: Path) -> Path:
+        """
+        复制文件内容和时间戳，并保留目标目录赋予新文件的权限。
+
+        目标目录的默认权限或继承 ACL 应作为媒体库的访问策略，复制完成后不能再用
+        源文件权限覆盖，否则部分文件系统会清除已继承的 ACL。
+
+        :param src: 源文件路径
+        :param dest: 目标文件路径
+        :return: 目标文件路径
+        """
+        src = Path(src)
+        dest = Path(dest)
+        src_stat = src.stat()
+        shutil.copyfile(src, dest)
+        os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
+        return dest
+
+    def _copy_with_progress(self, src: Path, dest: Path) -> bool:
         """
         分块复制文件并回调进度
         """
-        total_size = src.stat().st_size
+        src_stat = src.stat()
+        total_size = src_stat.st_size
         copied_size = 0
         progress_callback = transfer_process(src.as_posix())
         try:
@@ -217,8 +238,7 @@ class LocalStorage(StorageBase):
                     if progress_callback:
                         percent = copied_size / total_size * 100
                         progress_callback(percent)
-            # 保留文件时间戳、权限等信息
-            shutil.copystat(src, dest)
+            os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
             return True
         except Exception as e:
             logger.error(f"【本地】复制文件 {src} 失败：{e}")
@@ -273,11 +293,8 @@ class LocalStorage(StorageBase):
                 if self._copy_with_progress(src, dest):
                     return True
             else:
-                code, message = SystemUtils.copy(src, dest)
-                if code == 0:
-                    return True
-                else:
-                    logger.error(f"【本地】复制文件失败：{message}")
+                self._copy_with_target_permissions(src, dest)
+                return True
         except Exception as err:
             logger.error(f"【本地】复制文件失败：{err}")
         return False
@@ -303,11 +320,8 @@ class LocalStorage(StorageBase):
                     src.unlink()
                     return True
             else:
-                code, message = SystemUtils.move(src, dest)
-                if code == 0:
-                    return True
-                else:
-                    logger.error(f"【本地】移动文件失败：{message}")
+                shutil.move(src, dest, copy_function=self._copy_with_target_permissions)
+                return True
         except Exception as err:
             logger.error(f"【本地】移动文件失败：{err}")
         return False
