@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 5
+version: 6
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -288,7 +288,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | POST | `/api/v1/storage/save/{name}` | Save storage config. Body: JSON object |
 | GET | `/api/v1/storage/reset/{name}` | Reset storage config |
 
-### Transfer (6 endpoints)
+### Transfer (7 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -296,7 +296,8 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/transfer/queue` | Transfer queue |
 | DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
 | POST | `/api/v1/transfer/manual/target-path` | Match manual transfer target path. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select the recognition source |
-| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source |
+| POST | `/api/v1/transfer/manual/history` | Query successful transfer-history summary for selected files or directories. Body: ManualTransferItem JSON |
+| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
 | GET | `/api/v1/transfer/now` | Run immediate transfer |
 
 ### Dashboard (19 endpoints)

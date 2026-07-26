@@ -124,7 +124,8 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | GET | `/api/v1/media/{mediaid}` | 查询媒体详情，`mediaid` 支持 `tmdb:`、`douban:`、`bangumi:`、`anilist:` 及插件自定义来源前缀 |
 | POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧）可指定本次刮削媒体 |
 | POST | `/api/v1/transfer/manual/target-path` | 匹配手动整理目标路径；请求体可用 `media_source` + `media_id` 指定数据源原生ID |
-| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源，同时兼容 `tmdbid`、`doubanid`、`bangumiid`、`anilistid` |
+| POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
+| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源，同时兼容 `tmdbid`、`doubanid`、`bangumiid`、`anilistid`；命中失败历史时自动清理旧目标和记录后重试，`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
 
 #### 搜索 / 种子 / 字幕
 

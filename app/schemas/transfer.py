@@ -249,6 +249,19 @@ class ManualTransferItem(BaseModel):
     episode_group: Optional[str] = None
     # 仅预览，不执行整理
     preview: Optional[bool] = False
+    # 重新整理，清理命中的成功历史及其旧目标
+    reorganize: Optional[bool] = False
+
+
+class ManualTransferHistoryInfo(BaseModel):
+    """
+    手动整理命中的成功历史摘要
+    """
+
+    # 是否应显示重新整理操作
+    reorganize: bool = False
+    # 命中的成功历史数量
+    history_count: int = 0
 
 
 class ManualTransferTargetPath(BaseModel):

@@ -1,6 +1,7 @@
 import re
 import time
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 
 from sqlalchemy import Boolean, Column, Index, Integer, JSON, String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,7 +185,17 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def get_by_src(cls, db: Session, src: str, storage: Optional[str] = None):
+    def get_by_src(
+            cls, db: Session, src: str, storage: Optional[str] = None
+    ) -> Optional["TransferHistory"]:
+        """
+        按源路径和存储查询单条整理记录。
+
+        :param db: 数据库会话
+        :param src: 源路径
+        :param storage: 源存储类型
+        :return: 命中的整理记录，未命中时返回 None
+        """
         if storage:
             return db.query(cls).filter(cls.src == src,
                                         cls.src_storage == storage).first()
@@ -193,8 +204,104 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def get_by_dest(cls, db: Session, dest: str):
-        return db.query(cls).filter(cls.dest == dest).first()
+    def get_by_dest(
+            cls, db: Session, dest: str, storage: Optional[str] = None
+    ) -> Optional["TransferHistory"]:
+        """
+        按目标路径和存储查询单条整理记录。
+
+        :param db: 数据库会话
+        :param dest: 目标路径
+        :param storage: 目标存储类型
+        :return: 命中的整理记录，未命中时返回 None
+        """
+        query = db.query(cls).filter(cls.dest == dest)
+        if storage:
+            query = query.filter(cls.dest_storage == storage)
+        return query.first()
+
+    @classmethod
+    @db_query
+    def list_success_by_src(
+            cls,
+            db: Session,
+            src: str,
+            storage: Optional[str] = None,
+            recursive: bool = False,
+    ) -> List["TransferHistory"]:
+        """
+        按源路径查询成功整理记录，目录模式仅匹配其直接或间接子项。
+
+        :param db: 数据库会话
+        :param src: 源路径
+        :param storage: 源存储类型
+        :param recursive: 是否递归匹配目录子项
+        :return: 命中的成功整理记录
+        """
+        normalized_src = (
+            Path(str(src).replace("\\", "/")).as_posix().rstrip("/") or "/"
+        )
+        query = db.query(cls).filter(cls.status.is_(True))
+        if recursive:
+            escaped_src = (
+                normalized_src.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            query = query.filter(
+                or_(
+                    cls.src == normalized_src,
+                    cls.src.like(f"{escaped_src.rstrip('/')}/%", escape="\\"),
+                )
+            )
+        else:
+            query = query.filter(cls.src == normalized_src)
+        if storage:
+            query = query.filter(cls.src_storage == storage)
+        return query.all()
+
+    @classmethod
+    @db_query
+    def list_success_move_by_dest(
+            cls,
+            db: Session,
+            dest: str,
+            storage: Optional[str] = None,
+            recursive: bool = False,
+    ) -> List["TransferHistory"]:
+        """
+        按目标路径查询成功移动记录，供从媒体库现址发起重新整理时识别历史。
+
+        :param db: 数据库会话
+        :param dest: 目标路径
+        :param storage: 目标存储类型
+        :param recursive: 是否递归匹配目录子项
+        :return: 命中的成功移动记录
+        """
+        normalized_dest = (
+            Path(str(dest).replace("\\", "/")).as_posix().rstrip("/") or "/"
+        )
+        query = db.query(cls).filter(
+            cls.status.is_(True),
+            cls.mode.contains("move"),
+        )
+        if recursive:
+            escaped_dest = (
+                normalized_dest.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            query = query.filter(
+                or_(
+                    cls.dest == normalized_dest,
+                    cls.dest.like(f"{escaped_dest.rstrip('/')}/%", escape="\\"),
+                )
+            )
+        else:
+            query = query.filter(cls.dest == normalized_dest)
+        if storage:
+            query = query.filter(cls.dest_storage == storage)
+        return query.all()
 
     @classmethod
     @db_query

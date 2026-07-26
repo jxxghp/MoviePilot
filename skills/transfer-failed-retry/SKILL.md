@@ -1,6 +1,6 @@
 ---
 name: transfer-failed-retry
-version: 1
+version: 2
 description: Use this skill when you need to retry failed file transfers/organizations. Given one or more failed transfer history record IDs, this skill guides you through querying the failure details, deleting the old records, and re-identifying and re-organizing the files. Supports batch processing of multiple files from the same media (e.g., multiple episodes of a TV show). This skill is automatically triggered when the system detects transfer failures and the AI agent retry feature is enabled.
 allowed-tools: query_transfer_history delete_transfer_history recognize_media transfer_file search_media
 ---
@@ -56,7 +56,7 @@ Common failure reasons and how to handle them:
 
 ### Step 3: Delete the Failed History Record(s)
 
-Before retrying, you **must** delete the old failed history record(s). The system skips files that already have a transfer history entry (even failed ones).
+Before an agent-driven retry, delete the exact failed history record(s) so the cleanup is explicit and auditable. The interactive manual-transfer flow now clears matching failed records automatically, but agent retries retain this confirmation step.
 
 ```
 delete_transfer_history(history_id=<record_id>)
@@ -153,7 +153,7 @@ transfer_file(file_path="/downloads/Show.Name.S01E04.1080p.mkv", tmdbid=789, med
 
 ## Important Notes
 
-- **Always delete the old history record first** before retrying. The system will skip files with existing history.
+- **Always delete the old history record first** in this agent workflow so the destructive cleanup remains explicit, even though the interactive manual-transfer flow can clear failed history automatically.
 - **Do not retry** if the source file no longer exists (源目录不存在).
 - **Do not retry** if the error is about missing directory configuration - this requires user intervention.
 - **For unrecognized media**, always try `recognize_media` with the file path first before falling back to `search_media`.
