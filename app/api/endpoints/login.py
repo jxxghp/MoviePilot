@@ -1,12 +1,12 @@
 from datetime import timedelta
-from typing import Any, List, Annotated
+from typing import Annotated, Any, List
+from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 
 from app import schemas
-from app.chain.mediaserver import MediaServerChain
 from app.chain.user import MfaRequired, UserChain
 from app.core import security
 from app.core.config import settings
@@ -14,15 +14,14 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper  # noqa
 from app.helper.image import ImageHelper, WallpaperHelper
 from app.schemas.types import SystemConfigKey
-from app.utils.crypto import HashUtils
-from app.utils.http import RequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.url import UrlUtils
 
 router = APIRouter()
 
 _LOGIN_WALLPAPER_MAX_BYTES = 32 * 1024 * 1024
-_LOGIN_WALLPAPER_MAX_PIXELS = 50_000_000
+_LOGIN_WALLPAPER_PUBLIC_PURPOSE = "login-wallpaper-public"
+_LOGIN_WALLPAPER_MEDIA_PURPOSE = "login-wallpaper-media"
 
 
 @router.post("/access-token", summary="获取token", response_model=schemas.Token)
@@ -103,71 +102,106 @@ def wallpaper() -> Any:
 
 
 @router.get("/wallpapers", summary="登录页面电影海报列表", response_model=List[str])
-def wallpapers(background_tasks: BackgroundTasks, same_origin: bool = False) -> Any:
+def wallpapers(same_origin: bool = False) -> Any:
     """
     获取登录页面电影海报。
 
-    默认保持外链列表合同；同源模式只返回 catalog opaque ID 对应的本地图片入口。
+    默认保持外链列表合同；同源模式只对绝对 HTTP(S) 地址做一对一签名转换，不改变
+    来源数量、顺序、重复项或相对地址。
     """
-    helper = WallpaperHelper()
+    wallpaper_urls = WallpaperHelper().get_wallpapers()
     if not same_origin:
-        return helper.get_wallpapers()
+        return wallpaper_urls
 
-    wallpaper_ids = helper.get_wallpaper_catalog_ids()
-    if wallpaper_ids:
-        background_tasks.add_task(helper.refresh_wallpaper_catalog)
-    else:
-        wallpaper_ids = helper.refresh_wallpaper_catalog()
-    return [f"{settings.API_V1_STR}/login/wallpapers/{item}" for item in wallpaper_ids]
+    purpose = (
+        _LOGIN_WALLPAPER_MEDIA_PURPOSE
+        if settings.WALLPAPER == "mediaserver"
+        else _LOGIN_WALLPAPER_PUBLIC_PURPOSE
+    )
+    return [_login_wallpaper_proxy_url(url, purpose) for url in wallpaper_urls]
 
 
-@router.get("/wallpapers/{wallpaper_id}", summary="登录页面同源壁纸")
-async def wallpaper_image(
-    wallpaper_id: str,
-    if_none_match: Annotated[str | None, Header()] = None,
-) -> Response:
+def _login_wallpaper_proxy_url(url: str, purpose: str) -> str:
+    """将可代理的绝对壁纸地址转换为登录页专用同源签名地址。"""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return url
+    signed_url = SecurityUtils.sign_url(url, purpose=purpose)
+    return (
+        f"{settings.API_V1_STR}/login/wallpapers/image"
+        f"?url={quote(signed_url, safe='')}"
+    )
+
+
+def _url_origin(url: str) -> tuple[str, str, int | None] | None:
+    """返回 HTTP(S) 地址的规范 origin，拒绝缺少主机或携带用户信息的地址。"""
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
+        return None
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+    return parsed.scheme, parsed.hostname.lower(), port
+
+
+@router.get("/wallpapers/image", summary="登录页面同源壁纸")
+async def wallpaper_image(url: str) -> Response:
     """
-    读取 catalog 已登记的壁纸。
-
-    opaque ID 是未登录访问的唯一输入，原始 URL 不进入请求合同；实际抓取仍执行图片
-    allowlist、DNS/私网限制、媒体服务器凭据和磁盘缓存策略。
+    读取后端壁纸来源签发的图片；客户端无法修改目标后继续复用签名。
     """
-    source_url = WallpaperHelper().get_wallpaper_catalog_source(wallpaper_id)
+    source_url = SecurityUtils.verify_signed_url(
+        url, purpose=_LOGIN_WALLPAPER_PUBLIC_PURPOSE
+    )
+    media_source = False
     if not source_url:
+        source_url = SecurityUtils.verify_signed_url(
+            url, purpose=_LOGIN_WALLPAPER_MEDIA_PURPOSE
+        )
+        media_source = bool(source_url)
+    source_origin = _url_origin(source_url or "")
+    if not source_url or not source_origin:
         raise HTTPException(status_code=404, detail="Wallpaper not found")
 
-    allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS)
-
-    async def is_safe_target(url: str) -> bool:
-        """所有远端跳转都必须重新满足登录壁纸的图片代理安全边界。"""
+    async def is_safe_public_target(target_url: str) -> bool:
+        """自定义公共来源可跨域跳转，但每个目标都必须通过 DNS/私网校验。"""
+        target_origin = _url_origin(target_url)
+        if not target_origin:
+            return False
         return await SecurityUtils.is_safe_image_url_async(
-            url,
-            allowed_domains,
+            target_url,
+            {target_origin[1]},
             allowed_private_ranges=settings.IMAGE_PROXY_ALLOWED_PRIVATE_RANGES,
         )
 
-    if not await is_safe_target(source_url):
+    async def is_safe_redirect(target_url: str) -> bool:
+        """媒体服务器签名只授权原 origin；其它跳转按公共图片目标重新校验。"""
+        target_origin = _url_origin(target_url)
+        if media_source and target_origin == source_origin:
+            return True
+        return await is_safe_public_target(target_url)
+
+    if not media_source and not await is_safe_public_target(source_url):
         raise HTTPException(status_code=404, detail="Wallpaper not found")
 
-    fetch_url = SecurityUtils.strip_url_signature(source_url)
-    cookies = MediaServerChain().get_image_cookies(server=None, image_url=source_url)
     content = await ImageHelper().async_fetch_image_guarded(
-        url=fetch_url,
-        redirect_validator=is_safe_target,
+        url=source_url,
+        redirect_validator=is_safe_redirect,
         max_bytes=_LOGIN_WALLPAPER_MAX_BYTES,
-        max_pixels=_LOGIN_WALLPAPER_MAX_PIXELS,
         use_cache=True,
-        cookies=cookies,
     )
     if not content:
         raise HTTPException(status_code=502, detail="Wallpaper unavailable")
 
-    etag = HashUtils.md5(content)
-    headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
-    if if_none_match == etag:
-        return Response(status_code=304, headers=headers)
     return Response(
         content=content,
-        media_type=UrlUtils.get_mime_type(fetch_url, "image/jpeg"),
-        headers=headers,
+        media_type=UrlUtils.get_mime_type(source_url, "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=86400"},
     )
