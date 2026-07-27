@@ -188,16 +188,31 @@ class ImageHelper(metaclass=Singleton):
         return cache_path.as_posix()
 
     @staticmethod
-    def _validate_image(content: bytes) -> bool:
-        """验证图片"""
+    def get_image_mime_type(content: bytes, verify: bool = True) -> Optional[str]:
+        """
+        根据图片内容返回 Pillow 识别的图片 MIME 类型。
+
+        外部响应在写入缓存前需要完整校验；已校验的缓存只需读取格式头。
+        非图片或可脚本化的 MIME 类型不作为图片代理响应。
+        """
         if not content:
-            return False
+            return None
         try:
-            Image.open(io.BytesIO(content)).verify()
-            return True
-        except Exception as e:
-            logger.warn(f"Invalid image format: {e}")
-            return False
+            with Image.open(io.BytesIO(content)) as image:
+                image_format = (image.format or "").upper()
+                if verify:
+                    image.verify()
+            mime_type = Image.MIME.get(image_format)
+            if (
+                not mime_type
+                or not mime_type.startswith("image/")
+                or mime_type == "image/svg+xml"
+            ):
+                return None
+            return mime_type
+        except Exception as err:
+            logger.warning(f"Invalid image format: {err}")
+            return None
 
     @staticmethod
     def _get_request_params(url: str, proxy: Optional[bool], cookies: Optional[str | dict]) -> dict:
@@ -224,6 +239,26 @@ class ImageHelper(metaclass=Singleton):
         """
         获取图片（同步版本）
         """
+        result = self.fetch_image_with_mime_type(
+            url=url,
+            proxy=proxy,
+            use_cache=use_cache,
+            cookies=cookies,
+        )
+        return result[0] if result else None
+
+    def fetch_image_with_mime_type(
+        self,
+        url: str,
+        proxy: Optional[bool] = None,
+        use_cache: bool = True,
+        cookies: Optional[str | dict] = None,
+    ) -> Optional[tuple[bytes, str]]:
+        """
+        同步获取图片及其内容识别 MIME 类型。
+
+        网络响应在写入缓存前完整验证一次；缓存命中仅重新识别格式头。
+        """
         if not url:
             return None
 
@@ -233,7 +268,9 @@ class ImageHelper(metaclass=Singleton):
         if use_cache:
             content = self.file_cache.get(cache_path, region="images")
             if content:
-                return content
+                mime_type = self.get_image_mime_type(content, verify=False)
+                if mime_type:
+                    return content, mime_type
 
         # 请求远程图片
         params = self._get_request_params(url, proxy, cookies)
@@ -243,13 +280,13 @@ class ImageHelper(metaclass=Singleton):
             return None
 
         content = response.content
-        # 验证图片
-        if not self._validate_image(content):
+        mime_type = self.get_image_mime_type(content)
+        if not mime_type:
             return None
 
         # 保存缓存
         self.file_cache.set(cache_path, content, region="images")
-        return content
+        return content, mime_type
 
     async def async_fetch_image(
         self,
@@ -260,6 +297,26 @@ class ImageHelper(metaclass=Singleton):
         """
         获取图片（异步版本）
         """
+        result = await self.async_fetch_image_with_mime_type(
+            url=url,
+            proxy=proxy,
+            use_cache=use_cache,
+            cookies=cookies,
+        )
+        return result[0] if result else None
+
+    async def async_fetch_image_with_mime_type(
+        self,
+        url: str,
+        proxy: Optional[bool] = None,
+        use_cache: bool = True,
+        cookies: Optional[str | dict] = None,
+    ) -> Optional[tuple[bytes, str]]:
+        """
+        异步获取图片及其内容识别 MIME 类型。
+
+        网络响应在写入缓存前完整验证一次；缓存命中仅重新识别格式头。
+        """
         if not url:
             return None
 
@@ -269,7 +326,9 @@ class ImageHelper(metaclass=Singleton):
         if use_cache:
             content = await self.async_file_cache.get(cache_path, region="images")
             if content:
-                return content
+                mime_type = self.get_image_mime_type(content, verify=False)
+                if mime_type:
+                    return content, mime_type
 
         # 请求远程图片
         params = self._get_request_params(url, proxy, cookies)
@@ -279,10 +338,10 @@ class ImageHelper(metaclass=Singleton):
             return None
 
         content = response.content
-        # 验证图片
-        if not self._validate_image(content):
+        mime_type = self.get_image_mime_type(content)
+        if not mime_type:
             return None
 
         # 保存缓存
         await self.async_file_cache.set(cache_path, content, region="images")
-        return content
+        return content, mime_type
