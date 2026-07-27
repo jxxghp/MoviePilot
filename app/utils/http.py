@@ -721,6 +721,39 @@ class RequestUtils:
         return cache_headers
 
     @staticmethod
+    def if_none_match_matches(if_none_match: Optional[str], etag: Optional[str]) -> bool:
+        """
+        按 entity-tag 语义判断 If-None-Match 是否命中当前响应的 ETag
+
+        条件缓存的客户端会发送带引号的标签、弱标签、逗号分隔的标签列表或 `*`，
+        直接做裸摘要字符串全等比较会让 304 永远无法命中。这里按 RFC 9110
+        的弱比较规则解析请求头：`*` 命中任何已存在的 ETag，标签列表逐项比较，
+        比较前统一剥离 `W/` 前缀和外层引号。
+
+        :param if_none_match: 请求的 If-None-Match 头部，可为 None
+        :param etag: 本次响应生成的 ETag，可为裸摘要或带引号的标签
+        :return: 命中（应返回 304）时为 True
+        """
+        if not if_none_match or not etag:
+            return False
+
+        def normalize(tag: str) -> str:
+            tag = tag.strip()
+            if tag[:2].upper() == "W/":
+                tag = tag[2:].strip()
+            if len(tag) >= 2 and tag.startswith('"') and tag.endswith('"'):
+                tag = tag[1:-1]
+            return tag
+
+        if if_none_match.strip() == "*":
+            return True
+
+        current = normalize(etag)
+        if not current:
+            return False
+        return any(normalize(candidate) == current for candidate in if_none_match.split(","))
+
+    @staticmethod
     def detect_encoding_from_html_response(
         response: Response,
         performance_mode: bool = False,
