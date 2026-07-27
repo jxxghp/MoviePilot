@@ -216,4 +216,5 @@ def test_fetch_image_adds_nosniff_to_not_modified_response():
 
     assert response is not None
     assert response.status_code == 304
+    assert response.headers["content-type"] == "image/jpeg"
     assert response.headers["x-content-type-options"] == "nosniff"

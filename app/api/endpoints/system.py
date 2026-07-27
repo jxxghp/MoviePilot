@@ -595,6 +595,7 @@ async def fetch_image(
         # 检查 If-None-Match
         etag = HashUtils.md5(content)
         headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
+        headers["Content-Type"] = media_type
         headers["X-Content-Type-Options"] = "nosniff"
         if if_none_match == etag:
             return Response(status_code=304, headers=headers)
