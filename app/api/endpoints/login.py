@@ -1,8 +1,8 @@
 from datetime import timedelta
 from typing import Annotated, Any, List
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlunparse
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 
@@ -14,6 +14,8 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper  # noqa
 from app.helper.image import ImageHelper, WallpaperHelper
 from app.schemas.types import SystemConfigKey
+from app.utils.crypto import HashUtils
+from app.utils.http import RequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.url import UrlUtils
 
@@ -122,9 +124,18 @@ def wallpapers(same_origin: bool = False) -> Any:
 
 
 def _login_wallpaper_proxy_url(url: str, purpose: str) -> str:
-    """将可代理的绝对壁纸地址转换为登录页专用同源签名地址。"""
+    """
+    将可代理的绝对壁纸地址转换为登录页专用同源签名地址。
+
+    `//cdn.example/one.jpg` 这类网络路径引用会被浏览器解析成跨源地址，因此按
+    当前页面协议补全后同样走代理；只有不带 netloc 的相对地址才原样返回。
+    """
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    if not parsed.netloc:
+        return url
+    if not parsed.scheme:
+        url = urlunparse(parsed._replace(scheme="https"))
+    elif parsed.scheme not in {"http", "https"}:
         return url
     signed_url = SecurityUtils.sign_url(url, purpose=purpose)
     return (
@@ -153,9 +164,14 @@ def _url_origin(url: str) -> tuple[str, str, int | None] | None:
 
 
 @router.get("/wallpapers/image", summary="登录页面同源壁纸")
-async def wallpaper_image(url: str) -> Response:
+async def wallpaper_image(
+    url: str,
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
     """
     读取后端壁纸来源签发的图片；客户端无法修改目标后继续复用签名。
+
+    响应带内容 ETag，缓存过期后条件请求命中时只返回 304。
     """
     source_url = SecurityUtils.verify_signed_url(
         url, purpose=_LOGIN_WALLPAPER_PUBLIC_PURPOSE
@@ -191,17 +207,31 @@ async def wallpaper_image(url: str) -> Response:
     if not media_source and not await is_safe_public_target(source_url):
         raise HTTPException(status_code=404, detail="Wallpaper not found")
 
+    # 媒体服务器来源额外继承原 origin 的私网授权，与公共来源的重定向授权范围不同，
+    # 因此按来源类型声明策略标识，只让同策略的并发请求共享一次抓取。
+    redirect_policy = (
+        f"{_LOGIN_WALLPAPER_MEDIA_PURPOSE}:{source_origin[0]}://"
+        f"{source_origin[1]}:{source_origin[2]}"
+        if media_source
+        else _LOGIN_WALLPAPER_PUBLIC_PURPOSE
+    )
     content = await ImageHelper().async_fetch_image_guarded(
         url=source_url,
         redirect_validator=is_safe_redirect,
+        redirect_policy=redirect_policy,
         max_bytes=_LOGIN_WALLPAPER_MAX_BYTES,
         use_cache=True,
     )
     if not content:
         raise HTTPException(status_code=502, detail="Wallpaper unavailable")
 
+    etag = f'"{HashUtils.md5(content)}"'
+    headers = RequestUtils.generate_cache_headers(etag, max_age=86400)
+    if RequestUtils.if_none_match_matches(if_none_match, etag):
+        return Response(status_code=304, headers=headers)
+
     return Response(
         content=content,
         media_type=UrlUtils.get_mime_type(source_url, "image/jpeg"),
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers=headers,
     )

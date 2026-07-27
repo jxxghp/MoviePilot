@@ -180,7 +180,7 @@ class ImageHelper(metaclass=Singleton):
         _ttl = settings.GLOBAL_IMAGE_CACHE_DAYS * 24 * 3600
         self.file_cache = FileCache(base=_base_path, ttl=_ttl)
         self.async_file_cache = AsyncFileCache(base=_base_path, ttl=_ttl)
-        self._guarded_fetch_tasks: dict[str, asyncio.Task[Optional[bytes]]] = {}
+        self._guarded_fetch_tasks: dict[tuple, asyncio.Task[Optional[bytes]]] = {}
         self._guarded_fetch_tasks_lock = threading.Lock()
 
     @staticmethod
@@ -297,6 +297,7 @@ class ImageHelper(metaclass=Singleton):
         url: str,
         *,
         redirect_validator: Callable[[str], Awaitable[bool]],
+        redirect_policy: str,
         max_bytes: int,
         proxy: Optional[bool] = None,
         use_cache: bool = True,
@@ -305,8 +306,14 @@ class ImageHelper(metaclass=Singleton):
         """
         以有界流式请求抓取需要逐跳校验的图片。
 
-        同一缓存键的并发调用共享一次远端抓取；每个重定向目标必须重新通过调用方
-        的安全校验，字节上限和图片有效性检查在写入共享缓存前生效。
+        每个重定向目标必须重新通过调用方的安全校验，字节上限和图片有效性检查在
+        写入共享缓存前生效。只有抓取策略完全等价的并发调用才共享一次远端抓取：
+        合并键包含缓存键、`redirect_policy`、字节上限、代理与重定向上限，避免某
+        次调用收到超出自身上限的图片，或沿用他人的重定向授权。
+
+        :param redirect_validator: 逐跳校验重定向目标的协程
+        :param redirect_policy: 描述该校验授权范围的稳定标识；`redirect_validator`
+            通常是每次请求新建的闭包，无法按对象身份判断等价，由调用方显式声明
         """
         if not url or max_bytes <= 0:
             return None
@@ -319,9 +326,17 @@ class ImageHelper(metaclass=Singleton):
                     return content
                 await self.async_file_cache.delete(cache_path, region="images")
 
+        task_key = (
+            cache_path,
+            redirect_policy,
+            max_bytes,
+            proxy,
+            use_cache,
+            max_redirects,
+        )
         loop = asyncio.get_running_loop()
         with self._guarded_fetch_tasks_lock:
-            task = self._guarded_fetch_tasks.get(cache_path)
+            task = self._guarded_fetch_tasks.get(task_key)
             if task is None or task.get_loop() is not loop:
                 task = loop.create_task(
                     self._download_guarded_image(
@@ -334,9 +349,9 @@ class ImageHelper(metaclass=Singleton):
                         max_redirects=max_redirects,
                     )
                 )
-                self._guarded_fetch_tasks[cache_path] = task
+                self._guarded_fetch_tasks[task_key] = task
                 task.add_done_callback(
-                    lambda completed, key=cache_path: self._forget_guarded_fetch_task(
+                    lambda completed, key=task_key: self._forget_guarded_fetch_task(
                         key, completed
                     )
                 )
@@ -344,12 +359,12 @@ class ImageHelper(metaclass=Singleton):
         return await asyncio.shield(task)
 
     def _forget_guarded_fetch_task(
-        self, cache_path: str, task: asyncio.Task[Optional[bytes]]
+        self, task_key: tuple, task: asyncio.Task[Optional[bytes]]
     ) -> None:
-        """抓取完成后只移除仍指向该任务的缓存键，避免旧任务清除后继任务。"""
+        """抓取完成后只移除仍指向该任务的合并键，避免旧任务清除后继任务。"""
         with self._guarded_fetch_tasks_lock:
-            if self._guarded_fetch_tasks.get(cache_path) is task:
-                self._guarded_fetch_tasks.pop(cache_path, None)
+            if self._guarded_fetch_tasks.get(task_key) is task:
+                self._guarded_fetch_tasks.pop(task_key, None)
 
     async def _download_guarded_image(
         self,
