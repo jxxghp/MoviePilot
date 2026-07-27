@@ -88,7 +88,9 @@ class NettestSecurityTest(unittest.TestCase):
         image_url = "http://192.168.1.50:8096/System/Info/Public"
         signed_url = system_endpoint.SecurityUtils.sign_url(image_url)
         image_helper = Mock()
-        image_helper.async_fetch_image = AsyncMock(return_value=b"image-bytes")
+        image_helper.async_fetch_image_with_mime_type = AsyncMock(
+            return_value=(b"image-bytes", "image/jpeg")
+        )
 
         with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
             system_endpoint.HashUtils, "md5", return_value="etag", create=True
@@ -103,7 +105,7 @@ class NettestSecurityTest(unittest.TestCase):
             )
 
         self.assertEqual(resp.status_code, 200)
-        image_helper.async_fetch_image.assert_awaited_once_with(
+        image_helper.async_fetch_image_with_mime_type.assert_awaited_once_with(
             url=image_url,
             proxy=None,
             use_cache=False,
@@ -133,7 +135,9 @@ class NettestSecurityTest(unittest.TestCase):
         图片代理在域名白名单命中后，可按配置放行指定非公网解析网段。
         """
         image_helper = Mock()
-        image_helper.async_fetch_image = AsyncMock(return_value=b"image-bytes")
+        image_helper.async_fetch_image_with_mime_type = AsyncMock(
+            return_value=(b"image-bytes", "image/jpeg")
+        )
 
         with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
             system_endpoint.HashUtils, "md5", return_value="etag", create=True
@@ -161,7 +165,7 @@ class NettestSecurityTest(unittest.TestCase):
             )
 
         self.assertEqual(resp.status_code, 200)
-        image_helper.async_fetch_image.assert_awaited_once_with(
+        image_helper.async_fetch_image_with_mime_type.assert_awaited_once_with(
             url="https://img1.doubanio.com/poster.webp",
             proxy=None,
             use_cache=False,

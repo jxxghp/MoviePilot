@@ -582,23 +582,27 @@ async def fetch_image(
     ):
         return None
 
-    content = await ImageHelper().async_fetch_image(
+    image_result = await ImageHelper().async_fetch_image_with_mime_type(
         url=fetch_url,
         proxy=proxy,
         use_cache=use_cache,
         cookies=cookies,
     )
 
-    if content:
+    if image_result:
+        content, media_type = image_result
+
         # 检查 If-None-Match
         etag = HashUtils.md5(content)
         headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
+        headers["Content-Type"] = media_type
+        headers["X-Content-Type-Options"] = "nosniff"
         if if_none_match == etag:
             return Response(status_code=304, headers=headers)
         # 返回缓存图片
         return Response(
             content=content,
-            media_type=UrlUtils.get_mime_type(fetch_url, "image/jpeg"),
+            media_type=media_type,
             headers=headers,
         )
     return None
