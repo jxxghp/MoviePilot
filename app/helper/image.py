@@ -1,6 +1,10 @@
 import io
+import json
+import hashlib
+import threading
 from pathlib import Path
-from typing import Optional, List
+from typing import Awaitable, Callable, Optional, List
+from urllib.parse import urljoin, urlparse
 
 from PIL import Image
 
@@ -19,6 +23,136 @@ class WallpaperHelper(metaclass=Singleton):
     """
     壁纸帮助类
     """
+
+    _CATALOG_LIMIT = 64
+    _CATALOG_VERSION = 2
+
+    def __init__(self):
+        self._catalog_lock = threading.RLock()
+        self._catalog_refreshing = False
+        self._catalog_sources: dict[str, str] = {}
+        self._catalog_active: list[str] = []
+        self._catalog_order: list[str] = []
+        self._catalog_path = settings.CACHE_PATH / "login_wallpapers" / "catalog.json"
+        self._load_catalog()
+
+    @staticmethod
+    def _catalog_id(url: str) -> str:
+        """生成不可逆且跨进程稳定的壁纸目录标识。"""
+        return hashlib.sha256(url.encode("utf-8")).hexdigest()[:32]
+
+    @staticmethod
+    def _is_catalog_source(url: object) -> bool:
+        """目录只接受后端壁纸来源返回的 HTTP(S) 图片地址。"""
+        return isinstance(url, str) and url.startswith(("http://", "https://"))
+
+    def _load_catalog(self) -> None:
+        """从本地缓存恢复最后一次成功目录，使冷启动无需等待远端来源。"""
+        try:
+            payload = json.loads(self._catalog_path.read_text(encoding="utf-8"))
+            version = payload.get("version")
+            if version not in {1, self._CATALOG_VERSION}:
+                return
+            entries = payload.get("wallpapers") or []
+            sources = {
+                entry["id"]: entry["url"]
+                for entry in entries
+                if isinstance(entry, dict)
+                and isinstance(entry.get("id"), str)
+                and self._is_catalog_source(entry.get("url"))
+                and entry["id"] == self._catalog_id(entry["url"])
+            }
+            order = list(
+                dict.fromkeys(
+                    entry["id"]
+                    for entry in entries
+                    if isinstance(entry, dict) and entry.get("id") in sources
+                )
+            )[: self._CATALOG_LIMIT]
+            active = payload.get("active") if version == self._CATALOG_VERSION else order[:10]
+            self._catalog_order = order
+            self._catalog_sources = {item: sources[item] for item in order}
+            self._catalog_active = list(
+                dict.fromkeys(
+                    item
+                    for item in (active or [])
+                    if isinstance(item, str) and item in self._catalog_sources
+                )
+            )[: self._CATALOG_LIMIT]
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            self._catalog_sources = {}
+            self._catalog_active = []
+            self._catalog_order = []
+
+    def _persist_catalog(self) -> None:
+        """原子写入有界目录，避免进程退出时留下半写入 JSON。"""
+        self._catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = self._catalog_path.with_suffix(".tmp")
+        payload = {
+            "version": self._CATALOG_VERSION,
+            "active": self._catalog_active,
+            "wallpapers": [
+                {"id": wallpaper_id, "url": self._catalog_sources[wallpaper_id]}
+                for wallpaper_id in self._catalog_order
+                if wallpaper_id in self._catalog_sources
+            ],
+        }
+        temporary_path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+        temporary_path.chmod(0o600)
+        temporary_path.replace(self._catalog_path)
+
+    def register_wallpaper_catalog(self, urls: List[str]) -> List[str]:
+        """
+        登记后端来源已选择的壁纸，并返回当前列表的 opaque ID。
+
+        旧目录项在容量允许时继续保留，保证交叉淡化或旧页面的迟到图片请求仍可完成。
+        """
+        valid_urls = list(
+            dict.fromkeys(url for url in urls if self._is_catalog_source(url))
+        )[: self._CATALOG_LIMIT]
+        if not valid_urls:
+            return self.get_wallpaper_catalog_ids()
+
+        with self._catalog_lock:
+            current_ids = [self._catalog_id(url) for url in valid_urls]
+            preserved_ids = [item for item in self._catalog_order if item not in current_ids]
+            self._catalog_active = current_ids
+            self._catalog_order = (current_ids + preserved_ids)[: self._CATALOG_LIMIT]
+            for url in valid_urls:
+                self._catalog_sources[self._catalog_id(url)] = url
+            self._catalog_sources = {
+                item: self._catalog_sources[item]
+                for item in self._catalog_order
+                if item in self._catalog_sources
+            }
+            try:
+                self._persist_catalog()
+            except OSError as err:
+                logger.warning(f"登录壁纸目录写入失败: {err}")
+            return current_ids
+
+    def get_wallpaper_catalog_ids(self, limit: int = 10) -> List[str]:
+        """读取最后一次成功目录的活动顺序，不触发远端来源请求。"""
+        with self._catalog_lock:
+            return self._catalog_active[:limit]
+
+    def get_wallpaper_catalog_source(self, wallpaper_id: str) -> Optional[str]:
+        """仅解析已登记 opaque ID，客户端无法借此指定任意抓取目标。"""
+        with self._catalog_lock:
+            return self._catalog_sources.get(wallpaper_id)
+
+    def refresh_wallpaper_catalog(self, num: int = 10) -> List[str]:
+        """刷新来源并保留失败前的最后成功目录，同一进程内只允许一个刷新任务。"""
+        with self._catalog_lock:
+            if self._catalog_refreshing:
+                return self._catalog_active[:num]
+            self._catalog_refreshing = True
+        try:
+            self.register_wallpaper_catalog(self.get_wallpapers(num))
+            return self.get_wallpaper_catalog_ids(num)
+        finally:
+            with self._catalog_lock:
+                self._catalog_refreshing = False
 
     def get_wallpaper(self) -> Optional[str]:
         """
@@ -188,12 +322,21 @@ class ImageHelper(metaclass=Singleton):
         return cache_path.as_posix()
 
     @staticmethod
-    def _validate_image(content: bytes) -> bool:
-        """验证图片"""
+    def _validate_image(content: bytes, max_pixels: Optional[int] = None) -> bool:
+        """验证图片格式，并可限制解码后的像素总量。"""
         if not content:
             return False
         try:
-            Image.open(io.BytesIO(content)).verify()
+            with Image.open(io.BytesIO(content)) as image:
+                if max_pixels is not None and image.width * image.height > max_pixels:
+                    logger.warning(
+                        "图片像素超过允许上限: %sx%s > %s",
+                        image.width,
+                        image.height,
+                        max_pixels,
+                    )
+                    return False
+                image.verify()
             return True
         except Exception as e:
             logger.warn(f"Invalid image format: {e}")
@@ -285,4 +428,87 @@ class ImageHelper(metaclass=Singleton):
 
         # 保存缓存
         await self.async_file_cache.set(cache_path, content, region="images")
+        return content
+
+    async def async_fetch_image_guarded(
+        self,
+        url: str,
+        *,
+        redirect_validator: Callable[[str], Awaitable[bool]],
+        max_bytes: int,
+        max_pixels: int,
+        proxy: Optional[bool] = None,
+        use_cache: bool = True,
+        cookies: Optional[str | dict] = None,
+        max_redirects: int = 3,
+    ) -> Optional[bytes]:
+        """
+        以有界流式请求抓取未登录可访问的图片。
+
+        每个重定向目标必须重新通过调用方的安全校验；跨主机跳转不会携带原始
+        Cookie。字节和像素上限在写入共享图片缓存前生效，避免异常来源污染缓存。
+        """
+        if not url or max_bytes <= 0 or max_pixels <= 0:
+            return None
+
+        cache_path = self._prepare_cache_path(url)
+        if use_cache:
+            content = await self.async_file_cache.get(cache_path, region="images")
+            if content:
+                if len(content) <= max_bytes and self._validate_image(content, max_pixels):
+                    return content
+                await self.async_file_cache.delete(cache_path, region="images")
+
+        source_host = (urlparse(url).hostname or "").lower()
+        current_url = url
+        redirects = 0
+
+        while True:
+            current_host = (urlparse(current_url).hostname or "").lower()
+            request_cookies = cookies if current_host == source_host else None
+            params = self._get_request_params(current_url, proxy, request_cookies)
+            request = AsyncRequestUtils(**params, follow_redirects=False)
+
+            async with request.get_stream(current_url) as response:
+                if response is None:
+                    return None
+
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location")
+                    if not location or redirects >= max_redirects:
+                        return None
+                    next_url = urljoin(current_url, location)
+                    if not await redirect_validator(next_url):
+                        return None
+                    current_url = next_url
+                    redirects += 1
+                    continue
+
+                if response.status_code != 200:
+                    logger.warning(
+                        "登录壁纸抓取失败，状态码: %s",
+                        response.status_code,
+                    )
+                    return None
+
+                content_length = response.headers.get("content-length")
+                if content_length:
+                    try:
+                        if int(content_length) > max_bytes:
+                            return None
+                    except ValueError:
+                        pass
+
+                payload = bytearray()
+                async for chunk in response.aiter_bytes():
+                    payload.extend(chunk)
+                    if len(payload) > max_bytes:
+                        return None
+                break
+
+        content = bytes(payload)
+        if not self._validate_image(content, max_pixels):
+            return None
+        if use_cache:
+            await self.async_file_cache.set(cache_path, content, region="images")
         return content
