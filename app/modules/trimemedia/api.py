@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Union
+from urllib.parse import quote
 
 from app.core.config import settings
 from app.log import logger
@@ -108,6 +109,7 @@ class Api:
         "_host",
         "_token",
         "_apikey",
+        "_access_code",
         "_api_path",
         "_request_utils",
         "_version",
@@ -130,17 +132,50 @@ class Api:
     def version(self) -> Optional[Version]:
         return self._version
 
-    def __init__(self, host: str, apikey: str):
+    @property
+    def cookies(self) -> dict:
+        """
+        当前会话的Cookies，开启访问码后包含访问码校验凭证
+        """
+        return self._session.cookies.get_dict()
+
+    def __init__(self, host: str, apikey: str, access_code: Optional[str] = None):
         """
         :param host: 飞牛服务端地址，如http://127.0.0.1:5666/v
+        :param access_code: 访问码，未开启时为空
         """
         self._api_path = "/api/v1"
         self._host = host.rstrip("/")
         self._apikey = apikey
+        self._access_code = access_code
         self._token: Optional[str] = None
         self._version: Optional[Version] = None
         self._session = requests.Session()
         self._request_utils = RequestUtils(session=self._session, timeout=10)
+
+    def verify_access_code(self) -> bool:
+        """
+        校验访问码，通过后会话获得访问凭证，否则无法访问登录页和各应用接口
+
+        :return: 未配置访问码或校验通过返回True
+        """
+        if not self._access_code:
+            return True
+        # 访问码校验地址位于设备根路径，不在/v下
+        root = self._host[: -len("/v")] if self._host.endswith("/v") else self._host
+        url = f"{root}/c/{quote(self._access_code, safe='')}"
+        res = self._request_utils.get_res(url, allow_redirects=True)
+        if res is None:
+            logger.error(f"校验飞牛访问码失败，无法访问 {url}")
+            return False
+        if res.status_code == 404:
+            # 访问码错误或校验失败时返回404
+            logger.error("飞牛访问码校验失败，请检查访问码是否正确")
+            return False
+        if not res.ok:
+            logger.error(f"飞牛访问码校验失败，状态码：{res.status_code}")
+            return False
+        return True
 
     def sys_version(self) -> Optional[Version]:
         """
@@ -161,6 +196,9 @@ class Api:
 
         :return: 成功返回token 否则返回None
         """
+        # 开启访问码后需先通过访问码校验，否则无法访问登录接口
+        if not self.verify_access_code():
+            return None
         if (
             res := self.request(
                 "/login",

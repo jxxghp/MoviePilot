@@ -12,6 +12,7 @@ from app.utils.url import UrlUtils
 class TrimeMedia:
     _username: Optional[str] = None
     _password: Optional[str] = None
+    _access_code: Optional[str] = None
 
     _userinfo: Optional[fnapi.User] = None
     _host: Optional[str] = None
@@ -28,6 +29,7 @@ class TrimeMedia:
         host: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
+        access_code: Optional[str] = None,
         play_host: Optional[str] = None,
         sync_libraries: Optional[list] = None,
         **kwargs,
@@ -37,13 +39,14 @@ class TrimeMedia:
             return
         self._username = username
         self._password = password
+        self._access_code = access_code
         self._host = host
         self._sync_libraries = sync_libraries or []
 
         if not self.reconnect():
             logger.error(f"请检查服务端地址 {host}")
             return
-        if result := self.__create_api(play_host):
+        if result := self.__create_api(play_host, access_code):
             self._playhost = result.api.host
             result.api.close()
         elif play_host:
@@ -69,11 +72,14 @@ class TrimeMedia:
         version: fnapi.Version
 
     @staticmethod
-    def __create_api(host: Optional[str]) -> Optional["TrimeMedia._ApiCreateResult"]:
+    def __create_api(
+        host: Optional[str], access_code: Optional[str] = None
+    ) -> Optional["TrimeMedia._ApiCreateResult"]:
         """
         创建一个飞牛API
 
         :param host:  服务端地址
+        :param access_code: 访问码，未开启时为空
         :return: 如果地址无效、不可访问则返回None
         """
 
@@ -85,16 +91,19 @@ class TrimeMedia:
         if not host.endswith("/v"):
             # 尝试补上结尾的/v 测试能否正常访问
             res = TrimeMedia._ApiCreateResult()
-            res.api = fnapi.Api(host + "/v", api_key)
-            if fnver := res.api.sys_version():
+            res.api = fnapi.Api(host + "/v", api_key, access_code)
+            # 开启访问码后，需先校验才能访问各应用接口
+            if res.api.verify_access_code() and (fnver := res.api.sys_version()):
                 res.version = fnver
                 return res
+            res.api.close()
         # 测试用户配置的地址
         res = TrimeMedia._ApiCreateResult()
-        res.api = fnapi.Api(host, api_key)
-        if fnver := res.api.sys_version():
+        res.api = fnapi.Api(host, api_key, access_code)
+        if res.api.verify_access_code() and (fnver := res.api.sys_version()):
             res.version = fnver
             return res
+        res.api.close()
         return None
 
     def close(self):
@@ -130,7 +139,7 @@ class TrimeMedia:
         if not self.is_configured():
             return False
         self.disconnect()
-        if result := self.__create_api(self._host):
+        if result := self.__create_api(self._host, self._access_code):
             self._api = result.api
             self._version = result.version
             # 版本号:0.8.53, 服务版本:0.8.23
@@ -683,4 +692,8 @@ class TrimeMedia:
             image_url, [self._api.host], strict=True
         ):
             return None
-        return {"Trim-MC-token": self._api.token}
+        cookies = {"Trim-MC-token": self._api.token}
+        if self._access_code:
+            # 开启访问码后，图片请求也需要携带访问码校验凭证
+            cookies.update(self._api.cookies)
+        return cookies
