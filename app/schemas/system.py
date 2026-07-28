@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 @dataclass
@@ -39,6 +39,26 @@ class MediaServerConf(BaseModel):
     sync_libraries: Optional[list] = Field(default_factory=list)
     # 自动同步间隔（小时），未设置时使用旧全局配置
     sync_interval: Optional[int] = None
+
+    @field_validator("sync_interval", mode="before")
+    @classmethod
+    def validate_sync_interval(cls, value: Any) -> Optional[int]:
+        """
+        兼容前端清空输入框后残留的空字符串等非法值，避免历史配置导致模块初始化失败
+
+        :param value: 原始配置值
+        :return: 合法的间隔小时数，无法解析时返回 None
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
 
 class DownloaderConf(BaseModel):

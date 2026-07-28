@@ -1,7 +1,10 @@
 from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 
+from pydantic import ValidationError
+
 from app.core.module import ModuleManager
 from app.db.systemconfig_oper import SystemConfigOper
+from app.log import logger
 from app.schemas import DownloaderConf, MediaServerConf, NotificationConf, NotificationSwitchConf, ServiceInfo
 from app.schemas.types import NotificationType, SystemConfigKey, ModuleType
 
@@ -25,8 +28,18 @@ class ServiceConfigHelper:
         config_data = SystemConfigOper().get(config_key)
         if not config_data:
             return []
-        # 直接使用 conf_type 来实例化配置对象
-        return [conf_type(**conf) for conf in config_data]
+        configs = []
+        for conf in config_data:
+            if not isinstance(conf, dict):
+                logger.warn(f"{config_key.value} 配置格式不正确，已跳过：{conf}")
+                continue
+            try:
+                # 直接使用 conf_type 来实例化配置对象
+                configs.append(conf_type(**conf))
+            except ValidationError as e:
+                # 单条配置存在非法值时跳过，避免影响其它服务的初始化
+                logger.error(f"{config_key.value} 配置 {conf.get('name')} 校验失败，已跳过：{e}")
+        return configs
 
     @staticmethod
     def get_downloader_configs() -> List[DownloaderConf]:
