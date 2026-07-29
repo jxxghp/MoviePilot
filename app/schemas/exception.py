@@ -36,3 +36,12 @@ class OperationInterrupted(KeyboardInterrupt):
     用于表示操作被中断
     """
     pass
+
+
+class StorageQueryError(Exception):
+    """
+    用于表示存储查询无法确认结果的异常类。
+    当文件信息查询因网络、限流或接口错误失败（区别于「确认不存在」）时抛出，
+    调用方不应把该状态当作文件不存在处理。
+    """
+    pass

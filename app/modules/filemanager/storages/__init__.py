@@ -174,6 +174,13 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
+        默认实现不区分「不存在」与「查询失败」，由具体存储按需覆写。
+        """
+        return self.get_item(path)
+
     def get_parent(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取父目录

@@ -1565,7 +1565,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             logger.info(__end_msg)
                             self._progress.update(value=100, text=__end_msg)
                             self._progress.end()
-                            # 重置计数
+                            # 重置计数，_total_num 一并归零，否则会作为历史最大值一直
+                            # 累积，令后续批次的「当前共 N 个文件」与进度百分比失真
+                            self._total_num = 0
                             self._processed_num = 0
                             self._fail_num = 0
 
