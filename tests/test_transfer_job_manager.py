@@ -183,6 +183,7 @@ class TransferJobManagerTest(unittest.TestCase):
         target_oper = SimpleNamespace(
             get_folder=lambda path: target_folder,
             get_item=lambda path: None,
+            get_item_strict=lambda path: None,
         )
 
         new_item, errmsg = TransHandler._TransHandler__transfer_command(
@@ -243,6 +244,7 @@ class TransferJobManagerTest(unittest.TestCase):
         target_oper = SimpleNamespace(
             get_folder=lambda path: target_folder,
             get_item=lambda path: None,
+            get_item_strict=lambda path: None,
         )
 
         with patch.object(
@@ -313,6 +315,7 @@ class TransferJobManagerTest(unittest.TestCase):
         target_oper = SimpleNamespace(
             get_folder=lambda path: target_folder,
             get_item=lambda path: None,
+            get_item_strict=lambda path: None,
         )
         in_meta = MetaVideo("Test.Show.S02E03")
 

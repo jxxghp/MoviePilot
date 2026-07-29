@@ -2,7 +2,7 @@ import re
 import traceback
 from pathlib import Path
 from threading import Lock
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.chain.transfer import TransferChain
 from app.core.cache import TTLCache
@@ -16,6 +16,10 @@ class TransferDispatcher:
     """
     将监控事件分发到整理链：候选判定、TTL 去重、整理历史查重与整理触发。
     """
+    # 历史查询失败待重试队列上限，防止长时间故障期间无限增长
+    MAX_PENDING_RETRIES = 1000
+    # 单个文件的最大重试次数（按健康检查周期计，60 次约 1 小时）
+    MAX_RETRY_ATTEMPTS = 60
 
     def __init__(self, all_exts: Optional[List[str]] = None, cache: Optional[Any] = None):
         """
@@ -27,6 +31,9 @@ class TransferDispatcher:
                 settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT)
         self._cache = cache if cache is not None else TTLCache(region="monitor", maxsize=1024, ttl=10)
         self._lock = Lock()
+        # 历史查询失败待重试的文件
+        self._pending_retries: Dict[str, Dict[str, Any]] = {}
+        self._pending_guard = Lock()
 
     @staticmethod
     def _is_bluray_sub(_path: Path) -> bool:
@@ -83,6 +90,61 @@ class TransferDispatcher:
             logger.error(f"查询整理历史失败: {src_path} - {err}")
             return None
 
+    @staticmethod
+    def _pending_key(storage: str, event_path: Path) -> str:
+        """
+        生成待重试文件的唯一键。
+        """
+        return f"{storage}:{Path(event_path).as_posix()}"
+
+    def _register_pending(self, storage: str, event_path: Path, file_size: float = None):
+        """
+        登记历史查询失败的文件待重试，重复失败累计次数，超限后放弃。
+        :param storage: 存储
+        :param event_path: 原始事件路径
+        :param file_size: 文件大小
+        """
+        key = self._pending_key(storage, event_path)
+        with self._pending_guard:
+            entry = self._pending_retries.get(key)
+            if entry:
+                entry["attempts"] += 1
+                if entry["attempts"] >= self.MAX_RETRY_ATTEMPTS:
+                    self._pending_retries.pop(key, None)
+                    logger.error(f"整理历史查询持续失败，已放弃重试: {key}")
+                return
+            if len(self._pending_retries) >= self.MAX_PENDING_RETRIES:
+                logger.error(f"整理重试队列已满，丢弃: {key}")
+                return
+            self._pending_retries[key] = {
+                "storage": storage,
+                "event_path": event_path,
+                "file_size": file_size,
+                "attempts": 1
+            }
+        logger.warn(f"整理历史查询失败，已登记待重试: {key}")
+
+    def _discard_pending(self, storage: str, event_path: Path):
+        """
+        历史查询已得到确定结果，移除待重试登记。
+        :param storage: 存储
+        :param event_path: 原始事件路径
+        """
+        with self._pending_guard:
+            self._pending_retries.pop(self._pending_key(storage, event_path), None)
+
+    def retry_pending(self):
+        """
+        重试历史查询失败的文件，由健康检查周期驱动。
+        成功或得到确定结果的条目在 handle_file 内部自动移除。
+        """
+        with self._pending_guard:
+            items = list(self._pending_retries.values())
+        for item in items:
+            logger.info(f"重试整理: {item['storage']}:{item['event_path']}")
+            self.handle_file(storage=item["storage"], event_path=item["event_path"],
+                             file_size=item["file_size"])
+
     def handle_file(self, storage: str, event_path: Path, file_size: float = None) -> bool:
         """
         整理一个文件。
@@ -92,6 +154,8 @@ class TransferDispatcher:
         :return: 是否进入整理链
         """
         with self._lock:
+            # 登记重试用原始事件路径，蓝光目录解析在重试时重新执行
+            origin_path = event_path
             is_bluray_folder = False
             # 蓝光原盘文件处理
             if self._is_bluray_sub(event_path):
@@ -115,7 +179,12 @@ class TransferDispatcher:
                 storage=storage,
                 src_path=src_path,
             )
-            if has_transfer_history is not False:
+            if has_transfer_history is None:
+                # 查询失败是暂时故障，登记待重试（由健康检查周期驱动），不能永久跳过
+                self._register_pending(storage=storage, event_path=origin_path, file_size=file_size)
+                return False
+            self._discard_pending(storage=storage, event_path=origin_path)
+            if has_transfer_history:
                 return False
 
             try:

@@ -187,8 +187,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             )
             logger.info(f"✓ 远程目录监控已启动: [间隔: {interval}分钟]")
 
-        # 本地监控健康检查：重启崩溃/静默失效的监控线程，并重试启动失败的监控目录
-        if local_started or local_failed:
+        # 监控健康检查：重建异常监控线程、重试启动失败目录、重试历史查询失败的文件
+        if local_started or local_failed or mon_storages:
             self._scheduler.add_job(
                 self.watchdog,
                 'interval',
@@ -313,6 +313,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         try:
             self.__check_watchers()
             self.__retry_pending_locals()
+            self._dispatcher.retry_pending()
         except Exception as e:
             logger.error(f"目录监控健康检查出现错误：{e}\n{traceback.format_exc()}")
 

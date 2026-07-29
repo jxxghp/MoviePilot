@@ -23,6 +23,7 @@ from app.schemas import (
     TransferRenameBuildEventData,
     TransferRenameEventData,
 )
+from app.schemas.exception import StorageQueryError
 from app.schemas.types import MediaType, ChainEventType
 from app.utils.system import SystemUtils
 
@@ -106,36 +107,6 @@ class TransHandler:
                 else:
                     current_value = value
                 setattr(result, key, current_value)
-
-    @staticmethod
-    def __confirm_target_absent(target_storage: str, target_file: Path) -> Optional[bool]:
-        """
-        确认目标文件是否确实不存在。
-
-        local 存储的 get_item 依赖 Path.exists()，而 exists() 会把 ENOENT/ENOTDIR/
-        EBADF/ELOOP 一并当作「不存在」（其余 errno 会向上抛出，由外层兜底为整理失败）。
-        挂载异常命中这几个 errno 时，已存在的文件会被误判为不存在从而跳过覆盖检查，
-        这里用 stat 复核并区分出「无法确认」。
-
-        注意：ENOENT 无法与真实缺失区分，网盘存储的 get_item 亦会把 API 失败吞成
-        None，这两种情况本函数覆盖不到。
-
-        :param target_storage: 目标存储
-        :param target_file: 目标文件路径
-        :return: True 确认不存在，False 确认存在，None 无法确认
-        """
-        if target_storage != "local":
-            # 网盘存储没有独立于 get_item 的低成本二次探测手段，沿用其判定
-            return True
-        try:
-            # 跟随软链接，失效软链接视为目标不存在，允许正常覆盖
-            target_file.stat()
-        except (FileNotFoundError, NotADirectoryError):
-            return True
-        except OSError as err:
-            logger.warn(f"读取目标文件状态失败，无法确认是否已存在：{target_file} - {err}")
-            return None
-        return False
 
     @staticmethod
     def __build_preview_item(
@@ -435,8 +406,23 @@ class TransHandler:
                 # 判断是否要覆盖，附加文件强制覆盖
                 overflag = False
                 if not __is_extra_file(fileitem):
-                    # 目标文件
-                    target_item = target_oper.get_item(new_file)
+                    # 目标文件（严格查询：无法确认状态时拒绝覆盖，避免已有文件被误覆盖）
+                    try:
+                        target_item = target_oper.get_item_strict(new_file)
+                    except StorageQueryError as query_err:
+                        errmsg = f"无法确认目标文件状态，已跳过整理以避免误覆盖：{new_file} - {query_err}"
+                        logger.warn(errmsg)
+                        self.__update_result(
+                            result=result,
+                            success=False,
+                            message=errmsg,
+                            fileitem=fileitem,
+                            target_diritem=target_diritem,
+                            fail_list=[fileitem.path],
+                            transfer_type=transfer_type,
+                            need_notify=need_notify,
+                        )
+                        return result
                     if target_item:
                         # 目标文件已存在
                         target_file = new_file
@@ -553,29 +539,6 @@ class TransHandler:
                                 )
                                 overflag = True
                     else:
-                        # get_item 返回空既可能是目标确实不存在，也可能是存储探测失败，
-                        # 后者直接放行会跳过整段覆盖检查，导致高码率文件被低码率覆盖
-                        target_absent = self.__confirm_target_absent(
-                            target_storage, new_file
-                        )
-                        if target_absent is not True:
-                            errmsg = (
-                                f"无法确认目标文件状态，已跳过整理以避免误覆盖：{new_file}"
-                                if target_absent is None
-                                else f"目标文件已存在但无法读取文件信息，已跳过整理：{new_file}"
-                            )
-                            logger.warn(errmsg)
-                            self.__update_result(
-                                result=result,
-                                success=False,
-                                message=errmsg,
-                                fileitem=fileitem,
-                                target_diritem=target_diritem,
-                                fail_list=[fileitem.path],
-                                transfer_type=transfer_type,
-                                need_notify=need_notify,
-                            )
-                            return result
                         if overwrite_mode == "latest":
                             # 文件不存在，但仅保留最新版本
                             logger.info(

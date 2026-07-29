@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.monitor import LocalDirectoryWatcher, Monitor
@@ -224,3 +225,49 @@ def test_retry_pending_locals_backs_off(tmp_path, monkeypatch):
         monitor._Monitor__retry_pending_locals()
 
     assert start.call_count == 3
+
+
+def test_dispatcher_retries_after_history_query_failure(monkeypatch):
+    """
+    整理历史查询失败应登记待重试，重试成功后进入整理链并清除登记。
+    """
+    from app.monitor.dispatcher import TransferDispatcher
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
+    event_path = Path("/downloads/movie.mkv")
+    history = MagicMock(side_effect=[None, False])
+    monkeypatch.setattr(dispatcher, "_has_transfer_history", history)
+    transfer_chain_instance = MagicMock()
+    monkeypatch.setattr("app.monitor.dispatcher.TransferChain",
+                        MagicMock(return_value=transfer_chain_instance))
+
+    # 首次查询失败：不整理，登记待重试
+    assert dispatcher.handle_file(storage="local", event_path=event_path, file_size=1) is False
+    assert len(dispatcher._pending_retries) == 1
+    transfer_chain_instance.do_transfer.assert_not_called()
+
+    # 模拟 TTL 缓存过期后由健康检查驱动重试
+    dispatcher._cache.clear()
+    dispatcher.retry_pending()
+
+    transfer_chain_instance.do_transfer.assert_called_once()
+    assert dispatcher._pending_retries == {}
+
+
+def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
+    """
+    历史查询持续失败达到上限后应放弃重试，避免队列无限累积。
+    """
+    from app.monitor.dispatcher import TransferDispatcher
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
+    event_path = Path("/downloads/movie.mkv")
+    monkeypatch.setattr(dispatcher, "_has_transfer_history", MagicMock(return_value=None))
+
+    dispatcher.handle_file(storage="local", event_path=event_path, file_size=1)
+    key = f"local:{event_path.as_posix()}"
+    assert key in dispatcher._pending_retries
+    dispatcher._pending_retries[key]["attempts"] = TransferDispatcher.MAX_RETRY_ATTEMPTS - 1
+
+    dispatcher._cache.clear()
+    dispatcher.retry_pending()
+
+    assert dispatcher._pending_retries == {}

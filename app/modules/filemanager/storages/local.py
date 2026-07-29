@@ -8,6 +8,7 @@ from app.core.config import global_vars, settings
 from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.utils.system import SystemUtils
 
@@ -147,6 +148,23 @@ class LocalStorage(StorageBase):
         if path.is_file():
             return self.__get_fileitem(path)
         return self.__get_diritem(path)
+
+    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，无法确认状态时抛出 StorageQueryError。
+        Path.exists() 会把部分 errno（如 EBADF/ELOOP）归入「不存在」，
+        网络/FUSE 挂载抖动时会误判，这里用 stat 显式区分。
+        """
+        try:
+            path.stat()
+        except (FileNotFoundError, NotADirectoryError):
+            return None
+        except OSError as e:
+            raise StorageQueryError(f"【本地】读取文件状态失败: {path} - {e}") from e
+        try:
+            return self.get_item(path)
+        except OSError as e:
+            raise StorageQueryError(f"【本地】读取文件信息失败: {path} - {e}") from e
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

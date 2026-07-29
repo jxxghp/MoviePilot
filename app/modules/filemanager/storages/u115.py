@@ -17,6 +17,7 @@ from app.core.config import settings, global_vars
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process
+from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 from app.utils.string import StringUtils
@@ -906,37 +907,59 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return True
         return False
 
+    def __get_info_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        查询指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
+        接口业务码 20004（记录不存在）与 0 一样视为确认结果，其余错误
+        （网络失败、限流重试用尽、未知业务错误）均无法确认目标状态。
+        """
+        resp = self._request_api(
+            "POST",
+            "/open/folder/get_info",
+            data={"path": path.as_posix()},
+            no_error_log=True,
+        )
+        if resp is None:
+            raise StorageQueryError(f"【115】无法确认文件状态（请求失败或接口错误）: {path}")
+        data = resp.get("data") if isinstance(resp, dict) else None
+        if not data or not data.get("file_id"):
+            # code 20004（记录不存在）等场景，确认目标不存在
+            return None
+        return schemas.FileItem(
+            storage=self.schema.value,
+            fileid=str(data["file_id"]),
+            path=path.as_posix() + ("/" if data["file_category"] == "0" else ""),
+            type="file" if data["file_category"] == "1" else "dir",
+            name=data["file_name"],
+            basename=Path(data["file_name"]).stem,
+            extension=Path(data["file_name"]).suffix[1:]
+            if data["file_category"] == "1"
+            else None,
+            pickcode=data["pick_code"],
+            size=data["size_byte"] if data["file_category"] == "1" else None,
+            modify_time=data["utime"],
+        )
+
     def get_item(self, path: Path) -> Optional[schemas.FileItem]:
         """
         获取指定路径的文件/目录项
         """
         try:
-            resp = self._request_api(
-                "POST",
-                "/open/folder/get_info",
-                "data",
-                data={"path": path.as_posix()},
-                no_error_log=True,
-            )
-            if not resp:
-                return None
-            return schemas.FileItem(
-                storage=self.schema.value,
-                fileid=str(resp["file_id"]),
-                path=path.as_posix() + ("/" if resp["file_category"] == "0" else ""),
-                type="file" if resp["file_category"] == "1" else "dir",
-                name=resp["file_name"],
-                basename=Path(resp["file_name"]).stem,
-                extension=Path(resp["file_name"]).suffix[1:]
-                if resp["file_category"] == "1"
-                else None,
-                pickcode=resp["pick_code"],
-                size=resp["size_byte"] if resp["file_category"] == "1" else None,
-                modify_time=resp["utime"],
-            )
+            return self.__get_info_item(path)
         except Exception as e:
             logger.debug(f"【115】获取文件信息失败: {str(e)}")
             return None
+
+    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
+        """
+        try:
+            return self.__get_info_item(path)
+        except StorageQueryError:
+            raise
+        except Exception as e:
+            raise StorageQueryError(f"【115】查询文件信息失败: {path} - {e}") from e
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
