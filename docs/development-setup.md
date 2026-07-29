@@ -55,6 +55,43 @@ pip install -r requirements.txt
 pip install -r requirements-dev.in
 ```
 
+### 2.1 本地启动脚本
+
+不需要打开 IDE 时，可以直接使用仓库内的启动脚本。脚本会自动定位项目根目录和虚拟环境，并以模块方式启动后端，避免 `ModuleNotFoundError: No module named 'app'`。
+
+```bash
+# 默认启动后端开发服务，前台运行，按 Ctrl+C 停止
+./scripts/start-local.sh
+./scripts/start-local.sh backend
+
+# 如果已经安装前端发布包，可启动完整的前后端服务
+./scripts/start-local.sh service start
+
+# 管理完整服务
+./scripts/start-local.sh stop
+./scripts/start-local.sh restart
+./scripts/start-local.sh status
+./scripts/start-local.sh logs --follow
+```
+
+默认会使用 `DEBUG=true` 和 `DEV=true`，与 IDE 开发启动保持一致；如果不需要热重载，可以这样启动以降低资源占用：
+
+```bash
+DEV=false ./scripts/start-local.sh
+```
+
+脚本会优先使用 `CONFIG_DIR`，其次使用 `MOVIEPILOT_CONFIG_DIR`，再检测 `~/Documents/moviepilot`，最后回退到仓库内的 `config` 目录。需要使用其他配置目录时，可以这样运行：
+
+```bash
+MOVIEPILOT_CONFIG_DIR=/path/to/moviepilot-config ./scripts/start-local.sh
+```
+
+首次使用前如果脚本没有执行权限，运行：
+
+```bash
+chmod +x scripts/start-local.sh
+```
+
 ### 3. 修改主程序依赖
 
 新增或升级依赖时，先确认依赖属于哪个层级：
