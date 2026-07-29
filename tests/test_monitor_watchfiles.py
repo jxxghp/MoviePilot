@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from watchfiles import Change
 
 from app.monitor import DirectoryChangeEvent, LocalDirectoryWatcher, Monitor
+from app.monitor.dispatcher import TransferDispatcher
 
 
 class CallbackRecorder:
@@ -26,6 +27,20 @@ class CallbackRecorder:
         :param file_size: 文件大小
         """
         self.events.append((event, text, event_path, file_size))
+
+
+def _build_monitor_with_dispatcher(handle_file: MagicMock = None):
+    """
+    构造带分发器的测试用 Monitor 骨架。
+    :param handle_file: 替换分发器 handle_file 的替身
+    :return: (Monitor 骨架, 分发器)
+    """
+    monitor = object.__new__(Monitor)
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
+    if handle_file is not None:
+        dispatcher.handle_file = handle_file
+    monitor._dispatcher = dispatcher
+    return monitor, dispatcher
 
 
 def test_handle_changes_dispatches_added_and_modified_files(tmp_path):
@@ -120,10 +135,8 @@ def test_event_handler_routes_file_events_to_transfer_handler():
     """
     文件事件应继续按 local 存储交给整理流程。
     """
-    monitor = object.__new__(Monitor)
-    monitor.all_exts = [".mkv"]
     handle_file = MagicMock()
-    setattr(monitor, "_Monitor__handle_file", handle_file)
+    monitor, _ = _build_monitor_with_dispatcher(handle_file)
     event_path = Path("/downloads/movie.mkv")
     event = DirectoryChangeEvent(
         change_type=Change.added,
@@ -149,10 +162,8 @@ def test_event_handler_ignores_directory_events():
     """
     目录事件不应进入文件整理流程。
     """
-    monitor = object.__new__(Monitor)
-    monitor.all_exts = [".mkv"]
     handle_file = MagicMock()
-    setattr(monitor, "_Monitor__handle_file", handle_file)
+    monitor, _ = _build_monitor_with_dispatcher(handle_file)
     event_path = Path("/downloads/folder")
     event = DirectoryChangeEvent(
         change_type=Change.added,
@@ -173,10 +184,8 @@ def test_event_handler_ignores_download_temp_files():
     """
     下载器临时文件不应进入整理流程。
     """
-    monitor = object.__new__(Monitor)
-    monitor.all_exts = [".mkv"]
     handle_file = MagicMock()
-    setattr(monitor, "_Monitor__handle_file", handle_file)
+    monitor, _ = _build_monitor_with_dispatcher(handle_file)
     event_path = Path("/downloads/movie.mkv.!qB")
     event = DirectoryChangeEvent(
         change_type=Change.modified,
@@ -198,10 +207,8 @@ def test_event_handler_ignores_non_transferable_files():
     """
     非可整理后缀文件不应进入整理流程。
     """
-    monitor = object.__new__(Monitor)
-    monitor.all_exts = [".mkv"]
     handle_file = MagicMock()
-    setattr(monitor, "_Monitor__handle_file", handle_file)
+    monitor, _ = _build_monitor_with_dispatcher(handle_file)
     event_path = Path("/downloads/movie.nfo")
     event = DirectoryChangeEvent(
         change_type=Change.added,
@@ -223,9 +230,7 @@ def test_handle_file_skips_transfer_when_history_exists(monkeypatch):
     """
     已有整理记录的源文件不应再次进入整理链。
     """
-    monitor = object.__new__(Monitor)
-    monitor.all_exts = [".mkv"]
-    monitor._cache = {}
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
     event_path = Path("/downloads/movie.mkv")
     lookups = []
 
@@ -244,12 +249,12 @@ def test_handle_file_skips_transfer_when_history_exists(monkeypatch):
     transfer_chain = MagicMock()
     logger_info = MagicMock()
     logger_debug = MagicMock()
-    monkeypatch.setattr("app.monitor.TransferHistoryOper", FakeTransferHistoryOper)
-    monkeypatch.setattr("app.monitor.TransferChain", transfer_chain)
-    monkeypatch.setattr("app.monitor.logger.info", logger_info)
-    monkeypatch.setattr("app.monitor.logger.debug", logger_debug)
+    monkeypatch.setattr("app.monitor.dispatcher.TransferHistoryOper", FakeTransferHistoryOper)
+    monkeypatch.setattr("app.monitor.dispatcher.TransferChain", transfer_chain)
+    monkeypatch.setattr("app.monitor.dispatcher.logger.info", logger_info)
+    monkeypatch.setattr("app.monitor.dispatcher.logger.debug", logger_debug)
 
-    handled = monitor._Monitor__handle_file(
+    handled = dispatcher.handle_file(
         storage="local",
         event_path=event_path,
         file_size=1024,
@@ -266,9 +271,7 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
     """
     没有整理记录的源文件应继续进入整理链。
     """
-    monitor = object.__new__(Monitor)
-    monitor.all_exts = [".mkv"]
-    monitor._cache = {}
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
     event_path = Path("/downloads/movie.mkv")
 
     class FakeTransferHistoryOper:
@@ -284,10 +287,10 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
 
     transfer_chain_instance = MagicMock()
     transfer_chain = MagicMock(return_value=transfer_chain_instance)
-    monkeypatch.setattr("app.monitor.TransferHistoryOper", FakeTransferHistoryOper)
-    monkeypatch.setattr("app.monitor.TransferChain", transfer_chain)
+    monkeypatch.setattr("app.monitor.dispatcher.TransferHistoryOper", FakeTransferHistoryOper)
+    monkeypatch.setattr("app.monitor.dispatcher.TransferChain", transfer_chain)
 
-    handled = monitor._Monitor__handle_file(
+    handled = dispatcher.handle_file(
         storage="local",
         event_path=event_path,
         file_size=1024,

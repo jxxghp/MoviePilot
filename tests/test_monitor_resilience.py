@@ -127,7 +127,7 @@ def _build_monitor(monkeypatch, put_recorder):
     :return: Monitor 骨架
     """
     from threading import Lock
-    monkeypatch.setattr("app.monitor.MessageHelper", MagicMock(return_value=put_recorder))
+    monkeypatch.setattr("app.monitor.monitor.MessageHelper", MagicMock(return_value=put_recorder))
     monitor = object.__new__(Monitor)
     monitor._watchers = []
     monitor._watcher_lock = Lock()
