@@ -50,6 +50,12 @@ class LocalDirectoryWatcher:
     基于 watchfiles 的本地目录监控线程。
     """
     _HANDLE_CHANGES = {Change.added, Change.modified}
+    # 监控循环异常退出后的重启退避秒数，网络存储/FUSE 挂载抖动通常是暂时的
+    RESTART_BACKOFF = (5, 15, 30, 60, 120, 300)
+    # 单次监控循环存活超过该秒数视为已恢复，重置退避
+    HEALTHY_UPTIME = 60
+    # 超过该秒数监控循环没有任何活动，判定为静默失效
+    STALL_TIMEOUT = 600
 
     def __init__(self, mon_path: Path, callback: Any, force_polling: Optional[bool] = None):
         """
@@ -64,6 +70,10 @@ class LocalDirectoryWatcher:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._watch_filter = DefaultFilter()
+        # 最近一次监控循环活动时间（monotonic），用于检测静默失效
+        self._last_activity: float = 0.0
+        # 累计自动重启次数
+        self._restart_count: int = 0
 
     @property
     def watch_path(self) -> Path:
@@ -72,6 +82,22 @@ class LocalDirectoryWatcher:
         :return: 监控目录
         """
         return self._watch_path
+
+    @property
+    def force_polling(self) -> Optional[bool]:
+        """
+        获取监控模式配置，重建监控线程时沿用。
+        :return: 是否强制轮询
+        """
+        return self._force_polling
+
+    @property
+    def restart_count(self) -> int:
+        """
+        获取累计自动重启次数。
+        :return: 自动重启次数
+        """
+        return self._restart_count
 
     def start(self):
         """
@@ -85,6 +111,7 @@ class LocalDirectoryWatcher:
             logger.info(f"本地目录监控已在运行中: {self._watch_path}")
             return
         self._stop_event.clear()
+        self._mark_activity()
         self._thread = threading.Thread(
             target=self._run,
             name=f"MoviePilot-DirectoryWatcher-{self._watch_path.name}",
@@ -113,26 +140,56 @@ class LocalDirectoryWatcher:
         """
         return bool(self._thread and self._thread.is_alive())
 
+    def is_stalled(self) -> bool:
+        """
+        判断监控线程是否已静默失效（线程存活但监控循环长时间无任何活动）。
+        :return: 是否静默失效
+        """
+        if self._stop_event.is_set() or not self.is_alive():
+            return False
+        if not self._last_activity:
+            return False
+        return (time.monotonic() - self._last_activity) > self.STALL_TIMEOUT
+
+    def _mark_activity(self):
+        """
+        记录一次监控循环活动时间，作为静默失效检测的心跳。
+        """
+        self._last_activity = time.monotonic()
+
     def _run(self):
         """
-        运行 watchfiles 主循环，并在快速模式不可用时回退到轮询。
+        运行 watchfiles 主循环，异常时退避重启，避免一次故障导致监控永久停摆。
         """
-        try:
-            self._run_watch(force_polling=self._force_polling)
-        except Exception as err:
-            if self._stop_event.is_set():
-                return
-            if self._force_polling is True:
-                logger.error(f"本地目录监控发生错误: {self._watch_path} - {err}")
-                logger.debug(traceback.format_exc())
-                return
-            logger.warn(f"快速模式监控 {self._watch_path} 失败，将自动切换到兼容模式: {err}")
+        # 快速模式失败后降级为轮询，降级后的失败一律走退避重启
+        force_polling = self._force_polling
+        attempt = 0
+        while not self._stop_event.is_set():
+            started_at = time.monotonic()
             try:
-                self._run_watch(force_polling=True)
-            except Exception as fallback_err:
-                if not self._stop_event.is_set():
-                    logger.error(f"兼容模式监控 {self._watch_path} 仍然失败: {fallback_err}")
-                    logger.debug(traceback.format_exc())
+                self._mark_activity()
+                self._run_watch(force_polling=force_polling)
+                # 正常返回表示收到停止信号
+                return
+            except Exception as err:
+                if self._stop_event.is_set():
+                    return
+                # 崩溃堆栈按 ERROR 级输出，生产环境 LOG_LEVEL=ERROR 时也能落盘
+                logger.error(f"本地目录监控异常堆栈: {self._watch_path}\n{traceback.format_exc()}")
+                if force_polling is not True:
+                    logger.warn(f"快速模式监控 {self._watch_path} 失败，将自动切换到兼容模式: {err}")
+                    force_polling = True
+                    continue
+                if time.monotonic() - started_at >= self.HEALTHY_UPTIME:
+                    # 上一轮监控已稳定运行过，重新从最短间隔开始退避
+                    attempt = 0
+                delay = self.RESTART_BACKOFF[min(attempt, len(self.RESTART_BACKOFF) - 1)]
+                attempt += 1
+                self._restart_count += 1
+                logger.error(f"本地目录监控发生错误，{delay} 秒后自动重启"
+                             f"（累计第 {self._restart_count} 次）: {self._watch_path} - {err}")
+                if self._stop_event.wait(timeout=delay):
+                    return
 
     def _run_watch(self, force_polling: Optional[bool]):
         """
@@ -148,11 +205,13 @@ class LocalDirectoryWatcher:
                 force_polling=force_polling,
                 recursive=True,
                 ignore_permission_denied=True):
+            self._mark_activity()
             if self._stop_event.is_set():
                 break
             if not changes:
                 continue
             self._handle_changes(changes)
+            self._mark_activity()
 
     def _handle_changes(self, changes: set[tuple[Change, str]]):
         """
@@ -161,6 +220,8 @@ class LocalDirectoryWatcher:
         """
         changes = self._expand_added_directories(changes)
         for change_type, path_str in sorted(changes, key=lambda item: item[1]):
+            # 批量整理可能持续较久，逐个文件刷新心跳，避免被误判为静默失效
+            self._mark_activity()
             if change_type not in self._HANDLE_CHANGES:
                 continue
             event_path = Path(path_str)
@@ -256,11 +317,25 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
     目录监控处理链，单例模式
     """
     CONFIG_WATCH = {SystemConfigKey.Directories.value}
+    # 目录监控健康检查间隔（秒）
+    WATCHDOG_INTERVAL = 60
+    # 连续多少个健康检查周期无新增重启后才宣告恢复，避免反复崩溃时告警刷屏
+    RECOVERY_STABLE_CYCLES = 5
 
     def __init__(self):
         super().__init__()
         # 本地目录监控服务
         self._watchers = []
+        # 本地目录监控列表读写锁
+        self._watcher_lock = Lock()
+        # 启动失败待重试的本地监控配置
+        self._pending_locals: List[Dict[str, Any]] = []
+        # 已告警的监控目录，避免重复推送
+        self._alerted_paths: set = set()
+        # 各监控目录已告警过的自动重启次数
+        self._restart_marks: Dict[str, int] = {}
+        # 各监控目录连续稳定的健康检查周期数
+        self._stable_cycles: Dict[str, int] = {}
         # 定时服务
         self._scheduler = None
         # 存储过照间隔（分钟）
@@ -643,6 +718,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
 
         messagehelper = MessageHelper()
         mon_storages = {}
+        # 本地监控启动结果计数，用于输出真实的启动总结
+        local_started = 0
+        local_failed = 0
         for mon_dir in monitor_dirs:
             if not mon_dir.library_path:
                 logger.warn(f"跳过监控配置 {mon_dir.download_path}：未设置媒体库目录")
@@ -661,64 +739,10 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
 
             # 启动监控
             if mon_dir.storage == "local":
-                # 本地目录监控
-                logger.info(f"正在启动本地目录监控: {mon_path}")
-                logger.info("*** 重要提示：目录监控只处理新增和修改的文件，不会处理监控启动前已存在的文件 ***")
-
-                try:
-                    # 统计文件数量并给出提示
-                    file_count = self.count_directory_files(mon_path)
-                    logger.info(f"监控目录 {mon_path} 包含约 {file_count} 个文件")
-
-                    # 检查系统限制
-                    limits = self.check_system_limits()
-
-                    # 检查是否需要使用轮询模式
-                    use_polling, reason = self.should_use_polling(mon_path,
-                                                                  monitor_mode=mon_dir.monitor_mode,
-                                                                  file_count=file_count,
-                                                                  limits=limits)
-                    logger.info(f"监控模式决策: {reason}")
-
-                    mode_name = "兼容模式(轮询)" if use_polling else "快速模式"
-                    logger.info(f"使用{mode_name}监控 {mon_path}")
-                    if not use_polling:
-                        if limits['warnings']:
-                            for warning in limits['warnings']:
-                                logger.warn(f"系统限制警告: {warning}")
-                        if limits['max_user_watches'] > 0:
-                            usage_percent = (file_count / limits['max_user_watches']) * 100
-                            logger.info(
-                                f"系统监控资源使用率: {usage_percent:.1f}% ({file_count}/{limits['max_user_watches']})")
-
-                    watcher = LocalDirectoryWatcher(
-                        mon_path=mon_path,
-                        callback=self,
-                        force_polling=True if use_polling else None
-                    )
-                    self._watchers.append(watcher)
-                    watcher.start()
-
-                    logger.info(f"✓ 本地目录监控已启动: {mon_path} [{mode_name}]")
-
-                except Exception as e:
-                    err_msg = str(e)
-                    logger.error(f"启动本地目录监控失败: {mon_path}")
-                    logger.error(f"错误详情: {err_msg}")
-
-                    if "inotify" in err_msg.lower():
-                        logger.error("inotify 相关错误，这通常是由于系统监控数量限制导致的")
-                        logger.error("解决方案:")
-                        tips = self.get_system_optimization_tips()
-                        for tip in tips:
-                            logger.error(f"  {tip}")
-                        logger.error("执行上述命令后重启 MoviePilot")
-                    elif "permission" in err_msg.lower():
-                        logger.error("权限错误，请检查 MoviePilot 是否有足够的权限访问监控目录")
-                    else:
-                        logger.error("建议尝试使用兼容模式进行监控")
-
-                    messagehelper.put(f"启动本地目录监控失败: {mon_path}\n错误: {err_msg}", title="目录监控")
+                if self.__start_local_monitor(mon_path=mon_path, monitor_mode=mon_dir.monitor_mode):
+                    local_started += 1
+                else:
+                    local_failed += 1
             else:
                 if not mon_storages.get(mon_dir.storage):
                     mon_storages[mon_dir.storage] = []
@@ -748,16 +772,242 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             )
             logger.info(f"✓ 远程目录监控已启动: [间隔: {interval}分钟]")
 
+        # 本地监控健康检查：重启崩溃/静默失效的监控线程，并重试启动失败的监控目录
+        if local_started or local_failed:
+            self._scheduler.add_job(
+                self.watchdog,
+                'interval',
+                seconds=self.WATCHDOG_INTERVAL,
+                id="monitor_watchdog",
+                replace_existing=True
+            )
+            logger.info(f"✓ 目录监控健康检查已启动: [间隔: {self.WATCHDOG_INTERVAL}秒]")
+
         # 启动定时服务
         if self._scheduler.get_jobs():
             self._scheduler.print_jobs()
             self._scheduler.start()
             logger.info("定时监控服务已启动")
 
-        # 输出监控总结
-        local_count = len([d for d in monitor_dirs if d.storage == "local" and d.monitor_type == "monitor"])
-        remote_count = len([d for d in monitor_dirs if d.storage != "local" and d.monitor_type == "monitor"])
-        logger.info(f"目录监控启动完成: 本地监控 {local_count} 个，远程监控 {remote_count} 个")
+        # 输出监控总结，报告实际启动成功数而不是配置数
+        remote_count = sum(len(paths) for paths in mon_storages.values())
+        summary = f"目录监控启动完成: 本地监控 {local_started} 个成功"
+        if local_failed:
+            summary += f"、{local_failed} 个失败（将自动退避重试）"
+        summary += f"，远程监控 {remote_count} 个"
+        if local_failed:
+            logger.warn(summary)
+        else:
+            logger.info(summary)
+
+    def __start_local_monitor(self, mon_path: Path, monitor_mode: str) -> bool:
+        """
+        启动单个本地目录监控，失败时登记待重试。
+        :param mon_path: 监控目录
+        :param monitor_mode: 配置的监控模式
+        :return: 是否启动成功
+        """
+        logger.info(f"正在启动本地目录监控: {mon_path}")
+        logger.info("*** 重要提示：目录监控只处理新增和修改的文件，不会处理监控启动前已存在的文件 ***")
+
+        try:
+            # 统计文件数量并给出提示
+            file_count = self.count_directory_files(mon_path)
+            logger.info(f"监控目录 {mon_path} 包含约 {file_count} 个文件")
+
+            # 检查系统限制
+            limits = self.check_system_limits()
+
+            # 检查是否需要使用轮询模式
+            use_polling, reason = self.should_use_polling(mon_path,
+                                                          monitor_mode=monitor_mode,
+                                                          file_count=file_count,
+                                                          limits=limits)
+            logger.info(f"监控模式决策: {reason}")
+
+            mode_name = "兼容模式(轮询)" if use_polling else "快速模式"
+            logger.info(f"使用{mode_name}监控 {mon_path}")
+            if not use_polling:
+                if limits['warnings']:
+                    for warning in limits['warnings']:
+                        logger.warn(f"系统限制警告: {warning}")
+                if limits['max_user_watches'] > 0:
+                    usage_percent = (file_count / limits['max_user_watches']) * 100
+                    logger.info(
+                        f"系统监控资源使用率: {usage_percent:.1f}% ({file_count}/{limits['max_user_watches']})")
+
+            watcher = LocalDirectoryWatcher(
+                mon_path=mon_path,
+                callback=self,
+                force_polling=True if use_polling else None
+            )
+            # 启动成功后再登记，避免失败的监控残留在列表中
+            watcher.start()
+            with self._watcher_lock:
+                self._watchers.append(watcher)
+                self._pending_locals = [
+                    pending for pending in self._pending_locals
+                    if pending["mon_path"] != mon_path
+                ]
+            self.__clear_alert(mon_path, f"本地目录监控已恢复: {mon_path} [{mode_name}]")
+
+            logger.info(f"✓ 本地目录监控已启动: {mon_path} [{mode_name}]")
+            return True
+
+        except Exception as e:
+            self.__handle_start_failure(mon_path=mon_path, monitor_mode=monitor_mode, err=e)
+            return False
+
+    def __handle_start_failure(self, mon_path: Path, monitor_mode: str, err: Exception):
+        """
+        处理本地目录监控启动失败，登记待重试并按需告警。
+        :param mon_path: 监控目录
+        :param monitor_mode: 配置的监控模式
+        :param err: 启动异常
+        """
+        err_msg = str(err)
+        logger.error(f"启动本地目录监控失败: {mon_path}")
+        logger.error(f"错误详情: {err_msg}")
+
+        if "inotify" in err_msg.lower():
+            logger.error("inotify 相关错误，这通常是由于系统监控数量限制导致的")
+            logger.error("解决方案:")
+            for tip in self.get_system_optimization_tips():
+                logger.error(f"  {tip}")
+            logger.error("执行上述命令后重启 MoviePilot")
+        elif "permission" in err_msg.lower():
+            logger.error("权限错误，请检查 MoviePilot 是否有足够的权限访问监控目录")
+        elif isinstance(err, (FileNotFoundError, NotADirectoryError)):
+            logger.error("监控目录当前不可用，网络存储/FUSE 挂载可能尚未就绪，将自动重试")
+        elif monitor_mode != "compatibility":
+            logger.error("建议尝试使用兼容模式进行监控")
+
+        with self._watcher_lock:
+            if all(pending["mon_path"] != mon_path for pending in self._pending_locals):
+                self._pending_locals.append({
+                    "mon_path": mon_path,
+                    "monitor_mode": monitor_mode
+                })
+        self.__send_alert(mon_path,
+                          f"启动本地目录监控失败: {mon_path}\n错误: {err_msg}\n"
+                          f"将自动退避重试")
+
+    def watchdog(self):
+        """
+        目录监控健康检查：重建崩溃或静默失效的监控线程，并重试启动失败的监控目录。
+        """
+        try:
+            self.__check_watchers()
+            self.__retry_pending_locals()
+        except Exception as e:
+            logger.error(f"目录监控健康检查出现错误：{e}\n{traceback.format_exc()}")
+
+    def __check_watchers(self):
+        """
+        检查本地目录监控线程状态，异常时重建。
+        """
+        with self._watcher_lock:
+            watchers = list(self._watchers)
+        for watcher in watchers:
+            key = str(watcher.watch_path)
+            if watcher.is_stalled():
+                reason = f"监控循环超过 {LocalDirectoryWatcher.STALL_TIMEOUT} 秒无任何活动，判定为静默失效"
+            elif not watcher.is_alive():
+                reason = "监控线程已退出"
+            else:
+                # 线程已自愈，但崩溃过就要告警，避免自动重启把故障变成新的静默
+                if watcher.restart_count > self._restart_marks.get(key, 0):
+                    self._restart_marks[key] = watcher.restart_count
+                    self._stable_cycles[key] = 0
+                    self.__send_alert(watcher.watch_path,
+                                      f"目录监控发生错误并已自动重启"
+                                      f"（累计 {watcher.restart_count} 次）: {watcher.watch_path}")
+                else:
+                    # 稳定满恢复窗口才宣告恢复，避免反复崩溃时告警/恢复消息来回刷屏
+                    self._stable_cycles[key] = self._stable_cycles.get(key, 0) + 1
+                    if self._stable_cycles[key] >= self.RECOVERY_STABLE_CYCLES:
+                        self.__clear_alert(watcher.watch_path, f"目录监控已恢复正常: {watcher.watch_path}")
+                continue
+            logger.error(f"目录监控异常: {watcher.watch_path} - {reason}，正在重建监控线程 ...")
+            self.__send_alert(watcher.watch_path,
+                              f"目录监控异常: {watcher.watch_path}\n原因: {reason}\n正在自动重建监控")
+            self.__rebuild_watcher(watcher)
+
+    def __rebuild_watcher(self, watcher: LocalDirectoryWatcher):
+        """
+        重建一个本地目录监控线程。
+        :param watcher: 需要重建的监控
+        """
+        # 卡死的线程阻塞在底层调用中无法强制回收，只能请求停止后由守护线程自然退出
+        watcher.stop()
+        new_watcher = LocalDirectoryWatcher(
+            mon_path=watcher.watch_path,
+            callback=self,
+            force_polling=watcher.force_polling
+        )
+        try:
+            new_watcher.start()
+        except Exception as e:
+            logger.error(f"重建目录监控失败: {watcher.watch_path} - {e}")
+            with self._watcher_lock:
+                self._watchers = [item for item in self._watchers if item is not watcher]
+                if all(pending["mon_path"] != watcher.watch_path for pending in self._pending_locals):
+                    self._pending_locals.append({
+                        "mon_path": watcher.watch_path,
+                        # 重建沿用原监控模式，force_polling 为 True 即兼容模式
+                        "monitor_mode": "compatibility" if watcher.force_polling else "fast"
+                    })
+            return
+        with self._watcher_lock:
+            self._watchers = [new_watcher if item is watcher else item for item in self._watchers]
+        # 新监控的重启计数从零开始，同步重置告警基准
+        self._restart_marks.pop(str(watcher.watch_path), None)
+        self._stable_cycles.pop(str(watcher.watch_path), None)
+        logger.info(f"✓ 目录监控已重建: {watcher.watch_path}")
+        self.__clear_alert(watcher.watch_path, f"目录监控已自动恢复: {watcher.watch_path}")
+
+    def __retry_pending_locals(self):
+        """
+        重试启动失败的本地目录监控，给网络存储/FUSE 挂载留出就绪时间。
+        """
+        with self._watcher_lock:
+            pending = list(self._pending_locals)
+        for item in pending:
+            # 失败次数越多重试间隔越长（按健康检查周期数退避），长时间故障时不刷屏
+            if item.get("skip_cycles", 0) > 0:
+                item["skip_cycles"] -= 1
+                continue
+            logger.info(f"重试启动本地目录监控: {item['mon_path']}")
+            if not self.__start_local_monitor(mon_path=item["mon_path"], monitor_mode=item["monitor_mode"]):
+                item["attempts"] = item.get("attempts", 0) + 1
+                item["skip_cycles"] = min(item["attempts"], 10)
+
+    def __send_alert(self, mon_path: Path, message: str):
+        """
+        推送目录监控异常告警，同一目录仅在状态变化时推送一次。
+        :param mon_path: 监控目录
+        :param message: 告警内容
+        """
+        key = str(mon_path)
+        with self._watcher_lock:
+            if key in self._alerted_paths:
+                return
+            self._alerted_paths.add(key)
+        MessageHelper().put(message, title="目录监控")
+
+    def __clear_alert(self, mon_path: Path, message: str):
+        """
+        清除目录监控异常告警状态，并在此前告警过时推送恢复消息。
+        :param mon_path: 监控目录
+        :param message: 恢复内容
+        """
+        key = str(mon_path)
+        with self._watcher_lock:
+            if key not in self._alerted_paths:
+                return
+            self._alerted_paths.discard(key)
+        logger.info(message)
+        MessageHelper().put(message, title="目录监控")
 
     def polling_observer(self, storage: str, mon_paths: List[Path]):
         """
@@ -846,8 +1096,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                     logger.info(f"{storage}:{monitor_scope} 监控间隔已调整为 {new_interval} 分钟")
 
             except Exception as e:
-                logger.error(f"轮询监控 {storage}:{monitor_scope} 出现错误：{e}")
-                logger.debug(traceback.format_exc())
+                logger.error(f"轮询监控 {storage}:{monitor_scope} 出现错误：{e}\n{traceback.format_exc()}")
 
     def event_handler(self, event, text: str, event_path: str, file_size: float = None):
         """
@@ -925,20 +1174,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         """
         退出监控
         """
-        if self._watchers:
-            logger.info("正在停止本地目录监控服务...")
-            for watcher in self._watchers:
-                try:
-                    watcher.stop()
-                    watcher.join(timeout=5)
-                    if watcher.is_alive():
-                        logger.warning(f"本地目录监控线程在5秒内未能停止: {watcher.watch_path}")
-                    else:
-                        logger.debug(f"已停止本地目录监控服务: {watcher.watch_path}")
-                except Exception as e:
-                    logger.error(f"停止目录监控服务出现了错误：{e}")
-            self._watchers = []
-            logger.info("本地目录监控服务已停止")
+        # 先停定时服务，避免健康检查在停止过程中重建监控线程
         if self._scheduler:
             self._scheduler.remove_all_jobs()
             if self._scheduler.running:
@@ -948,6 +1184,26 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 except Exception as e:
                     logger.error(f"停止定时服务出现了错误：{e}")
             self._scheduler = None
+        with self._watcher_lock:
+            watchers = self._watchers
+            self._watchers = []
+            self._pending_locals = []
+            self._alerted_paths = set()
+            self._restart_marks = {}
+            self._stable_cycles = {}
+        if watchers:
+            logger.info("正在停止本地目录监控服务...")
+            for watcher in watchers:
+                try:
+                    watcher.stop()
+                    watcher.join(timeout=5)
+                    if watcher.is_alive():
+                        logger.warning(f"本地目录监控线程在5秒内未能停止: {watcher.watch_path}")
+                    else:
+                        logger.debug(f"已停止本地目录监控服务: {watcher.watch_path}")
+                except Exception as e:
+                    logger.error(f"停止目录监控服务出现了错误：{e}")
+            logger.info("本地目录监控服务已停止")
         if self._cache:
             self._cache.close()
         if self._snapshot_cache:
