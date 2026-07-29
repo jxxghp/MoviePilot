@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app.core.cache import FileCache
 from app.core.config import settings
@@ -20,13 +20,14 @@ class SnapshotStore:
         self._cache = cache if cache is not None else FileCache(base=settings.CACHE_PATH / "snapshots")
 
     def save(self, storage: str, snapshot: Dict, file_count: int = 0,
-             last_snapshot_time: Optional[float] = None):
+             last_snapshot_time: Optional[float] = None) -> bool:
         """
         保存快照到文件缓存。
         :param storage: 存储名称
         :param snapshot: 快照数据
         :param file_count: 文件数量，用于调整监控间隔
         :param last_snapshot_time: 上次快照时间戳
+        :return: 是否保存成功
         """
         try:
             snapshot_time = max((item.get('modify_time', 0) for item in snapshot.values()), default=None)
@@ -41,14 +42,17 @@ class SnapshotStore:
             snapshot_json = json.dumps(snapshot_data, ensure_ascii=False, indent=2)
             self._cache.set(cache_key, snapshot_json.encode('utf-8'), region="snapshots")
             logger.debug(f"快照已保存到缓存: {storage}")
+            return True
         except Exception as e:
             logger.error(f"保存快照失败: {e}")
+            return False
 
-    def load(self, storage: str) -> Optional[Dict]:
+    def load_checked(self, storage: str) -> Tuple[Optional[Dict], bool]:
         """
-        从文件缓存加载快照。
+        从文件缓存加载快照，并区分「快照不存在」与「读取失败」。
+        读取失败时不能当作首次快照处理，否则会静默丢弃已有基线。
         :param storage: 存储名称
-        :return: 快照数据或None
+        :return: (快照数据或None, 是否读取成功)
         """
         try:
             cache_key = f"{storage}_snapshot"
@@ -56,12 +60,21 @@ class SnapshotStore:
             if snapshot_data:
                 data = json.loads(snapshot_data.decode('utf-8'))
                 logger.debug(f"成功加载快照: {storage}, 包含 {len(data.get('snapshot', {}))} 个文件")
-                return data
+                return data, True
             logger.debug(f"快照文件不存在: {storage}")
-            return None
+            return None, True
         except Exception as e:
             logger.error(f"加载快照失败: {e}")
-            return None
+            return None, False
+
+    def load(self, storage: str) -> Optional[Dict]:
+        """
+        从文件缓存加载快照。
+        :param storage: 存储名称
+        :return: 快照数据或None
+        """
+        data, _ = self.load_checked(storage)
+        return data
 
     def reset(self, storage: str) -> bool:
         """

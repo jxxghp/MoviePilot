@@ -17,6 +17,7 @@ from app.monitor.watcher import LocalDirectoryWatcher
 from app.schemas.types import SystemConfigKey
 from app.utils.mixins import ConfigReloadMixin
 from app.utils.singleton import SingletonClass
+from app.utils.system import SystemUtils
 
 
 class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
@@ -50,7 +51,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         # 快照存储
         self._store = SnapshotStore()
         # 远程轮询监控
-        self._poller = RemotePoller(store=self._store, dispatcher=self._dispatcher)
+        self._poller = RemotePoller(store=self._store, dispatcher=self._dispatcher,
+                                    alert_cb=self.__poller_alert)
         # 启动目录监控和文件整理
         self.init()
 
@@ -241,10 +243,17 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                     logger.info(
                         f"系统监控资源使用率: {usage_percent:.1f}% ({file_count}/{limits['max_user_watches']})")
 
+            # 网络/FUSE 挂载轮询降频，减少监控自身对挂载后端的持续 stat 压力
+            poll_delay_ms = None
+            if use_polling and SystemUtils.is_network_filesystem(mon_path):
+                poll_delay_ms = LocalDirectoryWatcher.POLL_DELAY_NETWORK_MS
+                logger.info(f"检测到网络文件系统，轮询扫描间隔调整为 {poll_delay_ms}ms: {mon_path}")
+
             watcher = LocalDirectoryWatcher(
                 mon_path=mon_path,
                 callback=self,
-                force_polling=True if use_polling else None
+                force_polling=True if use_polling else None,
+                poll_delay_ms=poll_delay_ms
             )
             # 启动成功后再登记，避免失败的监控残留在列表中
             watcher.start()
@@ -348,7 +357,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         new_watcher = LocalDirectoryWatcher(
             mon_path=watcher.watch_path,
             callback=self,
-            force_polling=watcher.force_polling
+            force_polling=watcher.force_polling,
+            poll_delay_ms=watcher.poll_delay_ms
         )
         try:
             new_watcher.start()
@@ -398,6 +408,16 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             if key in self._alerted_paths:
                 return
             self._alerted_paths.add(key)
+        MessageHelper().put(message, title="目录监控")
+
+    @staticmethod
+    def __poller_alert(storage: str, message: str):
+        """
+        远程轮询监控告警回调，复用消息渠道推送。
+        :param storage: 存储名称
+        :param message: 告警内容
+        """
+        logger.warn(f"[{storage}] {message}")
         MessageHelper().put(message, title="目录监控")
 
     def __clear_alert(self, mon_path: Path, message: str):

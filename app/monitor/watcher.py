@@ -31,17 +31,24 @@ class LocalDirectoryWatcher:
     HEALTHY_UPTIME = 60
     # 超过该秒数监控循环没有任何活动，判定为静默失效
     STALL_TIMEOUT = 600
+    # 轮询模式目录扫描间隔（毫秒）：本地磁盘用 watchfiles 默认值
+    POLL_DELAY_LOCAL_MS = 300
+    # 网络/FUSE 挂载轮询降频，减少监控自身对挂载后端的持续 stat 压力
+    POLL_DELAY_NETWORK_MS = 5000
 
-    def __init__(self, mon_path: Path, callback: Any, force_polling: Optional[bool] = None):
+    def __init__(self, mon_path: Path, callback: Any, force_polling: Optional[bool] = None,
+                 poll_delay_ms: Optional[int] = None):
         """
         初始化本地目录监控。
         :param mon_path: 监控目录
         :param callback: 目录变化回调对象
         :param force_polling: 是否强制使用轮询模式，None 表示由 watchfiles 自动选择
+        :param poll_delay_ms: 轮询模式目录扫描间隔（毫秒），仅轮询时生效
         """
         self._watch_path = mon_path
         self._callback = callback
         self._force_polling = force_polling
+        self._poll_delay_ms = poll_delay_ms or self.POLL_DELAY_LOCAL_MS
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._watch_filter = DefaultFilter()
@@ -73,6 +80,14 @@ class LocalDirectoryWatcher:
         :return: 自动重启次数
         """
         return self._restart_count
+
+    @property
+    def poll_delay_ms(self) -> int:
+        """
+        获取轮询模式目录扫描间隔（毫秒），重建监控线程时沿用。
+        :return: 扫描间隔
+        """
+        return self._poll_delay_ms
 
     def start(self):
         """
@@ -178,6 +193,7 @@ class LocalDirectoryWatcher:
                 rust_timeout=1000,
                 yield_on_timeout=True,
                 force_polling=force_polling,
+                poll_delay_ms=self._poll_delay_ms,
                 recursive=True,
                 ignore_permission_denied=True):
             self._mark_activity()
