@@ -197,9 +197,15 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/tmdb/cache` | 查询 TheMovieDb 识别缓存及识别成功、失败条目统计 |
+| GET | `/api/v1/tmdb/cache` | 查询 TheMovieDb 识别缓存统计、共享识别累计成功命中次数及开关状态 |
 | DELETE | `/api/v1/tmdb/cache/{cache_key}` | 按缓存键删除单条 TheMovieDb 识别缓存，缓存键需要进行 URL 编码 |
 | DELETE | `/api/v1/tmdb/cache` | 清空全部 TheMovieDb 识别缓存 |
+| GET | `/api/v1/douban/cache` | 查询豆瓣识别缓存统计、共享识别累计成功命中次数及开关状态 |
+| DELETE | `/api/v1/douban/cache/{cache_key}` | 按缓存键删除单条豆瓣识别缓存，缓存键需要进行 URL 编码 |
+| DELETE | `/api/v1/douban/cache` | 清空全部豆瓣识别缓存 |
+
+缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`、`data`，以及共享识别统计字段
+`shared_recognized` 和开关字段 `shared_recognize_enabled`。共享命中次数仅在共享结果驱动的二次媒体识别成功后累计。
 
 ### 插件补充接口
 

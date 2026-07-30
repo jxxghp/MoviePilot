@@ -281,6 +281,8 @@ class SystemConfigKey(Enum):
     SetupWizardState = "SetupWizardState"
     # 绿联影视登录会话缓存
     UgreenSessionCache = "UgreenSessionCache"
+    # 共享媒体识别成功次数
+    MediaRecognizeShareCount = "MediaRecognizeShareCount"
 
 
 # 处理进度Key字典

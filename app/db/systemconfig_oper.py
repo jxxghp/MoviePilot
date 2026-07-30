@@ -101,6 +101,19 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             # 避免将__SYSTEMCONF内的值引用出去，会导致set时误判没有变动
             return copy.deepcopy(self.__SYSTEMCONF.get(key))
 
+    def increment(self, key: SystemConfigKey, step: int = 1) -> int:
+        """
+        原子递增整数系统设置
+
+        :param key: 配置键
+        :param step: 递增步长
+        :return: 递增后的整数值
+        """
+        with self._rlock:
+            value = int(self.get(key) or 0) + step
+            self.set(key, value)
+            return value
+
     def all(self):
         """
         获取所有系统设置

@@ -1,10 +1,11 @@
 import asyncio
 import inspect
+from unittest.mock import Mock
 
 from app.api.endpoints import douban as douban_endpoint
 from app.db.user_oper import get_current_active_superuser_async
 from app.modules.douban.douban_cache import DoubanCache
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, SystemConfigKey
 
 
 class _MemoryCacheStub:
@@ -116,7 +117,14 @@ def test_douban_cache_endpoint_returns_management_statistics(monkeypatch):
         "recognized": {"id": "1", "title": "Alpha", "type": MediaType.MOVIE},
         "unrecognized": {"id": 0},
     })
+    get_system_config = Mock(return_value=None)
     monkeypatch.setattr(douban_endpoint, "DoubanCache", lambda: cache)
+    monkeypatch.setattr(
+        douban_endpoint,
+        "SystemConfigOper",
+        lambda: type("SystemConfigStub", (), {"get": get_system_config})(),
+    )
+    monkeypatch.setattr(douban_endpoint.settings, "MEDIA_RECOGNIZE_SHARE", False)
 
     response = asyncio.run(douban_endpoint.douban_recognition_cache(None))
 
@@ -124,6 +132,11 @@ def test_douban_cache_endpoint_returns_management_statistics(monkeypatch):
     assert response.data["count"] == 2
     assert response.data["recognized"] == 1
     assert response.data["unrecognized"] == 1
+    assert response.data["shared_recognized"] == 0
+    assert response.data["shared_recognize_enabled"] is False
+    get_system_config.assert_called_once_with(
+        SystemConfigKey.MediaRecognizeShareCount
+    )
 
 
 def test_douban_cache_delete_endpoint_reports_missing_item(monkeypatch):

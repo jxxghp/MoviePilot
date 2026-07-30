@@ -20,6 +20,7 @@ from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.message_oper import MessageOper
+from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import UserOper
 from app.helper.message import MessageHelper, MessageQueueManager, MessageTemplateHelper
 from app.helper.server import MoviePilotServerHelper
@@ -49,6 +50,7 @@ from app.schemas.types import (
     MediaImageType,
     EventType,
     MessageChannel,
+    SystemConfigKey,
 )
 from app.utils.object import ObjectUtils
 
@@ -573,6 +575,14 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     @staticmethod
+    def _record_media_recognize_share_hit() -> None:
+        """记录一次共享媒体识别成功命中，统计失败不影响识别结果。"""
+        try:
+            SystemConfigOper().increment(SystemConfigKey.MediaRecognizeShareCount)
+        except Exception as err:
+            logger.error(f"记录共享媒体识别命中次数失败：{str(err)}")
+
+    @staticmethod
     def _resolve_media_source_params(
             source: Optional[str] = None,
             mediaid: Optional[str] = None,
@@ -730,6 +740,7 @@ class ChainBase(metaclass=ABCMeta):
                     )
                 if mediainfo:
                     self._update_local_recognize_cache(shared_cache_meta, mediainfo)
+                    self._record_media_recognize_share_hit()
                     return mediainfo
         return None
 
@@ -839,6 +850,7 @@ class ChainBase(metaclass=ABCMeta):
                     )
                 if mediainfo:
                     await self._async_update_local_recognize_cache(shared_cache_meta, mediainfo)
+                    await run_in_threadpool(self._record_media_recognize_share_hit)
                     return mediainfo
         return None
 

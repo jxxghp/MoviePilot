@@ -441,6 +441,20 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | POST | `/api/v1/torrent/cache/refresh` | Refresh torrent cache |
 | POST | `/api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}` | Re-identify torrent. Params: `tmdbid`, `doubanid` |
 
+### Recognition Cache (6 endpoints)
+
+The two list endpoints return local cache totals plus `shared_recognized` and
+`shared_recognize_enabled` for the persisted successful shared-recognition count.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/tmdb/cache` | Get TheMovieDb recognition cache statistics |
+| DELETE | `/api/v1/tmdb/cache/{cache_key}` | Delete one URL-encoded TheMovieDb recognition cache key |
+| DELETE | `/api/v1/tmdb/cache` | Clear TheMovieDb recognition cache |
+| GET | `/api/v1/douban/cache` | Get Douban recognition cache statistics |
+| DELETE | `/api/v1/douban/cache/{cache_key}` | Delete one URL-encoded Douban recognition cache key |
+| DELETE | `/api/v1/douban/cache` | Clear Douban recognition cache |
+
 ### Message (8 endpoints)
 
 | Method | Path | Description |
