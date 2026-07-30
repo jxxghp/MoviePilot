@@ -828,10 +828,13 @@ class SystemUtils:
             return False
 
     @staticmethod
-    def is_network_filesystem(directory: Path) -> bool:
+    def is_network_filesystem(
+            directory: Path, include_local_fuse: bool = False
+    ) -> bool:
         """
         检测是否为网络文件系统
         :param directory: 目录路径
+        :param include_local_fuse: 是否将本地 FUSE 挂载视为挂载文件系统
         :return: 是否为网络文件系统
         """
         try:
@@ -849,7 +852,10 @@ class SystemUtils:
                         "fuseblk",
                         # TBD
                     ]
-                    if any(fs in output for fs in local_fs):
+                    if (
+                            not include_local_fuse
+                            and any(fs in output for fs in local_fs)
+                    ):
                         return False
                     network_fs = ['nfs', 'cifs', 'smbfs', 'fuse', 'sshfs', 'ftpfs']
                     return any(fs in output for fs in network_fs)
@@ -859,7 +865,11 @@ class SystemUtils:
                                         capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     output = result.stdout.lower()
-                    return 'nfs' in output or 'smbfs' in output
+                    return (
+                            'nfs' in output
+                            or 'smbfs' in output
+                            or (include_local_fuse and 'fuse' in output)
+                    )
             elif system == 'Windows':
                 # Windows 检查网络驱动器
                 return str(directory).startswith('\\\\')

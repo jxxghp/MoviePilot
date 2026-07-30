@@ -928,6 +928,36 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             or "/@eaDir" in normalized_path
         )
 
+    @staticmethod
+    def __should_delete_empty_source_directories(
+            task: TransferTask,
+            delete_mounted_local_disk_empty_dirs: bool,
+            mounted_filesystem_cache: Dict[Path, bool],
+    ) -> bool:
+        """
+        判断移动整理后是否应删除源空目录。
+
+        仅在关闭挂载盘空目录清理且源存储为本地时检测文件系统，
+        避免默认流程产生额外系统调用。
+        """
+        if delete_mounted_local_disk_empty_dirs:
+            return True
+        if task.fileitem.storage != "local":
+            return True
+
+        source_directory = (
+            Path(task.target_directory.download_path)
+            if task.target_directory and task.target_directory.download_path
+            else Path(task.fileitem.path).parent
+        )
+        if source_directory not in mounted_filesystem_cache:
+            mounted_filesystem_cache[source_directory] = (
+                SystemUtils.is_network_filesystem(
+                    source_directory, include_local_fuse=True
+                )
+            )
+        return not mounted_filesystem_cache[source_directory]
+
     def __default_callback(
             self, task: TransferTask, transferinfo: TransferInfo, /
     ) -> Tuple[bool, str]:
@@ -1189,10 +1219,16 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 tasks = self.jobview.success_tasks(
                     task.mediainfo, task.meta.begin_season
                 )
+                system_config_oper = SystemConfigOper()
                 # 获取整理屏蔽词
-                transfer_exclude_words = SystemConfigOper().get(
+                transfer_exclude_words = system_config_oper.get(
                     SystemConfigKey.TransferExcludeWords
                 )
+                # 挂载盘空目录清理默认开启
+                delete_mounted_local_disk_empty_dirs = system_config_oper.get(
+                    SystemConfigKey.MountedLocalDiskDeleteEmptyDirs
+                ) is not False
+                mounted_filesystem_cache: Dict[Path, bool] = {}
                 processed_hashes = set()
                 for t in tasks:
                     if t.download_hash and t.download_hash not in processed_hashes:
@@ -1209,7 +1245,15 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                     logger.info(
                                         f"移动模式删除种子成功：{t.download_hash}"
                                     )
-                    if not t.download_hash and t.fileitem:
+                    if (
+                            not t.download_hash
+                            and t.fileitem
+                            and self.__should_delete_empty_source_directories(
+                                t,
+                                delete_mounted_local_disk_empty_dirs,
+                                mounted_filesystem_cache,
+                            )
+                    ):
                         # 删除剩余空目录
                         StorageChain().delete_media_file(t.fileitem, delete_self=False)
 

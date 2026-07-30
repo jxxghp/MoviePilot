@@ -215,6 +215,8 @@ class SystemConfigKey(Enum):
     NotificationSwitchs = "NotificationSwitchs"
     # 目录配置
     Directories = "Directories"
+    # 挂载型本地盘是否删除空目录
+    MountedLocalDiskDeleteEmptyDirs = "MountedLocalDiskDeleteEmptyDirs"
     # 存储配置
     Storages = "Storages"
     # 搜索站点范围
