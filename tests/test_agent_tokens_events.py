@@ -87,6 +87,7 @@ def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
         user_agent="AgentTokens-UA/1.0",
         use_proxy=True,
         thinking_level="xhigh",
+        api_protocol="auto",
     )
     assert agent._llm_provider_selection["selected_provider_id"] == "provider-1"
 

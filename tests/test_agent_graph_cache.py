@@ -78,6 +78,7 @@ async def test_agent_bundle_signature_changes_with_temperature(monkeypatch) -> N
         "user_agent": None,
         "use_proxy": False,
         "thinking_level": "off",
+        "api_protocol": "auto",
     }
 
     with patch.object(

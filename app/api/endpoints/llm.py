@@ -38,6 +38,7 @@ class LlmTestRequest(BaseModel):
     user_agent: Optional[str] = None
     temperature: Optional[float] = None
     use_proxy: Optional[bool] = None
+    api_protocol: Optional[str] = None
 
 
 class LlmProviderAuthStartRequest(BaseModel):
@@ -269,6 +270,7 @@ async def llm_test(
         base_url_preset=settings.LLM_BASE_URL_PRESET,
         user_agent=settings.LLM_USER_AGENT,
         use_proxy=settings.LLM_USE_PROXY,
+        api_protocol=settings.LLM_API_PROTOCOL,
     )
 
     if not payload.provider:
@@ -302,6 +304,7 @@ async def llm_test(
             "base_url_preset": payload.base_url_preset,
             "user_agent": payload.user_agent,
             "use_proxy": payload.use_proxy,
+            "api_protocol": payload.api_protocol,
         }
         if payload.temperature is not None:
             test_kwargs["temperature"] = payload.temperature
