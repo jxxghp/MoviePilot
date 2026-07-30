@@ -94,6 +94,7 @@ class AgentLLMProviderEventData(ChainEventData):
     user_agent: Optional[str] = Field(default=None, description="OpenAI兼容接口User-Agent")
     use_proxy: Optional[bool] = Field(default=None, description="是否使用系统代理")
     thinking_level: Optional[str] = Field(default=None, description="思考模式级别")
+    api_protocol: Optional[str] = Field(default=None, description="OpenAI兼容接口API协议：auto/chat_completions/responses")
     selected_provider_id: Optional[str] = Field(default=None, description="插件侧供应商ID")
     selected_provider_name: Optional[str] = Field(default=None, description="插件侧供应商名称")
     source: Optional[str] = Field(default=None, description="选择来源")

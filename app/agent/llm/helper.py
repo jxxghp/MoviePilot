@@ -846,18 +846,30 @@ class LLMHelper:
             provider: str,
             model: str | None,
             runtime: dict[str, Any],
+            api_protocol: str | None = None,
     ) -> bool | None:
         """
-        判断官方 ChatGPT API Key 模式是否应使用 Responses API。
+        判断本次 OpenAI 兼容调用是否应使用 Responses API。
 
-        GPT-5/o 系推理模型在 Chat Completions 中组合 function tools 与
-        reasoning_effort 时会被官方端点拒绝，因此 ChatGPT 官方 API Key
-        模式需要显式切到 Responses API；通用 OpenAI-compatible 入口保持
-        provider 目录解析出的默认行为，避免误伤第三方兼容服务。
+        优先级：
+        1. 运行时显式要求（ChatGPT Plus/Pro OAuth、Codex 等端点契约），始终保留；
+        2. 用户通过 ``LLM_API_PROTOCOL`` 显式指定 ``responses`` / ``chat_completions``；
+        3. ``auto``（默认）保持原有 ChatGPT 官方 API Key + GPT-5/o 系推理模型
+           自动切换逻辑，通用 OpenAI 兼容入口仍走 Chat Completions，
+           避免误伤第三方兼容服务。
+
+        :param api_protocol: 显式传入的 API 协议，未传入时读取 ``LLM_API_PROTOCOL``
+        :return: True/False 强制指定协议；None 表示交由 LangChain 默认行为
         """
         runtime_use_responses_api = runtime.get("use_responses_api")
         if runtime_use_responses_api is not None:
             return bool(runtime_use_responses_api)
+
+        protocol = cls._normalize_api_protocol(api_protocol)
+        if protocol == "responses":
+            return True
+        if protocol == "chat_completions":
+            return False
 
         provider_name = (provider or "").strip().lower()
         if provider_name != "chatgpt":
@@ -871,6 +883,18 @@ class LLMHelper:
         if model_name.startswith(("gpt-5", "o1", "o3", "o4")):
             return True
         return None
+
+    @staticmethod
+    def _normalize_api_protocol(api_protocol: str | None) -> str:
+        """
+        规范化 API 协议配置，未知值统一回退为 ``auto`` 以保持兼容。
+        """
+        normalized = str(api_protocol or settings.LLM_API_PROTOCOL or "").strip().lower()
+        if normalized in {"auto", "chat_completions", "responses"}:
+            return normalized
+        if normalized:
+            logger.warning(f"忽略不支持的 LLM_API_PROTOCOL 配置: {api_protocol}")
+        return "auto"
 
     @staticmethod
     def _attach_runtime_metadata(model: Any, runtime: dict[str, Any]) -> None:
@@ -954,6 +978,7 @@ class LLMHelper:
             user_agent: str | None = None,
             temperature: Optional[float] = None,
             use_proxy: bool | None = None,
+            api_protocol: str | None = None,
     ):
         """
         获取LLM实例
@@ -970,6 +995,10 @@ class LLMHelper:
         :param user_agent: OpenAI兼容接口请求 User-Agent。未显式传入时使用配置项 LLM_USER_AGENT。
         :param temperature: LLM 温度参数。未显式传入时使用配置项 LLM_TEMPERATURE。
         :param use_proxy: 是否为本次 LLM 调用使用系统代理。未显式传入时使用配置项 LLM_USE_PROXY。
+        :param api_protocol: OpenAI 兼容接口 API 协议
+            （auto/chat_completions/responses）。未显式传入时使用配置项 LLM_API_PROTOCOL。
+            仅对 OpenAI 兼容运行时生效；``responses`` 强制走 Responses API，
+            ``chat_completions`` 强制走 Chat Completions，``auto`` 保持原有自动判断。
         :return: LLM实例
         """
         provider_name = str(provider if provider is not None else settings.LLM_PROVIDER).lower()
@@ -1021,6 +1050,7 @@ class LLMHelper:
             provider=provider_name,
             model=model_name,
             runtime=runtime,
+            api_protocol=api_protocol,
         )
         llm_proxy = _resolve_llm_proxy(use_proxy)
 
@@ -1210,11 +1240,13 @@ class LLMHelper:
             user_agent: str | None = None,
             temperature: Optional[float] = None,
             use_proxy: bool | None = None,
+            api_protocol: str | None = None,
     ) -> dict:
         """
         使用当前配置或显式传入的临时配置执行一次最小 LLM 调用。
 
         :param temperature: LLM 温度参数。未显式传入时沿用已保存配置。
+        :param api_protocol: OpenAI 兼容接口 API 协议，未显式传入时沿用已保存配置。
         """
         provider_name = provider if provider is not None else settings.LLM_PROVIDER
         model_name = model if model is not None else settings.LLM_MODEL
@@ -1229,6 +1261,7 @@ class LLMHelper:
             "base_url_preset": base_url_preset,
             "user_agent": user_agent,
             "use_proxy": use_proxy,
+            "api_protocol": api_protocol,
         }
         if temperature is not None:
             llm_kwargs["temperature"] = temperature

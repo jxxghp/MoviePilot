@@ -569,6 +569,8 @@ class ConfigModel(BaseModel):
     LLM_MODEL: str = "deepseek-chat"
     # 思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh
     LLM_THINKING_LEVEL: Optional[str] = "off"
+    # OpenAI兼容接口API协议：auto（自动）/ chat_completions / responses
+    LLM_API_PROTOCOL: str = "auto"
     # LLM是否支持图片输入，开启后消息图片会按多模态输入发送给模型
     LLM_SUPPORT_IMAGE_INPUT: bool = True
     # 是否启用音频输入，开启后用户语音会先转写为文本再进入 Agent
