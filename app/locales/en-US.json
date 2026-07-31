@@ -423,6 +423,10 @@
       "target": "Plugin {plugin} does not exist or is not installed"
     },
     {
+      "source": "插件 {plugin} 未安装，无法评分",
+      "target": "Plugin {plugin} is not installed and cannot be rated"
+    },
+    {
       "source": "插件 {plugin} 不存在或未加载",
       "target": "Plugin {plugin} does not exist or is not loaded"
     },
