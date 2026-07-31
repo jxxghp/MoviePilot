@@ -505,6 +505,11 @@ The two list endpoints return local cache totals plus `shared_recognized` and
 | GET | `/api/v1/mcp/tools/{tool_name}` | Get tool definition |
 | GET | `/api/v1/mcp/tools/{tool_name}/schema` | Get tool input schema |
 
+The exposed tool list is dynamic: it includes tools declared by enabled plugins
+and is refreshed lazily after plugin startup, shutdown, reload, or configuration
+activation. Clients that cache MCP metadata must request `tools/list` again or
+reconnect after a plugin lifecycle change.
+
 ### Agent MCP Client (3 endpoints)
 
 | Method | Path | Description |
