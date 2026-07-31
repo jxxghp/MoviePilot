@@ -324,13 +324,16 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/dashboard/network` | Network traffic |
 | GET | `/api/v1/dashboard/network2` | Network traffic (API_TOKEN) |
 
-### Plugin (22 endpoints)
+### Plugin (25 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/plugin/` | List plugins. Params: `state` (installed/market/all), `force` |
 | GET | `/api/v1/plugin/installed` | List installed plugins |
 | GET | `/api/v1/plugin/statistic` | Plugin install statistics |
+| GET | `/api/v1/plugin/rating` | Batch plugin ratings. Params: comma-separated `plugin_ids` |
+| GET | `/api/v1/plugin/rating/{plugin_id}` | Get average rating, rating count, and this installation's rating |
+| POST | `/api/v1/plugin/rating/{plugin_id}` | Rate an installed plugin. Body: `{"rating": 4.5}`; range 0.1-5.0 |
 | GET | `/api/v1/plugin/install/{plugin_id}` | Install plugin. Params: `repo_url`, `force` |
 | GET | `/api/v1/plugin/reload/{plugin_id}` | Reload plugin |
 | GET | `/api/v1/plugin/reset/{plugin_id}` | Reset plugin config & data |

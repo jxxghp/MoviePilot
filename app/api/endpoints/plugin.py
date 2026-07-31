@@ -1,7 +1,7 @@
 import asyncio
 import mimetypes
 import shutil
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -474,6 +474,71 @@ async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     插件安装统计
     """
     return await MoviePilotServerHelper.async_get_plugin_statistic()
+
+
+@router.get(
+    "/rating",
+    summary="批量查询插件评分",
+    response_model=Dict[str, schemas.PluginRating],
+)
+async def plugin_ratings(
+    plugin_ids: Optional[str] = None,
+    _: User = Depends(get_current_active_superuser_async),
+) -> Dict[str, schemas.PluginRating]:
+    """
+    批量查询插件平均分、评分人数和当前安装实例评分。
+    """
+    requested_ids = plugin_ids.split(",") if plugin_ids is not None else None
+    ratings = await MoviePilotServerHelper.async_get_plugin_ratings(requested_ids)
+    return {
+        plugin_id: schemas.PluginRating.model_validate(rating)
+        for plugin_id, rating in ratings.items()
+    }
+
+
+@router.get(
+    "/rating/{plugin_id}",
+    summary="查询插件评分",
+    response_model=schemas.PluginRating,
+)
+async def plugin_rating(
+    plugin_id: str,
+    _: User = Depends(get_current_active_superuser_async),
+) -> schemas.PluginRating:
+    """
+    查询单个插件平均分、评分人数和当前安装实例评分。
+    """
+    rating = await MoviePilotServerHelper.async_get_plugin_rating(plugin_id)
+    return schemas.PluginRating.model_validate(rating)
+
+
+@router.post(
+    "/rating/{plugin_id}",
+    summary="提交插件评分",
+    response_model=schemas.Response,
+)
+async def rate_plugin(
+    plugin_id: str,
+    payload: schemas.PluginRatingRequest,
+    _: User = Depends(get_current_active_superuser_async),
+) -> schemas.Response:
+    """
+    为已安装插件新增或更新当前安装实例评分。
+    """
+    installed_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    if plugin_id not in installed_plugins:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"插件 {plugin_id} 未安装，无法评分",
+        )
+
+    rating = await MoviePilotServerHelper.async_submit_plugin_rating(
+        plugin_id,
+        payload.rating,
+    )
+    if rating is None:
+        return schemas.Response(success=False, message="连接MoviePilot服务器失败")
+    return schemas.Response(success=True, data=rating)
 
 
 @router.get(
