@@ -31,6 +31,12 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 - `tools/call`: 调用特定工具。
 - `ping`: 连接存活检测。
 
+### 动态插件工具
+
+`tools/list` 会同时返回 MoviePilot 内置工具和已启用插件通过 `get_agent_tools()` 声明的工具。插件启动、停止、重载或配置生效后，MCP 工具管理器会在下一次列出或调用工具时按注册表版本惰性刷新，避免继续暴露已移除的工具或遗漏新工具。
+
+MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。如果客户端缓存了工具列表，插件状态变化后需要让客户端重新请求 `tools/list`；无法手动刷新的客户端应重新连接 MCP 服务或新建会话。
+
 ---
 
 ## 4. 客户端配置示例
@@ -231,7 +237,7 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 获取所有可用的MCP工具列表。
 
-工具的 `inputSchema` 只包含实际执行业务所需的参数，不包含用于解释调用原因的通用 `explanation` 参数，以减少 Agent 上下文消耗。
+内置工具的 `inputSchema` 只包含实际执行业务所需的参数，不包含用于解释调用原因的通用 `explanation` 参数，以减少 Agent 上下文消耗。插件工具的参数结构由插件自身声明。
 
 媒体相关 MCP 工具（如 `query_media_detail`、`search_torrents`、`query_library_exists`、`add_subscribe`、`transfer_file`）接受 `tmdb_id`/`tmdbid`、`douban_id`/`doubanid`、`bangumi_id`/`bangumiid`、`anilist_id`/`anilistid`，也接受 `media_source` + `media_id`。工具返回的媒体、订阅、下载和整理记录会同步带回可用的四种专用 ID 及通用主身份。
 

@@ -58,6 +58,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 插件智能体工具注册表缓存，插件启停或配置生效时主动失效。
         self._plugin_agent_tools_cache: Dict[str, List[Dict[str, Any]]] = {}
         self._plugin_agent_tools_cache_lock = threading.Lock()
+        self._plugin_agent_tools_revision: int = 0
         # 开发者模式监测插件修改
         if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
             self.__start_monitor()
@@ -143,6 +144,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         with self._plugin_agent_tools_cache_lock:
             self._plugin_agent_tools_cache.clear()
+            self._plugin_agent_tools_revision += 1
+
+    def get_plugin_agent_tools_revision(self) -> int:
+        """
+        获取插件智能体工具注册表版本号。
+        """
+        with self._plugin_agent_tools_cache_lock:
+            return self._plugin_agent_tools_revision
 
     def stop(self, pid: Optional[str] = None):
         """
@@ -1002,35 +1011,42 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         }]
         """
         cache_key = pid or "__all__"
-        with self._plugin_agent_tools_cache_lock:
-            cached_tools = self._plugin_agent_tools_cache.get(cache_key)
-        if cached_tools is not None:
-            return self._copy_plugin_agent_tools(cached_tools)
+        while True:
+            with self._plugin_agent_tools_cache_lock:
+                cache_revision = self._plugin_agent_tools_revision
+                cached_tools = self._plugin_agent_tools_cache.get(cache_key)
+            if cached_tools is not None:
+                return self._copy_plugin_agent_tools(cached_tools)
 
-        ret_tools = []
-        # 创建字典快照避免并发修改
-        running_plugins_snapshot = dict(self._running_plugins)
-        for plugin_id, plugin in running_plugins_snapshot.items():
-            if pid and pid != plugin_id:
-                continue
-            if hasattr(plugin, "get_agent_tools") and ObjectUtils.check_method(plugin.get_agent_tools):
-                try:
-                    if not plugin.get_state():
-                        continue
-                    tools = plugin.get_agent_tools()
-                    if tools:
-                        ret_tools.append({
-                            "plugin_id": plugin_id,
-                            "plugin_name": plugin.plugin_name,
-                            "tools": tools
-                        })
-                except Exception as e:
-                    logger.error(f"获取插件 {plugin_id} 智能体工具出错：{str(e)}")
-        with self._plugin_agent_tools_cache_lock:
-            self._plugin_agent_tools_cache[cache_key] = self._copy_plugin_agent_tools(
-                ret_tools
-            )
-        return ret_tools
+            ret_tools = []
+            # 创建字典快照避免并发修改
+            running_plugins_snapshot = dict(self._running_plugins)
+            for plugin_id, plugin in running_plugins_snapshot.items():
+                if pid and pid != plugin_id:
+                    continue
+                if hasattr(plugin, "get_agent_tools") and ObjectUtils.check_method(
+                    plugin.get_agent_tools
+                ):
+                    try:
+                        if not plugin.get_state():
+                            continue
+                        tools = plugin.get_agent_tools()
+                        if tools:
+                            ret_tools.append({
+                                "plugin_id": plugin_id,
+                                "plugin_name": plugin.plugin_name,
+                                "tools": tools
+                            })
+                    except Exception as e:
+                        logger.error(f"获取插件 {plugin_id} 智能体工具出错：{str(e)}")
+            with self._plugin_agent_tools_cache_lock:
+                if cache_revision != self._plugin_agent_tools_revision:
+                    # 插件状态在注册表构建期间发生变化，重新读取以避免写回过期快照。
+                    continue
+                self._plugin_agent_tools_cache[cache_key] = self._copy_plugin_agent_tools(
+                    ret_tools
+                )
+                return ret_tools
 
     @staticmethod
     def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:

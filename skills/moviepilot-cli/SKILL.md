@@ -45,6 +45,10 @@ List all available commands: `moviepilot tool list`
 
 Show parameters and usage for a specific command: `moviepilot tool show <command>`
 
+The tool list includes tools declared by enabled plugins. Re-run `tool list` and
+`tool show` after a plugin is enabled, disabled, reloaded, or reconfigured so the
+command selection uses the refreshed runtime registry.
+
 Always run `show <command>` before calling a command — parameter names are not inferable, do not guess.
 
 ## Command Groups
