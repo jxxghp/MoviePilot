@@ -3,6 +3,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = PROJECT_ROOT / "skills"
+CORE_PROMPT_PATH = PROJECT_ROOT / "app/agent/prompt/System Core Prompt.txt"
 
 
 def _read_skill(skill_name: str) -> str:
@@ -64,3 +65,14 @@ def test_api_and_database_skills_declare_fallback_boundaries() -> None:
     assert "INSERT" in db_content
     assert "UPDATE" in db_content
     assert "DELETE" in db_content
+
+
+def test_agent_core_prompt_does_not_block_plugin_source_edits() -> None:
+    """核心提示词不应禁止插件开发技能写入源码。"""
+    core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
+    plugin_skill = _read_skill("create-moviepilot-plugin")
+    allowed_tools = _frontmatter_value(plugin_skill, "allowed-tools")
+
+    assert "file editing tools, or generated patches to change code" not in core_prompt
+    assert "write_file" in allowed_tools
+    assert "edit_file" in allowed_tools
