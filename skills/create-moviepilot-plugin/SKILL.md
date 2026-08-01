@@ -1,6 +1,6 @@
 ---
 name: create-moviepilot-plugin
-version: 2
+version: 3
 description: >-
   Use this skill when the user asks to create, modify, debug, validate, or
   scaffold a MoviePilot local plugin. Covers MoviePilot V2 plugin development,
@@ -11,7 +11,7 @@ description: >-
   sidebar pages, commands, services, workflow actions, agent tools, and local
   install/reload flows. Also use for Chinese requests mentioning 编写插件、本地插件源,
   插件开发, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面.
-allowed-tools: list_directory read_file write_file edit_file execute_command query_system_settings update_system_settings query_market_plugins install_plugin reload_plugin query_installed_plugins
+allowed-tools: list_directory read_file write_file edit_file execute_command search_web browse_webpage query_system_settings update_system_settings query_market_plugins install_plugin reload_plugin query_installed_plugins
 ---
 
 # Create MoviePilot Plugin
@@ -33,6 +33,33 @@ a local plugin source and installed into the running MoviePilot instance.
 - When working in or from `MoviePilot-Plugins`, read its `README.md`,
   `docs/Repository_Guide.md`, and `docs/V2_Plugin_Development.md`. For
   scenario-specific extensions, read the matching `docs/faq/*.md`.
+
+## Code Tool Workflow
+
+- Use `execute_command(action="run")` with `rg` and narrow globs or paths to
+  locate plugin classes, extension points, tests, and package entries. Use
+  `list_directory` only when inspecting one known folder or a configured remote
+  storage backend.
+- Read the relevant implementation and adjacent example before editing.
+- Before using a Python or Node.js dependency API, determine the exact installed
+  or locked version from requirements, package manifests, lockfiles, local
+  package source, and `.pyi`/`.d.ts` declarations. If those are insufficient,
+  use `search_web` with the official documentation domain and `browse_webpage`
+  to read the matching version. Do not guess API signatures from memory or mix
+  examples from different major versions. Search the relevant package directory,
+  `.venv`, or `node_modules` directly with `rg` instead of scanning the entire
+  project without bounds.
+- Use `edit_file` for localized changes. Its `old_text` must identify one exact
+  location by default; add surrounding context instead of enabling
+  `replace_all` unless every match intentionally changes.
+- Use `write_file` for new files. Existing files require `overwrite=true` for a
+  full rewrite; first call `read_file(include_metadata=true)` and pass its
+  `sha256` as `expected_sha256` when replacing previously read content.
+- Use `execute_command(action="run")` for short validation, Git, and diagnostic
+  commands. Use `action="start"` only for interactive or long-running commands,
+  then continue through the returned session ID.
+- Do not use shell redirection or inline scripts to perform source edits or to
+  bypass a file-tool permission error.
 - When the plugin uses Vue federation, also read
   `MoviePilot-Frontend/docs/module-federation-guide.md`,
   `MoviePilot-Frontend/docs/federation-troubleshooting.md`,

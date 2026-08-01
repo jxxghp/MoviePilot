@@ -481,6 +481,9 @@ moviepilot tool run search_torrents media_type=movie tmdb_id=12345
 - `tool list` 用于动态发现当前服务可调用的工具
 - `tool show` 会输出参数名、类型和描述
 - `tool run` 参数格式固定为 `key=value`
+- `read_file`、`write_file`、`edit_file` 和 `execute_command`
+  属于内置 Agent 的本地敏感能力，不通过 MCP/`moviepilot tool` 暴露；插件开发时
+  由 Agent 按当前用户权限直接调用这些工具。
 
 ## Scheduler 命令
 

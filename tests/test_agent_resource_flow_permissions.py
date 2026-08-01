@@ -49,7 +49,12 @@ def test_non_admin_manager_exposes_restricted_file_tools():
         manager = MoviePilotToolsManager(is_admin=False)
 
     tool_names = {tool.name for tool in manager.list_tools()}
-    assert {"read_file", "write_file", "edit_file", "list_directory"} <= tool_names
+    assert {
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_directory",
+    } <= tool_names
 
 
 def test_non_admin_manager_hides_admin_only_send_local_file_tool():
