@@ -239,6 +239,10 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 内置工具的 `inputSchema` 只包含实际执行业务所需的参数，不包含用于解释调用原因的通用 `explanation` 参数，以减少 Agent 上下文消耗。插件工具的参数结构由插件自身声明。
 
+内置 Agent 的本地文件与命令工具 `read_file`、`write_file`、`edit_file`、
+`execute_command` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
+用户权限与路径边界检查；MCP 隐藏列表只负责收敛接口暴露面，不替代权限控制。
+
 媒体相关 MCP 工具（如 `query_media_detail`、`search_torrents`、`query_library_exists`、`add_subscribe`、`transfer_file`）接受 `tmdb_id`/`tmdbid`、`douban_id`/`doubanid`、`bangumi_id`/`bangumiid`、`anilist_id`/`anilistid`，也接受 `media_source` + `media_id`。工具返回的媒体、订阅、下载和整理记录会同步带回可用的四种专用 ID 及通用主身份。
 
 `get_search_results` 可使用 `title_pattern` 对种子标题执行正则筛选，也可使用 `content_pattern` 联合匹配种子标题、简介和标签。`title_pattern` 保持仅匹配标题的兼容语义；需要在结果中查看种子简介时，传入 `include_description=true`。两种正则参数与站点、分辨率等结构化筛选条件同时传入时按 AND 关系组合。
