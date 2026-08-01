@@ -933,17 +933,21 @@ class SubscribeChainTest(TestCase):
         self.assertEqual(meta.begin_season, 0)
         self.assertEqual(meta.type, MediaType.TV)
 
-    def test_follow_preserves_shared_special_season_zero(self):
-        """follow 分享订阅携带 S0 时，标题规整不能把合法季号覆盖成未指定。"""
+    def test_follow_preserves_shared_special_season_and_episode_group(self):
+        """Follow 分享必须保留合法 S0 与自定义剧集组的完整订阅范围。"""
         added_calls = []
+        exists_calls = []
+        history_calls = []
 
         class _SubscribeOper:
             """提供订阅存在性查询，避免依赖真实数据库。"""
 
             def exists(self, *args, **kwargs):
+                exists_calls.append(kwargs)
                 return False
 
             def exist_history(self, *args, **kwargs):
+                history_calls.append(kwargs)
                 return False
 
         class _SystemConfigOper:
@@ -966,6 +970,7 @@ class SubscribeChainTest(TestCase):
                         "tmdbid": None,
                         "doubanid": "12345",
                         "season": 0,
+                        "episode_group": "eg-special",
                         "best_version": 0,
                         "save_path": None,
                         "search_imdbid": False,
@@ -1003,6 +1008,9 @@ class SubscribeChainTest(TestCase):
 
         self.assertEqual(len(added_calls), 1)
         self.assertEqual(added_calls[0]["season"], 0)
+        self.assertEqual(added_calls[0]["episode_group"], "eg-special")
+        self.assertEqual(exists_calls[0]["episode_group"], "eg-special")
+        self.assertEqual(history_calls[0]["episode_group"], "eg-special")
 
     def test_resolve_subscribe_missing_accepts_downloaded_episode_best_version_targets(self):
         """外部完成守卫可按任意已下载版本判定分集洗版目标已满足。"""

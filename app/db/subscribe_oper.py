@@ -45,6 +45,7 @@ class SubscribeOper(DbOper):
             "media_source": media_source,
             "media_id": media_id,
             "season": kwargs.get("season"),
+            "episode_group": mediainfo.episode_group,
         }
         if username:
             subscribe = Subscribe.exists_by_username(self._db,
@@ -106,6 +107,7 @@ class SubscribeOper(DbOper):
             "media_source": media_source,
             "media_id": media_id,
             "season": kwargs.get("season"),
+            "episode_group": mediainfo.episode_group,
         }
         if username:
             subscribe = await Subscribe.async_exists_by_username(self._db,
@@ -152,21 +154,22 @@ class SubscribeOper(DbOper):
             self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
-            season: Optional[int] = None,
+            season: Optional[int] = None, episode_group: Optional[str] = None,
     ) -> bool:
         """
-        判断是否存在
+        按媒体身份、季号及可选剧集组判断订阅是否存在。
         """
-        return bool(Subscribe.exists(
-            self._db,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
-            media_source=media_source,
-            media_id=media_id,
-            season=season,
-        ))
+        identity_params = {
+            "tmdbid": tmdbid,
+            "doubanid": doubanid,
+            "bangumiid": bangumiid,
+            "anilistid": anilistid,
+            "media_source": media_source,
+            "media_id": media_id,
+            "season": season,
+            "episode_group": episode_group,
+        }
+        return bool(Subscribe.exists(self._db, **identity_params))
 
     def get(self, sid: int) -> Subscribe:
         """
@@ -300,18 +303,19 @@ class SubscribeOper(DbOper):
             self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
-            season: Optional[int] = None,
+            season: Optional[int] = None, episode_group: Optional[str] = None,
     ) -> bool:
         """
-        判断是否存在订阅历史
+        按媒体身份、季号及可选剧集组判断订阅历史是否存在。
         """
-        return bool(SubscribeHistory.exists(
-            self._db,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
-            media_source=media_source,
-            media_id=media_id,
-            season=season,
-        ))
+        identity_params = {
+            "tmdbid": tmdbid,
+            "doubanid": doubanid,
+            "bangumiid": bangumiid,
+            "anilistid": anilistid,
+            "media_source": media_source,
+            "media_id": media_id,
+            "season": season,
+            "episode_group": episode_group,
+        }
+        return bool(SubscribeHistory.exists(self._db, **identity_params))

@@ -161,8 +161,9 @@ class SubscribeHistory(Base):
             doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
             anilistid: Optional[int] = None, media_source: Optional[str] = None,
             media_id: Optional[str] = None, season: Optional[int] = None,
+            episode_group: Optional[str] = None,
     ):
-        """按媒体身份与季号查询订阅历史。"""
+        """按媒体身份、季号及可选剧集组查询订阅历史。"""
         condition = cls._identity_condition(
             media_source, media_id, tmdbid, doubanid, bangumiid, anilistid
         )
@@ -171,6 +172,7 @@ class SubscribeHistory(Base):
         query = db.query(cls).filter(condition)
         if season is not None:
             query = query.filter(cls.season == season)
+        query = query.filter(cls.episode_group == episode_group)
         return query.first()
 
     @classmethod
@@ -180,8 +182,9 @@ class SubscribeHistory(Base):
             doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
             anilistid: Optional[int] = None, media_source: Optional[str] = None,
             media_id: Optional[str] = None, season: Optional[int] = None,
+            episode_group: Optional[str] = None,
     ):
-        """异步按媒体身份与季号查询订阅历史。"""
+        """异步按媒体身份、季号及可选剧集组查询订阅历史。"""
         condition = cls._identity_condition(
             media_source, media_id, tmdbid, doubanid, bangumiid, anilistid
         )
@@ -190,5 +193,6 @@ class SubscribeHistory(Base):
         query = select(cls).filter(condition)
         if season is not None:
             query = query.filter(cls.season == season)
+        query = query.filter(cls.episode_group == episode_group)
         result = await db.execute(query)
         return result.scalars().first()
