@@ -1909,12 +1909,16 @@ class Feishu:
     ) -> Optional[dict]:
         """发送媒体列表消息，复用通知发送链路。"""
         lines = []
+        image = message.image
         for index, media in enumerate(medias[:10], start=1):
+            if not image:
+                image = media.get_message_image()
             title = getattr(media, "title_year", None) or getattr(media, "title", None) or "未知媒体"
             lines.append(f"{index}. {title}")
         proxy_message = Notification(
             title=message.title,
             text="\n".join(lines),
+            image=image,
             link=message.link,
             buttons=message.buttons,
             userid=message.userid,
