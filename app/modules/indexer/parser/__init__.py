@@ -129,6 +129,8 @@ class SiteParserBase(metaclass=ABCMeta):
         self._user_basic_page = None
         # 用户基础信息参数
         self._user_basic_params = None
+        # 用户基础信息请求方法
+        self._user_basic_method = None
         # 用户基础信息请求头
         self._user_basic_headers = None
 
@@ -208,7 +210,8 @@ class SiteParserBase(metaclass=ABCMeta):
                     self._get_page_content(
                         url=urljoin(self._base_url, self._user_basic_page),
                         params=self._user_basic_params,
-                        headers=self._user_basic_headers
+                        headers=self._user_basic_headers,
+                        **({"method": self._user_basic_method} if self._user_basic_method else {}),
                     )
                 )
             else:
@@ -325,12 +328,19 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         pass
 
-    def _get_page_content(self, url: str, params: dict = None, headers: dict = None):
+    def _get_page_content(
+        self,
+        url: str,
+        params: dict = None,
+        headers: dict = None,
+        method: Optional[str] = None,
+    ):
         """
         获取页面内容
         :param url: 网页地址
         :param params: post参数
         :param headers: 额外的请求头
+        :param method: 强制使用的 HTTP 请求方法
         :return:
         """
         req_headers = None
@@ -363,19 +373,19 @@ class SiteParserBase(metaclass=ABCMeta):
             cookie = self._site_cookie
             session = self._session
 
-        if params:
-            if req_headers.get("Content-Type") == "application/json":
+        if method == "post" or params:
+            if (req_headers or {}).get("Content-Type") == "application/json":
                 res = RequestUtils(cookies=cookie,
                                    session=session,
                                    timeout=60,
                                    proxies=proxies,
-                                   headers=req_headers).post_res(url=url, json=params)
+                                   headers=req_headers).post_res(url=url, json=params or {})
             else:
                 res = RequestUtils(cookies=cookie,
                                    session=session,
                                    timeout=60,
                                    proxies=proxies,
-                                   headers=req_headers).post_res(url=url, data=params)
+                                   headers=req_headers).post_res(url=url, data=params or {})
         else:
             res = RequestUtils(cookies=cookie,
                                session=session,
