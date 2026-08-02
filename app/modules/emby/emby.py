@@ -191,7 +191,12 @@ class Emby:
 
     def get_user(self, user_name: Optional[str] = None) -> Optional[Union[str, int]]:
         """
-        获得管理员用户
+        获取用于查询用户范围数据的用户ID
+
+        优先匹配指定用户名，其次匹配媒体服务器配置用户名，最后回退管理员。
+
+        :param user_name: 优先匹配的用户名
+        :return: 匹配到的用户ID，未找到可用用户时返回None
         """
         if not self._host or not self._apikey:
             return None
@@ -203,15 +208,18 @@ class Emby:
             res = RequestUtils().get_res(url, params)
             if res:
                 users = res.json()
-                # 先查询是否有与当前用户名称匹配的
-                if user_name:
-                    for user in users:
-                        if user.get("Name") == user_name:
-                            return user.get("Id")
+                candidate_usernames = []
+                for candidate_username in (user_name, self._username):
+                    if candidate_username and candidate_username not in candidate_usernames:
+                        candidate_usernames.append(candidate_username)
+                for candidate_username in candidate_usernames:
+                    for emby_user in users:
+                        if emby_user.get("Name") == candidate_username:
+                            return emby_user.get("Id")
                 # 查询管理员
-                for user in users:
-                    if user.get("Policy", {}).get("IsAdministrator"):
-                        return user.get("Id")
+                for emby_user in users:
+                    if emby_user.get("Policy", {}).get("IsAdministrator"):
+                        return emby_user.get("Id")
             else:
                 logger.error(f"Users 未获取到返回数据")
         except Exception as e:
