@@ -504,7 +504,8 @@ async def seerr_subscribe(
             tmdbid=tmdbId,
             title=subject,
             year="",
-            season=0,
+            # 电影不传季号，避免被误判为剧集（S00）并污染通知标题
+            season=None,
             username=user_name,
         )
     else:
