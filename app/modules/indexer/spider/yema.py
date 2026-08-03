@@ -14,7 +14,8 @@ class YemaSpider:
     YemaPT 开放 API 索引器
     """
 
-    _size = 100
+    # YemaPT 开放 API 使用更大的分页容量时会返回空结果。
+    _size = 40
     _movie_category = [4]
     _tv_category = [5, 6, 13, 14, 15, 16, 17]
 

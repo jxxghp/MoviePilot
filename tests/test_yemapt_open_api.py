@@ -94,7 +94,7 @@ def test_yemapt_search_uses_open_api_auth_and_maps_fields(monkeypatch):
         "url": "https://www.yemapt.org/openApi/torrent/fetchOpenTorrentList.json",
         "json": {
             "keyword": "Movie",
-            "pageParam": {"current": 3, "pageSize": 100},
+            "pageParam": {"current": 3, "pageSize": 40},
             "sorter": {},
         },
         "headers": {

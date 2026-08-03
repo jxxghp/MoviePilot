@@ -252,18 +252,18 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
     def test_search_all_sites_uses_parser_page_size_for_yema(self):
         """
-        验证专用解析器按自身页容量判断，避免 Yema 的 100 条分页被误停。
+        验证专用解析器按自身页容量判断，避免 Yema 的 40 条分页被误停。
         """
         chain = self._make_chain()
         requested_pages = []
 
         def search_torrents(**kwargs):
             """
-            模拟 Yema 第一页满 100 条，第二页不足 100 条后停止。
+            模拟 Yema 第一页满 40 条，第二页不足 40 条后停止。
             """
             page = kwargs["page"]
             requested_pages.append(page)
-            count = 100 if page == 0 else 99
+            count = 40 if page == 0 else 39
             return [
                 SimpleNamespace(title=f"Result Page {page}-{index}", description="")
                 for index in range(count)
@@ -294,14 +294,14 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual([0, 1], requested_pages)
-        self.assertEqual(199, len(results))
+        self.assertEqual(79, len(results))
 
     def test_indexer_module_search_page_size_uses_spider_metadata(self):
         """
         验证站点单页容量由索引器模块统一读取，避免搜索链写死 parser 容量。
         """
         self.assertEqual(
-            100,
+            40,
             IndexerModule.get_search_page_size({"parser": "Yema"}, keyword="keyword")
         )
         self.assertEqual(
