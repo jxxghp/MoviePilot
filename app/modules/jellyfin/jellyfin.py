@@ -52,6 +52,17 @@ class Jellyfin:
         self.user = self.get_user()
         self.serverid = self.get_server_id()
 
+    def _request(self, headers: Optional[dict] = None, **kwargs: Any) -> RequestUtils:
+        """创建兼容不同 Jellyfin 版本鉴权方式的请求工具"""
+        request_headers = dict(headers or {})
+        if not any(str(name).lower() == "authorization" for name in request_headers):
+            request_headers["Authorization"] = f'MediaBrowser Token="{self._apikey}"'
+        if kwargs.get("accept_type") and "Accept" not in request_headers:
+            request_headers["Accept"] = kwargs["accept_type"]
+        if kwargs.get("content_type") and "Content-Type" not in request_headers:
+            request_headers["Content-Type"] = kwargs["content_type"]
+        return RequestUtils(headers=request_headers, **kwargs)
+
     def get_jellyfin_folders(self) -> List[dict]:
         """
         获取Jellyfin媒体库路径列表
@@ -63,7 +74,7 @@ class Jellyfin:
             'api_key': self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 return res.json()
             else:
@@ -85,7 +96,7 @@ class Jellyfin:
             'api_key': self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 library_items = res.json()
                 librarys = []
@@ -132,7 +143,7 @@ class Jellyfin:
             return None
         params = {"api_key": self._apikey}
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 items = res.json().get("Items")
                 return items if isinstance(items, list) else None
@@ -199,7 +210,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 return len(res.json())
             else:
@@ -220,7 +231,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 users = res.json()
                 # 先查询是否有与当前用户名称匹配的
@@ -276,7 +287,7 @@ class Jellyfin:
             return None
         url = f"{self._host}Users/authenticatebyname"
         try:
-            res = RequestUtils(headers={
+            res = self._request(headers={
                 'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
                                         f'Device="requests", '
                                         f'DeviceId="1", '
@@ -313,7 +324,7 @@ class Jellyfin:
             'api_key': self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 return res.json().get("Id")
             else:
@@ -342,7 +353,7 @@ class Jellyfin:
             'api_key': self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 result = res.json()
                 return schemas.Statistic(
@@ -398,7 +409,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
@@ -435,7 +446,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
@@ -507,7 +518,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res_json = RequestUtils().get_res(url, params)
+            res_json = self._request().get_res(url, params)
             if res_json:
                 tv_info = res_json.json()
                 res_items = tv_info.get("Items")
@@ -548,7 +559,7 @@ class Jellyfin:
                 "isMissing": "false",
                 "api_key": self._apikey
             }
-            res_json = RequestUtils().get_res(url, params)
+            res_json = self._request().get_res(url, params)
             if not res_json:
                 return {}
             episode_ids: Dict[int, str] = {}
@@ -575,7 +586,7 @@ class Jellyfin:
         url = f"{self._host}Items/{item_id}/RemoteImages"
         params = {"api_key": self._apikey}
         try:
-            res = RequestUtils(timeout=10).get_res(url, params)
+            res = self._request(timeout=10).get_res(url, params)
             if res:
                 images = res.json().get("Images") or []
                 for image in images:
@@ -600,7 +611,7 @@ class Jellyfin:
         url = f"{self._host}Items/{item_id}/PlaybackInfo"
         params = {"api_key": self._apikey}
         try:
-            res = RequestUtils(timeout=10).get_res(url, params)
+            res = self._request(timeout=10).get_res(url, params)
             if res:
                 media_sources = res.json().get("MediaSources")
                 if media_sources:
@@ -634,7 +645,7 @@ class Jellyfin:
             _host = self._playhost
         url = f"{_host}Items/{item_id}/Images/{image_type}"
         try:
-            res = RequestUtils().get_res(url)
+            res = self._request().get_res(url)
             if res and res.status_code != 404:
                 logger.info(f"影片图片链接:{res.url}")
                 return res.url
@@ -658,7 +669,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 return res.json()[index].get(key)
             else:
@@ -679,7 +690,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().post_res(url, params=params)
+            res = self._request().post_res(url, params=params)
             if res:
                 return True
             else:
@@ -876,7 +887,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res and res.status_code == 200:
                 return self.__format_item_info(res.json())
         except Exception as e:
@@ -903,7 +914,7 @@ class Jellyfin:
             "api_key": self._apikey,
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if not res or res.status_code != 200:
                 return None
             total_count = res.json().get("TotalRecordCount")
@@ -937,7 +948,7 @@ class Jellyfin:
                 "Limit": limit
             })
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if not res or res.status_code != 200:
                 return None
             items = res.json().get("Items") or []
@@ -963,7 +974,7 @@ class Jellyfin:
             .replace("[APIKEY]", self._apikey or '') \
             .replace("[USER]", self.user or '')
         try:
-            return RequestUtils(accept_type="application/json").get_res(url=url)
+            return self._request(accept_type="application/json").get_res(url=url)
         except Exception as e:
             logger.error(f"连接Jellyfin出错：" + str(e))
             return None
@@ -981,7 +992,7 @@ class Jellyfin:
             .replace("[APIKEY]", self._apikey or '') \
             .replace("[USER]", self.user or '')
         try:
-            return RequestUtils(
+            return self._request(
                 headers=headers
             ).post_res(url=url, data=data)
         except Exception as e:
@@ -1046,7 +1057,7 @@ class Jellyfin:
             "api_key": self._apikey,
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 result = res.json().get("Items") or []
                 ret_resume = []
@@ -1069,7 +1080,7 @@ class Jellyfin:
                     else:
                         image = self.__get_local_image_by_id(item.get("Id"))
                     # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
-                    image_res = RequestUtils().get_res(image)
+                    image_res = self._request().get_res(image)
                     if not image_res or image_res.status_code == 404:
                         image = self.generate_image_link(item.get("Id"), "Backdrop", False)
                     if item_type == MediaType.MOVIE.value:
@@ -1115,7 +1126,7 @@ class Jellyfin:
             "api_key": self._apikey,
         }
         try:
-            res = RequestUtils().get_res(url, params)
+            res = self._request().get_res(url, params)
             if res:
                 result = res.json() or []
                 ret_latest = []
