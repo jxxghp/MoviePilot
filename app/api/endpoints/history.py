@@ -140,7 +140,7 @@ async def download_history(
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    查询下载历史记录
+    按下载时间倒序查询下载历史记录
     """
     return await DownloadHistory.async_list_by_page(db, page, count)
 

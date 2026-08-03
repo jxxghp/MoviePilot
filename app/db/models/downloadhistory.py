@@ -148,14 +148,25 @@ class DownloadHistory(Base):
     def list_by_page(
         cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30
     ):
-        return db.query(DownloadHistory).offset((page - 1) * count).limit(count).all()
+        return (
+            db.query(DownloadHistory)
+            .order_by(DownloadHistory.date.desc(), DownloadHistory.id.desc())
+            .offset((page - 1) * count)
+            .limit(count)
+            .all()
+        )
 
     @classmethod
     @async_db_query
     async def async_list_by_page(
         cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30
     ):
-        result = await db.execute(select(cls).offset((page - 1) * count).limit(count))
+        result = await db.execute(
+            select(cls)
+            .order_by(cls.date.desc(), cls.id.desc())
+            .offset((page - 1) * count)
+            .limit(count)
+        )
         return result.scalars().all()
 
     @classmethod

@@ -251,7 +251,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/history/download` | Download history. Params: `page`, `count` |
+| GET | `/api/v1/history/download` | Download history, newest first. Params: `page`, `count` |
 | DELETE | `/api/v1/history/download` | Delete download history. Body: DownloadHistory JSON |
 | GET | `/api/v1/history/transfer` | Transfer history. Params: `title`, `page`, `count`, `status` |
 | DELETE | `/api/v1/history/transfer` | Delete transfer history. Params: `deletesrc`, `deletedest`. Body: TransferHistory |
