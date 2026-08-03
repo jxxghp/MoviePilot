@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Lock
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,6 +23,24 @@ def _u115() -> U115Pan:
     构造 115 存储实例（跳过初始化）。
     """
     return object.__new__(U115Pan)
+
+
+def _u115_with_api_payload(payload: dict) -> U115Pan:
+    """
+    构造返回固定业务响应的 115 存储实例。
+    """
+    storage = _u115()
+    response = MagicMock(status_code=200)
+    response.json.return_value = payload
+    storage.session = MagicMock()
+    storage.session.request.return_value = response
+    storage._check_session = MagicMock()
+    storage._download_limiter = MagicMock()
+    storage._api_limiter = MagicMock()
+    storage._rate_stats = MagicMock()
+    storage._limit_lock = Lock()
+    storage._limit_until = 0.0
+    return storage
 
 
 def _alipan(monkeypatch) -> AliPan:
@@ -109,6 +128,41 @@ def test_u115_strict_confirmed_absent_returns_none():
     storage._request_api = MagicMock(return_value={"state": True, "code": 20004, "data": {}})
 
     assert storage.get_item_strict(Path("/movie.mkv")) is None
+
+
+def test_u115_strict_path_not_found_returns_none():
+    """
+    115 查询路径返回 430004 时应确认为不存在，允许首次整理。
+    """
+    storage = _u115_with_api_payload(
+        {"state": False, "code": 430004, "message": "路径不存在", "data": {}}
+    )
+
+    assert storage.get_item_strict(Path("/movie.mkv")) is None
+
+
+def test_u115_strict_empty_list_returns_none():
+    """
+    115 查询不存在目标返回空列表时也应确认为不存在。
+    """
+    storage = _u115_with_api_payload(
+        {"state": True, "code": 0, "message": "", "data": []}
+    )
+
+    assert storage.get_item_strict(Path("/movie.mkv")) is None
+
+
+def test_u115_path_not_found_code_is_not_globally_accepted():
+    """
+    非路径查询接口返回 430004 时仍应视为业务错误。
+    """
+    storage = _u115_with_api_payload(
+        {"state": False, "code": 430004, "message": "路径不存在", "data": {}}
+    )
+
+    result = storage._request_api("POST", "/open/folder/add", data={"file_name": "TV"})
+
+    assert result is None
 
 
 def test_u115_strict_returns_item():

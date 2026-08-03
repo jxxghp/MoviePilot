@@ -29,6 +29,8 @@ lock = Lock()
 
 MIN_U115_UPLOAD_PART_SIZE = 1 * 1024 * 1024
 U115_UPLOAD_PART_COUNT_TARGET = 96
+U115_DEFAULT_ACCEPTED_CODES = (0, 20004)
+U115_GET_INFO_ACCEPTED_CODES = (*U115_DEFAULT_ACCEPTED_CODES, 430004)
 U115_UPLOAD_PART_SIZE_STEPS = (
     10 * 1024 * 1024,
     16 * 1024 * 1024,
@@ -298,10 +300,18 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         return result.get("data")
 
     def _request_api(
-        self, method: str, endpoint: str, result_key: Optional[str] = None, **kwargs
+        self,
+        method: str,
+        endpoint: str,
+        result_key: Optional[str] = None,
+        *,
+        accepted_codes: Tuple[int, ...] = U115_DEFAULT_ACCEPTED_CODES,
+        **kwargs,
     ) -> Optional[Union[dict, list]]:
         """
         带错误处理和速率限制的API请求
+
+        :param accepted_codes: 当前接口可确认处理的业务码
         """
         # 检查会话
         self._check_session()
@@ -358,7 +368,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             time.sleep(self.limit_sleep_seconds)
             kwargs["retry_limit"] = retry_times - 1
             kwargs["no_error_log"] = no_error_log
-            return self._request_api(method, endpoint, result_key, **kwargs)
+            return self._request_api(
+                method,
+                endpoint,
+                result_key,
+                accepted_codes=accepted_codes,
+                **kwargs,
+            )
 
         # 处理请求错误
         try:
@@ -376,11 +392,17 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 f"【115】{method} 请求 {endpoint} 错误 {e}，等待 {sleep_duration} 秒后重试..."
             )
             time.sleep(sleep_duration)
-            return self._request_api(method, endpoint, result_key, **kwargs)
+            return self._request_api(
+                method,
+                endpoint,
+                result_key,
+                accepted_codes=accepted_codes,
+                **kwargs,
+            )
 
         # 返回数据
         ret_data = resp.json()
-        if ret_data.get("code") not in (0, 20004):
+        if ret_data.get("code") not in accepted_codes:
             error_msg = ret_data.get("message", "")
             if not no_error_log:
                 logger.warn(f"【115】{method} 请求 {endpoint} 出错：{error_msg}")
@@ -402,7 +424,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 time.sleep(self.limit_sleep_seconds)
                 kwargs["retry_limit"] = retry_times - 1
                 kwargs["no_error_log"] = no_error_log
-                return self._request_api(method, endpoint, result_key, **kwargs)
+                return self._request_api(
+                    method,
+                    endpoint,
+                    result_key,
+                    accepted_codes=accepted_codes,
+                    **kwargs,
+                )
             return None
 
         if result_key:
@@ -910,20 +938,22 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     def __get_info_item(self, path: Path) -> Optional[schemas.FileItem]:
         """
         查询指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
-        接口业务码 20004（记录不存在）与 0 一样视为确认结果，其余错误
-        （网络失败、限流重试用尽、未知业务错误）均无法确认目标状态。
+        接口业务码 20004（记录不存在）、430004（路径不存在）与 0 一样
+        视为确认结果，其余错误（网络失败、限流重试用尽、未知业务错误）
+        均无法确认目标状态。
         """
         resp = self._request_api(
             "POST",
             "/open/folder/get_info",
             data={"path": path.as_posix()},
             no_error_log=True,
+            accepted_codes=U115_GET_INFO_ACCEPTED_CODES,
         )
         if resp is None:
             raise StorageQueryError(f"【115】无法确认文件状态（请求失败或接口错误）: {path}")
         data = resp.get("data") if isinstance(resp, dict) else None
         if not data or not data.get("file_id"):
-            # code 20004（记录不存在）等场景，确认目标不存在
+            # 115 对记录不存在和路径不存在返回不同业务码，两者都可确认目标不存在
             return None
         return schemas.FileItem(
             storage=self.schema.value,
