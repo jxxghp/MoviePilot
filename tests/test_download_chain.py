@@ -9,7 +9,7 @@ from app.chain.download import DownloadChain
 from app.core.config import settings
 from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
-from app.schemas import FileItem, NotExistMediaInfo, TransferDirectoryConf
+from app.schemas import DownloaderTorrent, FileItem, NotExistMediaInfo, TransferDirectoryConf
 from app.schemas.types import MediaType
 
 
@@ -1036,3 +1036,36 @@ def test_batch_download_keeps_count_check_without_complete_coverage(monkeypatch)
     assert lefts == {}
     assert context.confirmed_full_coverage is False
     chain.download_single.assert_called_once()
+
+
+def test_downloading_includes_media_type_and_source_site(monkeypatch):
+    """
+    正在下载任务应从下载历史回填媒体类型和来源站点。
+    """
+    torrent = DownloaderTorrent(hash="download-hash", title="Demo.Release")
+    history = SimpleNamespace(
+        episodes="E02",
+        image="https://images.example.com/demo.jpg",
+        seasons="S01",
+        title="示例剧集",
+        tmdbid=1001,
+        torrent_site="示例站点",
+        type="电视剧",
+        userid="user-1",
+        username="tester",
+    )
+    chain = DownloadChain.__new__(DownloadChain)
+    monkeypatch.setattr(chain, "list_torrents", lambda **_kwargs: [torrent])
+    monkeypatch.setattr(
+        download_module,
+        "DownloadHistoryOper",
+        lambda: SimpleNamespace(get_by_hashes=lambda _hashes: {torrent.hash: history}),
+    )
+
+    result = chain.downloading(name="qb-main")
+
+    assert result == [torrent]
+    assert torrent.media["type"] == "电视剧"
+    assert torrent.site_name == "示例站点"
+    assert torrent.userid == "user-1"
+    assert torrent.username == "tester"

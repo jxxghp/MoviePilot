@@ -175,7 +175,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name) |
+| GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name); linked history adds media type and source `site_name` |
 | POST | `/api/v1/download/` | Add download (with media info). Body: JSON |
 | POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional `media_source` + `media_id` (all four dedicated IDs remain supported), `downloader`, `save_path` |
 | POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, optional `media_source` + `media_id` (all four dedicated IDs remain supported), `save_path` |

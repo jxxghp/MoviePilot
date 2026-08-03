@@ -17,6 +17,7 @@ class DownloaderTorrent(BaseModel):
     downloader: Optional[str] = None
     hash: Optional[str] = None
     title: Optional[str] = None
+    site_name: Optional[str] = None
     name: Optional[str] = None
     year: Optional[str] = None
     season_episode: Optional[str] = None

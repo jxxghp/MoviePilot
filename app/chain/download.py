@@ -1779,6 +1779,7 @@ class DownloadChain(ChainBase):
                     "episode": history.episodes,
                     "image": history.image,
                 }
+                torrent.site_name = history.torrent_site
                 # 下载用户
                 torrent.userid = history.userid
                 torrent.username = history.username
