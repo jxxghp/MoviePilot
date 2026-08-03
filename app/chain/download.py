@@ -951,6 +951,7 @@ class DownloadChain(ChainBase):
                 seasons=_meta.season,
                 episodes=download_episodes or _meta.episode,
                 image=_media.get_backdrop_image(),
+                poster=_media.get_poster_image(),
                 downloader=_downloader,
                 download_hash=_hash,
                 torrent_name=_torrent.title,
@@ -1777,7 +1778,9 @@ class DownloadChain(ChainBase):
                     "title": history.title,
                     "season": history.seasons,
                     "episode": history.episodes,
-                    "image": history.image,
+                    "image": history.poster,
+                    "poster": history.poster,
+                    "backdrop": history.image,
                 }
                 torrent.site_name = history.torrent_site
                 # 下载用户

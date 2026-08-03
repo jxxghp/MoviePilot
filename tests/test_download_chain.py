@@ -249,9 +249,11 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
         """捕获写入下载历史的字段，验证识别词快照确实落库。"""
 
         def add(self, **kwargs):
+            """捕获下载历史字段。"""
             captured.update(kwargs)
 
         def add_files(self, _files):
+            """忽略与当前断言无关的下载文件记录。"""
             pass
 
     _FakeThreadHelper.submitted = []
@@ -278,6 +280,8 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
             year="2024",
             tmdb_id=1,
             genre_ids=[18],
+            poster_path="https://images.example.com/original/poster.jpg",
+            backdrop_path="https://images.example.com/original/backdrop.jpg",
         ),
         torrent_info=TorrentInfo(
             title="Demo Show 2024",
@@ -298,6 +302,8 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
 
     assert result == "hash123"
     assert captured["custom_words"] == custom_words
+    assert captured["poster"] == "https://images.example.com/w500/poster.jpg"
+    assert captured["image"] == "https://images.example.com/w500/backdrop.jpg"
 
 
 def test_save_subtitle_response_creates_missing_temp_directory(monkeypatch, tmp_path):
@@ -1045,7 +1051,8 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
     torrent = DownloaderTorrent(hash="download-hash", title="Demo.Release")
     history = SimpleNamespace(
         episodes="E02",
-        image="https://images.example.com/demo.jpg",
+        image="https://images.example.com/backdrop.jpg",
+        poster="https://images.example.com/poster.jpg",
         seasons="S01",
         title="示例剧集",
         tmdbid=1001,
@@ -1066,6 +1073,9 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
 
     assert result == [torrent]
     assert torrent.media["type"] == "电视剧"
+    assert torrent.media["image"] == "https://images.example.com/poster.jpg"
+    assert torrent.media["poster"] == "https://images.example.com/poster.jpg"
+    assert torrent.media["backdrop"] == "https://images.example.com/backdrop.jpg"
     assert torrent.site_name == "示例站点"
     assert torrent.userid == "user-1"
     assert torrent.username == "tester"

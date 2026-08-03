@@ -4,6 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DownloadHistory(BaseModel):
+    """
+    下载历史记录
+    """
+
     # ID
     id: int
     # 保存路程
@@ -34,8 +38,10 @@ class DownloadHistory(BaseModel):
     seasons: Optional[str] = None
     # 集Exx
     episodes: Optional[str] = None
-    # 海报
+    # 背景图
     image: Optional[str] = None
+    # 海报
+    poster: Optional[str] = None
     # 下载器Hash
     download_hash: Optional[str] = None
     # 种子名称

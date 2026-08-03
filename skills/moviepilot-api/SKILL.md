@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 6
+version: 7
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -251,7 +251,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/history/download` | Download history, newest first. Params: `page`, `count` |
+| GET | `/api/v1/history/download` | Download history, newest first. Params: `page`, `count`. `poster` is the poster image; legacy `image` is the backdrop image. |
 | DELETE | `/api/v1/history/download` | Delete download history. Body: DownloadHistory JSON |
 | GET | `/api/v1/history/transfer` | Transfer history. Params: `title`, `page`, `count`, `status` |
 | DELETE | `/api/v1/history/transfer` | Delete transfer history. Params: `deletesrc`, `deletedest`. Body: TransferHistory |
