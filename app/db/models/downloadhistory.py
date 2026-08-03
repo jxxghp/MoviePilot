@@ -39,8 +39,10 @@ class DownloadHistory(Base):
     seasons = Column(String)
     # Exx
     episodes = Column(String)
-    # 海报
+    # 背景图
     image = Column(String)
+    # 海报
+    poster = Column(String)
     # 下载器
     downloader = Column(String)
     # 下载任务Hash
