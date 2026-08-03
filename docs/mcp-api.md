@@ -170,7 +170,7 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/download/` | 查询正在下载的任务，参数：`name` |
+| GET | `/api/v1/download/` | 查询正在下载的任务，参数：`name`；关联下载历史时返回媒体类型及来源站点 `site_name` |
 | POST | `/api/v1/download/` | 添加含媒体信息的下载任务，请求体包含媒体信息和种子信息 |
 | POST | `/api/v1/download/add` | 添加不含媒体信息的下载任务，请求体包含 `torrent_in`，可选 `media_source` + `media_id`；继续兼容四种专用 ID，并支持 `downloader`、`save_path` |
 | POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，可选 `media_source` + `media_id`；继续兼容四种专用 ID，并支持 `save_path` |
