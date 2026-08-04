@@ -119,6 +119,132 @@ def test_media_detail_forwards_custom_plugin_source(monkeypatch) -> None:
     assert captured["mediaid"] == "custom-1"
 
 
+def test_media_detail_falls_back_to_title_for_legacy_discover_source(
+        monkeypatch,
+) -> None:
+    """仅提供探索列表的旧插件应在原生 ID 识别失败后按标题年份兜底。"""
+    media = MediaInfo(
+        source="themoviedb",
+        type=MediaType.TV,
+        title="旧版剧集",
+        tmdb_id=12345,
+    )
+    media_chain = Mock()
+    media_chain.async_recognize_media = AsyncMock(return_value=None)
+    media_chain.async_recognize_by_meta = AsyncMock(return_value=media)
+    media_chain.async_obtain_images = AsyncMock(return_value=None)
+    monkeypatch.setattr(media_endpoint, "MediaChain", Mock(return_value=media_chain))
+    monkeypatch.setattr(
+        media_endpoint.eventmanager,
+        "async_send_event",
+        AsyncMock(return_value=None),
+    )
+
+    result = asyncio.run(
+        media_endpoint.detail(
+            mediaid="tvdb:81189",
+            type_name=MediaType.TV.value,
+            title="旧版剧集",
+            year="2026",
+            _=None,
+        )
+    )
+
+    assert result["tmdb_id"] == 12345
+    media_chain.async_recognize_media.assert_awaited_once_with(
+        source="tvdb",
+        mediaid="81189",
+        mtype=MediaType.TV,
+    )
+    fallback_meta = media_chain.async_recognize_by_meta.await_args.args[0]
+    assert fallback_meta.name == "旧版剧集"
+    assert fallback_meta.year == "2026"
+    assert fallback_meta.type == MediaType.TV
+
+
+def test_media_detail_uses_convert_event_for_legacy_discover_source(
+        monkeypatch,
+) -> None:
+    """旧探索插件提供 ID 转换事件时应优先转换到系统识别源。"""
+    media = MediaInfo(
+        source="themoviedb",
+        type=MediaType.MOVIE,
+        title="转换电影",
+        tmdb_id=54321,
+    )
+    event_data = media_endpoint.MediaRecognizeConvertEventData(
+        mediaid="legacy:42",
+        convert_type="themoviedb",
+    )
+    event_data.media_dict["id"] = 54321
+    media_chain = Mock()
+    media_chain.async_recognize_media = AsyncMock(side_effect=[None, media])
+    media_chain.async_recognize_by_meta = AsyncMock(
+        side_effect=AssertionError("转换成功后不应再按标题识别")
+    )
+    media_chain.async_obtain_images = AsyncMock(return_value=None)
+    monkeypatch.setattr(media_endpoint, "MediaChain", Mock(return_value=media_chain))
+    monkeypatch.setattr(
+        media_endpoint.eventmanager,
+        "async_send_event",
+        AsyncMock(return_value=Mock(event_data=event_data)),
+    )
+
+    result = asyncio.run(
+        media_endpoint.detail(
+            mediaid="legacy:42",
+            type_name=MediaType.MOVIE.value,
+            title="转换电影",
+            year="2026",
+            _=None,
+        )
+    )
+
+    assert result["tmdb_id"] == 54321
+    assert media_chain.async_recognize_media.await_count == 2
+    assert media_chain.async_recognize_media.await_args_list[0].kwargs == {
+        "source": "legacy",
+        "mediaid": "42",
+        "mtype": MediaType.MOVIE,
+    }
+    assert media_chain.async_recognize_media.await_args_list[1].kwargs == {
+        "source": "themoviedb",
+        "mediaid": "54321",
+        "mtype": MediaType.MOVIE,
+    }
+    media_chain.async_recognize_by_meta.assert_not_awaited()
+
+
+def test_media_detail_does_not_fallback_for_builtin_source(monkeypatch) -> None:
+    """内置来源的明确 ID 查询失败时不应被标题识别替换身份。"""
+    media_chain = Mock()
+    media_chain.async_recognize_media = AsyncMock(return_value=None)
+    media_chain.async_recognize_by_meta = AsyncMock(
+        side_effect=AssertionError("不应按标题切换识别源")
+    )
+    convert_event = AsyncMock(return_value=None)
+    monkeypatch.setattr(media_endpoint, "MediaChain", Mock(return_value=media_chain))
+    monkeypatch.setattr(
+        media_endpoint.eventmanager,
+        "async_send_event",
+        convert_event,
+    )
+
+    result = asyncio.run(
+        media_endpoint.detail(
+            mediaid="tmdb:999999",
+            type_name=MediaType.MOVIE.value,
+            title="错误兜底电影",
+            year="2026",
+            _=None,
+        )
+    )
+
+    assert isinstance(result, media_endpoint.schemas.MediaInfo)
+    media_chain.async_recognize_by_meta.assert_not_awaited()
+    convert_event.assert_not_awaited()
+
+
 def test_media_seasons_builds_anilist_season_response(monkeypatch) -> None:
     """AniList 详情应能通过统一季信息接口返回剧集季。"""
     captured = {}
