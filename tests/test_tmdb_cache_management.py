@@ -1,9 +1,11 @@
 import asyncio
 import inspect
+import pickle
 from unittest.mock import Mock
 
 from app.api.endpoints import tmdb as tmdb_endpoint
 from app.db.user_oper import get_current_active_superuser_async
+from app.modules.themoviedb import tmdb_cache as tmdb_cache_module
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.schemas.types import MediaType, SystemConfigKey
 
@@ -27,16 +29,80 @@ class _MemoryCacheStub:
         """删除指定缓存条目。"""
         self.data.pop(key, None)
 
+    def set(self, key: str, value, ttl=None):
+        """写入指定缓存条目。"""
+        self.data[key] = value
+
     def clear(self):
         """清空全部缓存条目。"""
         self.data.clear()
+
+
+class _FileCacheStub:
+    """提供 TMDB 持久化测试所需的统一文件缓存替身。"""
+
+    def __init__(self, content: bytes = None):
+        """使用预置序列化内容初始化文件缓存。"""
+        self.content = content
+        self.set_calls = []
+        self.delete_calls = []
+
+    def get(self, key: str, region: str):
+        """读取预置缓存内容。"""
+        return self.content
+
+    def set(self, key: str, value: bytes, region: str):
+        """记录统一文件缓存写入。"""
+        self.content = value
+        self.set_calls.append((key, region))
+
+    def delete(self, key: str, region: str):
+        """记录统一文件缓存删除。"""
+        self.content = None
+        self.delete_calls.append((key, region))
+
+
+class _TTLCacheStub(_MemoryCacheStub):
+    """记录每条数据恢复时剩余 TTL 的内存缓存替身。"""
+
+    def __init__(self):
+        """初始化空缓存和 TTL 记录。"""
+        super().__init__({})
+        self.ttls = {}
+
+    @staticmethod
+    def is_redis() -> bool:
+        """测试替身固定使用非 Redis 后端。"""
+        return False
+
+    def set(self, key: str, value, ttl=None):
+        """写入缓存并记录本次设置的 TTL。"""
+        super().set(key, value, ttl=ttl)
+        self.ttls[key] = ttl
 
 
 def _build_tmdb_cache(data: dict) -> TmdbCache:
     """构造绕过单例初始化的 TMDB 缓存测试实例。"""
     cache = object.__new__(TmdbCache)
     cache._cache = _MemoryCacheStub(data)
+    cache._expires_at = {key: float("inf") for key in data}
+    cache._dirty = False
+    cache._file_cache = None
+    cache._legacy_file_cache = None
+    cache._legacy_cache_found = False
     cache.save = lambda force=False: None
+    return cache
+
+
+def _build_initialized_tmdb_cache(monkeypatch, file_cache: _FileCacheStub,
+                                  runtime_cache: _TTLCacheStub,
+                                  now: float = 1000) -> TmdbCache:
+    """使用可控时间和缓存替身初始化完整 TMDB 缓存实例。"""
+    monkeypatch.setattr(tmdb_cache_module, "time", lambda: now)
+    monkeypatch.setattr(tmdb_cache_module, "TTLCache", lambda **kwargs: runtime_cache)
+    monkeypatch.setattr(tmdb_cache_module, "FileCache", lambda **kwargs: file_cache)
+    cache = object.__new__(TmdbCache)
+    cache.__init__()
     return cache
 
 
@@ -90,6 +156,115 @@ def test_tmdb_cache_delete_and_clear_persist_immediately(monkeypatch):
 
     assert cache.list_items() == []
     assert saved_forces == [True, True]
+
+
+def test_tmdb_cache_restores_only_unexpired_persisted_items(monkeypatch):
+    """TMDB 持久化恢复应保留每条数据原有期限并跳过已过期条目。"""
+    payload = {
+        "version": tmdb_cache_module.PERSISTENCE_VERSION,
+        "items": {
+            "fresh": {
+                "value": {"id": 1, "title": "有效"},
+                "expires_at": 1030,
+            },
+            "expired": {
+                "value": {"id": 2, "title": "过期"},
+                "expires_at": 999,
+            },
+        },
+    }
+    file_cache = _FileCacheStub(pickle.dumps(payload))
+    runtime_cache = _TTLCacheStub()
+
+    cache = _build_initialized_tmdb_cache(
+        monkeypatch=monkeypatch,
+        file_cache=file_cache,
+        runtime_cache=runtime_cache,
+    )
+
+    assert runtime_cache.data == {"fresh": {"id": 1, "title": "有效"}}
+    assert runtime_cache.ttls == {"fresh": 30}
+    assert cache._expires_at == {"fresh": 1030}
+    assert cache._dirty is True
+
+
+def test_tmdb_cache_persists_individual_expiration_with_file_cache(monkeypatch):
+    """TMDB 持久化应通过统一文件缓存保存每条数据的独立过期时间。"""
+    file_cache = _FileCacheStub()
+    runtime_cache = _TTLCacheStub()
+    cache = _build_initialized_tmdb_cache(
+        monkeypatch=monkeypatch,
+        file_cache=file_cache,
+        runtime_cache=runtime_cache,
+    )
+    runtime_cache.data = {
+        "recognized": {"id": 1, "title": "有效"},
+        "unrecognized": {"id": 0},
+    }
+    cache._expires_at = {
+        "recognized": 1060,
+        "unrecognized": 1070,
+    }
+    cache._dirty = True
+
+    cache.save()
+
+    payload = pickle.loads(file_cache.content)
+    assert file_cache.set_calls == [(
+        tmdb_cache_module.PERSISTENCE_KEY,
+        tmdb_cache_module.PERSISTENCE_REGION,
+    )]
+    assert payload == {
+        "version": tmdb_cache_module.PERSISTENCE_VERSION,
+        "items": {
+            "recognized": {
+                "value": {"id": 1, "title": "有效"},
+                "expires_at": 1060,
+            },
+        },
+    }
+
+
+def test_tmdb_cache_migrates_legacy_file_to_global_file_cache(monkeypatch):
+    """旧 TMDB 缓存应迁移到全局文件缓存并删除旧文件。"""
+    primary_cache = _FileCacheStub()
+    legacy_cache = _FileCacheStub(pickle.dumps({
+        "legacy": {"id": 1, "title": "旧缓存"},
+    }))
+    file_caches = iter([primary_cache, legacy_cache])
+    file_cache_calls = []
+
+    def build_file_cache(**kwargs):
+        """记录全局文件缓存构造参数并返回对应替身。"""
+        file_cache_calls.append(kwargs)
+        return next(file_caches)
+
+    runtime_cache = _TTLCacheStub()
+    monkeypatch.setattr(tmdb_cache_module, "time", lambda: 1000)
+    monkeypatch.setattr(
+        tmdb_cache_module,
+        "TTLCache",
+        lambda **kwargs: runtime_cache,
+    )
+    monkeypatch.setattr(tmdb_cache_module, "FileCache", build_file_cache)
+
+    cache = object.__new__(TmdbCache)
+    cache.__init__()
+    cache.save()
+
+    assert file_cache_calls == [
+        {"base": tmdb_cache_module.settings.CACHE_PATH, "ttl": cache.ttl},
+        {"base": tmdb_cache_module.settings.TEMP_PATH.parent, "ttl": cache.ttl},
+    ]
+    assert runtime_cache.data == {"legacy": {"id": 1, "title": "旧缓存"}}
+    assert primary_cache.set_calls == [(
+        tmdb_cache_module.PERSISTENCE_KEY,
+        tmdb_cache_module.PERSISTENCE_REGION,
+    )]
+    assert legacy_cache.delete_calls == [(
+        cache.region,
+        tmdb_cache_module.settings.TEMP_PATH.name,
+    )]
 
 
 def test_tmdb_cache_endpoint_returns_management_statistics(monkeypatch):

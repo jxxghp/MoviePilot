@@ -178,7 +178,7 @@ class ConfigModel(BaseModel):
     PACKAGE_CACHE_DAYS: int = 90
     # pip/uv 包下载缓存根目录，留空时使用配置目录下的 .cache
     PACKAGE_CACHE_ROOT: Optional[str] = None
-    # 元数据识别缓存过期时间（小时），0为自动
+    # 单条元数据识别缓存有效期（小时），0为自动
     META_CACHE_EXPIRE: int = 0
 
     # ==================== 网络代理配置 ====================
