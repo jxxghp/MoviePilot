@@ -84,3 +84,22 @@ def test_resolve_llm_runtime_config_prefers_plugin_api_protocol(monkeypatch) -> 
         runtime_config = asyncio.run(agent._resolve_llm_runtime_config())
 
     assert runtime_config["api_protocol"] == "chat_completions"
+
+
+def test_resolve_llm_runtime_config_prefers_plugin_web_search_mode(monkeypatch) -> None:
+    """插件显式覆盖联网搜索模式时应优先使用插件值。"""
+    monkeypatch.setattr(settings, "LLM_WEB_SEARCH_MODE", "local")
+    agent = MoviePilotAgent(session_id="web-search-plugin", user_id="user-1")
+
+    async def override_web_search_mode(_event_type, event_data):
+        """模拟插件覆盖联网搜索模式。"""
+        event_data.web_search_mode = "builtin"
+        return SimpleNamespace(event_data=event_data)
+
+    with patch(
+        "app.agent.eventmanager.async_send_event",
+        new=AsyncMock(side_effect=override_web_search_mode),
+    ):
+        runtime_config = asyncio.run(agent._resolve_llm_runtime_config())
+
+    assert runtime_config["web_search_mode"] == "builtin"

@@ -5,12 +5,15 @@ import inspect
 import json
 import time
 from functools import wraps
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.core.config import settings
 from app.log import logger
+
+if TYPE_CHECKING:
+    from app.agent.llm.server_tools import ServerToolResolution
 
 
 class LLMTestError(RuntimeError):
@@ -224,74 +227,76 @@ def _is_deepseek_thinking_enabled(model_name: str | None, extra_body: Any) -> bo
     return False
 
 
-def _patch_deepseek_reasoning_content_support():
-    """
-    修补 langchain-deepseek 在 tool-call 场景下遗漏 reasoning_content 回传的问题。
-
-    DeepSeek thinking mode 要求：若 assistant 历史消息包含 tool_calls，
-    后续请求中必须带回该条消息的顶层 reasoning_content。
-    某些 langchain-deepseek 版本虽然能从响应中拿到 reasoning_content，
-    但不会在重放消息历史时写回请求载荷，导致 400。
-    """
-    try:
-        from langchain_deepseek import ChatDeepSeek
-    except Exception as err:
-        logger.debug(f"跳过 langchain-deepseek reasoning_content 修补：{err}")
+def _patch_interleaved_reasoning_request_support(
+        model_cls: Any,
+        *,
+        patch_marker: str,
+        thinking_filter: Any = None,
+        normalize_deepseek_messages: bool = False,
+        inject_missing_as_empty: bool = False,
+) -> None:
+    """为兼容模型统一补回工具调用历史中的 reasoning_content。"""
+    if getattr(model_cls, patch_marker, False):
         return
 
-    if getattr(ChatDeepSeek, "_moviepilot_reasoning_content_patched", False):
-        return
-
-    original_get_request_payload = getattr(ChatDeepSeek, "_get_request_payload", None)
+    original_get_request_payload = getattr(model_cls, "_get_request_payload", None)
     if not callable(original_get_request_payload):
-        logger.warning("langchain-deepseek 缺少 _get_request_payload，无法修补 reasoning_content")
+        logger.warning(
+            f"{model_cls.__name__} 缺少 _get_request_payload，无法修补 reasoning_content"
+        )
         return
 
     @wraps(original_get_request_payload)
     def _patched_get_request_payload(self, input_, *, stop=None, **kwargs):
         payload = original_get_request_payload(self, input_, stop=stop, **kwargs)
+        if "messages" not in payload:
+            return payload
 
-        extra_body = (getattr(self, "model_kwargs", None) or {}).get("extra_body")
-        if not _is_deepseek_thinking_enabled(
+        extra_body = getattr(self, "extra_body", None)
+        if extra_body is None:
+            extra_body = (getattr(self, "model_kwargs", None) or {}).get("extra_body")
+        if thinking_filter is not None and not thinking_filter(
                 getattr(self, "model_name", None) or getattr(self, "model", None),
                 extra_body,
         ):
             return payload
 
-        # 从原始 LangChain 消息中取回 reasoning_content。上游 payload 构造器
-        # 不会自动透传这个 DeepSeek 扩展字段。
         messages = self._convert_input(input_).to_messages()
-
-        for i, message in enumerate(payload["messages"]):
-            if message["role"] == "tool" and isinstance(message["content"], list):
-                message["content"] = json.dumps(message["content"])
-            elif message["role"] == "assistant":
-                if isinstance(message["content"], list):
-                    # DeepSeek API 要求 assistant content 为字符串；工具场景下
-                    # LangChain 可能保留为内容块列表，这里只拼回可见文本块。
-                    text_parts = [
-                        block.get("text", "")
-                        for block in message["content"]
-                        if isinstance(block, dict) and block.get("type") == "text"
-                    ]
-                    message["content"] = "".join(text_parts) if text_parts else ""
-
-                # DeepSeek thinking mode 要求历史 assistant 消息携带
-                # reasoning_content，即便本地只保存到了 additional_kwargs。
-                if (
-                        "reasoning_content" not in message
-                        and i < len(messages)
-                        and isinstance(messages[i], AIMessage)
+        for index, payload_message in enumerate(payload["messages"]):
+            if normalize_deepseek_messages:
+                if payload_message.get("role") == "tool" and isinstance(
+                        payload_message.get("content"), list
                 ):
-                    message["reasoning_content"] = messages[i].additional_kwargs.get(
-                        "reasoning_content", ""
+                    payload_message["content"] = json.dumps(payload_message["content"])
+                elif payload_message.get("role") == "assistant" and isinstance(
+                        payload_message.get("content"), list
+                ):
+                    payload_message["content"] = "".join(
+                        block.get("text", "")
+                        for block in payload_message["content"]
+                        if isinstance(block, dict) and block.get("type") == "text"
                     )
+
+            if (
+                    payload_message.get("role") != "assistant"
+                    or index >= len(messages)
+                    or not isinstance(messages[index], AIMessage)
+                    or "reasoning_content" in payload_message
+            ):
+                continue
+
+            reasoning_content = messages[index].additional_kwargs.get(
+                "reasoning_content"
+            )
+            if reasoning_content is not None:
+                payload_message["reasoning_content"] = reasoning_content
+            elif inject_missing_as_empty:
+                payload_message["reasoning_content"] = ""
 
         return payload
 
-    ChatDeepSeek._get_request_payload = _patched_get_request_payload
-    ChatDeepSeek._moviepilot_reasoning_content_patched = True
-    logger.debug("已修补 langchain-deepseek thinking tool-call 的 reasoning_content 回传兼容性")
+    model_cls._get_request_payload = _patched_get_request_payload
+    setattr(model_cls, patch_marker, True)
 
 
 def _patch_openai_interleaved_reasoning_content_support():
@@ -352,42 +357,10 @@ def _patch_openai_interleaved_reasoning_content_support():
 
         _openai_base._moviepilot_reasoning_response_patched = True
 
-    if getattr(ChatOpenAI, "_moviepilot_interleaved_reasoning_patched", False):
-        return
-
-    original_get_request_payload = getattr(ChatOpenAI, "_get_request_payload", None)
-    if not callable(original_get_request_payload):
-        logger.warning("langchain-openai 缺少 _get_request_payload，无法修补 reasoning_content")
-        return
-
-    @wraps(original_get_request_payload)
-    def _patched_get_request_payload(self, input_, *, stop=None, **kwargs):
-        payload = original_get_request_payload(self, input_, stop=stop, **kwargs)
-        if "messages" not in payload:
-            return payload
-
-        messages = self._convert_input(input_).to_messages()
-        for index, payload_message in enumerate(payload["messages"]):
-            if (
-                    payload_message.get("role") != "assistant"
-                    or index >= len(messages)
-                    or not isinstance(messages[index], AIMessage)
-                    or "reasoning_content" in payload_message
-            ):
-                continue
-
-            reasoning_content = messages[index].additional_kwargs.get(
-                "reasoning_content"
-            )
-            if reasoning_content is not None:
-                # 只回传模型真实返回过的思考字段。普通模型没有该字段时，
-                # payload 保持原样，不额外塞未知参数。
-                payload_message["reasoning_content"] = reasoning_content
-
-        return payload
-
-    ChatOpenAI._get_request_payload = _patched_get_request_payload
-    ChatOpenAI._moviepilot_interleaved_reasoning_patched = True
+    _patch_interleaved_reasoning_request_support(
+        ChatOpenAI,
+        patch_marker="_moviepilot_interleaved_reasoning_patched",
+    )
     logger.debug("已修补 langchain-openai interleaved reasoning_content 回传兼容性")
 
 
@@ -931,6 +904,36 @@ class LLMHelper:
             profile["moviepilot_provider_id"] = runtime_metadata["provider_id"]
             profile["moviepilot_base_url"] = runtime_metadata["base_url"]
 
+    @staticmethod
+    def _attach_server_tool_metadata(
+            model: Any,
+            resolution: "ServerToolResolution",
+    ) -> None:
+        """把服务端工具解析结果挂到模型实例，供 Agent 组装工具列表。"""
+        metadata = {
+            "mode": resolution.mode,
+            "use_local_web_search": resolution.use_local_web_search,
+            "server_tools": [dict(tool) for tool in resolution.server_tools],
+            "available": resolution.available,
+            "reason": resolution.reason,
+        }
+        try:
+            setattr(model, "_moviepilot_server_tool_metadata", metadata)
+        except Exception:
+            object.__setattr__(model, "_moviepilot_server_tool_metadata", metadata)
+
+    @staticmethod
+    def get_server_tools(model: Any) -> list[dict[str, Any]]:
+        """读取模型已解析的服务端工具定义。"""
+        metadata = getattr(model, "_moviepilot_server_tool_metadata", {}) or {}
+        return [dict(tool) for tool in metadata.get("server_tools", [])]
+
+    @staticmethod
+    def should_use_local_web_search(model: Any) -> bool:
+        """判断当前模型是否应保留 MoviePilot 本地联网搜索工具。"""
+        metadata = getattr(model, "_moviepilot_server_tool_metadata", {}) or {}
+        return bool(metadata.get("use_local_web_search", True))
+
     @classmethod
     def _resolve_thinking_level(
             cls,
@@ -979,6 +982,7 @@ class LLMHelper:
             temperature: Optional[float] = None,
             use_proxy: bool | None = None,
             api_protocol: str | None = None,
+            web_search_mode: str | None = None,
     ):
         """
         获取LLM实例
@@ -999,6 +1003,9 @@ class LLMHelper:
             （auto/chat_completions/responses）。未显式传入时使用配置项 LLM_API_PROTOCOL。
             仅对 OpenAI 兼容运行时生效；``responses`` 强制走 Responses API，
             ``chat_completions`` 强制走 Chat Completions，``auto`` 保持原有自动判断。
+        :param web_search_mode: 联网搜索模式
+            （local/builtin/auto/disabled）。未显式传入时使用配置项
+            ``LLM_WEB_SEARCH_MODE``。
         :return: LLM实例
         """
         provider_name = str(provider if provider is not None else settings.LLM_PROVIDER).lower()
@@ -1037,6 +1044,40 @@ class LLMHelper:
                 user_agent=user_agent_value,
             )
         model_name = runtime.get("model_id") or model_name
+        from app.agent.llm.server_tools import (
+            ServerToolRegistry,
+            ServerToolUnavailableError,
+        )
+
+        server_tool_resolution = ServerToolRegistry.resolve_web_search(
+            provider=provider_name,
+            model=model_name,
+            mode=(
+                web_search_mode
+                if web_search_mode is not None
+                else getattr(settings, "LLM_WEB_SEARCH_MODE", "local")
+            ),
+            api_protocol=(
+                api_protocol
+                if api_protocol is not None
+                else settings.LLM_API_PROTOCOL
+            ),
+            base_url=runtime.get("base_url"),
+        )
+        if (
+                server_tool_resolution.mode == "builtin"
+                and not server_tool_resolution.available
+        ):
+            raise ServerToolUnavailableError(
+                provider=provider_name,
+                model=str(model_name or ""),
+                tool_id="web_search",
+            )
+        effective_api_protocol = (
+            server_tool_resolution.required_api_protocol
+            if server_tool_resolution.required_api_protocol == "responses"
+            else api_protocol
+        )
         default_headers = cls._build_openai_default_headers(
             runtime.get("default_headers"),
             user_agent=user_agent_value,
@@ -1050,7 +1091,7 @@ class LLMHelper:
             provider=provider_name,
             model=model_name,
             runtime=runtime,
-            api_protocol=api_protocol,
+            api_protocol=effective_api_protocol,
         )
         llm_proxy = _resolve_llm_proxy(use_proxy)
 
@@ -1072,10 +1113,22 @@ class LLMHelper:
                 client_args=_build_google_client_args(llm_proxy),
                 **thinking_kwargs,
             )
-        elif runtime["runtime"] == "deepseek":
+        elif (
+                runtime["runtime"] == "deepseek"
+                and server_tool_resolution.client_adapter != "openai_responses"
+                and use_responses_api is not True
+        ):
             from langchain_deepseek import ChatDeepSeek
 
-            _patch_deepseek_reasoning_content_support()
+            _patch_interleaved_reasoning_request_support(
+                ChatDeepSeek,
+                patch_marker="_moviepilot_reasoning_content_patched",
+                thinking_filter=lambda model_name, extra_body: (
+                    _is_deepseek_thinking_enabled(model_name, extra_body)
+                ),
+                normalize_deepseek_messages=True,
+                inject_missing_as_empty=True,
+            )
             model = ChatDeepSeek(
                 model=model_name,
                 api_key=runtime["api_key"],
@@ -1154,6 +1207,7 @@ class LLMHelper:
                 ),
                 default_headers=default_headers,
                 use_responses_api=use_responses_api,
+                output_version=("responses/v1" if use_responses_api else None),
                 **thinking_kwargs,
             )
 
@@ -1181,6 +1235,7 @@ class LLMHelper:
             }
 
         cls._attach_runtime_metadata(model, runtime)
+        cls._attach_server_tool_metadata(model, server_tool_resolution)
         return model
 
     @staticmethod
@@ -1241,12 +1296,14 @@ class LLMHelper:
             temperature: Optional[float] = None,
             use_proxy: bool | None = None,
             api_protocol: str | None = None,
+            web_search_mode: str | None = None,
     ) -> dict:
         """
         使用当前配置或显式传入的临时配置执行一次最小 LLM 调用。
 
         :param temperature: LLM 温度参数。未显式传入时沿用已保存配置。
         :param api_protocol: OpenAI 兼容接口 API 协议，未显式传入时沿用已保存配置。
+        :param web_search_mode: 联网搜索模式，未显式传入时沿用已保存配置。
         """
         provider_name = provider if provider is not None else settings.LLM_PROVIDER
         model_name = model if model is not None else settings.LLM_MODEL
@@ -1262,6 +1319,7 @@ class LLMHelper:
             "user_agent": user_agent,
             "use_proxy": use_proxy,
             "api_protocol": api_protocol,
+            "web_search_mode": web_search_mode,
         }
         if temperature is not None:
             llm_kwargs["temperature"] = temperature
@@ -1310,7 +1368,7 @@ class LLMHelper:
         try:
             from app.agent.llm.provider import LLMProviderManager
 
-            return await LLMProviderManager().list_models(
+            models = await LLMProviderManager().list_models(
                 provider_id=provider,
                 api_key=api_key,
                 base_url=base_url,
@@ -1319,16 +1377,25 @@ class LLMHelper:
                 use_proxy=use_proxy,
                 force_refresh=force_refresh,
             )
+            return self._attach_server_tool_capabilities(
+                provider,
+                models,
+                base_url=base_url,
+            )
         except Exception as err:
             logger.debug(f"LLM provider 目录不可用，回退旧模型列表逻辑: {err}")
             if provider == "google":
-                return [
-                    {"id": model_id, "name": model_id}
-                    for model_id in await self._get_google_models(
-                        api_key or "",
-                        use_proxy=use_proxy,
-                    )
-                ]
+                return self._attach_server_tool_capabilities(
+                    provider,
+                    [
+                        {"id": model_id, "name": model_id}
+                        for model_id in await self._get_google_models(
+                            api_key or "",
+                            use_proxy=use_proxy,
+                        )
+                    ],
+                    base_url=base_url,
+                )
             try:
                 from app.agent.llm.provider import LLMProviderManager
 
@@ -1342,16 +1409,40 @@ class LLMHelper:
                 )
             except Exception:
                 model_list_base_url = base_url
-            return [
-                {"id": model_id, "name": model_id}
-                for model_id in await self._get_openai_compatible_models(
-                    provider,
-                    api_key or "",
-                    model_list_base_url,
-                    user_agent=user_agent,
-                    use_proxy=use_proxy,
-                )
-            ]
+            return self._attach_server_tool_capabilities(
+                provider,
+                [
+                    {"id": model_id, "name": model_id}
+                    for model_id in await self._get_openai_compatible_models(
+                        provider,
+                        api_key or "",
+                        model_list_base_url,
+                        user_agent=user_agent,
+                        use_proxy=use_proxy,
+                    )
+                ],
+                base_url=base_url,
+            )
+
+    @staticmethod
+    def _attach_server_tool_capabilities(
+            provider: str,
+            models: List[dict[str, Any]],
+            base_url: Optional[str] = None,
+    ) -> List[dict[str, Any]]:
+        """为模型目录附加通用服务端工具能力元数据。"""
+        from app.agent.llm.server_tools import ServerToolRegistry
+
+        result = []
+        for item in models:
+            model_item = dict(item)
+            model_item["server_tools"] = ServerToolRegistry.list_capabilities(
+                provider=provider,
+                model=str(model_item.get("id") or ""),
+                base_url=base_url,
+            )
+            result.append(model_item)
+        return result
 
     @staticmethod
     async def _get_google_models(api_key: str, use_proxy: bool | None = None) -> List[str]:

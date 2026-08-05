@@ -138,6 +138,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             user_agent="MoviePilot-Test/1.0",
             use_proxy=True,
             api_protocol="responses",
+            web_search_mode="local",
         )
         self.assertTrue(resp.success)
         self.assertEqual(resp.data["provider"], "deepseek")
@@ -190,6 +191,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             user_agent="MoviePilot-Custom/1.0",
             use_proxy=False,
             api_protocol=None,
+            web_search_mode=None,
         )
         self.assertTrue(resp.success)
         self.assertEqual(resp.data["provider"], "openai")
@@ -233,6 +235,7 @@ class LlmTestEndpointTest(unittest.TestCase):
             user_agent=None,
             use_proxy=None,
             api_protocol=None,
+            web_search_mode=None,
         )
         self.assertTrue(resp.success)
 

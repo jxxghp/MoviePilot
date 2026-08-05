@@ -245,6 +245,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
             user_agent=None,
             use_proxy=None,
             api_protocol=None,
+            web_search_mode=None,
         )
         self.assertEqual(result["provider"], "deepseek")
         self.assertEqual(result["model"], "deepseek-chat")
@@ -439,8 +440,8 @@ class LlmHelperTestCallTest(unittest.TestCase):
             {"langchain_deepseek": SimpleNamespace(ChatDeepSeek=_FakeChatDeepSeek)},
         ), patch.object(
             llm_module,
-            "_patch_deepseek_reasoning_content_support",
-            side_effect=lambda: patch_calls.append(True),
+            "_patch_interleaved_reasoning_request_support",
+            side_effect=lambda *args, **kwargs: patch_calls.append((args, kwargs)),
         ):
             asyncio.run(
                 llm_module.LLMHelper.get_llm(
@@ -457,7 +458,8 @@ class LlmHelperTestCallTest(unittest.TestCase):
             calls[0].get("extra_body"),
             {"thinking": {"type": "enabled"}},
         )
-        self.assertEqual(patch_calls, [True])
+        self.assertEqual(patch_calls[0][0][0], _FakeChatDeepSeek)
+        self.assertTrue(patch_calls[0][1]["normalize_deepseek_messages"])
         self.assertEqual(calls[0].get("reasoning_effort"), "max")
         self.assertEqual(calls[0].get("api_base"), "https://api.deepseek.com")
 
@@ -476,8 +478,8 @@ class LlmHelperTestCallTest(unittest.TestCase):
             {"langchain_deepseek": SimpleNamespace(ChatDeepSeek=_FakeChatDeepSeek)},
         ), patch.object(
             llm_module,
-            "_patch_deepseek_reasoning_content_support",
-            side_effect=lambda: patch_calls.append(True),
+            "_patch_interleaved_reasoning_request_support",
+            side_effect=lambda *args, **kwargs: patch_calls.append((args, kwargs)),
         ):
             asyncio.run(
                 llm_module.LLMHelper.get_llm(
@@ -494,9 +496,64 @@ class LlmHelperTestCallTest(unittest.TestCase):
             calls[0].get("extra_body"),
             {"thinking": {"type": "disabled"}},
         )
-        self.assertEqual(patch_calls, [True])
+        self.assertEqual(patch_calls[0][0][0], _FakeChatDeepSeek)
+        self.assertTrue(patch_calls[0][1]["normalize_deepseek_messages"])
         self.assertIsNone(calls[0].get("reasoning_effort"))
         self.assertEqual(calls[0].get("api_base"), "https://proxy.example.com")
+
+    def test_get_llm_uses_common_responses_adapter_for_deepseek_web_search(self):
+        """DeepSeek 服务端搜索应走通用 ChatOpenAI Responses 适配器。"""
+        calls = []
+
+        class _FakeChatOpenAI:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+                self.model = kwargs["model"]
+                self.profile = None
+
+        openai_module = ModuleType("langchain_openai")
+        openai_module.ChatOpenAI = _FakeChatOpenAI
+
+        with patch.dict(sys.modules, {"langchain_openai": openai_module}), patch.object(
+            llm_module,
+            "_patch_openai_responses_instructions_support",
+        ):
+            model = asyncio.run(
+                llm_module.LLMHelper.get_llm(
+                    provider="deepseek",
+                    model="deepseek-v4-flash",
+                    thinking_level="off",
+                    api_key="sk-test",
+                    base_url="https://api.deepseek.com",
+                    api_protocol="auto",
+                    web_search_mode="builtin",
+                )
+            )
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["base_url"], "https://api.deepseek.com")
+        self.assertTrue(calls[0]["use_responses_api"])
+        self.assertEqual(calls[0]["output_version"], "responses/v1")
+        self.assertEqual(
+            llm_module.LLMHelper.get_server_tools(model),
+            [{"type": "web_search"}],
+        )
+        self.assertFalse(llm_module.LLMHelper.should_use_local_web_search(model))
+
+    def test_get_llm_rejects_unsupported_builtin_web_search(self):
+        """强制服务端搜索不可用时应在构造模型前显式失败。"""
+        with self.assertRaisesRegex(ValueError, "不支持服务端联网搜索"):
+            asyncio.run(
+                llm_module.LLMHelper.get_llm(
+                    provider="deepseek",
+                    model="deepseek-chat",
+                    thinking_level="off",
+                    api_key="sk-test",
+                    base_url="https://api.deepseek.com",
+                    api_protocol="auto",
+                    web_search_mode="builtin",
+                )
+            )
 
     def test_get_llm_uses_openai_reasoning_effort_none_for_off(self):
         calls = []

@@ -730,6 +730,7 @@ class MoviePilotAgent:
             use_proxy=settings.LLM_USE_PROXY,
             thinking_level=settings.LLM_THINKING_LEVEL,
             api_protocol=settings.LLM_API_PROTOCOL,
+            web_search_mode=settings.LLM_WEB_SEARCH_MODE,
         )
         selected_event = await eventmanager.async_send_event(
             ChainEventType.AgentLLMProvider,
@@ -773,6 +774,9 @@ class MoviePilotAgent:
         api_protocol = self._clean_optional_text(
             self._get_event_value(resolved_data, "api_protocol")
         ) or settings.LLM_API_PROTOCOL
+        web_search_mode = self._clean_optional_text(
+            self._get_event_value(resolved_data, "web_search_mode")
+        ) or settings.LLM_WEB_SEARCH_MODE
         selected_provider_id = self._clean_optional_text(
             self._get_event_value(resolved_data, "selected_provider_id")
         )
@@ -799,6 +803,7 @@ class MoviePilotAgent:
             "use_proxy": bool(use_proxy),
             "thinking_level": thinking_level,
             "api_protocol": api_protocol,
+            "web_search_mode": web_search_mode,
         }
         return self._llm_runtime_config
 
@@ -1006,6 +1011,13 @@ class MoviePilotAgent:
             allow_message_tools=self.allow_message_tools,
         )
 
+    @staticmethod
+    def _filter_local_web_search_tools(tools: List, enabled: bool) -> List:
+        """按联网搜索策略保留或移除本地 search_web 工具。"""
+        if enabled:
+            return tools
+        return [tool for tool in tools if getattr(tool, "name", None) != "search_web"]
+
     def _refresh_tool_context(self, values: Dict[str, object]) -> None:
         """
         刷新本轮工具共享上下文。
@@ -1035,6 +1047,7 @@ class MoviePilotAgent:
             bool(runtime_config.get("use_proxy")),
             runtime_config.get("thinking_level"),
             runtime_config.get("api_protocol"),
+            runtime_config.get("web_search_mode"),
         )
 
     async def _agent_bundle_signature(self, streaming: bool) -> tuple[Any, ...]:
@@ -1165,6 +1178,8 @@ class MoviePilotAgent:
             # LLM 模型（用于 agent 执行）
             agent_model = await self._initialize_llm(streaming=streaming)
             self._sync_model_profile(agent_model)
+            server_tools = LLMHelper.get_server_tools(agent_model)
+            use_local_web_search = LLMHelper.should_use_local_web_search(agent_model)
 
             # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
             non_streaming_model = (
@@ -1174,7 +1189,10 @@ class MoviePilotAgent:
             )
 
             # 工具列表
-            tools = self._initialize_tools()
+            tools = self._filter_local_web_search_tools(
+                self._initialize_tools(),
+                enabled=use_local_web_search,
+            )
             tools.extend(await self._initialize_mcp_tools())
             skills_middleware = SkillsMiddleware(
                 sources=[str(agent_runtime_manager.skills_dir)],
@@ -1192,11 +1210,15 @@ class MoviePilotAgent:
                 activity_log_tools = list(
                     getattr(activity_log_middleware, "tools", []) or []
                 )
-            subagent_tools = self._initialize_subagent_tools()
+            subagent_tools = self._filter_local_web_search_tools(
+                self._initialize_subagent_tools(),
+                enabled=use_local_web_search,
+            )
             subagent_tools.extend(await self._initialize_subagent_mcp_tools())
             subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
                 model=non_streaming_model,
                 tools=subagent_tools,
+                server_tools=server_tools,
                 stream_handler=self.stream_handler,
             )
             max_tools = settings.LLM_MAX_TOOLS
@@ -1271,7 +1293,7 @@ class MoviePilotAgent:
 
             agent = create_agent(
                 model=agent_model,
-                tools=[*tools, *skill_tools, *activity_log_tools],
+                tools=[*tools, *skill_tools, *activity_log_tools, *server_tools],
                 system_prompt=system_prompt,
                 middleware=middlewares,
                 checkpointer=InMemorySaver(),

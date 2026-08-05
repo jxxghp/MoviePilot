@@ -303,7 +303,7 @@ class LocalSetupLlmProviderPromptTests(unittest.TestCase):
         ), patch.object(
             module, "_env_llm_thinking_level_default", return_value="auto"
         ), patch.object(
-            module, "_prompt_choice", side_effect=["auto", "minimax-cn-coding"]
+            module, "_prompt_choice", side_effect=["auto", "minimax-cn-coding", "local"]
         ):
             config = module._collect_agent_config()
 

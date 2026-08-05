@@ -2093,6 +2093,21 @@ def _collect_agent_config(
         runtime_python=runtime_python,
     )
     config["LLM_MODEL"] = _prompt_model_choice(models, default=current_model)
+    config["LLM_WEB_SEARCH_MODE"] = _prompt_choice(
+        "LLM 联网搜索模式",
+        choices={
+            "local": "MoviePilot 本地搜索",
+            "builtin": "模型服务端搜索",
+            "auto": "自动（服务端优先，不支持时回退本地）",
+            "disabled": "关闭联网搜索",
+        },
+        default=(
+            _env_default("LLM_WEB_SEARCH_MODE", "local")
+            if _env_default("LLM_WEB_SEARCH_MODE", "local")
+            in {"local", "builtin", "auto", "disabled"}
+            else "local"
+        ),
+    )
 
     return config
 

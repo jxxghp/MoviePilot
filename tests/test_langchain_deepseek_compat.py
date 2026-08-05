@@ -1,5 +1,4 @@
 import unittest
-from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -54,12 +53,15 @@ class DeepSeekCompatPatchTest(unittest.TestCase):
         _FakeChatDeepSeek._get_request_payload = _ORIGINAL_GET_REQUEST_PAYLOAD
         if hasattr(_FakeChatDeepSeek, "_moviepilot_reasoning_content_patched"):
             delattr(_FakeChatDeepSeek, "_moviepilot_reasoning_content_patched")
-        # helper 的修补函数内部 `from langchain_deepseek import ChatDeepSeek`，
-        # 这里临时把该名指向假类，使修补作用到 _FakeChatDeepSeek；patch 在用例结束自动还原。
-        patcher = patch("langchain_deepseek.ChatDeepSeek", _FakeChatDeepSeek)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        llm_module._patch_deepseek_reasoning_content_support()
+        llm_module._patch_interleaved_reasoning_request_support(
+            _FakeChatDeepSeek,
+            patch_marker="_moviepilot_reasoning_content_patched",
+            thinking_filter=lambda model_name, extra_body: (
+                llm_module._is_deepseek_thinking_enabled(model_name, extra_body)
+            ),
+            normalize_deepseek_messages=True,
+            inject_missing_as_empty=True,
+        )
 
     def test_injects_reasoning_content_for_assistant_tool_calls(self):
         llm = _FakeChatDeepSeek("deepseek-v4-pro")

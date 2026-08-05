@@ -377,11 +377,13 @@ class _SubAgentAgentProvider:
         model: BaseChatModel,
         profiles: tuple[_SubAgentProfile, ...],
         tools: list[BaseTool],
+        server_tools: Optional[list[dict[str, Any]]] = None,
     ) -> None:
         """初始化子代理执行器。"""
         self._model = model
         self._profiles = {profile.name: profile for profile in profiles}
         self._tools = tools
+        self._server_tools = server_tools or []
         self._agents = {}
         self._default_agent_name = "general-purpose"
 
@@ -404,7 +406,7 @@ class _SubAgentAgentProvider:
         )
         agent = create_agent(
             model=self._model,
-            tools=subagent_tools,
+            tools=[*subagent_tools, *self._server_tools],
             system_prompt=profile.prompt,
             name=profile.name,
         )
@@ -462,16 +464,19 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         model: BaseChatModel,
         profiles: tuple[_SubAgentProfile, ...],
         tools: list[BaseTool],
+        server_tools: Optional[list[dict[str, Any]]] = None,
         system_prompt: str = SUBAGENT_PARENT_PROMPT,
         task_description: str = SUBAGENT_TASK_DESCRIPTION,
         stream_handler: Any = None,
     ) -> None:
+        """初始化同步子代理中间件。"""
         self.system_prompt = system_prompt
         self.stream_handler = stream_handler
         self._provider = _SubAgentAgentProvider(
             model=model,
             profiles=profiles,
             tools=tools,
+            server_tools=server_tools,
         )
         self.tools = [
             StructuredTool.from_function(
@@ -549,6 +554,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         model: BaseChatModel,
         profiles: tuple[_SubAgentProfile, ...],
         tools: list[BaseTool],
+        server_tools: Optional[list[dict[str, Any]]] = None,
         task_description: str = SUBAGENT_CONTROL_DESCRIPTION,
         stream_handler: Any = None,
     ) -> None:
@@ -558,6 +564,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             model=model,
             profiles=profiles,
             tools=tools,
+            server_tools=server_tools,
         )
         self._semaphore = asyncio.Semaphore(SUBAGENT_MAX_CONCURRENT_TASKS)
         self._tasks: dict[str, _SubAgentRuntimeTask] = {}
@@ -1111,6 +1118,7 @@ def create_subagent_middlewares(
     *,
     model: BaseChatModel,
     tools: list[BaseTool],
+    server_tools: Optional[list[dict[str, Any]]] = None,
     stream_handler: Any = None,
 ) -> tuple[list[AgentMiddleware], list[BaseTool]]:
     """创建子代理中间件列表和任务工具列表。"""
@@ -1120,12 +1128,14 @@ def create_subagent_middlewares(
         model=model,
         profiles=profiles,
         tools=tools,
+        server_tools=server_tools or [],
         stream_handler=stream_handler,
     )
     control_middleware = SubAgentTaskControlMiddleware(
         model=model,
         profiles=profiles,
         tools=tools,
+        server_tools=server_tools or [],
         stream_handler=stream_handler,
     )
 

@@ -79,6 +79,47 @@ _PLUGIN_MARKET_REPO_PATTERN = re.compile(
 )
 
 
+def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
+    """校验强制服务端联网搜索配置，返回用户可读错误信息。"""
+    from app.agent.llm.server_tools import (
+        ServerToolRegistry,
+        ServerToolUnavailableError,
+    )
+
+    mode = ServerToolRegistry.normalize_web_search_mode(
+        env.get(
+            "LLM_WEB_SEARCH_MODE",
+            getattr(settings, "LLM_WEB_SEARCH_MODE", "local"),
+        )
+    )
+    if mode != "builtin":
+        return None
+
+    provider = str(
+        env.get("LLM_PROVIDER", getattr(settings, "LLM_PROVIDER", "")) or ""
+    ).strip()
+    model = str(
+        env.get("LLM_MODEL", getattr(settings, "LLM_MODEL", "")) or ""
+    ).strip()
+    base_url = env.get("LLM_BASE_URL", getattr(settings, "LLM_BASE_URL", None))
+    capability = ServerToolRegistry.get_capability(
+        provider=provider,
+        model=model,
+        base_url=str(base_url or "").strip() or None,
+        tool_id="web_search",
+    )
+    if capability:
+        return None
+
+    return str(
+        ServerToolUnavailableError(
+            provider=provider,
+            model=model,
+            tool_id="web_search",
+        )
+    )
+
+
 def _normalize_plugin_market_repo_url(repo_url: str) -> Optional[str]:
     """
     规范化插件仓库地址，便于跨来源合并去重。
@@ -763,6 +804,10 @@ async def set_env_setting(
     """
     更新系统环境变量（仅管理员）
     """
+    validation_error = _validate_llm_server_tool_config(env)
+    if validation_error:
+        return schemas.Response(success=False, message=validation_error)
+
     result = settings.update_settings(env=env)
     # 统计成功和失败的结果
     success_updates = {k: v for k, v in result.items() if v[0]}

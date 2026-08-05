@@ -88,6 +88,7 @@ def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
         use_proxy=True,
         thinking_level="xhigh",
         api_protocol="auto",
+        web_search_mode="local",
     )
     assert agent._llm_provider_selection["selected_provider_id"] == "provider-1"
 
