@@ -89,6 +89,7 @@ def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
         thinking_level="xhigh",
         api_protocol="auto",
         web_search_mode="local",
+        prompt_cache_key=agent._build_prompt_cache_key(),
     )
     assert agent._llm_provider_selection["selected_provider_id"] == "provider-1"
 
@@ -119,6 +120,11 @@ def test_execute_agent_broadcasts_usage_on_success() -> None:
                 "input_tokens": 12,
                 "output_tokens": 8,
                 "total_tokens": 20,
+                "cache_usage_available": True,
+                "cache_read_input_tokens": 8,
+                "cache_write_input_tokens": 2,
+                "uncached_input_tokens": 2,
+                "cache_hit_ratio": 8 / 12,
             }
         )
         return _FakeAgent([AIMessage(content="ok")])
@@ -138,6 +144,11 @@ def test_execute_agent_broadcasts_usage_on_success() -> None:
     assert usage.input_tokens == 12
     assert usage.output_tokens == 8
     assert usage.total_tokens == 20
+    assert usage.cache_read_input_tokens == 8
+    assert usage.cache_write_input_tokens == 2
+    assert usage.uncached_input_tokens == 2
+    assert usage.cache_hit_ratio == 8 / 12
+    assert usage.cache_usage_available
 
 
 def test_execute_agent_broadcasts_usage_on_failure() -> None:

@@ -52,6 +52,18 @@ class UsageMiddleware(AgentMiddleware):
         return None
 
     @classmethod
+    def _first_int(
+        cls,
+        candidates: tuple[tuple[Any, tuple[str, ...]], ...],
+    ) -> int | None:
+        """按优先级返回首个可用的 usage 整数值。"""
+        for container, keys in candidates:
+            value = cls._lookup_int(container, *keys)
+            if value is not None:
+                return value
+        return None
+
+    @classmethod
     def _extract_model_name(cls, model: Any) -> str | None:
         return (
             getattr(model, "model", None)
@@ -82,6 +94,131 @@ class UsageMiddleware(AgentMiddleware):
             or {}
         )
 
+        input_token_details = None
+        if usage_metadata:
+            getter = getattr(usage_metadata, "get", None)
+            input_token_details = (
+                getter("input_token_details")
+                if callable(getter)
+                else getattr(usage_metadata, "input_token_details", None)
+            )
+
+        cache_read_tokens = cls._first_int(
+            (
+                (
+                    input_token_details,
+                    (
+                        "cache_read",
+                        "cached_tokens",
+                        "cache_read_input_tokens",
+                        "cacheReadInputTokens",
+                    ),
+                ),
+                (
+                    token_usage,
+                    (
+                        "prompt_cache_hit_tokens",
+                        "cache_read_input_tokens",
+                        "cacheReadInputTokens",
+                    ),
+                ),
+                (
+                    response_metadata,
+                    (
+                        "prompt_cache_hit_tokens",
+                        "cache_read_input_tokens",
+                        "cacheReadInputTokens",
+                        "cached_tokens",
+                    ),
+                ),
+            )
+        )
+        if cache_read_tokens is None:
+            cache_read_tokens = cls._first_int(
+                (
+                    (
+                        token_usage.get("prompt_tokens_details", {}),
+                        ("cached_tokens", "cache_read"),
+                    ),
+                    (
+                        token_usage.get("input_tokens_details", {}),
+                        ("cached_tokens", "cache_read"),
+                    ),
+                )
+            )
+
+        cache_write_tokens = cls._first_int(
+            (
+                (
+                    input_token_details,
+                    (
+                        "cache_creation",
+                        "cache_write",
+                        "cache_write_tokens",
+                        "cache_write_input_tokens",
+                        "cacheWriteInputTokens",
+                    ),
+                ),
+                (
+                    token_usage,
+                    (
+                        "cache_creation_input_tokens",
+                        "cache_write_tokens",
+                        "cache_write_input_tokens",
+                        "cacheWriteInputTokens",
+                    ),
+                ),
+                (
+                    response_metadata,
+                    (
+                        "cache_creation_input_tokens",
+                        "cache_write_tokens",
+                        "cache_write_input_tokens",
+                        "cacheWriteInputTokens",
+                    ),
+                ),
+            )
+        )
+        if cache_write_tokens is None:
+            cache_write_tokens = cls._first_int(
+                (
+                    (
+                        token_usage.get("prompt_tokens_details", {}),
+                        ("cache_write_tokens", "cache_creation"),
+                    ),
+                    (
+                        token_usage.get("input_tokens_details", {}),
+                        ("cache_write_tokens", "cache_creation"),
+                    ),
+                )
+            )
+        cache_write_ttl_tokens = sum(
+            cls._lookup_int(
+                input_token_details,
+                ttl_key,
+            )
+            or 0
+            for ttl_key in (
+                "ephemeral_5m_input_tokens",
+                "ephemeral_1h_input_tokens",
+            )
+        )
+        if cache_write_ttl_tokens:
+            cache_write_tokens = cache_write_ttl_tokens
+
+        cache_miss_tokens = cls._first_int(
+            (
+                (
+                    token_usage,
+                    ("prompt_cache_miss_tokens", "cache_miss_input_tokens"),
+                ),
+                (
+                    response_metadata,
+                    ("prompt_cache_miss_tokens", "cache_miss_input_tokens"),
+                ),
+            )
+        )
+
         if input_tokens is None:
             input_tokens = cls._lookup_int(
                 token_usage,
@@ -93,6 +230,27 @@ class UsageMiddleware(AgentMiddleware):
                 response_metadata,
                 "prompt_token_count",
                 "input_tokens",
+            )
+        if input_tokens is None:
+            bedrock_input_tokens = cls._lookup_int(token_usage, "inputTokens")
+            if bedrock_input_tokens is not None:
+                input_tokens = (
+                    bedrock_input_tokens
+                    + (cache_read_tokens or 0)
+                    + (cache_write_tokens or 0)
+                )
+        if input_tokens is None and any(
+            value is not None
+            for value in (
+                cache_read_tokens,
+                cache_write_tokens,
+                cache_miss_tokens,
+            )
+        ):
+            input_tokens = (
+                (cache_read_tokens or 0)
+                + (cache_write_tokens or 0)
+                + (cache_miss_tokens or 0)
             )
 
         if output_tokens is None:
@@ -113,8 +271,24 @@ class UsageMiddleware(AgentMiddleware):
         if total_tokens is None:
             total_tokens = cls._lookup_int(response_metadata, "total_token_count")
 
+        has_cache_usage = any(
+            value is not None
+            for value in (
+                cache_read_tokens,
+                cache_write_tokens,
+                cache_miss_tokens,
+            )
+        )
         has_usage = any(
-            value is not None for value in (input_tokens, output_tokens, total_tokens)
+            value is not None
+            for value in (
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                cache_miss_tokens,
+            )
         )
         resolved_input = input_tokens or 0
         resolved_output = output_tokens or 0
@@ -123,12 +297,32 @@ class UsageMiddleware(AgentMiddleware):
             if total_tokens is not None
             else resolved_input + resolved_output
         )
+        resolved_cache_read = cache_read_tokens or 0
+        resolved_cache_write = cache_write_tokens or 0
+        uncached_input_tokens = (
+            cache_miss_tokens
+            if cache_miss_tokens is not None
+            else max(
+                resolved_input - resolved_cache_read - resolved_cache_write,
+                0,
+            )
+        )
+        cache_hit_ratio = (
+            resolved_cache_read / resolved_input
+            if has_cache_usage and resolved_input
+            else None
+        )
 
         return {
             "has_usage": has_usage,
+            "cache_usage_available": has_cache_usage,
             "input_tokens": resolved_input,
             "output_tokens": resolved_output,
             "total_tokens": resolved_total,
+            "cache_read_input_tokens": resolved_cache_read,
+            "cache_write_input_tokens": resolved_cache_write,
+            "uncached_input_tokens": uncached_input_tokens,
+            "cache_hit_ratio": cache_hit_ratio,
         }
 
     async def awrap_model_call(
@@ -157,9 +351,14 @@ class UsageMiddleware(AgentMiddleware):
                 if ai_message
                 else {
                     "has_usage": False,
+                    "cache_usage_available": False,
                     "input_tokens": 0,
                     "output_tokens": 0,
                     "total_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "cache_write_input_tokens": 0,
+                    "uncached_input_tokens": 0,
+                    "cache_hit_ratio": None,
                 }
             )
             context_window_tokens = self._extract_context_window_tokens(request.model)

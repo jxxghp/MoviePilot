@@ -3,7 +3,7 @@
 
 按日期存储在 CONFIG_PATH/agent/activity/YYYY-MM-DD.md 中，
 每次 Agent 执行完毕后自动调用 LLM 对本轮对话生成简洁的活动摘要，
-并在每次 Agent 启动时注入轻量索引，完整日志由工具按需查询。
+系统提示词只注入稳定的检索规则，完整日志由工具按需查询。
 """
 
 import asyncio
@@ -459,12 +459,8 @@ async def _summarize_with_llm(conversation_text: str) -> Optional[str]:
 
 
 ACTIVITY_LOG_SYSTEM_PROMPT = """<activity_log>
-<activity_log_index>
-{activity_log_index}
-</activity_log_index>
-
 <activity_log_guidelines>
-    The index only shows recent dates and entry counts, not full log contents.
+    Activity log contents and indexes are not included in the default context.
     Use `query_activity_log` only when the user references previous work, asks to continue a prior task, or recent activity is clearly relevant.
     Activity logs are read-only and retained for {retention_days} days; use MEMORY.md for durable preferences.
 </activity_log_guidelines>
@@ -473,10 +469,10 @@ ACTIVITY_LOG_SYSTEM_PROMPT = """<activity_log>
 
 
 class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, ResponseT]):  # noqa
-    """自动记录 Agent 活动日志并注入轻量索引的中间件。
+    """自动记录 Agent 活动日志并注入稳定检索规则的中间件。
 
     - abefore_agent: 加载近几天的活动日志索引
-    - awrap_model_call: 将活动日志索引和检索规则注入系统提示词
+    - awrap_model_call: 将固定的活动日志检索规则注入系统提示词
     - aafter_agent: 从本次对话中提取摘要并追加到当日日志文件
 
     参数：
@@ -516,31 +512,9 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         """获取指定日期的日志文件路径。"""
         return AsyncPath(self.activity_dir) / f"{date_str}.md"
 
-    def _format_activity_log(self, contents: dict[str, str]) -> str:
-        """格式化活动日志索引用于系统提示词注入。"""
-        if not contents:
-            return ACTIVITY_LOG_SYSTEM_PROMPT.format(
-                activity_log_index="(近期暂无活动日志索引。需要历史上下文时可调用 query_activity_log。)",
-                retention_days=self.retention_days,
-            )
-
-        # 按日期排序（最近的在前）
-        sorted_dates = sorted(contents.keys(), reverse=True)
-        sections = []
-        for date_str in sorted_dates:
-            content = contents[date_str].strip()
-            if content:
-                sections.append(f"### {date_str}\n{content}")
-
-        if not sections:
-            return ACTIVITY_LOG_SYSTEM_PROMPT.format(
-                activity_log_index="(近期暂无活动日志索引。需要历史上下文时可调用 query_activity_log。)",
-                retention_days=self.retention_days,
-            )
-
-        log_body = "\n".join(sections)
+    def _format_activity_log(self, _contents: dict[str, str]) -> str:
+        """生成不受活动日志内容变化影响的系统提示词。"""
         return ACTIVITY_LOG_SYSTEM_PROMPT.format(
-            activity_log_index=log_body,
             retention_days=self.retention_days,
         )
 

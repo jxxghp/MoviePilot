@@ -1665,6 +1665,20 @@ class LLMProviderManager(metaclass=Singleton):
             await self.get_models_dev_data(use_proxy=use_proxy)
         ).get(models_dev_provider_id, {}) or {}
 
+    @staticmethod
+    def _models_dev_model_candidates(
+            provider_id: str,
+            model_id: str,
+    ) -> tuple[str, ...]:
+        """生成模型目录查询候选，兼容 Provider 添加的透明模型前缀。"""
+        candidates = [model_id]
+        if model_id.startswith("models/"):
+            candidates.append(model_id.removeprefix("models/"))
+        if provider_id == "amazon-bedrock" and "." in model_id:
+            # Cross-region Inference Profile 会增加 us./eu./global. 等前缀。
+            candidates.append(model_id.split(".", 1)[1])
+        return tuple(dict.fromkeys(candidates))
+
     async def _models_dev_model(
             self,
             provider_id: str,
@@ -1684,14 +1698,31 @@ class LLMProviderManager(metaclass=Singleton):
         if not isinstance(models, dict):
             return None
 
-        candidates = [model_id]
-        if model_id.startswith("models/"):
-            candidates.append(model_id.removeprefix("models/"))
-
-        for candidate in candidates:
+        for candidate in self._models_dev_model_candidates(provider_id, model_id):
             if candidate in models:
                 return models[candidate]
         return None
+
+    @staticmethod
+    def _metadata_supports_prompt_cache(metadata: Any) -> bool:
+        """从统一模型元数据中判断是否声明了提示词缓存能力。"""
+        if not isinstance(metadata, dict):
+            return False
+
+        explicit_capability = metadata.get("prompt_cache")
+        if isinstance(explicit_capability, bool):
+            return explicit_capability
+
+        capabilities = metadata.get("capabilities")
+        if isinstance(capabilities, dict):
+            explicit_capability = capabilities.get("prompt_cache")
+            if isinstance(explicit_capability, bool):
+                return explicit_capability
+
+        cost = metadata.get("cost")
+        return isinstance(cost, dict) and any(
+            key in cost for key in ("cache_read", "cache_write")
+        )
 
     def _cached_models_dev_model(
             self,
@@ -1719,11 +1750,7 @@ class LLMProviderManager(metaclass=Singleton):
         if not isinstance(models, dict):
             return None
 
-        candidates = [model_id]
-        if model_id.startswith("models/"):
-            candidates.append(model_id.removeprefix("models/"))
-
-        for candidate in candidates:
+        for candidate in self._models_dev_model_candidates(provider_id, model_id):
             if candidate in models:
                 return models[candidate]
         return None
@@ -3112,6 +3139,9 @@ class LLMProviderManager(metaclass=Singleton):
             "model_id": model,
             "model_record": model_record,
             "model_metadata": model_metadata,
+            "supports_prompt_cache": self._metadata_supports_prompt_cache(
+                model_metadata
+            ),
             "default_headers": None,
             "use_responses_api": None,
             "auth_mode": "api_key",

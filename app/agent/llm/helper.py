@@ -6,6 +6,7 @@ import json
 import time
 from functools import wraps
 from typing import TYPE_CHECKING, Any, List, Optional
+from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
@@ -813,6 +814,91 @@ class LLMHelper:
             headers["User-Agent"] = normalized_user_agent
         return headers or None
 
+    @staticmethod
+    def _matches_endpoint_host(base_url: str | None, expected_host: str) -> bool:
+        """严格匹配官方 API 主机，避免向兼容端点发送供应商专属参数。"""
+        try:
+            return (urlsplit(str(base_url or "")).hostname or "").lower() == expected_host
+        except ValueError:
+            return False
+
+    @classmethod
+    def _build_openai_prompt_cache_options(
+            cls,
+            *,
+            provider: str,
+            base_url: str | None,
+            use_responses_api: bool | None,
+            prompt_cache_key: str | None,
+            default_headers: dict[str, str] | None,
+            model_kwargs: dict[str, Any],
+    ) -> tuple[dict[str, str] | None, dict[str, Any]]:
+        """为 OpenAI 与 xAI 官方端点构造稳定提示词缓存路由参数。"""
+        cache_key = str(prompt_cache_key or "").strip()
+        headers = dict(default_headers or {})
+        kwargs = dict(model_kwargs)
+        provider_name = str(provider or "").strip().lower()
+        if not cache_key:
+            return headers or None, kwargs
+
+        is_openai = provider_name in {"chatgpt", "openai"} and cls._matches_endpoint_host(
+            base_url,
+            "api.openai.com",
+        )
+        is_xai = provider_name == "xai" and cls._matches_endpoint_host(
+            base_url,
+            "api.x.ai",
+        )
+        if not is_openai and not is_xai:
+            return headers or None, kwargs
+
+        if is_xai and use_responses_api is not True:
+            headers["x-grok-conv-id"] = cache_key
+            return headers, kwargs
+
+        extra_body = dict(kwargs.get("extra_body") or {})
+        extra_body["prompt_cache_key"] = cache_key
+        kwargs["extra_body"] = extra_body
+        return headers or None, kwargs
+
+    @staticmethod
+    def _with_prompt_cache_control(
+            model_cls: type,
+            cache_control: dict[str, str],
+    ) -> type:
+        """创建在最终模型绑定阶段保留缓存控制参数的适配类。"""
+
+        class PromptCachingModel(model_cls):
+            """在 LangChain 工具绑定后仍保留提示词缓存参数的模型适配器。"""
+
+            def bind(self, **kwargs: Any) -> Any:
+                """绑定调用参数，并补入当前 Provider 的默认缓存控制。"""
+                kwargs.setdefault("cache_control", dict(cache_control))
+                return super().bind(**kwargs)
+
+        PromptCachingModel.__name__ = f"PromptCaching{model_cls.__name__}"
+        return PromptCachingModel
+
+    @classmethod
+    def _use_anthropic_prompt_cache(
+            cls,
+            *,
+            provider: str,
+            runtime: dict[str, Any],
+            prompt_cache_key: str | None,
+    ) -> bool:
+        """判断当前运行时是否为可安全启用缓存的 Anthropic 官方端点。"""
+        return (
+            bool(str(prompt_cache_key or "").strip())
+            and str(provider or "").strip().lower() == "anthropic"
+            and str(runtime.get("runtime") or "").strip().lower()
+            == "anthropic_compatible"
+            and cls._matches_endpoint_host(
+                runtime.get("base_url"),
+                "api.anthropic.com",
+            )
+        )
+
     @classmethod
     def _should_use_openai_responses_api(
             cls,
@@ -983,6 +1069,7 @@ class LLMHelper:
             use_proxy: bool | None = None,
             api_protocol: str | None = None,
             web_search_mode: str | None = None,
+            prompt_cache_key: str | None = None,
     ):
         """
         获取LLM实例
@@ -1006,6 +1093,7 @@ class LLMHelper:
         :param web_search_mode: 联网搜索模式
             （local/builtin/auto/disabled）。未显式传入时使用配置项
             ``LLM_WEB_SEARCH_MODE``。
+        :param prompt_cache_key: 同一 Agent 会话内稳定且脱敏的提示词缓存路由键。
         :return: LLM实例
         """
         provider_name = str(provider if provider is not None else settings.LLM_PROVIDER).lower()
@@ -1093,6 +1181,14 @@ class LLMHelper:
             runtime=runtime,
             api_protocol=effective_api_protocol,
         )
+        default_headers, openai_model_kwargs = cls._build_openai_prompt_cache_options(
+            provider=provider_name,
+            base_url=runtime.get("base_url"),
+            use_responses_api=use_responses_api,
+            prompt_cache_key=prompt_cache_key,
+            default_headers=default_headers,
+            model_kwargs=thinking_kwargs,
+        )
         llm_proxy = _resolve_llm_proxy(use_proxy)
 
         if runtime["runtime"] == "google":
@@ -1146,6 +1242,16 @@ class LLMHelper:
 
             from app.agent.llm.provider import LLMProviderManager
 
+            bedrock_model_cls = ChatBedrockConverse
+            if (
+                    str(prompt_cache_key or "").strip()
+                    and runtime.get("supports_prompt_cache")
+            ):
+                bedrock_model_cls = cls._with_prompt_cache_control(
+                    ChatBedrockConverse,
+                    {"type": "default"},
+                )
+
             aws_region = runtime.get("aws_region") or "us-east-1"
             aws_auth = runtime.get("aws_auth") or {}
             # Bearer 认证需要跳过 SigV4 签名并注入 Authorization 头，SigV4 认证
@@ -1158,7 +1264,7 @@ class LLMHelper:
                 use_proxy=use_proxy,
                 read_timeout=settings.LLM_TOOL_TIMEOUT,
             )
-            model = ChatBedrockConverse(
+            model = bedrock_model_cls(
                 model_id=model_name,
                 client=bedrock_client,
                 temperature=temperature_value,
@@ -1167,7 +1273,18 @@ class LLMHelper:
         elif runtime["runtime"] in {"anthropic_compatible", "copilot_anthropic"}:
             from langchain_anthropic import ChatAnthropic
 
-            model = ChatAnthropic(
+            anthropic_model_cls = ChatAnthropic
+            if cls._use_anthropic_prompt_cache(
+                    provider=provider_name,
+                    runtime=runtime,
+                    prompt_cache_key=prompt_cache_key,
+            ):
+                anthropic_model_cls = cls._with_prompt_cache_control(
+                    ChatAnthropic,
+                    {"type": "ephemeral"},
+                )
+
+            model = anthropic_model_cls(
                 model=model_name,
                 api_key=runtime["api_key"],
                 base_url=runtime["base_url"],
@@ -1208,7 +1325,7 @@ class LLMHelper:
                 default_headers=default_headers,
                 use_responses_api=use_responses_api,
                 output_version=("responses/v1" if use_responses_api else None),
-                **thinking_kwargs,
+                **openai_model_kwargs,
             )
 
         # 优先使用 provider / models.dev 目录中的上下文上限，减少用户手填成本。

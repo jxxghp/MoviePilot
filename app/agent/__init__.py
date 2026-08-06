@@ -129,9 +129,18 @@ class _SessionUsageSnapshot:
     last_output_tokens: int = 0
     last_total_tokens: int = 0
     last_context_usage_ratio: Optional[float] = None
+    last_cache_usage_available: bool = False
+    last_cache_read_input_tokens: int = 0
+    last_cache_write_input_tokens: int = 0
+    last_uncached_input_tokens: int = 0
+    last_cache_hit_ratio: Optional[float] = None
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_tokens: int = 0
+    total_cache_read_input_tokens: int = 0
+    total_cache_write_input_tokens: int = 0
+    total_uncached_input_tokens: int = 0
+    cache_usage_available: bool = False
     model_call_count: int = 0
     last_updated_at: Optional[datetime] = None
 
@@ -144,9 +153,23 @@ class _SessionUsageSnapshot:
             "last_output_tokens": self.last_output_tokens,
             "last_total_tokens": self.last_total_tokens,
             "last_context_usage_ratio": self.last_context_usage_ratio,
+            "last_cache_usage_available": self.last_cache_usage_available,
+            "last_cache_read_input_tokens": self.last_cache_read_input_tokens,
+            "last_cache_write_input_tokens": self.last_cache_write_input_tokens,
+            "last_uncached_input_tokens": self.last_uncached_input_tokens,
+            "last_cache_hit_ratio": self.last_cache_hit_ratio,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
             "total_tokens": self.total_tokens,
+            "total_cache_read_input_tokens": self.total_cache_read_input_tokens,
+            "total_cache_write_input_tokens": self.total_cache_write_input_tokens,
+            "total_uncached_input_tokens": self.total_uncached_input_tokens,
+            "cache_usage_available": self.cache_usage_available,
+            "total_cache_hit_ratio": (
+                self.total_cache_read_input_tokens / self.total_input_tokens
+                if self.cache_usage_available and self.total_input_tokens
+                else None
+            ),
             "model_call_count": self.model_call_count,
             "last_updated_at": self.last_updated_at.strftime("%Y-%m-%d %H:%M:%S")
             if self.last_updated_at
@@ -554,9 +577,33 @@ class MoviePilotAgent:
         self._session_usage.last_output_tokens = output_tokens
         self._session_usage.last_total_tokens = total_tokens
         self._session_usage.last_context_usage_ratio = usage.get("context_usage_ratio")
+        cache_usage_available = bool(usage.get("cache_usage_available"))
+        cache_read_input_tokens = self._coerce_int(
+            usage.get("cache_read_input_tokens")
+        ) or 0
+        cache_write_input_tokens = self._coerce_int(
+            usage.get("cache_write_input_tokens")
+        ) or 0
+        uncached_input_tokens = self._coerce_int(
+            usage.get("uncached_input_tokens")
+        )
+        if uncached_input_tokens is None:
+            uncached_input_tokens = max(
+                input_tokens - cache_read_input_tokens - cache_write_input_tokens,
+                0,
+            )
+        self._session_usage.last_cache_usage_available = cache_usage_available
+        self._session_usage.last_cache_read_input_tokens = cache_read_input_tokens
+        self._session_usage.last_cache_write_input_tokens = cache_write_input_tokens
+        self._session_usage.last_uncached_input_tokens = uncached_input_tokens
+        self._session_usage.last_cache_hit_ratio = usage.get("cache_hit_ratio")
         self._session_usage.total_input_tokens += input_tokens
         self._session_usage.total_output_tokens += output_tokens
         self._session_usage.total_tokens += total_tokens
+        self._session_usage.total_cache_read_input_tokens += cache_read_input_tokens
+        self._session_usage.total_cache_write_input_tokens += cache_write_input_tokens
+        self._session_usage.total_uncached_input_tokens += uncached_input_tokens
+        self._session_usage.cache_usage_available |= cache_usage_available
 
     def get_session_status(self) -> dict[str, Any]:
         if not self._session_usage.model:
@@ -590,6 +637,17 @@ class MoviePilotAgent:
                 input_tokens=self._session_usage.total_input_tokens,
                 output_tokens=self._session_usage.total_output_tokens,
                 total_tokens=self._session_usage.total_tokens,
+                cache_read_input_tokens=self._session_usage.total_cache_read_input_tokens,
+                cache_write_input_tokens=self._session_usage.total_cache_write_input_tokens,
+                uncached_input_tokens=self._session_usage.total_uncached_input_tokens,
+                cache_hit_ratio=(
+                    self._session_usage.total_cache_read_input_tokens
+                    / self._session_usage.total_input_tokens
+                    if self._session_usage.cache_usage_available
+                    and self._session_usage.total_input_tokens
+                    else None
+                ),
+                cache_usage_available=self._session_usage.cache_usage_available,
                 model_call_count=self._session_usage.model_call_count,
                 success=success,
                 error=error,
@@ -819,7 +877,17 @@ class MoviePilotAgent:
         :param streaming: 是否启用流式输出
         """
         runtime_config = await self._resolve_llm_runtime_config()
-        return await LLMHelper.get_llm(streaming=streaming, **runtime_config)
+        return await LLMHelper.get_llm(
+            streaming=streaming,
+            prompt_cache_key=self._build_prompt_cache_key(),
+            **runtime_config,
+        )
+
+    def _build_prompt_cache_key(self) -> str:
+        """生成不暴露用户标识、且在同一会话内稳定的提示词缓存键。"""
+        cache_identity = f"{self.user_id or ''}\x00{self.session_id}"
+        digest = hashlib.sha256(cache_identity.encode("utf-8")).hexdigest()[:32]
+        return f"moviepilot-agent-{digest}"
 
     @classmethod
     def _has_image_input_content(cls, content: Any) -> bool:

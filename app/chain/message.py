@@ -1349,6 +1349,33 @@ class MessageChain(ChainBase):
             f"排队消息数: {status.get('pending_messages', 0)}",
             f"最后更新: {status.get('last_updated_at') or '暂无'}",
         ]
+        if status.get("cache_usage_available"):
+            last_cache_ratio = status.get("last_cache_hit_ratio")
+            total_cache_ratio = status.get("total_cache_hit_ratio")
+            lines.insert(
+                6,
+                "最近一次缓存: "
+                f"命中 {cls._format_token_count(status.get('last_cache_read_input_tokens'))} / "
+                f"写入 {cls._format_token_count(status.get('last_cache_write_input_tokens'))} / "
+                f"未命中 {cls._format_token_count(status.get('last_uncached_input_tokens'))}"
+                + (
+                    f" ({last_cache_ratio * 100:.2f}%)"
+                    if last_cache_ratio is not None
+                    else ""
+                ),
+            )
+            lines.insert(
+                8,
+                "当前会话累计缓存: "
+                f"命中 {cls._format_token_count(status.get('total_cache_read_input_tokens'))} / "
+                f"写入 {cls._format_token_count(status.get('total_cache_write_input_tokens'))} / "
+                f"未命中 {cls._format_token_count(status.get('total_uncached_input_tokens'))}"
+                + (
+                    f" ({total_cache_ratio * 100:.2f}%)"
+                    if total_cache_ratio is not None
+                    else ""
+                ),
+            )
         return "\n".join(lines)
 
     def remote_session_status(

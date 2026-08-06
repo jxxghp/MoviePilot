@@ -53,8 +53,8 @@ def test_activity_log_index_counts_entries_without_body(tmp_path):
     assert "整理了电影文件" not in json.dumps(index, ensure_ascii=False)
 
 
-def test_activity_log_prompt_injects_index_not_full_log(tmp_path):
-    """ActivityLogMiddleware 注入系统提示词时不应携带完整活动日志正文。"""
+def test_activity_log_prompt_is_stable_and_excludes_log_index(tmp_path):
+    """ActivityLogMiddleware 的系统提示词不应随活动日志索引变化。"""
     date_str = datetime.now().strftime("%Y-%m-%d")
     _write_activity_log(
         tmp_path,
@@ -74,10 +74,15 @@ def test_activity_log_prompt_injects_index_not_full_log(tmp_path):
 
     modified = middleware.modify_request(request)
     system_text = str(modified.system_message.content)
+    stable_prompt = middleware._format_activity_log(
+        {"2099-12-31": "999 条活动记录"}
+    )
 
-    assert "1 条活动记录" in system_text
+    assert "1 条活动记录" not in system_text
+    assert date_str not in system_text
     assert "这是一条不应默认进入上下文的活动正文" not in system_text
     assert "query_activity_log" in system_text
+    assert middleware._format_activity_log(state_update["activity_log_contents"]) == stable_prompt
 
 
 def test_activity_log_abefore_agent_refreshes_existing_state(tmp_path):
