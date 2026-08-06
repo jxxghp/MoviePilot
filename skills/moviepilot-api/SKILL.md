@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 8
+version: 9
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -501,7 +501,7 @@ The list endpoint returns local cache totals plus `shared_recognized` and
 | GET | `/api/v1/user/{username}` | User detail |
 | DELETE | `/api/v1/user/id/{user_id}` | Delete user by ID |
 | DELETE | `/api/v1/user/name/{user_name}` | Delete user by username |
-| POST | `/api/v1/user/avatar/{user_id}` | Upload avatar. Body: multipart/form-data |
+| POST | `/api/v1/user/avatar/{user_id}` | Upload avatar. Body: multipart/form-data; original filename is returned in `data.filename` |
 | GET | `/api/v1/user/config/{key}` | Get user config |
 | POST | `/api/v1/user/config/{key}` | Update user config |
 

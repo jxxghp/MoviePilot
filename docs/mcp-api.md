@@ -124,7 +124,7 @@ MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所�
 
 通用 REST 响应包含 `success`、`message`、`message_i18n`、`data` 字段。为兼容 App 和第三方客户端，`message` 继续保留原中文或原始后端文本；新版前端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`，并优先展示 `message_i18n`。未提供语言头或翻译缺失时，`message_i18n` 会回退为原文本。
 
-`GET /api/v1/login/wallpaper` 及对应的 v2 路径会将壁纸 URL 放在 `data` 字段中，`message` 不再承载业务数据。
+`GET /api/v1/login/wallpaper` 及对应的 v2 路径会将壁纸 URL 放在 `data` 字段中。`POST /api/v1/user/avatar/{user_id}` 及对应的 v2 路径会以 `data.filename` 返回原始文件名。上述接口的 `message` 均不再承载业务数据。
 
 FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶层 `detail` / `detail_i18n`。
 

@@ -119,7 +119,7 @@ async def upload_avatar(
     if not user:
         return schemas.Response(success=False, message="用户不存在")
     await user.async_update(db, {"avatar": f"data:image/ico;base64,{file_base64}"})
-    return schemas.Response(success=True, message=file.filename)
+    return schemas.Response(success=True, data={"filename": file.filename})
 
 
 @router.get("/config/{key}", summary="查询用户配置", response_model=schemas.Response)

@@ -284,3 +284,46 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "用户权限不足"
+
+
+def test_upload_avatar_returns_filename_in_data(monkeypatch):
+    """头像上传成功时应通过 data 返回文件名，message 只保留消息文本。"""
+
+    class FakeUser:
+        """记录头像更新内容的用户桩。"""
+
+        def __init__(self):
+            self.values = None
+
+        async def async_update(self, db: object, values: dict[str, str]) -> None:
+            """记录待写入的头像数据。"""
+            self.values = values
+
+    class FakeUserModel:
+        """返回固定用户的模型桩。"""
+
+        @classmethod
+        async def async_get(cls, db: object, user_id: int) -> FakeUser:
+            """按用户 ID 返回测试用户。"""
+            assert user_id == 1
+            return fake_user
+
+    fake_user = FakeUser()
+    current_user = SimpleNamespace(id=1, is_superuser=False)
+    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+    monkeypatch.setattr(user_endpoint, "User", FakeUserModel)
+
+    response = asyncio.run(
+        user_endpoint.upload_avatar(
+            user_id=1,
+            db=object(),
+            file=upload_file,
+            current_user=current_user,
+        )
+    )
+
+    assert response.success is True
+    assert response.data == {"filename": "avatar.png"}
+    assert response.message is None
+    assert response.message_i18n is None
+    assert fake_user.values == {"avatar": "data:image/ico;base64,b'YXZhdGFy'"}
