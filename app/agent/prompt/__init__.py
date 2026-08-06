@@ -140,23 +140,6 @@ class PromptManager:
                 markdown_spec = self._generate_formatting_instructions(caps)
         button_choice_spec = self._generate_button_choice_instructions(msg_channel)
 
-        # 啰嗦模式
-        verbose_spec = ""
-        if not settings.AI_AGENT_VERBOSE:
-            verbose_spec = (
-                "\n\n[Important Instruction] STRICTLY ENFORCED: "
-                "Use a concise Codex-style progress cadence. "
-                "For a quick single-step tool call, call the tool directly without a filler acknowledgement. "
-                "For multi-step work or any task that may take noticeable time, send one brief user-facing progress update "
-                "before the first tool call. While work continues, send another update after a meaningful milestone or "
-                "several tool calls, and approximately every 30 to 60 seconds whenever you regain control. "
-                "Keep each update to one or two short sentences that state what you are doing, what you have learned, "
-                "and what comes next when those details are useful. Vary the wording and do not repeat an unchanged status. "
-                "Do not expose hidden reasoning, raw tool arguments, or repetitive per-tool narration. "
-                "Continue working after each update. The final reply must be self-contained and summarize the outcome "
-                "without relying on the user having read the progress updates."
-            )
-
         # MoviePilot系统信息
         moviepilot_info = self._get_moviepilot_info()
         voice_reply_spec = self._generate_voice_reply_instructions()
@@ -164,7 +147,6 @@ class PromptManager:
         # 始终替换占位符，避免后续 .format() 时因残留花括号报 KeyError
         base_prompt = base_prompt.format(
             markdown_spec=markdown_spec,
-            verbose_spec=verbose_spec,
             moviepilot_info=moviepilot_info,
             voice_reply_spec=voice_reply_spec,
             button_choice_spec=button_choice_spec,
