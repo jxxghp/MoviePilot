@@ -318,13 +318,19 @@ class MoviePilotAgent:
         """
         构造可展示的 Agent 会话消息。
         """
+        normalized_content = content or ""
         return {
             "id": f"{role}-{uuid.uuid4().hex}",
             "role": role,
-            "content": content or "",
+            "content": normalized_content,
             "createdAt": cls._current_timestamp_ms(),
             "status": status,
             "tools": [],
+            "segments": (
+                [{"type": "text", "content": normalized_content}]
+                if normalized_content
+                else []
+            ),
             "attachments": attachments or [],
             "choices": [],
         }

@@ -318,22 +318,62 @@ async def _get_accessible_agent_chat(
     return chat
 
 
+def _append_web_agent_text_segment(assistant_message: dict, content: str) -> None:
+    """
+    将文本增量追加到展示消息，并仅合并相邻文本片段。
+
+    :param assistant_message: 当前助手展示消息
+    :param content: 新增文本
+    """
+    if not content:
+        return
+    assistant_message["content"] = str(assistant_message.get("content") or "") + content
+    segments = assistant_message.setdefault("segments", [])
+    if segments and segments[-1].get("type") == "text":
+        segments[-1]["content"] = str(segments[-1].get("content") or "") + content
+    else:
+        segments.append({"type": "text", "content": content})
+
+
+def _build_legacy_web_agent_segments(content: str, tools: list[dict]) -> list[dict]:
+    """
+    为未携带有序片段的旧展示消息生成兼容布局。
+
+    :param content: 聚合后的助手文本
+    :param tools: 工具提示列表
+    :return: 按旧版工具在前、文本在后的顺序生成的片段
+    """
+    segments = [
+        {"type": "tool", "toolIndex": index}
+        for index in range(len(tools))
+    ]
+    if content:
+        segments.append({"type": "text", "content": content})
+    return segments
+
+
 def _apply_web_agent_display_event(event: dict, assistant_message: dict) -> None:
     """
     将 WebAgent SSE 事件同步应用到服务端展示消息快照。
     """
     event_type = event.get("type")
     if event_type == "delta":
-        assistant_message["content"] += event.get("content") or ""
+        _append_web_agent_text_segment(
+            assistant_message, event.get("content") or ""
+        )
     elif event_type == "tool":
         for tool in assistant_message["tools"]:
             tool["status"] = "done"
+        tool_index = len(assistant_message["tools"])
         assistant_message["tools"].append(
             {
                 "id": f"tool-{uuid.uuid4().hex}",
                 "message": str(event.get("message") or "").strip(),
                 "status": "running",
             }
+        )
+        assistant_message.setdefault("segments", []).append(
+            {"type": "tool", "toolIndex": tool_index}
         )
     elif event_type == "attachment" and event.get("attachment"):
         assistant_message["attachments"].append(event["attachment"])
@@ -346,14 +386,22 @@ def _apply_web_agent_display_event(event: dict, assistant_message: dict) -> None
         assistant_message["attachments"] = target_message.get("attachments") or []
         assistant_message["choices"] = target_message.get("choices") or []
         assistant_message["tools"] = target_message.get("tools") or []
+        target_segments = target_message.get("segments")
+        assistant_message["segments"] = (
+            target_segments
+            if isinstance(target_segments, list)
+            else _build_legacy_web_agent_segments(
+                assistant_message["content"], assistant_message["tools"]
+            )
+        )
         assistant_message["status"] = target_message.get("status") or "done"
     elif event_type == "error":
         assistant_message["status"] = "error"
-        assistant_message["content"] = (
-            assistant_message["content"]
-            or event.get("message")
-            or "智能助手响应失败"
-        )
+        if not assistant_message["content"]:
+            _append_web_agent_text_segment(
+                assistant_message,
+                event.get("message") or "智能助手响应失败",
+            )
         for tool in assistant_message["tools"]:
             tool["status"] = "done"
     elif event_type == "done":

@@ -133,6 +133,16 @@ class AgentChatToolCall(BaseModel):
     status: str = Field(default="done", description="工具状态")
 
 
+class AgentChatMessageSegment(BaseModel):
+    """
+    Agent 会话消息中的有序展示片段。
+    """
+
+    type: str = Field(..., description="片段类型")
+    content: str = Field(default="", description="文本片段内容")
+    toolIndex: Optional[int] = Field(None, description="工具提示索引")
+
+
 class AgentChatChoiceButton(BaseModel):
     """
     Agent 会话选择按钮。
@@ -185,6 +195,7 @@ class AgentChatMessage(BaseModel):
     createdAt: Union[int, float] = Field(..., description="创建时间戳")
     status: str = Field(default="done", description="消息状态")
     tools: list[AgentChatToolCall] = Field(default_factory=list, description="工具提示列表")
+    segments: list[AgentChatMessageSegment] = Field(default_factory=list, description="有序展示片段")
     attachments: list[AgentChatAttachment] = Field(default_factory=list, description="附件列表")
     choices: list[AgentChatChoiceCard] = Field(default_factory=list, description="选择卡片列表")
     choice_selection: Optional[AgentChatChoiceSelection] = Field(None, description="用户选择项快照")

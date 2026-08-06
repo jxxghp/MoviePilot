@@ -106,7 +106,7 @@ def test_build_web_agent_session_id_reuses_accessible_history():
 
 
 def test_apply_web_agent_display_event_updates_snapshot():
-    """WebAgent SSE 事件应可聚合为服务端展示快照。"""
+    """WebAgent SSE 事件应按到达顺序聚合为服务端展示快照。"""
     message = {
         "id": "assistant-1",
         "role": "assistant",
@@ -114,12 +114,14 @@ def test_apply_web_agent_display_event_updates_snapshot():
         "createdAt": 1,
         "status": "streaming",
         "tools": [],
+        "segments": [],
         "attachments": [],
         "choices": [],
     }
 
     _apply_web_agent_display_event({"type": "delta", "content": "你好"}, message)
     _apply_web_agent_display_event({"type": "tool", "message": "查询订阅"}, message)
+    _apply_web_agent_display_event({"type": "delta", "content": "，查询完成"}, message)
     _apply_web_agent_display_event(
         {
             "type": "attachment",
@@ -129,12 +131,46 @@ def test_apply_web_agent_display_event_updates_snapshot():
     )
     _apply_web_agent_display_event({"type": "done"}, message)
 
-    assert message["content"] == "你好"
+    assert message["content"] == "你好，查询完成"
     assert message["status"] == "done"
     assert len(message["tools"]) == 1
     assert message["tools"][0]["message"] == "查询订阅"
     assert message["tools"][0]["status"] == "done"
+    assert message["segments"] == [
+        {"type": "text", "content": "你好"},
+        {"type": "tool", "toolIndex": 0},
+        {"type": "text", "content": "，查询完成"},
+    ]
     assert message["attachments"] == [{"kind": "file", "url": "message/agent/file/a"}]
+
+
+def test_agent_chat_display_schema_preserves_ordered_segments():
+    """前端回传会话快照时应保留文字和工具的有序片段。"""
+    payload = schemas.AgentChatDisplaySaveRequest(
+        messages=[
+            {
+                "id": "assistant-1",
+                "role": "assistant",
+                "content": "先检查检查完成",
+                "createdAt": 1,
+                "status": "done",
+                "tools": [
+                    {"id": "tool-1", "message": "执行检查", "status": "done"}
+                ],
+                "segments": [
+                    {"type": "text", "content": "先检查"},
+                    {"type": "tool", "toolIndex": 0},
+                    {"type": "text", "content": "检查完成"},
+                ],
+            }
+        ]
+    )
+
+    assert payload.messages[0].model_dump()["segments"] == [
+        {"type": "text", "content": "先检查", "toolIndex": None},
+        {"type": "tool", "content": "", "toolIndex": 0},
+        {"type": "text", "content": "检查完成", "toolIndex": None},
+    ]
 
 
 def test_build_web_agent_input_attachments_marks_kinds():
