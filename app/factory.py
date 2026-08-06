@@ -1,12 +1,27 @@
-from typing import Awaitable, Callable
+import json
+from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.apiv2_utils import OPENAPI_V2_PATH, V2ResponseMiddleware
 from app.core.config import settings
 from app.helper.locale import LocaleHelper
 from app.startup.lifecycle import lifespan
+from version import APP_VERSION
+
+
+def _get_http_exception_message(detail: Any) -> str:
+    """将 HTTPException 的 detail 转换为统一消息文本。"""
+    if isinstance(detail, str) and detail:
+        return detail
+    if detail is None:
+        return "请求失败"
+    try:
+        return json.dumps(detail, ensure_ascii=False)
+    except TypeError:
+        return str(detail)
 
 
 async def localized_http_exception_handler(
@@ -14,18 +29,20 @@ async def localized_http_exception_handler(
         exc: HTTPException,
 ) -> JSONResponse:
     """
-    为 HTTPException 响应补充多语言错误详情。
+    将 HTTPException 响应统一封装为 Response 结构并保留原始错误消息。
 
     :param _request: 当前 HTTP 请求
     :param exc: FastAPI HTTP 异常
-    :return: 带 detail_i18n 的 JSON 错误响应
+    :return: 统一 JSON 错误响应
     """
-    content = {"detail": exc.detail}
-    if isinstance(exc.detail, str):
-        content["detail_i18n"] = LocaleHelper.translate_text(exc.detail)
+    message = _get_http_exception_message(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
-        content=content,
+        content={
+            "success": False,
+            "message": message,
+            "data": {},
+        },
         headers=exc.headers,
     )
 
@@ -36,9 +53,15 @@ def create_app() -> FastAPI:
     """
     _app = FastAPI(
         title=settings.PROJECT_NAME,
-        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        version=APP_VERSION,
+        openapi_url=OPENAPI_V2_PATH,
         lifespan=lifespan
     )
+
+    @_app.get(f"{settings.API_V1_STR}/openapi.json", include_in_schema=False)
+    def get_v1_openapi_schema() -> dict[str, Any]:
+        """保留旧版 OpenAPI 地址并返回当前完整接口文档。"""
+        return _app.openapi()
 
     _app.add_exception_handler(HTTPException, localized_http_exception_handler)
 
@@ -50,6 +73,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    _app.add_middleware(V2ResponseMiddleware)
 
     @_app.middleware("http")
     async def locale_context_middleware(

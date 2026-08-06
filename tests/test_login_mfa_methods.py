@@ -95,3 +95,23 @@ def test_login_invalid_password_does_not_expose_mfa_methods(monkeypatch):
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "用户名或密码错误"
     assert "X-MFA-Required" not in (exc_info.value.headers or {})
+
+
+def test_wallpaper_returns_url_in_data(monkeypatch):
+    """登录壁纸地址应放入 data，message 只保留消息文本。"""
+
+    class FakeWallpaperHelper:
+        """返回固定登录壁纸地址。"""
+
+        def get_wallpaper(self):
+            """返回测试壁纸地址。"""
+            return "https://images.example/wallpaper.jpg"
+
+    monkeypatch.setattr(login_endpoint, "WallpaperHelper", FakeWallpaperHelper)
+
+    response = login_endpoint.wallpaper()
+
+    assert response.success is True
+    assert response.data == "https://images.example/wallpaper.jpg"
+    assert response.message is None
+    assert response.message_i18n is None

@@ -112,9 +112,23 @@ MoviePilot 的内置 Agent 也可以作为 MCP Client 连接外部 MCP 服务器
 
 MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所有接口同样需要 API KEY 认证，在请求头中添加 `X-API-KEY: <api_key>` 或在查询参数中添加 `apikey=<api_key>`。
 
-标准 REST 响应包含 `success`、`message`、`message_i18n`、`data` 字段。为兼容 App 和第三方客户端，`message` 继续保留原中文或原始后端文本；新版前端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`，并优先展示 `message_i18n`。未提供语言头或翻译缺失时，`message_i18n` 会回退为原文本。
+#### REST API 版本
 
-FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返回 `detail_i18n`；新版前端优先展示 `detail_i18n`，缺失时回退 `detail`。
+- `/api/v1` 默认保持原有响应结构，已有客户端无需迁移；登录壁纸接口的 URL 已统一放入 `data`。
+- `/api/v2` 复用 `/api/v1` 的同一套路由、请求参数、鉴权依赖和业务实现，只统一普通 JSON 响应结构。
+- v1 中已经使用通用 `Response` 的接口在 v2 中保持原样；其他成功 JSON 响应转换为 `{"success": true, "message": "", "data": <原响应>}`。
+- HTTP 错误保留原状态码，并统一返回 `{"success": false, "message": <错误详情>, "data": {}}`；非业务异常不做多语言翻译。
+- SSE、文件、图片、空响应，以及 OpenAI、Anthropic、MCP 等标准协议接口保持原始响应格式，不进行通用封装。
+
+因此，普通 REST 接口可将文档中的 `/api/v1/...` 路径直接替换为 `/api/v2/...`。例如 `/api/v1/download/` 对应 `/api/v2/download/`。
+
+通用 REST 响应包含 `success`、`message`、`message_i18n`、`data` 字段。为兼容 App 和第三方客户端，`message` 继续保留原中文或原始后端文本；新版前端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`，并优先展示 `message_i18n`。未提供语言头或翻译缺失时，`message_i18n` 会回退为原文本。
+
+`GET /api/v1/login/wallpaper` 及对应的 v2 路径会将壁纸 URL 放在 `data` 字段中，`message` 不再承载业务数据。
+
+FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶层 `detail` / `detail_i18n`。
+
+交互式接口文档 `/docs` 默认读取 `/api/v2/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。旧地址 `/api/v1/openapi.json` 继续保留并返回同一份完整接口文档。
 
 #### 媒体识别 / 整理
 

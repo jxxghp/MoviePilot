@@ -90,7 +90,7 @@ def wallpaper() -> Any:
     """
     url = WallpaperHelper().get_wallpaper()
     if url:
-        return schemas.Response(success=True, message=url)
+        return schemas.Response(success=True, data=url)
     return schemas.Response(success=False)
 
 

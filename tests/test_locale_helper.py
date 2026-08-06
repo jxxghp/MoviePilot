@@ -6,11 +6,12 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 
-from app.factory import localized_http_exception_handler
+from app.factory import create_app, localized_http_exception_handler
 from app.helper.locale import LocaleHelper
 from app.helper.progress import ProgressHelper
 from app.schemas.dashboard import ScheduleInfo, ScheduleProgress
 from app.schemas.response import Response
+from version import APP_VERSION
 
 
 def _has_chinese(text: str) -> bool:
@@ -247,8 +248,8 @@ def test_response_auto_fills_message_i18n_from_locale_context():
     assert response.message_i18n == "Module does not support testing"
 
 
-def test_http_exception_handler_adds_detail_i18n_from_locale_context():
-    """HTTPException 响应应补充多语言 detail 字段。"""
+def test_http_exception_handler_returns_untranslated_response_envelope():
+    """HTTPException 响应应统一封装并保留原始错误文本。"""
     token = LocaleHelper.set_current_locale("en-US")
     try:
         response = asyncio.run(
@@ -260,9 +261,22 @@ def test_http_exception_handler_adds_detail_i18n_from_locale_context():
     finally:
         LocaleHelper.reset_current_locale(token)
 
+    assert response.status_code == 401
     payload = json.loads(response.body)
-    assert payload["detail"] == "用户名或密码错误"
-    assert payload["detail_i18n"] == "Incorrect username or password"
+    assert payload == {
+        "success": False,
+        "message": "用户名或密码错误",
+        "data": {},
+    }
+
+
+def test_application_docs_use_v2_openapi_and_backend_version():
+    """默认接口文档应展示 v2 地址并使用真实后端版本号。"""
+    app = create_app()
+
+    assert app.openapi_url == "/api/v2/openapi.json"
+    assert app.version == APP_VERSION
+    assert "/api/v1/openapi.json" in {route.path for route in app.routes}
 
 
 def test_progress_helper_get_adds_i18n_fields_without_mutating_cache():

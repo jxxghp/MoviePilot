@@ -11,6 +11,7 @@ from starlette import status
 from starlette.responses import StreamingResponse
 
 from app import schemas
+from app.api.apiv2_utils import API_V2_STR, OPENAPI_V2_PATH
 from app.command import Command
 from app.core.cache import async_fresh
 from app.core.config import settings
@@ -36,8 +37,15 @@ from app.scheduler import Scheduler
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.types import ChainEventType, SystemConfigKey
 
-PROTECTED_ROUTES = {"/api/v1/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+PROTECTED_ROUTES = {
+    "/api/v1/openapi.json",
+    OPENAPI_V2_PATH,
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+}
 PLUGIN_PREFIX = f"{settings.API_V1_STR}/plugin"
+PLUGIN_V2_PREFIX = f"{API_V2_STR}/plugin"
 
 router = APIRouter()
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
@@ -158,8 +166,11 @@ def _update_plugin_api_routes(plugin_id: Optional[str], action: str):
                     elif Depends(verify_apikey) not in dependencies:
                         dependencies.append(Depends(verify_apikey))
                 app.add_api_route(**api, tags=["plugin"])
+                v2_api = api.copy()
+                v2_api["path"] = api_path.replace(PLUGIN_PREFIX, PLUGIN_V2_PREFIX, 1)
+                app.add_api_route(**v2_api, tags=["plugin"])
                 is_modified = True
-                logger.debug(f"Added plugin route: {api_path}")
+                logger.debug(f"Added plugin routes: {api_path}, {v2_api['path']}")
             except Exception as e:
                 logger.error(f"Error adding plugin route {api_path}: {str(e)}")
 
@@ -177,8 +188,13 @@ def _remove_routes(plugin_id: str) -> bool:
     """
     if not plugin_id:
         return False
-    prefix = f"{PLUGIN_PREFIX}/{plugin_id}/"
-    routes_to_remove = [route for route in app.routes if route.path.startswith(prefix)]
+    prefixes = {
+        f"{PLUGIN_PREFIX}/{plugin_id}/",
+        f"{PLUGIN_V2_PREFIX}/{plugin_id}/",
+    }
+    routes_to_remove = [
+        route for route in app.routes if any(route.path.startswith(prefix) for prefix in prefixes)
+    ]
     removed = False
     for route in routes_to_remove:
         try:

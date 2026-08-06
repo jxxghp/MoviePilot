@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 7
+version: 8
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -65,6 +65,25 @@ python scripts/mp-api.py <METHOD> <PATH> [key=value ...] [--json '<body>']
 - Both methods validate against the same `API_TOKEN` value.
 - Never print, summarize, or ask the user to paste the API key unless the script is being used outside the local project and no safer configuration source is available.
 
+### API versions and response envelopes
+
+- `/api/v1` preserves the existing endpoint-specific response shapes by
+  default; the login wallpaper URL is now returned in `data`.
+- `/api/v2` reuses the same routes, parameters, authentication dependencies,
+  and business handlers, but wraps ordinary JSON responses in the shared
+  `Response` envelope.
+- A successful raw v1 payload becomes
+  `{"success":true,"message":"","data":<original payload>}` in v2.
+- Existing `Response` payloads are not wrapped again. HTTP errors on both v1
+  and v2 keep their original status code and expose the error text in
+  `message` with `data={}`. Non-business HTTP exceptions are not translated.
+- SSE, files, images, empty responses, and OpenAI, Anthropic, or MCP protocol
+  endpoints keep their protocol-native response body.
+
+Use `/api/v2` for app clients that require one JSON envelope. Any ordinary
+REST path listed below can switch from `/api/v1/...` to `/api/v2/...` without
+changing its method, parameters, request body, or authentication.
+
 ### Examples
 
 ```bash
@@ -79,6 +98,9 @@ python scripts/mp-api.py DELETE /api/v1/subscribe/123
 
 # Endpoints that require ?token= auth
 python scripts/mp-api.py GET /api/v1/dashboard/statistic2 --token-param
+
+# Uniform v2 JSON response envelope
+python scripts/mp-api.py GET /api/v2/dashboard/cpu
 ```
 
 ## Complete API Reference
@@ -488,7 +510,7 @@ The list endpoint returns local cache totals plus `shared_recognized` and
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/v1/login/access-token` | Get JWT access token. Body: form (username, password) |
-| GET | `/api/v1/login/wallpaper` | Login page wallpaper |
+| GET | `/api/v1/login/wallpaper` | Login page wallpaper; URL is returned in `data` |
 | GET | `/api/v1/login/wallpapers` | Login page wallpaper list |
 
 ### MCP Tools (6 endpoints)

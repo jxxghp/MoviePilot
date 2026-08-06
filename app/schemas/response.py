@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,7 +15,7 @@ class Response(BaseModel):
     # 多语言消息文本
     message_i18n: Optional[str] = None
     # 数据
-    data: Optional[Union[dict, list]] = Field(default_factory=dict)
+    data: Optional[Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def fill_message_i18n(self) -> "Response":
