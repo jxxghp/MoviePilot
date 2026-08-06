@@ -28,7 +28,6 @@ class ToolChain(ChainBase):
 # 单个工具结果的兜底上限。各工具仍应优先在自身逻辑中分页或摘要化；
 # 这里用于拦截遗漏路径，避免超大结果直接进入模型上下文。
 DEFAULT_TOOL_RESULT_MAX_CHARS = 64 * 1024
-MIN_TOOL_RESULT_PREVIEW_CHARS = 512
 
 
 def serialize_tool_result_for_agent(result: Any) -> str:
@@ -59,20 +58,35 @@ def format_tool_result_for_agent(
     if not max_chars or max_chars <= 0 or len(formatted_result) <= max_chars:
         return formatted_result
 
-    preview_limit = max(MIN_TOOL_RESULT_PREVIEW_CHARS, max_chars)
-    preview = formatted_result[:preview_limit]
-    payload = {
-        "tool_result_truncated": True,
-        "tool_name": tool_name,
-        "total_chars": len(formatted_result),
-        "returned_chars": len(preview),
-        "content_preview": preview,
-        "message": (
-            f"工具返回内容超过 {max_chars} 字符，已截断为预览；"
-            "请使用更精确的筛选条件、分页参数或专用查询参数继续获取。"
-        ),
-    }
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    def _dump_preview(preview: str) -> str:
+        """序列化截断结果，并让 returned_chars 与实际预览保持一致。"""
+        payload = {
+            "tool_result_truncated": True,
+            "tool_name": tool_name,
+            "total_chars": len(formatted_result),
+            "returned_chars": len(preview),
+            "content_preview": preview,
+            "message": (
+                f"工具返回内容超过 {max_chars} 字符，已截断为预览；"
+                "请使用更精确的筛选条件、分页参数或专用查询参数继续获取。"
+            ),
+        }
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    # JSON 会转义换行、引号和反斜杠，预览本身等于上限时，最终返回值仍可能
+    # 明显超限。通过二分查找预留包装开销，确保进入模型的最终字符串是硬上限。
+    low = 0
+    high = min(len(formatted_result), max_chars)
+    best_result = _dump_preview("")
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = _dump_preview(formatted_result[:middle])
+        if len(candidate) <= max_chars:
+            best_result = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    return best_result
 
 
 # 将常见的阻塞调用按能力域拆分到独立线程池，避免外部慢 IO 抢占同一批 worker。

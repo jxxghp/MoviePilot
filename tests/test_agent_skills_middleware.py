@@ -7,6 +7,7 @@ from langchain.agents.middleware.types import ModelRequest
 from langchain_core.messages import SystemMessage
 
 from app.agent.middleware.skills import (
+    MAX_SKILL_RESULT_CHARS,
     SKILL_TOOL_NAME,
     SkillsMiddleware,
     _alist_skills,
@@ -78,6 +79,24 @@ async def test_skill_tool_loads_skill_by_id_and_name(tmp_path):
     assert "# moviepilot-cli" in by_id["content"]
     assert by_name["success"] is True
     assert by_name["skill"]["name"] == "MoviePilot CLI"
+
+
+@pytest.mark.anyio
+async def test_skill_tool_caps_large_result_before_model_context(tmp_path):
+    """超大 Skill 内容应在工具返回前限制到模型上下文上限。"""
+    _write_skill(tmp_path, "large-skill")
+    skill_path = tmp_path / "large-skill" / "SKILL.md"
+    with skill_path.open("a", encoding="utf-8") as file_handle:
+        file_handle.write("\n" + ("large-line\n" * 30000))
+
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+    result = await middleware.tools[0].ainvoke({"name": "large-skill"})
+    payload = json.loads(result)
+
+    assert len(result) <= MAX_SKILL_RESULT_CHARS
+    assert payload["success"] is True
+    assert payload["truncated"] is True
+    assert "Skill 内容已截断" in payload["content"]
 
 
 @pytest.mark.anyio

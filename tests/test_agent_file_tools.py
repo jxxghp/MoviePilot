@@ -3,10 +3,14 @@
 import asyncio
 import hashlib
 import json
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.agent.tools.impl.edit_file import EditFileTool
+from app.agent.tools.impl.list_directory import ListDirectoryTool
 from app.agent.tools.impl.read_file import ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
+from app.chain.storage import StorageChain
 
 
 def _make_admin_tool(tool_class):
@@ -129,3 +133,33 @@ def test_read_file_can_return_sha256_metadata(tmp_path):
         "插件内容".encode("utf-8")
     ).hexdigest()
     assert payload["truncated"] is False
+
+
+def test_list_directory_returns_paged_items_with_next_offset(tmp_path):
+    """目录工具应返回可继续查询的分页元数据。"""
+    items = [
+        SimpleNamespace(
+            name=f"file-{index:03d}.txt",
+            type="file",
+            path=str(tmp_path / f"file-{index:03d}.txt"),
+            size=100,
+            modify_time=None,
+            extension=".txt",
+        )
+        for index in range(120)
+    ]
+    tool = _make_admin_tool(ListDirectoryTool)
+
+    with patch.object(StorageChain, "list_files", return_value=items):
+        result = asyncio.run(
+            tool.run(str(tmp_path), limit=50, offset=50)
+        )
+
+    payload = json.loads(result)
+    assert payload["total_count"] == 120
+    assert payload["returned_count"] == 50
+    assert payload["offset"] == 50
+    assert payload["limit"] == 50
+    assert payload["has_more"] is True
+    assert payload["next_offset"] == 100
+    assert payload["items"][0]["name"] == "file-050.txt"

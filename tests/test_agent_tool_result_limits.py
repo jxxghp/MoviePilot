@@ -26,8 +26,22 @@ class TestAgentToolResultLimits(unittest.TestCase):
 
         self.assertTrue(payload["tool_result_truncated"])
         self.assertEqual(payload["tool_name"], "oversized_result_tool")
-        self.assertEqual(payload["returned_chars"], DEFAULT_TOOL_RESULT_MAX_CHARS)
+        self.assertLessEqual(len(result), DEFAULT_TOOL_RESULT_MAX_CHARS)
+        self.assertEqual(payload["returned_chars"], len(payload["content_preview"]))
+        self.assertLess(payload["returned_chars"], DEFAULT_TOOL_RESULT_MAX_CHARS)
         self.assertGreater(payload["total_chars"], payload["returned_chars"])
+
+    def test_formatter_keeps_escaped_preview_within_hard_limit(self):
+        """大量换行转义后，最终工具结果仍不得超过配置的字符上限。"""
+        result = format_tool_result_for_agent(
+            "line\n" * DEFAULT_TOOL_RESULT_MAX_CHARS,
+            tool_name="escaped_result_tool",
+        )
+        payload = json.loads(result)
+
+        self.assertLessEqual(len(result), DEFAULT_TOOL_RESULT_MAX_CHARS)
+        self.assertTrue(payload["tool_result_truncated"])
+        self.assertEqual(payload["returned_chars"], len(payload["content_preview"]))
 
     def test_formatter_preserves_sensitive_json_fields_for_agent_use(self):
         result = format_tool_result_for_agent(

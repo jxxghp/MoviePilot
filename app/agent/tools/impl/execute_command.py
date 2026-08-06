@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import subprocess
+from collections import deque
 from dataclasses import dataclass, field
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal, Optional, TextIO, Type
@@ -27,7 +28,9 @@ from app.log import logger
 
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 300
-MAX_OUTPUT_PREVIEW_BYTES = 10 * 1024
+MAX_OUTPUT_PREVIEW_BYTES = 32 * 1024
+MAX_OUTPUT_HEAD_BYTES = 16 * 1024
+MAX_OUTPUT_TAIL_BYTES = 16 * 1024
 READ_CHUNK_SIZE = 4096
 KILL_GRACE_SECONDS = 3
 COMMAND_CONCURRENCY_LIMIT = 2
@@ -36,11 +39,13 @@ _command_semaphore = asyncio.Semaphore(COMMAND_CONCURRENCY_LIMIT)
 
 @dataclass
 class _CommandOutput:
-    """保存前 10KB 预览，并在超限时将完整输出写入临时文件。"""
+    """保存命令头尾预览，并在超限时将完整输出写入临时文件。"""
 
     preview_limit_bytes: int
     preview_entries: list[tuple[str, str]] = field(default_factory=list)
+    tail_entries: deque[tuple[str, str]] = field(default_factory=deque)
     captured_bytes: int = 0
+    tail_bytes: int = 0
     preview_truncated: bool = False
     temp_file_path: Optional[str] = None
     temp_file_handle: Optional[TextIO] = None
@@ -93,9 +98,11 @@ class _CommandOutput:
         self.temp_file_handle = None
 
     def append(self, stream_name: str, text: str) -> None:
-        """追加一段输出，超出预览上限后只保留完整日志文件。"""
+        """追加一段输出，超出预览上限后保留头尾预览和完整日志文件。"""
         if not text:
             return
+
+        self._append_tail(stream_name, text)
 
         if self.temp_file_handle:
             self._write_chunk(stream_name, text)
@@ -116,6 +123,60 @@ class _CommandOutput:
         if preview:
             self.preview_entries.append((stream_name, preview))
             self.captured_bytes += len(preview.encode("utf-8"))
+
+    def _append_tail(self, stream_name: str, text: str) -> None:
+        """维护固定字节大小的尾部输出，方便定位测试和构建失败信息。"""
+        self.tail_entries.append((stream_name, text))
+        self.tail_bytes += len(text.encode("utf-8"))
+        while self.tail_bytes > MAX_OUTPUT_TAIL_BYTES and self.tail_entries:
+            old_stream, old_text = self.tail_entries.popleft()
+            old_bytes = len(old_text.encode("utf-8"))
+            overflow = self.tail_bytes - MAX_OUTPUT_TAIL_BYTES
+            if old_bytes <= overflow:
+                self.tail_bytes -= old_bytes
+                continue
+            kept_text = old_text.encode("utf-8")[overflow:].decode(
+                "utf-8", errors="ignore"
+            )
+            kept_bytes = len(kept_text.encode("utf-8"))
+            self.tail_bytes -= old_bytes
+            if kept_text:
+                self.tail_entries.appendleft((old_stream, kept_text))
+                self.tail_bytes += kept_bytes
+
+    @staticmethod
+    def _format_entries(entries: list[tuple[str, str]]) -> str:
+        """按 stdout/stderr 切换插入可读的输出分段标题。"""
+        parts: list[str] = []
+        last_stream: Optional[str] = None
+        for stream_name, text in entries:
+            if stream_name != last_stream:
+                title = "标准输出" if stream_name == "stdout" else "错误输出"
+                parts.append(f"\n[{title}]\n")
+                last_stream = stream_name
+            parts.append(text)
+        return "".join(parts).strip()
+
+    @property
+    def combined_preview(self) -> str:
+        """返回完整输出或头尾组合预览。"""
+        if not self.preview_truncated:
+            return self._format_entries(self.preview_entries)
+
+        head_entries: list[tuple[str, str]] = []
+        remaining = MAX_OUTPUT_HEAD_BYTES
+        for stream_name, text in self.preview_entries:
+            if remaining <= 0:
+                break
+            clipped = self._clip_text_to_bytes(text, remaining)
+            if clipped:
+                head_entries.append((stream_name, clipped))
+                remaining -= len(clipped.encode("utf-8"))
+        head = self._format_entries(head_entries)
+        tail = self._format_entries(list(self.tail_entries))
+        return (
+            f"{head}\n\n...(中间输出已省略，完整内容在临时文件中)...\n\n{tail}"
+        ).strip()
 
     @property
     def stdout(self) -> str:
@@ -295,7 +356,7 @@ class ExecuteCommandTool(MoviePilotTool):
         stream_name: str,
         output: _CommandOutput,
     ) -> None:
-        """按块读取一次性命令输出，只把前 10KB 保留在返回结果中。"""
+        """按块读取一次性命令输出，保留 32KB 头尾预览。"""
         while True:
             chunk = await stream.read(READ_CHUNK_SIZE)
             if not chunk:
@@ -379,17 +440,16 @@ class ExecuteCommandTool(MoviePilotTool):
             file_note = "截至命令终止前的完整输出" if timed_out else "完整输出"
             result += (
                 "\n\n提示:\n"
-                f"命令输出超过 10KB，仅返回前 {MAX_OUTPUT_PREVIEW_BYTES} 字节内容。\n"
+                f"命令输出超过 {MAX_OUTPUT_PREVIEW_BYTES // 1024}KB，"
+                f"仅返回前后各 {MAX_OUTPUT_HEAD_BYTES // 1024}KB 预览。\n"
                 f"{file_note}已写入临时文件: {output.temp_file_path}\n"
                 "如需完整内容，请继续读取该文件。"
             )
-        if output.stdout:
-            result += f"\n\n标准输出:\n{output.stdout}"
-        if output.stderr:
-            result += f"\n\n错误输出:\n{output.stderr}"
+        if output.combined_preview:
+            result += f"\n\n命令输出预览:\n{output.combined_preview}"
         if output.preview_truncated:
-            result += "\n\n...(仅展示前 10KB 内容)"
-        if not output.stdout and not output.stderr:
+            result += "\n\n...(仅展示前后各 16KB 内容)"
+        if not output.combined_preview:
             result += "\n\n(无输出内容)"
         return result
 

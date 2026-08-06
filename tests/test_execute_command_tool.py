@@ -36,24 +36,28 @@ class TestExecuteCommandTool(unittest.TestCase):
         return asyncio.run(tool.run(action="run", command=command, timeout=timeout))
 
     def test_large_output_is_truncated_before_returning_to_agent(self):
-        """大输出一次性命令只把预览返回给 Agent，并把完整内容写到临时文件。"""
+        """大输出一次性命令返回头尾预览，并把完整内容写到临时文件。"""
         command = _python_command(
-            "import sys; sys.stdout.write('x' * 200000); sys.stdout.flush()"
+            "import sys; sys.stdout.write('HEAD-' + 'x' * 200000 + '-TAIL'); sys.stdout.flush()"
         )
 
         result = self._run_command(command)
         temp_file_path = self._temp_file_path_from_result(result)
 
         self.addCleanup(lambda: os.path.exists(temp_file_path) and os.unlink(temp_file_path))
-        self.assertIn("命令输出超过 10KB", result)
-        self.assertIn("仅展示前 10KB 内容", result)
+        self.assertIn("命令输出超过 32KB", result)
+        self.assertIn("仅展示前后各 16KB 内容", result)
         self.assertIn("如需完整内容，请继续读取该文件", result)
-        self.assertLess(len(result), MAX_OUTPUT_PREVIEW_BYTES + 600)
+        self.assertIn("HEAD-", result)
+        self.assertIn("-TAIL", result)
+        self.assertLess(len(result), MAX_OUTPUT_PREVIEW_BYTES + 1200)
 
         with open(temp_file_path, encoding="utf-8") as file_handle:
             file_content = file_handle.read()
 
         self.assertIn("[标准输出]", file_content)
+        self.assertIn("HEAD-", file_content)
+        self.assertIn("-TAIL", file_content)
         self.assertGreater(len(file_content), 100000)
 
     def test_timeout_returns_partial_output_promptly(self):
@@ -106,7 +110,7 @@ class TestExecuteCommandTool(unittest.TestCase):
     def test_timeout_with_large_output_writes_partial_full_log_to_temp_file(self):
         """超时且输出较大时，终止前完整输出应写入临时文件。"""
         command = _python_command(
-            "import sys, time; sys.stdout.write('x' * 20000); sys.stdout.flush(); time.sleep(5)"
+            "import sys, time; sys.stdout.write('x' * 60000); sys.stdout.flush(); time.sleep(5)"
         )
 
         result = self._run_command(command, timeout=1)
@@ -120,7 +124,7 @@ class TestExecuteCommandTool(unittest.TestCase):
             file_content = file_handle.read()
 
         self.assertIn("[标准输出]", file_content)
-        self.assertGreaterEqual(file_content.count("x"), 20000)
+        self.assertGreaterEqual(file_content.count("x"), 60000)
 
     def test_timeout_is_capped(self):
         """一次性执行的 timeout 参数超过上限时应自动限幅。"""

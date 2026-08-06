@@ -27,8 +27,10 @@ from app.agent.middleware.utils import append_to_system_message
 from app.agent.tools.tags import ToolTag
 from app.log import logger
 
-# 安全提示: SKILL.md 文件最大限制为 10MB，防止 DoS 攻击
-MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024
+# 磁盘读取上限与模型返回上限分离，避免异常大的 Skill 文件撑爆内存或上下文。
+MAX_SKILL_FILE_SIZE = 1 * 1024 * 1024
+MAX_SKILL_RESULT_CHARS = 64 * 1024
+SKILL_CONTENT_TRUNCATION_SUFFIX = "\n...(Skill 内容已截断)"
 
 # Agent Skills 规范约束 (https://agentskills.io/specification)
 MAX_SKILL_NAME_LENGTH = 64
@@ -248,7 +250,17 @@ async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
     for skill_path in skill_dirs:
         skill_md_path = skill_path / "SKILL.md"
 
-        skill_content = await skill_md_path.read_text(encoding="utf-8", errors="replace")
+        stat = await skill_md_path.stat()
+        if stat.st_size > MAX_SKILL_FILE_SIZE:
+            logger.warning(
+                "Skipping %s: file too large (%d bytes)",
+                skill_md_path,
+                stat.st_size,
+            )
+            continue
+        skill_content = (await skill_md_path.read_bytes()).decode(
+            "utf-8", errors="replace"
+        )
 
         # 解析元数据
         skill_metadata = _parse_skill_metadata(
@@ -280,7 +292,16 @@ def _list_skills(source_path: Path) -> list[SkillMetadata]:
     skills: list[SkillMetadata] = []
     for skill_path in skill_dirs:
         skill_md_path = skill_path / "SKILL.md"
-        skill_content = skill_md_path.read_text(encoding="utf-8", errors="replace")
+        if skill_md_path.stat().st_size > MAX_SKILL_FILE_SIZE:
+            logger.warning(
+                "Skipping %s: file too large (%d bytes)",
+                skill_md_path,
+                skill_md_path.stat().st_size,
+            )
+            continue
+        skill_content = skill_md_path.read_bytes().decode(
+            "utf-8", errors="replace"
+        )
         skill_metadata = _parse_skill_metadata(
             content=skill_content,
             skill_path=str(skill_md_path),
@@ -456,6 +477,46 @@ class _SkillToolProvider:
             raw_content = await handle.read(MAX_SKILL_FILE_SIZE)
         return raw_content.decode("utf-8", errors="replace"), truncated
 
+    @staticmethod
+    def _serialize_skill_payload(payload: dict[str, Any]) -> str:
+        """序列化 Skill 返回值，并严格限制最终进入模型的字符数。"""
+        serialized = json.dumps(payload, ensure_ascii=False, indent=2)
+        if len(serialized) <= MAX_SKILL_RESULT_CHARS:
+            return serialized
+
+        original_content = str(payload.get("content") or "")
+        truncated_payload = dict(payload)
+        truncated_payload["truncated"] = True
+        low = 0
+        high = len(original_content)
+        best_result = json.dumps(
+            {
+                **truncated_payload,
+                "content": SKILL_CONTENT_TRUNCATION_SUFFIX.strip(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        while low <= high:
+            middle = (low + high) // 2
+            candidate = json.dumps(
+                {
+                    **truncated_payload,
+                    "content": (
+                        original_content[:middle]
+                        + SKILL_CONTENT_TRUNCATION_SUFFIX
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            if len(candidate) <= MAX_SKILL_RESULT_CHARS:
+                best_result = candidate
+                low = middle + 1
+            else:
+                high = middle - 1
+        return best_result
+
     async def load_skill(self, name: str) -> str:
         """加载指定 Skill 的完整说明并返回 JSON 字符串。"""
         logger.info(f"加载 Skill: name={name}")
@@ -471,7 +532,7 @@ class _SkillToolProvider:
                 )
 
             content, truncated = await self._read_skill_content(skill["path"])
-            return json.dumps(
+            return self._serialize_skill_payload(
                 {
                     "success": True,
                     "skill": {
@@ -483,9 +544,7 @@ class _SkillToolProvider:
                     },
                     "content": content,
                     "truncated": truncated,
-                },
-                ensure_ascii=False,
-                indent=2,
+                }
             )
         except Exception as err:
             logger.error(f"加载 Skill 失败: {err}", exc_info=True)
