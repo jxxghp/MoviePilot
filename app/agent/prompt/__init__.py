@@ -145,12 +145,16 @@ class PromptManager:
         if not settings.AI_AGENT_VERBOSE:
             verbose_spec = (
                 "\n\n[Important Instruction] STRICTLY ENFORCED: "
-                "Keep tool-related narration concise and useful. "
+                "Use a concise Codex-style progress cadence. "
                 "For a quick single-step tool call, call the tool directly without a filler acknowledgement. "
                 "For multi-step work or any task that may take noticeable time, send one brief user-facing progress update "
-                "before the first tool call, then another short update after a meaningful milestone or several tool calls. "
-                "State what you are checking or what you learned, without exposing hidden reasoning, raw tool arguments, "
-                "or repetitive per-tool narration. Continue working after each update and finish with a concise final result."
+                "before the first tool call. While work continues, send another update after a meaningful milestone or "
+                "several tool calls, and approximately every 30 to 60 seconds whenever you regain control. "
+                "Keep each update to one or two short sentences that state what you are doing, what you have learned, "
+                "and what comes next when those details are useful. Vary the wording and do not repeat an unchanged status. "
+                "Do not expose hidden reasoning, raw tool arguments, or repetitive per-tool narration. "
+                "Continue working after each update. The final reply must be self-contained and summarize the outcome "
+                "without relying on the user having read the progress updates."
             )
 
         # MoviePilot系统信息

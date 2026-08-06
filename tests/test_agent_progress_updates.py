@@ -14,6 +14,10 @@ def test_non_verbose_prompt_keeps_long_running_tasks_user_visible() -> None:
 
     assert "before the first tool call" in prompt
     assert "after a meaningful milestone or several tool calls" in prompt
+    assert "approximately every 30 to 60 seconds whenever you regain control" in prompt
+    assert "one or two short sentences" in prompt
+    assert "do not repeat an unchanged status" in prompt
     assert "Continue working after each update" in prompt
+    assert "The final reply must be self-contained" in prompt
     assert "remain completely silent" not in prompt
     assert "DO NOT output any intermediate content" not in prompt
