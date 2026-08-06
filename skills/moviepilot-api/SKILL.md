@@ -92,8 +92,8 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/media/search` | Search media, collections, or people by title. Params: `title` (required), `type`, `page`, `count`, optional `source`. Supported sources: `media` = `themoviedb`, `douban`, `bangumi`, `anilist`; `collection` = `themoviedb`; `person` = `themoviedb`, `douban` |
-| GET | `/api/v1/media/recognize` | Recognize media from torrent title. Params: `title` (required), `subtitle`, `custom_words`, optional `source` |
-| GET | `/api/v1/media/recognize2` | Recognize media (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `source` |
+| GET | `/api/v1/media/recognize` | Recognize media from a torrent title or a media file path. Params: `title` (required), `subtitle`, `custom_words`, optional `source`; media file paths also use parent-directory metadata such as title and year |
+| GET | `/api/v1/media/recognize2` | Recognize media from a torrent title or media file path (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `source`; media file paths also use parent-directory metadata |
 | GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `source` |
 | GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path`, optional `source` |
 | POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON. Optional params: `media_source`, `media_id`, `type_name` (`电影`/`电视剧`) |

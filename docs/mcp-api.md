@@ -125,7 +125,7 @@ FastAPI 异常响应保留 `detail` 字段，并在错误详情为文本时返�
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 按标题搜索媒体、合集或人物，参数：`title`、`type`、`page`、`count`，可选 `source`；`media` 支持 `themoviedb`、`douban`、`bangumi`、`anilist`，`collection` 支持 `themoviedb`，`person` 支持 `themoviedb`、`douban` |
-| GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `source` |
+| GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `source` |
 | GET | `/api/v1/media/{mediaid}` | 查询媒体详情，`mediaid` 支持 `tmdb:`、`douban:`、`bangumi:`、`anilist:` 及插件自定义来源前缀 |
 | POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧）可指定本次刮削媒体 |
