@@ -36,6 +36,12 @@ from app.db.user_oper import (
 )
 from app.helper.image import ImageHelper
 from app.helper.locale import LocaleHelper
+from app.helper.market import (
+    PLUGIN_MARKET_WIKI_URL,
+    extract_plugin_market_repos_from_wiki,
+    merge_plugin_market_repos,
+    split_plugin_market_repo_urls,
+)
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
@@ -70,13 +76,6 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 _LOG_DOWNLOAD_LIMIT = 10
 _LOG_DOWNLOAD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-_PLUGIN_MARKET_WIKI_START = "<!-- plugin-market-repos:start -->"
-_PLUGIN_MARKET_WIKI_END = "<!-- plugin-market-repos:end -->"
-_PLUGIN_MARKET_WIKI_URL = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/plugin.md"
-_PLUGIN_MARKET_REPO_PATTERN = re.compile(
-    r"https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?/?",
-    re.IGNORECASE,
-)
 
 
 def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
@@ -120,25 +119,6 @@ def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
     )
 
 
-def _normalize_plugin_market_repo_url(repo_url: str) -> Optional[str]:
-    """
-    规范化插件仓库地址，便于跨来源合并去重。
-    """
-    repo_url = (repo_url or "").strip().rstrip("/")
-    if not repo_url:
-        return None
-    repo_url = repo_url.removesuffix(".git")
-    parsed_url = urlparse(repo_url)
-    if parsed_url.scheme not in {"http", "https"}:
-        return None
-    if (parsed_url.hostname or "").lower() != "github.com":
-        return None
-    paths = [item for item in parsed_url.path.split("/") if item]
-    if len(paths) < 2:
-        return None
-    return f"https://github.com/{paths[0]}/{paths[1]}"
-
-
 def _is_allowed_plugin_market_wiki_url(wiki_url: str) -> bool:
     """
     校验插件市场 Wiki 地址是否属于固定文档源。
@@ -154,55 +134,6 @@ def _is_allowed_plugin_market_wiki_url(wiki_url: str) -> bool:
             parsed_url.path,
         )
     )
-
-
-def _split_plugin_market_repo_urls(value: Optional[str]) -> list[str]:
-    """
-    拆分插件市场仓库配置并保持原有顺序去重。
-    """
-    repos: list[str] = []
-    seen_repos = set()
-    for item in re.split(r"[\n,，]+", value or ""):
-        normalized_repo = _normalize_plugin_market_repo_url(item)
-        if not normalized_repo or normalized_repo.lower() in seen_repos:
-            continue
-        repos.append(normalized_repo)
-        seen_repos.add(normalized_repo.lower())
-    return repos
-
-
-def _extract_plugin_market_repos_from_wiki(markdown: str) -> list[str]:
-    """
-    从 Wiki 插件文档中提取插件仓库地址。
-    """
-    content = markdown or ""
-    if _PLUGIN_MARKET_WIKI_START in content and _PLUGIN_MARKET_WIKI_END in content:
-        content = content.split(_PLUGIN_MARKET_WIKI_START, 1)[1].split(_PLUGIN_MARKET_WIKI_END, 1)[0]
-
-    repos: list[str] = []
-    seen_repos = set()
-    for item in _PLUGIN_MARKET_REPO_PATTERN.findall(content):
-        normalized_repo = _normalize_plugin_market_repo_url(item)
-        if not normalized_repo or normalized_repo.lower() in seen_repos:
-            continue
-        repos.append(normalized_repo)
-        seen_repos.add(normalized_repo.lower())
-    return repos
-
-
-def _merge_plugin_market_repos(local_repos: list[str], wiki_repos: list[str]) -> list[str]:
-    """
-    合并本地与 Wiki 插件仓库地址，保留本地顺序并追加 Wiki 新地址。
-    """
-    merged_repos: list[str] = []
-    seen_repos = set()
-    for repo in local_repos + wiki_repos:
-        normalized_repo = _normalize_plugin_market_repo_url(repo)
-        if not normalized_repo or normalized_repo.lower() in seen_repos:
-            continue
-        merged_repos.append(normalized_repo)
-        seen_repos.add(normalized_repo.lower())
-    return merged_repos
 
 
 def _match_nettest_prefix(url: str, prefix: str) -> bool:
@@ -889,7 +820,7 @@ async def sync_plugin_market_from_wiki(
     """
     从 Wiki 插件文档同步插件市场仓库地址。
     """
-    wiki_url = (request.wiki_url if request else None) or _PLUGIN_MARKET_WIKI_URL
+    wiki_url = (request.wiki_url if request else None) or PLUGIN_MARKET_WIKI_URL
     wiki_url = wiki_url.strip()
     if not _is_allowed_plugin_market_wiki_url(wiki_url):
         return schemas.Response(success=False, message="不支持的 Wiki 同步地址")
@@ -909,14 +840,14 @@ async def sync_plugin_market_from_wiki(
             message=f"访问 Wiki 插件仓库清单失败，状态码：{res.status_code}",
         )
 
-    wiki_repos = _extract_plugin_market_repos_from_wiki(res.text)
+    wiki_repos = extract_plugin_market_repos_from_wiki(res.text)
     if not wiki_repos:
         return schemas.Response(success=False, message="未在 Wiki 中识别到插件仓库地址")
 
-    local_repos = _split_plugin_market_repo_urls(settings.PLUGIN_MARKET)
+    local_repos = split_plugin_market_repo_urls(settings.PLUGIN_MARKET)
     local_repo_keys = {repo.lower() for repo in local_repos}
     added_count = len([repo for repo in wiki_repos if repo.lower() not in local_repo_keys])
-    merged_repos = _merge_plugin_market_repos(local_repos, wiki_repos)
+    merged_repos = merge_plugin_market_repos(local_repos, wiki_repos)
     merged_value = ",".join(merged_repos)
 
     success, message = settings.update_setting("PLUGIN_MARKET", merged_value)

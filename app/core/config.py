@@ -430,26 +430,7 @@ class ConfigModel(BaseModel):
     # ==================== 插件配置 ====================
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
     PLUGIN_MARKET: str = (
-        "https://github.com/jxxghp/MoviePilot-Plugins,"
-        "https://github.com/thsrite/MoviePilot-Plugins,"
-        "https://github.com/honue/MoviePilot-Plugins,"
-        "https://github.com/InfinityPacer/MoviePilot-Plugins,"
-        "https://github.com/DDSRem-Dev/MoviePilot-Plugins,"
-        "https://github.com/madrays/MoviePilot-Plugins,"
-        "https://github.com/justzerock/MoviePilot-Plugins,"
-        "https://github.com/KoWming/MoviePilot-Plugins,"
-        "https://github.com/wikrin/MoviePilot-Plugins,"
-        "https://github.com/HankunYu/MoviePilot-Plugins,"
-        "https://github.com/baozaodetudou/MoviePilot-Plugins,"
-        "https://github.com/Aqr-K/MoviePilot-Plugins,"
-        "https://github.com/hotlcc/MoviePilot-Plugins-Third,"
-        "https://github.com/gxterry/MoviePilot-Plugins,"
-        "https://github.com/DzAvril/MoviePilot-Plugins,"
-        "https://github.com/mrtian2016/MoviePilot-Plugins,"
-        "https://github.com/Hqyel/MoviePilot-Plugins-Third,"
-        "https://github.com/xijin285/MoviePilot-Plugins,"
-        "https://github.com/Seed680/MoviePilot-Plugins,"
-        "https://github.com/imaliang/MoviePilot-Plugins"
+        "https://github.com/jxxghp/MoviePilot-Plugins"
     )
     # 插件安装数据共享
     PLUGIN_STATISTIC_SHARE: bool = True

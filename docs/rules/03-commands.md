@@ -285,4 +285,20 @@ bash scripts/collect-site-adapter.sh
 - Never put a Cookie or other credential in command arguments or shell history.
 - Feature Request attachments are public. Review all four files in the generated ZIP before attaching it, and never attach raw HTML, HAR, or browser network archives.
 
-*Last Updated: 2026-07-12*
+---
+
+## Plugin Market Release Default
+
+```bash
+# Run after activating the project virtual environment
+python -m scripts.generate_plugin_market_default \
+  --wiki-file /path/to/MoviePilot-Wiki/plugin.md \
+  --config-file app/core/config.py
+```
+
+**Rules:**
+- The Wiki document must contain exactly one `plugin-market-repos:start/end` marker pair.
+- The marked list must be nonempty and include `jxxghp/MoviePilot-Plugins`.
+- This command rewrites only `ConfigModel.PLUGIN_MARKET`; inspect the resulting diff before committing or packaging.
+
+*Last Updated: 2026-08-06*

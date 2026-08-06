@@ -71,6 +71,7 @@ test_*
 
 # Build artifacts
 build/
+.build/
 dist/
 *.egg-info/
 rust/**/target/

@@ -110,6 +110,25 @@ chmod +x scripts/start-local.sh
 
 如果资源文件没有放到 `app/helper/`，站点索引、规则和内置资源相关能力可能无法按本地开发预期工作；如果插件没有放到 `app/plugins/`，主程序也不会在本地运行时发现该插件。
 
+### 4.1 GitHub 发版时生成插件市场默认值
+
+源码分支中的 `ConfigModel.PLUGIN_MARKET` 只保留官方插件仓库作为离线兜底。GitHub 的正式版与 Beta 镜像构建会检出 `MoviePilot-Wiki` 的 `main` 分支，并由 `scripts/generate_plugin_market_default.py` 读取 `plugin.md` 中 `plugin-market-repos:start/end` 标记区域，将规范化、去重后的公开仓库清单写入构建工作区。
+
+生成过程遵循以下约束：
+
+- 标记必须唯一、顺序正确，清单不能为空且必须包含 `jxxghp/MoviePilot-Plugins`；不满足时直接终止构建。
+- 生成脚本只替换 `ConfigModel` 中的 `PLUGIN_MARKET` 默认值，不写入运行时环境变量，因此用户仍可通过系统环境变量或 `/config/app.env` 覆盖。
+- 正式版工作流会创建仅由 Release Tag 引用的本地快照提交，Docker 镜像和 Tag 源码归档均来自该快照；Actions 不会将生成结果回写到 `v2` 分支。
+- Release Tag 快照提交信息和镜像标签会记录本次使用的 MoviePilot Wiki Commit，便于追溯清单来源。
+
+本地验证生成结果时，先激活项目虚拟环境，再执行：
+
+```bash
+python -m scripts.generate_plugin_market_default \
+  --wiki-file /path/to/MoviePilot-Wiki/plugin.md \
+  --config-file app/core/config.py
+```
+
 ### 5. 运行安全检查
 
 我们使用 `safety` 工具检查依赖项中是否存在已知安全漏洞。更新运行时依赖后，应至少检查运行时入口；更新开发测试依赖时，也应覆盖开发入口。

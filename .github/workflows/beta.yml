@@ -2,6 +2,10 @@ name: MoviePilot Builder Beta
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   Docker-build:
     runs-on: ubuntu-latest
@@ -15,6 +19,25 @@ jobs:
         run: |
           app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
           echo "app_version=$app_version" >> $GITHUB_ENV
+
+      - name: Checkout Wiki Plugin Market
+        uses: actions/checkout@v4
+        with:
+          repository: jxxghp/MoviePilot-Wiki
+          ref: main
+          path: .build/moviepilot-wiki
+          sparse-checkout: plugin.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Generate Plugin Market Default
+        id: plugin_market
+        run: |
+          python3 -m scripts.generate_plugin_market_default \
+            --wiki-file .build/moviepilot-wiki/plugin.md \
+            --config-file app/core/config.py
+          wiki_commit=$(git -C .build/moviepilot-wiki rev-parse HEAD)
+          echo "wiki_commit=$wiki_commit" >> "$GITHUB_OUTPUT"
 
       - name: Docker Meta
         id: meta
@@ -55,6 +78,8 @@ jobs:
             linux/arm64/v8
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
           cache-from: type=gha,scope=moviepilot-docker,version=2
           cache-to: type=gha,scope=moviepilot-docker,mode=max,version=2

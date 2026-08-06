@@ -7,6 +7,10 @@ on:
     paths:
       - 'version.py'
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   Docker-build:
     runs-on: ubuntu-latest
@@ -23,6 +27,39 @@ jobs:
         run: |
           app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
           echo "app_version=$app_version" >> $GITHUB_ENV
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Checkout Wiki Plugin Market
+        uses: actions/checkout@v4
+        with:
+          repository: jxxghp/MoviePilot-Wiki
+          ref: main
+          path: .build/moviepilot-wiki
+          sparse-checkout: plugin.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Generate Plugin Market Default
+        id: plugin_market
+        run: |
+          python3 -m scripts.generate_plugin_market_default \
+            --wiki-file .build/moviepilot-wiki/plugin.md \
+            --config-file app/core/config.py
+          wiki_commit=$(git -C .build/moviepilot-wiki rev-parse HEAD)
+          echo "wiki_commit=$wiki_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release Snapshot
+        id: release_snapshot
+        env:
+          WIKI_COMMIT: ${{ steps.plugin_market.outputs.wiki_commit }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/core/config.py
+          if ! git diff --cached --quiet; then
+            git commit -m "build(plugin-market): sync default from MoviePilot-Wiki@${WIKI_COMMIT:0:12}"
+          fi
+          echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Docker Meta
         id: meta
@@ -65,7 +102,10 @@ jobs:
             linux/arm64/v8
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.revision=${{ steps.release_snapshot.outputs.release_commit }}
+            org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
           cache-from: type=gha,scope=moviepilot-docker,version=2
           cache-to: type=gha,scope=moviepilot-docker,mode=max,version=2
 
@@ -78,9 +118,9 @@ jobs:
 
           # 使用 || 作为分隔符，同时获取 commit 消息和作者 GitHub 用户名
           if [ -z "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"%s||%an" HEAD)
+            COMMITS=$(git log --pretty=format:"%s||%an" "${SOURCE_COMMIT}")
           else
-            COMMITS=$(git log --pretty=format:"%s||%an" ${PREVIOUS_TAG}..HEAD)
+            COMMITS=$(git log --pretty=format:"%s||%an" "${PREVIOUS_TAG}..${SOURCE_COMMIT}")
           fi
 
           # 分类收集 commit 消息（使用关联数组去重）
@@ -187,6 +227,17 @@ jobs:
           tag_name: v${{ env.app_version }}
           delete_release: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Release Tag
+        env:
+          RELEASE_COMMIT: ${{ steps.release_snapshot.outputs.release_commit }}
+        run: |
+          tag_name="v${{ env.app_version }}"
+          if git show-ref --verify --quiet "refs/tags/${tag_name}"; then
+            git tag -d "$tag_name"
+          fi
+          git tag "$tag_name" "$RELEASE_COMMIT"
+          git push origin "refs/tags/${tag_name}"
 
       - name: Generate Release
         uses: softprops/action-gh-release@v2
