@@ -145,12 +145,12 @@ class PromptManager:
         if not settings.AI_AGENT_VERBOSE:
             verbose_spec = (
                 "\n\n[Important Instruction] STRICTLY ENFORCED: "
-                "If tools are needed, DO NOT output any conversational text, explanations, progress updates, "
-                "or acknowledgements before the first tool call or between tool calls. "
-                "Call tools directly without any transitional phrases. "
-                "You MUST remain completely silent until all required tools have finished and you have the final result. "
-                "Only then may you send one final user-facing reply. "
-                "DO NOT output any intermediate content whatsoever."
+                "Keep tool-related narration concise and useful. "
+                "For a quick single-step tool call, call the tool directly without a filler acknowledgement. "
+                "For multi-step work or any task that may take noticeable time, send one brief user-facing progress update "
+                "before the first tool call, then another short update after a meaningful milestone or several tool calls. "
+                "State what you are checking or what you learned, without exposing hidden reasoning, raw tool arguments, "
+                "or repetitive per-tool narration. Continue working after each update and finish with a concise final result."
             )
 
         # MoviePilot系统信息
