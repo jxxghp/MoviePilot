@@ -430,13 +430,13 @@ def _check_config(runner: DoctorRunnerProtocol) -> None:
         )
 
     proxy_host = (settings.PROXY_HOST or "").strip()
-    if proxy_host and not re.match(r"^https?://", proxy_host, re.IGNORECASE):
+    if proxy_host and not re.match(r"^(https?|socks5h?)://", proxy_host, re.IGNORECASE):
         runner.add(
             finding_id="config.proxy_format",
             severity=DoctorSeverity.Warn,
             status=DoctorFindingStatus.Degraded,
             title="代理地址格式可能不完整",
-            detail=f"PROXY_HOST={proxy_host} 未包含 http:// 或 https:// 前缀。",
+            detail=f"PROXY_HOST={proxy_host} 未包含 http:// 或 https:// 或 socks5:// 或 socks5h:// 前缀。",
             recommendation="如果外部访问异常，请把 PROXY_HOST 调整为完整 URL。",
         )
 
