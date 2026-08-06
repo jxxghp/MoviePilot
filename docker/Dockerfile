@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fuse3 \
     rsync \
     openssh-client \
+    sshpass \
     iproute2 \
     netcat-openbsd \
     lsof \

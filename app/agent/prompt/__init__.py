@@ -24,6 +24,7 @@ SYSTEM_TASKS_FILE = "System Tasks.yaml"
 SYSTEM_TASKS_SCHEMA_VERSION = 2
 COMMON_SHELL_COMMANDS = (
     "ssh",
+    "sshpass",
     "scp",
     "sftp",
     "git",
