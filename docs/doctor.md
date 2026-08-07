@@ -38,7 +38,7 @@ Doctor 默认执行只读检查：
 - 运行路径：程序目录、配置目录、日志目录、Python 解释器
 - 关键配置：`API_TOKEN`、`PORT`、`NGINX_PORT`、代理格式、安全模式
 - 进程与端口：后端、前端端口监听状态，runtime 文件是否过期
-- 日志线索：后端日志、启动日志、前端日志和插件日志中的近期错误
+- 日志线索：后端日志、启动日志、前端日志和插件日志最近 24 小时内的错误
 - 核心依赖：FastAPI、Pydantic、SQLAlchemy、Uvicorn、CloakBrowser 等是否可导入
 - 数据库：SQLite 只读打开和完整性检查；PostgreSQL 默认做配置检查
 - 前端资源：`version.txt`、`service.js` 或核心静态文件是否存在
@@ -47,6 +47,8 @@ Doctor 默认执行只读检查：
 `--deep` 会启用可能较慢或更依赖环境的检查，例如 PostgreSQL TCP 连通性。
 
 整体状态只聚合会影响 MoviePilot 核心运行的诊断项。插件独立日志以及主日志中可明确识别的插件子系统异常仍会作为 `warn/degraded` 诊断项保留，但其 `affects_report_status` 为 `false`，不会单独把整体状态从 `healthy` 降为 `degraded`；同一日志中若还存在核心错误，核心错误仍会参与状态聚合。
+
+Doctor 会按核心与插件两个组件聚合日志发现，并对主日志、控制台镜像和插件独立日志中的相同错误去重。JSON 汇总中的 `warn` 保留全部警告数量，`advisory` 单独统计不影响整体状态的建议项；日志发现的 `context.log_files`、`matches` 和 `unique_matches` 分别说明来源、原始命中数和去重后命中数。
 
 ## 自救能力
 
@@ -87,4 +89,4 @@ Dockerfile 同时提供 `HEALTHCHECK`，用于标记容器健康状态。是否�
 
 ## Issue 反馈集成
 
-`feedback-issue` skill 的诊断收集脚本会自动调用 `moviepilot doctor --json`，并把 doctor 摘要写入预览和最终 Issue 正文。完整 doctor JSON 存在运行时 diagnostics 文件中，默认不会直接贴入 Issue，避免泄露本机路径和过长输出。
+`feedback-issue` skill 的诊断收集脚本会自动调用 `moviepilot doctor --json`，并把 doctor 摘要写入预览和最终 Issue 正文。完整 doctor JSON 存在运行时 diagnostics 文件中，默认不会直接贴入 Issue，避免泄露本机路径和过长输出。连续重复的同类日志模板会保留首条、末条和重复次数，避免轮询或等待日志挤掉真正的错误上下文。

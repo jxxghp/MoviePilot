@@ -33,6 +33,10 @@ _LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 _LOG_MODULE_RE = re.compile(
     r"^【[^】]+】\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2},\d+\s+-\s+([^\s][^\-]*?)\s+-\s+"
 )
+_LOG_DYNAMIC_VALUE_RE = re.compile(
+    r"(?<![A-Za-z])(?:[0-9a-f]{8,}|\d+(?:\.\d+)?)(?![A-Za-z])",
+    re.IGNORECASE,
+)
 
 _META_NOISE_MODULES = frozenset({
     "collect_feedback_diagnostics.py",
@@ -238,6 +242,43 @@ def is_meta_noise(line: str) -> bool:
     return match.group(1).strip() in _META_NOISE_MODULES
 
 
+def _repetition_fingerprint(line: str) -> str:
+    """生成用于识别连续重复日志模板的指纹。"""
+    if parse_line_timestamp(line) is None:
+        return line
+    normalized = _LOG_TIMESTAMP_RE.sub("<time>", line)
+    normalized = _LOG_DYNAMIC_VALUE_RE.sub("<value>", normalized)
+    return re.sub(r"\s+", " ", normalized).strip().lower()
+
+
+def _compact_repeated_lines(lines: list[str]) -> list[str]:
+    """压缩连续重复日志模板，同时保留首条、末条和重复次数。"""
+    compacted: list[str] = []
+    group: list[str] = []
+    fingerprint: Optional[str] = None
+
+    def flush_group() -> None:
+        if len(group) < 4:
+            compacted.extend(group)
+            return
+        compacted.append(group[0])
+        compacted.append(
+            f"... 同类日志连续重复 {len(group)} 次，已省略 {len(group) - 2} 行 ..."
+        )
+        compacted.append(group[-1])
+
+    for line in lines:
+        current_fingerprint = _repetition_fingerprint(line)
+        if group and current_fingerprint != fingerprint:
+            flush_group()
+            group = []
+        group.append(line)
+        fingerprint = current_fingerprint
+    if group:
+        flush_group()
+    return compacted
+
+
 def filter_lines(
     text: str,
     keywords: list[str],
@@ -285,7 +326,8 @@ def filter_lines(
         elif keep_block:
             matched.append(line)
     if matched:
-        return matched[-max_lines:], sorted(matched_keywords)
+        compacted = _compact_repeated_lines(matched)
+        return compacted[-max_lines:], sorted(matched_keywords)
     return [], []
 
 

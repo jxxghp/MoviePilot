@@ -1,6 +1,6 @@
 ---
 name: feedback-issue
-version: 7
+version: 8
 description: >-
   Use this skill ONLY when the user EXPLICITLY requests filing an
   upstream issue for MoviePilot core, frontend, or an installed plugin,
@@ -92,6 +92,9 @@ Log relevance rules:
   then applies a recent time window, removes Agent/tool dispatch noise,
   and keeps only timestamped log blocks whose first line contains a
   normalized keyword.
+- Consecutive log records with the same template are compacted to the
+  first record, a repetition count, and the last record. Verify the
+  retained boundary records before treating the excerpt as evidence.
 - If no specific keyword survives normalization, the script records the
   doctor report and log-selection metadata but does not include recent
   log lines. This avoids attaching unrelated noise.

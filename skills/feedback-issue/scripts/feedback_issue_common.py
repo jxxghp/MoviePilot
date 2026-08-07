@@ -371,6 +371,14 @@ def build_prefill_url(
     return f"{issue_new_url(repo)}?{encoded}"
 
 
+def _safe_count(value: Any) -> int:
+    """把不可信的诊断计数字段转换为非负整数。"""
+    try:
+        return max(int(value or 0), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def format_doctor_summary(doctor: Optional[dict[str, Any]]) -> str:
     """把 doctor JSON 报告压缩成适合 Issue 和预览展示的摘要。"""
     if not isinstance(doctor, dict):
@@ -390,28 +398,75 @@ def format_doctor_summary(doctor: Optional[dict[str, Any]]) -> str:
         runtime = environment.get("runtime")
         if runtime:
             lines.append(f"运行环境：{runtime}")
+    findings = report.get("findings") or []
     summary = report.get("summary") or {}
     if isinstance(summary, dict):
+        advisory_count = summary.get("advisory")
+        if advisory_count is None and isinstance(findings, list):
+            advisory_count = sum(
+                1
+                for item in findings
+                if isinstance(item, dict)
+                and item.get("affects_report_status") is False
+                and not item.get("fixed")
+            )
         lines.append(
             "汇总："
             f"total={summary.get('total', 0)} "
             f"error={summary.get('error', 0)} "
             f"warn={summary.get('warn', 0)} "
+            f"advisory={advisory_count or 0} "
             f"fixed={summary.get('fixed', 0)}"
         )
 
-    findings = report.get("findings") or []
     if isinstance(findings, list):
-        important = [
-            item for item in findings
-            if isinstance(item, dict) and item.get("severity") in {"error", "warn"}
-        ][:8]
+        grouped: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
+        for item in findings:
+            if not isinstance(item, dict) or item.get("severity") not in {"error", "warn"}:
+                continue
+            title = str(item.get("title") or item.get("id") or "未知诊断项")
+            recommendation = str(item.get("recommendation") or "").strip()
+            advisory = item.get("affects_report_status") is False
+            key = (str(item.get("severity")), title, recommendation, advisory)
+            group = grouped.setdefault(
+                key,
+                {
+                    "count": 0,
+                    "matches": 0,
+                    "unique_matches": 0,
+                    "sources": [],
+                },
+            )
+            group["count"] += 1
+            context = item.get("context") or {}
+            if not isinstance(context, dict):
+                continue
+            group["matches"] += _safe_count(context.get("matches"))
+            group["unique_matches"] += _safe_count(
+                context.get("unique_matches") or context.get("matches") or 0
+            )
+            source_files = context.get("log_files") or [context.get("log_file")]
+            for source_file in source_files:
+                if not source_file:
+                    continue
+                source_name = Path(str(source_file)).name
+                if source_name not in group["sources"]:
+                    group["sources"].append(source_name)
+
+        important = list(grouped.items())[:8]
         if important:
             lines.append("关键发现：")
-            for item in important:
-                title = str(item.get("title") or item.get("id") or "未知诊断项")
-                recommendation = str(item.get("recommendation") or "").strip()
-                line = f"- [{item.get('severity')}] {title}"
+            for (severity, title, recommendation, advisory), group in important:
+                marker = f"{severity}/advisory" if advisory else severity
+                line = f"- [{marker}] {title}"
+                if group["count"] > 1:
+                    line = f"{line}（合并 {group['count']} 项）"
+                if group["sources"]:
+                    line = f"{line}；来源：{', '.join(group['sources'])}"
+                if group["matches"]:
+                    line = f"{line}；命中：{group['matches']} 条"
+                    if group["unique_matches"] < group["matches"]:
+                        line = f"{line}，去重后 {group['unique_matches']} 条"
                 if recommendation:
                     line = f"{line}；建议：{recommendation}"
                 lines.append(line)

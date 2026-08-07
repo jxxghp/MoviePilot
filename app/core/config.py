@@ -391,6 +391,8 @@ class ConfigModel(BaseModel):
     # ==================== 整理配置 ====================
     # 文件整理线程数
     TRANSFER_THREADS: int = 1
+    # 外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用
+    TRANSFER_TASK_TIMEOUT: int = 120
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = (
         "{{title}}{% if year %} ({{year}}){% endif %}"

@@ -6,6 +6,7 @@ import traceback
 import uuid
 from copy import deepcopy
 from pathlib import Path
+from time import monotonic
 from typing import List, Optional, Tuple, Union, Dict, Callable, Any
 
 from app import schemas
@@ -122,11 +123,17 @@ class JobManager:
     _season_episodes: Dict[Tuple, List[int]] = {}
     # 记录从 meta 作业迁移到 media 作业的关系，用于清理提前失败后残留的 media 作业
     _meta_to_media_ids: Dict[Tuple, set[Tuple]] = {}
+    # 记录任务最近一次状态心跳，供外部异步接管任务的失活检测使用
+    _task_state_changed_at: Dict[Tuple[str, str], float] = {}
+    # 记录仍由主程序整理线程直接执行的任务，避免把阻塞中的本地任务误判为失活
+    _active_executions: set[Tuple[str, str]] = set()
 
     def __init__(self):
         self._job_view = {}
         self._season_episodes = {}
         self._meta_to_media_ids = {}
+        self._task_state_changed_at = {}
+        self._active_executions = set()
 
     @staticmethod
     def __get_meta_id(meta: MetaBase = None, season: Optional[int] = None) -> Tuple:
@@ -248,6 +255,7 @@ class JobManager:
                         state=state,
                     )
                 )
+            self._task_state_changed_at[file_key] = monotonic()
             # 添加季集信息
             if self._season_episodes.get(__mediaid__):
                 self._season_episodes[__mediaid__].extend(task.meta.episode_list)
@@ -262,7 +270,9 @@ class JobManager:
         """
         将任务从 meta 作业迁移到 media 作业
         """
-        curr_task, source_job_id = self.__remove_task_with_job_id(task.fileitem)
+        curr_task, source_job_id = self.__remove_task_with_job_id(
+            task.fileitem, preserve_execution=True
+        )
         if not self.add_task(task, state=curr_task.state if curr_task else "waiting"):
             return False
         if curr_task and task.mediainfo:
@@ -290,14 +300,116 @@ class JobManager:
         """
         移除指定作业和对应季集缓存
         """
-        if job_id in self._season_episodes:
-            self._season_episodes.pop(job_id)
-        if job_id in self._job_view:
-            self._job_view.pop(job_id)
+        job = self._job_view.pop(job_id, None)
+        self._season_episodes.pop(job_id, None)
+        if not job:
+            return
+        for task in job.tasks:
+            file_key = self.__get_file_key(task.fileitem)
+            if file_key:
+                self._task_state_changed_at.pop(file_key, None)
+                self._active_executions.discard(file_key)
+
+    def __remove_done_job_groups(self, job_ids: set[Tuple]):
+        """
+        清理已进入终态的独立作业或关联作业组。
+        """
+        candidates = set(job_ids)
+        for metaid, mediaids in list(self._meta_to_media_ids.items()):
+            related_ids = {metaid, *mediaids}
+            if not related_ids.intersection(candidates):
+                continue
+            if all(self.__is_job_done(job_id) for job_id in related_ids):
+                for job_id in related_ids:
+                    self.__pop_job(job_id)
+                self._meta_to_media_ids.pop(metaid, None)
+                candidates.difference_update(related_ids)
+
+        referenced_ids = {
+            job_id
+            for metaid, mediaids in self._meta_to_media_ids.items()
+            for job_id in {metaid, *mediaids}
+        }
+        for job_id in candidates - referenced_ids:
+            if self.__is_job_done(job_id):
+                self.__pop_job(job_id)
+
+    def start_execution(self, task: TransferTask):
+        """
+        标记任务仍由主程序整理线程直接执行。
+
+        :param task: 整理任务
+        """
+        if not task or not task.fileitem:
+            return
+        file_key = self.__get_file_key(task.fileitem)
+        if not file_key:
+            return
+        with job_lock:
+            self._active_executions.add(file_key)
+
+    def finish_execution(self, task: TransferTask):
+        """
+        结束主程序整理线程对任务的直接执行标记。
+
+        :param task: 整理任务
+        """
+        if not task or not task.fileitem:
+            return
+        file_key = self.__get_file_key(task.fileitem)
+        if not file_key:
+            return
+        with job_lock:
+            self._active_executions.discard(file_key)
+
+    def expire_stale_running_tasks(
+            self, timeout_seconds: int
+    ) -> List[Tuple[FileItem, int]]:
+        """
+        将外部接管后长期无心跳的运行中任务标记失败并清理作业视图。
+
+        主程序整理线程仍在直接执行的任务不会被清理，以免把阻塞中的真实任务
+        误报为已终止。外部接管方可重复调用 ``running_task`` 刷新状态心跳。
+
+        :param timeout_seconds: 失活超时秒数，小于等于 0 时禁用
+        :return: 已失活任务及其无心跳秒数
+        """
+        if timeout_seconds <= 0:
+            return []
+
+        current_time = monotonic()
+        expired: List[Tuple[FileItem, int]] = []
+        affected_job_ids: set[Tuple] = set()
+        with job_lock:
+            for mediaid, job in self._job_view.items():
+                for task in job.tasks:
+                    file_key = self.__get_file_key(task.fileitem)
+                    if (
+                            not file_key
+                            or task.state != "running"
+                            or file_key in self._active_executions
+                    ):
+                        continue
+                    updated_at = self._task_state_changed_at.get(file_key, current_time)
+                    inactive_seconds = current_time - updated_at
+                    if inactive_seconds < timeout_seconds:
+                        continue
+                    task.state = "failed"
+                    self._task_state_changed_at[file_key] = current_time
+                    episodes = getattr(task.meta, "episode_list", None) or []
+                    if mediaid in self._season_episodes:
+                        self._season_episodes[mediaid] = list(
+                            set(self._season_episodes[mediaid]) - set(episodes)
+                        )
+                    expired.append((task.fileitem, int(inactive_seconds)))
+                    affected_job_ids.add(mediaid)
+
+            self.__remove_done_job_groups(affected_job_ids)
+        return expired
 
     def running_task(self, task: TransferTask):
         """
-        设置任务为运行中
+        设置任务为运行中，并刷新外部异步任务的状态心跳。
         """
         with job_lock:
             __mediaid__ = self.__get_id(task)
@@ -307,6 +419,9 @@ class JobManager:
             for t in self._job_view[__mediaid__].tasks:
                 if t.fileitem == task.fileitem:
                     t.state = "running"
+                    file_key = self.__get_file_key(t.fileitem)
+                    if file_key:
+                        self._task_state_changed_at[file_key] = monotonic()
                     break
 
     def finish_task(self, task: TransferTask):
@@ -321,6 +436,9 @@ class JobManager:
             for t in self._job_view[__mediaid__].tasks:
                 if t.fileitem == task.fileitem:
                     t.state = "completed"
+                    file_key = self.__get_file_key(t.fileitem)
+                    if file_key:
+                        self._task_state_changed_at[file_key] = monotonic()
                     break
 
     def fail_task(self, task: TransferTask):
@@ -335,6 +453,9 @@ class JobManager:
             for t in self._job_view[__mediaid__].tasks:
                 if t.fileitem == task.fileitem:
                     t.state = "failed"
+                    file_key = self.__get_file_key(t.fileitem)
+                    if file_key:
+                        self._task_state_changed_at[file_key] = monotonic()
                     break
             # 移除剧集信息
             if __mediaid__ in self._season_episodes:
@@ -359,6 +480,7 @@ class JobManager:
                         continue
                     if job_task.state not in ["completed", "failed"]:
                         job_task.state = "failed"
+                        self._task_state_changed_at[file_key] = monotonic()
                         if mediaid in self._season_episodes:
                             self._season_episodes[mediaid] = list(
                                 set(self._season_episodes[mediaid])
@@ -374,7 +496,9 @@ class JobManager:
         return task
 
     def __remove_task_with_job_id(
-            self, fileitem: FileItem
+            self,
+            fileitem: FileItem,
+            preserve_execution: bool = False,
     ) -> Tuple[Optional[TransferJobTask], Optional[Tuple]]:
         """
         根据文件项移除任务，并返回任务所在的作业ID
@@ -388,6 +512,9 @@ class JobManager:
                 for task in job.tasks:
                     if self.__get_file_key(task.fileitem) == file_key:
                         job.tasks.remove(task)
+                        self._task_state_changed_at.pop(file_key, None)
+                        if not preserve_execution:
+                            self._active_executions.discard(file_key)
                         # 如果没有作业了，则移除作业
                         if not job.tasks:
                             self._job_view.pop(mediaid)
@@ -407,10 +534,9 @@ class JobManager:
         with job_lock:
             __mediaid__ = self.__get_id(task)
             if __mediaid__ in self._job_view:
-                # 移除季集信息
-                if __mediaid__ in self._season_episodes:
-                    self._season_episodes.pop(__mediaid__)
-                return self._job_view.pop(__mediaid__)
+                job = self._job_view[__mediaid__]
+                self.__pop_job(__mediaid__)
+                return job
             return None
 
     def try_remove_job(self, task: TransferTask):
@@ -1509,6 +1635,33 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
         self.jobview.remove_task(fileitem)
 
+    def __start_job_execution(self, task: TransferTask):
+        """在作业视图支持执行租约时标记主程序任务开始执行。"""
+        marker = getattr(self.jobview, "start_execution", None)
+        if marker:
+            marker(task)
+
+    def __finish_job_execution(self, task: TransferTask):
+        """在作业视图支持执行租约时标记主程序任务结束执行。"""
+        marker = getattr(self.jobview, "finish_execution", None)
+        if marker:
+            marker(task)
+
+    def __expire_stale_transfer_tasks(self):
+        """清理外部接管后失去状态心跳的运行中整理任务。"""
+        timeout_minutes = max(int(settings.TRANSFER_TASK_TIMEOUT), 0)
+        expire_tasks = getattr(self.jobview, "expire_stale_running_tasks", None)
+        expired_tasks = (
+            expire_tasks(timeout_seconds=timeout_minutes * 60)
+            if expire_tasks
+            else []
+        )
+        for fileitem, inactive_seconds in expired_tasks:
+            logger.error(
+                f"整理任务 {fileitem.path} 已连续 {inactive_seconds // 60} 分钟无状态心跳，"
+                "已标记失败并从整理队列视图清理"
+            )
+
     def __fail_transfer_task(self, task: TransferTask):
         """
         标记异常整理任务失败并清理作业视图
@@ -1560,6 +1713,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     self._active_tasks += 1
 
                 try:
+                    self.__start_job_execution(task)
                     # 更新进度
                     __process_msg = f"正在整理 {fileitem.name} ..."
                     logger.info(__process_msg)
@@ -1598,6 +1752,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         self._processed_num += 1
                         self._fail_num += 1
                 finally:
+                    self.__finish_job_execution(task)
                     self._queue.task_done()
                     with task_lock:
                         # 减少运行中的任务数
@@ -1618,6 +1773,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             except queue.Empty:
                 # 即使队列空了，如果还有任务在运行，也不应该结束进度
                 # 这部分逻辑已经在 finally 的 active_tasks == 0 中处理了
+                self.__expire_stale_transfer_tasks()
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e} - {traceback.format_exc()}")
@@ -1914,6 +2070,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         获取整理任务列表
         """
+        self.__expire_stale_transfer_tasks()
         return self.jobview.list_jobs()
 
     def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
@@ -3446,6 +3603,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             },
                         )
                     try:
+                        self.__start_job_execution(transfer_task)
                         state, err_msg = self.__handle_transfer(
                             task=transfer_task,
                             callback=_preview_callback if preview else self.__default_callback,
@@ -3458,6 +3616,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         if not preview:
                             self.__fail_transfer_task(transfer_task)
                         state, err_msg = False, str(e)
+                    finally:
+                        self.__finish_job_execution(transfer_task)
                     if not state:
                         all_success = False
                         logger.warn(f"{transfer_task.fileitem.name} {err_msg}")

@@ -114,11 +114,14 @@ class DoctorReport:
             "warn": 0,
             "error": 0,
             "fixed": 0,
+            "advisory": 0,
         }
         for finding in self.findings:
             counts[finding.severity.value] += 1
             if finding.fixed:
                 counts["fixed"] += 1
+            elif not finding.affects_report_status:
+                counts["advisory"] += 1
         return counts
 
     def exit_code(self) -> int:

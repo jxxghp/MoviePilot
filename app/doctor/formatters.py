@@ -38,7 +38,9 @@ def format_text_report(report: DoctorReport) -> str:
     summary = report.summary
     lines.extend([
         "",
-        f"汇总: total={summary['total']} error={summary['error']} warn={summary['warn']} fixed={summary['fixed']}",
+        f"汇总: total={summary['total']} error={summary['error']} "
+        f"warn={summary['warn']} advisory={summary['advisory']} "
+        f"fixed={summary['fixed']}",
     ])
     return "\n".join(lines)
 

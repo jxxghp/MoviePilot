@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from app.core.config import settings
@@ -7,6 +8,11 @@ from app.doctor import checks, run_doctor
 from app.doctor.formatters import format_json_report, format_text_report
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorSeverity
 from app.doctor.runner import DoctorRunner
+
+
+def _current_log_timestamp() -> str:
+    """返回 Doctor 近期日志测试使用的当前时间戳。"""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def test_doctor_report_has_stable_json_shape(tmp_path, monkeypatch):
@@ -95,7 +101,7 @@ def test_doctor_plugin_log_error_does_not_degrade_report(tmp_path, monkeypatch):
     plugin_log = settings.LOG_PATH / "plugins" / "demo.log"
     plugin_log.parent.mkdir(parents=True, exist_ok=True)
     plugin_log.write_text(
-        "【ERROR】2026-07-20 08:00:00 - demo.py - 插件任务执行异常\n",
+        f"【ERROR】{_current_log_timestamp()} - demo.py - 插件任务执行异常\n",
         encoding="utf-8",
     )
 
@@ -121,7 +127,7 @@ def test_doctor_plugin_load_error_in_main_log_does_not_degrade_report(
     app_log = settings.LOG_PATH / "moviepilot.log"
     app_log.parent.mkdir(parents=True, exist_ok=True)
     app_log.write_text(
-        "【ERROR】2026-07-20 08:00:00 - plugin.py - 加载插件 Demo 出错：boom - Traceback (most recent call last):\n"
+        f"【ERROR】{_current_log_timestamp()} - plugin.py - 加载插件 Demo 出错：boom - Traceback (most recent call last):\n"
         "Exception: boom\n",
         encoding="utf-8",
     )
@@ -146,12 +152,12 @@ def test_doctor_plugin_error_mirrored_to_stdio_does_not_degrade_report(
     plugin_log = settings.LOG_PATH / "plugins" / "DemoPlugin.log"
     plugin_log.parent.mkdir(parents=True, exist_ok=True)
     plugin_log.write_text(
-        "【INFO】2026-07-20 08:00:00 - demo.py - 插件已启动\n",
+        f"【INFO】{_current_log_timestamp()} - demo.py - 插件已启动\n",
         encoding="utf-8",
     )
     stdio_log = settings.LOG_PATH / "moviepilot.stdout.log"
     stdio_log.write_text(
-        "ERROR:   [demoplugin] 2026-07-20 08:01:00 demo.py - task exception\n",
+        f"ERROR:   [demoplugin] {_current_log_timestamp()} demo.py - task exception\n",
         encoding="utf-8",
     )
 
@@ -171,7 +177,7 @@ def test_doctor_core_log_error_still_degrades_report(tmp_path, monkeypatch):
     app_log = settings.LOG_PATH / "moviepilot.log"
     app_log.parent.mkdir(parents=True, exist_ok=True)
     app_log.write_text(
-        "【ERROR】2026-07-20 08:00:00 - rss.py - 解析 RSS 失败 - Traceback (most recent call last):\n"
+        f"【ERROR】{_current_log_timestamp()} - rss.py - 解析 RSS 失败 - Traceback (most recent call last):\n"
         "RuntimeError: boom\n",
         encoding="utf-8",
     )
@@ -195,9 +201,9 @@ def test_doctor_mixed_plugin_and_core_log_errors_keep_core_status(
     app_log = settings.LOG_PATH / "moviepilot.log"
     app_log.parent.mkdir(parents=True, exist_ok=True)
     app_log.write_text(
-        "【ERROR】2026-07-20 08:00:00 - plugin.py - 加载插件 Demo 出错：boom - Traceback (most recent call last):\n"
+        f"【ERROR】{_current_log_timestamp()} - plugin.py - 加载插件 Demo 出错：boom - Traceback (most recent call last):\n"
         "Exception: plugin boom\n"
-        "【ERROR】2026-07-20 08:01:00 - rss.py - 解析 RSS 失败 - Traceback (most recent call last):\n"
+        f"【ERROR】{_current_log_timestamp()} - rss.py - 解析 RSS 失败 - Traceback (most recent call last):\n"
         "Exception: core boom\n",
         encoding="utf-8",
     )
@@ -214,3 +220,55 @@ def test_doctor_mixed_plugin_and_core_log_errors_keep_core_status(
     assert "core boom" in core_finding.detail
     assert "plugin boom" in plugin_finding.detail
     assert runner.report.status.value == "degraded"
+
+
+def test_doctor_deduplicates_mirrored_plugin_errors(tmp_path, monkeypatch):
+    """同一插件错误出现在主日志和插件日志时应只生成一条聚合告警。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    app_log = settings.LOG_PATH / "moviepilot.log"
+    plugin_log = settings.LOG_PATH / "plugins" / "demo.log"
+    plugin_log.parent.mkdir(parents=True, exist_ok=True)
+    app_log.write_text(
+        f"【ERROR】{timestamp} - plugin.py - 插件任务执行异常\n",
+        encoding="utf-8",
+    )
+    plugin_log.write_text(
+        f"【ERROR】{timestamp} - demo.py - 插件任务执行异常\n",
+        encoding="utf-8",
+    )
+
+    runner = DoctorRunner()
+    checks._check_logs(runner)
+
+    plugin_findings = [
+        finding
+        for finding in runner.report.findings
+        if finding.title == "最近日志存在插件异常"
+    ]
+    assert len(plugin_findings) == 1
+    finding = plugin_findings[0]
+    assert finding.context["matches"] == 2
+    assert finding.context["unique_matches"] == 1
+    assert len(finding.context["log_files"]) == 2
+    assert runner.report.summary["advisory"] == 1
+    assert runner.report.find("logs.recent") is not None
+
+
+def test_doctor_ignores_errors_outside_log_window(tmp_path, monkeypatch):
+    """超出日志诊断时间窗的历史错误不应污染当前 Doctor 结果。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    timestamp = (datetime.now() - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
+    app_log = settings.LOG_PATH / "moviepilot.log"
+    app_log.parent.mkdir(parents=True, exist_ok=True)
+    app_log.write_text(
+        f"【ERROR】{timestamp} - rss.py - 历史解析错误\n",
+        encoding="utf-8",
+    )
+
+    runner = DoctorRunner()
+    checks._check_logs(runner)
+
+    assert runner.report.find("logs.moviepilot.recent_errors") is None
+    assert runner.report.find("logs.recent") is not None
+    assert runner.report.status.value == "healthy"
