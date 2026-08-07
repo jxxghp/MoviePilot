@@ -30,7 +30,7 @@ from app.db.user_oper import (
 from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.scheduler import Scheduler
-from app.schemas.types import SystemConfigKey, EventType
+from app.schemas.types import SystemConfigKey, EventType, MediaType
 from app.utils.string import StringUtils
 
 router = APIRouter()
@@ -394,6 +394,7 @@ async def site_category(
 async def site_resource(
     site_id: int,
     keyword: Optional[str] = None,
+    mtype: Optional[str] = None,
     cat: Optional[str] = None,
     page: Optional[int] = 0,
     db: AsyncSession = Depends(get_async_db),
@@ -409,7 +410,11 @@ async def site_resource(
             detail=f"站点 {site_id} 不存在",
         )
     torrents = await TorrentsChain().async_browse(
-        domain=site.domain, keyword=keyword, cat=cat, page=page
+        domain=site.domain,
+        keyword=keyword,
+        cat=cat,
+        page=page,
+        mtype=MediaType.from_agent(mtype) or MediaType(mtype) if mtype else None,
     )
     if not torrents:
         return []

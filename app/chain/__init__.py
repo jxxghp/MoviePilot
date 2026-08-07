@@ -1272,6 +1272,7 @@ class ChainBase(metaclass=ABCMeta):
             keyword: Optional[str] = None,
             cat: Optional[str] = None,
             page: Optional[int] = 0,
+            mtype: Optional[MediaType] = None,
     ) -> List[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
@@ -1279,10 +1280,11 @@ class ChainBase(metaclass=ABCMeta):
         :param keyword:  标题
         :param cat:  分类
         :param page:  页码
+        :param mtype: 媒体类型
         :reutrn: 种子资源列表
         """
         return self.run_module(
-            "refresh_torrents", site=site, keyword=keyword, cat=cat, page=page
+            "refresh_torrents", site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
         )
 
     async def async_refresh_torrents(
@@ -1291,6 +1293,7 @@ class ChainBase(metaclass=ABCMeta):
             keyword: Optional[str] = None,
             cat: Optional[str] = None,
             page: Optional[int] = 0,
+            mtype: Optional[MediaType] = None,
     ) -> List[TorrentInfo]:
         """
         异步获取站点最新一页的种子，多个站点需要多线程处理
@@ -1298,10 +1301,11 @@ class ChainBase(metaclass=ABCMeta):
         :param keyword:  标题
         :param cat:  分类
         :param page:  页码
+        :param mtype: 媒体类型
         :reutrn: 种子资源列表
         """
         return await self.async_run_module(
-            "async_refresh_torrents", site=site, keyword=keyword, cat=cat, page=page
+            "async_refresh_torrents", site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
         )
 
     def filter_torrents(

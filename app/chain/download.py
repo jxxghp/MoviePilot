@@ -16,6 +16,7 @@ from app.chain.storage import StorageChain
 from app.core.cache import FileCache
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo, Context
+from app.core.music import MusicInfo, MusicMeta
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
@@ -60,6 +61,25 @@ class DownloadChain(ChainBase):
         ".zip": "zip",
         ".rar": "rar",
     }
+
+    @staticmethod
+    def _build_download_note(
+            source: Optional[str],
+            media: MediaInfo | MusicInfo,
+            meta: MetaBase | MusicMeta,
+    ) -> dict:
+        """构造下载历史备注，并为音乐保存可恢复的版本化上下文。"""
+        note = {"source": source}
+        if getattr(media, "type", None) != MediaType.MUSIC:
+            return note
+        media_payload = media.to_dict()
+        media_payload.pop("raw_data", None)
+        note["music"] = {
+            "version": 1,
+            "meta": meta.to_dict(),
+            "media": media_payload,
+        }
+        return note
 
     @staticmethod
     def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
@@ -963,7 +983,7 @@ class DownloadChain(ChainBase):
                 date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                 media_category=_media.category,
                 episode_group=_media.episode_group,
-                note={"source": source},
+                note=self._build_download_note(source, _media, _meta),
                 custom_words=custom_words
             )
 
@@ -1183,6 +1203,11 @@ class DownloadChain(ChainBase):
             """
             return _context.media_info.title_year
 
+        def __get_music_download_key(_context: Context) -> str:
+            """获取音乐下载去重键，同一订阅目标失败后仍可尝试后续候选。"""
+            media_source, media_id = resolve_media_identity(media=_context.media_info)
+            return build_media_key(media_source, media_id) or _context.media_info.title_year
+
         # 发送资源选择事件，允许外部修改上下文数据
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
@@ -1245,6 +1270,28 @@ class DownloadChain(ChainBase):
                     downloaded_movies.add(movie_key)
                 else:
                     __remember_context_failure(context)
+
+        # 音乐与电影一样按单个订阅目标择一下载，不进入电视剧季集组合逻辑。
+        downloaded_music = set()
+        for context in contexts:
+            if global_vars.is_system_stopped:
+                break
+            if context.media_info.type != MediaType.MUSIC:
+                continue
+            if __is_context_in_failure_cooldown(context):
+                continue
+            music_key = __get_music_download_key(context)
+            if music_key in downloaded_music:
+                continue
+            logger.info(f"开始下载音乐 {context.torrent_info.title} ...")
+            if self.download_single(context, save_path=save_path, channel=channel,
+                                    source=source, userid=userid, username=username,
+                                    downloader=downloader, custom_words=custom_words):
+                logger.info(f"{context.torrent_info.title} 添加下载成功")
+                downloaded_list.append(context)
+                downloaded_music.add(music_key)
+            else:
+                __remember_context_failure(context)
 
         # 电视剧整季匹配
         if no_exists:

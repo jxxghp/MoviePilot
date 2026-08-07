@@ -45,7 +45,7 @@ class LocalSetupUninstallTests(unittest.TestCase):
         install_env_file.write_text("CONFIG_DIR=/tmp/moviepilot-config\n", encoding="utf-8")
         (root_dir / "moviepilot").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
         (helper_dir / "sites.py").write_text("generated\n", encoding="utf-8")
-        (helper_dir / "user.sites.v2.bin").write_bytes(b"binary")
+        (helper_dir / "user.sites.v3.bin").write_bytes(b"binary")
         (temp_config_dir / "moviepilot.runtime.json").write_text("{}", encoding="utf-8")
         (temp_config_dir / "moviepilot.frontend.runtime.json").write_text(
             "{}", encoding="utf-8"
@@ -110,7 +110,7 @@ class LocalSetupUninstallTests(unittest.TestCase):
         self.assertFalse((root_dir / ".runtime").exists())
         self.assertFalse((root_dir / "public").exists())
         self.assertFalse((root_dir / "app" / "helper" / "sites.py").exists())
-        self.assertFalse((root_dir / "app" / "helper" / "user.sites.v2.bin").exists())
+        self.assertFalse((root_dir / "app" / "helper" / "user.sites.v3.bin").exists())
         self.assertFalse(cli_link.exists())
 
     def test_uninstall_deletes_external_config_when_requested(self):

@@ -104,11 +104,11 @@ RUN FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/
     && mv -f /tmp/MoviePilot-Plugins-main/plugins.v2/* /app/app/plugins/ \
     && cat /tmp/MoviePilot-Plugins-main/package.json | jq -r 'to_entries[] | select(.value.v2 == true) | .key' | awk '{print tolower($0)}' | \
     while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
-    && curl -sL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v2/user.sites.v2.bin" -o /app/app/helper/user.sites.v2.bin \
+    && curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/helper/user.sites.v3.bin \
     && python_ver=$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")') \
     && ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then SUFFIX="aarch64-linux-gnu"; else SUFFIX="x86_64-linux-gnu"; fi \
-    && curl -sL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v2/sites.${python_ver}-${SUFFIX}.so" -o "/app/app/helper/sites.${python_ver}-${SUFFIX}.so"
+    && curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/sites.${python_ver}-${SUFFIX}.so" -o "/app/app/helper/sites.${python_ver}-${SUFFIX}.so"
 
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final

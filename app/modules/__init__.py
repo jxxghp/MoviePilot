@@ -7,7 +7,7 @@ from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import Notification, NotificationConf, MediaServerConf, DownloaderConf
 from app.schemas.types import ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
-    OtherModulesType, SystemConfigKey
+    OtherModulesType, SystemConfigKey, MediaRecognizeType
 from app.utils.mixins import ConfigReloadMixin
 
 
@@ -66,7 +66,14 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def get_subtype() -> Union[DownloaderType, MediaServerType, MessageChannel, StorageSchema, OtherModulesType]:
+    def get_subtype() -> Union[
+        DownloaderType,
+        MediaServerType,
+        MessageChannel,
+        StorageSchema,
+        OtherModulesType,
+        MediaRecognizeType,
+    ]:
         """
         获取模块子类型（下载器、媒体服务器、消息通道、存储类型、其他杂项模块类型）
         """

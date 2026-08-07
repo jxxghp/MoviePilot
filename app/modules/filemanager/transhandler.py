@@ -184,9 +184,10 @@ class TransHandler:
             """
             if not _fileitem.extension:
                 return False
-            if f".{_fileitem.extension.lower()}" in (
-                settings.RMT_SUBEXT + settings.RMT_AUDIOEXT
-            ):
+            extension = f".{_fileitem.extension.lower()}"
+            if extension in settings.RMT_SUBEXT:
+                return True
+            if mediainfo.type != MediaType.MUSIC and extension in settings.RMT_AUDIOEXT:
                 return True
             return False
 

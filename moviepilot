@@ -117,7 +117,7 @@ Options:
 
   resources:
     --resources-repo PATH 本地 MoviePilot-Resources 仓库路径
-    --resource-dir PATH   直接指定 resources.v2 目录
+    --resource-dir PATH   直接指定 resources.v3 目录
     --config-dir PATH     指定配置目录
 
   -h, --help              显示帮助

@@ -17,9 +17,16 @@ class ResourceHelper:
     检测和更新资源包
     """
 
-    _repo = f"{settings.GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/package.v2.json"
-    _files_api = f"https://api.github.com/repos/jxxghp/MoviePilot-Resources/contents/resources.v2"
     _base_dir: Path = settings.ROOT_PATH
+    _version_flag = settings.RESOURCE_VERSION_FLAG
+    _repo = (
+        f"{settings.GITHUB_PROXY}https://raw.githubusercontent.com/"
+        f"jxxghp/MoviePilot-Resources/main/package.{_version_flag}.json"
+    )
+    _files_api = (
+        "https://api.github.com/repos/jxxghp/"
+        f"MoviePilot-Resources/contents/resources.{_version_flag}"
+    )
 
     def __init__(self):
         self.check()
@@ -42,13 +49,14 @@ class ResourceHelper:
             return "x86_64"
         return machine
 
-    @staticmethod
-    def _get_needed_files() -> list[str]:
+    @classmethod
+    def _get_needed_files(cls) -> list[str]:
+        """返回 V3 资源在当前平台需要下载的文件名。"""
         python_version = ResourceHelper._get_python_version_tag()
         python_ver = python_version.replace("cp", "")
         system = platform.system().lower()
         machine = ResourceHelper._get_machine_tag()
-        files = ["user.sites.v2.bin"]
+        files = [f"user.sites.{cls._version_flag}.bin"]
         if system == "linux":
             files.append(f"sites.cpython-{python_ver}-{machine}-linux-gnu.so")
         elif system == "darwin":
@@ -56,6 +64,15 @@ class ResourceHelper:
         elif system == "windows":
             files.append(f"sites.cp{python_ver}-win_amd64.pyd")
         return files
+
+    def _load_resource_info(self):
+        """读取 V3 资源清单。"""
+        response = RequestUtils(
+            proxies=self.proxies,
+            headers=settings.GITHUB_HEADERS,
+            timeout=10,
+        ).get_res(self._repo)
+        return response if response and response.status_code == 200 else None
 
     def check(self):
         """
@@ -66,9 +83,7 @@ class ResourceHelper:
         if SystemUtils.is_frozen():
             return None
         logger.info("开始检测资源包版本...")
-        res = RequestUtils(
-            proxies=self.proxies, headers=settings.GITHUB_HEADERS, timeout=10
-        ).get_res(self._repo)
+        res = self._load_resource_info()
         if res:
             try:
                 resource_info = json.loads(res.text)

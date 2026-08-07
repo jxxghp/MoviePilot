@@ -12,7 +12,7 @@ class DownloadHistory(BaseModel):
     id: int
     # 保存路程
     path: Optional[str] = None
-    # 类型：电影、电视剧
+    # 类型：电影、电视剧、音乐
     type: Optional[str] = None
     # 标题
     title: Optional[str] = None

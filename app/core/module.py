@@ -6,7 +6,7 @@ from app.core.event import eventmanager
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.schemas.types import EventType, ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
-    OtherModulesType
+    OtherModulesType, MediaRecognizeType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 
@@ -17,7 +17,14 @@ class ModuleManager(metaclass=Singleton):
     """
 
     # 子模块类型集合
-    SubType = Union[DownloaderType, MediaServerType, MessageChannel, StorageSchema, OtherModulesType]
+    SubType = Union[
+        DownloaderType,
+        MediaServerType,
+        MessageChannel,
+        StorageSchema,
+        OtherModulesType,
+        MediaRecognizeType,
+    ]
 
     def __init__(self):
         # 模块列表

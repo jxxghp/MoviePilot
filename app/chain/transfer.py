@@ -13,11 +13,13 @@ from app import schemas
 from app.agent import ReplyMode, prompt_manager, agent_manager
 from app.chain import ChainBase
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
 from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
+from app.core.music import MusicInfo, MusicMeta
 from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
@@ -27,6 +29,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
+from app.helper.audio import AudioMetadataHelper
 from app.helper.format import EpisodeFormatRuleHelper, FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
@@ -184,6 +187,8 @@ class JobManager:
             # 有媒体信息
             mediainfo = deepcopy(task.mediainfo)
             mediainfo.clear()
+            if isinstance(mediainfo, MusicInfo):
+                return schemas.MusicInfo(**mediainfo.to_dict())
             return schemas.MediaInfo(**mediainfo.to_dict())
         else:
             # 没有媒体信息
@@ -200,6 +205,8 @@ class JobManager:
         """
         获取元数据
         """
+        if isinstance(task.meta, MusicMeta):
+            return schemas.MusicMeta(**task.meta.to_dict())
         return schemas.MetaInfo(**task.meta.to_dict())
 
     def add_task(self, task: TransferTask, state: Optional[str] = "waiting") -> bool:
@@ -1009,7 +1016,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
         return True if f".{fileitem.extension.lower()}" in self._audio_exts else False
 
-    def __is_media_file(self, fileitem: FileItem) -> bool:
+    def __is_media_file(
+            self,
+            fileitem: FileItem,
+            mtype: Optional[MediaType] = None,
+    ) -> bool:
         """
         判断是否为主要媒体文件
         """
@@ -1018,7 +1029,107 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return StorageChain().is_bluray_folder(fileitem)
         if not fileitem.extension:
             return False
-        return True if f".{fileitem.extension.lower()}" in self._media_exts else False
+        extension = f".{fileitem.extension.lower()}"
+        if extension in self._media_exts:
+            return True
+        return mtype == MediaType.MUSIC and extension in self._audio_exts
+
+    def _is_primary_media_file(
+            self,
+            fileitem: FileItem,
+            mediainfo: Optional[MediaInfo | MusicInfo],
+    ) -> bool:
+        """判断文件在当前媒体上下文中是否属于主要媒体文件。"""
+        return self.__is_media_file(
+            fileitem,
+            getattr(mediainfo, "type", None),
+        )
+
+    @staticmethod
+    def _music_info_from_meta(meta: MusicMeta) -> MusicInfo:
+        """将音频文件标签解析结果转换为可整理的最小音乐信息。"""
+        return MusicInfo(
+            source=meta.media_source,
+            media_id=meta.media_id,
+            title=meta.title,
+            artists=list(meta.artists),
+            album=meta.album,
+            album_artist=meta.album_artist,
+            year=meta.year,
+            disc_number=meta.disc_number,
+            track_number=meta.track_number,
+            total_tracks=meta.total_tracks,
+            duration=meta.duration,
+            isrc=meta.isrc,
+            version=meta.version,
+            names=[name for name in (meta.title, meta.album) if name],
+        )
+
+    @classmethod
+    def _restore_music_download_context(
+            cls,
+            download_history: Optional[DownloadHistory],
+            file_path: Path,
+    ) -> tuple[Optional[MusicMeta], Optional[MusicInfo]]:
+        """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。"""
+        note = getattr(download_history, "note", None)
+        music_note = note.get("music") if isinstance(note, dict) else None
+        if not isinstance(music_note, dict) or music_note.get("version") != 1:
+            return None, None
+        try:
+            saved_meta = MusicMeta.from_dict(music_note.get("meta") or {})
+            saved_info = MusicInfo.from_dict(music_note.get("media") or {})
+        except (TypeError, ValueError):
+            return None, None
+
+        file_tags = AudioMetadataHelper.read(file_path) if file_path.exists() else None
+        file_meta = deepcopy(saved_meta)
+        file_meta.org_string = file_path.name
+        if file_tags:
+            has_tag_identity = bool(
+                file_tags.artists
+                or file_tags.album
+                or file_tags.track_number
+                or file_tags.isrc
+            )
+            for field_name in (
+                "artists",
+                "album",
+                "album_artist",
+                "year",
+                "disc_number",
+                "track_number",
+                "total_discs",
+                "total_tracks",
+                "version",
+                "isrc",
+            ):
+                if getattr(file_tags, field_name, None):
+                    setattr(file_meta, field_name, deepcopy(getattr(file_tags, field_name)))
+            if has_tag_identity and file_tags.title:
+                file_meta.title = file_tags.title
+            for field_name in (
+                "audio_format",
+                "bit_depth",
+                "sample_rate",
+                "bitrate",
+                "duration",
+            ):
+                if getattr(file_tags, field_name, None):
+                    setattr(file_meta, field_name, getattr(file_tags, field_name))
+        elif not file_meta.audio_format:
+            file_meta.audio_format = file_path.suffix.lstrip(".").upper() or None
+        file_meta.media_source = saved_info.source or saved_meta.media_source
+        file_meta.media_id = saved_info.media_id or saved_meta.media_id
+
+        file_info = cls._music_info_from_meta(file_meta)
+        file_info.source = saved_info.source
+        file_info.media_id = saved_info.media_id
+        file_info.cover_url = saved_info.cover_url
+        file_info.lyrics = saved_info.lyrics
+        file_info.category = saved_info.category
+        file_info.detail_link = saved_info.detail_link
+        return file_meta, file_info
 
     def __is_allowed_file(self, fileitem: FileItem) -> bool:
         """
@@ -1148,7 +1259,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
 
             # 整理失败事件
-            if self.__is_media_file(task.fileitem):
+            if self._is_primary_media_file(task.fileitem, task.mediainfo):
                 # 主要媒体文件整理失败事件
                 self.eventmanager.send_event(
                     EventType.TransferFailed,
@@ -1262,7 +1373,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
 
             # task整理完成事件
-            if self.__is_media_file(task.fileitem):
+            if self._is_primary_media_file(task.fileitem, task.mediainfo):
                 # 主要媒体文件整理完成事件
                 self.eventmanager.send_event(
                     EventType.TransferComplete,
@@ -1480,7 +1591,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 not task
                 or not transferinfo
                 or not transferinfo.need_scrape
-                or not self.__is_media_file(task.fileitem)
+                or not self._is_primary_media_file(task.fileitem, task.mediainfo)
+                or task.mediainfo.type == MediaType.MUSIC
         ):
             return
 
@@ -1543,7 +1655,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 or not task.transfer_batch_id
                 or not transferinfo
                 or not transferinfo.need_scrape
-                or not self.__is_media_file(task.fileitem)
+                or not self._is_primary_media_file(task.fileitem, task.mediainfo)
+                or task.mediainfo.type == MediaType.MUSIC
         ):
             return
 
@@ -2935,6 +3048,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             fileitem: FileItem,
             meta: MetaBase = None,
             mediainfo: MediaInfo = None,
+            mtype: Optional[MediaType] = None,
             media_source: Optional[str] = None,
             target_directory: TransferDirectoryConf = None,
             target_storage: Optional[str] = None,
@@ -2962,6 +3076,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param fileitem: 文件项
         :param meta: 元数据
         :param mediainfo: 媒体信息
+        :param mtype: 未提供媒体信息时使用的媒体类型提示
         :param media_source: 请求级识别与刮削数据源
         :param target_directory:  目标目录配置
         :param target_storage: 目标存储器
@@ -3037,9 +3152,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             """
             从文件路径识别媒体信息，用于判断附加文件是否属于当前主视频。
             """
-            path_meta = MetaInfoPath(
-                source_path, custom_words=custom_word_list
-            )
+            if mtype == MediaType.MUSIC and source_path.suffix.lower() in self._audio_exts:
+                path_meta = AudioMetadataHelper.read(source_path)
+            else:
+                path_meta = MetaInfoPath(
+                    source_path, custom_words=custom_word_list
+                )
             if not path_meta:
                 return None
             return _apply_meta_overrides(path_meta, source_path)
@@ -3462,12 +3580,19 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     download_hash=download_hash,
                 )
 
+                history_music_meta, history_music_info = self._restore_music_download_context(
+                    download_history=download_history,
+                    file_path=file_path,
+                )
+
                 if not meta:
                     # 文件元数据(优先使用订阅识别词)
                     inherited_meta = inherited_meta_map.get(
                         self.__get_file_key(file_item)
                     )
-                    if inherited_meta:
+                    if history_music_meta:
+                        file_meta = history_music_meta
+                    elif inherited_meta:
                         file_meta = deepcopy(inherited_meta)
                     else:
                         file_meta = _build_file_meta(
@@ -3492,7 +3617,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     _download_hash = download_hash
 
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
-                task_mediainfo = mediainfo
+                task_mediainfo = mediainfo or history_music_info
+                if not task_mediainfo and isinstance(file_meta, MusicMeta):
+                    task_mediainfo = self._music_info_from_meta(file_meta)
                 if (
                         not manual
                         and self._is_movie_year_conflict(file_meta, task_mediainfo)
@@ -3931,16 +4058,22 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if tmdbid or doubanid or bangumiid or anilistid or media_id:
             # 有输入媒体ID时单个识别
             # 识别媒体信息
-            mediainfo: MediaInfo = MediaChain().recognize_media(
-                tmdbid=tmdbid,
-                doubanid=doubanid,
-                bangumiid=bangumiid,
-                anilistid=anilistid,
-                source=media_source,
-                mediaid=media_id,
-                mtype=mtype,
-                episode_group=episode_group,
-            )
+            if mtype == MediaType.MUSIC and media_source and media_id:
+                mediainfo = MusicChain().recognize(
+                    source=media_source,
+                    media_id=media_id,
+                )
+            else:
+                mediainfo = MediaChain().recognize_media(
+                    tmdbid=tmdbid,
+                    doubanid=doubanid,
+                    bangumiid=bangumiid,
+                    anilistid=anilistid,
+                    source=media_source,
+                    mediaid=media_id,
+                    mtype=mtype,
+                    episode_group=episode_group,
+                )
             if not mediainfo:
                 return (
                     False,
@@ -3949,10 +4082,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     f"type: {mtype.value if mtype else None}",
                 )
             else:
-                if media_source:
+                if media_source and not isinstance(mediainfo, MusicInfo):
                     mediainfo.scrape_source = media_source
-                # 更新媒体图片
-                self.obtain_images(mediainfo=mediainfo)
+                if not isinstance(mediainfo, MusicInfo):
+                    self.obtain_images(mediainfo=mediainfo)
 
             # 开始整理
             state, errmsg = self.do_transfer(
@@ -3960,6 +4093,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 target_storage=target_storage,
                 target_path=target_path,
                 mediainfo=mediainfo,
+                mtype=mtype,
                 media_source=media_source,
                 transfer_type=transfer_type,
                 season=season,
@@ -3990,6 +4124,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 target_storage=target_storage,
                 target_path=target_path,
                 media_source=media_source,
+                mtype=mtype,
                 transfer_type=transfer_type,
                 season=season,
                 epformat=epformat,

@@ -61,6 +61,20 @@ async def bangumi_calendar(
 
 
 @router.get(
+    "/music_weekly",
+    summary="ListenBrainz 本周热门音乐",
+    response_model=List[schemas.MusicInfo],
+)
+async def music_weekly(
+    page: Optional[int] = 1,
+    count: Optional[int] = 30,
+    _: schemas.TokenPayload = Depends(verify_token),
+) -> Any:
+    """浏览本周全站热门音乐。"""
+    return await RecommendChain().async_music_weekly(page=page, count=count)
+
+
+@router.get(
     "/douban_showing", summary="豆瓣正在热映", response_model=List[schemas.MediaInfo]
 )
 async def douban_showing(

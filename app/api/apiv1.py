@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import anilist, auth, login, user, webhook, message, agent, site, subscribe, \
+from app.api.endpoints import anilist, auth, login, user, webhook, message, agent, site, subscribe, music, \
     media, douban, search, plugin, tmdb, history, system, download, dashboard, \
     transfer, mediaserver, bangumi, storage, discover, recommend, workflow, torrent, mcp, mfa, openai, anthropic, llm, notification
 
@@ -14,6 +14,7 @@ api_router.include_router(message.router, prefix="/message", tags=["message"])
 api_router.include_router(agent.router, prefix="/message/agent", tags=["agent"])
 api_router.include_router(webhook.router, prefix="/webhook", tags=["webhook"])
 api_router.include_router(subscribe.router, prefix="/subscribe", tags=["subscribe"])
+api_router.include_router(music.router, prefix="/music", tags=["music"])
 api_router.include_router(media.router, prefix="/media", tags=["media"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(douban.router, prefix="/douban", tags=["douban"])

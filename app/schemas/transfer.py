@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
 from app.schemas.context import MetaInfo, MediaInfo
+from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.file import FileItem
 from app.schemas.history import DownloadHistory
 from app.schemas.system import TransferDirectoryConf
@@ -96,7 +97,7 @@ class TransferJobTask(BaseModel):
     文件整理作业任务
     """
     fileitem: Optional[FileItem] = None
-    meta: Optional[MetaInfo] = None
+    meta: Optional[Union[MusicMeta, MetaInfo]] = None
     state: Optional[str] = None
     downloader: Optional[str] = None
     download_hash: Optional[str] = None
@@ -106,7 +107,7 @@ class TransferJob(BaseModel):
     """
     文件整理作业
     """
-    media: Optional[MediaInfo] = None
+    media: Optional[Union[MusicInfo, MediaInfo]] = None
     season: Optional[int] = None
     tasks: Optional[List[TransferJobTask]] = Field(default_factory=list)
 

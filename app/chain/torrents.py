@@ -7,8 +7,10 @@ from app.helper.sites import SitesHelper  # noqa
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
 from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.music import MusicInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -400,36 +402,44 @@ class TorrentsChain(ChainBase):
         logger.info(f'异步种子缓存数据清理完成')
 
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
-               page: Optional[int] = 0) -> List[TorrentInfo]:
+               page: Optional[int] = 0,
+               mtype: Optional[MediaType] = None) -> List[TorrentInfo]:
         """
         浏览站点首页内容，返回种子清单，TTL缓存5分钟
         :param domain: 站点域名
         :param keyword: 搜索标题
         :param cat: 搜索分类
         :param page: 页码
+        :param mtype: 媒体类型
         """
         logger.info(f'开始获取站点 {domain} 最新种子 ...')
         site = SitesHelper().get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        return self.refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
+        return self.refresh_torrents(
+            site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
+        )
 
     async def async_browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
-                           page: Optional[int] = 0) -> List[TorrentInfo]:
+                           page: Optional[int] = 0,
+                           mtype: Optional[MediaType] = None) -> List[TorrentInfo]:
         """
         异步浏览站点首页内容，返回种子清单，TTL缓存5分钟
         :param domain: 站点域名
         :param keyword: 搜索标题
         :param cat: 搜索分类
         :param page: 页码
+        :param mtype: 媒体类型
         """
         logger.info(f'开始获取站点 {domain} 最新种子 ...')
         site = await SitesHelper().async_get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        return await self.async_refresh_torrents(site=site, keyword=keyword, cat=cat, page=page)
+        return await self.async_refresh_torrents(
+            site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
+        )
 
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
@@ -593,29 +603,37 @@ class TorrentsChain(ChainBase):
                             logger.warn(f"缺少种子链接，忽略处理: {torrent.title}")
                             continue
                         logger.info(f'处理资源：{torrent.title} ...')
-                        # 识别
-                        meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-                        if torrent.title != meta.org_string:
-                            logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
-                        # 使用站点种子分类，校正类型识别
-                        if meta.type != MediaType.TV \
-                                and torrent.category == MediaType.TV.value:
-                            meta.type = MediaType.TV
-                        # 识别媒体信息
-                        mediainfo: MediaInfo = MediaChain().recognize_by_meta(
-                            meta,
-                            obtain_images=False,
-                        )
-                        if not mediainfo:
-                            logger.warn(f'{torrent.title} 未识别到媒体信息')
-                            # 存储空的媒体信息
-                            mediainfo = MediaInfo()
-                        # 清理多余数据，减少内存占用
-                        mediainfo.clear()
-                        candidate_recognized = bool(
-                            mediainfo and all(resolve_media_identity(media=mediainfo))
-                        )
-                        match_source = self._get_media_id_match_source(mediainfo)
+                        if torrent.category == MediaType.MUSIC.value:
+                            meta = MusicChain.parse_query(torrent.title)
+                            mediainfo = MusicInfo(
+                                title=meta.title,
+                                artists=list(meta.artists),
+                                album=meta.album,
+                                year=meta.year,
+                                names=[meta.title] if meta.title else [],
+                            )
+                            candidate_recognized = False
+                            match_source = "unknown"
+                        else:
+                            meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+                            if torrent.title != meta.org_string:
+                                logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
+                            # 使用站点种子分类，校正类型识别
+                            if meta.type != MediaType.TV \
+                                    and torrent.category == MediaType.TV.value:
+                                meta.type = MediaType.TV
+                            mediainfo = MediaChain().recognize_by_meta(
+                                meta,
+                                obtain_images=False,
+                            )
+                            if not mediainfo:
+                                logger.warn(f'{torrent.title} 未识别到媒体信息')
+                                mediainfo = MediaInfo()
+                            mediainfo.clear()
+                            candidate_recognized = bool(
+                                mediainfo and all(resolve_media_identity(media=mediainfo))
+                            )
+                            match_source = self._get_media_id_match_source(mediainfo)
                         # 上下文
                         context = Context(
                             meta_info=meta,
@@ -698,13 +716,13 @@ class TorrentsChain(ChainBase):
         """
         返回候选自身识别命中的明确媒体 ID 类型。
         """
-        if mediainfo and mediainfo.tmdb_id:
+        if mediainfo and getattr(mediainfo, "tmdb_id", None):
             return "tmdbid"
-        if mediainfo and mediainfo.douban_id:
+        if mediainfo and getattr(mediainfo, "douban_id", None):
             return "doubanid"
-        if mediainfo and mediainfo.bangumi_id:
+        if mediainfo and getattr(mediainfo, "bangumi_id", None):
             return "bangumiid"
-        if mediainfo and mediainfo.anilist_id:
+        if mediainfo and getattr(mediainfo, "anilist_id", None):
             return "anilistid"
         if mediainfo and all(resolve_media_identity(media=mediainfo)):
             return "plugin"

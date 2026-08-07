@@ -55,6 +55,7 @@ FRONTEND_TAG_API = (
 RESOURCES_MAIN_ZIP = (
     "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip"
 )
+RESOURCE_VERSION_FLAG = "v3"
 LLM_PROVIDER_DEFAULTS = {
     "deepseek": {
         "model": "deepseek-chat",
@@ -998,7 +999,7 @@ def install_frontend(frontend_version: str, node_version: str) -> dict[str, str]
 
 
 def local_resource_status() -> bool:
-    return (HELPER_DIR / "user.sites.v2.bin").exists() and bool(
+    return (HELPER_DIR / f"user.sites.{RESOURCE_VERSION_FLAG}.bin").exists() and bool(
         list(HELPER_DIR.glob("sites*"))
     )
 
@@ -1045,14 +1046,17 @@ def _get_python_version_tag() -> str:
 
 
 def _filter_resources_files(
-    source_dir: Path, platform_tag: str, python_version: str
+    source_dir: Path,
+    platform_tag: str,
+    python_version: str,
 ) -> list[Path]:
+    """筛选 V3 资源中与当前 Python 平台匹配的运行文件。"""
     matched_files: list[Path] = []
     for file in source_dir.iterdir():
         if not file.is_file():
             continue
         filename = file.name
-        if filename == "user.sites.v2.bin":
+        if filename == f"user.sites.{RESOURCE_VERSION_FLAG}.bin":
             matched_files.append(file)
             continue
         if not filename.startswith("sites."):
@@ -1083,9 +1087,13 @@ def _download_resources_dir() -> Path:
         print_step("下载资源包")
         download_file(RESOURCES_MAIN_ZIP, archive_path)
         extract_archive(archive_path, extract_dir)
-        source_dir = extract_dir / "MoviePilot-Resources-main" / "resources.v2"
+        source_dir = (
+            extract_dir
+            / "MoviePilot-Resources-main"
+            / f"resources.{RESOURCE_VERSION_FLAG}"
+        )
         if not source_dir.exists():
-            raise RuntimeError("资源压缩包中未找到 resources.v2 目录")
+            raise RuntimeError(f"资源压缩包中未找到 resources.{RESOURCE_VERSION_FLAG} 目录")
 
         platform_name, machine = _get_platform_tag()
         python_version = _get_python_version_tag()
@@ -1094,7 +1102,9 @@ def _download_resources_dir() -> Path:
         )
 
         matched_files = _filter_resources_files(
-            source_dir, platform_name, python_version
+            source_dir,
+            platform_name,
+            python_version,
         )
         if not matched_files:
             raise RuntimeError(
@@ -1107,7 +1117,7 @@ def _download_resources_dir() -> Path:
             target = staging_dir / file.name
             shutil.copy2(file, target)
 
-        persisted = TEMP_DIR / "resources.v2"
+        persisted = TEMP_DIR / f"resources.{RESOURCE_VERSION_FLAG}"
         _remove_path(persisted)
         shutil.copytree(staging_dir, persisted)
         print_step(f"已筛选对应平台的资源文件，共 {len(matched_files)} 个")
@@ -1126,15 +1136,14 @@ def _resolve_local_resource_dir(
     if resources_repo:
         repo_dir = resources_repo.expanduser().resolve()
         candidates = [
-            repo_dir / "resources.v2",
-            repo_dir / "resources" / "resources.v2",
-            repo_dir / "resources" / "v2",
-            repo_dir / "resources.v2",
+            repo_dir / "resources.v3",
+            repo_dir / "resources" / "resources.v3",
+            repo_dir / "resources" / "v3",
         ]
         for candidate in candidates:
             if candidate.is_dir():
                 return candidate
-        raise FileNotFoundError(f"未在 {repo_dir} 下找到 resources.v2 目录")
+        raise FileNotFoundError(f"未在 {repo_dir} 下找到 resources.v3 目录")
     return None
 
 
@@ -3728,7 +3737,7 @@ def build_parser() -> argparse.ArgumentParser:
     resources_parser.add_argument(
         "--resources-repo", help="本地 MoviePilot-Resources 仓库路径"
     )
-    resources_parser.add_argument("--resource-dir", help="直接指定 resources.v2 目录")
+    resources_parser.add_argument("--resource-dir", help="直接指定 resources.v3 目录")
     resources_parser.add_argument(
         "--config-dir", help="配置目录，默认使用程序目录外的系统配置目录"
     )
@@ -3737,7 +3746,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--resources-repo", help="本地 MoviePilot-Resources 仓库路径"
     )
-    init_parser.add_argument("--resource-dir", help="直接指定 resources.v2 目录")
+    init_parser.add_argument("--resource-dir", help="直接指定 resources.v3 目录")
     init_parser.add_argument(
         "--skip-resources", action="store_true", help="只初始化配置，不同步资源文件"
     )
@@ -3774,7 +3783,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--resources-repo", help="本地 MoviePilot-Resources 仓库路径"
     )
-    setup_parser.add_argument("--resource-dir", help="直接指定 resources.v2 目录")
+    setup_parser.add_argument("--resource-dir", help="直接指定 resources.v3 目录")
     setup_parser.add_argument(
         "--skip-resources", action="store_true", help="只初始化配置，不同步资源文件"
     )

@@ -475,6 +475,7 @@ async def search_by_id(
 async def search_by_title_stream(
     request: Request,
     keyword: Optional[str] = None,
+    mtype: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_resource_token),
@@ -484,7 +485,11 @@ async def search_by_title_stream(
     """
 
     event_source = SearchChain().async_search_by_title_stream(
-        title=keyword, page=page, sites=_parse_site_list(sites), cache_local=True
+        title=keyword,
+        page=page,
+        sites=_parse_site_list(sites),
+        cache_local=True,
+        mtype=_parse_media_type(mtype),
     )
     return StreamingResponse(
         _stream_search_events(request, event_source),
@@ -496,6 +501,7 @@ async def search_by_title_stream(
 @router.get("/title", summary="模糊搜索资源", response_model=schemas.Response)
 async def search_by_title(
     keyword: Optional[str] = None,
+    mtype: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_token),
@@ -504,7 +510,11 @@ async def search_by_title(
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
     """
     torrents = await SearchChain().async_search_by_title(
-        title=keyword, page=page, sites=_parse_site_list(sites), cache_local=True
+        title=keyword,
+        page=page,
+        sites=_parse_site_list(sites),
+        cache_local=True,
+        mtype=_parse_media_type(mtype),
     )
     if not torrents:
         return schemas.Response(success=False, message="未搜索到任何资源")

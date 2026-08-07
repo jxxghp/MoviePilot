@@ -175,14 +175,27 @@ AniList endpoints prefer the `anilist-chinese` proxy and fall back to official A
 | GET | `/api/v1/anilist/person/{person_id}` | Staff detail |
 | GET | `/api/v1/anilist/person/credits/{person_id}` | Staff anime credits. Params: `page`, `count` |
 
+### Music (3 endpoints)
+
+Music uses the independent `MusicMeta` / `MusicInfo` contract and a
+`musicbrainz:<recording_mbid>` identity. MoviePilot searches, recognizes,
+subscribes to, downloads, and organizes music; it does not manage a music
+library, playlists, or an artist library.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/music/search` | Search tracks, albums, or artists. Params: `query`, `count` |
+| POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `source`, `media_id` |
+| GET | `/api/v1/music/explore` | Explore the monthly site-wide music chart. Params: `page`, `count` |
+
 ### Search / Torrents / Subtitles (11 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/search/media/{mediaid}` | Search torrents by media ID (four built-in prefixes or a plugin-defined source prefix). Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
+| GET | `/api/v1/search/media/{mediaid}` | Search torrents by media ID (video prefixes, `musicbrainz:<recording_mbid>`, or a plugin-defined source prefix). Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
 | GET | `/api/v1/search/media/{mediaid}/stream` | Stream torrent search by media ID with SSE. Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
-| GET | `/api/v1/search/title` | Fuzzy search torrents by keyword. Params: `keyword`, `page`, `sites` |
-| GET | `/api/v1/search/title/stream` | Stream fuzzy torrent search with SSE. Params: `keyword`, `page`, `sites` |
+| GET | `/api/v1/search/title` | Fuzzy search torrents by keyword. Params: `keyword`, `page`, `sites`, optional `mtype=音乐` |
+| GET | `/api/v1/search/title/stream` | Stream fuzzy torrent search with SSE. Params: `keyword`, `page`, `sites`, optional `mtype=音乐` |
 | GET | `/api/v1/search/subtitle/title` | Fuzzy search site subtitles by keyword. Params: `keyword`, `page`, `sites` |
 | GET | `/api/v1/search/subtitle/title/stream` | Stream fuzzy site subtitle search with SSE. Params: `keyword`, `page`, `sites` |
 | GET | `/api/v1/search/subtitle/media/{mediaid}` | Exact subtitle search by media ID (four built-in prefixes or a plugin-defined source prefix). Params: `mtype`, `title`, `year`, `season`, `episode`, `sites` |
@@ -437,12 +450,13 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/discover/tmdb_movies` | Discover TMDB movies. Params: `sort_by`, `with_genres`, `with_original_language`, `page` |
 | GET | `/api/v1/discover/tmdb_tvs` | Discover TMDB TV. Params: same as movies |
 
-### Recommend (14 endpoints)
+### Recommend (15 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/recommend/source` | Recommendation data sources |
 | GET | `/api/v1/recommend/bangumi_calendar` | Bangumi daily schedule. Params: `page`, `count` |
+| GET | `/api/v1/recommend/music_weekly` | ListenBrainz weekly site-wide music chart. Params: `page`, `count` |
 | GET | `/api/v1/recommend/douban_showing` | Douban now showing. Params: `page`, `count` |
 | GET | `/api/v1/recommend/douban_movies` | Douban movies. Params: `sort`, `tags`, `page`, `count` |
 | GET | `/api/v1/recommend/douban_tvs` | Douban TV. Params: `sort`, `tags`, `page`, `count` |

@@ -406,6 +406,13 @@ class ConfigModel(BaseModel):
         "/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}"
         "{{fileExt}}"
     )
+    # 音乐重命名格式
+    MUSIC_RENAME_FORMAT: str = (
+        "{{album_artist or artist or 'Unknown Artist'}}"
+        "/{{album or 'Unknown Album'}}{% if year %} ({{year}}){% endif %}"
+        "{% if total_discs and total_discs > 1 %}/Disc {{disc_number or 1}}{% endif %}"
+        "/{% if track %}{{track}} - {% endif %}{{title}}{{fileExt}}"
+    )
     # 重命名时支持的S0别名
     RENAME_FORMAT_S0_NAMES: list = Field(default=["Specials", "SPs"])
     # 为指定默认字幕添加.default后缀
@@ -901,7 +908,12 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         版本标识，用来区分重大版本，为空则为v1，不允许外部修改
         """
-        return "v2"
+        return "v3"
+
+    @property
+    def RESOURCE_VERSION_FLAG(self) -> str:
+        """返回站点索引和认证资源使用的重大版本标识。"""
+        return "v3"
 
     @property
     def USER_AGENT(self) -> str:
@@ -1137,14 +1149,15 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         获取指定类型的重命名格式
 
-        :param media_type: MediaType.TV 或 MediaType.Movie
+        :param media_type: 电影、电视剧或音乐媒体类型
         :return: 重命名格式
         """
-        rename_format = (
-            self.TV_RENAME_FORMAT
-            if media_type == MediaType.TV
-            else self.MOVIE_RENAME_FORMAT
-        )
+        if media_type == MediaType.TV:
+            rename_format = self.TV_RENAME_FORMAT
+        elif media_type == MediaType.MUSIC:
+            rename_format = self.MUSIC_RENAME_FORMAT
+        else:
+            rename_format = self.MOVIE_RENAME_FORMAT
         # 规范重命名格式
         rename_format = rename_format.replace("\\", "/")
         rename_format = re.sub(r"/+", "/", rename_format)

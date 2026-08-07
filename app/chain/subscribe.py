@@ -12,6 +12,7 @@ from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
+from app.chain.music import MusicChain
 from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
@@ -21,6 +22,7 @@ from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.meta.words import WordsMatcher
 from app.core.metainfo import MetaInfo
+from app.core.music import MusicInfo, MusicMeta
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
@@ -53,10 +55,17 @@ from app.utils.media import (
 subscribe_interaction_manager = SlashInteractionManager()
 
 
-def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
+def build_subscribe_meta(subscribe: Subscribe) -> Union[MetaBase, MusicMeta]:
     """
-    按订阅对象构造主程序链路共用的 MetaInfo。
+    按订阅对象构造主程序链路共用的媒体元数据。
     """
+    if subscribe.type == MediaType.MUSIC.value:
+        return MusicMeta(
+            title=subscribe.name,
+            year=subscribe.year,
+            media_source=subscribe.media_source,
+            media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
+        )
     meta = MetaInfo(subscribe.name)
     meta.year = subscribe.year
     meta.begin_season = subscribe.season
@@ -842,7 +851,7 @@ class SubscribeChain(ChainBase):
         :param key: 配置键
         :return: 配置值
         """
-        return {
+        defaults = {
             'quality': self.__get_default_subscribe_config(mtype, "quality") if not kwargs.get(
                 "quality") else kwargs.get("quality"),
             'resolution': self.__get_default_subscribe_config(mtype, "resolution") if not kwargs.get(
@@ -868,6 +877,14 @@ class SubscribeChain(ChainBase):
             'filter_groups': self.__get_default_subscribe_config(mtype, "filter_groups") if not kwargs.get(
                 "filter_groups") else kwargs.get("filter_groups")
         }
+        if mtype == MediaType.MUSIC:
+            # 音乐订阅当前只负责首次获取，不复用影视洗版和 IMDB 搜索语义。
+            defaults.update({
+                "best_version": 0,
+                "best_version_full": 0,
+                "search_imdbid": 0,
+            })
+        return defaults
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -894,7 +911,7 @@ class SubscribeChain(ChainBase):
         logger.info(f'开始添加订阅，标题：{title} ...')
 
         mediainfo = None
-        metainfo = MetaInfo(title)
+        metainfo = MusicChain.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
         if year:
             metainfo.year = year
         if mtype:
@@ -914,7 +931,16 @@ class SubscribeChain(ChainBase):
         )
         if resolved_source and resolved_media_id:
             media_source, media_id = resolved_source, resolved_media_id
-        if any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
+        if mtype == MediaType.MUSIC:
+            if media_source and media_id:
+                mediainfo = MusicChain().recognize(
+                    source=media_source,
+                    media_id=str(media_id),
+                )
+            if not mediainfo:
+                music_candidates = MusicChain().search(title, limit=1)
+                mediainfo = music_candidates[0] if music_candidates else None
+        elif any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
             mediainfo = self.recognize_media(
                 meta=metainfo,
                 mtype=mtype,
@@ -930,14 +956,14 @@ class SubscribeChain(ChainBase):
         elif mediaid:
             mediainfo = self.__get_event_media(mediaid, metainfo)
 
-        if mediainfo and mediainfo.source != "themoviedb":
+        if mtype != MediaType.MUSIC and mediainfo and mediainfo.source != "themoviedb":
             meta = MetaInfo(mediainfo.title)
             mediainfo.title = meta.name
             if season is None:
                 season = meta.begin_season
 
         # 明确来源时只允许在同一来源内按名称兜底，不能切换主识别源。
-        if not mediainfo:
+        if not mediainfo and mtype != MediaType.MUSIC:
             mediainfo = MediaChain().recognize_by_meta(
                 metainfo,
                 source=media_source,
@@ -994,13 +1020,14 @@ class SubscribeChain(ChainBase):
             season = None
 
         # 更新媒体图片
-        self.obtain_images(mediainfo=mediainfo)
+        if mediainfo.type != MediaType.MUSIC:
+            self.obtain_images(mediainfo=mediainfo)
         # 合并信息
-        if doubanid:
+        if doubanid and mediainfo.type != MediaType.MUSIC:
             mediainfo.douban_id = doubanid
-        if bangumiid:
+        if bangumiid and mediainfo.type != MediaType.MUSIC:
             mediainfo.bangumi_id = bangumiid
-        if anilistid:
+        if anilistid and mediainfo.type != MediaType.MUSIC:
             mediainfo.anilist_id = anilistid
 
         media_source, media_id = resolve_media_identity(
@@ -1029,6 +1056,8 @@ class SubscribeChain(ChainBase):
         elif message:
             if mediainfo.type == MediaType.TV:
                 link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            elif mediainfo.type == MediaType.MUSIC:
+                link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
             else:
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
@@ -1100,7 +1129,7 @@ class SubscribeChain(ChainBase):
         logger.info(f'开始添加订阅，标题：{title} ...')
 
         mediainfo = None
-        metainfo = MetaInfo(title)
+        metainfo = MusicChain.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
         if year:
             metainfo.year = year
         if mtype:
@@ -1120,7 +1149,16 @@ class SubscribeChain(ChainBase):
         )
         if resolved_source and resolved_media_id:
             media_source, media_id = resolved_source, resolved_media_id
-        if any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
+        if mtype == MediaType.MUSIC:
+            if media_source and media_id:
+                mediainfo = await MusicChain().async_recognize(
+                    source=media_source,
+                    media_id=str(media_id),
+                )
+            if not mediainfo:
+                music_candidates = await MusicChain().async_search(title, limit=1)
+                mediainfo = music_candidates[0] if music_candidates else None
+        elif any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
             mediainfo = await self.async_recognize_media(
                 meta=metainfo,
                 mtype=mtype,
@@ -1136,14 +1174,14 @@ class SubscribeChain(ChainBase):
         elif mediaid:
             mediainfo = await self.__async_get_event_meida(mediaid, metainfo)
 
-        if mediainfo and mediainfo.source != "themoviedb":
+        if mtype != MediaType.MUSIC and mediainfo and mediainfo.source != "themoviedb":
             meta = MetaInfo(mediainfo.title)
             mediainfo.title = meta.name
             if season is None:
                 season = meta.begin_season
 
         # 明确来源时只允许在同一来源内按名称兜底，不能切换主识别源。
-        if not mediainfo:
+        if not mediainfo and mtype != MediaType.MUSIC:
             mediainfo = await MediaChain().async_recognize_by_meta(
                 metainfo,
                 source=media_source,
@@ -1200,13 +1238,14 @@ class SubscribeChain(ChainBase):
             season = None
 
         # 更新媒体图片
-        await self.async_obtain_images(mediainfo=mediainfo)
+        if mediainfo.type != MediaType.MUSIC:
+            await self.async_obtain_images(mediainfo=mediainfo)
         # 合并信息
-        if doubanid:
+        if doubanid and mediainfo.type != MediaType.MUSIC:
             mediainfo.douban_id = doubanid
-        if bangumiid:
+        if bangumiid and mediainfo.type != MediaType.MUSIC:
             mediainfo.bangumi_id = bangumiid
-        if anilistid:
+        if anilistid and mediainfo.type != MediaType.MUSIC:
             mediainfo.anilist_id = anilistid
 
         media_source, media_id = resolve_media_identity(
@@ -1235,6 +1274,8 @@ class SubscribeChain(ChainBase):
         elif message:
             if mediainfo.type == MediaType.TV:
                 link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            elif mediainfo.type == MediaType.MUSIC:
+                link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
             else:
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
@@ -1299,6 +1340,105 @@ class SubscribeChain(ChainBase):
         ):
             return True
         return False
+
+    @staticmethod
+    def _recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
+        """按订阅身份恢复音乐目标，缺少身份时按标题查询首个候选。"""
+        musicchain = MusicChain()
+        if subscribe.media_source and subscribe.media_id:
+            mediainfo = musicchain.recognize(
+                source=subscribe.media_source,
+                media_id=str(subscribe.media_id),
+            )
+            if mediainfo:
+                return mediainfo
+        candidates = musicchain.search(subscribe.name, limit=1)
+        return candidates[0] if candidates else None
+
+    @staticmethod
+    async def _async_recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
+        """异步按订阅身份恢复音乐目标，缺少身份时按标题查询首个候选。"""
+        musicchain = MusicChain()
+        if subscribe.media_source and subscribe.media_id:
+            mediainfo = await musicchain.async_recognize(
+                source=subscribe.media_source,
+                media_id=str(subscribe.media_id),
+            )
+            if mediainfo:
+                return mediainfo
+        candidates = await musicchain.async_search(subscribe.name, limit=1)
+        return candidates[0] if candidates else None
+
+    def _search_music_subscribe(self, subscribe: Subscribe) -> None:
+        """复用站点标题搜索、订阅过滤和批量下载完成单个音乐订阅。"""
+        mediainfo = self._recognize_music_subscribe(subscribe)
+        if not mediainfo:
+            logger.warning(
+                f"未识别到音乐订阅目标：{subscribe.name}，"
+                f"媒体源：{subscribe.media_source}，媒体ID：{subscribe.media_id}"
+            )
+            return
+
+        sites = self.get_sub_sites(subscribe)
+        rule_groups = subscribe.filter_groups \
+                      or SystemConfigOper().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+        keywords = [subscribe.keyword] if subscribe.keyword else MusicChain.build_site_keywords(mediainfo)
+        if not keywords:
+            keywords = [subscribe.name]
+
+        searchchain = SearchChain()
+        contexts: List[Context] = []
+        for keyword in keywords:
+            contexts = searchchain.search_by_title(
+                title=keyword,
+                sites=sites,
+                mtype=MediaType.MUSIC,
+                rule_groups=rule_groups,
+            )
+            contexts = [
+                context
+                for context in contexts
+                if context.torrent_info
+                and context.torrent_info.category in (MediaType.MUSIC, MediaType.MUSIC.value)
+                and TorrentHelper().filter_torrent(
+                    context.torrent_info,
+                    self.get_params(subscribe),
+                )
+            ]
+            if contexts:
+                break
+
+        if not contexts:
+            logger.warning(f"音乐订阅 {subscribe.keyword or subscribe.name} 未搜索到符合条件的资源")
+            return
+
+        for context in contexts:
+            meta = MusicChain.to_meta(mediainfo)
+            meta.org_string = context.torrent_info.title
+            context.meta_info = meta
+            context.media_info = mediainfo
+            context.match_source = mediainfo.source or "title"
+            context.candidate_recognized = False
+            context.media_info_is_target = True
+            if subscribe.media_category:
+                context.media_info.category = subscribe.media_category
+
+        downloads, _ = DownloadChain().batch_download(
+            contexts=contexts,
+            username=subscribe.username,
+            save_path=subscribe.save_path,
+            downloader=subscribe.downloader,
+            source=self.get_subscribe_source_keyword(subscribe),
+            custom_words=subscribe.custom_words,
+        )
+        current_subscribe = SubscribeOper().get(subscribe.id)
+        if current_subscribe:
+            self.finish_subscribe_or_not(
+                subscribe=current_subscribe,
+                meta=MusicChain.to_meta(mediainfo),
+                mediainfo=mediainfo,
+                downloads=downloads,
+            )
 
     def search(
             self,
@@ -1375,6 +1515,9 @@ class SubscribeChain(ChainBase):
                     try:
                         search_attempted = True
                         logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
+                        if subscribe.type == MediaType.MUSIC.value:
+                            self._search_music_subscribe(subscribe)
+                            continue
                         try:
                             meta = build_subscribe_meta(subscribe)
                         except ValueError:
@@ -1603,7 +1746,7 @@ class SubscribeChain(ChainBase):
                     scene="download",
                 )
             if ((no_lefts and meta.type == MediaType.TV)
-                    or (downloads and meta.type == MediaType.MOVIE)
+                    or (downloads and meta.type in (MediaType.MOVIE, MediaType.MUSIC))
                     or force):
                 self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
             else:
@@ -1816,6 +1959,10 @@ class SubscribeChain(ChainBase):
                             },
                         )
                     logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
+                    if subscribe.type == MediaType.MUSIC.value:
+                        # 音乐不参与影视预识别缓存，直接复用音乐订阅搜索链处理。
+                        self._search_music_subscribe(subscribe)
+                        continue
                     mediakey = _subscribe_media_key(subscribe)
                     try:
                         meta = build_subscribe_meta(subscribe)
@@ -2145,19 +2292,23 @@ class SubscribeChain(ChainBase):
                 logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                 continue
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(
-                meta=meta,
-                mtype=meta.type,
-                **_subscribe_recognize_kwargs(subscribe),
-                episode_group=subscribe.episode_group,
-                cache=False,
-            )
+            if meta.type == MediaType.MUSIC:
+                mediainfo = self._recognize_music_subscribe(subscribe)
+            else:
+                mediainfo: MediaInfo = self.recognize_media(
+                    meta=meta,
+                    mtype=meta.type,
+                    **_subscribe_recognize_kwargs(subscribe),
+                    episode_group=subscribe.episode_group,
+                    cache=False,
+                )
             if not mediainfo:
                 logger.warn(
                     f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
                 continue
             # 对于电视剧，获取当前季的总集数
-            episodes = mediainfo.seasons.get(subscribe.season) or []
+            episodes = (mediainfo.seasons.get(subscribe.season) or []) \
+                if meta.type == MediaType.TV else []
             progress_update = {}
             if subscribe.type == MediaType.TV.value and not subscribe.manual_total_episode and len(episodes):
                 current_total_episode = len(episodes)
@@ -2400,12 +2551,15 @@ class SubscribeChain(ChainBase):
                 logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                 continue
             # 先按订阅的主媒体身份预热对应数据源，再对 TMDB 额外预热分集接口。
-            mediainfo: MediaInfo = await self.async_recognize_media(
-                mtype=mtype,
-                **_subscribe_recognize_kwargs(subscribe),
-                episode_group=subscribe.episode_group,
-                cache=False,
-            )
+            if mtype == MediaType.MUSIC:
+                mediainfo = await self._async_recognize_music_subscribe(subscribe)
+            else:
+                mediainfo: MediaInfo = await self.async_recognize_media(
+                    mtype=mtype,
+                    **_subscribe_recognize_kwargs(subscribe),
+                    episode_group=subscribe.episode_group,
+                    cache=False,
+                )
             if not mediainfo:
                 logger.warn(
                     f'未识别到媒体信息，标题：{subscribe.name}，'
@@ -2471,6 +2625,9 @@ class SubscribeChain(ChainBase):
             elif mediainfo.type == MediaType.MOVIE:
                 # 电影只有一个条目，设置为 [1]
                 items = [1]
+            elif mediainfo.type == MediaType.MUSIC:
+                # 音乐订阅和电影一样，一次成功下载即记录单项完成事实。
+                items = [1]
             if not items:
                 continue
             # 合并已下载的集数或电影项（去重）
@@ -2504,8 +2661,8 @@ class SubscribeChain(ChainBase):
         if subscribe.type == MediaType.TV.value:
             logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已下载集数：{note}')
             return note
-        # 针对 Movie 类型，直接返回已下载的电影
-        if subscribe.type == MediaType.MOVIE.value:
+        # 针对 Movie/Music 类型，直接返回已下载的单项内容
+        if subscribe.type in (MediaType.MOVIE.value, MediaType.MUSIC.value):
             logger.info(f'订阅 {subscribe.name} 已下载内容：{note}')
             return note
         return []
@@ -2836,6 +2993,8 @@ class SubscribeChain(ChainBase):
         # 发送通知
         if mediainfo.type == MediaType.TV:
             link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+        elif mediainfo.type == MediaType.MUSIC:
+            link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
         else:
             link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
         # 完成订阅按规则发送消息
@@ -3753,6 +3912,9 @@ class SubscribeChain(ChainBase):
             default_subscribe_key = SystemConfigKey.DefaultTvSubscribeConfig.value
         if mtype == MediaType.MOVIE:
             default_subscribe_key = SystemConfigKey.DefaultMovieSubscribeConfig.value
+
+        if not default_subscribe_key:
+            return None
 
         # 默认订阅规则
         if hasattr(settings, default_subscribe_key):

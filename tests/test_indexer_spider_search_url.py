@@ -167,6 +167,78 @@ def test_ttg_title_search_does_not_format_keyword():
     assert query["search_field"] == ["The Movie 分类:电影DVDRip"]
 
 
+def test_music_search_uses_dedicated_path_and_repeated_category_parameter():
+    """
+    音乐分支使用独立页面时应选择 music 路径，并按配置生成可重复的分类参数。
+    """
+    indexer = _build_indexer(
+        id="hhanclub",
+        domain="https://hhanclub.net/",
+        search={
+            "paths": [
+                {"path": "torrents.php", "type": "all"},
+                {"path": "special.php", "type": "music"},
+            ],
+            "params": {"search": "{keyword}"},
+        },
+        category={
+            "param": "cat[]",
+            "music": [
+                {"id": 410, "cat": "Music"},
+                {"id": 411, "cat": "MusicVideo"},
+            ],
+        },
+    )
+
+    parsed_url = urlparse(_get_search_url(indexer, "周杰伦", MediaType.MUSIC))
+    query = parse_qs(parsed_url.query)
+
+    assert parsed_url.path == "/special.php"
+    assert query["cat[]"] == ["410", "411"]
+    assert query["search"] == ["周杰伦"]
+
+
+def test_typed_search_path_falls_back_to_all_path():
+    """
+    站点只为音乐定义专用路径时，影视搜索仍应回退到通用路径。
+    """
+    indexer = _build_indexer(
+        search={
+            "paths": [
+                {"path": "torrents.php", "type": "all"},
+                {"path": "special.php", "type": "music"},
+            ],
+            "params": {"search": "{keyword}"},
+        },
+    )
+
+    parsed_url = urlparse(_get_search_url(indexer, "电影", MediaType.MOVIE))
+
+    assert parsed_url.path == "/torrents.php"
+
+
+def test_category_item_can_use_distinct_search_parameter_value():
+    """
+    DiscuzX 子分类可以用展示分类 ID 解析结果，同时用父分类值构造搜索参数。
+    """
+    indexer = _build_indexer(
+        search={
+            "paths": [{"path": "forum.php?mod=torrents&cat=1"}],
+            "params": {"search": "{keyword}"},
+        },
+        category={
+            "music": [
+                {"id": 20, "value": 1, "param": "cat_1_18", "cat": "Music"},
+                {"id": 21, "value": 1, "param": "cat_1_18", "cat": "Music"},
+            ]
+        },
+    )
+
+    query = parse_qs(urlparse(_get_search_url(indexer, "FLAC", MediaType.MUSIC)).query)
+
+    assert query["cat_1_18"] == ["1", "1"]
+
+
 def test_haidan_empty_keyword_uses_blank_search_value():
     """
     海胆空关键词浏览不能把 Python None 编码进 search 参数。

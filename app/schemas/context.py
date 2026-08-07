@@ -2,6 +2,8 @@ from typing import Optional, Dict, List, Union, Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas.music import MusicInfo, MusicMeta
+
 
 class MetaInfo(BaseModel):
     """
@@ -15,7 +17,7 @@ class MetaInfo(BaseModel):
     title: Optional[str] = None
     # 副标题
     subtitle: Optional[str] = None
-    # 类型 电影、电视剧
+    # 类型 电影、电视剧、音乐
     type: Optional[str] = None
     # 名称
     name: Optional[str] = None
@@ -252,7 +254,7 @@ class TorrentInfo(BaseModel):
     labels: Optional[list] = Field(default_factory=list)
     # 种子优先级
     pri_order: Optional[int] = 0
-    # 种子分类 电影/电视剧
+    # 种子分类 电影/电视剧/音乐
     category: Optional[str] = None
     # 促销
     volume_factor: Optional[str] = None
@@ -319,9 +321,9 @@ class Context(BaseModel):
     上下文
     """
     # 元数据
-    meta_info: Optional[Union[MetaInfo, Any]] = None
+    meta_info: Optional[Union[MusicMeta, MetaInfo, Any]] = None
     # 媒体信息
-    media_info: Optional[Union[MediaInfo, Any]] = None
+    media_info: Optional[Union[MusicInfo, MediaInfo, Any]] = None
     # 种子信息
     torrent_info: Optional[TorrentInfo] = None
     # 候选资源来源：rss、spider、search、unknown

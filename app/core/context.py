@@ -1,11 +1,12 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Any, Tuple, Optional, Set
+from typing import List, Dict, Any, Tuple, Optional, Set, Union
 
 from app.core.config import settings
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
+from app.core.music import MusicInfo, MusicMeta
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
@@ -69,7 +70,7 @@ class TorrentInfo:
     labels: list = field(default_factory=list)
     # 种子优先级
     pri_order: int = 0
-    # 种子分类 电影/电视剧
+    # 种子分类 电影/电视剧/音乐
     category: str = None
 
     def __setattr__(self, name: str, value: Any):
@@ -1141,9 +1142,9 @@ class Context:
     """
 
     # 识别信息
-    meta_info: MetaBase = None
+    meta_info: Optional[Union[MetaBase, MusicMeta]] = None
     # 媒体信息
-    media_info: MediaInfo = None
+    media_info: Optional[Union[MediaInfo, MusicInfo]] = None
     # 种子信息
     torrent_info: TorrentInfo = None
     # 媒体识别失败次数

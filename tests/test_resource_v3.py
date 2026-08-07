@@ -1,0 +1,31 @@
+from pathlib import Path
+
+from app.core.config import settings
+from app.helper.resource import ResourceHelper
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_resource_helper_uses_v3_only():
+    """在线资源更新器必须只请求 V3 清单、目录和站点索引文件。"""
+    assert settings.VERSION_FLAG == "v3"
+    assert settings.RESOURCE_VERSION_FLAG == "v3"
+    assert ResourceHelper._repo.endswith("/package.v3.json")
+    assert ResourceHelper._files_api.endswith("/resources.v3")
+    assert ResourceHelper._get_needed_files()[0] == "user.sites.v3.bin"
+
+
+def test_install_and_docker_paths_do_not_reference_v2_resources():
+    """本地安装和 Docker 资源流程不得包含 V2 资源回退。"""
+    paths = [
+        ROOT_DIR / "scripts" / "local_setup.py",
+        ROOT_DIR / "docker" / "Dockerfile",
+        ROOT_DIR / "docker" / "update.sh",
+    ]
+
+    for path in paths:
+        content = path.read_text(encoding="utf-8")
+        assert "resources.v2" not in content
+        assert "user.sites.v2.bin" not in content
+        assert "resources.v3" in content

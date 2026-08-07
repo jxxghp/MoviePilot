@@ -5,6 +5,7 @@ import pillow_avif  # noqa 用于自动注册AVIF支持
 from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
+from app.chain.music import MusicChain
 from app.chain.tmdb import TmdbChain
 from app.core.cache import cached, fresh
 from app.core.config import settings, global_vars
@@ -55,6 +56,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             self.douban_tv_animation,
             self.douban_movie_hot,
             self.douban_tv_hot,
+            self.music_weekly,
         ]
 
         # 缓存并刷新所有推荐数据
@@ -173,6 +175,17 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                            release_date=release_date,
                                            page=page)
         return [movie.to_dict() for movie in movies] if movies else []
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    def music_weekly(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
+        """返回 ListenBrainz 本周全站热门音乐。"""
+        medias = MusicChain().chart(
+            range_name="this_week",
+            page=page or 1,
+            count=count or 30,
+        )
+        return [media.to_dict() for media in medias]
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
@@ -391,6 +404,17 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         movies = await DoubanChain().async_run_module("async_movie_showing", page=page, count=count)
         return [media.to_dict() for media in movies] if movies else []
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    async def async_music_weekly(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
+        """异步返回 ListenBrainz 本周全站热门音乐。"""
+        medias = await MusicChain().async_chart(
+            range_name="this_week",
+            page=page or 1,
+            count=count or 30,
+        )
+        return [media.to_dict() for media in medias]
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)

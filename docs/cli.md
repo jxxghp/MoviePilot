@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootst
 - 安装后端依赖
 - 按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载对应前端 release 的 `dist.zip`
 - 下载 `MoviePilot-Resources` 主分支资源
-- 将 `resources.v2/*` 同步到后端 [app/helper](/Users/jxxghp/PycharmProjects/MoviePilot/app/helper)
+- 将 `resources.v3/*` 同步到后端 [app/helper](/Users/jxxghp/PycharmProjects/MoviePilot/app/helper)
 - 下载本地 Node 运行时并安装前端运行依赖
 - 执行初始化向导
 - 创建全局 `moviepilot` 命令
@@ -185,14 +185,14 @@ moviepilot install frontend --config-dir /path/to/moviepilot-config
 ```shell
 moviepilot install resources
 moviepilot install resources --resources-repo /path/to/MoviePilot-Resources
-moviepilot install resources --resource-dir /path/to/resources.v2
+moviepilot install resources --resource-dir /path/to/resources.v3
 moviepilot install resources --config-dir /path/to/moviepilot-config
 ```
 
 说明：
 
 - 默认直接从 GitHub 下载 `MoviePilot-Resources` 主分支压缩包
-- 会将 `resources.v2/*` 整体复制到 [app/helper](/Users/jxxghp/PycharmProjects/MoviePilot/app/helper)
+- 会将 `resources.v3/*` 整体复制到 [app/helper](/Users/jxxghp/PycharmProjects/MoviePilot/app/helper)
 - 这一步和 Docker 构建流程保持一致
 
 ## 初始化命令

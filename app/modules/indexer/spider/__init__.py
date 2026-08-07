@@ -18,6 +18,44 @@ from app.utils.string import StringUtils
 from app.utils.url import UrlUtils
 
 
+def select_media_categories(category: Optional[dict], mtype: Optional[MediaType]) -> list[dict]:
+    """根据媒体类型选择站点索引配置中的分类列表。"""
+    if not category:
+        return []
+    if mtype == MediaType.TV:
+        return category.get("tv") or []
+    if mtype == MediaType.MOVIE:
+        return category.get("movie") or []
+    if mtype == MediaType.MUSIC:
+        return category.get("music") or []
+    return (
+        (category.get("movie") or [])
+        + (category.get("tv") or [])
+        + (category.get("music") or [])
+    )
+
+
+def resolve_category_media_type(category_value: Any, category: Optional[dict]) -> MediaType:
+    """将站点分类 ID 映射为统一的电影、电视剧或音乐类型。"""
+    if category_value is None or not category:
+        return MediaType.UNKNOWN
+    category_id = str(category_value)
+    matches = [
+        media_type
+        for media_type, key in (
+            (MediaType.MOVIE, "movie"),
+            (MediaType.TV, "tv"),
+            (MediaType.MUSIC, "music"),
+        )
+        if category_id in {
+            str(item.get("id"))
+            for item in category.get(key) or []
+            if isinstance(item, dict) and item.get("id") is not None
+        }
+    ]
+    return matches[0] if len(matches) == 1 else MediaType.UNKNOWN
+
+
 class SiteSpider:
     """
     站点爬虫
@@ -62,6 +100,7 @@ class SiteSpider:
         self.search_type = search_type or "torrents"
         self.indexerid = indexer.get('id')
         self.indexername = indexer.get('name')
+        self.site_media_type = MediaType.from_agent(indexer.get('media_type'))
         if self.search_type == "subtitles":
             subtitle_conf = indexer.get('subtitles') or {}
             self.search = subtitle_conf.get('search')
@@ -129,16 +168,24 @@ class SiteSpider:
         if len(paths) == 1:
             torrentspath = paths[0].get('path', '')
         else:
+            # 优先使用媒体类型专用路径；没有专用路径时回退到 all，兼容仅为某一类新增分支的站点。
+            fallback_path = ""
+            expected_type = {
+                MediaType.MOVIE: "movie",
+                MediaType.TV: "tv",
+                MediaType.MUSIC: "music",
+            }.get(self.mtype)
             for path in paths:
-                if path.get("type") == "all" and not self.mtype:
-                    torrentspath = path.get('path')
+                path_type = path.get("type")
+                if path_type == "all" and not fallback_path:
+                    fallback_path = path.get('path', '')
+                if (expected_type and path_type == expected_type) or (
+                    not expected_type and path_type == "all"
+                ):
+                    torrentspath = path.get('path', '')
                     break
-                elif path.get("type") == "movie" and self.mtype == MediaType.MOVIE:
-                    torrentspath = path.get('path')
-                    break
-                elif path.get("type") == "tv" and self.mtype == MediaType.TV:
-                    torrentspath = path.get('path')
-                    break
+            if not torrentspath:
+                torrentspath = fallback_path
 
         # 精确搜索
         if self.keyword:
@@ -187,12 +234,7 @@ class SiteSpider:
                     })
                 # 分类条件
                 if self.category:
-                    if self.mtype == MediaType.TV:
-                        cats = self.category.get("tv") or []
-                    elif self.mtype == MediaType.MOVIE:
-                        cats = self.category.get("movie") or []
-                    else:
-                        cats = (self.category.get("movie") or []) + (self.category.get("tv") or [])
+                    cats = select_media_categories(self.category, self.mtype)
                     allowed_cats = set(self.cat.split(',')) if self.cat else None
                     for cat in cats:
                         if allowed_cats and str(cat.get('id')) not in allowed_cats:
@@ -204,9 +246,25 @@ class SiteSpider:
                                                                                              ' ') + cat.get("id")
                             })
                         else:
-                            params.update({
-                                "cat%s" % cat.get("id"): 1
-                            })
+                            category_param = cat.get("param") or self.category.get("param")
+                            if category_param:
+                                # 某些站点（例如憨憨）使用重复的 cat[] 参数，字典值列表可由
+                                # UrlUtils.combine_url 以 doseq=True 正确展开。
+                                category_id = cat.get("value", cat.get("id"))
+                                current_value = params.get(category_param)
+                                if current_value is None:
+                                    params[category_param] = category_id
+                                elif isinstance(current_value, list):
+                                    current_value.append(category_id)
+                                else:
+                                    params[category_param] = [current_value, category_id]
+                            else:
+                                params.update({
+                                    "cat%s" % cat.get("id"): 1
+                                })
+                        # 分类项可以附带站点要求的额外开关，例如音乐专用展示模式。
+                        if isinstance(cat, dict) and cat.get("params"):
+                            params.update(cat.get("params"))
                 searchurl = UrlUtils.combine_url(self.domain, torrentspath, params)
             else:
                 # 变量字典
@@ -259,6 +317,8 @@ class SiteSpider:
         """
         开始请求
         """
+        if self.site_media_type and self.mtype and self.site_media_type != self.mtype:
+            return []
         if not self.search or not self.domain:
             return []
 
@@ -288,6 +348,8 @@ class SiteSpider:
         """
         异步请求
         """
+        if self.site_media_type and self.mtype and self.site_media_type != self.mtype:
+            return []
         if not self.search or not self.domain:
             return []
 
@@ -706,24 +768,18 @@ class SiteSpider:
             del hit_and_run
 
     def __get_category(self, torrent: Any):
-        # category 电影/电视剧
+        # category 电影/电视剧/音乐
         if 'category' not in self.fields:
+            if self.site_media_type:
+                self.torrents_info['category'] = self.site_media_type.value
             return
         selector = self.fields.get('category', {})
         category_value = self._safe_query(torrent, selector)
         category_value = self.__filter_text(category_value, selector.get('filters'))
-        if category_value and self.category:
-            tv_cats = [str(cat.get("id")) for cat in self.category.get("tv") or []]
-            movie_cats = [str(cat.get("id")) for cat in self.category.get("movie") or []]
-            if category_value in tv_cats \
-                    and category_value not in movie_cats:
-                self.torrents_info['category'] = MediaType.TV.value
-            elif category_value in movie_cats:
-                self.torrents_info['category'] = MediaType.MOVIE.value
-            else:
-                self.torrents_info['category'] = MediaType.UNKNOWN.value
-        else:
-            self.torrents_info['category'] = MediaType.UNKNOWN.value
+        resolved_type = resolve_category_media_type(category_value, self.category)
+        if resolved_type == MediaType.UNKNOWN and self.site_media_type:
+            resolved_type = self.site_media_type
+        self.torrents_info['category'] = resolved_type.value
 
     def __get_subtitle_field(self, torrent: Any, field_name: str):
         """

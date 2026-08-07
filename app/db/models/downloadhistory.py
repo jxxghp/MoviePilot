@@ -21,7 +21,7 @@ class DownloadHistory(Base):
     id = get_id_column()
     # 保存路径
     path = Column(String, nullable=False, index=True)
-    # 类型 电影/电视剧
+    # 类型 电影/电视剧/音乐
     type = Column(String, nullable=False)
     # 标题
     title = Column(String, nullable=False)

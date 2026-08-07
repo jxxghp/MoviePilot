@@ -173,10 +173,13 @@ async def create_subscribe(
         mtype = None
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
     if (
-            subscribe_in.doubanid
-            or subscribe_in.bangumiid
-            or subscribe_in.anilistid
-            or normalize_media_source(subscribe_in.media_source) not in (None, "themoviedb")
+            mtype != MediaType.MUSIC
+            and (
+                subscribe_in.doubanid
+                or subscribe_in.bangumiid
+                or subscribe_in.anilistid
+                or normalize_media_source(subscribe_in.media_source) not in (None, "themoviedb")
+            )
     ):
         meta = MetaInfo(subscribe_in.name)
         subscribe_in.name = meta.name

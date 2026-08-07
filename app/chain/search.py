@@ -12,9 +12,11 @@ from typing import List, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
+from app.chain.music import MusicChain
 from app.core.config import global_vars, settings
 from app.core.context import Context
 from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo
+from app.core.music import MusicInfo, MusicMeta
 from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
@@ -544,10 +546,16 @@ class SearchChain(ChainBase):
                 season=season,
                 sites=sites,
             )
-        mediainfo = self.recognize_media(
-            source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
-            bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
-        )
+        if mtype == MediaType.MUSIC:
+            mediainfo = MusicChain().recognize(
+                source=source,
+                media_id=str(mediaid) if mediaid is not None else "",
+            )
+        else:
+            mediainfo = self.recognize_media(
+                source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
+                bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+            )
         if not mediainfo:
             logger.error(f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} 媒体信息识别失败！')
             return []
@@ -566,18 +574,23 @@ class SearchChain(ChainBase):
         return results
 
     def search_by_title(self, title: str, page: Optional[int] = 0,
-                        sites: List[int] = None, cache_local: Optional[bool] = False) -> List[Context]:
+                        sites: List[int] = None, cache_local: Optional[bool] = False,
+                        mtype: Optional[MediaType] = None,
+                        rule_groups: Optional[List[str]] = None) -> List[Context]:
         """
         根据标题搜索资源，不识别媒体信息，按默认搜索过滤规则返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
         :param page: 页码
         :param sites: 站点ID列表
         :param cache_local: 是否缓存到本地
+        :param mtype: 限定站点资源分类
+        :param rule_groups: 指定过滤规则组，为空时使用默认搜索过滤规则
         """
         if cache_local:
             self.cancel_ai_recommend()
             self.save_last_search_params(
                 keyword=title,
+                mtype=mtype,
                 area="title",
                 sites=sites,
             )
@@ -586,18 +599,24 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = self.__search_all_sites(keyword=title, sites=sites, page=page) or []
+        search_kwargs = {"keyword": title, "sites": sites, "page": page}
+        if mtype is not None:
+            search_kwargs["mtype"] = mtype
+        torrents = self.__search_all_sites(**search_kwargs) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
-        torrents = self.__filter_title_search_torrents(torrents=torrents)
+        torrents = self.__filter_title_search_torrents(
+            torrents=torrents,
+            rule_groups=rule_groups,
+        )
         if not torrents:
             logger.warn(f'{title} 没有符合过滤规则的资源')
             return []
         # 组装上下文
         contexts = [
             Context(
-                meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                meta_info=self._build_title_search_meta(torrent, mtype),
                 torrent_info=torrent,
                 resource_source="search",
             ) for torrent in torrents
@@ -860,10 +879,16 @@ class SearchChain(ChainBase):
                 season=season,
                 sites=sites,
             )
-        mediainfo = await self.async_recognize_media(
-            source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
-            bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
-        )
+        if mtype == MediaType.MUSIC:
+            mediainfo = await MusicChain().async_recognize(
+                source=source,
+                media_id=str(mediaid) if mediaid is not None else "",
+            )
+        else:
+            mediainfo = await self.async_recognize_media(
+                source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
+                bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+            )
         if not mediainfo:
             logger.error(
                 f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} '
@@ -885,18 +910,23 @@ class SearchChain(ChainBase):
         return results
 
     async def async_search_by_title(self, title: str, page: Optional[int] = 0,
-                                    sites: List[int] = None, cache_local: Optional[bool] = False) -> List[Context]:
+                                    sites: List[int] = None, cache_local: Optional[bool] = False,
+                                    mtype: Optional[MediaType] = None,
+                                    rule_groups: Optional[List[str]] = None) -> List[Context]:
         """
         根据标题异步搜索资源，不识别媒体信息，按默认搜索过滤规则返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
         :param page: 页码
         :param sites: 站点ID列表
         :param cache_local: 是否缓存到本地
+        :param mtype: 限定站点资源分类
+        :param rule_groups: 指定过滤规则组，为空时使用默认搜索过滤规则
         """
         if cache_local:
             self.cancel_ai_recommend()
             await self.async_save_last_search_params(
                 keyword=title,
+                mtype=mtype,
                 area="title",
                 sites=sites,
             )
@@ -905,18 +935,25 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = await self.__async_search_all_sites(keyword=title, sites=sites, page=page) or []
+        search_kwargs = {"keyword": title, "sites": sites, "page": page}
+        if mtype is not None:
+            search_kwargs["mtype"] = mtype
+        torrents = await self.__async_search_all_sites(**search_kwargs) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
-        torrents = await run_in_threadpool(self.__filter_title_search_torrents, torrents=torrents)
+        torrents = await run_in_threadpool(
+            self.__filter_title_search_torrents,
+            torrents=torrents,
+            rule_groups=rule_groups,
+        )
         if not torrents:
             logger.warn(f'{title} 没有符合过滤规则的资源')
             return []
         # 组装上下文
         contexts = [
             Context(
-                meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                meta_info=self._build_title_search_meta(torrent, mtype),
                 torrent_info=torrent,
                 resource_source="search",
             ) for torrent in torrents
@@ -928,7 +965,9 @@ class SearchChain(ChainBase):
 
     async def async_search_by_title_stream(self, title: str, page: Optional[int] = 0,
                                            sites: List[int] = None,
-                                           cache_local: Optional[bool] = False) -> AsyncIterator[dict]:
+                                           cache_local: Optional[bool] = False,
+                                           mtype: Optional[MediaType] = None,
+                                           rule_groups: Optional[List[str]] = None) -> AsyncIterator[dict]:
         """
         根据标题渐进式搜索资源，不识别媒体信息，按默认搜索过滤规则返回结果
         """
@@ -936,6 +975,7 @@ class SearchChain(ChainBase):
             self.cancel_ai_recommend()
             await self.async_save_last_search_params(
                 keyword=title,
+                mtype=mtype,
                 area="title",
                 sites=sites,
             )
@@ -945,8 +985,10 @@ class SearchChain(ChainBase):
             logger.info(f'开始渐进式浏览资源，站点：{sites} ...')
 
         contexts: List[Context] = []
-        rule_groups: List[str] = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
-        async for event in self.__async_search_all_sites_stream(keyword=title, sites=sites, page=page):
+        if rule_groups is None:
+            rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+        async for event in self.__async_search_all_sites_stream(
+                keyword=title, sites=sites, page=page, mtype=mtype):
             result = event.pop("items", []) or []
             result = await run_in_threadpool(
                 self.__filter_title_search_torrents,
@@ -955,7 +997,7 @@ class SearchChain(ChainBase):
             )
             batch_contexts = [
                 Context(
-                    meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                    meta_info=self._build_title_search_meta(torrent, mtype),
                     torrent_info=torrent,
                     resource_source="search",
                 )
@@ -981,6 +1023,19 @@ class SearchChain(ChainBase):
             "items": [context.to_dict() for context in contexts],
             "total_items": len(contexts)
         }
+
+    @staticmethod
+    def _build_title_search_meta(
+            torrent: TorrentInfo,
+            mtype: Optional[MediaType],
+    ) -> Any:
+        """根据限定媒体类型构造模糊搜索结果的上下文元数据。"""
+        if mtype == MediaType.MUSIC:
+            return MusicMeta(
+                org_string=torrent.title,
+                title=torrent.title,
+            )
+        return MetaInfo(title=torrent.title, subtitle=torrent.description)
 
     def __filter_title_search_torrents(self,
                                        torrents: List[TorrentInfo],
@@ -1027,10 +1082,16 @@ class SearchChain(ChainBase):
                 season=season,
                 sites=sites,
             )
-        mediainfo = await self.async_recognize_media(
-            source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
-            bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
-        )
+        if mtype == MediaType.MUSIC:
+            mediainfo = await MusicChain().async_recognize(
+                source=source,
+                media_id=str(mediaid) if mediaid is not None else "",
+            )
+        else:
+            mediainfo = await self.async_recognize_media(
+                source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
+                bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+            )
         if not mediainfo:
             logger.error(
                 f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} '
@@ -1307,6 +1368,115 @@ class SearchChain(ChainBase):
         return list({f"{t.torrent_info.site_name}_{t.torrent_info.title}_{t.torrent_info.description}": t
                      for t in _torrents}.values())
 
+    def _build_music_contexts(
+            self,
+            torrents: List[TorrentInfo],
+            mediainfo: MusicInfo,
+            rule_groups: Optional[List[str]] = None,
+            filter_params: Optional[Dict[str, str]] = None,
+    ) -> List[Context]:
+        """过滤音乐分类资源并组装携带目标音乐身份的下载上下文。"""
+        torrents = [
+            torrent
+            for torrent in torrents
+            if torrent.category in (MediaType.MUSIC, MediaType.MUSIC.value)
+        ]
+        if filter_params:
+            torrenthelper = TorrentHelper()
+            torrents = [
+                torrent
+                for torrent in torrents
+                if torrenthelper.filter_torrent(torrent, filter_params)
+            ]
+        if rule_groups is None:
+            rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+        if rule_groups and torrents:
+            torrents = self.filter_torrents(
+                rule_groups=rule_groups,
+                torrent_list=torrents,
+                mediainfo=mediainfo,
+            ) or []
+
+        contexts = []
+        for torrent in torrents:
+            meta = MusicChain.to_meta(mediainfo)
+            meta.org_string = torrent.title
+            contexts.append(
+                Context(
+                    torrent_info=torrent,
+                    media_info=mediainfo,
+                    meta_info=meta,
+                    resource_source="search",
+                    match_source=mediainfo.source or "title",
+                    candidate_recognized=False,
+                    media_info_is_target=True,
+                )
+            )
+        return self.__remove_duplicate(TorrentHelper.sort_torrents(contexts))
+
+    def _process_music(
+            self,
+            mediainfo: MusicInfo,
+            keyword: Optional[str] = None,
+            sites: Optional[List[int]] = None,
+            rule_groups: Optional[List[str]] = None,
+            filter_params: Optional[Dict[str, str]] = None,
+    ) -> List[Context]:
+        """按音乐元数据生成站点关键词并执行同步资源搜索。"""
+        keywords = [keyword] if keyword else MusicChain.build_site_keywords(mediainfo)
+        torrents: List[TorrentInfo] = []
+        for index, search_word in enumerate(keywords or [mediainfo.title]):
+            if index:
+                time.sleep(random.randint(1, 10))
+            torrents.extend(
+                self.__search_all_sites(
+                    keyword=search_word,
+                    mediainfo=mediainfo,
+                    sites=sites,
+                    mtype=MediaType.MUSIC,
+                ) or []
+            )
+            if torrents and not settings.SEARCH_MULTIPLE_NAME:
+                break
+        return self._build_music_contexts(
+            torrents=torrents,
+            mediainfo=mediainfo,
+            rule_groups=rule_groups,
+            filter_params=filter_params,
+        )
+
+    async def _async_process_music(
+            self,
+            mediainfo: MusicInfo,
+            keyword: Optional[str] = None,
+            sites: Optional[List[int]] = None,
+            rule_groups: Optional[List[str]] = None,
+            filter_params: Optional[Dict[str, str]] = None,
+    ) -> List[Context]:
+        """按音乐元数据生成站点关键词并执行异步资源搜索。"""
+        keywords = [keyword] if keyword else MusicChain.build_site_keywords(mediainfo)
+        torrents: List[TorrentInfo] = []
+        for index, search_word in enumerate(keywords or [mediainfo.title]):
+            if index:
+                await asyncio.sleep(random.randint(1, 10))
+            torrents.extend(
+                await self.__async_search_all_sites(
+                    keyword=search_word,
+                    mediainfo=mediainfo,
+                    sites=sites,
+                    mtype=MediaType.MUSIC,
+                ) or []
+            )
+            if torrents and not settings.SEARCH_MULTIPLE_NAME:
+                break
+        return await run_in_threadpool(
+            self._build_music_contexts,
+            torrents=torrents,
+            mediainfo=mediainfo,
+            rule_groups=rule_groups,
+            filter_params=filter_params,
+        )
+
     def process(self, mediainfo: MediaInfo,
                 keyword: Optional[str] = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
@@ -1326,6 +1496,15 @@ class SearchChain(ChainBase):
         :param custom_words: 自定义识别词列表
         :param filter_params: 过滤参数
         """
+
+        if mediainfo.type == MediaType.MUSIC:
+            return self._process_music(
+                mediainfo=mediainfo,
+                keyword=keyword,
+                sites=sites,
+                rule_groups=rule_groups,
+                filter_params=filter_params,
+            )
 
         # 豆瓣标题处理
         if not mediainfo.tmdb_id:
@@ -1411,6 +1590,15 @@ class SearchChain(ChainBase):
         :param filter_params: 过滤参数
         """
 
+        if mediainfo.type == MediaType.MUSIC:
+            return await self._async_process_music(
+                mediainfo=mediainfo,
+                keyword=keyword,
+                sites=sites,
+                rule_groups=rule_groups,
+                filter_params=filter_params,
+            )
+
         # 豆瓣标题处理
         if not mediainfo.tmdb_id:
             meta = MetaInfo(title=mediainfo.title)
@@ -1483,6 +1671,33 @@ class SearchChain(ChainBase):
         """
         根据媒体信息渐进式搜索种子资源，先返回站点候选，再返回过滤匹配后的最终结果
         """
+
+        if mediainfo.type == MediaType.MUSIC:
+            contexts = await self._async_process_music(
+                mediainfo=mediainfo,
+                keyword=keyword,
+                sites=sites,
+                rule_groups=rule_groups,
+                filter_params=filter_params,
+            )
+            items = [context.to_dict() for context in contexts]
+            yield {
+                "type": "replace",
+                "stage": "filtered",
+                "value": 100,
+                "text": f"过滤匹配完成，共 {len(contexts)} 个资源",
+                "items": items,
+                "total_items": len(contexts),
+            }
+            yield {
+                "type": "done",
+                "stage": "done",
+                "text": f"搜索完成，共 {len(contexts)} 个资源",
+                "items": items,
+                "total_items": len(contexts),
+                "contexts": contexts,
+            }
+            return
 
         # 豆瓣标题处理
         if not mediainfo.tmdb_id:
@@ -1925,7 +2140,8 @@ class SearchChain(ChainBase):
                            mediainfo: Optional[MediaInfo] = None,
                            sites: List[int] = None,
                            page: Optional[int] = 0,
-                           area: Optional[str] = "title") -> Optional[List[TorrentInfo]]:
+                           area: Optional[str] = "title",
+                           mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
@@ -1933,6 +2149,7 @@ class SearchChain(ChainBase):
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
         :param area:  搜索区域 title or imdbid
+        :param mtype: 未提供媒体详情时使用的站点资源分类
         :reutrn: 资源列表
         """
         # 未开启的站点不搜索
@@ -1980,13 +2197,13 @@ class SearchChain(ChainBase):
                     # 搜索IMDBID
                     task = executor.submit(self.search_torrents, site=site,
                                            keyword=search_keyword,
-                                           mtype=mediainfo.type if mediainfo else None,
+                                           mtype=mediainfo.type if mediainfo else mtype,
                                            page=search_page)
                 else:
                     # 搜索标题
                     task = executor.submit(self.search_torrents, site=site,
                                            keyword=search_keyword,
-                                           mtype=mediainfo.type if mediainfo else None,
+                                           mtype=mediainfo.type if mediainfo else mtype,
                                            page=search_page)
                 pending_tasks[task] = (site, page_index, search_page, search_keyword)
 
@@ -2037,7 +2254,8 @@ class SearchChain(ChainBase):
                                        mediainfo: Optional[MediaInfo] = None,
                                        sites: List[int] = None,
                                        page: Optional[int] = 0,
-                                       area: Optional[str] = "title") -> Optional[List[TorrentInfo]]:
+                                       area: Optional[str] = "title",
+                                       mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
         异步搜索多个站点
         :param mediainfo:  识别的媒体信息
@@ -2045,6 +2263,7 @@ class SearchChain(ChainBase):
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
         :param area:  搜索区域 title or imdbid
+        :param mtype: 未提供媒体详情时使用的站点资源分类
         :reutrn: 资源列表
         """
         # 未开启的站点不搜索
@@ -2088,12 +2307,12 @@ class SearchChain(ChainBase):
                     # 搜索IMDBID
                     return await self.async_search_torrents(site=site,
                                                             keyword=mediainfo.imdb_id if mediainfo else None,
-                                                            mtype=mediainfo.type if mediainfo else None,
+                                                            mtype=mediainfo.type if mediainfo else mtype,
                                                             page=search_page)
                 # 搜索标题
                 return await self.async_search_torrents(site=site,
                                                         keyword=keyword,
-                                                        mtype=mediainfo.type if mediainfo else None,
+                                                        mtype=mediainfo.type if mediainfo else mtype,
                                                         page=search_page)
 
         pending_tasks = {}
@@ -2161,7 +2380,8 @@ class SearchChain(ChainBase):
                                               mediainfo: Optional[MediaInfo] = None,
                                               sites: List[int] = None,
                                               page: Optional[int] = 0,
-                                              area: Optional[str] = "title") -> AsyncIterator[Dict[str, Any]]:
+                                              area: Optional[str] = "title",
+                                              mtype: Optional[MediaType] = None) -> AsyncIterator[Dict[str, Any]]:
         """
         异步搜索多个站点，按站点完成顺序渐进式返回结果
         :param mediainfo:  识别的媒体信息
@@ -2169,6 +2389,7 @@ class SearchChain(ChainBase):
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
         :param area:  搜索区域 title or imdbid
+        :param mtype: 未提供媒体详情时使用的站点资源分类
         """
         indexer_sites = []
 
@@ -2219,12 +2440,12 @@ class SearchChain(ChainBase):
                 if area == "imdbid":
                     site_result = await self.async_search_torrents(site=site,
                                                                    keyword=mediainfo.imdb_id if mediainfo else None,
-                                                                   mtype=mediainfo.type if mediainfo else None,
+                                                                   mtype=mediainfo.type if mediainfo else mtype,
                                                                    page=search_page)
                 else:
                     site_result = await self.async_search_torrents(site=site,
                                                                    keyword=keyword,
-                                                                   mtype=mediainfo.type if mediainfo else None,
+                                                                   mtype=mediainfo.type if mediainfo else mtype,
                                                                    page=search_page)
                 return site_result or []
 

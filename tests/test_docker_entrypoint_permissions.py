@@ -47,7 +47,7 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
     (home_dir / ".cloakbrowser").mkdir(parents=True)
     (home_dir / "runtime").mkdir()
     (app_dir / "app" / "plugins" / "plugin.py").write_text("# plugin\n", encoding="utf-8")
-    (helper_dir / "user.sites.v2.bin").write_text("resources\n", encoding="utf-8")
+    (helper_dir / "user.sites.v3.bin").write_text("resources\n", encoding="utf-8")
     (helper_dir / "sites.cpython-312-x86_64-linux-gnu.so").write_text("plugin\n", encoding="utf-8")
     (public_dir / "index.html").write_text("<!doctype html>\n", encoding="utf-8")
     (home_dir / ".cloakbrowser" / "chrome").write_text("browser cache\n", encoding="utf-8")

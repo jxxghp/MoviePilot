@@ -696,6 +696,8 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not mediainfo:
             return None
+        if mediainfo.type == MediaType.MUSIC:
+            return mediainfo
         if mediainfo.tmdb_id and mediainfo.tmdb_info and mediainfo.genre_ids:
             return mediainfo
         tmdb_meta = self._build_tmdb_supplement_meta(mediainfo, metainfo)

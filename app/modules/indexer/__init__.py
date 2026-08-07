@@ -548,30 +548,38 @@ class IndexerModule(_ModuleBase):
     def refresh_torrents(self, site: dict,
                          keyword: Optional[str] = None,
                          cat: Optional[str] = None,
-                         page: Optional[int] = 0) -> Optional[List[TorrentInfo]]:
+                         page: Optional[int] = 0,
+                         mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
         :param keyword:  关键字
         :param cat:  分类
         :param page:  页码
+        :param mtype: 媒体类型
         :reutrn: 种子资源列表
         """
-        return self.search_torrents(site=site, keyword=keyword, cat=cat, page=page)
+        return self.search_torrents(
+            site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
+        )
 
     async def async_refresh_torrents(self, site: dict,
                                      keyword: Optional[str] = None,
                                      cat: Optional[str] = None,
-                                     page: Optional[int] = 0) -> Optional[List[TorrentInfo]]:
+                                     page: Optional[int] = 0,
+                                     mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
         异步获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
         :param keyword:  关键字
         :param cat:  分类
         :param page:  页码
+        :param mtype: 媒体类型
         :reutrn: 种子资源列表
         """
-        return await self.async_search_torrents(site=site, keyword=keyword, cat=cat, page=page)
+        return await self.async_search_torrents(
+            site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
+        )
 
     def refresh_userdata(self, site: dict) -> Optional[SiteUserData]:
         """

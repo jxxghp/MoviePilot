@@ -17,6 +17,7 @@ from app.core.cache import TTLCache
 from app.core.config import global_vars
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
+from app.core.music import MusicInfo, MusicMeta
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.message import Notification
@@ -90,6 +91,31 @@ class TemplateContextBuilder:
         ``year`` / ``title_year`` 占位，保证电视剧场景下季/年优先沿用 meta 解析值。
         """
         if not mediainfo:
+            return
+        if isinstance(mediainfo, MusicInfo):
+            context.update({
+                "type": mediainfo.type.value,
+                "title": cls.__convert_invalid_characters(mediainfo.title),
+                "name": cls.__convert_invalid_characters(mediainfo.title),
+                "artists": [cls.__convert_invalid_characters(item) for item in mediainfo.artists],
+                "artist": cls.__convert_invalid_characters(mediainfo.artist),
+                "album": cls.__convert_invalid_characters(mediainfo.album),
+                "album_artist": cls.__convert_invalid_characters(mediainfo.album_artist),
+                "year": mediainfo.year or context.get("year"),
+                "title_year": mediainfo.title_year or context.get("title_year"),
+                "disc_number": mediainfo.disc_number,
+                "track_number": mediainfo.track_number,
+                "track": f"{mediainfo.track_number:02d}" if mediainfo.track_number else None,
+                "total_tracks": mediainfo.total_tracks,
+                "duration": mediainfo.duration,
+                "isrc": mediainfo.isrc,
+                "version": mediainfo.version,
+                "category": mediainfo.category,
+                "poster": mediainfo.get_poster_image(),
+                "backdrop": mediainfo.get_backdrop_image(),
+                "media_source": mediainfo.source,
+                "media_id": mediainfo.media_id,
+            })
             return
         season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None else None
         source_ids = {
@@ -169,6 +195,30 @@ class TemplateContextBuilder:
         TMDB 集详情填入 ``episode_title`` / ``episode_date``。
         """
         if not meta:
+            return
+        if isinstance(meta, MusicMeta):
+            context.update({
+                "original_name": meta.org_string or meta.title,
+                "name": cls.__convert_invalid_characters(meta.title),
+                "title": cls.__convert_invalid_characters(meta.title),
+                "artists": [cls.__convert_invalid_characters(item) for item in meta.artists],
+                "artist": cls.__convert_invalid_characters(meta.artist),
+                "album": cls.__convert_invalid_characters(meta.album),
+                "album_artist": cls.__convert_invalid_characters(meta.album_artist),
+                "year": meta.year,
+                "disc_number": meta.disc_number,
+                "track_number": meta.track_number,
+                "track": f"{meta.track_number:02d}" if meta.track_number else None,
+                "total_discs": meta.total_discs,
+                "total_tracks": meta.total_tracks,
+                "audio_format": meta.audio_format,
+                "bit_depth": meta.bit_depth,
+                "sample_rate": meta.sample_rate,
+                "bitrate": meta.bitrate,
+                "duration": meta.duration,
+                "isrc": meta.isrc,
+                "version": meta.version,
+            })
             return
 
         episode_data = {"episode_title": None, "episode_date": None}

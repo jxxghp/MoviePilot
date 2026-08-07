@@ -6,22 +6,31 @@ from typing import Optional
 class MediaType(Enum):
     MOVIE = '电影'
     TV = '电视剧'
+    MUSIC = '音乐'
     COLLECTION = '系列'
     UNKNOWN = '未知'
 
     @staticmethod
     def from_agent(key: str) -> Optional["MediaType"]:
-        """'movie' -> MediaType.MOVIE, 'tv' -> MediaType.TV, 否则 None"""
-        _map = {"movie": MediaType.MOVIE, "tv": MediaType.TV}
+        """将 Agent 媒体类型转换为 MediaType。"""
+        _map = {
+            "movie": MediaType.MOVIE,
+            "tv": MediaType.TV,
+            "music": MediaType.MUSIC,
+        }
         return _map.get(key.strip().lower() if key else "")
 
     def to_agent(self) -> str:
-        """MediaType.MOVIE -> 'movie', MediaType.TV -> 'tv', 其他返回 .value"""
-        return {MediaType.MOVIE: "movie", MediaType.TV: "tv"}.get(self, self.value)
+        """将 MediaType 转换为 Agent 使用的媒体类型。"""
+        return {
+            MediaType.MOVIE: "movie",
+            MediaType.TV: "tv",
+            MediaType.MUSIC: "music",
+        }.get(self, self.value)
 
 
 def media_type_to_agent(value) -> Optional[str]:
-    """将 MediaType 枚举或中文字符串统一转为 'movie'/'tv'"""
+    """将 MediaType 枚举或字符串统一转换为 Agent 媒体类型。"""
     if isinstance(value, MediaType):
         return value.to_agent()
     if isinstance(value, str):
@@ -397,6 +406,8 @@ class MediaRecognizeType(Enum):
     Bangumi = "Bangumi"
     # AniList
     AniList = "AniList"
+    # MusicBrainz
+    MusicBrainz = "MusicBrainz"
 
 
 # 用户配置Key字典
@@ -448,6 +459,8 @@ class OtherModulesType(Enum):
     PostgreSQL = "PostgreSQL"
     # Redis
     Redis = "Redis"
+    # ListenBrainz
+    ListenBrainz = "ListenBrainz"
 
 
 class NameValueEnum(Enum):

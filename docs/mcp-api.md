@@ -151,10 +151,10 @@ FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶�
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/search/media/{mediaid}` | 按媒体 ID 搜索站点种子资源，`mediaid` 支持 `tmdb:123`、`douban:123`、`bangumi:123`、`anilist:123` 及插件来源前缀，参数：`mtype`、`area`、`title`、`year`、`season`、`sites` |
+| GET | `/api/v1/search/media/{mediaid}` | 按媒体 ID 搜索站点种子资源，`mediaid` 支持 `tmdb:123`、`douban:123`、`bangumi:123`、`anilist:123`、`musicbrainz:<recording_mbid>` 及插件来源前缀，参数：`mtype`、`area`、`title`、`year`、`season`、`sites` |
 | GET | `/api/v1/search/media/{mediaid}/stream` | 按媒体 ID 渐进式搜索站点种子资源，返回 SSE，参数同上 |
-| GET | `/api/v1/search/title` | 按关键字模糊搜索站点种子资源，参数：`keyword`、`page`、`sites` |
-| GET | `/api/v1/search/title/stream` | 按关键字渐进式搜索站点种子资源，返回 SSE，参数：`keyword`、`page`、`sites` |
+| GET | `/api/v1/search/title` | 按关键字模糊搜索站点种子资源，参数：`keyword`、`page`、`sites`，可选 `mtype=音乐` 仅搜索音乐分类 |
+| GET | `/api/v1/search/title/stream` | 按关键字渐进式搜索站点种子资源，返回 SSE，参数：`keyword`、`page`、`sites`，可选 `mtype=音乐` |
 | GET | `/api/v1/search/subtitle/title` | 按关键字搜索站点字幕资源，参数：`keyword`、`page`、`sites` |
 | GET | `/api/v1/search/subtitle/title/stream` | 按关键字渐进式搜索站点字幕资源，返回 SSE，参数：`keyword`、`page`、`sites` |
 | GET | `/api/v1/search/subtitle/media/{mediaid}` | 按媒体 ID 精确搜索站点字幕资源，`mediaid` 支持四种内置来源及插件来源前缀，参数：`mtype`、`title`、`year`、`season`、`episode`、`sites` |
@@ -179,6 +179,17 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 | GET | `/api/v1/anilist/recommend/{anilist_id}` | 查询相关推荐，参数：`page`、`count` |
 | GET | `/api/v1/anilist/person/{person_id}` | 查询人物详情 |
 | GET | `/api/v1/anilist/person/credits/{person_id}` | 查询人物参与的动画作品，参数：`page`、`count` |
+
+#### 音乐元数据 / 推荐 / 探索
+
+音乐元数据使用 `MusicMeta` / `MusicInfo` 独立模型，媒体身份为 `musicbrainz:<recording_mbid>`。这些接口只负责搜索、识别、订阅和资源获取，不提供音乐库、歌单或歌手库管理。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/music/search` | 按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`query`、`count` |
+| POST | `/api/v1/music/recognize` | 按 `source` + `media_id` 识别音乐详情，请求体：`MusicRecognizeRequest` |
+| GET | `/api/v1/music/explore` | 浏览月度热门音乐，参数：`page`、`count` |
+| GET | `/api/v1/recommend/music_weekly` | 浏览本周热门音乐，参数：`page`、`count` |
 
 #### 下载
 

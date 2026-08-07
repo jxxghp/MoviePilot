@@ -1,12 +1,14 @@
-from typing import Any, List, Annotated, Literal, Optional
+from typing import Any, List, Annotated, Literal, Optional, Union
 
 from fastapi import APIRouter, Depends, Body
 
 from app import schemas
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
 from app.core.context import MediaInfo, Context, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
+from app.core.music import MusicInfo
 from app.core.security import verify_token
 from app.db.models.user import User
 from app.db.site_oper import SiteOper
@@ -17,7 +19,7 @@ from app.schemas.types import SystemConfigKey
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
-MediaSource = Literal["themoviedb", "douban", "bangumi", "anilist"]
+MediaSource = Literal["themoviedb", "douban", "bangumi", "anilist", "musicbrainz"]
 
 
 def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
@@ -57,7 +59,7 @@ def current(
 
 @router.post("/", summary="添加下载（含媒体信息）", response_model=schemas.Response)
 def download(
-    media_in: schemas.MediaInfo,
+    media_in: Union[schemas.MusicInfo, schemas.MediaInfo],
     torrent_in: schemas.TorrentInfo,
     downloader: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
@@ -66,11 +68,14 @@ def download(
     """
     添加下载任务（含媒体信息）
     """
-    # 元数据
-    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
-    # 媒体信息
-    mediainfo = MediaInfo()
-    mediainfo.from_dict(media_in.model_dump())
+    if isinstance(media_in, schemas.MusicInfo):
+        mediainfo = MusicInfo.from_dict(media_in.model_dump())
+        metainfo = MusicChain.to_meta(mediainfo)
+        metainfo.org_string = torrent_in.title
+    else:
+        metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
+        mediainfo = MediaInfo()
+        mediainfo.from_dict(media_in.model_dump())
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
