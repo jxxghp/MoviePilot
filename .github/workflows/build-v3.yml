@@ -1,0 +1,14 @@
+name: MoviePilot Builder v3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  select-v3:
+    runs-on: ubuntu-latest
+    steps:
+      # GitHub 仅从默认分支登记手动工作流；选择 v3 后会加载 v3 分支的完整构建配置。
+      - name: Require v3 branch
+        run: |
+          echo "::error::请在 Run workflow 中选择 v3 分支"
+          exit 1
