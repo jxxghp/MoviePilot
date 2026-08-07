@@ -128,7 +128,7 @@ moviepilot logs --stdio --follow
 
 ```bash
 # One-line bootstrap installer
-curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootstrap-local.sh | bash
 
 # Install backend dependencies
 moviepilot install deps
@@ -139,7 +139,7 @@ moviepilot install deps --recreate
 # Install frontend release
 moviepilot install frontend
 moviepilot install frontend --version latest
-moviepilot install frontend --version v2.9.31
+moviepilot install frontend --version v3.0.0
 
 # Install resource files
 moviepilot install resources
@@ -167,7 +167,7 @@ moviepilot uninstall
 ```bash
 moviepilot update backend
 moviepilot update backend --ref latest
-moviepilot update backend --ref v2.9.31
+moviepilot update backend --ref v3.0.0
 
 moviepilot update frontend
 moviepilot update frontend --frontend-version latest

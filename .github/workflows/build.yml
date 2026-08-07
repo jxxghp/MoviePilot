@@ -1,9 +1,9 @@
-name: MoviePilot Builder v2
+name: MoviePilot Builder v3
 on:
   workflow_dispatch:
   push:
     branches:
-      - v2
+      - v3
     paths:
       - 'version.py'
 
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jxxghp/MoviePilot-Wiki
-          ref: main
+          ref: v3
           path: .build/moviepilot-wiki
           sparse-checkout: plugin.md
           sparse-checkout-cone-mode: false
@@ -66,9 +66,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot
-            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3
+            ghcr.io/${{ github.repository }}-v3
           tags: |
             type=raw,value=${{ env.app_version }}
             type=raw,value=latest
@@ -106,14 +105,14 @@ jobs:
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.revision=${{ steps.release_snapshot.outputs.release_commit }}
             org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
-          cache-from: type=gha,scope=moviepilot-docker,version=2
-          cache-to: type=gha,scope=moviepilot-docker,mode=max,version=2
+          cache-from: type=gha,scope=moviepilot-v3-docker,version=2
+          cache-to: type=gha,scope=moviepilot-v3-docker,mode=max,version=2
 
       - name: Generate Changelog
         id: changelog
         run: |
           # 获取上一个 tag（排除当前版本的 tag）
-          PREVIOUS_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
+          PREVIOUS_TAG=$(git tag -l 'v3.*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
           echo "Previous tag: $PREVIOUS_TAG"
 
           # 使用 || 作为分隔符，同时获取 commit 消息和作者 GitHub 用户名

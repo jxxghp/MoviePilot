@@ -118,16 +118,16 @@ function install_backend_and_download_resources() {
         WARN "未找到requirements.in文件，跳过依赖检查"
     fi
     
-    # 如果是"heads/v2.zip"，则查找v2开头的最新版本号
-    if [[ "${1}" == "heads/v2.zip" ]]; then
+    # 如果是"heads/v3.zip"，则查找v3开头的最新版本号
+    if [[ "${1}" == "heads/v3.zip" ]]; then
         INFO "→ 正在获取前端最新版本号..."
-        # 获取所有发布的版本列表，并筛选出以v2开头的版本号
-        releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v2\.")
+        # 获取所有发布的版本列表，并筛选出以v3开头的版本号
+        releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
         if [ -z "$releases" ]; then
-            WARN "未找到任何v2前端版本，继续启动..."
+            WARN "未找到任何v3前端版本，继续启动..."
             return 1
         else
-            # 找到最新的v2版本
+            # 找到最新的v3版本
             frontend_version=$(echo "$releases" | sort -V | tail -n 1)
         fi
         INFO "前端最新版本号：${frontend_version}"
@@ -184,7 +184,7 @@ function install_backend_and_download_resources() {
     fi
     INFO "当前 Python 版本：${python_version}，架构：${arch}"
     # 下载 V3 站点索引
-    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/helper/user.sites.v3.bin; then
+    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/v3/resources.v3/user.sites.v3.bin" -o /app/app/helper/user.sites.v3.bin; then
         if [ -f /resources_bakcup/user.sites.v3.bin ]; then
             cp -a /resources_bakcup/user.sites.v3.bin /app/app/helper/
         fi
@@ -192,7 +192,7 @@ function install_backend_and_download_resources() {
     fi
     # 下载对应平台的 sites 文件
     sites_file="sites.${python_version}-${arch_suffix}.so"
-    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" -o "/app/app/helper/${sites_file}"; then
+    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/v3/resources.v3/${sites_file}" -o "/app/app/helper/${sites_file}"; then
         if [ -f "/resources_bakcup/${sites_file}" ]; then
             cp -a "/resources_bakcup/${sites_file}" /app/app/helper/
         fi
@@ -381,23 +381,23 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     fi
     if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
         INFO "Dev 更新模式"
-        install_backend_and_download_resources "heads/v2.zip"
+        install_backend_and_download_resources "heads/v3.zip"
     else
         INFO "Release 更新模式"
         old_version=$(grep -m -1 "^\s*APP_VERSION\s*=\s*" /app/version.py | tr -d '\r\n' | awk -F'#' '{print $1}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         if [[ "${old_version}" == *APP_VERSION* ]]; then
             current_version=$(echo "${old_version}" | sed -rn "s/APP_VERSION\s*=\s*['\"](.*)['\"]/\1/gp")
             INFO "当前版本号：${current_version}"
-            # 获取所有发布的版本列表，并筛选出以v2开头的版本号
-            releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v2\.")
+            # 获取所有发布的版本列表，并筛选出以v3开头的版本号
+            releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
             if [ -z "$releases" ]; then
-                WARN "未找到任何v2后端版本，继续启动..."
+                WARN "未找到任何v3后端版本，继续启动..."
             else
-                # 找到最新的v2版本
-                latest_v2=$(echo "$releases" | sort -V | tail -n 1)
-                INFO "最新的v2后端版本号：${latest_v2}"
+                # 找到最新的v3版本
+                latest_v3=$(echo "$releases" | sort -V | tail -n 1)
+                INFO "最新的v3后端版本号：${latest_v3}"
                 # 使用版本号比较函数进行比较，并下载最新版本
-                compare_versions "${current_version}" "${latest_v2}"
+                compare_versions "${current_version}" "${latest_v3}"
             fi
         else
             WARN "当前版本号获取失败，继续启动..."

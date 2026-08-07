@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jxxghp/MoviePilot-Wiki
-          ref: main
+          ref: v3
           path: .build/moviepilot-wiki
           sparse-checkout: plugin.md
           sparse-checkout-cone-mode: false
@@ -44,8 +44,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
-            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3
+            ghcr.io/${{ github.repository }}-v3
           tags: |
             type=raw,value=beta
 
@@ -81,5 +81,5 @@ jobs:
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
-          cache-from: type=gha,scope=moviepilot-docker,version=2
-          cache-to: type=gha,scope=moviepilot-docker,mode=max,version=2
+          cache-from: type=gha,scope=moviepilot-v3-docker,version=2
+          cache-to: type=gha,scope=moviepilot-v3-docker,mode=max,version=2

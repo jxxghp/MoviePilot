@@ -9,6 +9,7 @@
 ![GitHub issues](https://img.shields.io/github/issues/jxxghp/MoviePilot?style=for-the-badge)
 ![Docker Pulls](https://img.shields.io/docker/pulls/jxxghp/moviepilot?style=for-the-badge)
 ![Docker Pulls V2](https://img.shields.io/docker/pulls/jxxghp/moviepilot-v2?style=for-the-badge)
+![Docker Pulls V3](https://img.shields.io/docker/pulls/jxxghp/moviepilot-v3?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Synology-blue?style=for-the-badge)
 
 Redesigned from parts of [NAStool](https://github.com/NAStool/nas-tools), with a stronger focus on core automation scenarios while reducing issues and making the project easier to extend and maintain.
@@ -26,7 +27,7 @@ Release channel: https://t.me/moviepilot_channel
 
 ## Installation and Usage
 
-Docker is the recommended deployment model. Common images include `jxxghp/moviepilot-v2` and `jxxghp/moviepilot`. Compose examples, environment variables, volume mappings, and upgrade notes are maintained in the official wiki:
+Docker is the recommended deployment model. V3 uses the dedicated `jxxghp/moviepilot-v3` image; V2 and legacy images keep their existing names. Compose examples, environment variables, volume mappings, and upgrade notes are maintained in the official wiki:
 
 - Official wiki: https://wiki.movie-pilot.org
 - PostgreSQL setup: [docs/postgresql-setup.md](docs/postgresql-setup.md)
@@ -34,7 +35,7 @@ Docker is the recommended deployment model. Common images include `jxxghp/moviep
 MoviePilot can also be installed and managed from source with the local CLI:
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootstrap-local.sh | bash
 ```
 
 After installation, use the `moviepilot` command for initialization, service management, updates, and configuration. See [docs/cli.md](docs/cli.md) for the full command reference.

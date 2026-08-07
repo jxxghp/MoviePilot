@@ -131,6 +131,6 @@ def test_recognize_prefers_explicit_id(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v2` 的 `pull_request` / `push` 及手动触发时，用 `python tests/run.py` 跑全量单测。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，用 `python tests/run.py` 跑全量单测。
 - **PR**：`python tests/run.py` 确认全绿、且 socket 探针零真实出站，避免把红的改动推上去空耗门禁。
 - 复现 CI 用仅安装 `requirements-dev.in` 的干净环境；`requirements.in` 只承载运行时依赖，pytest 与覆盖率插件由开发依赖入口提供。

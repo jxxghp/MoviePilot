@@ -8,7 +8,7 @@ body:
       value: |
         请说明你希望添加的功能。
 
-        站点适配请求请先按 [站点适配采集说明](https://github.com/jxxghp/MoviePilot/blob/v2/docs/site-adapter-capture.md) 生成脱敏 ZIP，并在下方附加。Issue 及附件是公开内容，提交前必须解压预览四个文件。不要上传 Cookie、Authorization、通行密钥、会话字段或任何原始数据。
+        站点适配请求请先按 [站点适配采集说明](https://github.com/jxxghp/MoviePilot/blob/v3/docs/site-adapter-capture.md) 生成脱敏 ZIP，并在下方附加。Issue 及附件是公开内容，提交前必须解压预览四个文件。不要上传 Cookie、Authorization、通行密钥、会话字段或任何原始数据。
   - type: input
     id: version
     attributes:

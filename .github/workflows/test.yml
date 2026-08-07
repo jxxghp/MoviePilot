@@ -1,13 +1,13 @@
 name: Unit Tests
 
 on:
-  # 指向 v2 的 PR 与推送都跑全量单测，作为合并门禁
+  # 指向 v3 的 PR 与推送都跑全量单测，作为合并门禁
   pull_request:
     branches:
-      - v2
+      - v3
   push:
     branches:
-      - v2
+      - v3
   # 允许手动触发
   workflow_dispatch:
 

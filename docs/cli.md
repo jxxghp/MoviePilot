@@ -5,7 +5,7 @@
 ## 一键安装
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootstrap-local.sh | bash
 ```
 
 脚本会自动：
@@ -168,7 +168,7 @@ moviepilot install deps --config-dir /path/to/moviepilot-config
 ```shell
 moviepilot install frontend
 moviepilot install frontend --version latest
-moviepilot install frontend --version v2.9.31
+moviepilot install frontend --version v3.0.0
 moviepilot install frontend --node-version 20.12.1
 moviepilot install frontend --config-dir /path/to/moviepilot-config
 ```
@@ -253,7 +253,7 @@ moviepilot setup --config-dir /path/to/moviepilot-config
 如果希望在自动化安装时直接预设超级管理员，也可以在一键安装脚本中透传：
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | \
+curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootstrap-local.sh | \
   bash -s -- --superuser admin --superuser-password 'ChangeMe123!'
 ```
 
@@ -308,8 +308,8 @@ moviepilot uninstall --config-dir /path/to/moviepilot-config
 ```shell
 moviepilot update backend
 moviepilot update backend --ref latest
-moviepilot update backend --ref v2
-moviepilot update backend --ref v2.9.31
+moviepilot update backend --ref v3
+moviepilot update backend --ref v3.0.0
 ```
 
 更新前端：
@@ -317,7 +317,7 @@ moviepilot update backend --ref v2.9.31
 ```shell
 moviepilot update frontend
 moviepilot update frontend --frontend-version latest
-moviepilot update frontend --frontend-version v2.9.31
+moviepilot update frontend --frontend-version v3.0.0
 ```
 
 整体更新：

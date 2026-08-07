@@ -9,6 +9,7 @@
 ![GitHub issues](https://img.shields.io/github/issues/jxxghp/MoviePilot?style=for-the-badge)
 ![Docker Pulls](https://img.shields.io/docker/pulls/jxxghp/moviepilot?style=for-the-badge)
 ![Docker Pulls V2](https://img.shields.io/docker/pulls/jxxghp/moviepilot-v2?style=for-the-badge)
+![Docker Pulls V3](https://img.shields.io/docker/pulls/jxxghp/moviepilot-v3?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Synology-blue?style=for-the-badge)
 
 基于 [NAStool](https://github.com/NAStool/nas-tools) 部分代码重新设计，聚焦自动化核心需求，减少问题同时更易于扩展和维护。
@@ -26,7 +27,7 @@
 
 ## 安装使用
 
-推荐优先使用 Docker 部署，常用镜像包括 `jxxghp/moviepilot-v2` 和 `jxxghp/moviepilot`。Compose 示例、环境变量、目录映射和升级方式以官方 Wiki 为准：
+推荐优先使用 Docker 部署。V3 使用独立镜像 `jxxghp/moviepilot-v3`，V2 和旧版镜像保持原命名。Compose 示例、环境变量、目录映射和升级方式以官方 Wiki 为准：
 
 - 官方 Wiki：https://wiki.movie-pilot.org
 - PostgreSQL 部署说明：[docs/postgresql-setup.md](docs/postgresql-setup.md)
@@ -34,7 +35,7 @@
 也可以使用本地 CLI 以源码模式安装和管理 MoviePilot：
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootstrap-local.sh | bash
 ```
 
 安装完成后使用 `moviepilot` 命令完成初始化、启动、停止、更新和配置查看。完整命令见 [docs/cli.md](docs/cli.md)。
