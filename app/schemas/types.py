@@ -413,6 +413,7 @@ class StorageSchema(Enum):
     U115 = "u115"
     Rclone = "rclone"
     Alist = "alist"
+    AlistGo = "alistgo"
     SMB = "smb"
 
 
