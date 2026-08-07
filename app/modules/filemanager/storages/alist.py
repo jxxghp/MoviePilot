@@ -47,7 +47,10 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         初始化
         """
-        self.__login_token.cache_clear()  # noqa
+        conf = self.get_conf()
+        self.__login_token.cache_delete(  # noqa
+            self, self.__get_base_url, conf.get("username"), conf.get("password")
+        )
 
     def _delay_get_item(
         self, path: Path, /, refresh: bool = False
