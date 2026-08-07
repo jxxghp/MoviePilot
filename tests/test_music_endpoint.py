@@ -90,8 +90,8 @@ def test_recognize_music_returns_404_for_unknown_item():
     assert error.value.status_code == 404
 
 
-def test_explore_music_serializes_monthly_chart():
-    """音乐探索接口应按月度榜单分页并保留收听统计。"""
+def test_explore_music_forwards_filters_and_serializes_chart():
+    """音乐探索接口应传递周期、排序、热度和封面筛选条件。"""
     chain = Mock()
     chain.async_chart = AsyncMock(
         return_value=[
@@ -106,11 +106,24 @@ def test_explore_music_serializes_monthly_chart():
     )
 
     with patch("app.api.endpoints.music.MusicChain", return_value=chain):
-        result = asyncio.run(explore_music(page=2, count=20, _=Mock()))
+        result = asyncio.run(
+            explore_music(
+                page=2,
+                count=20,
+                range_name="this_week",
+                sort_by="listen_count.asc",
+                min_listen_count=100,
+                with_cover=True,
+                _=Mock(),
+            )
+        )
 
     assert result[0].listen_count == 123
     chain.async_chart.assert_awaited_once_with(
-        range_name="this_month",
+        range_name="this_week",
         page=2,
         count=20,
+        sort_by="listen_count.asc",
+        min_listen_count=100,
+        with_cover=True,
     )

@@ -517,6 +517,8 @@ class ConfigModel(BaseModel):
             "ykimg.com",
             "qpic.cn",
             "anilist.co",
+            "coverartarchive.org",
+            "archive.org",
         ]
     )
     # 图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果

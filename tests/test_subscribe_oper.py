@@ -8,6 +8,7 @@ import pytest
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.subscribe_oper import SubscribeOper
+from app.core.music import MusicInfo
 from app.schemas.types import MediaType
 
 
@@ -94,6 +95,29 @@ def test_add_scopes_duplicate_lookup_by_episode_group(episode_group):
         for call in subscribe_model.exists.call_args_list
     )
     created.create.assert_called_once()
+
+
+def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
+    """音乐订阅应把 MusicBrainz 发行封面写入订阅海报和背景字段。"""
+    persisted = SimpleNamespace(id=92)
+    created = SimpleNamespace(create=MagicMock())
+    media = MusicInfo(
+        source="musicbrainz",
+        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        title="晴天",
+        cover_url="https://coverartarchive.org/release-group/example/front-500",
+    )
+
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.exists.side_effect = [None, persisted]
+        subscribe_model.return_value = created
+
+        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+
+    assert sid == 92
+    payload = subscribe_model.call_args.kwargs
+    assert payload["poster"] == media.cover_url
+    assert payload["backdrop"] == media.cover_url
 
 
 @pytest.mark.parametrize("episode_group", [None, "eg-1"])

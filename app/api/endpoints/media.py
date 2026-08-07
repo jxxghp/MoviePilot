@@ -1,13 +1,16 @@
 from pathlib import Path
 from typing import Annotated, Any, List, Optional, Union
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import Context
+from app.core.music import MusicInfo
 from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
@@ -21,6 +24,17 @@ from app.utils.media import MEDIA_SOURCE_ID_FIELDS, parse_media_key
 
 router = APIRouter()
 MediaSource = str
+
+
+def _is_valid_source_media_id(source: Optional[str], media_id: str) -> bool:
+    """按媒体数据源校验原生 ID，MusicBrainz 使用 UUID，其它现有来源使用数字 ID。"""
+    if source == "musicbrainz":
+        try:
+            UUID(media_id)
+            return True
+        except (TypeError, ValueError):
+            return False
+    return media_id.isdigit()
 
 
 def _build_recognize_metainfo(
@@ -148,6 +162,12 @@ async def recognize_file(
     """
     根据文件路径识别媒体信息
     """
+    if MusicChain.is_audio_path(path) or source == "musicbrainz":
+        meta_info, media_info = await MusicChain().async_recognize_by_path(
+            path=path,
+            source=source or "musicbrainz",
+        )
+        return Context(meta_info=meta_info, media_info=media_info).to_dict()
     # 识别媒体信息
     context = await MediaChain().async_recognize_by_path(path, source=source)
     if context:
@@ -255,8 +275,31 @@ def scrape(
         return schemas.Response(
             success=False, message="指定媒体ID时必须同时指定媒体数据源"
         )
-    if normalized_media_id and not normalized_media_id.isdigit():
+    if normalized_media_id and not _is_valid_source_media_id(media_source, normalized_media_id):
         return schemas.Response(success=False, message="媒体ID格式无效")
+
+    is_music = (
+        type_name == MediaType.MUSIC
+        or media_source == "musicbrainz"
+        or MusicChain.is_audio_path(fileitem.path)
+    )
+    if is_music:
+        if type_name not in (None, MediaType.MUSIC):
+            return schemas.Response(success=False, message="MusicBrainz 只能用于音乐刮削")
+        music_info: Optional[MusicInfo] = None
+        if normalized_media_id:
+            music_info = MusicChain().recognize(
+                source=media_source or "musicbrainz",
+                media_id=normalized_media_id,
+            )
+            if not music_info:
+                return schemas.Response(success=False, message="刮削失败，无法识别音乐信息")
+        success, message = MusicChain().scrape_metadata(
+            fileitem=fileitem,
+            mediainfo=music_info,
+            overwrite=True,
+        )
+        return schemas.Response(success=success, message=message)
 
     chain = MediaChain()
     if normalized_media_id:

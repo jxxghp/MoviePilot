@@ -1,5 +1,5 @@
 from app.chain.music import MusicChain
-from app.core.music import MusicInfo
+from app.core.music import MusicInfo, MusicMeta
 
 
 def test_parse_query_supports_artist_title_format():
@@ -110,3 +110,64 @@ def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
         "count": 30,
     }
     assert len(results) == 1
+
+
+def test_async_chart_applies_music_explore_filters(monkeypatch):
+    """音乐探索应按收听次数、封面条件和升序设置筛选榜单。"""
+    chain = MusicChain()
+
+    async def fake_async_run_module(method, **kwargs):
+        """返回包含不同热度和封面状态的榜单候选。"""
+        assert method == "music_chart"
+        return [
+            MusicInfo(media_id="1", source="musicbrainz", title="A", listen_count=300),
+            MusicInfo(
+                media_id="2",
+                source="musicbrainz",
+                title="B",
+                listen_count=120,
+                cover_url="https://coverartarchive.org/release/2/front-500",
+            ),
+            MusicInfo(
+                media_id="3",
+                source="musicbrainz",
+                title="C",
+                listen_count=240,
+                cover_url="https://coverartarchive.org/release/3/front-500",
+            ),
+        ]
+
+    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+
+    import asyncio
+
+    results = asyncio.run(
+        chain.async_chart(
+            range_name="this_month",
+            count=30,
+            sort_by="listen_count.asc",
+            min_listen_count=100,
+            with_cover=True,
+        )
+    )
+
+    assert [item.title for item in results] == ["B", "C"]
+
+
+def test_select_path_candidate_prefers_matching_audio_tags():
+    """文件识别应优先选择标题、艺术家和专辑均匹配的 MusicBrainz 候选。"""
+    meta = MusicMeta(title="晴天", artists=["周杰伦"], album="叶惠美")
+    candidates = [
+        MusicInfo(source="musicbrainz", media_id="1", title="晴天", artists=["其他歌手"]),
+        MusicInfo(
+            source="musicbrainz",
+            media_id="2",
+            title="晴天",
+            artists=["周杰伦"],
+            album="叶惠美",
+        ),
+    ]
+
+    selected = MusicChain._select_path_candidate(meta, candidates, source="musicbrainz")
+
+    assert selected is candidates[1]

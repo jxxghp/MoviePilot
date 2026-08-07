@@ -1,5 +1,12 @@
 from app.core.music import MusicMeta
 from app.modules.musicbrainz import MusicBrainzModule
+from app.core.config import settings
+
+
+def test_musicbrainz_cover_domains_are_allowed_by_image_proxy():
+    """MusicBrainz 封面及其归档重定向域名应进入图片代理安全列表。"""
+    assert "coverartarchive.org" in settings.SECURITY_IMAGE_DOMAINS
+    assert "archive.org" in settings.SECURITY_IMAGE_DOMAINS
 
 
 def test_build_query_uses_structured_music_fields():

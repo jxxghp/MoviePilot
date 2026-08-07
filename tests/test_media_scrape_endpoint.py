@@ -1,8 +1,9 @@
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from app.api.endpoints.media import scrape
+from app.api.endpoints.media import recognize_file, scrape
 from app.core.context import Context, MediaInfo
 from app.core.meta import MetaBase
+from app.core.music import MusicInfo, MusicMeta
 from app.schemas import FileItem, MediaType
 
 
@@ -80,3 +81,65 @@ def test_scrape_rejects_media_id_without_source() -> None:
 
     assert result.success is False
     assert result.message == "指定媒体ID时必须同时指定媒体数据源"
+
+
+def test_recognize_file_routes_audio_to_music_chain() -> None:
+    """文件管理识别音频文件时应返回音乐专属上下文。"""
+    music_chain = Mock()
+    music_chain.async_recognize_by_path = AsyncMock(
+        return_value=(
+            MusicMeta(title="晴天", artists=["周杰伦"]),
+            MusicInfo(
+                source="musicbrainz",
+                media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+                title="晴天",
+                artists=["周杰伦"],
+            ),
+        )
+    )
+
+    import asyncio
+
+    with patch("app.api.endpoints.media.MusicChain", return_value=music_chain):
+        result = asyncio.run(recognize_file(path="/music/晴天.flac", _=Mock()))
+
+    assert result["meta_info"]["type"] == "音乐"
+    assert result["media_info"]["title"] == "晴天"
+    music_chain.async_recognize_by_path.assert_awaited_once_with(
+        path="/music/晴天.flac",
+        source="musicbrainz",
+    )
+
+
+def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
+    """手动音乐刮削应接受 MusicBrainz UUID 并进入音乐标签写入流程。"""
+    fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
+    info = MusicInfo(
+        source="musicbrainz",
+        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        title="晴天",
+    )
+    chain = Mock()
+    chain.recognize.return_value = info
+    chain.scrape_metadata.return_value = (True, "已刮削 1 个音频文件")
+
+    with patch("app.api.endpoints.media.MusicChain", return_value=chain):
+        result = scrape(
+            fileitem=fileitem,
+            storage="local",
+            media_source="musicbrainz",
+            media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+            type_name=MediaType.MUSIC,
+            _=Mock(),
+        )
+
+    assert result.success is True
+    chain.recognize.assert_called_once_with(
+        source="musicbrainz",
+        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+    )
+    chain.scrape_metadata.assert_called_once_with(
+        fileitem=fileitem,
+        mediainfo=info,
+        overwrite=True,
+    )

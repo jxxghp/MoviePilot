@@ -10,6 +10,14 @@ from app.core.security import verify_token
 router = APIRouter()
 
 CountParam = Annotated[int, Query(ge=1, le=100)]
+MusicRangeParam = Annotated[
+    str,
+    Query(pattern="^(this_week|this_month|this_year|all_time)$"),
+]
+MusicSortParam = Annotated[
+    str,
+    Query(pattern="^listen_count\\.(desc|asc)$"),
+]
 
 
 def _serialize_music(info: MusicInfo) -> schemas.MusicInfo:
@@ -59,12 +67,19 @@ async def recognize_music(
 async def explore_music(
         page: Annotated[int, Query(ge=1)] = 1,
         count: CountParam = 30,
+        range_name: MusicRangeParam = "this_month",
+        sort_by: MusicSortParam = "listen_count.desc",
+        min_listen_count: Annotated[int, Query(ge=0)] = 0,
+        with_cover: bool = False,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
-    """按月度全站收听榜单分页返回可搜索和订阅的音乐候选。"""
+    """按周期、热度和封面条件返回可搜索和订阅的音乐候选。"""
     results = await MusicChain().async_chart(
-        range_name="this_month",
+        range_name=range_name,
         page=page,
         count=count,
+        sort_by=sort_by,
+        min_listen_count=min_listen_count,
+        with_cover=with_cover,
     )
     return [_serialize_music(info) for info in results]

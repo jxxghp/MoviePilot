@@ -1,14 +1,17 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from mutagen import File as MutagenFile
+from mutagen.flac import FLAC, Picture
+from mutagen.id3 import APIC
+from mutagen.mp4 import MP4, MP4Cover
 
-from app.core.music import MusicMeta
+from app.core.music import MusicInfo, MusicMeta
 from app.log import logger
 
 
 class AudioMetadataHelper:
-    """读取音频标签和技术参数并转换为标准 MusicMeta。"""
+    """读取和写入音频标签，并转换为标准音乐元数据。"""
 
     @classmethod
     def read(cls, path: Path) -> MusicMeta:
@@ -49,6 +52,126 @@ class AudioMetadataHelper:
             duration=round(info.length) if info and getattr(info, "length", None) else None,
             isrc=cls._first(tags, "isrc"),
         )
+
+    @classmethod
+    def write(
+            cls,
+            path: Path,
+            music: Union[MusicMeta, MusicInfo],
+            cover_data: Optional[bytes] = None,
+            cover_mime: str = "image/jpeg",
+            overwrite: bool = True,
+    ) -> bool:
+        """把标准音乐字段写入音频标签，并为常见格式嵌入专辑封面。"""
+        try:
+            audio = MutagenFile(path, easy=True)
+            if not audio:
+                logger.warning(f"无法写入音频标签：{path}")
+                return False
+            if audio.tags is None:
+                audio.add_tags()
+            for key, value in cls._tag_values(music).items():
+                if value in (None, "", []):
+                    continue
+                if not overwrite and audio.tags.get(key):
+                    continue
+                try:
+                    audio[key] = value if isinstance(value, list) else [str(value)]
+                except (KeyError, TypeError, ValueError) as err:
+                    logger.debug(f"音频格式不支持标签 {key}：{path} - {err}")
+            audio.save()
+            if cover_data:
+                cls._write_cover(
+                    path=path,
+                    cover_data=cover_data,
+                    cover_mime=cover_mime,
+                    overwrite=overwrite,
+                )
+            return True
+        except Exception as err:
+            logger.warning(f"写入音频标签失败：{path} - {err}")
+            return False
+
+    @classmethod
+    def _tag_values(cls, music: Union[MusicMeta, MusicInfo]) -> dict[str, Any]:
+        """把标准音乐对象转换为 Mutagen Easy 标签字典。"""
+        track_number = cls._number_text(
+            getattr(music, "track_number", None),
+            getattr(music, "total_tracks", None),
+        )
+        disc_number = cls._number_text(
+            getattr(music, "disc_number", None),
+            getattr(music, "total_discs", None),
+        )
+        return {
+            "title": getattr(music, "title", None),
+            "artist": list(getattr(music, "artists", None) or []),
+            "album": getattr(music, "album", None),
+            "albumartist": getattr(music, "album_artist", None),
+            "date": getattr(music, "year", None),
+            "tracknumber": track_number,
+            "discnumber": disc_number,
+            "isrc": getattr(music, "isrc", None),
+        }
+
+    @staticmethod
+    def _number_text(current: Optional[int], total: Optional[int]) -> Optional[str]:
+        """把曲序或碟号转换为常见的 current/total 标签文本。"""
+        if current is None:
+            return None
+        return f"{current}/{total}" if total else str(current)
+
+    @staticmethod
+    def _write_cover(
+            path: Path,
+            cover_data: bytes,
+            cover_mime: str,
+            overwrite: bool,
+    ) -> None:
+        """为 MP3、FLAC 和 MP4/M4A 写入内嵌封面，其它格式保留标签写入结果。"""
+        audio = MutagenFile(path)
+        if isinstance(audio, FLAC):
+            if audio.pictures and not overwrite:
+                return
+            picture = Picture()
+            picture.type = 3
+            picture.mime = cover_mime
+            picture.desc = "Cover"
+            picture.data = cover_data
+            if overwrite:
+                audio.clear_pictures()
+            audio.add_picture(picture)
+            audio.save()
+            return
+        if isinstance(audio, MP4):
+            if audio.tags is None:
+                audio.add_tags()
+            if audio.tags.get("covr") and not overwrite:
+                return
+            image_format = (
+                MP4Cover.FORMAT_PNG
+                if cover_mime == "image/png"
+                else MP4Cover.FORMAT_JPEG
+            )
+            audio.tags["covr"] = [MP4Cover(cover_data, imageformat=image_format)]
+            audio.save()
+            return
+        tags = getattr(audio, "tags", None)
+        if tags is not None and hasattr(tags, "add"):
+            if tags.getall("APIC") and not overwrite:
+                return
+            if overwrite:
+                tags.delall("APIC")
+            tags.add(
+                APIC(
+                    encoding=3,
+                    mime=cover_mime,
+                    type=3,
+                    desc="Cover",
+                    data=cover_data,
+                )
+            )
+            audio.save()
 
     @staticmethod
     def _values(tags: Any, key: str) -> list[str]:

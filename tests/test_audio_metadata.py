@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.core.music import MusicInfo
 from app.helper.audio import AudioMetadataHelper
 
 
@@ -46,3 +47,42 @@ def test_read_audio_metadata_falls_back_to_filename(monkeypatch):
 
     assert meta.title == "Unknown Track"
     assert meta.audio_format == "MP3"
+
+
+def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
+    """音乐刮削应把标准歌曲、专辑和曲序字段写回音频标签。"""
+    class FakeAudio:
+        """记录 Mutagen Easy 标签写入结果。"""
+
+        def __init__(self):
+            self.tags = {}
+            self.saved = False
+
+        def __setitem__(self, key, value):
+            self.tags[key] = value
+
+        def save(self):
+            self.saved = True
+
+    audio = FakeAudio()
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    success = AudioMetadataHelper.write(
+        Path("/music/08 - Get Lucky.flac"),
+        MusicInfo(
+            title="Get Lucky",
+            artists=["Daft Punk", "Pharrell Williams"],
+            album="Random Access Memories",
+            album_artist="Daft Punk",
+            year=2013,
+            track_number=8,
+            total_tracks=13,
+            isrc="USQX91300105",
+        ),
+    )
+
+    assert success is True
+    assert audio.saved is True
+    assert audio.tags["title"] == ["Get Lucky"]
+    assert audio.tags["artist"] == ["Daft Punk", "Pharrell Williams"]
+    assert audio.tags["tracknumber"] == ["8/13"]
