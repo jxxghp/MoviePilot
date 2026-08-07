@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from collections import deque
 from queue import Empty, Queue
 from pathlib import Path
 from threading import Lock
@@ -50,11 +51,116 @@ WEB_AGENT_UPLOAD_CHUNK_SIZE = 1024 * 1024
 WEB_AGENT_BROWSER_AUDIO_SUFFIXES = {".aac", ".m4a", ".mp3", ".mp4", ".wav", ".wave"}
 WEB_AGENT_TRADITIONAL_IDLE_TIMEOUT_SECONDS = 2.0
 WEB_AGENT_TRADITIONAL_MAX_WAIT_SECONDS = 60.0
+WEB_AGENT_STREAM_COALESCE_SECONDS = 0.03
+WEB_AGENT_STREAM_COALESCE_MAX_CHARS = 256
+WEB_AGENT_STREAM_HEARTBEAT_SECONDS = 15.0
+WEB_AGENT_STREAM_QUEUE_MAX_SIZE = 64
 _WEB_AGENT_FILE_REGISTRY: dict[str, dict[str, Any]] = {}
 _WEB_AGENT_NOTICE_QUEUES: dict[str, list[Queue[schemas.Notification]]] = {}
 _WEB_AGENT_NOTICE_LOCK = Lock()
 _WEB_AGENT_NOTICE_LISTENER_REGISTERED = False
 _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+class _WebAgentEventPublisher:
+    """合并 WebAgent 文本增量，并通过有界队列向 SSE 消费者提供事件。"""
+
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue[dict] = asyncio.Queue(
+            maxsize=WEB_AGENT_STREAM_QUEUE_MAX_SIZE
+        )
+        self._pending_events: deque[dict] = deque()
+        self._pending_signal = asyncio.Event()
+        self._pending_delta = ""
+        self._delta_timer: Optional[asyncio.TimerHandle] = None
+        self._disposed = False
+        self._max_depth = 0
+        self._last_logged_depth = 0
+        self._pump_task = asyncio.create_task(self._pump())
+
+    @property
+    def max_depth(self) -> int:
+        """返回本轮发布器观测到的最大积压深度。"""
+        return self._max_depth
+
+    def publish(self, event: dict) -> None:
+        """发布事件；相邻文本会按时间或长度边界合并。"""
+        if self._disposed:
+            return
+        if event.get("type") == "delta":
+            self._pending_delta += str(event.get("content") or "")
+            if len(self._pending_delta) >= WEB_AGENT_STREAM_COALESCE_MAX_CHARS:
+                self._flush_delta()
+            elif self._delta_timer is None:
+                loop = asyncio.get_running_loop()
+                self._delta_timer = loop.call_later(
+                    WEB_AGENT_STREAM_COALESCE_SECONDS,
+                    self._flush_delta,
+                )
+            return
+
+        self._flush_delta()
+        self._append_event(event)
+
+    async def get(self) -> dict:
+        """等待并返回下一条已排序事件。"""
+        return await self._queue.get()
+
+    async def aclose(self) -> None:
+        """停止发布器并释放等待中的泵任务。"""
+        if self._disposed:
+            return
+        self._disposed = True
+        self._cancel_delta_timer()
+        self._pending_delta = ""
+        self._pending_events.clear()
+        self._pump_task.cancel()
+        try:
+            await self._pump_task
+        except asyncio.CancelledError:
+            pass
+
+    def _cancel_delta_timer(self) -> None:
+        """取消尚未触发的文本合并计时器。"""
+        if self._delta_timer is None:
+            return
+        self._delta_timer.cancel()
+        self._delta_timer = None
+
+    def _flush_delta(self) -> None:
+        """把当前文本缓冲转换成一条增量事件。"""
+        self._cancel_delta_timer()
+        if not self._pending_delta or self._disposed:
+            return
+        content = self._pending_delta
+        self._pending_delta = ""
+        self._append_event({"type": "delta", "content": content})
+
+    def _append_event(self, event: dict) -> None:
+        """追加待发布事件，相邻文本在出口阻塞时继续合并。"""
+        if (
+            event.get("type") == "delta"
+            and self._pending_events
+            and self._pending_events[-1].get("type") == "delta"
+        ):
+            self._pending_events[-1]["content"] += str(event.get("content") or "")
+        else:
+            self._pending_events.append(event)
+        self._pending_signal.set()
+        depth = self._queue.qsize() + len(self._pending_events)
+        self._max_depth = max(self._max_depth, depth)
+        if depth >= WEB_AGENT_STREAM_QUEUE_MAX_SIZE // 2 and depth > self._last_logged_depth:
+            self._last_logged_depth = depth
+            logger.debug(f"WebAgent SSE事件积压深度: {depth}")
+
+    async def _pump(self) -> None:
+        """按发布顺序把本地合并结果写入有界出口队列。"""
+        while True:
+            await self._pending_signal.wait()
+            while self._pending_events:
+                event = self._pending_events.popleft()
+                await self._queue.put(event)
+            self._pending_signal.clear()
 
 
 def _ensure_superuser(user: User) -> None:
@@ -267,6 +373,18 @@ class _WebAgentMoviePilotAgent(MoviePilotAgent):
     def _handle_stream_text(self, text: str) -> None:
         """文本输出交由 Web 流式处理器统一回调，避免重复增量。"""
         self.stream_handler.emit(text)
+
+    def _emit_output(self, text: str) -> None:
+        """保留完整输出状态，同时只把本次增量交给 Web SSE 回调。"""
+        if not text:
+            return
+        self._streamed_output += text
+        if not callable(self.output_callback):
+            return
+        try:
+            self.output_callback(text)
+        except Exception as e:
+            logger.debug(f"Web智能体输出回调失败: {e}")
 
 
 def _build_web_agent_session_id(user: User, session_id: Optional[str]) -> str:
@@ -1791,14 +1909,52 @@ async def web_agent_stream(
                 {"session_id": session_id},
                 locale=locale,
             )
-            events = await _collect_web_agent_traditional_events(
-                text=prompt,
-                current_user=current_user,
-                original_message_id=payload.original_message_id,
-                original_chat_id=payload.original_chat_id,
+            collection_task = asyncio.create_task(
+                _collect_web_agent_traditional_events(
+                    text=prompt,
+                    current_user=current_user,
+                    original_message_id=payload.original_message_id,
+                    original_chat_id=payload.original_chat_id,
+                )
             )
+            try:
+                while True:
+                    try:
+                        events = await asyncio.wait_for(
+                            asyncio.shield(collection_task),
+                            timeout=WEB_AGENT_STREAM_HEARTBEAT_SECONDS,
+                        )
+                        break
+                    except asyncio.TimeoutError:
+                        if await request.is_disconnected():
+                            collection_task.cancel()
+                            return
+                        yield ": heartbeat\n\n"
+            except asyncio.CancelledError:
+                if not collection_task.done():
+                    collection_task.cancel()
+                return
+
             assistant_message = _build_web_agent_display_message_from_events(events)
             display_messages.append(assistant_message)
+
+            async def save_display_snapshot() -> None:
+                """后台保存传统消息展示快照，不阻塞 SSE 终态。"""
+                try:
+                    await run_in_threadpool(
+                        _save_web_agent_display_snapshot,
+                        session_id=session_id,
+                        current_user=current_user,
+                        messages=display_messages,
+                        client_session_id=payload.session_id or session_id,
+                    )
+                except Exception as err:
+                    logger.error(f"保存WebAgent传统消息快照失败: {str(err)}")
+
+            snapshot_task = asyncio.create_task(save_display_snapshot())
+            _WEB_AGENT_BACKGROUND_TASKS.add(snapshot_task)
+            snapshot_task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
+            await asyncio.sleep(0)
             for event in events:
                 event_payload = copy.deepcopy(event)
                 yield _build_web_agent_sse(
@@ -1807,21 +1963,14 @@ async def web_agent_stream(
                     locale=locale,
                 )
                 if await request.is_disconnected():
-                    break
-            await run_in_threadpool(
-                _save_web_agent_display_snapshot,
-                session_id=session_id,
-                current_user=current_user,
-                messages=display_messages,
-                client_session_id=payload.session_id or session_id,
-            )
+                    return
             yield _build_web_agent_sse("done", {}, locale=locale)
 
         return StreamingResponse(
             traditional_event_generator(),
             media_type="text/event-stream",
             headers={
-                "Cache-Control": "no-cache",
+                "Cache-Control": "no-cache, no-transform",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
             },
@@ -1868,8 +2017,7 @@ async def web_agent_stream(
 
     session_id = _build_web_agent_session_id(current_user, payload.session_id)
     MessageChain().bind_user_session(str(current_user.id), session_id)
-    event_queue: asyncio.Queue = asyncio.Queue()
-    last_output = ""
+    event_publisher = _WebAgentEventPublisher()
     user_attachments = _build_web_agent_input_attachments(
         images=payload.images or [],
         files=[
@@ -1894,16 +2042,13 @@ async def web_agent_stream(
     )
     display_messages.append(assistant_display_message)
 
-    def output_callback(output: str) -> None:
+    def output_callback(delta: str) -> None:
         """
-        接收 Agent 累积输出并转成增量事件。
+        接收 Agent 文本增量并转换成 SSE 事件。
         """
-        nonlocal last_output
-        delta = output[len(last_output):] if output.startswith(last_output) else output
-        last_output = output
         for item in _split_web_agent_output(delta):
             _apply_web_agent_display_event(item, assistant_display_message)
-            event_queue.put_nowait(item)
+            event_publisher.publish(item)
 
     def notification_callback(notification: schemas.Notification) -> None:
         """
@@ -1911,7 +2056,7 @@ async def web_agent_stream(
         """
         for item in _build_web_agent_notification_events(notification):
             _apply_web_agent_display_event(item, assistant_display_message)
-            event_queue.put_nowait(item)
+            event_publisher.publish(item)
 
     async def event_generator() -> AsyncIterator[str]:
         """
@@ -1953,10 +2098,12 @@ async def web_agent_stream(
                     "message": f"智能助手执行失败: {str(err)}",
                 }
                 _apply_web_agent_display_event(error_event, assistant_display_message)
-                await event_queue.put(error_event)
+                event_publisher.publish(error_event)
             finally:
                 done_event = {"type": "done"}
                 _apply_web_agent_display_event(done_event, assistant_display_message)
+                # 终态先进入 SSE 队列，避免展示快照落库延迟前端结束动画。
+                event_publisher.publish(done_event)
                 await run_in_threadpool(
                     _save_web_agent_display_snapshot,
                     session_id=session_id,
@@ -1964,40 +2111,51 @@ async def web_agent_stream(
                     messages=display_messages,
                     client_session_id=payload.session_id or session_id,
                 )
-                await event_queue.put(done_event)
 
         task = asyncio.create_task(run_agent())
         _WEB_AGENT_BACKGROUND_TASKS.add(task)
         task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
+        disconnected = False
+        terminal_sent = False
         try:
             yield _build_web_agent_sse(
                 "start",
                 {"session_id": session_id},
                 locale=locale,
             )
-            disconnected = False
             while not global_vars.is_system_stopped:
                 if await request.is_disconnected():
                     disconnected = True
                     break
-                event = await event_queue.get()
+                try:
+                    event = await asyncio.wait_for(
+                        event_publisher.get(),
+                        timeout=WEB_AGENT_STREAM_HEARTBEAT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                event_type = str(event.get("type") or "")
+                if event_type == "done":
+                    terminal_sent = True
                 yield _build_web_agent_sse(
-                    event.pop("type"),
-                    event,
+                    event_type,
+                    {key: value for key, value in event.items() if key != "type"},
                     locale=locale,
                 )
-                if task.done() and event_queue.empty():
+                if event_type == "done":
                     break
         except asyncio.CancelledError:
             disconnected = True
             return
         finally:
-            if not task.done() and not disconnected:
+            if not task.done() and not disconnected and not terminal_sent:
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
+            await event_publisher.aclose()
             # 客户端退到后台导致 SSE 断开时，保留后台 Agent 继续执行；完成后会保存展示快照，
             # 前端恢复可见时可通过会话详情接口拉取最终状态。
 
@@ -2005,7 +2163,7 @@ async def web_agent_stream(
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },

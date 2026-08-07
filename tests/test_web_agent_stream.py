@@ -1,6 +1,7 @@
 import asyncio
 import time
 from queue import Queue
+from threading import Event as ThreadEvent
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -8,6 +9,7 @@ from app import schemas
 from app.agent import ReplyMode, agent_manager
 from app.api.endpoints.agent import (
     _WebAgentMoviePilotAgent,
+    _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
     _WEB_AGENT_NOTICE_QUEUES,
     _apply_web_agent_display_event,
@@ -74,6 +76,32 @@ def test_split_web_agent_output_preserves_standalone_newline_delta():
                 content += event["content"]
 
     assert content == "可以这样操作：\n- **搜索资源**：搜索电影\n- **下载管理**：添加任务"
+
+
+def test_web_agent_event_publisher_coalesces_text_before_semantic_events():
+    """连续文本应合并，且工具事件前的文本顺序不能改变。"""
+
+    async def scenario():
+        publisher = _WebAgentEventPublisher()
+        try:
+            for index in range(100):
+                publisher.publish({"type": "delta", "content": str(index % 10)})
+            publisher.publish({"type": "tool", "message": "查询完成"})
+
+            first = await asyncio.wait_for(publisher.get(), timeout=1)
+            second = await asyncio.wait_for(publisher.get(), timeout=1)
+            return first, second, publisher.max_depth
+        finally:
+            await publisher.aclose()
+
+    first, second, max_depth = asyncio.run(scenario())
+
+    assert first == {
+        "type": "delta",
+        "content": "".join(str(index % 10) for index in range(100)),
+    }
+    assert second == {"type": "tool", "message": "查询完成"}
+    assert max_depth == 2
 
 
 def test_build_web_agent_session_id_is_stable_per_user_and_seed():
@@ -345,6 +373,26 @@ def test_web_agent_reused_for_background_task_disables_streaming():
 
     assert agent.is_background is True
     assert agent._should_stream() is False
+
+
+def test_web_agent_output_callback_receives_only_new_text():
+    """WebAgent 外部回调应接收增量，同时内部仍保留完整输出。"""
+    outputs = []
+    agent = _WebAgentMoviePilotAgent(
+        session_id="web-agent:incremental-output",
+        user_id="7",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        output_callback=outputs.append,
+    )
+
+    agent._handle_stream_text("你")
+    agent._handle_stream_text("好")
+
+    assert outputs == ["你", "好"]
+    assert agent._streamed_output == "你好"
 
 
 def test_web_agent_channel_supports_streaming_and_attachments():
@@ -623,13 +671,16 @@ def test_web_agent_stream_binds_session_to_agent_manager():
     if worker:
         worker.cancel()
 
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        return "".join(await _collect_streaming_response(response))
+
     try:
         with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
             "app.api.endpoints.agent._WebAgentMoviePilotAgent",
             FakeWebAgent,
         ):
-            response = asyncio.run(web_agent_stream(payload, request, user))
-            body = "".join(asyncio.run(_collect_streaming_response(response)))
+            body = asyncio.run(scenario())
 
         assert "状态正常" in body
         assert MessageChain._user_sessions["1"][0] == session_id
@@ -643,6 +694,197 @@ def test_web_agent_stream_binds_session_to_agent_manager():
         worker = agent_manager._session_workers.pop(session_id, None)
         if worker:
             worker.cancel()
+
+
+def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
+    """长时间没有 Agent 事件时应发送 SSE heartbeat 保持连接。"""
+    payload = schemas.AgentWebChatRequest(text="分析系统状态", session_id="browser-heartbeat")
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+
+    async def slow_process_message(**kwargs):
+        """模拟工具执行期间暂时没有可见输出。"""
+        await asyncio.sleep(0.035)
+        kwargs["output_callback"]("状态正常")
+
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        return "".join(await _collect_streaming_response(response))
+
+    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        "app.api.endpoints.agent.WEB_AGENT_STREAM_HEARTBEAT_SECONDS",
+        0.01,
+    ), patch(
+        "app.api.endpoints.agent._is_web_agent_traditional_message",
+        return_value=False,
+    ), patch(
+        "app.api.endpoints.agent._has_web_agent_traditional_interaction",
+        return_value=False,
+    ), patch(
+        "app.api.endpoints.agent._build_web_agent_session_id",
+        return_value="web-agent:heartbeat",
+    ), patch.object(
+        MessageChain,
+        "bind_user_session",
+    ), patch.object(
+        agent_manager,
+        "process_message",
+        side_effect=slow_process_message,
+    ), patch(
+        "app.api.endpoints.agent._save_web_agent_display_snapshot",
+    ):
+        body = asyncio.run(scenario())
+
+    assert ": heartbeat\n\n" in body
+    assert '"type": "delta"' in body
+    assert '"type": "done"' in body
+
+
+def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
+    """传统消息等待期间应保活，且展示快照不能阻塞终态。"""
+    payload = schemas.AgentWebChatRequest(text="/状态", session_id="traditional-heartbeat")
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    snapshot_started = ThreadEvent()
+    snapshot_release = ThreadEvent()
+    snapshot_finished = ThreadEvent()
+
+    async def slow_collect(**_kwargs):
+        """模拟传统消息链路等待外部结果。"""
+        await asyncio.sleep(0.035)
+        return [{"type": "delta", "content": "状态正常"}]
+
+    def slow_snapshot(**_kwargs):
+        """阻塞快照写入，便于断言 done 不等待落库。"""
+        snapshot_started.set()
+        snapshot_release.wait(timeout=2)
+        snapshot_finished.set()
+
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        assert response.headers["cache-control"] == "no-cache, no-transform"
+        iterator = response.body_iterator.__aiter__()
+        received = []
+        while True:
+            chunk = await asyncio.wait_for(anext(iterator), timeout=1)
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            received.append(text)
+            if '"type": "done"' in text:
+                break
+
+        for _ in range(100):
+            if snapshot_started.is_set():
+                break
+            await asyncio.sleep(0.001)
+        assert snapshot_started.is_set()
+        assert not snapshot_finished.is_set()
+        await iterator.aclose()
+        return "".join(received)
+
+    try:
+        with patch(
+            "app.api.endpoints.agent.WEB_AGENT_STREAM_HEARTBEAT_SECONDS",
+            0.01,
+        ), patch(
+            "app.api.endpoints.agent._is_web_agent_traditional_message",
+            return_value=True,
+        ), patch(
+            "app.api.endpoints.agent._ensure_web_agent_command_allowed",
+            return_value=None,
+        ), patch(
+            "app.api.endpoints.agent._get_web_agent_unknown_command_message",
+            return_value=None,
+        ), patch(
+            "app.api.endpoints.agent._build_web_agent_session_id",
+            return_value="web-agent:traditional-heartbeat",
+        ), patch(
+            "app.api.endpoints.agent._collect_web_agent_traditional_events",
+            side_effect=slow_collect,
+        ), patch(
+            "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            side_effect=slow_snapshot,
+        ):
+            body = asyncio.run(scenario())
+
+        assert ": heartbeat\n\n" in body
+        assert '"type": "delta"' in body
+        assert '"type": "done"' in body
+        assert not snapshot_finished.is_set()
+    finally:
+        snapshot_release.set()
+
+    assert snapshot_finished.wait(timeout=1)
+
+
+def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
+    """展示快照落库缓慢时，前端终态不应被数据库操作阻塞。"""
+    payload = schemas.AgentWebChatRequest(text="检查系统", session_id="browser-snapshot")
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    snapshot_started = ThreadEvent()
+    snapshot_release = ThreadEvent()
+    snapshot_finished = ThreadEvent()
+
+    async def immediate_process_message(**kwargs):
+        """立即生成一段文本，随后进入终态。"""
+        kwargs["output_callback"]("检查完成")
+
+    def slow_snapshot(**_kwargs):
+        """阻塞快照写入，便于验证 done 的发送时机。"""
+        snapshot_started.set()
+        snapshot_release.wait(timeout=2)
+        snapshot_finished.set()
+
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        iterator = response.body_iterator.__aiter__()
+        received = []
+        while True:
+            chunk = await asyncio.wait_for(anext(iterator), timeout=1)
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            received.append(text)
+            if '"type": "done"' in text:
+                break
+
+        for _ in range(100):
+            if snapshot_started.is_set():
+                break
+            await asyncio.sleep(0.001)
+        assert snapshot_started.is_set()
+        assert not snapshot_finished.is_set()
+
+        await iterator.aclose()
+        return "".join(received)
+
+    try:
+        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+            "app.api.endpoints.agent._is_web_agent_traditional_message",
+            return_value=False,
+        ), patch(
+            "app.api.endpoints.agent._has_web_agent_traditional_interaction",
+            return_value=False,
+        ), patch(
+            "app.api.endpoints.agent._build_web_agent_session_id",
+            return_value="web-agent:snapshot",
+        ), patch.object(
+            MessageChain,
+            "bind_user_session",
+        ), patch.object(
+            agent_manager,
+            "process_message",
+            side_effect=immediate_process_message,
+        ), patch(
+            "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            side_effect=slow_snapshot,
+        ):
+            body = asyncio.run(scenario())
+
+        assert '"type": "done"' in body
+        assert not snapshot_finished.is_set()
+    finally:
+        snapshot_release.set()
+
+    assert snapshot_finished.wait(timeout=1)
 
 
 async def _collect_streaming_response(response):
