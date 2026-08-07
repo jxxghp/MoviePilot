@@ -252,6 +252,20 @@ class _WebAgentStreamingHandler(StreamingHandler):
         """
         self._on_emit = on_emit
 
+    def record_tool_call(
+        self,
+        tool_name: str,
+        tool_message: Optional[str] = None,
+        tool_kwargs: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """记录并立即输出 Web 工具事件，避免汇总延迟到正文结束后。"""
+        super().record_tool_call(
+            tool_name=tool_name,
+            tool_message=tool_message,
+            tool_kwargs=tool_kwargs,
+        )
+        self.flush_pending_tool_summary()
+
     def emit(self, token: str) -> str:
         """追加 token 并同步通知 SSE 生产者。"""
         emitted = super().emit(token)

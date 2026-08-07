@@ -395,6 +395,25 @@ def test_web_agent_output_callback_receives_only_new_text():
     assert agent._streamed_output == "你好"
 
 
+def test_web_agent_tool_summary_is_emitted_before_following_text():
+    """Web 工具状态应在调用发生时输出，不能拖到正文结束后。"""
+    outputs = []
+    agent = _WebAgentMoviePilotAgent(
+        session_id="web-agent:tool-order",
+        user_id="7",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        output_callback=outputs.append,
+    )
+
+    agent.stream_handler.record_tool_call("query_download_tasks")
+    agent._handle_stream_text("查询完成。")
+
+    assert outputs == ["（查询了 1 次数据）\n\n", "查询完成。"]
+
+
 def test_web_agent_channel_supports_streaming_and_attachments():
     """WebAgent 渠道应声明流式、多媒体和文件发送能力。"""
     assert ChannelCapabilityManager.supports_capability(
