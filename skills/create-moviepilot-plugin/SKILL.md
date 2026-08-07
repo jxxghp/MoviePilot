@@ -41,6 +41,8 @@ a local plugin source and installed into the running MoviePilot instance.
   `list_directory` only when inspecting one known folder or a configured remote
   storage backend.
 - Read the relevant implementation and adjacent example before editing.
+- If `read_file` reports truncation, continue with smaller `start_line` and
+  `end_line` ranges until all relevant sections have been inspected.
 - Before using a Python or Node.js dependency API, determine the exact installed
   or locked version from requirements, package manifests, lockfiles, local
   package source, and `.pyi`/`.d.ts` declarations. If those are insufficient,

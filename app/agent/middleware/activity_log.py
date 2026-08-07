@@ -447,7 +447,7 @@ async def _summarize_with_llm(conversation_text: str) -> Optional[str]:
         llm = await LLMHelper.get_llm(streaming=False)
         prompt = SUMMARY_PROMPT.format(conversation=conversation_text)
         response = await llm.ainvoke(prompt)
-        summary = response.content.strip()
+        summary = LLMHelper.extract_text_content(response.content).strip()
         # 清理模型可能输出的前缀（如 "摘要：" "总结："）
         summary = re.sub(r"^(摘要|总结|活动记录)[：:]\s*", "", summary)
         if summary.strip().upper() == SUMMARY_SKIP_MARKER:

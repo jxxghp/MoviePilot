@@ -14,6 +14,10 @@ from app.log import logger
 
 # 最大读取大小 50KB
 MAX_READ_SIZE = 50 * 1024
+READ_FILE_TRUNCATION_MESSAGE = (
+    "文件内容超过50KB，本次结果已截断。"
+    "请使用 start_line 和 end_line 参数指定行号范围分段读取。"
+)
 
 
 class ReadFileInput(BaseModel):
@@ -39,7 +43,11 @@ class ReadFileTool(MoviePilotTool):
         ToolTag.Read,
         ToolTag.File,
     ]
-    description: str = "Read the content of a text file. Supports reading by line range. Each read is limited to 50KB; content exceeding this limit will be truncated."
+    description: str = (
+        "Read the content of a text file. Supports reading by line range. Each "
+        "read is limited to 50KB; when content is truncated, continue with "
+        "smaller start_line and end_line ranges."
+    )
     args_schema: Type[BaseModel] = ReadFileInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -99,22 +107,21 @@ class ReadFileTool(MoviePilotTool):
                 truncated = True
 
             if include_metadata:
-                return json.dumps(
-                    {
-                        "file_path": str(resolved_path),
-                        "sha256": hashlib.sha256(raw_content).hexdigest(),
-                        "size_bytes": len(raw_content),
-                        "start_line": start_line,
-                        "end_line": end_line,
-                        "truncated": truncated,
-                        "content": content,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                payload = {
+                    "file_path": str(resolved_path),
+                    "sha256": hashlib.sha256(raw_content).hexdigest(),
+                    "size_bytes": len(raw_content),
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "truncated": truncated,
+                }
+                if truncated:
+                    payload["truncation_message"] = READ_FILE_TRUNCATION_MESSAGE
+                payload["content"] = content
+                return json.dumps(payload, ensure_ascii=False, indent=2)
 
             if truncated:
-                return f"{content}\n\n[警告：文件内容已超过50KB限制，以上内容已被截断。请使用 start_line/end_line 参数分段读取。]"
+                return f"{content}\n\n[警告：{READ_FILE_TRUNCATION_MESSAGE}]"
 
             return content
 

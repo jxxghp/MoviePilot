@@ -260,6 +260,8 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 内置 Agent 的本地文件与命令工具 `read_file`、`write_file`、`edit_file`、
 `execute_command` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
 用户权限与路径边界检查；MCP 隐藏列表只负责收敛接口暴露面，不替代权限控制。
+其中 `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
+`start_line`、`end_line` 指定更小的行号范围继续读取。
 
 媒体相关 MCP 工具（如 `query_media_detail`、`search_torrents`、`query_library_exists`、`add_subscribe`、`transfer_file`）接受 `tmdb_id`/`tmdbid`、`douban_id`/`doubanid`、`bangumi_id`/`bangumiid`、`anilist_id`/`anilistid`，也接受 `media_source` + `media_id`。工具返回的媒体、订阅、下载和整理记录会同步带回可用的四种专用 ID 及通用主身份。
 

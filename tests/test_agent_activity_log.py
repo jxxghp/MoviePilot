@@ -151,6 +151,29 @@ def test_summarize_with_llm_ignores_skip_marker():
     llm.ainvoke.assert_awaited_once()
 
 
+def test_summarize_with_llm_extracts_text_blocks():
+    """活动摘要应兼容 LLM 返回的结构化文本块。"""
+    llm = SimpleNamespace(
+        ainvoke=AsyncMock(
+            return_value=SimpleNamespace(
+                content=[
+                    {"type": "reasoning", "text": "内部推理"},
+                    {"type": "text", "text": "摘要：用户完成了文件工具排查。"},
+                ]
+            )
+        )
+    )
+
+    with patch(
+        "app.agent.llm.LLMHelper.get_llm",
+        new=AsyncMock(return_value=llm),
+    ):
+        summary = asyncio.run(_summarize_with_llm("用户: 排查文件工具"))
+
+    assert summary == "用户完成了文件工具排查。"
+    llm.ainvoke.assert_awaited_once()
+
+
 def test_activity_log_records_detailed_summary(tmp_path):
     """有实际工具动作的交互应写入较完整的活动摘要。"""
     summary = (

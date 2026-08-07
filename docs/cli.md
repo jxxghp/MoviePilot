@@ -490,6 +490,8 @@ moviepilot tool run search_torrents media_type=movie tmdb_id=12345
 - `read_file`、`write_file`、`edit_file` 和 `execute_command`
   属于内置 Agent 的本地敏感能力，不通过 MCP/`moviepilot tool` 暴露；插件开发时
   由 Agent 按当前用户权限直接调用这些工具。
+- `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
+  `start_line`、`end_line` 指定更小的行号范围继续读取。
 
 ## Scheduler 命令
 

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.list_directory import ListDirectoryTool
-from app.agent.tools.impl.read_file import ReadFileTool
+from app.agent.tools.impl.read_file import MAX_READ_SIZE, ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.chain.storage import StorageChain
 
@@ -133,6 +133,31 @@ def test_read_file_can_return_sha256_metadata(tmp_path):
         "插件内容".encode("utf-8")
     ).hexdigest()
     assert payload["truncated"] is False
+
+
+def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
+    """超过50KB时应保留前段内容并提示按行号范围继续读取。"""
+    file_path = tmp_path / "large.py"
+    exact_content = "a" * MAX_READ_SIZE
+    file_path.write_text(exact_content, encoding="utf-8")
+    tool = _make_admin_tool(ReadFileTool)
+
+    exact_result = asyncio.run(tool.ainvoke({"file_path": str(file_path)}))
+    file_path.write_text(f"{exact_content}b", encoding="utf-8")
+    truncated_result = asyncio.run(tool.ainvoke({"file_path": str(file_path)}))
+    metadata_result = asyncio.run(
+        tool.run(str(file_path), include_metadata=True)
+    )
+    metadata = json.loads(metadata_result)
+
+    assert exact_result == exact_content
+    assert truncated_result.startswith(exact_content)
+    assert "50KB" in truncated_result
+    assert "start_line" in truncated_result
+    assert "end_line" in truncated_result
+    assert "tool_result_truncated" not in truncated_result
+    assert metadata["truncated"] is True
+    assert "行号范围" in metadata["truncation_message"]
 
 
 def test_list_directory_returns_paged_items_with_next_offset(tmp_path):
