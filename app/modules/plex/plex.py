@@ -144,6 +144,9 @@ class Plex:
             elif library.type == "show":
                 library_type = MediaType.TV.value
                 image_list = self.__get_library_images(library.key, 2)
+            elif library.type in ("artist", "music"):
+                library_type = MediaType.MUSIC.value
+                image_list = self.__get_library_images(library.key, 8)
             else:
                 continue
             libraries.append(
@@ -169,7 +172,7 @@ class Plex:
         if not self._plex:
             return schemas.Statistic()
         sections = self._plex.library.sections()
-        movie_count = tv_count = episode_count = 0
+        movie_count = tv_count = episode_count = music_count = 0
         # 媒体库白名单
         allow_library = [str(lib.id) for lib in self.get_librarys(hidden=True) or []]
         for sec in sections:
@@ -180,10 +183,13 @@ class Plex:
             if sec.type == "show":
                 tv_count += sec.totalSize
                 episode_count += sec.totalViewSize(libtype="episode")
+            if sec.type in ("artist", "music"):
+                music_count += sec.totalSize
         return schemas.Statistic(
             movie_count=movie_count,
             tv_count=tv_count,
-            episode_count=episode_count
+            episode_count=episode_count,
+            music_count=music_count,
         )
 
     def get_movies(self,
@@ -241,6 +247,36 @@ class Plex:
                 )
             )
         return ret_movies
+
+    def get_music(
+        self, title: Optional[str] = None, artist: Optional[str] = None,
+        album: Optional[str] = None,
+    ) -> List[schemas.MediaServerItem]:
+        """按歌曲、艺术家或专辑名称查询 Plex 音乐条目。"""
+        if not self._plex:
+            return []
+        query = " ".join(filter(None, [title, artist, album])).strip()
+        if not query:
+            return []
+        results: List[schemas.MediaServerItem] = []
+        try:
+            for library in self._plex.library.sections():
+                if library.type not in ("artist", "music"):
+                    continue
+                for item in library.search(title=query):
+                    results.append(schemas.MediaServerItem(
+                        server="plex",
+                        library=library.key,
+                        item_id=getattr(item, "ratingKey", None) or getattr(item, "key", None),
+                        item_type=MediaType.MUSIC.value,
+                        title=getattr(item, "title", None),
+                        original_title=getattr(item, "title", None),
+                        year=getattr(item, "year", None),
+                        path=getattr(item, "file", None),
+                    ))
+        except Exception as e:
+            logger.debug(f"查询Plex音乐出错：{e}")
+        return results
 
     def get_tv_episodes(self,
                         item_id: Optional[str] = None,

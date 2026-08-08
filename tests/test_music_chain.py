@@ -1,5 +1,5 @@
 from app.chain.music import MusicChain
-from app.core.music import MusicInfo, MusicMeta
+from app.core.music import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicMeta
 
 
 def test_parse_query_supports_artist_title_format():
@@ -171,3 +171,114 @@ def test_select_path_candidate_prefers_matching_audio_tags():
     selected = MusicChain._select_path_candidate(meta, candidates, source="musicbrainz")
 
     assert selected is candidates[1]
+
+
+def test_async_chart_forwards_album_entity(monkeypatch):
+    """热门专辑探索应把实体类型透传给 ListenBrainz 榜单模块。"""
+    chain = MusicChain()
+    requested = {}
+
+    async def fake_async_run_module(method, **kwargs):
+        """记录榜单请求参数并返回一个专辑候选。"""
+        requested.update(method=method, **kwargs)
+        return [
+            MusicInfo(
+                media_id="release-group-1",
+                source="musicbrainz",
+                music_type="album",
+                title="ARIRANG",
+                listen_count=10,
+            )
+        ]
+
+    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+
+    import asyncio
+
+    results = asyncio.run(chain.async_chart(range_name="week", page=3, count=20, entity="album"))
+
+    assert requested["method"] == "music_chart"
+    assert requested["entity"] == "album"
+    assert requested["offset"] == 40
+    assert results[0].music_type == "album"
+
+
+def test_async_fresh_releases_keeps_official_order(monkeypatch):
+    """新发行探索应保留官方排序，只按封面条件过滤。"""
+    chain = MusicChain()
+    requested = {}
+
+    async def fake_async_run_module(method, **kwargs):
+        """记录新发行请求参数并返回带封面与不带封面的候选。"""
+        requested.update(method=method, **kwargs)
+        return [
+            MusicInfo(media_id="b", source="musicbrainz", music_type="album", title="B"),
+            MusicInfo(
+                media_id="a",
+                source="musicbrainz",
+                music_type="album",
+                title="A",
+                cover_url="https://coverartarchive.org/release/a/front-500",
+            ),
+        ]
+
+    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+
+    import asyncio
+
+    results = asyncio.run(
+        chain.async_fresh_releases(days=30, sort="release_name", page=2, count=10, with_cover=True)
+    )
+
+    assert requested["method"] == "music_fresh_releases"
+    assert requested["offset"] == 10
+    assert requested["sort"] == "release_name"
+    assert [item.title for item in results] == ["A"]
+
+
+def test_async_artist_related_deduplicates_artists(monkeypatch):
+    """关联艺术家应按标准 ID 去重，避免同一成员重复出现。"""
+    chain = MusicChain()
+
+    async def fake_async_run_module(method, **kwargs):
+        """返回重复的关联艺术家候选。"""
+        assert method == "music_artist_related"
+        return [
+            MusicArtistInfo(source="musicbrainz", media_id="artist-1", name="Brian May"),
+            MusicArtistInfo(source="musicbrainz", media_id="artist-1", name="Brian May"),
+            MusicArtistInfo(source="musicbrainz", media_id="artist-2", name="John Deacon"),
+        ]
+
+    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+
+    import asyncio
+
+    results = asyncio.run(chain.async_artist_related(source="musicbrainz", media_id="artist-0"))
+
+    assert [item.media_id for item in results] == ["artist-1", "artist-2"]
+
+
+def test_async_album_restores_dataclass_from_plugin_dict(monkeypatch):
+    """插件返回字典时专辑链应恢复为标准专辑对象。"""
+    chain = MusicChain()
+
+    async def fake_async_run_module(method, **kwargs):
+        """模拟插件模块以字典形式返回专辑详情。"""
+        assert method == "music_album"
+        return MusicAlbumInfo(
+            source="musicbrainz",
+            media_id="release-group-1",
+            title="A Night at the Opera",
+            artists=["Queen"],
+            release_date="1975-11-21",
+        ).to_dict()
+
+    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+
+    import asyncio
+
+    album = asyncio.run(chain.async_album(source="musicbrainz", media_id="release-group-1"))
+
+    assert album is not None
+    assert album.year == 1975
+    assert album.artists == ["Queen"]

@@ -7,7 +7,13 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.core.config import settings
-from app.core.music import MusicInfo, MusicMeta
+from app.core.music import (
+    MUSIC_ENTITY_RECORDING,
+    MusicAlbumInfo,
+    MusicArtistInfo,
+    MusicInfo,
+    MusicMeta,
+)
 from app.helper.audio import AudioMetadataHelper
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -130,15 +136,135 @@ class MusicChain(ChainBase):
             sort_by: str = "listen_count.desc",
             min_listen_count: int = 0,
             with_cover: bool = False,
+            entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
-        """异步读取 ListenBrainz 榜单，并应用音乐探索筛选和排序。"""
+        """异步读取 ListenBrainz 热门榜单，并应用音乐探索筛选和排序。"""
         candidates = await self.async_run_module(
             "music_chart",
             range_name=range_name,
             offset=max(page - 1, 0) * count,
             count=count,
+            entity=entity,
         )
-        results = self.normalize_candidates(candidates)
+        results = self._filter_candidates(
+            self.normalize_candidates(candidates),
+            min_listen_count=min_listen_count,
+            with_cover=with_cover,
+        )
+        results.sort(
+            key=lambda info: info.listen_count or 0,
+            reverse=sort_by != "listen_count.asc",
+        )
+        return results[:count]
+
+    async def async_fresh_releases(
+            self,
+            days: int = 14,
+            sort: str = "release_date",
+            past: bool = True,
+            future: bool = True,
+            page: int = 1,
+            count: int = 30,
+            with_cover: bool = False,
+    ) -> list[MusicInfo]:
+        """异步读取 ListenBrainz 官方新发行专辑，排序由官方接口决定。"""
+        candidates = await self.async_run_module(
+            "music_fresh_releases",
+            days=days,
+            sort=sort,
+            past=past,
+            future=future,
+            offset=max(page - 1, 0) * count,
+            count=count,
+        )
+        results = self._filter_candidates(
+            self.normalize_candidates(candidates),
+            min_listen_count=0,
+            with_cover=with_cover,
+        )
+        return results[:count]
+
+    async def async_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+        """异步按来源和专辑 ID 获取标准化专辑详情及曲目。"""
+        result = await self.async_run_module(
+            "music_album",
+            source=source,
+            media_id=media_id,
+        )
+        if isinstance(result, MusicAlbumInfo):
+            return result
+        if isinstance(result, dict):
+            return MusicAlbumInfo.from_dict(result)
+        return None
+
+    async def async_artist(self, source: str, media_id: str) -> Optional[MusicArtistInfo]:
+        """异步按来源和艺术家 ID 获取标准化艺术家详情。"""
+        result = await self.async_run_module(
+            "music_artist",
+            source=source,
+            media_id=media_id,
+        )
+        if isinstance(result, MusicArtistInfo):
+            return result
+        if isinstance(result, dict):
+            return MusicArtistInfo.from_dict(result)
+        return None
+
+    async def async_artist_albums(
+            self,
+            source: str,
+            media_id: str,
+            page: int = 1,
+            count: int = 30,
+            album_type: Optional[str] = None,
+    ) -> list[MusicInfo]:
+        """异步分页读取艺术家名下的专辑、EP 和单曲。"""
+        candidates = await self.async_run_module(
+            "music_artist_albums",
+            source=source,
+            media_id=media_id,
+            page=page,
+            count=count,
+            album_type=album_type,
+        )
+        return self.normalize_candidates(candidates, limit=count)
+
+    async def async_artist_related(
+            self,
+            source: str,
+            media_id: str,
+            count: int = 24,
+    ) -> list[MusicArtistInfo]:
+        """异步读取关联艺术家，供详情页继续浏览。"""
+        candidates = await self.async_run_module(
+            "music_artist_related",
+            source=source,
+            media_id=media_id,
+            count=count,
+        )
+        results: list[MusicArtistInfo] = []
+        identities: set[str] = set()
+        for candidate in candidates or []:
+            info = (
+                candidate
+                if isinstance(candidate, MusicArtistInfo)
+                else MusicArtistInfo.from_dict(candidate)
+            )
+            identity = (info.media_id or info.name or "").casefold()
+            if not identity or identity in identities:
+                continue
+            identities.add(identity)
+            results.append(info)
+        return results[:count]
+
+    @staticmethod
+    def _filter_candidates(
+            candidates: list[MusicInfo],
+            min_listen_count: int,
+            with_cover: bool,
+    ) -> list[MusicInfo]:
+        """按热度和封面条件过滤音乐探索候选。"""
+        results = candidates
         if min_listen_count > 0:
             results = [
                 info for info in results
@@ -146,11 +272,7 @@ class MusicChain(ChainBase):
             ]
         if with_cover:
             results = [info for info in results if info.cover_url]
-        results.sort(
-            key=lambda info: info.listen_count or 0,
-            reverse=sort_by != "listen_count.asc",
-        )
-        return results[:count]
+        return list(results)
 
     @classmethod
     def is_audio_path(cls, path: str | Path) -> bool:

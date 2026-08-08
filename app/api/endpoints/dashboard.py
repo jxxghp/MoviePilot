@@ -33,6 +33,7 @@ def _build_statistic(db: Session, name: Optional[str] = None) -> schemas.Statist
         for media_statistic in media_statistics:
             ret_statistic.movie_count += media_statistic.movie_count or 0
             ret_statistic.tv_count += media_statistic.tv_count or 0
+            ret_statistic.music_count += media_statistic.music_count or 0
             ret_statistic.user_count += media_statistic.user_count or 0
             if media_statistic.episode_count is not None:
                 ret_statistic.episode_count += media_statistic.episode_count or 0

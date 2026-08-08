@@ -180,6 +180,10 @@ class Jellyfin:
                 library_type = MediaType.TV.value
                 link = f"{self._playhost or self._host}web/index.html#!" \
                        f"/tv.html?topParentId={library.get('Id')}"
+            elif library.get("CollectionType") in ("music", "musicvideos"):
+                library_type = MediaType.MUSIC.value
+                link = f"{self._playhost or self._host}web/index.html#!" \
+                       f"/music.html?topParentId={library.get('Id')}"
             else:
                 library_type = MediaType.UNKNOWN.value
                 link = f"{self._playhost or self._host}web/index.html#!" \
@@ -192,7 +196,10 @@ class Jellyfin:
                     name=library.get("Name"),
                     path=library.get("Path"),
                     type=library_type,
-                    item_count=self.get_items_count(library.get("Id")),
+                    item_count=self.get_items_count(
+                        library.get("Id"),
+                        include_item_types="MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
+                    ),
                     image=image,
                     link=link,
                     server_type="jellyfin"
@@ -359,7 +366,9 @@ class Jellyfin:
                 return schemas.Statistic(
                     movie_count=result.get("MovieCount") or 0,
                     tv_count=result.get("SeriesCount") or 0,
-                    episode_count=result.get("EpisodeCount") or 0
+                    episode_count=result.get("EpisodeCount") or 0,
+                    music_count=result.get("MusicAlbumCount") or result.get("AlbumCount")
+                    or result.get("SongCount") or 0,
                 )
             else:
                 logger.error(f"Items/Counts 未获取到返回数据")
@@ -392,6 +401,8 @@ class Jellyfin:
             elif collection_type == "tvshows":
                 stat.tv_count += self.get_items_count(library_id, include_item_types="Series") or 0
                 stat.episode_count += self.get_items_count(library_id, include_item_types="Episode") or 0
+            elif collection_type in ("music", "musicvideos"):
+                stat.music_count += self.get_items_count(library_id, include_item_types="MusicAlbum") or 0
         return stat
 
     def __get_jellyfin_series_id_by_name(self, name: str, year: str) -> Optional[str]:
@@ -464,7 +475,33 @@ class Jellyfin:
         except Exception as e:
             logger.error(f"连接Items出错：" + str(e))
             return None
-        return []
+        return None
+
+    def get_music(
+        self, title: Optional[str] = None, artist: Optional[str] = None,
+        album: Optional[str] = None,
+    ) -> List[schemas.MediaServerItem]:
+        """按歌曲、艺术家或专辑名称查询 Jellyfin 音乐条目。"""
+        if not self._host or not self._apikey or not self.user:
+            return []
+        query = " ".join(filter(None, [title, artist, album])).strip()
+        if not query:
+            return []
+        url = f"{self._host}Users/{self.user}/Items"
+        params = {
+            "IncludeItemTypes": "MusicAlbum,Audio",
+            "searchTerm": query,
+            "Recursive": "true",
+            "Limit": 20,
+            "api_key": self._apikey,
+        }
+        try:
+            res = self._request().get_res(url, params)
+            items = res.json().get("Items", []) if res and res.status_code == 200 else []
+            return [item for item in (self.__format_item_info(item) for item in items) if item]
+        except Exception as e:
+            logger.debug(f"查询Jellyfin音乐出错：{e}")
+            return []
 
     def get_tv_episodes(self,
                         item_id: Optional[str] = None,
@@ -958,7 +995,7 @@ class Jellyfin:
                 if "Folder" in item.get("Type"):
                     for items in self.get_items(item.get("Id")):
                         yield items
-                elif item.get("Type") in ["Movie", "Series"]:
+                elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:
                     yield self.__format_item_info(item)
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))

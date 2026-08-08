@@ -29,7 +29,7 @@ class MediaServerConf(BaseModel):
 
     # 名称
     name: Optional[str] = None
-    # 类型 emby/zspace/jellyfin/plex/trimemedia/ugreen
+    # 类型 emby/zspace/jellyfin/plex/trimemedia/ugreen/navidrome
     type: Optional[str] = None
     # 配置
     config: Optional[dict] = Field(default_factory=dict)

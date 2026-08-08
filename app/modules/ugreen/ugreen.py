@@ -413,6 +413,8 @@ class Ugreen:
             return MediaType.TV.value
         if "电影" in path or "电影" in name:
             return MediaType.MOVIE.value
+        if any(key in name.lower() for key in ["music", "audio", "音乐"]):
+            return MediaType.MUSIC.value
         return MediaType.UNKNOWN.value
 
     def __is_library_blocked(self, library_id: str) -> bool:
@@ -594,12 +596,14 @@ class Ugreen:
 
         movie_data = self._api.video_all(classification=-102, page=1, page_size=1) or {}
         tv_data = self._api.video_all(classification=-103, page=1, page_size=1) or {}
+        music_data = self._api.video_all(classification=-104, page=1, page_size=1) or {}
 
         return schemas.Statistic(
             movie_count=int(movie_data.get("total_num") or 0),
             tv_count=int(tv_data.get("total_num") or 0),
             # 绿联当前不统计剧集总数，返回 None 由前端展示“未获取”。
             episode_count=None,
+            music_count=int(music_data.get("total_num") or 0),
         )
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
@@ -653,6 +657,33 @@ class Ugreen:
             if media_item:
                 movies.append(media_item)
         return movies
+
+    def get_music(
+        self,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+    ) -> List[schemas.MediaServerItem]:
+        """按歌曲、艺术家或专辑名称查询绿联影视音乐条目。"""
+        if not self.is_authenticated() or not self._api:
+            return []
+        query = " ".join(filter(None, [album, title, artist])).strip()
+        if not query:
+            return []
+
+        data = self._api.search(query)
+        if not data:
+            return []
+
+        # 绿联搜索按媒体类型分桶返回，音乐相关桶名在不同固件版本上并不统一
+        music_buckets = ("music_list", "audio_list", "album_list", "songs_list")
+        results: List[schemas.MediaServerItem] = []
+        for bucket in music_buckets:
+            for info in self.__extract_video_info_list(data.get(bucket)):
+                media_item = self.__build_media_server_item(info)
+                if media_item:
+                    results.append(media_item)
+        return results
 
     def __search_tv_item(self, title: str, year: Optional[str] = None, tmdb_id: Optional[int] = None) -> Optional[dict]:
         if not self._api:

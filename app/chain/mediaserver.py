@@ -129,7 +129,7 @@ class MediaServerChain(ChainBase):
 
     def media_count(self, server: str) -> Optional[int]:
         """
-        获取指定媒体服务器可同步的电影和电视剧总数
+        获取指定媒体服务器可同步的电影、电视剧和音乐总数
 
         :param server: 媒体服务器名称
         :return: 电影和电视剧总数，无法获取时返回None
@@ -138,7 +138,9 @@ class MediaServerChain(ChainBase):
         if not statistics:
             return None
         return sum(
-            (statistic.movie_count or 0) + (statistic.tv_count or 0)
+            (statistic.movie_count or 0)
+            + (statistic.tv_count or 0)
+            + (statistic.music_count or 0)
             for statistic in statistics
         )
 

@@ -161,6 +161,20 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         for name, s in servers:
             if not s:
                 continue
+            if mediainfo.type == MediaType.MUSIC:
+                matches = s.get_music(
+                    title=getattr(mediainfo, "title", None),
+                    artist=getattr(mediainfo, "artist", None),
+                    album=getattr(mediainfo, "album", None),
+                )
+                if matches:
+                    return schemas.ExistMediaInfo(
+                        type=MediaType.MUSIC,
+                        server_type="plex",
+                        server=name,
+                        itemid=matches[0].item_id,
+                    )
+                continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
                     movie = s.get_iteminfo(itemid)

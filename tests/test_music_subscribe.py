@@ -62,6 +62,7 @@ def test_build_subscribe_meta_returns_music_meta():
     assert isinstance(meta, MusicMeta)
     assert meta.type == MediaType.MUSIC
     assert meta.media_id == "recording-1"
+    assert meta.original_name == "晴天"
 
 
 def test_music_subscribe_reuses_search_download_and_finish_flow():

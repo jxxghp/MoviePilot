@@ -392,6 +392,8 @@ class MediaServerType(Enum):
     TrimeMedia = "TrimeMedia"
     # 绿联影视
     Ugreen = "Ugreen"
+    # Navidrome 音乐服务器
+    Navidrome = "Navidrome"
 
 
 # 识别器类型

@@ -193,6 +193,8 @@ class TrimeMedia:
                 library_type = MediaType.MOVIE.value
             elif library.category == fnapi.Category.TV:
                 library_type = MediaType.TV.value
+            elif getattr(library.category, "value", "").lower() in ("music", "audio"):
+                library_type = MediaType.MUSIC.value
             elif library.category == fnapi.Category.OTHERS:
                 # 忽略这个库
                 continue
@@ -240,6 +242,7 @@ class TrimeMedia:
         return schemas.Statistic(
             movie_count=info.movie,
             tv_count=info.tv,
+            music_count=getattr(info, "music", 0) or getattr(info, "audio", 0) or 0,
         )
 
     def authenticate(self, username: str, password: str) -> Optional[str]:

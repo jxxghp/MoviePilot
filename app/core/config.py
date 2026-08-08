@@ -519,6 +519,8 @@ class ConfigModel(BaseModel):
             "anilist.co",
             "coverartarchive.org",
             "archive.org",
+            "commons.wikimedia.org",
+            "upload.wikimedia.org",
         ]
     )
     # 图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果

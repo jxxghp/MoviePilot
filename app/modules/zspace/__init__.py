@@ -145,6 +145,20 @@ class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
         for name, s in servers:
             if not s:
                 continue
+            if mediainfo.type == MediaType.MUSIC:
+                matches = getattr(s, "get_music", lambda **_: [])(
+                    title=getattr(mediainfo, "title", None),
+                    artist=getattr(mediainfo, "artist", None),
+                    album=getattr(mediainfo, "album", None),
+                )
+                if matches:
+                    return schemas.ExistMediaInfo(
+                        type=MediaType.MUSIC,
+                        server_type="zspace",
+                        server=name,
+                        itemid=matches[0].item_id,
+                    )
+                continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
                     movie = s.get_iteminfo(itemid)

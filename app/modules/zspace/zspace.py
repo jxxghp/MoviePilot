@@ -245,6 +245,8 @@ class ZSpace:
                 library_type = MediaType.MOVIE.value
             elif library.get("CollectionType") == "tvshows":
                 library_type = MediaType.TV.value
+            elif library.get("CollectionType") in ("music", "musicvideos", "audio"):
+                library_type = MediaType.MUSIC.value
             else:
                 library_type = MediaType.UNKNOWN.value
             image = self.__get_local_image_by_id(library.get("Id"))
@@ -388,7 +390,9 @@ class ZSpace:
                 return schemas.Statistic(
                     movie_count=result.get("MovieCount") or 0,
                     tv_count=result.get("SeriesCount") or 0,
-                    episode_count=result.get("EpisodeCount") or 0
+                    episode_count=result.get("EpisodeCount") or 0,
+                    music_count=result.get("MusicAlbumCount") or result.get("AlbumCount")
+                    or result.get("SongCount") or 0,
                 )
             logger.debug("Items/Counts 未获取到返回数据，回退到按媒体库累计 TotalRecordCount")
         except Exception as e:
@@ -549,6 +553,34 @@ class ZSpace:
             logger.error(f"连接Items出错：{e}")
             return None
         return []
+
+    def get_music(
+            self,
+            title: Optional[str] = None,
+            artist: Optional[str] = None,
+            album: Optional[str] = None,
+    ) -> List[schemas.MediaServerItem]:
+        """按歌曲、艺术家或专辑名称查询极影视音乐条目。"""
+        if not self._host or not self._apikey:
+            return []
+        query = " ".join(filter(None, [title, artist, album])).strip()
+        if not query:
+            return []
+        url = f"{self._host}emby/Items"
+        params = {
+            "IncludeItemTypes": "MusicAlbum,Audio",
+            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
+            "SearchTerm": query,
+            "Recursive": "true",
+            "Limit": 20,
+        }
+        try:
+            res = self.__request_utils().get_res(url, params=params)
+            items = res.json().get("Items", []) if res else []
+            return [item for item in (self.__format_item_info(item) for item in items) if item]
+        except Exception as e:
+            logger.debug(f"查询极影视音乐出错：{e}")
+            return []
 
     def get_tv_episodes(self,
                         item_id: Optional[str] = None,
