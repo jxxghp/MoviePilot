@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.core.metainfo import MetaInfo, MetaInfoPath, find_metainfo
+from app.core.meta import MetaBase, MetaMusic
 from app.core.meta.metaanime import MetaAnime
 from app.helper.torrent import TorrentHelper
 from app.schemas.types import MediaType
@@ -170,6 +171,53 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
     assert meta.resource_pix == "1080p"
     assert meta.edition == "WEB-DL"
     assert meta.audio_encode == "DDP 5.1"
+
+
+def test_metainfo_routes_audio_filename_to_music():
+    """音频文件名应直接走音乐分支，不再进入影视季集解析。"""
+    meta = MetaInfo("周杰伦 - 晴天.flac")
+
+    assert isinstance(meta, MetaMusic)
+    assert isinstance(meta, MetaBase)
+    assert meta.type == MediaType.MUSIC
+    assert meta.org_string == "周杰伦 - 晴天.flac"
+    assert meta.title == "周杰伦 - 晴天"
+    assert meta.audio_format == "FLAC"
+    # 音乐没有季集信息，兼容通用访问
+    assert meta.season is None
+    assert meta.episode is None
+    assert meta.apply_words == []
+
+
+def test_metainfo_routes_audio_path_to_music_without_parent_merge():
+    """音频路径应直接构造音乐元数据，不与父目录季集合并。"""
+    meta = MetaInfoPath(Path("/music/叶惠美/周杰伦 - 晴天.flac"))
+
+    assert isinstance(meta, MetaMusic)
+    assert meta.type == MediaType.MUSIC
+    assert meta.org_string == "周杰伦 - 晴天.flac"
+    assert meta.title == "周杰伦 - 晴天"
+    assert meta.audio_format == "FLAC"
+
+
+def test_metainfo_keeps_video_path_for_non_audio_files():
+    """非音频文件应继续走影视识别链，不受音频路由影响。"""
+    meta = MetaInfoPath(Path("/movies/Inception (2010)/Inception.2010.1080p.mkv"))
+
+    assert not isinstance(meta, MetaMusic)
+    assert meta.type != MediaType.MUSIC
+
+
+def test_metainfo_music_round_trip_preserves_fields():
+    """音频解析结果字典往返后应保留音乐字段。"""
+    meta = MetaInfoPath(Path("/music/周杰伦 - 晴天.flac"))
+    payload = meta.to_dict()
+    restored = MetaMusic.from_dict(payload)
+
+    assert restored.type == MediaType.MUSIC
+    assert restored.title == "周杰伦 - 晴天"
+    assert restored.audio_format == "FLAC"
+    assert payload["type"] == "音乐"
 
 
 def test_python_subtitle_episode_range_fin_with_chinese_season():

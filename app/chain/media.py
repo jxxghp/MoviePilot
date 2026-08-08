@@ -11,7 +11,7 @@ from app.chain.storage import StorageChain
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.core.event import eventmanager, Event
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
@@ -741,6 +741,10 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not metainfo:
             return None
+        # 音乐走独立识别链，不参与影视季集识别与辅助识别事件
+        if isinstance(metainfo, MetaMusic):
+            from app.chain.music import MusicChain
+            return MusicChain().recognize_by_meta(metainfo, source=source)
         title = metainfo.title
         share_meta = deepcopy(metainfo)
 
@@ -1735,6 +1739,10 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not metainfo:
             return None
+        # 音乐走独立识别链，不参与影视季集识别与辅助识别事件
+        if isinstance(metainfo, MetaMusic):
+            from app.chain.music import MusicChain
+            return await MusicChain().async_recognize_by_meta(metainfo, source=source)
         title = metainfo.title
         share_meta = deepcopy(metainfo)
 

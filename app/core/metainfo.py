@@ -6,7 +6,7 @@ from typing import Tuple, List, Optional
 import regex as re
 
 from app.core.config import settings
-from app.core.meta import MetaAnime, MetaVideo, MetaBase
+from app.core.meta import MetaAnime, MetaMusic, MetaVideo, MetaBase
 from app.core.meta.infopath import (
     clear_parsed_title_for_parent_merge,
     should_use_parent_title_for_file_stem,
@@ -425,8 +425,16 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :param custom_words: 自定义识别词列表
-    :return: MetaAnime、MetaVideo
+    :return: MetaAnime、MetaVideo、MetaMusic
     """
+    # 音频文件名直接走音乐分支，避免进入影视季集解析
+    audio_suffix = Path(title).suffix.lower() if title else ""
+    if audio_suffix in settings.RMT_AUDIOEXT:
+        return MetaMusic(
+            org_string=title,
+            title=Path(title).stem,
+            audio_format=audio_suffix.lstrip(".").upper() or None,
+        )
     rust_meta = None
     if not _requires_python_metainfo(title, custom_words):
         rust_meta = _meta_from_rust(
@@ -449,6 +457,14 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None) -> MetaBase:
     :param path: 路径
     :param custom_words: 自定义识别词列表
     """
+    # 音频文件直接构造音乐元数据，不参与父目录季集合并
+    audio_suffix = path.suffix.lower()
+    if audio_suffix in settings.RMT_AUDIOEXT:
+        return MetaMusic(
+            org_string=path.name,
+            title=path.stem,
+            audio_format=audio_suffix.lstrip(".").upper() or None,
+        )
     path_context = " ".join(
         [path.name, path.parent.name, path.parent.parent.name]
     )

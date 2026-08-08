@@ -1,12 +1,12 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.helper.audio import AudioMetadataHelper
 
 
 def test_read_audio_metadata_maps_easy_tags(monkeypatch):
-    """音频标签和技术参数应映射为 MusicMeta。"""
+    """音频标签和技术参数应映射为 MetaMusic。"""
     audio = SimpleNamespace(
         tags={
             "title": ["Get Lucky"],

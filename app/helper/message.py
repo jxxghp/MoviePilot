@@ -15,9 +15,8 @@ from jinja2 import Template
 
 from app.core.cache import TTLCache
 from app.core.config import global_vars
-from app.core.context import MediaInfo, TorrentInfo
-from app.core.meta import MetaBase
-from app.core.music import MusicInfo, MusicMeta
+from app.core.context import MediaInfo, MusicInfo, TorrentInfo
+from app.core.meta import MetaBase, MetaMusic
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.message import Notification
@@ -196,7 +195,7 @@ class TemplateContextBuilder:
         """
         if not meta:
             return
-        if isinstance(meta, MusicMeta):
+        if isinstance(meta, MetaMusic):
             context.update({
                 "original_name": meta.org_string or meta.title,
                 "name": cls.__convert_invalid_characters(meta.title),

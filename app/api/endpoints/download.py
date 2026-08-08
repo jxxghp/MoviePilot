@@ -6,9 +6,8 @@ from app import schemas
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.music import MusicChain
-from app.core.context import MediaInfo, Context, SubtitleInfo, TorrentInfo
+from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
-from app.core.music import MusicInfo
 from app.core.security import verify_token
 from app.db.models.user import User
 from app.db.site_oper import SiteOper

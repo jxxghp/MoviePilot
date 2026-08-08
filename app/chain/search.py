@@ -16,9 +16,10 @@ from app.chain.music import MusicChain
 from app.core.config import global_vars, settings
 from app.core.context import Context
 from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo
-from app.core.music import MusicInfo, MusicMeta
 from app.core.event import eventmanager, Event
+from app.core.meta import MetaMusic
 from app.core.metainfo import MetaInfo
+from app.core.context import MusicInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper  # noqa
@@ -1031,7 +1032,7 @@ class SearchChain(ChainBase):
     ) -> Any:
         """根据限定媒体类型构造模糊搜索结果的上下文元数据。"""
         if mtype == MediaType.MUSIC:
-            return MusicMeta(
+            return MetaMusic(
                 org_string=torrent.title,
                 title=torrent.title,
             )

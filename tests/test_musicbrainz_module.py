@@ -1,4 +1,4 @@
-from app.core.music import MusicMeta
+from app.core.meta import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 from app.core.config import settings
 
@@ -12,7 +12,7 @@ def test_musicbrainz_cover_domains_are_allowed_by_image_proxy():
 def test_build_query_uses_structured_music_fields():
     """MusicBrainz 查询应同时使用歌曲、艺术家和专辑条件。"""
     query = MusicBrainzModule._build_query(
-        MusicMeta(
+        MetaMusic(
             title='Love "Story"',
             artists=["Taylor Swift"],
             album="Fearless",
@@ -76,7 +76,7 @@ def test_search_music_normalizes_candidates(monkeypatch):
         },
     )
 
-    results = module.search_music(MusicMeta(title="晴天"), limit=5)
+    results = module.search_music(MetaMusic(title="晴天"), limit=5)
 
     assert len(results) == 1
     assert results[0].title == "晴天"

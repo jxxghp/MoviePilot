@@ -15,8 +15,7 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.core.cache import FileCache
 from app.core.config import settings, global_vars
-from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo, Context
-from app.core.music import MusicInfo, MusicMeta
+from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
@@ -66,7 +65,7 @@ class DownloadChain(ChainBase):
     def _build_download_note(
             source: Optional[str],
             media: MediaInfo | MusicInfo,
-            meta: MetaBase | MusicMeta,
+            meta: MetaBase,
     ) -> dict:
         """构造下载历史备注，并为音乐保存可恢复的版本化上下文。"""
         note = {"source": source}

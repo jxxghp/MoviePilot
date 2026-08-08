@@ -2,7 +2,7 @@ from typing import Any, Optional, Tuple, Union
 
 from app.core.cache import cached
 from app.core.config import settings
-from app.core.music import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType

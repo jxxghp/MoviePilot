@@ -1,7 +1,8 @@
 from unittest.mock import Mock, patch
 
 from app.chain.search import SearchChain
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.context import MusicInfo
 from app.schemas.context import TorrentInfo
 from app.schemas.types import MediaType
 
@@ -38,7 +39,7 @@ def test_music_context_builder_keeps_only_music_category():
 
     assert len(contexts) == 1
     assert contexts[0].media_info is music
-    assert isinstance(contexts[0].meta_info, MusicMeta)
+    assert isinstance(contexts[0].meta_info, MetaMusic)
     assert contexts[0].meta_info.media_id == "recording-1"
     assert contexts[0].torrent_info.category == MediaType.MUSIC.value
 

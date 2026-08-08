@@ -3,7 +3,8 @@ from unittest.mock import Mock, patch
 
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
 from app.core.context import Context, TorrentInfo
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.context import MusicInfo
 from app.schemas.types import MediaType
 
 
@@ -56,10 +57,10 @@ def _subscribe() -> SimpleNamespace:
 
 
 def test_build_subscribe_meta_returns_music_meta():
-    """音乐订阅应构造 MusicMeta，而不是交给影视标题解析器。"""
+    """音乐订阅应构造 MetaMusic，而不是交给影视标题解析器。"""
     meta = build_subscribe_meta(_subscribe())
 
-    assert isinstance(meta, MusicMeta)
+    assert isinstance(meta, MetaMusic)
     assert meta.type == MediaType.MUSIC
     assert meta.media_id == "recording-1"
     assert meta.original_name == "晴天"
@@ -96,7 +97,7 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
         rule_groups=[],
     )
     assert context.media_info is target
-    assert isinstance(context.meta_info, MusicMeta)
+    assert isinstance(context.meta_info, MetaMusic)
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
     download_chain.batch_download.assert_called_once()
     chain.finish_subscribe_or_not.assert_called_once()
@@ -121,3 +122,56 @@ def test_music_subscribe_ignores_non_music_category():
         chain._search_music_subscribe(subscribe)
 
     download_chain.assert_not_called()
+
+
+def test_subscribe_add_music_uses_unified_recognize_by_meta():
+    """音乐订阅新增应走统一 recognize_by_meta，并把媒体身份落到 MetaMusic 上。"""
+    target = _music_info()
+    media_chain = Mock()
+    media_chain.recognize_by_meta = Mock(return_value=target)
+    subscribe_oper = Mock()
+    subscribe_oper.add.return_value = (1, "")
+
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.MoviePilotServerHelper"), \
+            patch("app.chain.subscribe.eventmanager"):
+        sid, err_msg = SubscribeChain().add(
+            title="周杰伦 - 晴天",
+            year="2003",
+            mtype=MediaType.MUSIC,
+            media_source="musicbrainz",
+            media_id="recording-1",
+            message=False,
+        )
+
+    assert sid == 1
+    assert err_msg == ""
+    media_chain.recognize_by_meta.assert_called_once()
+    routed_meta = media_chain.recognize_by_meta.call_args.args[0]
+    assert isinstance(routed_meta, MetaMusic)
+    # 媒体身份落到 meta，供统一识别的详情分支复用
+    assert routed_meta.media_id == "recording-1"
+    assert media_chain.recognize_by_meta.call_args.kwargs["source"] == "musicbrainz"
+
+
+def test_subscribe_add_music_fails_fast_on_offline_fallback():
+    """统一识别返回离线兜底（无远端 source）时订阅应直接失败，不写入数据库。"""
+    offline = MusicInfo(title="未知曲目", artists=["未知艺术家"])
+    media_chain = Mock()
+    media_chain.recognize_by_meta = Mock(return_value=offline)
+    subscribe_oper = Mock()
+    subscribe_oper.add.return_value = (1, "")
+
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper):
+        sid, err_msg = SubscribeChain().add(
+            title="未知曲目",
+            year=None,
+            mtype=MediaType.MUSIC,
+            message=False,
+        )
+
+    assert sid is None
+    assert err_msg == "未识别到媒体信息"
+    subscribe_oper.add.assert_not_called()

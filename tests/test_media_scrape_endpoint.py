@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.api.endpoints.media import recognize_file, scrape
 from app.core.context import Context, MediaInfo
-from app.core.meta import MetaBase
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaBase, MetaMusic
+from app.core.context import MusicInfo
 from app.schemas import FileItem, MediaType
 
 
@@ -88,7 +88,7 @@ def test_recognize_file_routes_audio_to_music_chain() -> None:
     music_chain = Mock()
     music_chain.async_recognize_by_path = AsyncMock(
         return_value=(
-            MusicMeta(title="晴天", artists=["周杰伦"]),
+            MetaMusic(title="晴天", artists=["周杰伦"]),
             MusicInfo(
                 source="musicbrainz",
                 media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",

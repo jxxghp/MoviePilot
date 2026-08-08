@@ -9,8 +9,7 @@ from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings
-from app.core.context import Context
-from app.core.music import MusicInfo
+from app.core.context import Context, MusicInfo
 from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath

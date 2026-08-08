@@ -10,7 +10,7 @@ from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper

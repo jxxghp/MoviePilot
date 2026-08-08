@@ -1,5 +1,6 @@
 from app.core.context import Context, MediaInfo
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.context import MusicInfo
 from app.schemas.context import Context as ContextSchema
 from app.schemas.context import MediaInfo as MediaInfoSchema
 from app.schemas.music import MusicInfo as MusicInfoSchema
@@ -16,8 +17,8 @@ def test_media_type_supports_music_agent_conversion():
 
 
 def test_music_meta_round_trip_preserves_list_isolation():
-    """MusicMeta 字典往返后应保留字段且不共享可变列表。"""
-    meta = MusicMeta(
+    """MetaMusic 字典往返后应保留字段且不共享可变列表。"""
+    meta = MetaMusic(
         org_string="Jay Chou - Common Jasmin Orange",
         title="七里香",
         artists=["周杰伦"],
@@ -27,7 +28,7 @@ def test_music_meta_round_trip_preserves_list_isolation():
     )
 
     payload = meta.to_dict()
-    restored = MusicMeta.from_dict(payload)
+    restored = MetaMusic.from_dict(payload)
     restored.artists.append("Jay Chou")
 
     assert payload["type"] == "音乐"
@@ -62,7 +63,7 @@ def test_music_info_serializes_shared_media_display_fields():
 def test_core_context_serializes_music_models_without_video_fields():
     """核心 Context 应使用既有外层结构序列化音乐对象。"""
     context = Context(
-        meta_info=MusicMeta(title="七里香", artists=["周杰伦"]),
+        meta_info=MetaMusic(title="七里香", artists=["周杰伦"]),
         media_info=MusicInfo(
             source="musicbrainz",
             media_id="release-1",
