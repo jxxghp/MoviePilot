@@ -190,6 +190,21 @@ class TransHandler:
                 return True
             return False
 
+        def __is_special_extra_file(_fileitem: FileItem) -> bool:
+            """
+            判断是否为特典/附加视频文件（如 NCOP/NCED/Menu/CM/PV/Event/Logo 等无集数编号的视频/样本）
+            """
+            file_name = _fileitem.name or ""
+            return bool(
+                re.search(
+                    r"(?:^|[\s_.\-\[【(])("
+                    r"NC(?:OP|ED)|NCOP|NCED|OP|ED|MENU|PV|CM|TRAILER|TV\s*SPOT|SP|OVA|OAD|EVENT|IV|INTERVIEW|LOGO|PRODUCER\s*LOGO|BEHIND\s*THE\s*SCENES|FEATURETTE"
+                    r")(?:\d*|[\s_.\-\]】)]|$)",
+                    file_name,
+                    re.IGNORECASE,
+                )
+            )
+
         # 整理结果
         result = TransferInfo()
 
@@ -299,6 +314,17 @@ class TransHandler:
                 if mediainfo.type == MediaType.TV:
                     # 电视剧
                     if in_meta.begin_episode is None:
+                        if __is_special_extra_file(fileitem):
+                            logger.info(f"文件 {fileitem.path} 未识别到文件集数，识别为特典/附加视频文件，跳过正片集数整理")
+                            self.__update_result(
+                                result=result,
+                                success=True,
+                                fileitem=fileitem,
+                                transfer_type=transfer_type,
+                                need_notify=False,
+                            )
+                            return result
+
                         logger.warn(f"文件 {fileitem.path} 整理失败：未识别到文件集数")
                         self.__update_result(
                             result=result,
