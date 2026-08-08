@@ -1066,3 +1066,92 @@ class _EndpointSubscribe:
 
     async def async_update(self, _db, payload):
         self.__dict__.update(payload)
+
+
+def test_subscribe_accepts_empty_strings_for_numeric_fields():
+    """前端提交音乐订阅时常以空字符串填充数值字段，不应触发 422。"""
+    subscribe = Subscribe(
+        name="Random Access Memories",
+        type=MediaType.MUSIC.value,
+        tmdbid="",
+        bangumiid="",
+        anilistid="",
+        season="",
+        total_episode="",
+        start_episode="",
+        best_version="",
+        best_version_full="",
+        current_priority="",
+        search_imdbid="",
+        vote="",
+        episode_priority="",
+        sites="",
+        filter_groups="",
+    )
+
+    assert subscribe.tmdbid is None
+    assert subscribe.season is None
+    assert subscribe.best_version is None
+    assert subscribe.episode_priority is None
+    # 空字符串视为未提供，应回退到字段默认值而非 None
+    assert subscribe.total_episode == 0
+    assert subscribe.start_episode == 0
+    assert subscribe.search_imdbid == 0
+    assert subscribe.vote == 0.0
+    assert subscribe.sites == []
+    assert subscribe.filter_groups == []
+    assert subscribe.type == MediaType.MUSIC.value
+
+
+def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
+    """显式 0 和数字字符串应保持原有行为，不被空字符串归一化影响。"""
+    subscribe = Subscribe(
+        name="测试剧集",
+        type=MediaType.TV.value,
+        season="2",
+        tmdbid="123",
+        total_episode=0,
+        start_episode=0,
+        search_imdbid=0,
+        vote=0.0,
+    )
+
+    assert subscribe.season == 2
+    assert subscribe.tmdbid == 123
+    assert subscribe.total_episode == 0
+    assert subscribe.start_episode == 0
+    assert subscribe.search_imdbid == 0
+    assert subscribe.vote == 0.0
+
+
+def test_create_subscribe_accepts_music_payload_with_empty_strings():
+    """带空字符串的音乐订阅应能通过新增订阅接口，不返回 422。"""
+    subscribe_in = Subscribe(
+        name="Random Access Memories",
+        type=MediaType.MUSIC.value,
+        tmdbid="",
+        season="",
+        total_episode="",
+        episode_priority="",
+        sites="",
+    )
+
+    with patch(
+        "app.api.endpoints.subscribe.SubscribeChain.async_add",
+        new=AsyncMock(return_value=(1, "新增订阅成功")),
+    ) as async_add:
+        response = asyncio.run(
+            create_subscribe(
+                subscribe_in=subscribe_in,
+                current_user=_EndpointUser(name="moviepilot-user", is_superuser=False),
+            )
+        )
+
+    assert response.success is True
+    payload = async_add.await_args.kwargs
+    # 空字符串回退默认值后应正确传入持久化链路
+    assert payload["tmdbid"] is None
+    assert payload["total_episode"] == 0
+    assert payload["sites"] == []
+    assert payload["type"] == MediaType.MUSIC.value
+

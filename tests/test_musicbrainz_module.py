@@ -368,3 +368,67 @@ def test_music_artist_related_prefers_meaningful_relations(monkeypatch):
     assert [item.media_id for item in related] == ["artist-member", "artist-tribute"]
     assert related[0].relation == "member of band"
     assert related[0].music_type == "artist"
+
+
+class _FakeMusicBrainzResponse:
+    """模拟 MusicBrainz HTTP 响应，便于缓存回归测试统计网络调用次数。"""
+
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = ""
+
+    def json(self):
+        """返回预设的 JSON 负载。"""
+        return self._payload
+
+    def close(self):
+        """无需释放的资源。"""
+
+
+def test_request_json_caches_repeated_calls(monkeypatch):
+    """相同路径与参数的 MusicBrainz 请求应命中缓存，避免重复发起网络调用。"""
+    import app.modules.musicbrainz as musicbrainz_module
+
+    monkeypatch.setattr(
+        MusicBrainzModule, "_wait_for_rate_limit", classmethod(lambda cls: None)
+    )
+    network_calls = {"count": 0}
+
+    def fake_get_res(_self, url, params=None):
+        """记录网络调用次数并返回固定的录音详情。"""
+        network_calls["count"] += 1
+        return _FakeMusicBrainzResponse({"id": "recording-cache", "title": "晴天"})
+
+    monkeypatch.setattr(musicbrainz_module.RequestUtils, "get_res", fake_get_res)
+    # 清理缓存区，排除其他用例残留
+    MusicBrainzModule._request_json.cache_clear()
+
+    first = MusicBrainzModule._request_json("/recording/recording-cache", params={"fmt": "json"})
+    second = MusicBrainzModule._request_json("/recording/recording-cache", params={"fmt": "json"})
+
+    assert first == second
+    assert network_calls["count"] == 1
+
+
+def test_request_json_does_not_cache_not_found(monkeypatch):
+    """404 等空结果不应缓存，以便后续重新探测单曲与专辑入口。"""
+    import app.modules.musicbrainz as musicbrainz_module
+
+    monkeypatch.setattr(
+        MusicBrainzModule, "_wait_for_rate_limit", classmethod(lambda cls: None)
+    )
+    network_calls = {"count": 0}
+
+    def fake_get_res(_self, url, params=None):
+        """始终返回 404，用于验证空结果不会被缓存。"""
+        network_calls["count"] += 1
+        return _FakeMusicBrainzResponse(None, status_code=404)
+
+    monkeypatch.setattr(musicbrainz_module.RequestUtils, "get_res", fake_get_res)
+    MusicBrainzModule._request_json.cache_clear()
+
+    MusicBrainzModule._request_json("/recording/missing", params={"fmt": "json"})
+    MusicBrainzModule._request_json("/recording/missing", params={"fmt": "json"})
+
+    assert network_calls["count"] == 2

@@ -26,7 +26,7 @@ from app.core.event import eventmanager
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.server import MoviePilotServerHelper
-from app.helper.plugin import PluginHelper
+from app.helper.plugin import PluginHelper, VERSION_BACKWARD_COMPATIBLE_FLAGS
 from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.schemas.types import EventType, SystemConfigKey
@@ -1336,37 +1336,43 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not settings.PLUGIN_MARKET:
             return []
 
-        # 用于存储高于 v1 版本的插件（如 v2, v3 等）
-        higher_version_plugins = []
-        # 用于存储 v1 版本插件
-        base_version_plugins = []
+        # 当前版本及向后兼容的低版本标识，按优先级降序，均作为高版本来源拉取
+        compatible_flags = (
+            [settings.VERSION_FLAG] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, [])
+            if settings.VERSION_FLAG else []
+        )
+        markets = [m for m in settings.PLUGIN_MARKET.split(",") if m]
 
         # 使用多线程获取线上插件
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures_to_version = {}
-            for m in settings.PLUGIN_MARKET.split(","):
-                if not m:
-                    continue
-                # 提交任务获取 v1 版本插件，存储 future 到 version 的映射
+            # future -> (market_index, is_higher, flag_priority)
+            futures_meta: Dict[concurrent.futures.Future, Tuple[int, bool, int]] = {}
+            for market_index, m in enumerate(markets):
+                # 提交任务获取 v1 版本插件
                 base_future = executor.submit(self.get_plugins_from_market, m, None, force)
-                futures_to_version[base_future] = "base_version"
+                futures_meta[base_future] = (market_index, False, 0)
+                # 提交任务获取高版本插件（如 v3）及向后兼容版本（如 v2）
+                for flag_priority, flag in enumerate(compatible_flags):
+                    higher_future = executor.submit(self.get_plugins_from_market, m, flag, force)
+                    futures_meta[higher_future] = (market_index, True, flag_priority)
 
-                # 提交任务获取高版本插件（如 v2、v3），存储 future 到 version 的映射
-                if settings.VERSION_FLAG:
-                    higher_version_future = executor.submit(self.get_plugins_from_market, m,
-                                                            settings.VERSION_FLAG, force)
-                    futures_to_version[higher_version_future] = "higher_version"
-
-            # 按照完成顺序处理结果
-            for future in concurrent.futures.as_completed(futures_to_version):
+            # 收集结果，按市场顺序、高版本优先、兼容版本优先级排序，保证去重时优先保留高版本来源
+            collected: List[Tuple[int, bool, int, List[schemas.Plugin]]] = []
+            for future in concurrent.futures.as_completed(futures_meta):
                 plugins = future.result()
-                version = futures_to_version[future]
+                market_index, is_higher, flag_priority = futures_meta[future]
+                collected.append((market_index, is_higher, flag_priority, plugins or []))
 
-                if plugins:
-                    if version == "higher_version":
-                        higher_version_plugins.extend(plugins)  # 收集高版本插件
-                    else:
-                        base_version_plugins.extend(plugins)  # 收集 v1 版本插件
+        collected.sort(key=lambda item: (item[0], 0 if item[1] else 1, item[2]))
+        higher_version_plugins: List[schemas.Plugin] = []
+        base_version_plugins: List[schemas.Plugin] = []
+        for _market_index, is_higher, _flag_priority, plugins in collected:
+            if not plugins:
+                continue
+            if is_higher:
+                higher_version_plugins.extend(plugins)
+            else:
+                base_version_plugins.extend(plugins)
 
         result = self.process_plugins_list(higher_version_plugins, base_version_plugins)
         logger.info(f"获取到 {len(result)} 个线上插件")
@@ -1622,11 +1628,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return None
 
         plugin_info = PluginHelper.annotate_plugin_system_version(plugin_info.copy())
-        # 如 package_version 为空，则需要判断插件是否兼容当前版本
-        if not package_version:
-            if plugin_info.get(settings.VERSION_FLAG) is not True:
-                # 插件当前版本不兼容
-                return None
+        # 如 package_version 为空（package.json 来源），则需要判断插件是否兼容当前版本或任一向后兼容版本
+        if not package_version and not PluginHelper.is_plugin_info_compatible(plugin_info):
+            # 插件当前版本不兼容
+            return None
 
         # 运行状插件
         plugin_obj = self._running_plugins.get(pid)
@@ -1757,6 +1762,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         base_version_plugins = []
         tasks = []
 
+        # 当前版本及向后兼容的低版本标识，按优先级降序，均作为高版本来源拉取
+        compatible_flags = (
+            [settings.VERSION_FLAG] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, [])
+            if settings.VERSION_FLAG else []
+        )
         for market in settings.PLUGIN_MARKET.split(","):
             if not market:
                 continue
@@ -1765,12 +1775,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     fetch_market(market, None, "base_version", len(tasks))
                 )
             )
-            if settings.VERSION_FLAG:
+            for flag in compatible_flags:
                 tasks.append(
                     asyncio.create_task(
                         fetch_market(
                             market,
-                            settings.VERSION_FLAG,
+                            flag,
                             "higher_version",
                             len(tasks),
                         )

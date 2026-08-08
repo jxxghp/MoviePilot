@@ -2,6 +2,7 @@ import threading
 import time
 from typing import Any, Optional, Tuple, Union
 
+from app.core.cache import cached
 from app.core.config import settings
 from app.core.music import (
     MUSIC_ENTITY_ALBUM,
@@ -582,6 +583,7 @@ class MusicBrainzModule(_ModuleBase):
             cls._last_request_at = time.monotonic()
 
     @classmethod
+    @cached(maxsize=settings.CONF.musicbrainz, ttl=settings.CONF.meta, skip_none=True)
     def _request_json(
             cls,
             path: str,

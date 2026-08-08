@@ -145,3 +145,67 @@ def test_music_fresh_releases_pages_official_window(monkeypatch):
     assert requested == {"days": 90, "sort": "release_date", "past": True, "future": False}
     assert [item.media_id for item in results] == ["release-group-2"]
     assert results[0].music_type == "album"
+
+
+class _FakeListenBrainzResponse:
+    """模拟 ListenBrainz HTTP 响应，便于缓存回归测试统计网络调用次数。"""
+
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = ""
+
+    def json(self):
+        """返回预设的 JSON 负载。"""
+        return self._payload
+
+    def close(self):
+        """无需释放的资源。"""
+
+
+def test_request_json_caches_repeated_calls(monkeypatch):
+    """相同路径与参数的 ListenBrainz 请求应命中缓存，避免重复发起网络调用。"""
+    import app.modules.listenbrainz as listenbrainz_module
+
+    network_calls = {"count": 0}
+
+    def fake_get_res(_self, url, params=None):
+        """记录网络调用次数并返回固定的榜单负载。"""
+        network_calls["count"] += 1
+        return _FakeListenBrainzResponse(
+            {"payload": {"recordings": [{"recording_mbid": "recording-cache", "track_name": "晴天"}]}}
+        )
+
+    monkeypatch.setattr(listenbrainz_module.RequestUtils, "get_res", fake_get_res)
+    # 清理缓存区，排除其他用例残留
+    ListenBrainzModule._request_json.cache_clear()
+
+    first = ListenBrainzModule._request_json(
+        "/stats/sitewide/recordings", params={"range": "this_week", "offset": 0, "count": 30}
+    )
+    second = ListenBrainzModule._request_json(
+        "/stats/sitewide/recordings", params={"range": "this_week", "offset": 0, "count": 30}
+    )
+
+    assert first == second
+    assert network_calls["count"] == 1
+
+
+def test_request_json_does_not_cache_errors(monkeypatch):
+    """失败请求返回的 None 不应缓存，以便下次重试。"""
+    import app.modules.listenbrainz as listenbrainz_module
+
+    network_calls = {"count": 0}
+
+    def fake_get_res(_self, url, params=None):
+        """始终返回 500，用于验证空结果不会被缓存。"""
+        network_calls["count"] += 1
+        return _FakeListenBrainzResponse(None, status_code=500)
+
+    monkeypatch.setattr(listenbrainz_module.RequestUtils, "get_res", fake_get_res)
+    ListenBrainzModule._request_json.cache_clear()
+
+    ListenBrainzModule._request_json("/stats/sitewide/recordings", params={"range": "this_week"})
+    ListenBrainzModule._request_json("/stats/sitewide/recordings", params={"range": "this_week"})
+
+    assert network_calls["count"] == 2
