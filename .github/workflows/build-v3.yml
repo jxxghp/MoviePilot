@@ -203,6 +203,8 @@ jobs:
       - name: Get existing release body
         id: get_release_body
         continue-on-error: true
+        env:
+          CHANGELOG: ${{ env.CHANGELOG }}
         run: |
           release_body=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.app_version }}" | \
@@ -215,7 +217,7 @@ jobs:
             echo "EOF" >> $GITHUB_ENV
           else
             echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
-            echo "${{ env.CHANGELOG }}" >> $GITHUB_ENV
+            echo "$CHANGELOG" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
           fi
 
