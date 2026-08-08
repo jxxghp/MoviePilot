@@ -184,7 +184,7 @@ function install_backend_and_download_resources() {
     fi
     INFO "当前 Python 版本：${python_version}，架构：${arch}"
     # 下载 V3 站点索引
-    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/v3/resources.v3/user.sites.v3.bin" -o /app/app/helper/user.sites.v3.bin; then
+    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/helper/user.sites.v3.bin; then
         if [ -f /resources_bakcup/user.sites.v3.bin ]; then
             cp -a /resources_bakcup/user.sites.v3.bin /app/app/helper/
         fi
@@ -192,7 +192,7 @@ function install_backend_and_download_resources() {
     fi
     # 下载对应平台的 sites 文件
     sites_file="sites.${python_version}-${arch_suffix}.so"
-    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/v3/resources.v3/${sites_file}" -o "/app/app/helper/${sites_file}"; then
+    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" -o "/app/app/helper/${sites_file}"; then
         if [ -f "/resources_bakcup/${sites_file}" ]; then
             cp -a "/resources_bakcup/${sites_file}" /app/app/helper/
         fi
