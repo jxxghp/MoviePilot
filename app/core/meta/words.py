@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 import cn2an
 import regex as re
 
-from app.db.systemconfig_oper import SystemConfigOper
+from app.core.meta.config_source import get_meta_config
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
@@ -84,12 +84,6 @@ class WordsMatcher(metaclass=Singleton):
     自定义识别词匹配器。
     """
 
-    def __init__(self):
-        """
-        初始化自定义识别词配置读取器。
-        """
-        self.systemconfig = SystemConfigOper()
-
     def prepare(self, title: str, custom_words: List[str] = None) -> Tuple[str, List[str]]:
         """
         预处理标题，支持三种格式
@@ -99,7 +93,7 @@ class WordsMatcher(metaclass=Singleton):
         """
         appley_words = []
         # 读取自定义识别词
-        words: List[str] = custom_words or self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
+        words: List[str] = custom_words or get_meta_config(SystemConfigKey.CustomIdentifiers) or []
         for word in words:
             if not word or word.startswith("#"):
                 continue

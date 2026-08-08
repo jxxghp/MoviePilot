@@ -1,6 +1,5 @@
 import inspect
 
-from app.core.event import eventmanager, Event
 from app.log import logger
 from app.schemas.types import EventType
 
@@ -20,6 +19,9 @@ class ConfigReloadMixin:
         config_watch = getattr(cls, "CONFIG_WATCH", None)
         if not config_watch:
             return
+
+        # 惰性导入，避免 utils→core.event 顶层反向依赖
+        from app.core.event import eventmanager, Event
 
         # 检查 on_config_changed 方法是否为异步
         is_async = inspect.iscoroutinefunction(cls.on_config_changed)

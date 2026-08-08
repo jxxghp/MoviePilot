@@ -4,8 +4,6 @@ from typing import Optional, List
 
 from PIL import Image
 
-from app.chain.mediaserver import MediaServerChain
-from app.chain.tmdb import TmdbChain
 from app.core.cache import cached, FileCache, AsyncFileCache
 from app.core.config import settings
 from app.log import logger
@@ -53,6 +51,7 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取TMDB每日壁纸
         """
+        from app.chain.tmdb import TmdbChain
         return TmdbChain().get_random_wallpager()
 
     @cached(maxsize=1, ttl=3600, skip_empty=True)
@@ -60,6 +59,7 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取7天的TMDB每日壁纸
         """
+        from app.chain.tmdb import TmdbChain
         return TmdbChain().get_trending_wallpapers(num)
 
     @cached(maxsize=1, ttl=3600)
@@ -100,6 +100,7 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取媒体服务器壁纸
         """
+        from app.chain.mediaserver import MediaServerChain
         return MediaServerChain().get_latest_wallpaper()
 
     @cached(maxsize=1, ttl=3600, skip_empty=True)
@@ -107,6 +108,7 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取媒体服务器壁纸列表
         """
+        from app.chain.mediaserver import MediaServerChain
         return MediaServerChain().get_latest_wallpapers(count=num)
 
     @cached(maxsize=1, ttl=3600)

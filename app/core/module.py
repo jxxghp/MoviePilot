@@ -3,7 +3,7 @@ from typing import Generator, Optional, Tuple, Any, Union, List
 
 from app.core.config import settings
 from app.core.event import eventmanager
-from app.helper.module import ModuleHelper
+from app.core.module_loader import ModuleHelper
 from app.log import logger
 from app.schemas.types import EventType, ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
     OtherModulesType, MediaRecognizeType

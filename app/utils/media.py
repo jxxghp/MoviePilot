@@ -1,6 +1,5 @@
 from typing import Any, Optional, Tuple, Union
 
-from app.core.config import settings
 from app.schemas.types import (
     MUSIC_ENTITY_TYPES,
     MUSIC_SUBSCRIBABLE_TYPES,
@@ -154,6 +153,9 @@ def is_media_source_enabled(
     """
     if media_source:
         return is_media_source_selected(media_source, source_key)
+    # 延迟导入：utils 顶层不反向依赖 core
+    from app.core.config import settings
+
     if settings.SEARCH_SOURCE:
         configured_sources = {
             normalize_media_source(item)

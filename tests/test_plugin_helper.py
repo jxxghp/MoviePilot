@@ -657,7 +657,7 @@ class TestPluginHelper:
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
         monkeypatch.setattr("app.core.plugin.settings", SimpleNamespace(VERSION_FLAG="v2"))
         monkeypatch.setattr("app.core.plugin.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
-        monkeypatch.setattr("app.core.plugin.SitesHelper", lambda: SimpleNamespace(auth_level=1))
+        monkeypatch.setattr("app.core.auth_level.get_auth_level", lambda: SimpleNamespace(auth_level=1))
         monkeypatch.setattr(PluginHelper, "get_plugins", lambda _self, *_args: market_plugins)
 
         plugins = plugin_manager.get_plugins_from_market(REPO_URL)
@@ -715,7 +715,7 @@ class TestPluginHelper:
         )
         monkeypatch.setattr("app.helper.plugin.settings", SimpleNamespace(VERSION_FLAG="v3"))
         monkeypatch.setattr("app.core.plugin.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
-        monkeypatch.setattr("app.core.plugin.SitesHelper", lambda: SimpleNamespace(auth_level=1))
+        monkeypatch.setattr("app.core.auth_level.get_auth_level", lambda: SimpleNamespace(auth_level=1))
         monkeypatch.setattr(PluginHelper, "get_plugins", fake_get_plugins)
 
         plugins = plugin_manager.get_online_plugins(force=False)
@@ -873,7 +873,7 @@ class TestPluginHelper:
         fake_release_method = SimpleNamespace(cache_clear=lambda: clear_calls.append("clear"))
         fake_helper = SimpleNamespace(get_plugin_release_versions=fake_release_method)
         monkeypatch.setattr("app.core.plugin.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
-        monkeypatch.setattr("app.core.plugin.PluginHelper", lambda: fake_helper)
+        monkeypatch.setattr("app.core.plugin_source.get_plugin_source", lambda: fake_helper)
         monkeypatch.setattr(PluginManager, "get_plugins_from_market", lambda *_args, **_kwargs: [])
 
         PluginManager().get_online_plugins(force=True)
@@ -899,7 +899,7 @@ class TestPluginHelper:
             return []
 
         monkeypatch.setattr("app.core.plugin.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
-        monkeypatch.setattr("app.core.plugin.PluginHelper", lambda: fake_helper)
+        monkeypatch.setattr("app.core.plugin_source.get_plugin_source", lambda: fake_helper)
         monkeypatch.setattr(PluginManager, "async_get_plugins_from_market", fake_market)
 
         asyncio.run(PluginManager().async_get_online_plugins(force=True))

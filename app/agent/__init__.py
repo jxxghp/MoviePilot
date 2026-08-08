@@ -78,6 +78,7 @@ from app.db.user_oper import UserOper
 from app.log import logger
 from app.schemas import AgentLLMProviderEventData, AgentTokensUsageEventData, Notification, NotificationType
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
+from app.schemas.types import ReplyMode  # noqa: F401  兼容 re-export
 from app.schemas.types import ChainEventType, EventType, MessageChannel
 from app.utils.identity import SYSTEM_INTERNAL_USER_ID
 
@@ -319,15 +320,6 @@ class _ThinkTagStripper:
         if self.buffer and not self.in_think_tag:
             on_output(self.buffer)
             self.buffer = ""
-
-
-class ReplyMode(str, Enum):
-    """
-    Agent 最终回复处理模式。
-    """
-
-    DISPATCH = "dispatch"
-    CAPTURE_ONLY = "capture_only"
 
 
 HEARTBEAT_SESSION_PREFIX = "__agent_heartbeat_"

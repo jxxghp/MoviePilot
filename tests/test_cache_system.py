@@ -535,8 +535,8 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
     monkeypatch.setattr(settings, "CACHE_BACKEND_URL", "redis://cache:6379/2")
     monkeypatch.setattr(settings, "CACHE_REDIS_MAX_CONNECTIONS", 7)
     monkeypatch.setattr(settings, "CACHE_REDIS_POOL_TIMEOUT", 3)
-    monkeypatch.setattr("app.helper.redis.redis.BlockingConnectionPool.from_url", fake_from_url)
-    monkeypatch.setattr("app.helper.redis.redis.Redis", FakeClient)
+    monkeypatch.setattr("app.core.redis.redis.BlockingConnectionPool.from_url", fake_from_url)
+    monkeypatch.setattr("app.core.redis.redis.Redis", FakeClient)
 
     helper = RedisHelper()
     helper.close()
@@ -614,8 +614,8 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     monkeypatch.setattr(settings, "CACHE_BACKEND_URL", "redis://cache:6379/3")
     monkeypatch.setattr(settings, "CACHE_REDIS_MAX_CONNECTIONS", 9)
     monkeypatch.setattr(settings, "CACHE_REDIS_POOL_TIMEOUT", 4)
-    monkeypatch.setattr("app.helper.redis.AsyncBlockingConnectionPool.from_url", fake_from_url)
-    monkeypatch.setattr("app.helper.redis.Redis", FakeAsyncClient)
+    monkeypatch.setattr("app.core.redis.AsyncBlockingConnectionPool.from_url", fake_from_url)
+    monkeypatch.setattr("app.core.redis.Redis", FakeAsyncClient)
 
     config_calls = asyncio.run(run_connect())
 

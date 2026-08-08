@@ -194,7 +194,7 @@ class TestAgentInteraction(unittest.TestCase):
         ) as message_add, patch.object(
             chain, "edit_message", return_value=True
         ) as edit_message, patch(
-            "app.chain.message.agent_manager.process_message",
+            "app.agent.agent_manager.process_message",
             new_callable=AsyncMock,
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -263,7 +263,7 @@ class TestAgentInteraction(unittest.TestCase):
         try:
             for channel in (MessageChannel.Telegram, MessageChannel.Feishu):
                 with patch(
-                    "app.chain.message.agent_manager.matches_secret_confirmation",
+                    "app.agent.agent_manager.matches_secret_confirmation",
                     return_value=True,
                 ), patch.object(
                     chain,

@@ -10,7 +10,8 @@ from time import monotonic
 from typing import List, Optional, Tuple, Union, Dict, Callable, Any
 
 from app import schemas
-from app.agent import ReplyMode, prompt_manager, agent_manager
+from app.core.agent_gateway import get_agent_manager, get_prompt_manager
+from app.schemas.types import ReplyMode
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -907,7 +908,7 @@ class FailedRetryScheduler:
     def _build_retry_transfer_prompt(self, history_ids: list[int]) -> str:
         """根据失败记录数量构建统一的重试整理后台任务提示词。"""
         task_type, template_context = self._build_retry_transfer_template_context(history_ids)
-        return prompt_manager.render_system_task_message(
+        return get_prompt_manager().render_system_task_message(
             task_type,
             template_context=template_context,
         )
@@ -955,7 +956,7 @@ class FailedRetryScheduler:
         )
 
         try:
-            await agent_manager.run_background_prompt(
+            await get_agent_manager().run_background_prompt(
                 message=self._build_retry_transfer_prompt(history_ids),
                 session_prefix="__agent_retry_transfer_batch",
                 reply_mode=ReplyMode.DISPATCH,

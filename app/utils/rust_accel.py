@@ -2,7 +2,6 @@ import logging
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
-from app.core.config import settings
 from app.log import logger, log_settings
 
 try:
@@ -25,6 +24,7 @@ def is_config_enabled() -> bool:
     """
     判断系统配置是否允许使用 Rust 加速。
     """
+    from app.core.config import settings
     return bool(settings.RUST_ACCEL)
 
 
@@ -104,6 +104,7 @@ def is_debug_log_enabled() -> bool:
     if log_settings.DEBUG:
         return True
     return getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO) <= logging.DEBUG
+
 
 def parse_indexer_torrents(
         html_text: str,

@@ -14,6 +14,8 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
+from app.core.agent_gateway import get_agent_manager, get_prompt_manager
+from app.schemas.types import ReplyMode
 from app.core.config import global_vars, settings
 from app.core.context import Context
 from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo
@@ -507,10 +509,7 @@ class SearchChain(ChainBase):
         """
         通过统一后台提示词机制执行资源推荐。
         """
-        from app.agent import ReplyMode, agent_manager
-        from app.agent.prompt import prompt_manager
-
-        prompt = prompt_manager.render_system_task_message(
+        prompt = get_prompt_manager().render_system_task_message(
             "search_recommend",
             template_context={"search_results": search_results_text},
         )
@@ -519,7 +518,7 @@ class SearchChain(ChainBase):
         def on_output(text: str):
             full_output[0] = text
 
-        await agent_manager.run_background_prompt(
+        await get_agent_manager().run_background_prompt(
             message=prompt,
             session_prefix="__agent_search_recommend",
             output_callback=on_output,

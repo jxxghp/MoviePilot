@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.config import global_vars
-from app.helper.thread import ThreadHelper
+from app.core.thread import ThreadHelper
 from app.log import logger
 from app.schemas import ChainEventData
 from app.schemas.types import ChainEventType, EventType

@@ -3,7 +3,7 @@ import inspect
 import threading
 import time
 from collections import deque
-from typing import Any, Tuple, List, Callable, Optional
+from typing import Any, Dict, Tuple, List, Callable, Optional
 
 from app.log import logger
 from app.schemas import RateLimitExceededException, LimitException
@@ -233,6 +233,22 @@ class WindowRateLimiter(BaseRateLimiter):
         with self.lock:
             self.call_times.append(current_time)
 
+    def try_record(self) -> Tuple[bool, str]:
+        """原子化：窗口清理 + 容量检查 + 记录，单次锁获取，消除 TOCTOU 竞态。
+
+        返回 ``(True, "")`` 表示本次调用已记录并允许；
+        返回 ``(False, message)`` 表示已达上限，本次调用未被记录。
+        """
+        current_time = time.time()
+        with self.lock:
+            while self.call_times and current_time - self.call_times[0] > self.window_seconds:
+                self.call_times.popleft()
+            if len(self.call_times) < self.max_calls:
+                self.call_times.append(current_time)
+                return True, ""
+            wait_time = self.window_seconds - (current_time - self.call_times[0])
+            return False, f"限流期间，将在 {wait_time:.2f} 秒后允许继续调用"
+
 
 # 组合限流器
 class CompositeRateLimiter(BaseRateLimiter):
@@ -417,6 +433,50 @@ def rate_limit_window(
     limiter = WindowRateLimiter(max_calls, window_seconds, source, enable_logging)
     # 使用通用装饰器逻辑包装该限流器
     return rate_limit_handler(limiter, raise_on_limit)
+
+
+class KeyedWindowRateLimiter:
+    """Process-local keyed window rate limiter.
+
+    Each key (e.g. ``"{ip}:{username}"``) gets its own :class:`WindowRateLimiter` instance.
+    Calling :meth:`check` records the attempt and raises :class:`RateLimitExceededException`
+    when the caller is over the configured limit within the sliding window.
+
+    **Scope**: single-process in-memory only.  Multi-instance deployments (multiple workers
+    behind a load-balancer) need a shared backend (e.g. Redis) — that is out of scope here.
+    """
+
+    def __init__(self, max_calls: int, window_seconds: float) -> None:
+        self._max_calls = max_calls
+        self._window_seconds = window_seconds
+        self._registry: Dict[str, WindowRateLimiter] = {}
+        self._lock = threading.Lock()
+
+    def _get_or_create(self, key: str) -> "WindowRateLimiter":
+        with self._lock:
+            if key not in self._registry:
+                self._registry[key] = WindowRateLimiter(
+                    self._max_calls, self._window_seconds,
+                    source=key, enable_logging=False,
+                )
+            return self._registry[key]
+
+    def check(self, key: str) -> None:
+        """Record one attempt for *key*; raise :class:`RateLimitExceededException` if over limit.
+
+        Uses :meth:`WindowRateLimiter.try_record` for atomic check+record under a single lock
+        acquisition, eliminating the TOCTOU race that allowed burst bypass when multiple threads
+        called ``can_call`` before any ``record_call`` landed.
+        """
+        limiter = self._get_or_create(key)
+        ok, msg = limiter.try_record()
+        if not ok:
+            raise RateLimitExceededException(msg or "尝试过于频繁，请稍后再试")
+
+    def clear(self) -> None:
+        """Clear all per-key state.  Intended for use in tests only."""
+        with self._lock:
+            self._registry.clear()
 
 
 class QpsRateLimiter:

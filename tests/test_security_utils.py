@@ -69,14 +69,14 @@ class SecurityUtilsTest(TestCase):
         url = "http://192.168.1.50:8096/Items/abc/Images/Primary"
 
         with patch(
-            "app.utils.security.settings.RESOURCE_SECRET_KEY",
+            "app.core.config.settings.RESOURCE_SECRET_KEY",
             "old-secret-value-aaaaaaaaaaaaaaaaaaaaaaaa",
         ):
             signed_url = SecurityUtils.sign_url(url)
             self.assertEqual(SecurityUtils.verify_signed_url(signed_url), url)
 
         with patch(
-            "app.utils.security.settings.RESOURCE_SECRET_KEY",
+            "app.core.config.settings.RESOURCE_SECRET_KEY",
             "new-secret-value-bbbbbbbbbbbbbbbbbbbbbbbb",
         ):
             self.assertIsNone(SecurityUtils.verify_signed_url(signed_url))

@@ -1,6 +1,6 @@
 import regex as re
 
-from app.db.systemconfig_oper import SystemConfigOper
+from app.core.meta.config_source import get_meta_config
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
 
@@ -11,7 +11,6 @@ class CustomizationMatcher(metaclass=Singleton):
     """
 
     def __init__(self):
-        self.systemconfig = SystemConfigOper()
         self.customization = None
         self.custom_separator = None
         self._customization_re_cache = {}
@@ -43,7 +42,7 @@ class CustomizationMatcher(metaclass=Singleton):
             return ""
         # 自定义占位符需要跟随系统配置实时生效，避免单例缓存导致保存后仍沿用旧规则。
         customization = self.normalize_customization(
-            self.systemconfig.get(SystemConfigKey.Customization)
+            get_meta_config(SystemConfigKey.Customization)
         )
         if not customization:
             self.customization = None

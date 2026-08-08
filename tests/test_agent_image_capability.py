@@ -69,7 +69,7 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(monkeypatch):
             }
         ],
     ) as prepare_files, patch(
-        "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
+        "app.agent.agent_manager.process_message", new_callable=AsyncMock
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: coro.close(),

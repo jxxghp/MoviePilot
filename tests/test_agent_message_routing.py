@@ -65,7 +65,7 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         chain, "_record_user_message"
     ) as record_user_message, patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.agent.agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -88,7 +88,7 @@ def test_message_chain_passes_stable_channel_admin_principal_to_agent():
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.agent.agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -111,7 +111,7 @@ def test_message_chain_does_not_trust_channel_display_username():
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.agent.agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -134,7 +134,7 @@ def test_message_chain_uses_same_admin_contract_for_slack():
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.agent.agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -257,7 +257,7 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
         ) as record_user_message, patch.object(
             chain, "edit_message", return_value=True
         ), patch(
-            "app.chain.message.agent_manager.process_message",
+            "app.agent.agent_manager.process_message",
             new_callable=AsyncMock,
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",

@@ -25,9 +25,10 @@ from app.core.config import settings
 from app.core.event import eventmanager
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.server import MoviePilotServerHelper
-from app.helper.plugin import PluginHelper, VERSION_BACKWARD_COMPATIBLE_FLAGS
-from app.helper.sites import SitesHelper  # noqa
+from app.core.auth_level import get_auth_level
+from app.core.plugin_reporter import report_plugin_install
+from app.utils.plugin_repo import is_local_repo_url, make_local_repo_url
+from app.core.plugin_source import get_plugin_source, get_version_backward_compatible_flags
 from app.log import logger
 from app.schemas.types import EventType, SystemConfigKey
 from app.utils.crypto import RSAUtils
@@ -339,7 +340,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         # 监视插件目录
         plugin_paths = [str(settings.ROOT_PATH / "app" / "plugins")]
-        for local_repo_path in PluginHelper.get_local_repo_paths():
+        for local_repo_path in get_plugin_source().get_local_repo_paths():
             if local_repo_path.exists() and local_repo_path.is_dir():
                 plugin_paths.append(str(local_repo_path))
         logger.info(">>> 监控线程已启动，准备进入watch循环...")
@@ -547,7 +548,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             event_path = event_path.resolve()
-            for local_repo_path in PluginHelper.get_local_repo_paths():
+            for local_repo_path in get_plugin_source().get_local_repo_paths():
                 if not local_repo_path.exists() or not local_repo_path.is_dir():
                     continue
                 if not event_path.is_relative_to(local_repo_path):
@@ -565,7 +566,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 else:
                     continue
                 plugin_dir_name = relative_parts[1]
-                candidate = PluginHelper().get_local_plugin_candidate(
+                candidate = get_plugin_source().get_local_plugin_candidate(
                     pid=plugin_dir_name,
                     package_version=package_version,
                     repo_path=local_repo_path,
@@ -589,7 +590,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"本地插件 {pid} 尚未安装，跳过自动同步和热重载")
             return False
 
-        candidate = candidate or PluginHelper().get_local_plugin_candidate(pid)
+        candidate = candidate or get_plugin_source().get_local_plugin_candidate(pid)
         if not candidate:
             return False
         if candidate.get("compatible") is False:
@@ -695,10 +696,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         def install_plugin(plugin):
             start_time = time.time()
-            state, msg = PluginHelper().install(pid=plugin.id, repo_url=plugin.repo_url, force_install=True)
+            state, msg = get_plugin_source().install(pid=plugin.id, repo_url=plugin.repo_url, force_install=True)
             elapsed_time = time.time() - start_time
             if state:
-                MoviePilotServerHelper.install_plugin_reg(plugin_id=plugin.id, repo_url=plugin.repo_url)
+                report_plugin_install(plugin_id=plugin.id, repo_url=plugin.repo_url)
                 logger.info(
                     f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}，耗时：{elapsed_time:.2f} 秒")
                 sync_plugins.append(plugin.id)
@@ -757,7 +758,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         安装插件中缺失或不兼容的依赖项
         """
-        pluginhelper = PluginHelper()
+        pluginhelper = get_plugin_source()
         # 第一步：获取需要安装的依赖项列表
         missing_dependencies = pluginhelper.find_missing_dependencies()
         if not missing_dependencies:
@@ -1340,7 +1341,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         # 拉取当前索引及可扫描的旧索引；旧条目可用当前版本 false 显式排除。
         compatible_flags = (
-            [settings.VERSION_FLAG] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, [])
+            [settings.VERSION_FLAG] + get_version_backward_compatible_flags().get(settings.VERSION_FLAG, [])
             if settings.VERSION_FLAG else []
         )
         markets = [m for m in settings.PLUGIN_MARKET.split(",") if m]
@@ -1473,7 +1474,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         plugins = []
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
-        local_candidates = PluginHelper().get_local_plugin_candidates()
+        local_candidates = get_plugin_source().get_local_plugin_candidates()
         if not local_candidates:
             return []
         for pid, plugin_info in local_candidates.items():
@@ -1481,7 +1482,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugin = self._process_plugin_info(
                 pid=pid,
                 plugin_info=plugin_info,
-                market=PluginHelper.make_local_repo_url(
+                market=make_local_repo_url(
                     pid,
                     plugin_info.get("repo_path"),
                     package_version
@@ -1547,7 +1548,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         # 获取在线插件
         with fresh(force):
-            online_plugins = PluginHelper().get_plugins(market, package_version)
+            online_plugins = get_plugin_source().get_plugins(market, package_version)
         if online_plugins is None:
             logger.warning(
                 f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
@@ -1580,7 +1581,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         markets = [item for item in settings.PLUGIN_MARKET.split(",") if item]
 
         def repo_order(plugin: schemas.Plugin) -> int:
-            if PluginHelper.is_local_repo_url(plugin.repo_url):
+            if is_local_repo_url(plugin.repo_url):
                 return len(markets) + 1
             if plugin.repo_url in markets:
                 return markets.index(plugin.repo_url)
@@ -1594,7 +1595,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             if not exists:
                 dedup_plugins[key] = plugin
                 continue
-            if PluginHelper.is_local_repo_url(exists.repo_url) and not PluginHelper.is_local_repo_url(plugin.repo_url):
+            if is_local_repo_url(exists.repo_url) and not is_local_repo_url(plugin.repo_url):
                 dedup_plugins[key] = plugin
 
         # 相同 ID 的插件保留版本号最大的版本；同版本市场来源优先。
@@ -1607,8 +1608,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             if StringUtils.compare_version(plugin.plugin_version, ">", exists.plugin_version):
                 result_by_id[plugin.id] = plugin
             elif plugin.plugin_version == exists.plugin_version \
-                    and PluginHelper.is_local_repo_url(exists.repo_url) \
-                    and not PluginHelper.is_local_repo_url(plugin.repo_url):
+                    and is_local_repo_url(exists.repo_url) \
+                    and not is_local_repo_url(plugin.repo_url):
                 result_by_id[plugin.id] = plugin
 
         return list(result_by_id.values())
@@ -1629,8 +1630,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not isinstance(plugin_info, dict):
             return None
 
-        plugin_info = PluginHelper.annotate_plugin_system_version(plugin_info.copy())
-        if not PluginHelper.is_package_plugin_compatible(
+        plugin_info = get_plugin_source().annotate_plugin_system_version(plugin_info.copy())
+        if not get_plugin_source().is_package_plugin_compatible(
                 plugin_info, package_version or ""
         ):
             # 插件当前版本不兼容
@@ -1767,7 +1768,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         # 拉取当前索引及可扫描的旧索引；旧条目可用当前版本 false 显式排除。
         compatible_flags = (
-            [settings.VERSION_FLAG] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, [])
+            [settings.VERSION_FLAG] + get_version_backward_compatible_flags().get(settings.VERSION_FLAG, [])
             if settings.VERSION_FLAG else []
         )
         for market in settings.PLUGIN_MARKET.split(","):
@@ -1846,7 +1847,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         installed_apps = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
         # 获取在线插件
         async with async_fresh(force):
-            online_plugins = await PluginHelper().async_get_plugins(market, package_version)
+            online_plugins = await get_plugin_source().async_get_plugins(market, package_version)
         if online_plugins is None:
             logger.warning(
                 f"获取{package_version if package_version else ''}插件库失败：{market}，请检查 GitHub 网络连接")
@@ -1886,8 +1887,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 3 - 站点&密钥认证可见
         # 99 - 站点&特殊密钥认证可见
         # 如果当前站点认证级别大于 1 且插件级别为 99，并存在插件公钥，说明为特殊密钥认证，通过密钥匹配进行认证
-        siteshelper = SitesHelper()
-        if siteshelper.auth_level > 1 and plugin.auth_level == 99 and hasattr(plugin, "plugin_public_key"):
+        auth_level = get_auth_level()
+        if auth_level > 1 and plugin.auth_level == 99 and hasattr(plugin, "plugin_public_key"):
             plugin_id = plugin.id if isinstance(plugin, schemas.Plugin) else plugin.__name__
             public_key = plugin.plugin_public_key
             if public_key:
@@ -1895,7 +1896,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 verify = RSAUtils.verify_rsa_keys(public_key=public_key, private_key=private_key)
                 return verify
         # 如果当前站点认证级别小于插件级别，则返回 False
-        if siteshelper.auth_level < plugin.auth_level:
+        if auth_level < plugin.auth_level:
             return False
         return True
 

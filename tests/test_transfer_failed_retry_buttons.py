@@ -179,7 +179,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             with patch(
                 "app.chain.message.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain.message.agent_manager.run_background_prompt",
+                "app.agent.agent_manager.run_background_prompt",
                 side_effect=fake_run_background_prompt,
             ), patch(
                 "app.chain.message.asyncio.run_coroutine_threadsafe",

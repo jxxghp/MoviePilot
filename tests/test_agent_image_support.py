@@ -451,7 +451,7 @@ class AgentImageSupportTest(unittest.TestCase):
                 }
             ],
         ) as prepare_files, patch(
-            "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
+            "app.agent.agent_manager.process_message", new_callable=AsyncMock
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),
@@ -484,7 +484,7 @@ class AgentImageSupportTest(unittest.TestCase):
         with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
             chain, "_get_or_create_session_id", return_value="session-1"
         ), patch(
-            "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
+            "app.agent.agent_manager.process_message", new_callable=AsyncMock
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),

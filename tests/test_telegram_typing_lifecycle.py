@@ -263,7 +263,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         ) as start_status, patch(
                 "app.chain.message.settings.AI_AGENT_ENABLE", True
         ), patch(
-                "app.chain.message.agent_manager.process_message",
+                "app.agent.agent_manager.process_message",
                 new_callable=AsyncMock,
         ) as process_message, patch(
                 "app.chain.message.asyncio.run_coroutine_threadsafe",

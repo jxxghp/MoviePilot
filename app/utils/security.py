@@ -13,7 +13,6 @@ from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 from anyio import Path as AsyncPath
 from cachetools import TTLCache
 
-from app.core.config import settings
 from app.log import logger
 from app.utils.coalesce import (
     CoalesceDecision,
@@ -444,6 +443,9 @@ class SecurityUtils:
         完全一致；签名的失效边界绑定在 `RESOURCE_SECRET_KEY` 上，进程重启
         或显式轮换密钥时所有旧签名一起作废。
         """
+        # 延迟导入：utils 顶层不反向依赖 core
+        from app.core.config import settings
+
         return hmac.new(
             settings.RESOURCE_SECRET_KEY.encode("utf-8"),
             SecurityUtils._url_signature_payload(url, purpose),

@@ -615,3 +615,13 @@ class ScrapingMetadata(NameValueEnum):
     CLEARART = "透明艺术图"
     LANDSCAPE = "横版缩略图"
     LYRICS = "歌词"
+
+
+# Agent 最终回复处理模式
+class ReplyMode(str, Enum):
+    """
+    Agent 最终回复处理模式。
+    """
+
+    DISPATCH = "dispatch"
+    CAPTURE_ONLY = "capture_only"
