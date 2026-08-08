@@ -43,6 +43,11 @@ from version import APP_VERSION
 PLUGIN_DIR = Path(settings.ROOT_PATH) / "app" / "plugins"
 LOCAL_REPO_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"
+# 主程序重大版本向后兼容声明：键为当前 VERSION_FLAG，值为该版本可向下兼容的更低版本标识列表（按优先级降序）。
+# 例如 v3 兼容 v2，则 package.json 中声明 "v2": true 的插件、package.v2.json 中的插件均视为可用。
+VERSION_BACKWARD_COMPATIBLE_FLAGS: Dict[str, List[str]] = {
+    "v3": ["v2"],
+}
 
 
 class PluginHelper(metaclass=WeakSingleton):
@@ -157,6 +162,37 @@ class PluginHelper(metaclass=WeakSingleton):
             return None
 
     @classmethod
+    def get_compatible_version_flags(cls) -> List[str]:
+        """
+        返回当前主程序版本可兼容的全部版本标识，包含自身及向后兼容的低版本，按优先级降序。
+        未启用 VERSION_FLAG（v1）时返回空列表，表示仅使用 package.json 基础索引。
+        """
+        flags: List[str] = []
+        if settings.VERSION_FLAG:
+            flags.append(settings.VERSION_FLAG)
+            flags.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []))
+        return flags
+
+    @classmethod
+    def is_plugin_info_compatible(cls, plugin_info: Optional[dict]) -> bool:
+        """
+        判断 package.json 中的插件元数据是否兼容当前主程序版本。
+
+        兼容条件：未启用 VERSION_FLAG（v1）时默认全部兼容；否则需声明当前 VERSION_FLAG 为 True，
+        或声明任一向后兼容的低版本标识为 True。
+        """
+        if not isinstance(plugin_info, dict):
+            return False
+        if not settings.VERSION_FLAG:
+            return True
+        if plugin_info.get(settings.VERSION_FLAG) is True:
+            return True
+        for flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []):
+            if plugin_info.get(flag) is True:
+                return True
+        return False
+
+    @classmethod
     def check_plugin_system_version(cls, plugin_info: Optional[dict]) -> Tuple[bool, str]:
         """
         检查插件 package 元数据中的主系统版本范围是否满足当前 MoviePilot 版本。
@@ -263,6 +299,9 @@ class PluginHelper(metaclass=WeakSingleton):
             if settings.VERSION_FLAG:
                 package_candidates.append((settings.VERSION_FLAG, self.__get_local_package(repo_path,
                                                                                            settings.VERSION_FLAG)))
+                # 向后兼容：补充扫描更低版本的 package 文件，便于本地仓库复用历史版本插件。
+                for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []):
+                    package_candidates.append((backward_flag, self.__get_local_package(repo_path, backward_flag)))
             package_candidates.append(("", self.__get_local_package(repo_path)))
 
             for package_version, local_plugins in package_candidates:
@@ -271,12 +310,8 @@ class PluginHelper(metaclass=WeakSingleton):
                 for pid, plugin_info in local_plugins.items():
                     if not isinstance(plugin_info, dict):
                         continue
-                    # package.json 中的旧结构需要声明兼容当前版本。
-                    if (
-                            not package_version
-                            and settings.VERSION_FLAG
-                            and plugin_info.get(settings.VERSION_FLAG) is not True
-                    ):
+                    # package.json 中的旧结构需要声明兼容当前版本或任一向后兼容版本。
+                    if not package_version and not self.is_plugin_info_compatible(plugin_info):
                         continue
 
                     plugin_dir = self.__get_local_plugin_dir(repo_path, pid, package_version)
@@ -326,6 +361,7 @@ class PluginHelper(metaclass=WeakSingleton):
             if package_version is None:
                 if settings.VERSION_FLAG:
                     package_versions.append(settings.VERSION_FLAG)
+                    package_versions.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []))
                 package_versions.append("")
             selected_candidate = None
             for repo_order, local_repo_path in enumerate(self.get_local_repo_paths()):
@@ -338,10 +374,10 @@ class PluginHelper(metaclass=WeakSingleton):
                     for candidate_pid, plugin_info in local_plugins.items():
                         if candidate_pid.lower() != pid.lower() or not isinstance(plugin_info, dict):
                             continue
-                        is_compatible = not (
-                                not current_package_version
-                                and settings.VERSION_FLAG
-                                and plugin_info.get(settings.VERSION_FLAG) is not True
+                        # 指定版本 package 文件视为可用；package.json 需声明当前版本或任一向后兼容版本。
+                        is_compatible = (
+                            bool(current_package_version)
+                            or self.is_plugin_info_compatible(plugin_info)
                         )
                         if not is_compatible and strict_compat:
                             continue
@@ -357,7 +393,9 @@ class PluginHelper(metaclass=WeakSingleton):
                         candidate["path"] = plugin_dir
                         if not is_compatible:
                             candidate["compatible"] = False
-                            candidate["skip_reason"] = f"package.json 未声明 {settings.VERSION_FLAG} 兼容"
+                            candidate["skip_reason"] = (
+                                f"package.json 未声明 {settings.VERSION_FLAG} 或向后兼容版本"
+                            )
                         self.annotate_plugin_system_version(candidate)
                         if strict_system_version and candidate.get("system_version_compatible") is False:
                             candidate["compatible"] = False
@@ -575,14 +613,15 @@ class PluginHelper(metaclass=WeakSingleton):
         检查并获取指定插件的可用版本，支持多版本优先级加载和版本兼容性检测
         1. 如果未指定版本，则使用系统配置的默认版本（通过 settings.VERSION_FLAG 设置）
         2. 优先检查指定版本的插件（如 `package.v2.json`）
-        3. 如果插件不存在于指定版本，检查 `package.json` 文件，查看该插件是否兼容指定版本
-        4. 如果插件不存在或不兼容指定版本，返回 `None`
+        3. 向后兼容：检查更低版本的 package 文件，安装对应版本代码
+        4. 检查 `package.json` 文件，插件声明当前版本或任一向后兼容版本均视为可用
+        5. 如果插件不存在或不兼容指定版本，返回 `None`
         :param pid: 插件 ID，用于在插件列表中查找
         :param repo_url: 插件仓库的 URL，指定用于获取插件信息的 GitHub 仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :return: 返回可用的插件版本号 (如 "v2"，如果指定版本不可用则返回空字符串表示 v1)，如果插件不可用则返回 None
         """
-        # 如果没有指定版本，则使用当前系统配置的版本（如 "v2"）
+        # 如果没有指定版本，则使用当前系统配置的版本（如 "v3"）
         if not package_version:
             package_version = settings.VERSION_FLAG
 
@@ -590,10 +629,14 @@ class PluginHelper(metaclass=WeakSingleton):
         if pid in (self.get_plugins(repo_url, package_version) or []):
             return package_version
 
-        # 如果指定版本的插件不存在，检查全局 package.json 文件，查看插件是否兼容指定的版本
+        # 向后兼容：检查更低版本的 package 文件，命中则安装对应版本代码
+        for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(package_version, []):
+            if pid in (self.get_plugins(repo_url, backward_flag) or []):
+                return backward_flag
+
+        # 检查全局 package.json 文件，插件声明当前版本或任一向后兼容版本均视为可用，安装基础代码
         plugin = (self.get_plugins(repo_url) or {}).get(pid, None)
-        # 检查插件是否明确支持当前指定的版本（如 v2 或 v3），如果支持，返回空字符串表示使用 package.json（v1）
-        if plugin and plugin.get(package_version) is True:
+        if plugin and self.is_plugin_info_compatible(plugin):
             return ""
 
         # 如果所有版本都不存在或插件不兼容，返回 None，表示插件不可用
@@ -2137,8 +2180,13 @@ class PluginHelper(metaclass=WeakSingleton):
         if pid in (await self.async_get_plugins(repo_url, package_version) or []):
             return package_version
 
+        # 向后兼容：检查更低版本的 package 文件，命中则安装对应版本代码
+        for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(package_version, []):
+            if pid in (await self.async_get_plugins(repo_url, backward_flag) or []):
+                return backward_flag
+
         plugin = (await self.async_get_plugins(repo_url) or {}).get(pid, None)
-        if plugin and plugin.get(package_version) is True:
+        if plugin and self.is_plugin_info_compatible(plugin):
             return ""
 
         return None

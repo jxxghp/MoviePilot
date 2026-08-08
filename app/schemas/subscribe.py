@@ -133,6 +133,23 @@ class Subscribe(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_empty_strings(cls, data: Any) -> Any:
+        """
+        将前端清空输入框后残留的空字符串视为未提供，移除该键由字段默认值兜底。
+
+        音乐等媒体类型的 tmdbid、season、total_episode、episode_priority 等数值或容器字段
+        在表单中常以空字符串提交，而 Pydantic 不会把空字符串自动转为 None，会直接抛出
+        校验异常导致接口返回 422。这里把空字符串键移除，等价于该字段未提供，从而复用字段
+        默认值（如 ``total_episode`` 回退为 0、``sites`` 回退为空列表）。
+        """
+        if isinstance(data, dict):
+            for key, value in list(data.items()):
+                if isinstance(value, str) and value == "":
+                    data.pop(key)
+        return data
+
     @model_validator(mode="after")
     def _fill_completed_episode(self) -> "Subscribe":
         """

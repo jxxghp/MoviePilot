@@ -42,6 +42,10 @@ class SystemConfModel(BaseModel):
     anilist: int = 0
     # Fanart请求缓存数量
     fanart: int = 0
+    # MusicBrainz请求缓存数量
+    musicbrainz: int = 0
+    # ListenBrainz请求缓存数量
+    listenbrainz: int = 0
     # 元数据缓存过期时间（秒）
     meta: int = 0
     # 调度器数量
@@ -990,6 +994,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 douban=512,
                 bangumi=512,
                 fanart=512,
+                musicbrainz=512,
+                listenbrainz=256,
                 meta=(self.META_CACHE_EXPIRE or 72) * 3600,
                 scheduler=100,
                 threadpool=100,
@@ -1001,6 +1007,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             douban=256,
             bangumi=256,
             fanart=128,
+            musicbrainz=256,
+            listenbrainz=128,
             meta=(self.META_CACHE_EXPIRE or 24) * 3600,
             scheduler=50,
             threadpool=50,

@@ -165,6 +165,7 @@ class ListenBrainzModule(_ModuleBase):
         )
 
     @classmethod
+    @cached(maxsize=settings.CONF.listenbrainz, ttl=settings.CONF.meta, skip_none=True)
     def _request_json(
             cls,
             path: str,

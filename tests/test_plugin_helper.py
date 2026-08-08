@@ -666,6 +666,84 @@ class TestPluginHelper:
         assert plugins[0].plugin_label == "站点 通知"
         assert plugins[0].model_dump()["plugin_label"] == "站点 通知"
 
+    def test_get_online_plugins_includes_backward_compatible_v2_plugins(self, monkeypatch) -> None:
+        """
+        V3 升级后插件市场不应空白：需同时展示 package.json 中声明 v2 兼容的插件、
+        package.v2.json 中的 v2 原生插件，并过滤掉未声明任何版本兼容的 v1 插件。
+        """
+        try:
+            from app.core.plugin import PluginManager
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        base_plugins = {
+            "V2FlagPlugin": {"name": "V2Flag", "version": "1.0.0", "v2": True, "level": 1},
+            "LegacyPlugin": {"name": "Legacy", "version": "1.0.0", "level": 1},
+        }
+        v2_native_plugins = {
+            "V2NativePlugin": {"name": "V2Native", "version": "1.0.0", "level": 1},
+        }
+
+        def fake_get_plugins(_self, _repo_url, package_version=None):
+            # package.v3.json 不存在（404 → 空字典），package.v2.json 返回 v2 原生插件
+            if package_version == "v3":
+                return {}
+            if package_version == "v2":
+                return v2_native_plugins
+            return base_plugins
+
+        plugin_manager = PluginManager()
+        monkeypatch.setattr(plugin_manager, "_plugins", {})
+        monkeypatch.setattr(plugin_manager, "_running_plugins", {})
+        monkeypatch.setattr(
+            "app.core.plugin.settings",
+            SimpleNamespace(VERSION_FLAG="v3", PLUGIN_MARKET=REPO_URL),
+        )
+        monkeypatch.setattr("app.helper.plugin.settings", SimpleNamespace(VERSION_FLAG="v3"))
+        monkeypatch.setattr("app.core.plugin.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
+        monkeypatch.setattr("app.core.plugin.SitesHelper", lambda: SimpleNamespace(auth_level=1))
+        monkeypatch.setattr(PluginHelper, "get_plugins", fake_get_plugins)
+
+        plugins = plugin_manager.get_online_plugins(force=False)
+        plugin_ids = {p.id for p in plugins}
+
+        assert "V2FlagPlugin" in plugin_ids
+        assert "V2NativePlugin" in plugin_ids
+        assert "LegacyPlugin" not in plugin_ids
+
+    def test_get_plugin_package_version_resolves_backward_compatible_v2_sources(self, monkeypatch) -> None:
+        """
+        V3 安装链路应能解析 v2 兼容插件：package.v2.json 命中返回 v2，package.json 声明 v2 返回基础版本。
+        """
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        base_plugins = {
+            "V2FlagPlugin": {"name": "V2Flag", "version": "1.0.0", "v2": True},
+            "LegacyPlugin": {"name": "Legacy", "version": "1.0.0"},
+        }
+        v2_native_plugins = {
+            "V2NativePlugin": {"name": "V2Native", "version": "1.0.0"},
+        }
+
+        def fake_get_plugins(_self, _repo_url, package_version=None):
+            if package_version == "v3":
+                return {}
+            if package_version == "v2":
+                return v2_native_plugins
+            return base_plugins
+
+        monkeypatch.setattr("app.helper.plugin.settings", SimpleNamespace(VERSION_FLAG="v3"))
+        helper = PluginHelper.__new__(PluginHelper)
+        monkeypatch.setattr(PluginHelper, "get_plugins", fake_get_plugins)
+
+        assert helper.get_plugin_package_version("V2NativePlugin", REPO_URL) == "v2"
+        assert helper.get_plugin_package_version("V2FlagPlugin", REPO_URL) == ""
+        assert helper.get_plugin_package_version("LegacyPlugin", REPO_URL) is None
+
     def test_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """
         全市场刷新不清理 Release 缓存，Release 接口按请求仓库协调刷新两类数据。
