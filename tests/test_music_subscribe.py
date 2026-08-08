@@ -3,7 +3,8 @@ from unittest.mock import Mock, patch
 
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
 from app.core.context import Context, TorrentInfo
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.music import MusicInfo
 from app.schemas.types import MediaType
 
 
@@ -56,10 +57,10 @@ def _subscribe() -> SimpleNamespace:
 
 
 def test_build_subscribe_meta_returns_music_meta():
-    """音乐订阅应构造 MusicMeta，而不是交给影视标题解析器。"""
+    """音乐订阅应构造 MetaMusic，而不是交给影视标题解析器。"""
     meta = build_subscribe_meta(_subscribe())
 
-    assert isinstance(meta, MusicMeta)
+    assert isinstance(meta, MetaMusic)
     assert meta.type == MediaType.MUSIC
     assert meta.media_id == "recording-1"
     assert meta.original_name == "晴天"
@@ -96,7 +97,7 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
         rule_groups=[],
     )
     assert context.media_info is target
-    assert isinstance(context.meta_info, MusicMeta)
+    assert isinstance(context.meta_info, MetaMusic)
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
     download_chain.batch_download.assert_called_once()
     chain.finish_subscribe_or_not.assert_called_once()

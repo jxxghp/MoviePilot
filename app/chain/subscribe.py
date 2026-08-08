@@ -20,9 +20,10 @@ from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
+from app.core.meta import MetaMusic
 from app.core.meta.words import WordsMatcher
 from app.core.metainfo import MetaInfo
-from app.core.music import MusicInfo, MusicMeta
+from app.core.music import MusicInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
@@ -55,12 +56,12 @@ from app.utils.media import (
 subscribe_interaction_manager = SlashInteractionManager()
 
 
-def build_subscribe_meta(subscribe: Subscribe) -> Union[MetaBase, MusicMeta]:
+def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
     """
     按订阅对象构造主程序链路共用的媒体元数据。
     """
     if subscribe.type == MediaType.MUSIC.value:
-        return MusicMeta(
+        return MetaMusic(
             title=subscribe.name,
             year=subscribe.year,
             media_source=subscribe.media_source,

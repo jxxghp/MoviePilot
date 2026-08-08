@@ -19,9 +19,9 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
-from app.core.music import MusicInfo, MusicMeta
 from app.core.event import eventmanager
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
+from app.core.music import MusicInfo
 from app.core.metainfo import MetaInfoPath
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -205,7 +205,7 @@ class JobManager:
         """
         获取元数据
         """
-        if isinstance(task.meta, MusicMeta):
+        if isinstance(task.meta, MetaMusic):
             return schemas.MusicMeta(**task.meta.to_dict())
         return schemas.MetaInfo(**task.meta.to_dict())
 
@@ -1046,7 +1046,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
 
     @staticmethod
-    def _music_info_from_meta(meta: MusicMeta) -> MusicInfo:
+    def _music_info_from_meta(meta: MetaMusic) -> MusicInfo:
         """将音频文件标签解析结果转换为可整理的最小音乐信息。"""
         return MusicInfo(
             source=meta.media_source,
@@ -1070,14 +1070,14 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             cls,
             download_history: Optional[DownloadHistory],
             file_path: Path,
-    ) -> tuple[Optional[MusicMeta], Optional[MusicInfo]]:
+    ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
         """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。"""
         note = getattr(download_history, "note", None)
         music_note = note.get("music") if isinstance(note, dict) else None
         if not isinstance(music_note, dict) or music_note.get("version") != 1:
             return None, None
         try:
-            saved_meta = MusicMeta.from_dict(music_note.get("meta") or {})
+            saved_meta = MetaMusic.from_dict(music_note.get("meta") or {})
             saved_info = MusicInfo.from_dict(music_note.get("media") or {})
         except (TypeError, ValueError):
             return None, None
@@ -3618,7 +3618,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
                 task_mediainfo = mediainfo or history_music_info
-                if not task_mediainfo and isinstance(file_meta, MusicMeta):
+                if not task_mediainfo and isinstance(file_meta, MetaMusic):
                     task_mediainfo = self._music_info_from_meta(file_meta)
                 if (
                         not manual

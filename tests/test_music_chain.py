@@ -1,5 +1,6 @@
 from app.chain.music import MusicChain
-from app.core.music import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.music import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 
 
 def test_parse_query_supports_artist_title_format():
@@ -156,7 +157,7 @@ def test_async_chart_applies_music_explore_filters(monkeypatch):
 
 def test_select_path_candidate_prefers_matching_audio_tags():
     """文件识别应优先选择标题、艺术家和专辑均匹配的 MusicBrainz 候选。"""
-    meta = MusicMeta(title="晴天", artists=["周杰伦"], album="叶惠美")
+    meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidates = [
         MusicInfo(source="musicbrainz", media_id="1", title="晴天", artists=["其他歌手"]),
         MusicInfo(

@@ -4,14 +4,15 @@ from types import SimpleNamespace
 from app.chain.music import MusicChain
 from app.chain.transfer import JobManager, TransferChain
 from app.core.config import settings
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.music import MusicInfo
 from app.helper.message import TemplateHelper
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferTask
 from app.schemas.types import MediaType
 
 
-def _music_context() -> tuple[MusicMeta, MusicInfo]:
+def _music_context() -> tuple[MetaMusic, MusicInfo]:
     """构造整理测试使用的音乐元数据和媒体信息。"""
     info = MusicInfo(
         source="musicbrainz",

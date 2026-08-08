@@ -7,12 +7,12 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.core.config import settings
+from app.core.meta import MetaMusic
 from app.core.music import (
     MUSIC_ENTITY_RECORDING,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
-    MusicMeta,
 )
 from app.helper.audio import AudioMetadataHelper
 from app.log import logger
@@ -26,10 +26,10 @@ class MusicChain(ChainBase):
     _spaces_pattern = re.compile(r"\s+")
 
     @classmethod
-    def parse_query(cls, query: str) -> MusicMeta:
-        """将用户输入解析为最小可用的音乐搜索元数据。"""
+    def parse_query(cls, query: str) -> MetaMusic:
+        """将用户输入的搜索关键词解析为音乐元数据。"""
         normalized = cls._normalize_text(query)
-        meta = MusicMeta(org_string=query, title=normalized)
+        meta = MetaMusic(org_string=query, title=normalized)
         match = cls._artist_title_pattern.match(normalized)
         if match:
             meta.artists = [match.group("artist").strip()]
@@ -37,7 +37,7 @@ class MusicChain(ChainBase):
         return meta
 
     @classmethod
-    def build_site_keywords(cls, music: MusicMeta | MusicInfo) -> list[str]:
+    def build_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
         """根据音乐元数据生成按精确度递减的站点搜索关键词。"""
         artists = music.artists or []
         artist = artists[0] if artists else music.album_artist
@@ -280,7 +280,7 @@ class MusicChain(ChainBase):
         return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
 
     @classmethod
-    def read_path_meta(cls, path: str | Path) -> MusicMeta:
+    def read_path_meta(cls, path: str | Path) -> MetaMusic:
         """读取本地音频标签，不可访问时按文件名构造最小音乐元数据。"""
         file_path = Path(path)
         if file_path.exists() and file_path.is_file():
@@ -291,7 +291,7 @@ class MusicChain(ChainBase):
             self,
             path: str | Path,
             source: str = "musicbrainz",
-    ) -> tuple[MusicMeta, MusicInfo]:
+    ) -> tuple[MetaMusic, MusicInfo]:
         """根据音频标签和文件名识别音乐，远端不可用时仍返回最小音乐信息。"""
         meta = self.read_path_meta(path)
         candidates = await self.async_run_module(
@@ -309,7 +309,7 @@ class MusicChain(ChainBase):
             self,
             path: str | Path,
             source: str = "musicbrainz",
-    ) -> tuple[MusicMeta, MusicInfo]:
+    ) -> tuple[MetaMusic, MusicInfo]:
         """同步根据音频标签和文件名识别音乐，并保留离线最小结果。"""
         meta = self.read_path_meta(path)
         candidates = self.run_module("search_music", meta=meta, limit=10)
@@ -420,9 +420,9 @@ class MusicChain(ChainBase):
             )
 
     @classmethod
-    def to_meta(cls, info: MusicInfo) -> MusicMeta:
+    def to_meta(cls, info: MusicInfo) -> MetaMusic:
         """将用户选中的标准音乐信息转换为下载和整理上下文元数据。"""
-        return MusicMeta(
+        return MetaMusic(
             title=info.title,
             artists=list(info.artists),
             album=info.album,
@@ -441,7 +441,7 @@ class MusicChain(ChainBase):
     @classmethod
     def _select_path_candidate(
             cls,
-            meta: MusicMeta,
+            meta: MetaMusic,
             candidates: Iterable[MusicInfo],
             source: str,
     ) -> Optional[MusicInfo]:
@@ -470,7 +470,7 @@ class MusicChain(ChainBase):
         return ranked[0][1] if ranked[0][0] > 0 else None
 
     @classmethod
-    def _info_from_meta(cls, meta: MusicMeta) -> MusicInfo:
+    def _info_from_meta(cls, meta: MetaMusic) -> MusicInfo:
         """把音频标签转换为文件管理可展示的最小音乐信息。"""
         return MusicInfo(
             source=meta.media_source,

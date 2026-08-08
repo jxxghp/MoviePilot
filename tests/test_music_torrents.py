@@ -2,7 +2,8 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain.torrents import TorrentsChain
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.music import MusicInfo
 from app.schemas.types import MediaType
 
 
@@ -60,7 +61,7 @@ def test_music_cache_context_uses_music_models():
         result = chain.refresh(stype="spider", sites=[1])
 
     context = result["example.com"][0]
-    assert isinstance(context.meta_info, MusicMeta)
+    assert isinstance(context.meta_info, MetaMusic)
     assert isinstance(context.media_info, MusicInfo)
     assert context.meta_info.artists == ["Daft Punk"]
     assert context.media_info.title == "Get Lucky"

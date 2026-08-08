@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Tuple, Optional, Set, Union
 from app.core.config import settings
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
-from app.core.music import MusicInfo, MusicMeta
+from app.core.music import MusicInfo
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
@@ -1142,7 +1142,7 @@ class Context:
     """
 
     # 识别信息
-    meta_info: Optional[Union[MetaBase, MusicMeta]] = None
+    meta_info: Optional[MetaBase] = None
     # 媒体信息
     media_info: Optional[Union[MediaInfo, MusicInfo]] = None
     # 种子信息

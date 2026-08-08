@@ -6,7 +6,8 @@ from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC
 from mutagen.mp4 import MP4, MP4Cover
 
-from app.core.music import MusicInfo, MusicMeta
+from app.core.meta import MetaMusic
+from app.core.music import MusicInfo
 from app.log import logger
 
 
@@ -14,9 +15,9 @@ class AudioMetadataHelper:
     """读取和写入音频标签，并转换为标准音乐元数据。"""
 
     @classmethod
-    def read(cls, path: Path) -> MusicMeta:
+    def read(cls, path: Path) -> MetaMusic:
         """读取本地音频文件标签；读取失败时返回基于文件名的最小元数据。"""
-        fallback = MusicMeta(
+        fallback = MetaMusic(
             org_string=path.name,
             title=path.stem,
             audio_format=path.suffix.lstrip(".").upper() or None,
@@ -33,7 +34,7 @@ class AudioMetadataHelper:
         track_number, total_tracks = cls._number_pair(cls._first(tags, "tracknumber"))
         disc_number, total_discs = cls._number_pair(cls._first(tags, "discnumber"))
         info = getattr(audio, "info", None)
-        return MusicMeta(
+        return MetaMusic(
             org_string=path.name,
             title=cls._first(tags, "title") or path.stem,
             artists=cls._values(tags, "artist"),
@@ -57,7 +58,7 @@ class AudioMetadataHelper:
     def write(
             cls,
             path: Path,
-            music: Union[MusicMeta, MusicInfo],
+            music: Union[MetaMusic, MusicInfo],
             cover_data: Optional[bytes] = None,
             cover_mime: str = "image/jpeg",
             overwrite: bool = True,
@@ -93,7 +94,7 @@ class AudioMetadataHelper:
             return False
 
     @classmethod
-    def _tag_values(cls, music: Union[MusicMeta, MusicInfo]) -> dict[str, Any]:
+    def _tag_values(cls, music: Union[MetaMusic, MusicInfo]) -> dict[str, Any]:
         """把标准音乐对象转换为 Mutagen Easy 标签字典。"""
         track_number = cls._number_text(
             getattr(music, "track_number", None),

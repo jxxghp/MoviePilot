@@ -50,7 +50,7 @@ def test_download_note_keeps_versioned_music_context():
 
 
 def test_download_endpoint_builds_music_context():
-    """现有添加下载接口应使用 MusicInfo 和 MusicMeta 构造音乐上下文。"""
+    """现有添加下载接口应使用 MusicInfo 和 MetaMusic 构造音乐上下文。"""
     chain = Mock()
     chain.download_single.return_value = "hash-1"
     current_user = Mock(name="admin")

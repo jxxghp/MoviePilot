@@ -4,12 +4,12 @@ from typing import Any, Optional, Tuple, Union
 
 from app.core.cache import cached
 from app.core.config import settings
+from app.core.meta import MetaMusic
 from app.core.music import (
     MUSIC_ENTITY_ALBUM,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
-    MusicMeta,
     MusicRelease,
 )
 from app.log import logger
@@ -97,7 +97,7 @@ class MusicBrainzModule(_ModuleBase):
         """返回音乐元数据模块执行优先级。"""
         return 5
 
-    def search_music(self, meta: MusicMeta, limit: int = 20) -> list[MusicInfo]:
+    def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
         """根据标准音乐搜索条件返回 MusicBrainz 录音候选。"""
         query = self._build_query(meta)
         if not query:
@@ -208,7 +208,7 @@ class MusicBrainzModule(_ModuleBase):
         return self._related_artists(payload.get("relations") or [], count=count)
 
     @classmethod
-    def _build_query(cls, meta: MusicMeta) -> str:
+    def _build_query(cls, meta: MetaMusic) -> str:
         """构造 MusicBrainz Recording 搜索表达式。"""
         clauses = []
         if meta.title:
