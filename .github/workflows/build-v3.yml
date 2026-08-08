@@ -111,13 +111,17 @@ jobs:
       - name: Generate Changelog
         id: changelog
         run: |
-          # 获取上一个 tag（排除当前版本的 tag）
+          # 获取上一个 tag（优先 v3.*，回退到任意 v* 版本 tag）
           PREVIOUS_TAG=$(git tag -l 'v3.*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
+          fi
           echo "Previous tag: $PREVIOUS_TAG"
 
           # 使用 || 作为分隔符，同时获取 commit 消息和作者 GitHub 用户名
           if [ -z "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"%s||%an" "${SOURCE_COMMIT}")
+            # 首次发布且无任何历史版本 tag，限制条数避免打印整库历史撑爆环境变量
+            COMMITS=$(git log --pretty=format:"%s||%an" -n 300 "${SOURCE_COMMIT}")
           else
             COMMITS=$(git log --pretty=format:"%s||%an" "${PREVIOUS_TAG}..${SOURCE_COMMIT}")
           fi
