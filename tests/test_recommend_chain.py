@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.chain.recommend import RecommendChain
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.core.cache import TTLCache
 
 

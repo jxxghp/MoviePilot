@@ -15,11 +15,10 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.core.cache import FileCache
 from app.core.config import settings, global_vars
-from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo, Context
+from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
-from app.core.music import MusicInfo
 from app.db.downloadfailure_oper import DownloadFailureOper
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper

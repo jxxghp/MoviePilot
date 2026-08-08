@@ -8,7 +8,7 @@ import pytest
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.subscribe_oper import SubscribeOper
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.schemas.types import MediaType
 
 

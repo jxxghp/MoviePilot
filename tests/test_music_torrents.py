@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain.torrents import TorrentsChain
 from app.core.meta import MetaMusic
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.schemas.types import MediaType
 
 

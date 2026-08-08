@@ -14,7 +14,7 @@ from app.api.endpoints.music import (
     recognize_music,
     search_music,
 )
-from app.core.music import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
+from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
 from app.schemas.music import MusicRecognizeRequest
 
 

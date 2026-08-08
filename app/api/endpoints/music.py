@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import schemas
 from app.chain.music import MusicChain
-from app.core.music import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.security import verify_token
 from app.modules.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,

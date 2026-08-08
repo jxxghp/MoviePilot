@@ -5,7 +5,7 @@ from app.chain.music import MusicChain
 from app.chain.transfer import JobManager, TransferChain
 from app.core.config import settings
 from app.core.meta import MetaMusic
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.helper.message import TemplateHelper
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferTask

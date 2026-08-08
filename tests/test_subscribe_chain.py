@@ -77,6 +77,7 @@ def _load_subscribe_chain_class():
     context_module.TorrentInfo = SimpleNamespace
     context_module.Context = SimpleNamespace
     context_module.MediaInfo = SimpleNamespace
+    context_module.MusicInfo = SimpleNamespace
 
     event_module = ensure_module("app.core.event", types.ModuleType("app.core.event"))
 
@@ -106,6 +107,7 @@ def _load_subscribe_chain_class():
 
     meta_module = ensure_module("app.core.meta", types.ModuleType("app.core.meta"))
     meta_module.MetaBase = SimpleNamespace
+    meta_module.MetaMusic = SimpleNamespace
 
     metainfo_module = ensure_module("app.core.metainfo", types.ModuleType("app.core.metainfo"))
 
@@ -349,6 +351,7 @@ def _load_subscribe_chain_class():
         "app.chain.download": "DownloadChain",
         "app.chain.media": "MediaChain",
         "app.chain.mediaserver": "MediaServerChain",
+        "app.chain.music": "MusicChain",
         "app.chain.search": "SearchChain",
         "app.chain.tmdb": "TmdbChain",
         "app.chain.torrents": "TorrentsChain",

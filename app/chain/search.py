@@ -19,7 +19,7 @@ from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaMusic
 from app.core.metainfo import MetaInfo
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper  # noqa

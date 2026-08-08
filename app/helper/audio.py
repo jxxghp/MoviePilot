@@ -6,8 +6,8 @@ from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC
 from mutagen.mp4 import MP4, MP4Cover
 
+from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
-from app.core.music import MusicInfo
 from app.log import logger
 
 

@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 from app.api.endpoints.download import download
 from app.chain.download import DownloadChain
 from app.chain.music import MusicChain
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.schemas.context import TorrentInfo
 from app.schemas.music import MusicInfo as MusicInfoSchema
 from app.schemas.types import MediaType

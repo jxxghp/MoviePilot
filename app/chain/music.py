@@ -7,13 +7,13 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.core.config import settings
-from app.core.meta import MetaMusic
-from app.core.music import (
+from app.core.context import (
     MUSIC_ENTITY_RECORDING,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
 )
+from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -117,6 +117,42 @@ class MusicChain(ChainBase):
         if isinstance(result, dict):
             return MusicInfo.from_dict(result)
         return None
+
+    def recognize_by_meta(
+            self,
+            meta: MetaMusic,
+            source: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """根据音乐元数据识别媒体信息，有 source+media_id 走详情，否则按标题搜索匹配。"""
+        resolved_source = source or meta.media_source
+        if resolved_source and meta.media_id:
+            info = self.recognize(resolved_source, str(meta.media_id))
+            if info:
+                return info
+        candidates = self.run_module("search_music", meta=meta, limit=10)
+        results = self.normalize_candidates(candidates, limit=10)
+        matched = self._select_path_candidate(
+            meta, results, source=resolved_source or "musicbrainz",
+        )
+        return matched or self._info_from_meta(meta)
+
+    async def async_recognize_by_meta(
+            self,
+            meta: MetaMusic,
+            source: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """异步根据音乐元数据识别媒体信息，有 source+media_id 走详情，否则按标题搜索匹配。"""
+        resolved_source = source or meta.media_source
+        if resolved_source and meta.media_id:
+            info = await self.async_recognize(resolved_source, str(meta.media_id))
+            if info:
+                return info
+        candidates = await self.async_run_module("search_music", meta=meta, limit=10)
+        results = self.normalize_candidates(candidates, limit=10)
+        matched = self._select_path_candidate(
+            meta, results, source=resolved_source or "musicbrainz",
+        )
+        return matched or self._info_from_meta(meta)
 
     def chart(self, range_name: str, page: int = 1, count: int = 30) -> list[MusicInfo]:
         """读取 ListenBrainz 全站音乐榜单并标准化分页结果。"""

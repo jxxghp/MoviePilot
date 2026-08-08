@@ -1,6 +1,6 @@
 from app.chain.music import MusicChain
 from app.core.meta import MetaMusic
-from app.core.music import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 
 
 def test_parse_query_supports_artist_title_format():

@@ -18,10 +18,9 @@ from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings, global_vars
-from app.core.context import MediaInfo
+from app.core.context import MediaInfo, MusicInfo
 from app.core.event import eventmanager
 from app.core.meta import MetaBase, MetaMusic
-from app.core.music import MusicInfo
 from app.core.metainfo import MetaInfoPath
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles

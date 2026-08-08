@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.core.music import MusicInfo
+from app.core.context import MusicInfo
 from app.helper.audio import AudioMetadataHelper
 
 

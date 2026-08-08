@@ -17,13 +17,12 @@ from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings, global_vars
-from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.meta import MetaMusic
 from app.core.meta.words import WordsMatcher
 from app.core.metainfo import MetaInfo
-from app.core.music import MusicInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
@@ -932,16 +931,10 @@ class SubscribeChain(ChainBase):
         )
         if resolved_source and resolved_media_id:
             media_source, media_id = resolved_source, resolved_media_id
-        if mtype == MediaType.MUSIC:
-            if media_source and media_id:
-                mediainfo = MusicChain().recognize(
-                    source=media_source,
-                    media_id=str(media_id),
-                )
-            if not mediainfo:
-                music_candidates = MusicChain().search(title, limit=1)
-                mediainfo = music_candidates[0] if music_candidates else None
-        elif any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
+        # 音乐身份落到 meta，由统一 recognize_by_meta 的详情分支处理，不再单独编排 recognize+search
+        if mtype == MediaType.MUSIC and media_id:
+            metainfo.media_id = str(media_id)
+        if mtype != MediaType.MUSIC and any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
             mediainfo = self.recognize_media(
                 meta=metainfo,
                 mtype=mtype,
@@ -954,7 +947,7 @@ class SubscribeChain(ChainBase):
                 episode_group=episode_group,
                 cache=False,
             )
-        elif mediaid:
+        elif mtype != MediaType.MUSIC and mediaid:
             mediainfo = self.__get_event_media(mediaid, metainfo)
 
         if mtype != MediaType.MUSIC and mediainfo and mediainfo.source != "themoviedb":
@@ -964,13 +957,17 @@ class SubscribeChain(ChainBase):
                 season = meta.begin_season
 
         # 明确来源时只允许在同一来源内按名称兜底，不能切换主识别源。
-        if not mediainfo and mtype != MediaType.MUSIC:
+        # 音乐与影视共用统一 recognize_by_meta 入口，MediaChain 按 MetaMusic 路由到 MusicChain。
+        if not mediainfo:
             mediainfo = MediaChain().recognize_by_meta(
                 metainfo,
                 source=media_source,
                 episode_group=episode_group,
                 obtain_images=False,
             )
+            # 音乐 recognize_by_meta 未命中远端时返回离线兜底，订阅创建要求真实命中
+            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.source:
+                mediainfo = None
 
         # 识别失败
         if not mediainfo:
@@ -1150,16 +1147,10 @@ class SubscribeChain(ChainBase):
         )
         if resolved_source and resolved_media_id:
             media_source, media_id = resolved_source, resolved_media_id
-        if mtype == MediaType.MUSIC:
-            if media_source and media_id:
-                mediainfo = await MusicChain().async_recognize(
-                    source=media_source,
-                    media_id=str(media_id),
-                )
-            if not mediainfo:
-                music_candidates = await MusicChain().async_search(title, limit=1)
-                mediainfo = music_candidates[0] if music_candidates else None
-        elif any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
+        # 音乐身份落到 meta，由统一 recognize_by_meta 的详情分支处理，不再单独编排 recognize+search
+        if mtype == MediaType.MUSIC and media_id:
+            metainfo.media_id = str(media_id)
+        if mtype != MediaType.MUSIC and any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
             mediainfo = await self.async_recognize_media(
                 meta=metainfo,
                 mtype=mtype,
@@ -1172,7 +1163,7 @@ class SubscribeChain(ChainBase):
                 episode_group=episode_group,
                 cache=False,
             )
-        elif mediaid:
+        elif mtype != MediaType.MUSIC and mediaid:
             mediainfo = await self.__async_get_event_meida(mediaid, metainfo)
 
         if mtype != MediaType.MUSIC and mediainfo and mediainfo.source != "themoviedb":
@@ -1182,13 +1173,17 @@ class SubscribeChain(ChainBase):
                 season = meta.begin_season
 
         # 明确来源时只允许在同一来源内按名称兜底，不能切换主识别源。
-        if not mediainfo and mtype != MediaType.MUSIC:
+        # 音乐与影视共用统一 recognize_by_meta 入口，MediaChain 按 MetaMusic 路由到 MusicChain。
+        if not mediainfo:
             mediainfo = await MediaChain().async_recognize_by_meta(
                 metainfo,
                 source=media_source,
                 episode_group=episode_group,
                 obtain_images=False,
             )
+            # 音乐 recognize_by_meta 未命中远端时返回离线兜底，订阅创建要求真实命中
+            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.source:
+                mediainfo = None
 
         # 识别失败
         if not mediainfo:

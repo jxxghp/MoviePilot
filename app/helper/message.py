@@ -15,9 +15,8 @@ from jinja2 import Template
 
 from app.core.cache import TTLCache
 from app.core.config import global_vars
-from app.core.context import MediaInfo, TorrentInfo
+from app.core.context import MediaInfo, MusicInfo, TorrentInfo
 from app.core.meta import MetaBase, MetaMusic
-from app.core.music import MusicInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.message import Notification
