@@ -9,7 +9,13 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.core.config import settings
-from app.core.context import Context, MediaInfo, MusicInfo
+from app.core.context import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    Context,
+    MediaInfo,
+    MusicInfo,
+)
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo, MetaInfoPath
@@ -1407,8 +1413,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         files = self._music_audio_fileitems(fileitem)
         if not files:
             return False, "刮削路径中没有支持的音频文件"
-        if mediainfo and len(files) > 1:
-            return False, "指定 MusicBrainz ID 时仅支持刮削单个音频文件"
+        if (
+                mediainfo
+                and len(files) > 1
+                and mediainfo.music_type != MUSIC_ENTITY_ALBUM
+        ):
+            return False, "单曲 MusicBrainz ID 仅支持刮削单个音频文件，整目录请选择专辑"
 
         # 读取音乐刮削策略：music_nfo 控制标签写入，music_poster 控制封面嵌入
         nfo_option = self.scraping_policies.option("music", "nfo")
@@ -1416,21 +1426,20 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if nfo_option.is_skip:
             return False, "音乐标签刮削策略为跳过，请先在高级设置中开启"
 
+        with_cover = not poster_option.is_skip
+        shared_cover = (
+            self._download_music_cover(mediainfo.cover_url)
+            if mediainfo and with_cover
+            else None
+        )
         failures: list[str] = []
         for audio_item in files:
-            info = mediainfo
-            if not info:
-                # 未指定识别信息时按文件名识别音乐，识别阶段不读取文件标签
-                meta = MetaInfoPath(Path(audio_item.path))
-                info = self.recognize_media(meta=meta, mtype=MediaType.MUSIC, source="musicbrainz")
-            if not info or not info.title:
-                failures.append(f"{audio_item.name or audio_item.path} 无法识别音乐信息")
-                continue
             if not self._scrape_music_file(
                     audio_item,
-                    info,
+                    mediainfo,
                     overwrite=overwrite or nfo_option.is_overwrite,
-                    with_cover=not poster_option.is_skip,
+                    with_cover=with_cover,
+                    cover=shared_cover,
             ):
                 failures.append(f"{audio_item.name or audio_item.path} 标签写入失败")
         if failures:
@@ -1476,36 +1485,34 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _scrape_music_file(
             self,
             fileitem: schemas.FileItem,
-            mediainfo: MusicInfo,
+            mediainfo: Optional[MusicInfo],
             overwrite: bool,
             with_cover: bool = True,
+            cover: Optional[tuple[Optional[bytes], str]] = None,
     ) -> bool:
         """下载单个音频文件、写入标签，并在远端存储场景上传覆盖原文件。"""
-        cover_data, cover_mime = (
-            self._download_music_cover(mediainfo.cover_url) if with_cover else (None, "image/jpeg")
-        )
         storage = StorageChain()
         if fileitem.storage == "local":
             local_path = storage.download_file(fileitem)
             return bool(
                 local_path
-                and AudioMetadataHelper.write(
+                and self._write_music_metadata(
                     local_path,
                     mediainfo,
-                    cover_data=cover_data,
-                    cover_mime=cover_mime,
                     overwrite=overwrite,
+                    with_cover=with_cover,
+                    cover=cover,
                 )
             )
 
         with TemporaryDirectory(prefix="moviepilot-music-scrape-") as temp_dir:
             local_path = storage.download_file(fileitem, path=Path(temp_dir))
-            if not local_path or not AudioMetadataHelper.write(
+            if not local_path or not self._write_music_metadata(
                     local_path,
                     mediainfo,
-                    cover_data=cover_data,
-                    cover_mime=cover_mime,
                     overwrite=overwrite,
+                    with_cover=with_cover,
+                    cover=cover,
             ):
                 return False
             parent = storage.get_parent_item(fileitem)
@@ -1519,6 +1526,69 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     new_name=fileitem.name or local_path.name,
                 )
             )
+
+    @staticmethod
+    def _merge_music_album_metadata(local_meta: MetaMusic, album: MusicInfo) -> MetaMusic:
+        """把专辑级字段合并到单个音轨标签，同时保留该文件自己的标题、艺术家和曲序。"""
+        merged = deepcopy(local_meta)
+        merged.artists = list(local_meta.artists or album.artists)
+        merged.album = album.album or album.title or local_meta.album
+        merged.album_artist = album.album_artist or album.artist or local_meta.album_artist
+        merged.year = album.year or local_meta.year
+        merged.total_tracks = album.total_tracks or local_meta.total_tracks
+        merged.media_source = album.source or local_meta.media_source
+        merged.media_id = album.media_id or local_meta.media_id
+        return merged
+
+    @classmethod
+    def _resolve_music_scrape_info(
+            cls,
+            local_path: Path,
+            mediainfo: Optional[MusicInfo],
+    ) -> Optional[MetaMusic | MusicInfo]:
+        """在文件已下载到本地后解析刮削信息，专辑场景只覆盖专辑级标签。"""
+        if mediainfo and mediainfo.music_type == MUSIC_ENTITY_ALBUM:
+            return cls._merge_music_album_metadata(
+                AudioMetadataHelper.read(local_path),
+                mediainfo,
+            )
+        if mediainfo and mediainfo.music_type in (MUSIC_ENTITY_RECORDING, None, ""):
+            return mediainfo
+        if mediainfo:
+            return None
+
+        # 延迟导入避免 MediaChain 与 MusicChain 在模块加载阶段形成双向依赖。
+        from app.chain.music import MusicChain
+        _, recognized = MusicChain().recognize_by_path(local_path, source="musicbrainz")
+        return recognized
+
+    def _write_music_metadata(
+            self,
+            local_path: Path,
+            mediainfo: Optional[MusicInfo],
+            overwrite: bool,
+            with_cover: bool,
+            cover: Optional[tuple[Optional[bytes], str]] = None,
+    ) -> bool:
+        """解析单个本地音轨并写入标签，显式专辑刮削可复用一次下载的封面。"""
+        scrape_info = self._resolve_music_scrape_info(local_path, mediainfo)
+        if not scrape_info or not scrape_info.title:
+            logger.warning(f"无法识别音乐信息：{local_path}")
+            return False
+        if not with_cover:
+            cover_data, cover_mime = None, "image/jpeg"
+        elif cover is not None:
+            cover_data, cover_mime = cover
+        else:
+            cover_url = getattr(mediainfo, "cover_url", None) or getattr(scrape_info, "cover_url", None)
+            cover_data, cover_mime = self._download_music_cover(cover_url)
+        return AudioMetadataHelper.write(
+            local_path,
+            scrape_info,
+            cover_data=cover_data,
+            cover_mime=cover_mime,
+            overwrite=overwrite,
+        )
 
     def _handle_movie_scraping(
             self,

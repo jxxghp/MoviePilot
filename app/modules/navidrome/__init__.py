@@ -3,7 +3,7 @@
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app import schemas
-from app.core.context import MediaInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo
 from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
@@ -100,6 +100,18 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
                 return credentials
         return None
 
+    @staticmethod
+    def _has_complete_album(mediainfo: MediaInfo, item: schemas.MediaServerItem) -> bool:
+        """校验 Navidrome 专辑条目的曲目数是否覆盖订阅目标。"""
+        if getattr(mediainfo, "music_type", None) != MUSIC_ENTITY_ALBUM:
+            return True
+        try:
+            expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)
+            actual_tracks = int((item.note or {}).get("song_count") or 0)
+        except (AttributeError, TypeError, ValueError):
+            return False
+        return expected_tracks > 0 and actual_tracks >= expected_tracks
+
     def media_exists(
         self, mediainfo: MediaInfo, itemid: Optional[str] = None, server: Optional[str] = None
     ) -> Optional[schemas.ExistMediaInfo]:
@@ -114,24 +126,30 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         for name, service in servers:
             if not service:
                 continue
-            if itemid and service.get_iteminfo(str(itemid)):
+            item = service.get_iteminfo(str(itemid)) if itemid else None
+            if item and self._has_complete_album(mediainfo, item):
                 return schemas.ExistMediaInfo(
                     type=MediaType.MUSIC,
                     server_type="navidrome",
                     server=name,
                     itemid=itemid,
                 )
+            is_album = getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
             matches = service.search_music(
-                title=getattr(mediainfo, "title", None),
+                title=None if is_album else getattr(mediainfo, "title", None),
                 artist=getattr(mediainfo, "artist", None),
-                album=getattr(mediainfo, "album", None),
+                album=getattr(mediainfo, "title", None) if is_album else None,
             )
-            if matches:
+            match = next(
+                (candidate for candidate in matches if self._has_complete_album(mediainfo, candidate)),
+                None,
+            )
+            if match:
                 return schemas.ExistMediaInfo(
                     type=MediaType.MUSIC,
                     server_type="navidrome",
                     server=name,
-                    itemid=matches[0].item_id,
+                    itemid=match.item_id,
                 )
         return None
 
@@ -202,4 +220,3 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     ) -> List[str]:
         """获取最近新增专辑封面。"""
         return [item.image for item in (self.mediaserver_latest(server, count, username) or []) if item.image]
-

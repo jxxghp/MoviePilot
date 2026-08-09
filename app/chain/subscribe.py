@@ -17,7 +17,13 @@ from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings, global_vars
-from app.core.context import Context, MediaInfo, MusicInfo, TorrentInfo
+from app.core.context import (
+    MUSIC_ENTITY_ALBUM,
+    Context,
+    MediaInfo,
+    MusicInfo,
+    TorrentInfo,
+)
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.meta import MetaMusic
@@ -60,9 +66,12 @@ def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
     按订阅对象构造主程序链路共用的媒体元数据。
     """
     if subscribe.type == MediaType.MUSIC.value:
+        is_album = getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM
         return MetaMusic(
             title=subscribe.name,
+            album=subscribe.name if is_album else None,
             year=subscribe.year,
+            total_tracks=getattr(subscribe, "total_tracks", None),
             media_source=subscribe.media_source,
             media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
         )
@@ -1093,6 +1102,8 @@ class SubscribeChain(ChainBase):
             "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": getattr(mediainfo, "music_type", None),
+            "total_tracks": getattr(mediainfo, "total_tracks", None),
             "season": season,
             "poster": mediainfo.get_poster_image(),
             "backdrop": mediainfo.get_backdrop_image(),
@@ -1309,6 +1320,8 @@ class SubscribeChain(ChainBase):
             "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": getattr(mediainfo, "music_type", None),
+            "total_tracks": getattr(mediainfo, "total_tracks", None),
             "season": season,
             "poster": mediainfo.get_poster_image(),
             "backdrop": mediainfo.get_backdrop_image(),
@@ -1339,7 +1352,7 @@ class SubscribeChain(ChainBase):
 
     @staticmethod
     def _recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
-        """按订阅身份恢复音乐目标，缺少身份时按标题查询首个候选。"""
+        """按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             mediainfo = MediaChain().recognize_media(
@@ -1349,12 +1362,23 @@ class SubscribeChain(ChainBase):
             )
             if mediainfo:
                 return mediainfo
-        candidates = MusicChain().search(subscribe.name, limit=1)
-        return candidates[0] if candidates else None
+            if getattr(subscribe, "music_type", None):
+                return SubscribeChain._music_info_from_subscribe(subscribe)
+            # 旧订阅没有保存实体类型时不能猜测为单曲，否则可能误把专辑按单曲完成。
+            return None
+        if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
+            # 缺少远端 ID 的专辑不能退化为单曲识别，使用已保存专辑快照更可靠。
+            return SubscribeChain._music_info_from_subscribe(subscribe)
+        # 旧订阅没有实体类型时只允许走 Recording 识别，不能从全局混合搜索中猜成专辑或艺术家。
+        return MediaChain().recognize_media(
+            meta=build_subscribe_meta(subscribe),
+            mtype=MediaType.MUSIC,
+            source=subscribe.media_source,
+        )
 
     @staticmethod
     async def _async_recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
-        """异步按订阅身份恢复音乐目标，缺少身份时按标题查询首个候选。"""
+        """异步按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             mediainfo = await MediaChain().async_recognize_media(
@@ -1364,8 +1388,60 @@ class SubscribeChain(ChainBase):
             )
             if mediainfo:
                 return mediainfo
-        candidates = await MusicChain().async_search(subscribe.name, limit=1)
-        return candidates[0] if candidates else None
+            if getattr(subscribe, "music_type", None):
+                return SubscribeChain._music_info_from_subscribe(subscribe)
+            return None
+        if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
+            return SubscribeChain._music_info_from_subscribe(subscribe)
+        return await MediaChain().async_recognize_media(
+            meta=build_subscribe_meta(subscribe),
+            mtype=MediaType.MUSIC,
+            source=subscribe.media_source,
+        )
+
+    @staticmethod
+    def _music_info_from_subscribe(subscribe: Subscribe) -> MusicInfo:
+        """从订阅行恢复不依赖远端请求的最小音乐目标，保留专辑完成判断所需字段。"""
+        year_text = str(subscribe.year or "")[:4]
+        music_type = getattr(subscribe, "music_type", None)
+        return MusicInfo(
+            source=subscribe.media_source,
+            media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
+            music_type=music_type,
+            title=subscribe.name,
+            album=subscribe.name if music_type == MUSIC_ENTITY_ALBUM else None,
+            year=int(year_text) if year_text.isdigit() else None,
+            total_tracks=getattr(subscribe, "total_tracks", None),
+            cover_url=getattr(subscribe, "poster", None) or getattr(subscribe, "backdrop", None),
+        )
+
+    @staticmethod
+    def _sync_music_subscribe_target(subscribe: Subscribe, mediainfo: MusicInfo) -> None:
+        """把远端识别得到的专辑类型和总曲目数同步到订阅，供搜索失败与完成历史复用。"""
+        update_data = {}
+        if mediainfo.music_type and getattr(subscribe, "music_type", None) != mediainfo.music_type:
+            update_data["music_type"] = mediainfo.music_type
+        if mediainfo.total_tracks and getattr(subscribe, "total_tracks", None) != mediainfo.total_tracks:
+            update_data["total_tracks"] = mediainfo.total_tracks
+        if not update_data:
+            return
+        SubscribeOper().update(subscribe.id, update_data)
+        for key, value in update_data.items():
+            setattr(subscribe, key, value)
+
+    @staticmethod
+    def _is_music_download_complete(
+            subscribe: Subscribe,
+            mediainfo: MusicInfo,
+            downloads: Optional[List[Context]],
+    ) -> bool:
+        """判断音乐下载是否满足订阅完成条件；专辑必须由下载层确认整专曲目覆盖。"""
+        if not downloads:
+            return False
+        music_type = getattr(subscribe, "music_type", None) or mediainfo.music_type
+        if music_type != MUSIC_ENTITY_ALBUM:
+            return True
+        return any(context.confirmed_full_coverage for context in downloads)
 
     def _search_music_subscribe(self, subscribe: Subscribe) -> None:
         """复用站点标题搜索、订阅过滤和批量下载完成单个音乐订阅。"""
@@ -1376,6 +1452,7 @@ class SubscribeChain(ChainBase):
                 f"媒体源：{subscribe.media_source}，媒体ID：{subscribe.media_id}"
             )
             return
+        self._sync_music_subscribe_target(subscribe, mediainfo)
 
         sites = self.get_sub_sites(subscribe)
         rule_groups = subscribe.filter_groups \
@@ -1398,6 +1475,7 @@ class SubscribeChain(ChainBase):
                 for context in contexts
                 if context.torrent_info
                 and context.torrent_info.category in (MediaType.MUSIC, MediaType.MUSIC.value)
+                and MusicChain.matches_site_resource(mediainfo, context.torrent_info.title)
                 and TorrentHelper().filter_torrent(
                     context.torrent_info,
                     self.get_params(subscribe),
@@ -1744,7 +1822,11 @@ class SubscribeChain(ChainBase):
                     scene="download",
                 )
             if ((no_lefts and meta.type == MediaType.TV)
-                    or (downloads and meta.type in (MediaType.MOVIE, MediaType.MUSIC))
+                    or (downloads and meta.type == MediaType.MOVIE)
+                    or (
+                        meta.type == MediaType.MUSIC
+                        and self._is_music_download_complete(subscribe, mediainfo, downloads)
+                    )
                     or force):
                 self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
             else:
@@ -2350,7 +2432,7 @@ class SubscribeChain(ChainBase):
             # 更新TMDB信息
             update_data = {
                 "name": mediainfo.title,
-                "year": mediainfo.year,
+                "year": str(mediainfo.year) if mediainfo.year is not None else None,
                 "vote": mediainfo.vote_average,
                 "poster": mediainfo.get_poster_image(),
                 "backdrop": mediainfo.get_backdrop_image(),
@@ -2365,6 +2447,11 @@ class SubscribeChain(ChainBase):
                 "media_id": resolve_media_identity(media=mediainfo)[1],
                 "total_episode": total_episode,
             }
+            if meta.type == MediaType.MUSIC:
+                update_data.update({
+                    "music_type": getattr(mediainfo, "music_type", None),
+                    "total_tracks": getattr(mediainfo, "total_tracks", None),
+                })
             update_data.update(progress_update)
             for key, value in progress_update.items():
                 setattr(subscribe, key, value)

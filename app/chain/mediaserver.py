@@ -8,6 +8,7 @@ from app.db.mediaserver_oper import MediaServerOper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import MediaServerLibrary, MediaServerItem, MediaServerSeasonInfo, MediaServerPlayItem
+from app.schemas.types import MediaType
 from app.utils.security import SecurityUtils
 
 lock = threading.Lock()
@@ -24,6 +25,28 @@ class MediaServerChain(ChainBase):
         为返回前端的媒体服务器图片 URL 添加代理签名。
         """
         return SecurityUtils.sign_url(url) if url else url
+
+    @staticmethod
+    def _normalize_item_type(item_type: Optional[str]) -> str:
+        """把不同媒体服务器的原始条目类型归一为电影、电视剧或音乐。"""
+        normalized = str(item_type or "").strip().casefold()
+        if normalized in {
+            MediaType.MUSIC.value.casefold(),
+            "music",
+            "musicalbum",
+            "album",
+            "audio",
+            "song",
+        }:
+            return MediaType.MUSIC.value
+        if normalized in {
+            MediaType.TV.value.casefold(),
+            "tv",
+            "series",
+            "show",
+        }:
+            return MediaType.TV.value
+        return MediaType.MOVIE.value
 
     def _sign_library_images(
         self, libraries: Optional[List[MediaServerLibrary]]
@@ -132,7 +155,7 @@ class MediaServerChain(ChainBase):
         获取指定媒体服务器可同步的电影、电视剧和音乐总数
 
         :param server: 媒体服务器名称
-        :return: 电影和电视剧总数，无法获取时返回None
+        :return: 电影、电视剧和音乐总数，无法获取时返回None
         """
         statistics = self.run_module("media_statistic", server=server)
         if not statistics:
@@ -429,8 +452,8 @@ class MediaServerChain(ChainBase):
                         global_media_finished += 1
                         seasoninfo = {}
                         # 类型
-                        item_type = "电视剧" if item.item_type in ["Series", "show"] else "电影"
-                        if item_type == "电视剧":
+                        item_type = self._normalize_item_type(item.item_type)
+                        if item_type == MediaType.TV.value:
                             # 查询剧集信息
                             espisodes_info = self.episodes(server_name, item.item_id) or []
                             for episode in espisodes_info:

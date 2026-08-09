@@ -78,6 +78,7 @@ def _load_subscribe_chain_class():
     context_module.Context = SimpleNamespace
     context_module.MediaInfo = SimpleNamespace
     context_module.MusicInfo = SimpleNamespace
+    context_module.MUSIC_ENTITY_ALBUM = "album"
 
     event_module = ensure_module("app.core.event", types.ModuleType("app.core.event"))
 
@@ -165,6 +166,8 @@ def _load_subscribe_chain_class():
             "custom_words",
             "media_category",
             "filter_groups",
+            "music_type",
+            "total_tracks",
         }
 
         def __init__(self, **kwargs):
@@ -299,6 +302,8 @@ def _load_subscribe_chain_class():
             self.media_source = None
             self.media_id = None
             self.mediaid = None
+            self.music_type = None
+            self.total_tracks = None
             self.episode_group = None
             for key, value in kwargs.items():
                 setattr(self, key, value)

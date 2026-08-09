@@ -8,6 +8,7 @@ from app import schemas
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import (
+    MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -50,6 +51,28 @@ class MusicChain(ChainBase):
         if music.title:
             keywords.append(music.title)
         return cls._unique_texts(keywords)
+
+    @classmethod
+    def matches_site_resource(cls, music: MusicInfo, resource_title: str) -> bool:
+        """判断站点资源标题是否包含订阅目标名称，避免宽泛搜索结果串专辑或串单曲。"""
+        normalized_resource = cls._normalize_match_text(resource_title)
+        if not normalized_resource:
+            return False
+        if music.music_type == MUSIC_ENTITY_ALBUM:
+            candidates = cls._unique_texts([
+                music.album or music.title,
+                *(music.names or []),
+            ])
+        else:
+            # Recording 的 names 兼容字段会包含所属专辑名；单曲匹配只能使用曲名，
+            # 否则整专资源会被当成单曲下载并在首个任务后误销订阅。
+            candidates = cls._unique_texts([music.title])
+        return any(
+            normalized_target and normalized_target in normalized_resource
+            for normalized_target in (
+                cls._normalize_match_text(candidate) for candidate in candidates
+            )
+        )
 
     @classmethod
     def normalize_candidates(
@@ -239,6 +262,11 @@ class MusicChain(ChainBase):
             results = [info for info in results if info.cover_url]
         return list(results)
 
+    @staticmethod
+    def _normalize_match_text(value: Optional[str]) -> str:
+        """移除大小写、空白和标点差异，生成站点标题匹配使用的紧凑文本。"""
+        return re.sub(r"[^\w]+", "", str(value or "").casefold(), flags=re.UNICODE)
+
     @classmethod
     def is_audio_path(cls, path: str | Path) -> bool:
         """判断路径是否指向系统支持的音频文件。"""
@@ -318,9 +346,10 @@ class MusicChain(ChainBase):
     def _candidate_identity(cls, info: MusicInfo) -> tuple[str, ...]:
         """构造跨来源稳定的候选去重键。"""
         if info.source and info.media_id:
-            return "id", info.source.casefold(), info.media_id.casefold()
+            return "id", info.source.casefold(), info.music_type.casefold(), info.media_id.casefold()
         return (
             "metadata",
+            info.music_type.casefold(),
             cls._normalize_text(info.title).casefold(),
             cls._normalize_text(info.artist).casefold(),
             cls._normalize_text(info.album).casefold(),

@@ -82,6 +82,82 @@ def test_search_music_normalizes_candidates(monkeypatch):
     assert results[0].title == "晴天"
 
 
+def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):
+    """全局音乐搜索应交错返回三类实体，避免单曲结果挤掉整专和艺术家入口。"""
+    module = MusicBrainzModule()
+    requested = []
+
+    def fake_request(path, params=None):
+        """按 MusicBrainz 实体路径返回可区分的搜索结果。"""
+        requested.append((path, params))
+        if path == "/recording":
+            return {
+                "recordings": [
+                    {"id": "recording-1", "title": "晴天"},
+                    {"id": "recording-2", "title": "轨迹"},
+                ]
+            }
+        if path == "/release-group":
+            return {
+                "release-groups": [
+                    {
+                        "id": "album-1",
+                        "title": "叶惠美",
+                        "primary-type": "Album",
+                        "artist-credit": [{"artist": {"id": "artist-1", "name": "周杰伦"}}],
+                    },
+                    {"id": "album-2", "title": "七里香", "primary-type": "Album"},
+                ]
+            }
+        if path == "/artist":
+            return {
+                "artists": [
+                    {"id": "artist-1", "name": "周杰伦", "type": "Person"},
+                    {"id": "artist-2", "name": "Jay Chou", "type": "Person"},
+                ]
+            }
+        return None
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    results = module.search_music(
+        MetaMusic(title="晴天", artists=["周杰伦"]),
+        limit=5,
+    )
+
+    assert [item.music_type for item in results] == [
+        "recording",
+        "album",
+        "artist",
+        "recording",
+        "album",
+    ]
+    assert results[1].album == "叶惠美"
+    assert results[2].title == "周杰伦"
+    assert results[2].artists == []
+    assert requested[1][1]["query"] == 'releasegroup:"晴天" AND artist:"周杰伦"'
+    assert requested[2][1]["query"] == 'artist:"周杰伦"'
+
+
+def test_file_recognition_searches_recordings_only(monkeypatch):
+    """本地音轨识别不得把同名专辑或艺术家候选当成 Recording。"""
+    module = MusicBrainzModule()
+    requested_paths = []
+
+    def fake_request(path, params=None):
+        """记录文件识别实际访问的 MusicBrainz 实体。"""
+        requested_paths.append(path)
+        return {"recordings": [{"id": "recording-1", "title": "晴天"}]}
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    result = module.recognize_media(meta=MetaMusic(title="晴天"))
+
+    assert result is not None
+    assert result.music_type == "recording"
+    assert requested_paths == ["/recording"]
+
+
 def test_recognize_music_ignores_other_sources(monkeypatch):
     """MusicBrainz 模块不应处理其他元数据源的详情请求。"""
     module = MusicBrainzModule()

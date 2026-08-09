@@ -143,6 +143,31 @@ def test_music_subscribe_persists_numeric_year_as_string():
     assert payload["year"] == "2025"
 
 
+def test_music_album_subscription_persists_entity_and_track_count():
+    """专辑订阅必须保存实体类型和总曲目数，供搜索校验与完成判定复用。"""
+    persisted = SimpleNamespace(id=94)
+    created = SimpleNamespace(create=MagicMock())
+    media = MusicInfo(
+        source="musicbrainz",
+        media_id="release-group-1",
+        music_type="album",
+        title="叶惠美",
+        album="叶惠美",
+        total_tracks=11,
+    )
+
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.exists.side_effect = [None, persisted]
+        subscribe_model.return_value = created
+
+        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+
+    assert sid == 94
+    payload = subscribe_model.call_args.kwargs
+    assert payload["music_type"] == "album"
+    assert payload["total_tracks"] == 11
+
+
 @pytest.mark.parametrize("episode_group", [None, "eg-1"])
 def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     """异步新增与同步路径使用相同的剧集组身份契约。"""

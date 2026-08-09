@@ -57,10 +57,61 @@ def test_media_count_reuses_existing_server_statistics():
     """整服同步应复用现有媒体统计并排除剧集集数。"""
     chain = object.__new__(MediaServerChain)
     chain.run_module = lambda *_args, **_kwargs: [
-        schemas.Statistic(movie_count=12, tv_count=8, episode_count=200)
+        schemas.Statistic(movie_count=12, tv_count=8, music_count=3, episode_count=200)
     ]
 
-    assert chain.media_count("plex") == 20
+    assert chain.media_count("plex") == 23
+
+
+@pytest.mark.parametrize(
+    ("raw_type", "expected"),
+    [
+        ("Series", "电视剧"),
+        ("show", "电视剧"),
+        ("音乐", "音乐"),
+        ("MusicAlbum", "音乐"),
+        ("Audio", "音乐"),
+        ("Movie", "电影"),
+    ],
+)
+def test_sync_normalizes_movie_tv_and_music_item_types(raw_type, expected):
+    """同步缓存应保留音乐类型，并兼容不同媒体服务器的原始类型名称。"""
+    assert MediaServerChain._normalize_item_type(raw_type) == expected
+
+
+def test_sync_persists_music_without_querying_tv_episodes(database):
+    """Navidrome 专辑同步应写成音乐条目，且不能触发电视剧分集查询。"""
+    chain = object.__new__(MediaServerChain)
+    chain.librarys = lambda _server: [SimpleNamespace(id="music", name="音乐")]
+    chain.media_count = lambda _server: 1
+    chain.items_count = lambda **_kwargs: pytest.fail("整服统计存在时不应逐库计数")
+    chain.items = lambda **_kwargs: iter(
+        [
+            schemas.MediaServerItem(
+                server="navidrome",
+                library="music",
+                item_id="album-1",
+                item_type="音乐",
+                title="叶惠美",
+                year="2003",
+            )
+        ]
+    )
+    chain.episodes = lambda *_args, **_kwargs: pytest.fail("音乐条目不应查询电视剧分集")
+
+    with patch("app.db.ScopedSession", database), patch.object(
+        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+        "get_mediaserver_configs",
+        return_value=[SimpleNamespace(name="navidrome", enabled=True, sync_libraries=["all"])],
+    ):
+        chain.sync()
+
+    with database() as db:
+        item = db.query(MediaServerItem).one()
+
+    assert item.item_type == "音乐"
+    assert item.title == "叶惠美"
+    assert item.seasoninfo == {}
 
 
 def test_sync_updates_rows_and_removes_stale_entries(database):

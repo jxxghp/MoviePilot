@@ -1362,11 +1362,7 @@ class SearchChain(ChainBase):
             filter_params: Optional[Dict[str, str]] = None,
     ) -> List[Context]:
         """过滤音乐分类资源并组装携带目标音乐身份的下载上下文。"""
-        torrents = [
-            torrent
-            for torrent in torrents
-            if torrent.category in (MediaType.MUSIC, MediaType.MUSIC.value)
-        ]
+        torrents = self._matching_music_torrents(torrents, mediainfo)
         if filter_params:
             torrenthelper = TorrentHelper()
             torrents = [
@@ -1400,6 +1396,19 @@ class SearchChain(ChainBase):
             )
         return self.__remove_duplicate(TorrentHelper.sort_torrents(contexts))
 
+    @staticmethod
+    def _matching_music_torrents(
+            torrents: Optional[List[TorrentInfo]],
+            mediainfo: MusicInfo,
+    ) -> List[TorrentInfo]:
+        """筛出音乐分类且标题包含目标单曲或专辑名称的站点资源。"""
+        return [
+            torrent
+            for torrent in torrents or []
+            if torrent.category in (MediaType.MUSIC, MediaType.MUSIC.value)
+            and MusicChain.matches_site_resource(mediainfo, torrent.title)
+        ]
+
     def _process_music(
             self,
             mediainfo: MusicInfo,
@@ -1414,15 +1423,17 @@ class SearchChain(ChainBase):
         for index, search_word in enumerate(keywords or [mediainfo.title]):
             if index:
                 time.sleep(random.randint(1, 10))
-            torrents.extend(
+            matched_torrents = self._matching_music_torrents(
                 self.__search_all_sites(
                     keyword=search_word,
                     mediainfo=mediainfo,
                     sites=sites,
                     mtype=MediaType.MUSIC,
-                ) or []
+                ),
+                mediainfo,
             )
-            if torrents and not settings.SEARCH_MULTIPLE_NAME:
+            torrents.extend(matched_torrents)
+            if matched_torrents and not settings.SEARCH_MULTIPLE_NAME:
                 break
         return self._build_music_contexts(
             torrents=torrents,
@@ -1445,15 +1456,17 @@ class SearchChain(ChainBase):
         for index, search_word in enumerate(keywords or [mediainfo.title]):
             if index:
                 await asyncio.sleep(random.randint(1, 10))
-            torrents.extend(
+            matched_torrents = self._matching_music_torrents(
                 await self.__async_search_all_sites(
                     keyword=search_word,
                     mediainfo=mediainfo,
                     sites=sites,
                     mtype=MediaType.MUSIC,
-                ) or []
+                ),
+                mediainfo,
             )
-            if torrents and not settings.SEARCH_MULTIPLE_NAME:
+            torrents.extend(matched_torrents)
+            if matched_torrents and not settings.SEARCH_MULTIPLE_NAME:
                 break
         return await run_in_threadpool(
             self._build_music_contexts,

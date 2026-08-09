@@ -66,6 +66,10 @@ class Subscribe(BaseModel):
     mediaid: Optional[str] = None
     media_source: Optional[str] = None
     media_id: Optional[str] = None
+    # 音乐实体类型：recording 单曲、album 专辑
+    music_type: Optional[str] = None
+    # 专辑预期总曲目数
+    total_tracks: Optional[int] = None
     # 季号
     season: Optional[int] = None
     # 海报
@@ -194,6 +198,10 @@ class SubscribeShare(BaseModel):
     anilistid: Optional[int] = None
     media_source: Optional[str] = None
     media_id: Optional[str] = None
+    # 音乐实体类型：recording 单曲、album 专辑
+    music_type: Optional[str] = None
+    # 专辑预期总曲目数
+    total_tracks: Optional[int] = None
     # 季号
     season: Optional[int] = None
     # 海报

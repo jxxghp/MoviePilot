@@ -145,8 +145,8 @@ def not_exists(
     )
     media_source, media_id = resolve_media_identity(media=mediainfo)
     mediakey = build_media_key(media_source, media_id)
-    if mediainfo.type == MediaType.MOVIE:
-        # 电影已存在时返回空列表，不存在时返回空对像列表
+    if mediainfo.type in {MediaType.MOVIE, MediaType.MUSIC}:
+        # 电影和音乐都是原子存在性结果；专辑内部曲目完整性由下载入口校验。
         return [] if exist_flag else [NotExistMediaInfo()]
     elif no_exists and no_exists.get(mediakey):
         # 电视剧返回缺失的剧集

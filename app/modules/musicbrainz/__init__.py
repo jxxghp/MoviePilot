@@ -101,7 +101,20 @@ class MusicBrainzModule(_ModuleBase):
         return 0
 
     def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
-        """根据标准音乐搜索条件返回 MusicBrainz 录音候选。"""
+        """搜索单曲、专辑和艺术家，并交错返回可浏览的 MusicBrainz 候选。"""
+        normalized_limit = max(1, min(limit, 100))
+        recordings = self._search_recordings(meta, limit=normalized_limit)
+        albums = self._search_albums(meta, limit=normalized_limit)
+        artists = self._search_artists(meta, limit=normalized_limit)
+        return self._interleave_results(
+            recordings,
+            albums,
+            artists,
+            limit=normalized_limit,
+        )
+
+    def _search_recordings(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
+        """按音频标签条件搜索 Recording，供全局搜索和文件识别复用。"""
         query = self._build_query(meta)
         if not query:
             return []
@@ -114,6 +127,61 @@ class MusicBrainzModule(_ModuleBase):
             for item in (payload or {}).get("recordings") or []
             if (info := self._recording_to_info(item))
         ]
+
+    def _search_albums(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
+        """按标题和可选艺术家搜索 Release Group 专辑候选。"""
+        title = meta.album or meta.title
+        if not title:
+            return []
+        clauses = [f'releasegroup:"{self._escape_query(title)}"']
+        if meta.artists:
+            clauses.append(f'artist:"{self._escape_query(meta.artists[0])}"')
+        payload = self._request_json(
+            "/release-group",
+            params={
+                "query": " AND ".join(clauses),
+                "limit": max(1, min(limit, 100)),
+                "fmt": "json",
+            },
+        )
+        return [
+            album.to_music_info()
+            for item in (payload or {}).get("release-groups") or []
+            if (album := self._release_group_to_album(item))
+        ]
+
+    def _search_artists(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
+        """按用户输入中的艺术家部分搜索 Artist 浏览候选。"""
+        artist_name = meta.artists[0] if meta.artists else meta.title
+        if not artist_name:
+            return []
+        payload = self._request_json(
+            "/artist",
+            params={
+                "query": f'artist:"{self._escape_query(artist_name)}"',
+                "limit": max(1, min(limit, 100)),
+                "fmt": "json",
+            },
+        )
+        return [
+            artist.to_music_info()
+            for item in (payload or {}).get("artists") or []
+            if (artist := self._artist_to_info(item, include_raw=True))
+        ]
+
+    @staticmethod
+    def _interleave_results(*groups: list[MusicInfo], limit: int) -> list[MusicInfo]:
+        """按实体轮询合并结果，避免单曲数量占满全局搜索页。"""
+        results: list[MusicInfo] = []
+        index = 0
+        while len(results) < limit and any(index < len(group) for group in groups):
+            for group in groups:
+                if index < len(group):
+                    results.append(group[index])
+                    if len(results) >= limit:
+                        break
+            index += 1
+        return results
 
     def recognize_media(
             self,
@@ -139,7 +207,8 @@ class MusicBrainzModule(_ModuleBase):
             if info:
                 return info
         # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兜底
-        candidates = self.search_music(meta, limit=10)
+        # 文件识别只能从 Recording 中挑选，专辑或艺术家同名结果不能成为音轨身份。
+        candidates = self._search_recordings(meta, limit=10)
         matched = self._select_candidate(meta, candidates, source=resolved_source or self._source)
         return matched or self._info_from_meta(meta)
 
@@ -230,7 +299,7 @@ class MusicBrainzModule(_ModuleBase):
         )
         if payload:
             return self._recording_to_info(payload)
-        # 订阅只持久化来源和 ID，无法区分单曲与专辑，因此按专辑再查一次
+        # MusicBrainz 各实体共用 UUID 形式，统一详情入口在 Recording 未命中后继续探测专辑。
         album = self.music_album(source, media_id)
         return album.to_music_info() if album else None
 

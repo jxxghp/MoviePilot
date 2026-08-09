@@ -506,6 +506,22 @@ class MusicArtistInfo:
         )
         return payload
 
+    def to_music_info(self) -> MusicInfo:
+        """转换为统一搜索列表使用的音乐信息，但不赋予下载或订阅语义。"""
+        return MusicInfo(
+            source=self.source,
+            media_id=self.media_id,
+            music_type=MUSIC_ENTITY_ARTIST,
+            title=self.name,
+            cover_url=self.image_url,
+            version=self.disambiguation,
+            category=self.artist_type or "",
+            genres=list(self.genres),
+            names=[name for name in [self.name, *self.aliases] if name],
+            detail_link=self.detail_link,
+            raw_data=dict(self.raw_data),
+        )
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """从字典恢复标准化艺术家信息。"""

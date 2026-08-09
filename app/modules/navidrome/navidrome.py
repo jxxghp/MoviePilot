@@ -1,6 +1,7 @@
 """Navidrome Subsonic/OpenSubsonic API 客户端。"""
 
 import hashlib
+import re
 import secrets
 from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import urlencode
@@ -122,6 +123,39 @@ class Navidrome:
             note={"artist": album.get("artist"), "song_count": album.get("songCount")},
         )
 
+    def _song_to_item(self, song: dict) -> schemas.MediaServerItem:
+        """将 Subsonic 单曲转换为统一音乐条目。"""
+        song_id = str(song.get("id") or "")
+        title = song.get("title") or song.get("name") or ""
+        return schemas.MediaServerItem(
+            id=song_id,
+            item_id=song_id,
+            title=title,
+            original_title=title,
+            year=song.get("year") or song.get("created"),
+            item_type=MediaType.MUSIC.value,
+            server_type="navidrome",
+            path=song.get("path"),
+            note={"artist": song.get("artist"), "album": song.get("album")},
+        )
+
+    @staticmethod
+    def _same_name(left: Optional[str], right: Optional[str]) -> bool:
+        """忽略大小写、空白和标点比较 Navidrome 音乐名称。"""
+        normalized_left = re.sub(r"[^\w]+", "", str(left or "").casefold())
+        normalized_right = re.sub(r"[^\w]+", "", str(right or "").casefold())
+        return bool(normalized_left) and normalized_left == normalized_right
+
+    @classmethod
+    def _same_artist(cls, item: dict, artist: Optional[str]) -> bool:
+        """检查专辑或单曲的艺术家是否与目标一致；目标为空时不限制。"""
+        if not artist:
+            return True
+        return any(
+            cls._same_name(candidate, artist)
+            for candidate in (item.get("artist"), item.get("albumArtist"))
+        )
+
     def _album_cover(self, album: dict) -> Optional[str]:
         """返回专辑封面地址。"""
         cover_id = album.get("coverArt")
@@ -188,16 +222,28 @@ class Navidrome:
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[schemas.MediaServerItem]:
-        """按歌曲、艺术家或专辑名称查询音乐条目。"""
-        query = " ".join(filter(None, [title, artist, album])).strip()
+        """按歌曲或专辑名称精确筛选音乐条目，避免模糊搜索误报已入库。"""
+        target = album or title
+        query = " ".join(dict.fromkeys(filter(None, [target, artist]))).strip()
         if not query:
             return []
         payload = self._call("search3", query=query, artistCount=0, albumCount=20, songCount=20)
         result = ((payload or {}).get("searchResult3") or {})
         albums = result.get("album") or []
         songs = result.get("song") or []
-        candidates = albums or songs
-        return [self._album_to_item(item) for item in candidates]
+        if album:
+            return [
+                self._album_to_item(item)
+                for item in albums
+                if self._same_name(self._album_name(item), album)
+                and self._same_artist(item, artist)
+            ]
+        return [
+            self._song_to_item(item)
+            for item in songs
+            if self._same_name(item.get("title") or item.get("name"), title)
+            and self._same_artist(item, artist)
+        ]
 
     def _to_play_item(self, album: dict) -> schemas.MediaServerPlayItem:
         """将专辑转换为仪表盘播放/最新条目。"""
@@ -213,6 +259,20 @@ class Navidrome:
             server_type="navidrome",
         )
 
+    def _song_to_play_item(self, song: dict) -> schemas.MediaServerPlayItem:
+        """将正在播放的单曲转换为仪表盘条目，避免把所属专辑名误作曲名。"""
+        song_id = str(song.get("id") or "")
+        return schemas.MediaServerPlayItem(
+            id=song_id,
+            item_id=song_id,
+            title=song.get("title") or song.get("name") or "",
+            subtitle=song.get("artist") or song.get("albumArtist"),
+            type=MediaType.MUSIC.value,
+            image=self._album_cover(song),
+            link=self._play_host,
+            server_type="navidrome",
+        )
+
     def get_latest(self, count: int = 20) -> List[schemas.MediaServerPlayItem]:
         """返回最近新增专辑。"""
         return [self._to_play_item(album) for album in self._albums("newest")[:count]]
@@ -221,7 +281,7 @@ class Navidrome:
         """返回当前用户正在播放的音乐。"""
         payload = self._call("getNowPlaying")
         items = ((payload or {}).get("nowPlaying") or {}).get("entry") or []
-        return [self._to_play_item(item) for item in items[:count]]
+        return [self._song_to_play_item(item) for item in items[:count]]
 
     def get_play_url(self, item_id: str) -> Optional[str]:
         """返回 Navidrome 流播放地址。"""
@@ -230,3 +290,6 @@ class Navidrome:
             return None
         return f"{url}/stream?{urlencode(self._params(id=item_id))}"
 
+    def refresh_root_library(self) -> bool:
+        """请求 Navidrome 执行增量音乐库扫描。"""
+        return self._call("startScan", fullScan=False) is not None

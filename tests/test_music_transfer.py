@@ -133,6 +133,59 @@ def test_restore_music_context_from_download_history():
     assert restored_info.album == "Random Access Memories"
 
 
+def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_path, monkeypatch):
+    """整专整理应保留选中的专辑身份，同时使用每个文件自己的曲名、艺术家和曲序。"""
+    album = MusicInfo(
+        source="musicbrainz",
+        media_id="release-group-1",
+        music_type="album",
+        title="叶惠美",
+        artists=["周杰伦"],
+        album="叶惠美",
+        album_artist="周杰伦",
+        year=2003,
+        total_tracks=11,
+    )
+    meta = MusicChain.to_meta(album)
+    history = SimpleNamespace(note={
+        "music": {
+            "version": 1,
+            "meta": meta.to_dict(),
+            "media": album.to_dict(),
+        }
+    })
+    audio_file = tmp_path / "03. 晴天.flac"
+    audio_file.write_bytes(b"fake-flac")
+
+    from app.helper.audio import AudioMetadataHelper
+
+    monkeypatch.setattr(
+        AudioMetadataHelper,
+        "read",
+        lambda path: MetaMusic(
+            org_string=path.name,
+            title="晴天",
+            artists=["周杰伦"],
+            album="错误专辑",
+            album_artist="错误艺术家",
+            year=1999,
+            track_number=3,
+            total_tracks=99,
+        ),
+    )
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(history, audio_file)
+
+    assert restored_meta.title == "晴天"
+    assert restored_meta.track_number == 3
+    assert restored_meta.album == "叶惠美"
+    assert restored_meta.album_artist == "周杰伦"
+    assert restored_meta.year == 2003
+    assert restored_meta.total_tracks == 11
+    assert restored_info.music_type == "album"
+    assert restored_info.media_id == "release-group-1"
+
+
 def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path, monkeypatch):
     """曲目标题应优先取当前文件自身的标签/文件名，而非沿用订阅时的单曲标题。"""
     meta, info = _music_context()

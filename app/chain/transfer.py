@@ -17,7 +17,7 @@ from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings, global_vars
-from app.core.context import MediaInfo, MusicInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo, MusicInfo
 from app.core.event import eventmanager
 from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfoPath
@@ -1095,20 +1095,22 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 防止整包目录继续沿用订阅/下载标题（单曲名、专辑名等）导致所有文件重名。
         if file_tags.title:
             file_meta.title = file_tags.title
+        is_album_context = saved_info.music_type == MUSIC_ENTITY_ALBUM
         for field_name in (
             "artists",
-            "album",
-            "album_artist",
-            "year",
             "disc_number",
             "track_number",
             "total_discs",
-            "total_tracks",
             "version",
             "isrc",
         ):
             if getattr(file_tags, field_name, None):
                 setattr(file_meta, field_name, deepcopy(getattr(file_tags, field_name)))
+        for field_name in ("album", "album_artist", "year", "total_tracks"):
+            file_value = getattr(file_tags, field_name, None)
+            # 整专下载以订阅选中的专辑字段为准，避免单个错误标签把曲目拆到其它专辑目录。
+            if file_value and (not is_album_context or not getattr(file_meta, field_name, None)):
+                setattr(file_meta, field_name, deepcopy(file_value))
         for field_name in (
             "audio_format",
             "bit_depth",
@@ -1124,10 +1126,17 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_info = cls._music_info_from_meta(file_meta)
         file_info.source = saved_info.source
         file_info.media_id = saved_info.media_id
+        file_info.music_type = saved_info.music_type
+        file_info.artist_ids = list(saved_info.artist_ids)
+        file_info.album_id = saved_info.album_id
+        file_info.album_type = saved_info.album_type
+        file_info.release_date = saved_info.release_date
         file_info.cover_url = saved_info.cover_url
         file_info.lyrics = saved_info.lyrics
         file_info.category = saved_info.category
+        file_info.genres = list(saved_info.genres)
         file_info.detail_link = saved_info.detail_link
+        file_info.listen_count = saved_info.listen_count
         return file_meta, file_info
 
     def __is_allowed_file(self, fileitem: FileItem) -> bool:

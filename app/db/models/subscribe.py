@@ -30,6 +30,10 @@ class Subscribe(Base):
     mediaid = Column(String, index=True)
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
+    # 音乐实体类型：recording 单曲、album 专辑
+    music_type = Column(String)
+    # 专辑预期总曲目数，供整专资源完整性判断
+    total_tracks = Column(Integer)
     # 季号
     season = Column(Integer)
     # 海报

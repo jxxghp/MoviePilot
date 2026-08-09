@@ -84,22 +84,22 @@ def test_musicbrainz_module_recognize_media_uses_detail_when_meta_has_identity(m
     meta = MetaMusic(title="晴天", media_source="musicbrainz", media_id="recording-1")
     expected = _music_info()
     monkeypatch.setattr(module, "recognize_music", Mock(return_value=expected))
-    search_mock = Mock(return_value=[])
-    monkeypatch.setattr(module, "search_music", search_mock)
+    recording_search = Mock(return_value=[])
+    monkeypatch.setattr(module, "_search_recordings", recording_search)
 
     result = module.recognize_media(meta=meta, source="musicbrainz")
 
     module.recognize_music.assert_called_once_with("musicbrainz", "recording-1")
-    search_mock.assert_not_called()
+    recording_search.assert_not_called()
     assert result is expected
 
 
 def test_musicbrainz_module_recognize_media_matches_search_candidate(monkeypatch):
-    """无身份时应按标题搜索并选择匹配候选。"""
+    """无身份时应从 Recording 搜索中选择匹配候选。"""
     module = MusicBrainzModule()
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidate = _music_info()
-    monkeypatch.setattr(module, "search_music", Mock(return_value=[candidate]))
+    monkeypatch.setattr(module, "_search_recordings", Mock(return_value=[candidate]))
 
     result = module.recognize_media(meta=meta)
 
@@ -110,7 +110,7 @@ def test_musicbrainz_module_recognize_media_falls_back_to_offline_when_no_match(
     """搜索无候选时应返回元数据兜底，且兜底结果不带远端身份。"""
     module = MusicBrainzModule()
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
-    monkeypatch.setattr(module, "search_music", Mock(return_value=[]))
+    monkeypatch.setattr(module, "_search_recordings", Mock(return_value=[]))
 
     result = module.recognize_media(meta=meta)
 

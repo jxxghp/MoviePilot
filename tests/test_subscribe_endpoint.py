@@ -1129,6 +1129,8 @@ def test_create_subscribe_accepts_music_payload_with_empty_strings():
     subscribe_in = Subscribe(
         name="Random Access Memories",
         type=MediaType.MUSIC.value,
+        music_type="album",
+        total_tracks=13,
         tmdbid="",
         season="",
         total_episode="",
@@ -1154,4 +1156,5 @@ def test_create_subscribe_accepts_music_payload_with_empty_strings():
     assert payload["total_episode"] == 0
     assert payload["sites"] == []
     assert payload["type"] == MediaType.MUSIC.value
-
+    assert payload["music_type"] == "album"
+    assert payload["total_tracks"] == 13

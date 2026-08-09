@@ -40,6 +40,38 @@ def test_build_site_keywords_prefers_artist_album():
     ]
 
 
+def test_album_resource_match_requires_selected_album_title():
+    """专辑订阅只接受包含目标专辑名的站点资源，忽略大小写、空格和标点差异。"""
+    album = MusicInfo(
+        music_type="album",
+        title="Random Access Memories",
+        album="Random Access Memories",
+        names=["Random-Access Memories"],
+    )
+
+    assert MusicChain.matches_site_resource(
+        album,
+        "Daft.Punk-Random.Access.Memories-2013-FLAC",
+    ) is True
+    assert MusicChain.matches_site_resource(album, "Daft Punk - Discovery - FLAC") is False
+
+
+def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
+    """单曲候选的兼容 names 即使包含专辑名，也不能让整专标题冒充目标单曲。"""
+    recording = MusicInfo(
+        music_type="recording",
+        title="Get Lucky",
+        album="Random Access Memories",
+        names=["Get Lucky", "Random Access Memories"],
+    )
+
+    assert MusicChain.matches_site_resource(recording, "Daft Punk - Get Lucky FLAC") is True
+    assert MusicChain.matches_site_resource(
+        recording,
+        "Daft Punk - Random Access Memories FLAC",
+    ) is False
+
+
 def test_normalize_candidates_deduplicates_source_identity():
     """同一来源和媒体 ID 的音乐候选应只保留一次。"""
     results = MusicChain.normalize_candidates(
@@ -56,6 +88,18 @@ def test_normalize_candidates_deduplicates_source_identity():
 
     assert len(results) == 1
     assert results[0].title == "A"
+
+
+def test_normalize_candidates_keeps_different_entities_with_same_source_id():
+    """同一来源 ID 在不同音乐实体命名空间下不能互相去重。"""
+    results = MusicChain.normalize_candidates(
+        [
+            MusicInfo(source="musicbrainz", media_id="shared-id", music_type="recording", title="Song"),
+            MusicInfo(source="musicbrainz", media_id="shared-id", music_type="album", title="Album"),
+        ]
+    )
+
+    assert [item.music_type for item in results] == ["recording", "album"]
 
 
 def test_normalize_candidates_deduplicates_metadata_without_id():

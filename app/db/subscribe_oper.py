@@ -1,10 +1,11 @@
 import time
 from typing import Tuple, List, Optional
 
-from app.core.context import MediaInfo
+from app.core.context import MediaInfo, MusicInfo
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
+from app.schemas.types import MediaType
 from app.utils.media import resolve_media_identity
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
@@ -31,12 +32,22 @@ def _normalize_year(year: Optional[int | str]) -> Optional[str]:
     return str(year)
 
 
+def _music_subscription_fields(mediainfo: MediaInfo | MusicInfo) -> dict:
+    """从标准媒体信息提取音乐订阅需要持久化的专辑级字段。"""
+    if mediainfo.type != MediaType.MUSIC:
+        return {"music_type": None, "total_tracks": None}
+    return {
+        "music_type": getattr(mediainfo, "music_type", None),
+        "total_tracks": getattr(mediainfo, "total_tracks", None),
+    }
+
+
 class SubscribeOper(DbOper):
     """
     订阅管理
     """
 
-    def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
+    def add(self, mediainfo: MediaInfo | MusicInfo, **kwargs) -> Tuple[int, str]:
         """
         新增订阅
         """
@@ -83,6 +94,7 @@ class SubscribeOper(DbOper):
             "search_imdbid": 1 if kwargs.get('search_imdbid') else 0,
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
+        kwargs.update(_music_subscription_fields(mediainfo))
         kwargs = _normalize_integer_flags(kwargs)
         if not subscribe:
             subscribe = Subscribe(**kwargs)
@@ -98,7 +110,7 @@ class SubscribeOper(DbOper):
         else:
             return subscribe.id, "订阅已存在"
 
-    async def async_add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
+    async def async_add(self, mediainfo: MediaInfo | MusicInfo, **kwargs) -> Tuple[int, str]:
         """
         异步新增订阅
         """
@@ -145,6 +157,7 @@ class SubscribeOper(DbOper):
             "search_imdbid": 1 if kwargs.get('search_imdbid') else 0,
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
+        kwargs.update(_music_subscription_fields(mediainfo))
         kwargs = _normalize_integer_flags(kwargs)
         if not subscribe:
             subscribe = Subscribe(**kwargs)

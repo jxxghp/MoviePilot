@@ -15,7 +15,14 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.core.cache import FileCache
 from app.core.config import settings, global_vars
-from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.core.context import (
+    MUSIC_ENTITY_ALBUM,
+    Context,
+    MediaInfo,
+    MusicInfo,
+    SubtitleInfo,
+    TorrentInfo,
+)
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
@@ -48,6 +55,7 @@ DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
     "404",
     "deleted",
     "invalid torrent",
+    "专辑资源",
 )
 
 
@@ -79,6 +87,45 @@ class DownloadChain(ChainBase):
             "media": media_payload,
         }
         return note
+
+    @staticmethod
+    def _validate_music_album_resource(
+            context: Context,
+            file_list: Optional[List[str]],
+    ) -> Optional[str]:
+        """校验专辑种子是否包含预期数量的独立音轨，并标记已确认的整专覆盖。"""
+        media = context.media_info
+        if (
+                not media
+                or media.type != MediaType.MUSIC
+                or getattr(media, "music_type", None) != MUSIC_ENTITY_ALBUM
+        ):
+            return None
+
+        context.confirmed_full_coverage = False
+        try:
+            expected_tracks = int(getattr(media, "total_tracks", None) or 0)
+        except (TypeError, ValueError):
+            expected_tracks = 0
+        if expected_tracks <= 0:
+            return "专辑资源无法校验：专辑总曲目数未知"
+        if not file_list:
+            return "专辑资源无法校验：种子未提供文件清单，不能确认整专曲目"
+
+        audio_files = {
+            str(Path(str(file)))
+            for file in file_list
+            if Path(str(file)).suffix.lower() in settings.RMT_AUDIOEXT
+        }
+        actual_tracks = len(audio_files)
+        if actual_tracks < expected_tracks:
+            return (
+                f"专辑资源不完整：专辑共 {expected_tracks} 首，"
+                f"种子仅包含 {actual_tracks} 个独立音频文件"
+            )
+
+        context.confirmed_full_coverage = True
+        return None
 
     @staticmethod
     def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
@@ -912,6 +959,18 @@ class DownloadChain(ChainBase):
         # 获取种子文件的文件夹名和文件清单
         _folder_name, _file_list = TorrentHelper().get_fileinfo_from_torrent_content(torrent_content)
 
+        album_validation_error = self._validate_music_album_resource(context, _file_list)
+        if album_validation_error:
+            logger.info(f"{_torrent.title} {album_validation_error}，跳过该资源")
+            self._record_download_failure(
+                context=context,
+                error_msg=album_validation_error,
+                downloader=downloader or _site_downloader,
+                source=source,
+                episodes=episodes,
+            )
+            return (None, album_validation_error) if return_detail else None
+
         storage, download_dir, error_msg = self._resolve_media_download_dir(
             media_info=_media,
             save_path=save_path,
@@ -1271,7 +1330,7 @@ class DownloadChain(ChainBase):
                 else:
                     __remember_context_failure(context)
 
-        # 音乐与电影一样按单个订阅目标择一下载，不进入电视剧季集组合逻辑。
+        # 音乐按单个订阅目标择一下载；专辑在 download_single 内先按文件清单确认整专覆盖。
         downloaded_music = set()
         for context in contexts:
             if global_vars.is_system_stopped:
@@ -1637,12 +1696,12 @@ class DownloadChain(ChainBase):
         return downloaded_list, no_exists
 
     def get_no_exists_info(self, meta: MetaBase,
-                           mediainfo: MediaInfo,
+                           mediainfo: MediaInfo | MusicInfo,
                            no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                            totals: Dict[int, int] = None
                            ) -> Tuple[bool, Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
-        检查媒体库，查询是否存在，对于剧集同时返回不存在的季集信息
+        检查媒体库，查询电影或音乐是否存在；对于剧集同时返回不存在的季集信息
         :param meta: 元数据
         :param mediainfo: 已识别的媒体信息
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
@@ -1694,6 +1753,21 @@ class DownloadChain(ChainBase):
             exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
+                return True, {}
+            return False, {}
+        if mediainfo.type == MediaType.MUSIC:
+            # 专辑在媒体库中按一个集合条目判断；单曲则由具体音乐服务器继续按曲名检索。
+            itemid = mediaserver.get_item_id(
+                mtype=mediainfo.type.value,
+                title=mediainfo.title,
+                year=mediainfo.year,
+            )
+            exists_music: Optional[ExistMediaInfo] = self.media_exists(
+                mediainfo=mediainfo,
+                itemid=itemid,
+            )
+            if exists_music:
+                logger.info(f"媒体库中已存在音乐：{mediainfo.title_year}")
                 return True, {}
             return False, {}
         else:

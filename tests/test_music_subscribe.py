@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
-from app.core.context import Context, TorrentInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, Context, TorrentInfo
 from app.core.meta import MetaMusic
 from app.core.context import MusicInfo
 from app.schemas.types import MediaType
@@ -20,9 +20,9 @@ def _music_info() -> MusicInfo:
     )
 
 
-def _subscribe() -> SimpleNamespace:
+def _subscribe(**overrides) -> SimpleNamespace:
     """构造不依赖数据库的音乐订阅对象。"""
-    return SimpleNamespace(
+    values = dict(
         id=7,
         name="晴天",
         year="2003",
@@ -30,6 +30,8 @@ def _subscribe() -> SimpleNamespace:
         keyword=None,
         media_source="musicbrainz",
         media_id="recording-1",
+        music_type="recording",
+        total_tracks=None,
         season=None,
         episode_group=None,
         tmdbid=None,
@@ -53,7 +55,11 @@ def _subscribe() -> SimpleNamespace:
         best_version=0,
         state="R",
         note=None,
+        poster=None,
+        backdrop=None,
     )
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 def test_build_subscribe_meta_returns_music_meta():
@@ -72,7 +78,7 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     target = _music_info()
     context = Context(
         torrent_info=TorrentInfo(
-            title="周杰伦 - 叶惠美 FLAC",
+            title="周杰伦 - 晴天 FLAC",
             category=MediaType.MUSIC.value,
         )
     )
@@ -98,7 +104,7 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     )
     assert context.media_info is target
     assert isinstance(context.meta_info, MetaMusic)
-    assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
+    assert context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
     download_chain.batch_download.assert_called_once()
     chain.finish_subscribe_or_not.assert_called_once()
 
@@ -122,6 +128,129 @@ def test_music_subscribe_ignores_non_music_category():
         chain._search_music_subscribe(subscribe)
 
     download_chain.assert_not_called()
+
+
+def test_music_subscribe_ignores_unrelated_music_title():
+    """即使站点分类为音乐，资源标题不含目标单曲或专辑名时也不得自动下载。"""
+    subscribe = _subscribe()
+    context = Context(
+        torrent_info=TorrentInfo(
+            title="周杰伦 - 七里香 FLAC",
+            category=MediaType.MUSIC.value,
+        )
+    )
+    search_chain = Mock()
+    search_chain.search_by_title.return_value = [context]
+
+    with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
+            patch("app.chain.subscribe.SearchChain", return_value=search_chain), \
+            patch("app.chain.subscribe.DownloadChain") as download_chain:
+        SubscribeChain()._search_music_subscribe(subscribe)
+
+    download_chain.assert_not_called()
+
+
+def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavailable():
+    """远端详情短暂失败时应从订阅快照恢复专辑语义，不能按标题猜成第一首单曲。"""
+    subscribe = _subscribe(
+        name="叶惠美",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = None
+
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.MusicChain.search") as search:
+        restored = SubscribeChain._recognize_music_subscribe(subscribe)
+
+    assert restored.music_type == MUSIC_ENTITY_ALBUM
+    assert restored.album == "叶惠美"
+    assert restored.total_tracks == 11
+    search.assert_not_called()
+
+
+def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
+    """旧订阅有标准 ID 却无实体类型时，识别失败后应保留订阅而不是误选标题搜索首项。"""
+    subscribe = _subscribe(music_type=None)
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = None
+
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.MusicChain.search") as search:
+        restored = SubscribeChain._recognize_music_subscribe(subscribe)
+
+    assert restored is None
+    search.assert_not_called()
+
+
+def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
+    """专辑快照缺少远端 ID 时也不得退化为单曲识别。"""
+    subscribe = _subscribe(
+        name="叶惠美",
+        media_source=None,
+        media_id=None,
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+    )
+
+    with patch("app.chain.subscribe.MediaChain") as media_chain:
+        restored = SubscribeChain._recognize_music_subscribe(subscribe)
+
+    assert restored.music_type == MUSIC_ENTITY_ALBUM
+    assert restored.total_tracks == 11
+    media_chain.assert_not_called()
+
+
+def test_legacy_music_without_identity_uses_recording_recognition_boundary():
+    """旧订阅缺少标准身份时只能恢复为单曲，不能消费全局搜索中的专辑或艺术家候选。"""
+    subscribe = _subscribe(
+        media_source=None,
+        media_id=None,
+        music_type=None,
+    )
+    recording = _music_info()
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = recording
+
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.MusicChain.search") as mixed_search:
+        restored = SubscribeChain._recognize_music_subscribe(subscribe)
+
+    assert restored is recording
+    mixed_search.assert_not_called()
+    media_chain.recognize_media.assert_called_once()
+    call = media_chain.recognize_media.call_args
+    assert isinstance(call.kwargs["meta"], MetaMusic)
+    assert call.kwargs["mtype"] == MediaType.MUSIC
+
+
+def test_album_subscription_finishes_only_after_confirmed_full_pack():
+    """专辑与电视剧全集相同，必须确认整专覆盖；单曲仍在任一成功下载后完成。"""
+    album_subscribe = _subscribe(music_type=MUSIC_ENTITY_ALBUM, total_tracks=11)
+    album = MusicInfo(
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        total_tracks=11,
+    )
+
+    assert SubscribeChain._is_music_download_complete(
+        album_subscribe,
+        album,
+        [Context(confirmed_full_coverage=False)],
+    ) is False
+    assert SubscribeChain._is_music_download_complete(
+        album_subscribe,
+        album,
+        [Context(confirmed_full_coverage=True)],
+    ) is True
+    assert SubscribeChain._is_music_download_complete(
+        _subscribe(),
+        _music_info(),
+        [Context()],
+    ) is True
 
 
 def test_subscribe_add_music_uses_unified_recognize_by_meta():
