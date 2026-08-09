@@ -426,6 +426,7 @@ class _FakeBatchTorrentHelper:
     """
 
     episodes = []
+    received_custom_words = None
 
     def sort_torrents(self, contexts):
         """
@@ -452,7 +453,8 @@ class _FakeBatchTorrentHelper:
             results.append(context)
         return results
 
-    def get_torrent_episodes(self, _files):
+    def get_torrent_episodes(self, _files, custom_words=None):
+        type(self).received_custom_words = custom_words
         return list(self.episodes)
 
 
@@ -673,6 +675,47 @@ def test_batch_download_threads_custom_words_to_download_single(monkeypatch):
     assert downloads == [context]
     chain.download_single.assert_called_once()
     assert chain.download_single.call_args.kwargs["custom_words"] == custom_words
+
+
+def test_batch_download_applies_custom_words_to_torrent_file_episodes(monkeypatch):
+    """订阅识别词须用于种子文件集数解析，确保跨季映射后能选中缺失集。"""
+    _FakeBatchTorrentHelper.episodes = [170]
+    _FakeBatchTorrentHelper.received_custom_words = None
+    monkeypatch.setattr(download_module, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_torrent = MagicMock(
+        return_value=(b"torrent-content", "", ["A.Will.Eternal.S04E05.mkv"]),
+    )
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context()
+    no_exists = {
+        1: {
+            1: NotExistMediaInfo(
+                season=1,
+                episodes=[170],
+                total_episode=200,
+                start_episode=155,
+            )
+        }
+    }
+    custom_words = (
+        "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
+        "&& S01 <> 2160p >> EP+165"
+    )
+
+    downloads, lefts = chain.batch_download(
+        contexts=[context],
+        no_exists=no_exists,
+        custom_words=custom_words,
+    )
+
+    assert downloads == [context]
+    assert lefts == {}
+    assert _FakeBatchTorrentHelper.received_custom_words == [custom_words]
+    assert chain.download_single.call_args.kwargs["episodes"] == {170}
 
 
 def test_download_single_records_failure_cooldown_when_downloader_rejects(monkeypatch):

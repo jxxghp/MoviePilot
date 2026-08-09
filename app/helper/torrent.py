@@ -366,9 +366,13 @@ class TorrentHelper:
         return result
 
     @staticmethod
-    def get_torrent_episodes(files: list) -> list:
+    def get_torrent_episodes(files: list, custom_words: Optional[List[str]] = None) -> list:
         """
         从种子的文件清单中获取所有集数
+
+        :param files: 种子文件清单
+        :param custom_words: 当前下载来源的临时自定义识别词
+        :return: 识别到的全部集数
         """
         episodes = []
         for file in files:
@@ -378,7 +382,7 @@ class TorrentHelper:
             if not file_path.suffix or file_path.suffix.lower() not in settings.RMT_MEDIAEXT:
                 continue
             # 只使用文件名识别
-            meta = MetaInfo(file_path.name)
+            meta = MetaInfo(file_path.name, custom_words=custom_words)
             if not meta.begin_episode:
                 continue
             episodes = list(set(episodes).union(set(meta.episode_list)))

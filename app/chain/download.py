@@ -1097,6 +1097,7 @@ class DownloadChain(ChainBase):
         """
         # 已下载的项目
         downloaded_list: List[Context] = []
+        custom_word_list = custom_words.splitlines() if custom_words else None
 
         def __update_seasons(_mid: Union[int, str], _need: list, _current: list) -> list:
             """
@@ -1357,7 +1358,10 @@ class DownloadChain(ChainBase):
                                 if isinstance(content, str):
                                     logger.warn(f"{meta.org_string} 下载地址是磁力链，无法确定种子文件集数")
                                     continue
-                                torrent_episodes = TorrentHelper().get_torrent_episodes(torrent_files)
+                                torrent_episodes = TorrentHelper().get_torrent_episodes(
+                                    torrent_files,
+                                    custom_words=custom_word_list,
+                                )
                                 logger.info(f"{meta.org_string} 解析种子文件集数为 {torrent_episodes}")
                                 if not torrent_episodes:
                                     continue
@@ -1586,7 +1590,10 @@ class DownloadChain(ChainBase):
                                 logger.warn(f"{meta.org_string} 下载地址是磁力链，无法解析种子文件集数")
                                 continue
                             # 种子全部集
-                            torrent_episodes = TorrentHelper().get_torrent_episodes(torrent_files)
+                            torrent_episodes = TorrentHelper().get_torrent_episodes(
+                                torrent_files,
+                                custom_words=custom_word_list,
+                            )
                             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{torrent_episodes}")
                             # 选中的集
                             selected_episodes = set(torrent_episodes).intersection(effective_need)

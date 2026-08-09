@@ -314,6 +314,21 @@ def test_custom_words_replace_then_episode_offset():
     assert meta.apply_words == custom_words
 
 
+def test_get_torrent_episodes_applies_custom_words():
+    """种子文件集数解析应使用订阅识别词完成跨季集数映射。"""
+    custom_words = [
+        "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
+        "&& S01 <> 2160p >> EP+165"
+    ]
+
+    episodes = TorrentHelper.get_torrent_episodes(
+        ["A.Will.Eternal.S04E05.2026.2160p.WEB-DL.mkv"],
+        custom_words=custom_words,
+    )
+
+    assert episodes == [170]
+
+
 def test_custom_words_episode_offset_supports_multiplication_expression():
     """测试集数偏移表达式支持乘法和连续运算。"""
     custom_words = [
