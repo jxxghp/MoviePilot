@@ -292,7 +292,7 @@ class ListenBrainzModule(_ModuleBase):
         if not release_mbid:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
-        base = settings.MUSIC_COVER_PROXY or "https://coverartarchive.org"
+        base = (settings.MUSIC_COVER_PROXY or "https://coverartarchive.org").rstrip("/")
         return f"{base}/release/{release_mbid}/front-500"
 
     @classmethod
@@ -301,7 +301,7 @@ class ListenBrainzModule(_ModuleBase):
         if not release_group_id:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
-        base = settings.MUSIC_COVER_PROXY or "https://coverartarchive.org"
+        base = (settings.MUSIC_COVER_PROXY or "https://coverartarchive.org").rstrip("/")
         return f"{base}/release-group/{release_group_id}/front-500"
 
     @staticmethod
