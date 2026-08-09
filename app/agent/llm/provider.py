@@ -417,7 +417,7 @@ class LLMProviderManager(metaclass=Singleton):
                 base_url_editable=True,
                 requires_base_url=True,
                 supports_api_key=True,
-                api_key_hint="通用 OpenAI-compatible 兜底入口，需要手动填写 Base URL。",
+                api_key_hint="填写 OpenAI-compatible 服务的 API Key；如服务未启用鉴权，可填写任意占位值。",
                 description="通用 OpenAI-compatible 模型服务。",
                 sort_order=1,
             ),
