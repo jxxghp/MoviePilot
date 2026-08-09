@@ -675,7 +675,9 @@ class MusicBrainzModule(_ModuleBase):
         """根据 Release Group ID 构造 Cover Art Archive 封面地址。"""
         if not release_group_id:
             return None
-        return f"{cls._cover_url}/{release_group_id}/front-500"
+        # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
+        base = (settings.MUSIC_COVER_PROXY or "https://coverartarchive.org").rstrip("/")
+        return f"{base}/release-group/{release_group_id}/front-500"
 
     @classmethod
     def _wait_for_rate_limit(cls) -> None:

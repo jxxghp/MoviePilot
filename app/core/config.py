@@ -226,6 +226,10 @@ class ConfigModel(BaseModel):
     # TMDB API Key
     TMDB_API_KEY: str = "db55323b8d3e4154498498a75642b381"
 
+    # ==================== 音乐配置 ====================
+    # 音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）
+    MUSIC_COVER_PROXY: str = ""
+
     # ==================== TVDB配置 ====================
     # TVDB API Key
     TVDB_V4_API_KEY: str = "ed2aa66b-7899-4677-92a7-67bc9ce3d93a"
