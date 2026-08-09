@@ -94,6 +94,36 @@ def test_restore_music_context_from_download_history():
     assert restored_info.album == "Random Access Memories"
 
 
+def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path, monkeypatch):
+    """曲目标题应优先取当前文件自身的标签/文件名，而非沿用订阅时的单曲标题。"""
+    meta, info = _music_context()
+    history = SimpleNamespace(
+        note={
+            "music": {
+                "version": 1,
+                "meta": meta.to_dict(),
+                "media": info.to_dict(),
+            }
+        }
+    )
+    # 订阅标题被识别为单曲"Get Lucky"，而实际音轨标签曲目名 不同且无身份字段
+    audio_file = tmp_path / "07.幸福.flac"
+    audio_file.write_bytes(b"fake-flac")
+
+    from app.helper.audio import AudioMetadataHelper
+
+    monkeypatch.setattr(
+        AudioMetadataHelper,
+        "read",
+        lambda path: MetaMusic(org_string=path.name, title="流浪地图"),
+    )
+
+    restored_meta, _ = TransferChain._restore_music_download_context(history, audio_file)
+
+    assert restored_meta is not None
+    assert restored_meta.title == "流浪地图"
+
+
 def test_job_manager_serializes_music_queue_models():
     """整理队列应使用音乐专属 Schema 序列化任务。"""
     meta, info = _music_context()

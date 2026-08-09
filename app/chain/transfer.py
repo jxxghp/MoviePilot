@@ -1084,12 +1084,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_meta = deepcopy(saved_meta)
         file_meta.org_string = file_path.name
         if file_tags:
-            has_tag_identity = bool(
-                file_tags.artists
-                or file_tags.album
-                or file_tags.track_number
-                or file_tags.isrc
-            )
+            # 曲目标题始终优先使用当前文件自身的标签（缺失时回退为文件名），
+            # 防止整包目录继续沿用订阅/下载标题（单曲名、专辑名等）导致所有文件重名。
+            if file_tags.title:
+                file_meta.title = file_tags.title
             for field_name in (
                 "artists",
                 "album",
@@ -1104,8 +1102,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             ):
                 if getattr(file_tags, field_name, None):
                     setattr(file_meta, field_name, deepcopy(getattr(file_tags, field_name)))
-            if has_tag_identity and file_tags.title:
-                file_meta.title = file_tags.title
             for field_name in (
                 "audio_format",
                 "bit_depth",
