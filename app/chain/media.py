@@ -1,9 +1,11 @@
 import os
+import re
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from typing import Optional, List, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from app import schemas
 from app.chain import ChainBase
@@ -14,7 +16,9 @@ from app.core.context import (
     MUSIC_ENTITY_RECORDING,
     Context,
     MediaInfo,
+    MusicAlbumInfo,
     MusicInfo,
+    MusicLyrics,
 )
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase, MetaMusic
@@ -37,11 +41,22 @@ from app.utils.mixins import ConfigReloadMixin
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
+if TYPE_CHECKING:
+    from app.chain.music import MusicChain
+
 recognize_lock = Lock()
 scraping_lock = Lock()
 
 current_umask = os.umask(0)
 os.umask(current_umask)
+
+
+@dataclass
+class _MusicScrapeFileResult:
+    """记录单个音轨的标签刮削结果和歌词处理状态。"""
+
+    metadata_success: bool = True
+    lyrics_status: str = "disabled"
 
 
 class ScrapingOption:
@@ -147,7 +162,7 @@ class ScrapingConfig:
                 ("tv", ["nfo", "poster", "backdrop", "logo", "banner", "thumb", "clearart", "landscape"]),
                 ("season", ["nfo", "poster", "backdrop", "banner", "thumb", "landscape"]),
                 ("episode", ["nfo", "thumb"]),
-                ("music", ["nfo", "poster"]),
+                ("music", ["nfo", "poster", "lyrics"]),
             ]
             for md in mds
         ]
@@ -181,6 +196,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         "thumb": ["landscape"],
         "landscape": ["thumb"],
     }
+
+    MUSIC_LYRICS_EXTENSIONS = (".lrc", ".txt")
+    _music_track_prefix_pattern = re.compile(
+        r"^\s*(?:(?:cd|disc)\s*\d+\s*[-_. ]+)?(?:\d+\s*[-_. ]+)+",
+        flags=re.IGNORECASE,
+    )
 
     def __init__(self):
         super().__init__()
@@ -1076,7 +1097,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 _, message = self.scrape_music_metadata(
                     fileitem=fileitem,
                     mediainfo=mediainfo,
-                    overwrite=overwrite or self.scraping_policies.option("music", "nfo").is_overwrite,
+                    overwrite=overwrite,
                 )
                 if message:
                     logger.info(f"音乐刮削：{message}")
@@ -1420,11 +1441,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ):
             return False, "单曲 MusicBrainz ID 仅支持刮削单个音频文件，整目录请选择专辑"
 
-        # 读取音乐刮削策略：music_nfo 控制标签写入，music_poster 控制封面嵌入
+        # 三类音乐产物使用独立策略，允许只下载歌词而不改写音频标签。
         nfo_option = self.scraping_policies.option("music", "nfo")
         poster_option = self.scraping_policies.option("music", "poster")
-        if nfo_option.is_skip:
-            return False, "音乐标签刮削策略为跳过，请先在高级设置中开启"
+        lyrics_option = self.scraping_policies.option("music", "lyrics")
+        if nfo_option.is_skip and poster_option.is_skip and lyrics_option.is_skip:
+            return False, "音乐标签、封面和歌词刮削策略均为跳过"
 
         with_cover = not poster_option.is_skip
         shared_cover = (
@@ -1432,19 +1454,71 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if mediainfo and with_cover
             else None
         )
-        failures: list[str] = []
-        for audio_item in files:
-            if not self._scrape_music_file(
-                    audio_item,
-                    mediainfo,
-                    overwrite=overwrite or nfo_option.is_overwrite,
-                    with_cover=with_cover,
-                    cover=shared_cover,
+        music_chain = None
+        album_info = None
+        if not lyrics_option.is_skip:
+            # 延迟导入避免 MediaChain 与 MusicChain 在模块加载阶段形成双向依赖。
+            from app.chain.music import MusicChain
+
+            music_chain = MusicChain()
+            if (
+                    mediainfo
+                    and mediainfo.music_type == MUSIC_ENTITY_ALBUM
+                    and mediainfo.source
+                    and mediainfo.media_id
             ):
-                failures.append(f"{audio_item.name or audio_item.path} 标签写入失败")
+                album_info = music_chain.album(
+                    source=mediainfo.source,
+                    media_id=mediainfo.media_id,
+                )
+
+        failures: list[str] = []
+        lyrics_counts = {
+            "saved": 0,
+            "existing": 0,
+            "missing": 0,
+            "failed": 0,
+        }
+        metadata_failure_label = (
+            "音乐标签和封面"
+            if not nfo_option.is_skip and with_cover
+            else "音乐标签" if not nfo_option.is_skip else "封面"
+        )
+        for audio_item in files:
+            result = self._scrape_music_file(
+                audio_item,
+                mediainfo,
+                write_tags=not nfo_option.is_skip,
+                tag_overwrite=overwrite or nfo_option.is_overwrite,
+                with_cover=with_cover,
+                cover_overwrite=overwrite or poster_option.is_overwrite,
+                cover=shared_cover,
+                lyrics_option=lyrics_option,
+                lyrics_overwrite=overwrite or lyrics_option.is_overwrite,
+                music_chain=music_chain,
+                album_info=album_info,
+            )
+            if not result.metadata_success:
+                failures.append(
+                    f"{audio_item.name or audio_item.path} {metadata_failure_label}写入失败"
+                )
+            if result.lyrics_status in lyrics_counts:
+                lyrics_counts[result.lyrics_status] += 1
+            if result.lyrics_status == "failed":
+                failures.append(f"{audio_item.name or audio_item.path} 歌词保存失败")
+
+        message = f"已刮削 {len(files)} 个音频文件"
+        if not lyrics_option.is_skip:
+            message += (
+                f"，歌词新增 {lyrics_counts['saved']} 首"
+                f"、已存在 {lyrics_counts['existing']} 首"
+                f"、未匹配 {lyrics_counts['missing']} 首"
+            )
+            if lyrics_counts["failed"]:
+                message += f"、失败 {lyrics_counts['failed']} 首"
         if failures:
-            return False, "；".join(failures[:3])
-        return True, f"已刮削 {len(files)} 个音频文件"
+            return False, f"{message}；{'；'.join(failures[:3])}"
+        return True, message
 
     @staticmethod
     def _download_music_cover(url: Optional[str]) -> tuple[Optional[bytes], str]:
@@ -1486,46 +1560,120 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             fileitem: schemas.FileItem,
             mediainfo: Optional[MusicInfo],
-            overwrite: bool,
+            write_tags: bool,
+            tag_overwrite: bool,
             with_cover: bool = True,
+            cover_overwrite: bool = True,
             cover: Optional[tuple[Optional[bytes], str]] = None,
-    ) -> bool:
-        """下载单个音频文件、写入标签，并在远端存储场景上传覆盖原文件。"""
-        storage = StorageChain()
+            lyrics_option: Optional[ScrapingOption] = None,
+            lyrics_overwrite: bool = False,
+            music_chain: Optional["MusicChain"] = None,
+            album_info: Optional[MusicAlbumInfo] = None,
+    ) -> _MusicScrapeFileResult:
+        """下载单个音轨并执行标签、封面和歌词刮削，远端产物写回原目录。"""
+        storage = self.storagechain
+        download_failure = _MusicScrapeFileResult(
+            metadata_success=not (write_tags or with_cover),
+            lyrics_status=(
+                "failed"
+                if lyrics_option and not lyrics_option.is_skip and music_chain
+                else "disabled"
+            ),
+        )
         if fileitem.storage == "local":
             local_path = storage.download_file(fileitem)
-            return bool(
-                local_path
-                and self._write_music_metadata(
-                    local_path,
-                    mediainfo,
-                    overwrite=overwrite,
-                    with_cover=with_cover,
-                    cover=cover,
-                )
+            if not local_path:
+                return download_failure
+            return self._apply_music_file_scrape(
+                fileitem=fileitem,
+                local_path=local_path,
+                mediainfo=mediainfo,
+                write_tags=write_tags,
+                tag_overwrite=tag_overwrite,
+                with_cover=with_cover,
+                cover_overwrite=cover_overwrite,
+                cover=cover,
+                lyrics_option=lyrics_option,
+                lyrics_overwrite=lyrics_overwrite,
+                music_chain=music_chain,
+                album_info=album_info,
             )
 
         with TemporaryDirectory(prefix="moviepilot-music-scrape-") as temp_dir:
             local_path = storage.download_file(fileitem, path=Path(temp_dir))
-            if not local_path or not self._write_music_metadata(
-                    local_path,
-                    mediainfo,
-                    overwrite=overwrite,
-                    with_cover=with_cover,
-                    cover=cover,
-            ):
-                return False
-            parent = storage.get_parent_item(fileitem)
+            if not local_path:
+                return download_failure
+            return self._apply_music_file_scrape(
+                fileitem=fileitem,
+                local_path=local_path,
+                mediainfo=mediainfo,
+                write_tags=write_tags,
+                tag_overwrite=tag_overwrite,
+                with_cover=with_cover,
+                cover_overwrite=cover_overwrite,
+                cover=cover,
+                lyrics_option=lyrics_option,
+                lyrics_overwrite=lyrics_overwrite,
+                music_chain=music_chain,
+                album_info=album_info,
+            )
+
+    def _apply_music_file_scrape(
+            self,
+            fileitem: schemas.FileItem,
+            local_path: Path,
+            mediainfo: Optional[MusicInfo],
+            write_tags: bool,
+            tag_overwrite: bool,
+            with_cover: bool,
+            cover_overwrite: bool,
+            cover: Optional[tuple[Optional[bytes], str]],
+            lyrics_option: Optional[ScrapingOption],
+            lyrics_overwrite: bool,
+            music_chain: Optional["MusicChain"],
+            album_info: Optional[MusicAlbumInfo],
+    ) -> _MusicScrapeFileResult:
+        """在本地音轨副本上执行刮削，并将变更后的音频和歌词写回目标存储。"""
+        scrape_info = self._resolve_music_scrape_info(local_path, mediainfo)
+        metadata_requested = write_tags or with_cover
+        metadata_success = True
+        if metadata_requested:
+            metadata_success = self._write_music_metadata(
+                local_path=local_path,
+                mediainfo=mediainfo,
+                tag_overwrite=tag_overwrite,
+                write_tags=write_tags,
+                with_cover=with_cover,
+                cover_overwrite=cover_overwrite,
+                cover=cover,
+                scrape_info=scrape_info,
+            )
+
+        lyrics_status = self._scrape_music_lyrics(
+            fileitem=fileitem,
+            local_path=local_path,
+            scrape_info=scrape_info,
+            lyrics_option=lyrics_option,
+            overwrite=lyrics_overwrite,
+            music_chain=music_chain,
+            album_info=album_info,
+        )
+
+        if fileitem.storage != "local" and metadata_requested and metadata_success:
+            parent = self.storagechain.get_parent_item(fileitem)
             if not parent:
                 logger.warning(f"无法获取远端音频父目录：{fileitem.path}")
-                return False
-            return bool(
-                storage.upload_file(
+                metadata_success = False
+            elif not self.storagechain.upload_file(
                     parent,
                     local_path,
                     new_name=fileitem.name or local_path.name,
-                )
-            )
+            ):
+                metadata_success = False
+        return _MusicScrapeFileResult(
+            metadata_success=metadata_success,
+            lyrics_status=lyrics_status,
+        )
 
     @staticmethod
     def _merge_music_album_metadata(local_meta: MetaMusic, album: MusicInfo) -> MetaMusic:
@@ -1539,6 +1687,66 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         merged.media_source = album.source or local_meta.media_source
         merged.media_id = album.media_id or local_meta.media_id
         return merged
+
+    @classmethod
+    def _match_music_album_track(
+            cls,
+            local_meta: MetaMusic,
+            album_info: Optional[MusicAlbumInfo],
+    ) -> Optional[MusicInfo]:
+        """按碟号、曲序、标题、艺术家和时长为本地文件匹配专辑中的单个音轨。"""
+        if not album_info or not album_info.tracks:
+            return None
+        local_title = cls._normalize_music_track_title(local_meta.title)
+        local_artists = {
+            cls._normalize_music_track_title(artist)
+            for artist in local_meta.artists
+            if artist
+        }
+        ranked: list[tuple[int, MusicInfo]] = []
+        for track in album_info.tracks:
+            score = 0
+            if local_meta.track_number and track.track_number:
+                if local_meta.track_number == track.track_number:
+                    score += 6
+                else:
+                    continue
+            if local_meta.disc_number and track.disc_number:
+                if local_meta.disc_number == track.disc_number:
+                    score += 3
+                else:
+                    continue
+            if local_title and local_title == cls._normalize_music_track_title(track.title):
+                score += 8
+            track_artists = {
+                cls._normalize_music_track_title(artist)
+                for artist in track.artists
+                if artist
+            }
+            if local_artists and track_artists and local_artists.intersection(track_artists):
+                score += 3
+            if local_meta.duration and track.duration:
+                duration_delta = abs(local_meta.duration - track.duration)
+                if duration_delta <= 2:
+                    score += 4
+                elif duration_delta > 5:
+                    score -= 3
+            if score >= 8:
+                ranked.append((score, track))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda pair: pair[0], reverse=True)
+        if len(ranked) > 1 and ranked[0][0] == ranked[1][0]:
+            return None
+        matched = deepcopy(ranked[0][1])
+        matched.duration = matched.duration or local_meta.duration
+        return matched
+
+    @classmethod
+    def _normalize_music_track_title(cls, value: Optional[str]) -> str:
+        """规范化音轨标题并移除常见文件名前置碟号和曲序。"""
+        title = cls._music_track_prefix_pattern.sub("", str(value or "").strip())
+        return re.sub(r"[^\w]+", "", title.casefold(), flags=re.UNICODE)
 
     @classmethod
     def _resolve_music_scrape_info(
@@ -1566,12 +1774,15 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             local_path: Path,
             mediainfo: Optional[MusicInfo],
-            overwrite: bool,
+            tag_overwrite: bool,
+            write_tags: bool,
             with_cover: bool,
+            cover_overwrite: bool,
             cover: Optional[tuple[Optional[bytes], str]] = None,
+            scrape_info: Optional[MetaMusic | MusicInfo] = None,
     ) -> bool:
-        """解析单个本地音轨并写入标签，显式专辑刮削可复用一次下载的封面。"""
-        scrape_info = self._resolve_music_scrape_info(local_path, mediainfo)
+        """解析单个本地音轨并按独立策略写入标签和封面。"""
+        scrape_info = scrape_info or self._resolve_music_scrape_info(local_path, mediainfo)
         if not scrape_info or not scrape_info.title:
             logger.warning(f"无法识别音乐信息：{local_path}")
             return False
@@ -1587,8 +1798,130 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             scrape_info,
             cover_data=cover_data,
             cover_mime=cover_mime,
-            overwrite=overwrite,
+            overwrite=tag_overwrite,
+            write_tags=write_tags,
+            cover_overwrite=cover_overwrite,
         )
+
+    def _scrape_music_lyrics(
+            self,
+            fileitem: schemas.FileItem,
+            local_path: Path,
+            scrape_info: Optional[MetaMusic | MusicInfo],
+            lyrics_option: Optional[ScrapingOption],
+            overwrite: bool,
+            music_chain: Optional["MusicChain"],
+            album_info: Optional[MusicAlbumInfo],
+    ) -> str:
+        """按歌词策略查询单个音轨并保存同名旁挂歌词文件。"""
+        if not lyrics_option or lyrics_option.is_skip or not music_chain:
+            return "disabled"
+        existing = self._find_music_lyrics_sidecar(fileitem)
+        if existing and not overwrite:
+            return "existing"
+        if not scrape_info:
+            return "missing"
+
+        lookup_info: MetaMusic | MusicInfo = scrape_info
+        if album_info:
+            local_meta = AudioMetadataHelper.read(local_path)
+            lookup_info = self._match_music_album_track(local_meta, album_info) or scrape_info
+        lyrics = music_chain.lyrics(lookup_info)
+        if not lyrics or lyrics.instrumental or not lyrics.content or not lyrics.extension:
+            return "missing"
+        return (
+            "saved"
+            if self._write_music_lyrics_sidecar(
+                fileitem=fileitem,
+                local_path=local_path,
+                lyrics=lyrics,
+                overwrite=overwrite,
+            )
+            else "failed"
+        )
+
+    def _find_music_lyrics_sidecar(
+            self,
+            fileitem: schemas.FileItem,
+    ) -> Optional[schemas.FileItem]:
+        """查找音轨旁已存在的同步或纯文本歌词文件。"""
+        audio_path = Path(fileitem.path)
+        for extension in self.MUSIC_LYRICS_EXTENSIONS:
+            item = self.storagechain.get_file_item(
+                storage=fileitem.storage,
+                path=audio_path.with_suffix(extension),
+            )
+            if item:
+                return item
+        return None
+
+    def _write_music_lyrics_sidecar(
+            self,
+            fileitem: schemas.FileItem,
+            local_path: Path,
+            lyrics: MusicLyrics,
+            overwrite: bool,
+    ) -> bool:
+        """原子写入本地歌词或上传远端歌词，并在覆盖时清理旧格式旁挂文件。"""
+        extension = lyrics.extension
+        content = lyrics.content
+        if not extension or not content:
+            return False
+        target_path = Path(fileitem.path).with_suffix(extension)
+        target_name = target_path.name
+        temp_path: Optional[Path] = None
+        try:
+            if fileitem.storage == "local":
+                with NamedTemporaryFile(
+                        mode="w",
+                        encoding="utf-8",
+                        dir=target_path.parent,
+                        prefix=f".{target_name}.",
+                        delete=False,
+                ) as temp_file:
+                    temp_file.write(f"{content.rstrip()}\n")
+                    temp_path = Path(temp_file.name)
+                temp_path.replace(target_path)
+            else:
+                parent = self.storagechain.get_parent_item(fileitem)
+                if not parent:
+                    logger.warning(f"无法获取远端歌词父目录：{fileitem.path}")
+                    return False
+                temp_path = local_path.with_suffix(extension)
+                temp_path.write_text(f"{content.rstrip()}\n", encoding="utf-8")
+                if not self.storagechain.upload_file(
+                        parent,
+                        temp_path,
+                        new_name=target_name,
+                ):
+                    return False
+
+            if overwrite:
+                self._remove_alternate_music_lyrics(fileitem, keep_extension=extension)
+            return True
+        except OSError as err:
+            logger.warning(f"保存音乐歌词失败：{target_path} - {err}")
+            return False
+        finally:
+            if temp_path and temp_path.exists() and temp_path != target_path:
+                self._cleanup_temp_file(temp_path)
+
+    def _remove_alternate_music_lyrics(
+            self,
+            fileitem: schemas.FileItem,
+            keep_extension: str,
+    ) -> None:
+        """覆盖歌词格式后删除同音轨的旧扩展名文件，避免播放器优先读取过期内容。"""
+        audio_path = Path(fileitem.path)
+        for extension in self.MUSIC_LYRICS_EXTENSIONS:
+            if extension == keep_extension:
+                continue
+            item = self.storagechain.get_file_item(
+                storage=fileitem.storage,
+                path=audio_path.with_suffix(extension),
+            )
+            if item and not self.storagechain.delete_file(item):
+                logger.warning(f"删除旧歌词文件失败：{item.path}")
 
     def _handle_movie_scraping(
             self,

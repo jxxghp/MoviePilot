@@ -80,6 +80,44 @@ def _music_init_values(model: type, data: dict[str, Any]) -> dict[str, Any]:
 
 
 @dataclass
+class MusicLyrics:
+    """标准化单曲歌词，区分同步歌词、纯文本歌词和纯音乐结果。"""
+
+    provider: str
+    provider_id: str | None = None
+    instrumental: bool = False
+    plain_lyrics: str | None = None
+    synced_lyrics: str | None = None
+
+    @property
+    def content(self) -> str | None:
+        """优先返回同步歌词，不存在时回退到纯文本歌词。"""
+        return self.synced_lyrics or self.plain_lyrics
+
+    @property
+    def extension(self) -> str | None:
+        """根据歌词内容返回适合播放器扫描的旁挂文件扩展名。"""
+        if self.synced_lyrics:
+            return ".lrc"
+        if self.plain_lyrics:
+            return ".txt"
+        return None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """从模块或插件返回字典恢复标准歌词对象。"""
+        values = _music_init_values(cls, data)
+        values["provider"] = str(values.get("provider") or "")
+        values["provider_id"] = (
+            str(values["provider_id"])
+            if values.get("provider_id") is not None
+            else None
+        )
+        values["instrumental"] = bool(values.get("instrumental"))
+        return cls(**values)
+
+
+@dataclass
 class MusicInfo:
     """标准化音乐元数据信息。"""
 

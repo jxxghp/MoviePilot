@@ -464,6 +464,8 @@ class OtherModulesType(Enum):
     Redis = "Redis"
     # ListenBrainz
     ListenBrainz = "ListenBrainz"
+    # LRCLIB 歌词
+    Lrclib = "LRCLIB"
 
 
 class NameValueEnum(Enum):
@@ -505,3 +507,4 @@ class ScrapingMetadata(NameValueEnum):
     DISC = "光盘图"
     CLEARART = "透明艺术图"
     LANDSCAPE = "横版缩略图"
+    LYRICS = "歌词"

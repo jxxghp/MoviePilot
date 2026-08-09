@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from app.core.context import MusicInfo
 from app.helper.audio import AudioMetadataHelper
@@ -86,3 +87,28 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     assert audio.tags["title"] == ["Get Lucky"]
     assert audio.tags["artist"] == ["Daft Punk", "Pharrell Williams"]
     assert audio.tags["tracknumber"] == ["8/13"]
+
+
+def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch):
+    """音乐封面策略应能在标签策略关闭时独立执行。"""
+    audio = SimpleNamespace(tags={"title": ["Original"]})
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    write_cover = Mock()
+    monkeypatch.setattr(AudioMetadataHelper, "_write_cover", write_cover)
+
+    success = AudioMetadataHelper.write(
+        Path("/music/track.flac"),
+        MusicInfo(title="Changed"),
+        cover_data=b"cover",
+        write_tags=False,
+        cover_overwrite=False,
+    )
+
+    assert success is True
+    assert audio.tags == {"title": ["Original"]}
+    write_cover.assert_called_once_with(
+        path=Path("/music/track.flac"),
+        cover_data=b"cover",
+        cover_mime="image/jpeg",
+        overwrite=False,
+    )

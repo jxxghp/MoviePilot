@@ -13,6 +13,7 @@ from app.core.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
+    MusicLyrics,
 )
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
@@ -183,6 +184,28 @@ class MusicChain(ChainBase):
             return result
         if isinstance(result, dict):
             return MusicAlbumInfo.from_dict(result)
+        return None
+
+    def album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+        """同步按来源和专辑 ID 获取标准化专辑详情及曲目。"""
+        result = self.run_module(
+            "music_album",
+            source=source,
+            media_id=media_id,
+        )
+        if isinstance(result, MusicAlbumInfo):
+            return result
+        if isinstance(result, dict):
+            return MusicAlbumInfo.from_dict(result)
+        return None
+
+    def lyrics(self, music: MetaMusic | MusicInfo) -> Optional[MusicLyrics]:
+        """按单曲元数据调用已启用的歌词模块并返回标准歌词。"""
+        result = self.run_module("music_lyrics", music=music)
+        if isinstance(result, MusicLyrics):
+            return result
+        if isinstance(result, dict):
+            return MusicLyrics.from_dict(result)
         return None
 
     async def async_artist(self, source: str, media_id: str) -> Optional[MusicArtistInfo]:

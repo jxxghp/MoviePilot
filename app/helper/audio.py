@@ -62,31 +62,38 @@ class AudioMetadataHelper:
             cover_data: Optional[bytes] = None,
             cover_mime: str = "image/jpeg",
             overwrite: bool = True,
+            write_tags: bool = True,
+            cover_overwrite: Optional[bool] = None,
     ) -> bool:
-        """把标准音乐字段写入音频标签，并为常见格式嵌入专辑封面。"""
+        """按独立策略写入标准音乐标签，并为常见格式嵌入专辑封面。"""
         try:
             audio = MutagenFile(path, easy=True)
             if not audio:
                 logger.warning(f"无法写入音频标签：{path}")
                 return False
-            if audio.tags is None:
-                audio.add_tags()
-            for key, value in cls._tag_values(music).items():
-                if value in (None, "", []):
-                    continue
-                if not overwrite and audio.tags.get(key):
-                    continue
-                try:
-                    audio[key] = value if isinstance(value, list) else [str(value)]
-                except (KeyError, TypeError, ValueError) as err:
-                    logger.debug(f"音频格式不支持标签 {key}：{path} - {err}")
-            audio.save()
+            if write_tags:
+                if audio.tags is None:
+                    audio.add_tags()
+                for key, value in cls._tag_values(music).items():
+                    if value in (None, "", []):
+                        continue
+                    if not overwrite and audio.tags.get(key):
+                        continue
+                    try:
+                        audio[key] = value if isinstance(value, list) else [str(value)]
+                    except (KeyError, TypeError, ValueError) as err:
+                        logger.debug(f"音频格式不支持标签 {key}：{path} - {err}")
+                audio.save()
             if cover_data:
                 cls._write_cover(
                     path=path,
                     cover_data=cover_data,
                     cover_mime=cover_mime,
-                    overwrite=overwrite,
+                    overwrite=(
+                        overwrite
+                        if cover_overwrite is None
+                        else cover_overwrite
+                    ),
                 )
             return True
         except Exception as err:
