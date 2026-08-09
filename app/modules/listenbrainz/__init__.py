@@ -243,7 +243,7 @@ class ListenBrainzModule(_ModuleBase):
             album_artist=artist_name or None,
             album_id=str(media_id),
             cover_url=cls._release_cover(release_group.get("caa_release_mbid"))
-            or f"{cls._release_group_cover_url}/{media_id}/front-500",
+            or cls._release_group_cover(media_id),
             names=[str(title)],
             detail_link=f"{cls._album_detail_url}/{media_id}",
             listen_count=cls._optional_int(release_group.get("listen_count")),
@@ -277,7 +277,7 @@ class ListenBrainzModule(_ModuleBase):
             year=cls._year(release_date),
             release_date=release_date,
             cover_url=cls._release_cover(release.get("caa_release_mbid"))
-            or f"{cls._release_group_cover_url}/{media_id}/front-500",
+            or cls._release_group_cover(media_id),
             category=" / ".join(str(part) for part in category_parts if part),
             genres=[str(tag) for tag in release.get("release_tags") or [] if tag],
             names=[str(title)],
@@ -289,7 +289,20 @@ class ListenBrainzModule(_ModuleBase):
     @classmethod
     def _release_cover(cls, release_mbid: Any) -> Optional[str]:
         """根据发行版本 ID 构造 Cover Art Archive 封面地址。"""
-        return f"{cls._release_cover_url}/{release_mbid}/front-500" if release_mbid else None
+        if not release_mbid:
+            return None
+        # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
+        base = settings.MUSIC_COVER_PROXY or "https://coverartarchive.org"
+        return f"{base}/release/{release_mbid}/front-500"
+
+    @classmethod
+    def _release_group_cover(cls, release_group_id: Any) -> Optional[str]:
+        """根据 Release Group ID 构造 Cover Art Archive 封面地址。"""
+        if not release_group_id:
+            return None
+        # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
+        base = settings.MUSIC_COVER_PROXY or "https://coverartarchive.org"
+        return f"{base}/release-group/{release_group_id}/front-500"
 
     @staticmethod
     def _primary_artist_ids(artist_mbids: Any) -> list[str]:
