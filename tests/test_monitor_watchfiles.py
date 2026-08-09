@@ -5,6 +5,8 @@ from watchfiles import Change
 
 from app.monitor import DirectoryChangeEvent, LocalDirectoryWatcher, Monitor
 from app.monitor.dispatcher import TransferDispatcher
+from app.schemas import TransferDirectoryConf
+from app.schemas.types import MediaType
 
 
 class CallbackRecorder:
@@ -302,3 +304,43 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
     assert fileitem.storage == "local"
     assert fileitem.path == event_path.as_posix()
     assert fileitem.size == 1024
+
+
+def test_handle_file_prefers_music_type_from_monitor_directory(monkeypatch):
+    """音乐目录监控触发整理时应透传音乐类型，避免音频按影视名称识别。"""
+    dispatcher = TransferDispatcher(all_exts=[".flac"], cache={})
+    event_path = Path("/downloads/music/album/track.flac")
+    directories = [
+        TransferDirectoryConf(
+            storage="local",
+            download_path="/downloads",
+            media_type=MediaType.MOVIE.value,
+            monitor_type="monitor",
+        ),
+        TransferDirectoryConf(
+            storage="local",
+            download_path="/downloads/music",
+            media_type=MediaType.MUSIC.value,
+            monitor_type="monitor",
+        ),
+    ]
+    transfer_chain_instance = MagicMock()
+
+    monkeypatch.setattr(dispatcher, "_has_transfer_history", MagicMock(return_value=False))
+    monkeypatch.setattr(
+        "app.monitor.dispatcher.DirectoryHelper",
+        MagicMock(return_value=MagicMock(get_download_dirs=MagicMock(return_value=directories))),
+    )
+    monkeypatch.setattr(
+        "app.monitor.dispatcher.TransferChain",
+        MagicMock(return_value=transfer_chain_instance),
+    )
+
+    handled = dispatcher.handle_file(
+        storage="local",
+        event_path=event_path,
+        file_size=1024,
+    )
+
+    assert handled
+    assert transfer_chain_instance.do_transfer.call_args.kwargs["mtype"] == MediaType.MUSIC

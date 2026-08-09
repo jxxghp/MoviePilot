@@ -8,8 +8,10 @@ from app.chain.transfer import TransferChain
 from app.core.cache import TTLCache
 from app.core.config import settings
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.schemas import FileItem
+from app.schemas.types import MediaType
 
 
 class TransferDispatcher:
@@ -96,6 +98,39 @@ class TransferDispatcher:
         生成待重试文件的唯一键。
         """
         return f"{storage}:{Path(event_path).as_posix()}"
+
+    @staticmethod
+    def _get_monitor_media_type(storage: str, event_path: Path) -> Optional[MediaType]:
+        """
+        获取事件路径命中的目录监控媒体类型，嵌套配置优先使用最具体的根目录。
+
+        :param storage: 存储
+        :param event_path: 事件文件路径
+        :return: 配置的媒体类型，未配置或无匹配目录时返回 None
+        """
+        matching_dirs = [
+            dir_info
+            for dir_info in DirectoryHelper().get_download_dirs()
+            if dir_info.monitor_type == "monitor"
+            and dir_info.storage == storage
+            and event_path.is_relative_to(Path(dir_info.download_path))
+        ]
+        if not matching_dirs:
+            return None
+
+        dir_info = max(
+            matching_dirs,
+            key=lambda item: len(Path(item.download_path).parts),
+        )
+        if not dir_info.media_type:
+            return None
+        try:
+            return MediaType(dir_info.media_type)
+        except ValueError:
+            logger.warning(
+                f"目录监控 {dir_info.download_path} 配置了未知媒体类型：{dir_info.media_type}"
+            )
+            return None
 
     def _register_pending(self, storage: str, event_path: Path, file_size: float = None):
         """
@@ -202,7 +237,11 @@ class TransferDispatcher:
                         basename=event_path.stem,
                         extension=event_path.suffix[1:],
                         size=file_size
-                    )
+                    ),
+                    mtype=self._get_monitor_media_type(
+                        storage=storage,
+                        event_path=event_path,
+                    ),
                 )
                 return True
             except Exception as e:
