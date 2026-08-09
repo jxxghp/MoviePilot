@@ -47,7 +47,10 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         初始化
         """
-        self.__generate_token.cache_clear()  # noqa
+        conf = self.get_conf()
+        self.__login_token.cache_delete(  # noqa
+            self, self.__get_base_url, conf.get("username"), conf.get("password")
+        )
 
     def _delay_get_item(
         self, path: Path, /, refresh: bool = False
@@ -117,22 +120,32 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         return self.__generate_token()
 
-    @cached(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5, skip_empty=True)
     def __generate_token(self) -> str:
         """
         如果设置永久令牌则返回永久令牌，否则使用账号密码生成一个临时 token
-        缓存2天，提前5分钟更新
         """
         conf = self.get_conf()
         token = conf.get("token")
         if token:
             return str(token)
+        return self.__login_token(
+            self.__get_base_url, conf.get("username"), conf.get("password")
+        )
+
+    @cached(maxsize=8, ttl=60 * 60 * 24 * 2 - 60 * 5, skip_empty=True)
+    def __login_token(
+        self, base_url: str, username: Optional[str], password: Optional[str]
+    ) -> str:
+        """
+        使用账号密码生成一个临时 token
+        缓存2天，提前5分钟更新
+        """
         resp = RequestUtils(headers={"Content-Type": "application/json"}).post_res(
-            self.__get_api_url("/api/auth/login"),
+            UrlUtils.adapt_request_url(base_url, "/api/auth/login"),
             data=json.dumps(
                 {
-                    "username": conf.get("username"),
-                    "password": conf.get("password"),
+                    "username": username,
+                    "password": password,
                 }
             ),
         )

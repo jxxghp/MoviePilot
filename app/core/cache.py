@@ -1274,9 +1274,17 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                     cache_key, cached_value, cache_region
                 )
 
+            async def cache_delete(*args, **kwargs) -> None:
+                """
+                删除当前参数对应的缓存。
+                """
+                cache_key = __get_cache_key(args, kwargs)
+                await cache_backend.delete(cache_key, region=cache_region)
+
             async_wrapper.cache_region = cache_region
             async_wrapper.cache_clear = cache_clear
             async_wrapper.cache_exists = cache_exists
+            async_wrapper.cache_delete = cache_delete
             return async_wrapper
         else:
             # 同步函数使用同步缓存后端
@@ -1317,9 +1325,17 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                     cache_key, cached_value, cache_region
                 )
 
+            def cache_delete(*args, **kwargs) -> None:
+                """
+                删除当前参数对应的缓存。
+                """
+                cache_key = __get_cache_key(args, kwargs)
+                cache_backend.delete(cache_key, region=cache_region)
+
             wrapper.cache_region = cache_region
             wrapper.cache_clear = cache_clear
             wrapper.cache_exists = cache_exists
+            wrapper.cache_delete = cache_delete
             return wrapper
 
     return decorator
