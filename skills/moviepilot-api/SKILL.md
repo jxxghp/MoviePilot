@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 9
+version: 10
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -252,11 +252,12 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/subscribe/shares` | List shared subscriptions. Params: `name`, `page`, `count`, `genre_id`, `min_rating`, `max_rating`, `sort_type` |
 | GET | `/api/v1/subscribe/share/statistics` | Share statistics |
 
-### Site (25 endpoints)
+### Site (26 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/site/` | List all sites |
+| GET | `/api/v1/site/media/{media_type}` | List configured active sites compatible with `movie`, `tv`, or `music` searches |
 | POST | `/api/v1/site/` | Add site. Body: Site JSON |
 | PUT | `/api/v1/site/` | Update site. Body: Site JSON |
 | GET | `/api/v1/site/{site_id}` | Site detail by ID |

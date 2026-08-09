@@ -147,6 +147,12 @@ FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶�
 | POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
 | POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源，同时兼容 `tmdbid`、`doubanid`、`bangumiid`、`anilistid`；命中失败历史时自动清理旧目标和记录后重试，`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
 
+#### 站点
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/site/media/{media_type}` | 按媒体类型查询已配置且启用的可搜索站点；`media_type` 支持 `movie`、`tv`、`music` 或对应中文类型，音乐仅返回明确声明音乐能力的站点，影视不返回纯音乐站点 |
+
 #### 搜索 / 种子 / 字幕
 
 | 方法 | 路径 | 说明 |

@@ -102,6 +102,7 @@ def test_manage_page_endpoints_accept_manage_permission():
     ]
     async_endpoints = [
         site_endpoint.read_sites,
+        site_endpoint.read_sites_by_media_type,
         site_endpoint.add_site,
         site_endpoint.update_site,
         site_endpoint.update_sites_priority,

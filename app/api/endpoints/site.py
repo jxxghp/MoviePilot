@@ -36,6 +36,42 @@ from app.utils.string import StringUtils
 router = APIRouter()
 
 
+def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
+    """
+    判断站点索引器是否支持指定媒体类型。
+
+    :param indexer: 站点索引器配置
+    :param media_type: 待搜索的媒体类型
+    :return: 是否应在该媒体类型的站点选择列表中显示
+    """
+    declared_media_type = indexer.get("media_type")
+    if isinstance(declared_media_type, MediaType):
+        site_media_type = declared_media_type
+    elif isinstance(declared_media_type, str):
+        site_media_type = MediaType.from_agent(declared_media_type)
+    else:
+        site_media_type = None
+    if site_media_type:
+        return site_media_type == media_type
+
+    categories = indexer.get("category") or {}
+    if not isinstance(categories, dict):
+        return media_type != MediaType.MUSIC
+
+    category_key = media_type.to_agent()
+    if media_type == MediaType.MUSIC:
+        return bool(categories.get(category_key))
+
+    declared_category_keys = {
+        item.to_agent()
+        for item in (MediaType.MOVIE, MediaType.TV, MediaType.MUSIC)
+        if categories.get(item.to_agent())
+    }
+    if declared_category_keys:
+        return category_key in declared_category_keys
+    return True
+
+
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
 async def read_sites(
     db: AsyncSession = Depends(get_async_db),
@@ -45,6 +81,52 @@ async def read_sites(
     获取站点列表
     """
     return await Site.async_list_order_by_pri(db)
+
+
+@router.get(
+    "/media/{media_type}",
+    summary="按媒体类型获取可搜索站点",
+    response_model=List[schemas.Site],
+)
+async def read_sites_by_media_type(
+    media_type: str,
+    db: AsyncSession = Depends(get_async_db),
+    _: User = Depends(get_current_active_manage_user_async),
+) -> List[Site]:
+    """
+    获取支持指定媒体类型的已配置启用站点。
+
+    :param media_type: Agent 媒体类型名称或中文媒体类型
+    :param db: 异步数据库会话
+    :return: 按优先级排序的可搜索站点
+    """
+    target_media_type = MediaType.from_agent(media_type)
+    if not target_media_type:
+        try:
+            target_media_type = MediaType(media_type)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="不支持的媒体类型") from error
+    if target_media_type not in (MediaType.MOVIE, MediaType.TV, MediaType.MUSIC):
+        raise HTTPException(status_code=400, detail="不支持的媒体类型")
+
+    supported_ids = set()
+    supported_domains = set()
+    for indexer in await SitesHelper().async_get_indexers() or []:
+        if not _indexer_supports_media_type(indexer, target_media_type):
+            continue
+        if indexer.get("id") is not None:
+            supported_ids.add(str(indexer.get("id")))
+        domain = StringUtils.get_url_domain(indexer.get("domain"))
+        if domain:
+            supported_domains.add(domain)
+
+    sites = await Site.async_list_order_by_pri(db)
+    return [
+        site
+        for site in sites
+        if site.is_active
+        and (str(site.id) in supported_ids or site.domain in supported_domains)
+    ]
 
 
 @router.post("/", summary="新增站点", response_model=schemas.Response)
