@@ -77,41 +77,137 @@ DB_POSTGRESQL_PASSWORD=your-password
 
 ## 数据迁移
 
-### 从 SQLite 迁移到 PostgreSQL
+### 从 SQLite 迁移到 PostgreSQL（以在 Windows 下操作为例）
 
-1. 备份现有的 SQLite 数据库文件（`config/user.db`）
-2. 修改配置为 PostgreSQL
-3. 启动应用，数据库表会自动创建
-4. 使用数据库迁移工具或手动导入数据
-
-#### 注意事项
-完成数据迁移后需要对postgresql中的表进行索引初始值进行更新，否则会出现唯一索引已存在的异常
-例如：
-```json
-【EventType.SiteUpdated 事件处理出错】
-
-SiteChain.cache_site_userdata
-(psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "siteuserdata_pkey"
-DETAIL:  Key (id)=(18) already exists.
-
-[SQL: INSERT INTO siteuserdata (domain, name, username, userid, user_level, join_at, bonus, upload, download, ratio, seeding, leeching, seeding_size, leeching_size, seeding_info, message_unread, message_unread_contents, err_msg, updated_day, updated_time) VALUES (%(domain)s, %(name)s, %(username)s, %(userid)s, %(user_level)s, %(join_at)s, %(bonus)s, %(upload)s, %(download)s, %(ratio)s, %(seeding)s, %(leeching)s, %(seeding_size)s, %(leeching_size)s, %(seeding_info)s::JSON, %(message_unread)s, %(message_unread_contents)s::JSON, %(err_msg)s, %(updated_day)s, %(updated_time)s) RETURNING siteuserdata.id]
-[parameters: {'domain': 'btschool.club', 'name': '学校', 'username': None, 'userid': None, 'user_level': None, 'join_at': None, 'bonus': 0.0, 'upload': 0, 'download': 0, 'ratio': 0.0, 'seeding': 0, 'leeching': 0, 'seeding_size': 0, 'leeching_size': 0, 'seeding_info': '[]', 'message_unread': 0, 'message_unread_contents': '[]', 'err_msg': '未检测到已登陆，请检查cookies是否过期', 'updated_day': '2025-08-22', 'updated_time': '09:52:01'}]
-(Background on this error at: https://sqlalche.me/e/20/gkpj)
-```
-
-需要对每一个表分别执行下面的语句(下面的SQL以`workflowc`数据表为例，每张表请自行修改，其中`user`表因为关键字原因，应该写成`public.user`的方式)：
-
+1. 关闭 SQLite 的 WAL 模式（如果此前已经开启），并关闭 MoviePilot
+2. 备份现有的 SQLite 数据库文件（`config/user.db`）
+3. 按照上述要求修改配置为 PostgreSQL
+4. 注意，由于 SQLite 与 PostgreSQL 对部分字段的类型（例如`json`类型）定义不同，请勿通过`user.db`在迁移阶段直接在空数据库的基础上创建表结构，而应按照下一条要求通过 MoviePilot 的初始化自动创建正确的表结构，只有在这种情况下迁移工具才能正确处理数据类型
+5. 启动应用，让 MoviePilot 自动创建表结构，确认创建完成后关闭 MoviePilot
+6. 使用如下 SQL 语句清理所有初始化完成的表数据，只保留表结构，避免默认的初始化数据干扰迁移
 ```sql
+TRUNCATE TABLE agentchat, agenttask, alembic_version, downloadfailure, downloadfiles, downloadhistory, mediaserveritem, message, passkey, plugindata, site, siteicon, sitestatistic, siteuserdata, subscribe, subscribehistory, systemconfig, transferhistory, "user", userconfig, workflow RESTART IDENTITY CASCADE;
+```
+6. 安装 Java 21 或更新的版本，并下载 dimitri/pgloader 中的 v4 版本 jar 包，即`pgloader.jar`
+7. 创建`migrate.load`文件，并编辑如下内容，注意：Windows 下本地`.db`文件路径引用需要有 3 个斜线；`userrequest`表已经废弃，是 v1 阶段的残留物，下列配置文件将会自动去除
+```
+LOAD DATABASE
+     FROM sqlite:///X:/path/to/user.db
+     INTO postgresql://moviepilot:your-password@host:5432/moviepilot
+
+WITH
+     data only,
+     reset sequences
+
+EXCLUDING TABLE NAMES LIKE 'userrequest'
+
+SET work_mem TO '16MB',
+    maintenance_work_mem TO '512MB'
+
+CAST
+     type integer to boolean when (= precision 1)
+;
+```
+8. 使用`java --enable-native-access=ALL-UNNAMED -jar .\pgloader.jar .\migrate.load`启动迁移。迁移过程中可能产生大量警告和报错，主要与孤儿索引`idx__PRIMARY`相关，形如`WARN  [main] pgloader.core - Primary Keys failed (skipping): ERROR: index "idx__PRIMARY" does not belong to table "plugindata"  浣嶇疆锛?9`
+9. 清理孤儿索引：`DROP INDEX IF EXISTS "idx__PRIMARY";`
+10. 修正 Alembic 版本号：`UPDATE alembic_version SET version_num = 'd58298a0879f';`
+11. 由于 SQLite 与 PostgreSQL 的自增序列原理不同，直接导入会出现冲突，需手动更新自增序列，执行：
+```sql
+-- MoviePilot PostgreSQL 自增序列修复脚本
+-- 用途：修复从 SQLite 迁移到 PostgreSQL 后的自增 ID 冲突
+-- 问题背景：
+--   SQLite 的 AUTOINCREMENT 不依赖独立序列对象，数据行带着具体 id 值进入 PostgreSQL。
+--   但 PostgreSQL 使用独立的 Sequence（如 plugindata_id_seq）生成新 ID。
+--   迁移后 Sequence 仍停留在初始值（如 1），而表中已有 id=10186 的数据，
+--   导致新插入时报 "duplicate key value violates unique constraint"。
+-- 执行时机：
+--   1. 迁移完成后、应用启动前（必做）
+--   2. 运行中报主键冲突时（应急）
+--   3. 从备份恢复数据后（建议做）
+-- 安全说明：
+--   本脚本只读表内最大 id 并调整序列，不修改任何数据行，可重复执行。
+
 DO $$
 DECLARE
-    max_id INTEGER;
+    rec RECORD;
+    seq_name TEXT;
+    max_id BIGINT;
+    tbl_full TEXT;
+    fix_count INT := 0;
+    err_count INT := 0;
 BEGIN
-    -- 查询最大 ID 值
-    SELECT COALESCE(MAX(id), 0) INTO max_id FROM workflow;
+    RAISE NOTICE '开始扫描 public schema 下的自增序列...';
 
-    -- 调整序列
-    EXECUTE format('ALTER SEQUENCE workflow_id_seq RESTART WITH %s', max_id + 1);
+    -- 遍历 public schema 下所有带自增序列的列
+    -- 通过 pg_get_serial_sequence() 直接获取序列名，不依赖 pg_depend，兼容性好
+    FOR rec IN
+        SELECT
+            n.nspname AS schema_name,
+            c.relname AS table_name,
+            a.attname AS column_name
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'                    -- 只处理普通表，排除视图/系统表
+          AND a.attnum > 0                       -- attnum <= 0 是系统隐藏列
+          AND NOT a.attisdropped                 -- 排除已删除但未清理的列
+          AND c.relname NOT LIKE 'pg_%'          -- 排除 PostgreSQL 系统表
+          AND c.relname NOT LIKE 'sql_%'
+          AND pg_get_serial_sequence(
+                quote_ident(n.nspname) || '.' || quote_ident(c.relname),
+                a.attname
+              ) IS NOT NULL                      -- 只保留确实有自增序列关联的列
+        ORDER BY c.relname, a.attname
+    LOOP
+        BEGIN
+            -- 构造带 schema 前缀的表名，quote_ident 自动处理 user 等关键字
+            tbl_full := quote_ident(rec.schema_name) || '.' || quote_ident(rec.table_name);
+
+            -- 获取该列当前最大值。COALESCE 处理空表（无数据时返回 0）
+            EXECUTE format('SELECT COALESCE(MAX(%I), 0) FROM %s', rec.column_name, tbl_full)
+                INTO max_id;
+
+            -- 获取序列完整名称（含 schema）
+            seq_name := pg_get_serial_sequence(tbl_full, rec.column_name);
+
+            -- 重置序列：
+            --   参数1: 序列名
+            --   参数2: 重置到的值（max_id + 1，空表时为 1）
+            --   参数3: is_called = false，表示 nextval() 下次直接返回该值，不再递增
+            -- 效果：下一条 INSERT 拿到的 id 正好是表中未使用的最小值
+            PERFORM setval(seq_name, max_id + 1, false);
+
+            RAISE NOTICE '已修复: %.% (列 %) -> 序列 % 设为 % (表内最大 id = %)',
+                rec.schema_name, rec.table_name, rec.column_name,
+                seq_name, max_id + 1, max_id;
+            fix_count := fix_count + 1;
+
+        EXCEPTION WHEN OTHERS THEN
+            -- 单表异常不阻断整体流程，记录后继续下一张表
+            RAISE NOTICE '跳过 %.%: %', rec.schema_name, rec.table_name, SQLERRM;
+            err_count := err_count + 1;
+        END;
+    END LOOP;
+
+    RAISE NOTICE '完成。修复 % 个序列，跳过/错误 % 个。', fix_count, err_count;
 END $$;
+
+-- 验证：查看所有序列当前值，确认 last_value 大于对应表的最大 id
+SELECT
+    sequencename,
+    last_value
+FROM pg_sequences
+WHERE schemaname = 'public'
+ORDER BY sequencename;
+```
+12. 启动 MoviePilot，如果迁移成功，你应当在日志中看到类似下面的信息：
+```
+INFO:    [moviepilot] 5b3355c964bb_2_2_0.py - 发现 21 个表需要检查序列
+INFO:    [moviepilot] a946dae52526_2_2_1.py - 开始PostgreSQL数据库userid字段迁移...
+INFO:    [moviepilot] a946dae52526_2_2_1.py - PostgreSQL数据库userid字段迁移完成
+INFO:    [moviepilot] 41ef1dd7467c_2_2_2.py - SystemConfig 表去重操作已完成。
+INFO:     Started server process [129]
 ```
 
 ### 从 PostgreSQL 迁移到 SQLite
