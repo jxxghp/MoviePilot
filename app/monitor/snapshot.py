@@ -11,6 +11,7 @@ class SnapshotStore:
     """
     远程目录监控快照的存取与比对。
     """
+    VERSION = 2
 
     def __init__(self, cache: Optional[FileCache] = None):
         """
@@ -30,10 +31,14 @@ class SnapshotStore:
         :return: 是否保存成功
         """
         try:
-            snapshot_time = max((item.get('modify_time', 0) for item in snapshot.values()), default=None)
-            if snapshot_time is None:
-                snapshot_time = last_snapshot_time or time.time()
+            snapshot_time = max(
+                last_snapshot_time or 0,
+                max((item.get('modify_time', 0) for item in snapshot.values()), default=0)
+            )
+            if not snapshot_time:
+                snapshot_time = time.time()
             snapshot_data = {
+                'version': self.VERSION,
                 'timestamp': snapshot_time,
                 'file_count': file_count,
                 'snapshot': snapshot

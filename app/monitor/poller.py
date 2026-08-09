@@ -1,5 +1,5 @@
 import traceback
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from threading import Lock
 from typing import Callable, Dict, List, Optional
 
@@ -64,6 +64,21 @@ class RemotePoller:
             self._alert_cb(storage, f"远程目录监控已恢复: {storage}")
         self._failure_counts[storage] = 0
 
+    @staticmethod
+    def _snapshot_for_path(snapshot: Dict[str, Dict], mon_path: Path) -> Dict[str, Dict]:
+        """
+        提取指定监控目录范围内的快照。
+        :param snapshot: 完整存储快照
+        :param mon_path: 监控目录
+        :return: 目录范围内的快照
+        """
+        root_path = PurePosixPath(mon_path.as_posix())
+        return {
+            file_path: file_info
+            for file_path, file_info in snapshot.items()
+            if PurePosixPath(file_path).is_relative_to(root_path)
+        }
+
     def poll(self, storage: str, mon_paths: List[Path]) -> Optional[int]:
         """
         执行一轮轮询监控。
@@ -83,7 +98,7 @@ class RemotePoller:
                 last_snapshot_time = old_snapshot_data.get('timestamp', 0) if old_snapshot_data else 0
                 is_first_snapshot = old_snapshot_data is None
 
-                new_snapshot = {}
+                path_snapshots = []
                 failed_paths = []
                 for mon_path in mon_paths:
                     logger.debug(f"开始对 {storage}:{mon_path} 进行快照...")
@@ -92,40 +107,47 @@ class RemotePoller:
                     snapshot = StorageChain().snapshot_storage(
                         storage=storage,
                         path=mon_path,
-                        last_snapshot_time=last_snapshot_time
+                        last_snapshot_time=last_snapshot_time,
+                        previous_snapshot=old_snapshot
                     )
 
                     if snapshot is None:
-                        failed_paths.append(str(mon_path))
+                        failed_paths.append(mon_path)
                         logger.warn(f"获取 {storage}:{mon_path} 快照失败")
                         continue
-                    new_snapshot.update(snapshot)
+                    path_snapshots.append(snapshot)
                     logger.info(f"{storage}:{mon_path} 快照完成，发现 {len(snapshot)} 个文件")
 
                 if failed_paths and (is_first_snapshot or len(failed_paths) == len(mon_paths)):
                     # 首次基线必须完整建立；全部路径失败时本轮没有有效数据，均不落盘
-                    self._note_failure(storage, f"快照失败: {','.join(failed_paths)}")
+                    self._note_failure(storage, f"快照失败:{','.join(str(path) for path in failed_paths)}")
                     return None
 
-                # 增量快照只包含变化子树，必须与基线合并才是完整视图；
-                # 直接把增量当基线会导致下一轮把未扫到的旧文件全部误判为新增
-                merged_snapshot = {**old_snapshot, **new_snapshot}
-                file_count = len(merged_snapshot)
+                # 成功路径已在存储层完成增量对账；失败路径继续保留旧基线，避免临时故障丢失状态
+                current_snapshot = {}
+                for failed_path in failed_paths:
+                    current_snapshot.update(self._snapshot_for_path(old_snapshot, failed_path))
+                for path_snapshot in path_snapshots:
+                    current_snapshot.update(path_snapshot)
+                file_count = len(current_snapshot)
 
                 if not is_first_snapshot:
-                    self._handle_changes(storage, old_snapshot, new_snapshot)
+                    self._handle_changes(storage, old_snapshot, current_snapshot)
                 else:
                     logger.info(f"{storage} 首次快照完成，共 {file_count} 个文件")
                     logger.info("*** 首次快照仅建立基准，不会处理现有文件。后续监控将处理新增和修改的文件 ***")
 
-                # 保存合并后的基线
-                if not self._store.save(storage, merged_snapshot, file_count, last_snapshot_time):
+                # 保存当前完整基线
+                if not self._store.save(storage, current_snapshot, file_count, last_snapshot_time):
                     self._note_failure(storage, "保存快照基线失败")
                     return None
 
                 if failed_paths:
                     # 部分路径失败：成功路径已合并，失败路径保留旧基线，下轮重试
-                    self._note_failure(storage, f"部分路径快照失败: {','.join(failed_paths)}")
+                    self._note_failure(
+                        storage,
+                        f"部分路径快照失败: {','.join(str(path) for path in failed_paths)}"
+                    )
                 else:
                     self._note_success(storage)
                 return file_count

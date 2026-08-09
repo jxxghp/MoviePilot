@@ -167,12 +167,18 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 远程目录监控 - 使用智能间隔
             # 先尝试加载已有快照获取文件数量
             snapshot_data = self._store.load(storage)
-            file_count = snapshot_data.get('file_count', 0) if snapshot_data else 0
+            snapshot_is_current = (
+                snapshot_data
+                and snapshot_data.get('version') == SnapshotStore.VERSION
+            )
+            file_count = snapshot_data.get('file_count', 0) if snapshot_is_current else 0
             interval = SnapshotStore.adjust_interval(file_count)
             for path in paths:
                 logger.info(f"正在启动远程目录监控: {path} [{storage}]")
             logger.info("*** 重要提示：远程目录监控只处理新增和修改的文件，不会处理监控启动前已存在的文件 ***")
-            logger.info(f"预估文件数量: {file_count}, 监控间隔: {interval}分钟")
+            if snapshot_data and not snapshot_is_current:
+                logger.info(f"检测到旧版远程快照，将在首次轮询后重新校准: {storage}")
+            logger.info(f"上次快照文件数量: {file_count}, 监控间隔: {interval}分钟")
 
             self._scheduler.add_job(
                 self.polling_observer,

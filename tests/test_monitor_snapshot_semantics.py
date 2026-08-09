@@ -1,7 +1,11 @@
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from app import schemas
+from app.modules.filemanager.storages import StorageBase
 from app.monitor.poller import RemotePoller
+from app.monitor.snapshot import SnapshotStore
 from app.monitor.watcher import LocalDirectoryWatcher
 
 
@@ -46,13 +50,17 @@ def test_poll_merges_incremental_into_baseline(monkeypatch):
     """
     poller, store, dispatcher = _build_poller()
     store.load_checked.return_value = (dict(BASELINE), True)
-    _mock_storage_chain(monkeypatch, [{'/mon/b.mkv': {'size': 2, 'modify_time': 200}}])
+    chain = _mock_storage_chain(monkeypatch, [{
+        '/mon/a.mkv': {'size': 1, 'modify_time': 100},
+        '/mon/b.mkv': {'size': 2, 'modify_time': 200}
+    }])
 
     file_count = poller.poll("u115", [Path("/mon")])
 
     assert file_count == 2
     saved_snapshot = store.save.call_args.args[1]
     assert set(saved_snapshot.keys()) == {'/mon/a.mkv', '/mon/b.mkv'}
+    assert chain.snapshot_storage.call_args.kwargs["previous_snapshot"] == BASELINE["snapshot"]
     dispatcher.handle_file.assert_called_once()
     assert dispatcher.handle_file.call_args.kwargs["event_path"] == Path('/mon/b.mkv')
 
@@ -71,6 +79,89 @@ def test_poll_detects_modified_files(monkeypatch):
     saved_snapshot = store.save.call_args.args[1]
     assert saved_snapshot['/mon/a.mkv']['size'] == 5
     dispatcher.handle_file.assert_called_once()
+
+
+def test_poll_removes_deleted_files_from_count(monkeypatch):
+    """
+    已移出监控目录的文件应从完整基线和动态间隔计数中移除。
+    """
+    poller, store, dispatcher = _build_poller()
+    store.load_checked.return_value = (dict(BASELINE), True)
+    _mock_storage_chain(monkeypatch, [{}])
+
+    assert poller.poll("alist", [Path("/mon")]) == 0
+    assert store.save.call_args.args[1] == {}
+    assert store.save.call_args.args[2] == 0
+    dispatcher.handle_file.assert_not_called()
+
+
+def test_storage_snapshot_reconciles_deleted_children_and_keeps_skipped_subtree():
+    """
+    增量遍历应删除已消失的直接子项，同时保留未变化子目录的旧基线。
+    """
+    storage = MagicMock()
+    storage.snapshot_check_folder_modtime = True
+    root = schemas.FileItem(storage="alist", type="dir", path="/mon/", name="mon", modify_time=200)
+    kept_dir = schemas.FileItem(
+        storage="alist", type="dir", path="/mon/keep/", name="keep", modify_time=50
+    )
+    storage.get_item.return_value = root
+    storage.list.return_value = [kept_dir]
+    previous_snapshot = {
+        '/mon/gone.mkv': {'size': 1, 'modify_time': 100},
+        '/mon/keep/a.mkv': {'size': 2, 'modify_time': 50}
+    }
+
+    snapshot = StorageBase.snapshot(
+        storage,
+        Path("/mon"),
+        last_snapshot_time=100,
+        previous_snapshot=previous_snapshot
+    )
+
+    assert snapshot == {'/mon/keep/a.mkv': {'size': 2, 'modify_time': 50}}
+
+
+def test_storage_snapshot_always_lists_monitor_root_for_deletions():
+    """
+    即使根目录修改时间未推进，也应列举其直接子项以清理已移走文件。
+    """
+    storage = MagicMock()
+    storage.snapshot_check_folder_modtime = True
+    storage.get_item.return_value = schemas.FileItem(
+        storage="alist", type="dir", path="/mon/", name="mon", modify_time=50
+    )
+    storage.list.return_value = []
+
+    snapshot = StorageBase.snapshot(
+        storage,
+        Path("/mon"),
+        last_snapshot_time=100,
+        previous_snapshot={'/mon/gone.mkv': {'size': 1, 'modify_time': 100}}
+    )
+
+    assert snapshot == {}
+    storage.list.assert_called_once()
+
+
+def test_snapshot_store_marks_reconciled_format_and_keeps_cursor():
+    """
+    新快照应标记对账格式，删除最新文件后游标也不能倒退。
+    """
+    cache = MagicMock()
+    store = SnapshotStore(cache=cache)
+
+    assert store.save(
+        "alist",
+        {'/mon/a.mkv': {'size': 1, 'modify_time': 50}},
+        file_count=1,
+        last_snapshot_time=100
+    ) is True
+
+    payload = json.loads(cache.set.call_args.args[1].decode("utf-8"))
+    assert payload["version"] == SnapshotStore.VERSION
+    assert payload["timestamp"] == 100
+    assert payload["file_count"] == 1
 
 
 def test_poll_partial_failure_merges_success_and_keeps_baseline(monkeypatch):

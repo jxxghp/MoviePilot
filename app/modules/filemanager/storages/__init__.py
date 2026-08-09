@@ -55,6 +55,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
+        """生成存储登录二维码"""
         pass
 
     def generate_auth_url(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
@@ -64,6 +65,7 @@ class StorageBase(metaclass=ABCMeta):
         return {}, "此存储不支持 OAuth2 授权"
 
     def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
+        """检查存储登录状态"""
         pass
 
     def get_config(self) -> Optional[schemas.StorageConf]:
@@ -269,14 +271,40 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
-    def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5) -> Dict[str, Dict]:
+    def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5,
+                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Dict[str, Dict]:
         """
         快照文件系统，输出所有层级文件信息（不含目录）
         :param path: 路径
         :param last_snapshot_time: 上次快照时间，用于增量快照
         :param max_depth: 最大递归深度，避免过深遍历
+        :param previous_snapshot: 上次完整快照，用于保留未变化目录并清理已删除文件
         """
-        files_info = {}
+        root_path = PurePosixPath(path.as_posix())
+        files_info = {
+            file_path: file_info
+            for file_path, file_info in (previous_snapshot or {}).items()
+            if PurePosixPath(file_path).is_relative_to(root_path)
+        }
+
+        def __remove_deleted_children(_fileitm: schemas.FileItem,
+                                      sub_files: List[schemas.FileItem]) -> None:
+            """
+            清理已确认遍历目录中不再存在的直接子项。
+            未变化的子目录仍保留旧基线，避免增量遍历将其误删。
+            """
+            directory_path = PurePosixPath(_fileitm.path)
+            child_paths = {PurePosixPath(sub_file.path) for sub_file in sub_files}
+            for old_file_path in list(files_info):
+                try:
+                    relative_path = PurePosixPath(old_file_path).relative_to(directory_path)
+                except ValueError:
+                    continue
+                if not relative_path.parts:
+                    continue
+                direct_child_path = directory_path / relative_path.parts[0]
+                if direct_child_path not in child_paths:
+                    files_info.pop(old_file_path, None)
 
         def __snapshot_file(_fileitm: schemas.FileItem, current_depth: int = 0):
             """
@@ -288,15 +316,20 @@ class StorageBase(metaclass=ABCMeta):
                     if current_depth >= max_depth:
                         return
 
-                    # 增量检查：如果目录修改时间早于上次快照，跳过
-                    if (self.snapshot_check_folder_modtime and
+                    # 根目录每轮至少列举一次，用于清理已移走的直接子项；子目录仍按修改时间增量遍历
+                    if (current_depth > 0 and
+                            self.snapshot_check_folder_modtime and
                             last_snapshot_time and
                             _fileitm.modify_time and
                             _fileitm.modify_time <= last_snapshot_time):
                         return
 
-                    # 遍历子文件
+                    # 只有目录列表成功返回后才清理旧基线，查询异常时继续保留待下轮重试
                     sub_files = self.list(_fileitm)
+                    if sub_files is None:
+                        return
+                    sub_files = list(sub_files)
+                    __remove_deleted_children(_fileitm, sub_files)
                     for sub_file in sub_files:
                         __snapshot_file(sub_file, current_depth + 1)
                 else:

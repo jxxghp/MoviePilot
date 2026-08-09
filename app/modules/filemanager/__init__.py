@@ -32,6 +32,7 @@ class FileManagerModule(_ModuleBase):
         self.messagehelper = MessageHelper()
 
     def init_module(self) -> None:
+        """初始化文件整理模块支持的存储实现"""
         # 加载模块
         self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storages',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
@@ -40,6 +41,7 @@ class FileManagerModule(_ModuleBase):
 
     @staticmethod
     def get_name() -> str:
+        """获取模块名称"""
         return "文件整理"
 
     @staticmethod
@@ -64,6 +66,7 @@ class FileManagerModule(_ModuleBase):
         return 4
 
     def stop(self):
+        """停止文件整理模块"""
         pass
 
     def test(self) -> Tuple[bool, str]:
@@ -384,13 +387,15 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.get_parent(fileitem)
 
     def snapshot_storage(self, storage: str, path: Path,
-                         last_snapshot_time: float = None, max_depth: int = 5) -> Optional[Dict[str, Dict]]:
+                         last_snapshot_time: float = None, max_depth: int = 5,
+                         previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
         """
         快照存储
         :param storage: 存储类型
         :param path: 路径
         :param last_snapshot_time: 上次快照时间，用于增量快照
         :param max_depth: 最大递归深度，避免过深遍历
+        :param previous_snapshot: 上次完整快照，用于增量对账
         """
         if storage not in self._support_storages:
             return None
@@ -398,7 +403,12 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {storage} 的快照处理")
             return None
-        return storage_oper.snapshot(path, last_snapshot_time=last_snapshot_time, max_depth=max_depth)
+        return storage_oper.snapshot(
+            path,
+            last_snapshot_time=last_snapshot_time,
+            max_depth=max_depth,
+            previous_snapshot=previous_snapshot
+        )
 
     def storage_usage(self, storage: str) -> Optional[StorageUsage]:
         """
