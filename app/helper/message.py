@@ -87,28 +87,42 @@ class TemplateContextBuilder:
         将 MediaInfo 中的标题、季年份、海报等业务字段就地写入 ``context``。
 
         会读取 ``context`` 中由 ``_add_episode_details`` 先填好的 ``season`` /
-        ``year`` / ``title_year`` 占位，保证电视剧场景下季/年优先沿用 meta 解析值。
+        ``year`` / ``title_year`` 占位，保证电视剧场景下季/年优先沿用 meta 解析值；
+        音乐场景保留文件标签解析出的曲目级字段，仅用识别结果补齐专辑级字段。
         """
         if not mediainfo:
             return
         if isinstance(mediainfo, MusicInfo):
+            # 专辑识别结果会被同一批次的所有曲目复用，不能覆盖每个文件自己的曲名和曲序。
+            title = context.get("title") or cls.__convert_invalid_characters(mediainfo.title)
+            artists = context.get("artists") or [
+                cls.__convert_invalid_characters(item) for item in mediainfo.artists
+            ]
+            artist = context.get("artist") or cls.__convert_invalid_characters(mediainfo.artist)
+            album = context.get("album") or cls.__convert_invalid_characters(mediainfo.album)
+            album_artist = context.get("album_artist") or cls.__convert_invalid_characters(
+                mediainfo.album_artist
+            )
+            year = context.get("year") or mediainfo.year
+            disc_number = context.get("disc_number") or mediainfo.disc_number
+            track_number = context.get("track_number") or mediainfo.track_number
             context.update({
                 "type": mediainfo.type.value,
-                "title": cls.__convert_invalid_characters(mediainfo.title),
-                "name": cls.__convert_invalid_characters(mediainfo.title),
-                "artists": [cls.__convert_invalid_characters(item) for item in mediainfo.artists],
-                "artist": cls.__convert_invalid_characters(mediainfo.artist),
-                "album": cls.__convert_invalid_characters(mediainfo.album),
-                "album_artist": cls.__convert_invalid_characters(mediainfo.album_artist),
-                "year": mediainfo.year or context.get("year"),
-                "title_year": mediainfo.title_year or context.get("title_year"),
-                "disc_number": mediainfo.disc_number,
-                "track_number": mediainfo.track_number,
-                "track": f"{mediainfo.track_number:02d}" if mediainfo.track_number else None,
-                "total_tracks": mediainfo.total_tracks,
-                "duration": mediainfo.duration,
-                "isrc": mediainfo.isrc,
-                "version": mediainfo.version,
+                "title": title,
+                "name": context.get("name") or title,
+                "artists": artists,
+                "artist": artist,
+                "album": album,
+                "album_artist": album_artist,
+                "year": year,
+                "title_year": f"{title} ({year})" if title and year else title,
+                "disc_number": disc_number,
+                "track_number": track_number,
+                "track": f"{track_number:02d}" if track_number else None,
+                "total_tracks": context.get("total_tracks") or mediainfo.total_tracks,
+                "duration": context.get("duration") or mediainfo.duration,
+                "isrc": context.get("isrc") or mediainfo.isrc,
+                "version": context.get("version") or mediainfo.version,
                 "category": mediainfo.category,
                 "poster": mediainfo.get_poster_image(),
                 "backdrop": mediainfo.get_backdrop_image(),

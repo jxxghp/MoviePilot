@@ -1080,39 +1080,44 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         except (TypeError, ValueError):
             return None, None
 
-        file_tags = AudioMetadataHelper.read(file_path) if file_path.exists() else None
+        file_tags = (
+            AudioMetadataHelper.read(file_path)
+            if file_path.exists()
+            else MetaMusic(
+                org_string=file_path.name,
+                title=file_path.stem,
+                audio_format=file_path.suffix.lstrip(".").upper() or None,
+            )
+        )
         file_meta = deepcopy(saved_meta)
         file_meta.org_string = file_path.name
-        if file_tags:
-            # 曲目标题始终优先使用当前文件自身的标签（缺失时回退为文件名），
-            # 防止整包目录继续沿用订阅/下载标题（单曲名、专辑名等）导致所有文件重名。
-            if file_tags.title:
-                file_meta.title = file_tags.title
-            for field_name in (
-                "artists",
-                "album",
-                "album_artist",
-                "year",
-                "disc_number",
-                "track_number",
-                "total_discs",
-                "total_tracks",
-                "version",
-                "isrc",
-            ):
-                if getattr(file_tags, field_name, None):
-                    setattr(file_meta, field_name, deepcopy(getattr(file_tags, field_name)))
-            for field_name in (
-                "audio_format",
-                "bit_depth",
-                "sample_rate",
-                "bitrate",
-                "duration",
-            ):
-                if getattr(file_tags, field_name, None):
-                    setattr(file_meta, field_name, getattr(file_tags, field_name))
-        elif not file_meta.audio_format:
-            file_meta.audio_format = file_path.suffix.lstrip(".").upper() or None
+        # 曲目标题始终优先使用当前文件自身的标签（缺失时回退为文件名），
+        # 防止整包目录继续沿用订阅/下载标题（单曲名、专辑名等）导致所有文件重名。
+        if file_tags.title:
+            file_meta.title = file_tags.title
+        for field_name in (
+            "artists",
+            "album",
+            "album_artist",
+            "year",
+            "disc_number",
+            "track_number",
+            "total_discs",
+            "total_tracks",
+            "version",
+            "isrc",
+        ):
+            if getattr(file_tags, field_name, None):
+                setattr(file_meta, field_name, deepcopy(getattr(file_tags, field_name)))
+        for field_name in (
+            "audio_format",
+            "bit_depth",
+            "sample_rate",
+            "bitrate",
+            "duration",
+        ):
+            if getattr(file_tags, field_name, None):
+                setattr(file_meta, field_name, getattr(file_tags, field_name))
         file_meta.media_source = saved_info.source or saved_meta.media_source
         file_meta.media_id = saved_info.media_id or saved_meta.media_id
 
