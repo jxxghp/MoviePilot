@@ -112,18 +112,18 @@ def test_recognize_file_routes_audio_to_music_chain() -> None:
 
 
 def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
-    """手动音乐刮削应接受 MusicBrainz UUID 并进入音乐标签写入流程。"""
+    """手动音乐刮削应接受 MusicBrainz UUID 并经统一识别入口后写入音乐标签。"""
     fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
     info = MusicInfo(
         source="musicbrainz",
         media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
         title="晴天",
     )
-    chain = Mock()
-    chain.recognize.return_value = info
-    chain.scrape_metadata.return_value = (True, "已刮削 1 个音频文件")
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = info
+    media_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
 
-    with patch("app.api.endpoints.media.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
         result = scrape(
             fileitem=fileitem,
             storage="local",
@@ -134,11 +134,12 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
         )
 
     assert result.success is True
-    chain.recognize.assert_called_once_with(
+    media_chain.recognize_media.assert_called_once_with(
         source="musicbrainz",
-        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        mediaid="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        mtype=MediaType.MUSIC,
     )
-    chain.scrape_metadata.assert_called_once_with(
+    media_chain.scrape_music_metadata.assert_called_once_with(
         fileitem=fileitem,
         mediainfo=info,
         overwrite=True,

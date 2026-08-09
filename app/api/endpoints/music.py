@@ -3,7 +3,9 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import schemas
+from app.chain.media import MediaChain
 from app.chain.music import MusicChain
+from app.schemas.types import MediaType
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.security import verify_token
 from app.modules.listenbrainz import (
@@ -45,21 +47,6 @@ def _serialize_artist(info: MusicArtistInfo) -> schemas.MusicArtistInfo:
     return schemas.MusicArtistInfo(**info.to_dict())
 
 
-@router.get(
-    "/search",
-    summary="搜索音乐元数据",
-    response_model=list[schemas.MusicInfo],
-)
-async def search_music(
-        query: str = Query(min_length=1),
-        count: CountParam = 20,
-        _: schemas.TokenPayload = Depends(verify_token),
-) -> list[schemas.MusicInfo]:
-    """按歌曲、专辑或艺术家关键词搜索标准音乐候选。"""
-    results = await MusicChain().async_search(query=query, limit=count)
-    return [_serialize_music(info) for info in results]
-
-
 @router.post(
     "/recognize",
     summary="识别音乐元数据详情",
@@ -69,10 +56,11 @@ async def recognize_music(
         request: schemas.MusicRecognizeRequest,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> schemas.MusicInfo:
-    """根据音乐元数据来源和媒体 ID 获取标准详情。"""
-    info = await MusicChain().async_recognize(
+    """根据音乐元数据来源和媒体 ID 获取标准详情，与影视识别共用统一入口。"""
+    info = await MediaChain().async_recognize_media(
         source=request.source,
-        media_id=request.media_id,
+        mediaid=request.media_id,
+        mtype=MediaType.MUSIC,
     )
     if not info:
         raise HTTPException(status_code=404, detail="未识别到音乐信息")

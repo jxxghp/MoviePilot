@@ -120,7 +120,7 @@ def test_sync_extra_subtitle_inherits_matching_video_episode(monkeypatch):
         planned.append((task.fileitem.path, task.meta.begin_episode))
         return True, ""
 
-    def fake_meta_info_path(path, custom_words=None):
+    def fake_meta_info_path(path, custom_words=None, **kwargs):
         """
         模拟字幕文件自身会被误识别为第一集的场景。
         """
@@ -209,7 +209,7 @@ def test_single_subtitle_transfer_reuses_same_name_video_episode(monkeypatch):
         planned.append((task.fileitem.path, task.meta.begin_episode))
         return True, ""
 
-    def fake_meta_info_path(path, custom_words=None):
+    def fake_meta_info_path(path, custom_words=None, **kwargs):
         """
         模拟字幕自身会被误识别为第一集，主视频可正确识别为第二集。
         """
@@ -343,7 +343,7 @@ def test_single_video_transfer_lists_parent_once_for_same_name_extra(monkeypatch
             list_files=fake_list_files,
         ),
     )
-    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None: FakeMeta(2))
+    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None, **kwargs: FakeMeta(2))
 
     state, errmsg = TransferChain.do_transfer(
         chain,
@@ -422,7 +422,7 @@ def test_episode_format_filters_extra_files_before_sync_planning(monkeypatch):
         "app.chain.transfer.SystemConfigOper",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None: FakeMeta(1))
+    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None, **kwargs: FakeMeta(1))
 
     state, errmsg = TransferChain.do_transfer(
         chain,
@@ -501,7 +501,7 @@ def test_episode_format_keeps_matching_extra_files_following_main(monkeypatch):
         "app.chain.transfer.SystemConfigOper",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None: FakeMeta(1))
+    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None, **kwargs: FakeMeta(1))
 
     state, errmsg = TransferChain.do_transfer(
         chain,
@@ -562,7 +562,7 @@ def test_single_matching_subtitle_uses_unmatched_video_only_as_context(monkeypat
         planned.append((task.fileitem.path, task.meta.begin_episode))
         return True, ""
 
-    def fake_meta_info_path(path, custom_words=None):
+    def fake_meta_info_path(path, custom_words=None, **kwargs):
         """
         模拟字幕自身识别不准，但同名主视频可提供正确集数。
         """
@@ -676,7 +676,7 @@ def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeyp
             delete_media_file=lambda fileitem: delete_calls.append(fileitem.path) or True,
         ),
     )
-    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None: FakeMeta(1))
+    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None, **kwargs: FakeMeta(1))
 
     state, errmsg = TransferChain.do_transfer(
         chain,

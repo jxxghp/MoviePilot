@@ -1,7 +1,7 @@
 import os
 from copy import deepcopy
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
 from typing import Optional, List, Tuple, Union
 
@@ -9,11 +9,12 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
 from app.core.config import settings
-from app.core.context import Context, MediaInfo
+from app.core.context import Context, MediaInfo, MusicInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.audio import AudioMetadataHelper
 from app.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
@@ -140,6 +141,7 @@ class ScrapingConfig:
                 ("tv", ["nfo", "poster", "backdrop", "logo", "banner", "thumb", "clearart", "landscape"]),
                 ("season", ["nfo", "poster", "backdrop", "banner", "thumb", "landscape"]),
                 ("episode", ["nfo", "thumb"]),
+                ("music", ["nfo", "poster"]),
             ]
             for md in mds
         ]
@@ -741,10 +743,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not metainfo:
             return None
-        # 音乐走独立识别链，不参与影视季集识别与辅助识别事件
+        # 音乐不经影视季集识别与辅助识别，直接走统一模块分发
         if isinstance(metainfo, MetaMusic):
-            from app.chain.music import MusicChain
-            return MusicChain().recognize_by_meta(metainfo, source=source)
+            return self.recognize_media(
+                meta=metainfo,
+                source=source,
+            )
         title = metainfo.title
         share_meta = deepcopy(metainfo)
 
@@ -1061,6 +1065,16 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         # 刮削锁
         with scraping_lock:
+            # 音乐刮削与影视共用 MediaChain 入口，按 ScrapingConfig 的音乐项写入标签与封面
+            if getattr(mediainfo, "type", None) == MediaType.MUSIC:
+                _, message = self.scrape_music_metadata(
+                    fileitem=fileitem,
+                    mediainfo=mediainfo,
+                    overwrite=overwrite or self.scraping_policies.option("music", "nfo").is_overwrite,
+                )
+                if message:
+                    logger.info(f"音乐刮削：{message}")
+                return
             # 检查文件项是否存在
             if not self.storagechain.get_item(fileitem):
                 logger.warn(f"文件项不存在：{fileitem.path}")
@@ -1379,6 +1393,132 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
 
         logger.info(f"{filepath.name} 刮削完成")
+
+    def scrape_music_metadata(
+            self,
+            fileitem: schemas.FileItem,
+            mediainfo: Optional[MusicInfo] = None,
+            overwrite: bool = True,
+    ) -> tuple[bool, str]:
+        """为音频文件或目录写入音乐标签和封面，应用系统刮削策略，复用现有存储下载上传能力。
+
+        音乐刮削被收拢到 MediaChain 统一分发，避免音乐链反向依赖媒体链造成嵌套。
+        """
+        files = self._music_audio_fileitems(fileitem)
+        if not files:
+            return False, "刮削路径中没有支持的音频文件"
+        if mediainfo and len(files) > 1:
+            return False, "指定 MusicBrainz ID 时仅支持刮削单个音频文件"
+
+        # 读取音乐刮削策略：music_nfo 控制标签写入，music_poster 控制封面嵌入
+        nfo_option = self.scraping_policies.option("music", "nfo")
+        poster_option = self.scraping_policies.option("music", "poster")
+        if nfo_option.is_skip:
+            return False, "音乐标签刮削策略为跳过，请先在高级设置中开启"
+
+        failures: list[str] = []
+        for audio_item in files:
+            info = mediainfo
+            if not info:
+                # 未指定识别信息时按文件名识别音乐，识别阶段不读取文件标签
+                meta = MetaInfoPath(Path(audio_item.path))
+                info = self.recognize_media(meta=meta, mtype=MediaType.MUSIC, source="musicbrainz")
+            if not info or not info.title:
+                failures.append(f"{audio_item.name or audio_item.path} 无法识别音乐信息")
+                continue
+            if not self._scrape_music_file(
+                    audio_item,
+                    info,
+                    overwrite=overwrite or nfo_option.is_overwrite,
+                    with_cover=not poster_option.is_skip,
+            ):
+                failures.append(f"{audio_item.name or audio_item.path} 标签写入失败")
+        if failures:
+            return False, "；".join(failures[:3])
+        return True, f"已刮削 {len(files)} 个音频文件"
+
+    @staticmethod
+    def _download_music_cover(url: Optional[str]) -> tuple[Optional[bytes], str]:
+        """通过统一请求封装下载音乐封面，并返回图片内容与 MIME 类型。"""
+        if not url:
+            return None, "image/jpeg"
+        response = RequestUtils(
+            proxies=settings.PROXY,
+            ua=settings.NORMAL_USER_AGENT,
+            timeout=20,
+        ).get_res(url)
+        if not response:
+            return None, "image/jpeg"
+        try:
+            if response.status_code != 200:
+                logger.warning(f"音乐封面下载失败：{response.status_code} {url}")
+                return None, "image/jpeg"
+            mime = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0]
+            return response.content, mime
+        finally:
+            response.close()
+
+    @staticmethod
+    def _is_music_audio_file(path: str) -> bool:
+        """判断路径是否指向系统支持的音频文件。"""
+        return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+
+    def _music_audio_fileitems(self, fileitem: schemas.FileItem) -> list[schemas.FileItem]:
+        """展开待刮削目录并过滤系统支持的音频文件。"""
+        if fileitem.type != "dir":
+            return [fileitem] if self._is_music_audio_file(fileitem.path or "") else []
+        return [
+            item
+            for item in self.storagechain.list_files(fileitem, recursion=True) or []
+            if item.type == "file" and self._is_music_audio_file(item.path or "")
+        ]
+
+    def _scrape_music_file(
+            self,
+            fileitem: schemas.FileItem,
+            mediainfo: MusicInfo,
+            overwrite: bool,
+            with_cover: bool = True,
+    ) -> bool:
+        """下载单个音频文件、写入标签，并在远端存储场景上传覆盖原文件。"""
+        cover_data, cover_mime = (
+            self._download_music_cover(mediainfo.cover_url) if with_cover else (None, "image/jpeg")
+        )
+        storage = StorageChain()
+        if fileitem.storage == "local":
+            local_path = storage.download_file(fileitem)
+            return bool(
+                local_path
+                and AudioMetadataHelper.write(
+                    local_path,
+                    mediainfo,
+                    cover_data=cover_data,
+                    cover_mime=cover_mime,
+                    overwrite=overwrite,
+                )
+            )
+
+        with TemporaryDirectory(prefix="moviepilot-music-scrape-") as temp_dir:
+            local_path = storage.download_file(fileitem, path=Path(temp_dir))
+            if not local_path or not AudioMetadataHelper.write(
+                    local_path,
+                    mediainfo,
+                    cover_data=cover_data,
+                    cover_mime=cover_mime,
+                    overwrite=overwrite,
+            ):
+                return False
+            parent = storage.get_parent_item(fileitem)
+            if not parent:
+                logger.warning(f"无法获取远端音频父目录：{fileitem.path}")
+                return False
+            return bool(
+                storage.upload_file(
+                    parent,
+                    local_path,
+                    new_name=fileitem.name or local_path.name,
+                )
+            )
 
     def _handle_movie_scraping(
             self,
@@ -1739,10 +1879,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not metainfo:
             return None
-        # 音乐走独立识别链，不参与影视季集识别与辅助识别事件
+        # 音乐不经影视季集识别与辅助识别，直接走统一模块分发
         if isinstance(metainfo, MetaMusic):
-            from app.chain.music import MusicChain
-            return await MusicChain().async_recognize_by_meta(metainfo, source=source)
+            return await self.async_recognize_media(
+                meta=metainfo,
+                source=source,
+            )
         title = metainfo.title
         share_meta = deepcopy(metainfo)
 

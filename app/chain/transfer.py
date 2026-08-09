@@ -13,7 +13,6 @@ from app import schemas
 from app.agent import ReplyMode, prompt_manager, agent_manager
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
@@ -1591,7 +1590,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 or not transferinfo
                 or not transferinfo.need_scrape
                 or not self._is_primary_media_file(task.fileitem, task.mediainfo)
-                or task.mediainfo.type == MediaType.MUSIC
         ):
             return
 
@@ -1655,7 +1653,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 or not transferinfo
                 or not transferinfo.need_scrape
                 or not self._is_primary_media_file(task.fileitem, task.mediainfo)
-                or task.mediainfo.type == MediaType.MUSIC
         ):
             return
 
@@ -3154,8 +3151,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if mtype == MediaType.MUSIC and source_path.suffix.lower() in self._audio_exts:
                 path_meta = AudioMetadataHelper.read(source_path)
             else:
+                # 影视场景附加音轨（如评论音轨）强制按视频解析，保留季集归属
                 path_meta = MetaInfoPath(
-                    source_path, custom_words=custom_word_list
+                    source_path, custom_words=custom_word_list, force_video=True
                 )
             if not path_meta:
                 return None
@@ -4055,24 +4053,17 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         if tmdbid or doubanid or bangumiid or anilistid or media_id:
-            # 有输入媒体ID时单个识别
-            # 识别媒体信息
-            if mtype == MediaType.MUSIC and media_source and media_id:
-                mediainfo = MusicChain().recognize(
-                    source=media_source,
-                    media_id=media_id,
-                )
-            else:
-                mediainfo = MediaChain().recognize_media(
-                    tmdbid=tmdbid,
-                    doubanid=doubanid,
-                    bangumiid=bangumiid,
-                    anilistid=anilistid,
-                    source=media_source,
-                    mediaid=media_id,
-                    mtype=mtype,
-                    episode_group=episode_group,
-                )
+            # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
+            mediainfo = MediaChain().recognize_media(
+                tmdbid=tmdbid,
+                doubanid=doubanid,
+                bangumiid=bangumiid,
+                anilistid=anilistid,
+                source=media_source,
+                mediaid=media_id,
+                mtype=mtype,
+                episode_group=episode_group,
+            )
             if not mediainfo:
                 return (
                     False,
@@ -4080,11 +4071,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     f"tmdbid：{tmdbid}，doubanid：{doubanid}，"
                     f"type: {mtype.value if mtype else None}",
                 )
-            else:
-                if media_source and not isinstance(mediainfo, MusicInfo):
-                    mediainfo.scrape_source = media_source
-                if not isinstance(mediainfo, MusicInfo):
-                    self.obtain_images(mediainfo=mediainfo)
+            if media_source and not isinstance(mediainfo, MusicInfo):
+                mediainfo.scrape_source = media_source
+            if not isinstance(mediainfo, MusicInfo):
+                self.obtain_images(mediainfo=mediainfo)
 
             # 开始整理
             state, errmsg = self.do_transfer(
@@ -4117,7 +4107,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"{fileitem.path} 整理完成")
             return True, errmsg if preview else ""
         else:
-            # 没有输入TMDBID时，按文件识别
+            # 没有输入媒体ID时，按文件识别
             state, errmsg = self.do_transfer(
                 fileitem=fileitem,
                 target_storage=target_storage,

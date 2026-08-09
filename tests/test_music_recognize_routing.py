@@ -1,17 +1,18 @@
 """音乐识别统一入口路由测试。
 
 覆盖 MediaChain 同步/异步 ``recognize_by_meta`` 与 ``recognize_by_path`` 按
-``MetaMusic`` 路由到 ``MusicChain``，以及 ``MusicChain.recognize_by_meta`` 自身的
-详情、搜索匹配与离线兜底分支。
+``MetaMusic`` 路由到音乐模块，以及 MusicBrainz 模块 ``recognize_media`` /
+``async_recognize_media`` 对音乐请求的详情、搜索匹配与兜底分支，ChainBase
+对 MusicInfo 结果短路返回（不参与影视共享上报）。
 """
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
+from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.types import MediaType
 
 
@@ -27,88 +28,152 @@ def _music_info() -> MusicInfo:
     )
 
 
-def test_media_chain_recognize_by_meta_routes_metamusic_to_musicchain():
-    """MetaMusic 应绕过影视识别链，直接交给 MusicChain.recognize_by_meta。"""
+def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
+    """MetaMusic 应绕过影视识别，由统一模块分发直接响应。"""
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = _music_info()
-    music_chain = Mock()
-    music_chain.recognize_by_meta = Mock(return_value=expected)
+    chain = MediaChain()
+    monkeypatch.setattr(chain, "recognize_media", Mock(return_value=expected))
 
-    with patch("app.chain.music.MusicChain", return_value=music_chain):
-        result = MediaChain().recognize_by_meta(meta, source="musicbrainz")
+    result = chain.recognize_by_meta(meta, source="musicbrainz")
 
-    music_chain.recognize_by_meta.assert_called_once_with(meta, source="musicbrainz")
+    chain.recognize_media.assert_called_once_with(meta=meta, source="musicbrainz")
     assert result is expected
 
 
-def test_media_chain_async_recognize_by_meta_routes_metamusic_to_musicchain():
-    """异步识别同样应把 MetaMusic 路由到 MusicChain.async_recognize_by_meta。"""
+def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
+    """异步识别同样应把 MetaMusic 路由到统一模块识别入口。"""
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = _music_info()
-    music_chain = Mock()
-    music_chain.async_recognize_by_meta = AsyncMock(return_value=expected)
+    chain = MediaChain()
+    monkeypatch.setattr(chain, "async_recognize_media", AsyncMock(return_value=expected))
 
     async def runner():
-        with patch("app.chain.music.MusicChain", return_value=music_chain):
-            return await MediaChain().async_recognize_by_meta(meta, source="musicbrainz")
+        return await chain.async_recognize_by_meta(meta, source="musicbrainz")
 
     result = asyncio.run(runner())
-    music_chain.async_recognize_by_meta.assert_awaited_once_with(meta, source="musicbrainz")
+    chain.async_recognize_media.assert_awaited_once_with(meta=meta, source="musicbrainz")
     assert result is expected
 
 
-def test_media_chain_recognize_by_path_routes_audio_file_to_musicchain():
-    """音频文件路径应经 MetaInfoPath 构造 MetaMusic 并路由到音乐识别链。"""
+def test_media_chain_recognize_by_path_routes_audio_file_to_module(monkeypatch):
+    """音频文件路径应经 MetaInfoPath 构造 MetaMusic 并路由到统一模块识别入口。"""
     expected = _music_info()
-    music_chain = Mock()
-    music_chain.recognize_by_meta = Mock(return_value=expected)
+    chain = MediaChain()
+    monkeypatch.setattr(chain, "recognize_media", Mock(return_value=expected))
 
-    with patch("app.chain.music.MusicChain", return_value=music_chain):
-        context = MediaChain().recognize_by_path("/music/周杰伦 - 晴天.flac")
+    context = chain.recognize_by_path("/music/周杰伦 - 晴天.flac")
 
-    routed_meta = music_chain.recognize_by_meta.call_args.args[0]
+    routed_meta = chain.recognize_media.call_args.kwargs["meta"]
     assert isinstance(routed_meta, MetaMusic)
     assert context.media_info is expected
     assert isinstance(context.meta_info, MetaMusic)
 
 
-def test_music_chain_recognize_by_meta_uses_detail_when_meta_has_identity(monkeypatch):
+def test_musicbrainz_module_recognize_media_ignores_non_music():
+    """非音乐请求应直接返回 None，不占用影视识别管线。"""
+    result = MusicBrainzModule().recognize_media(
+        meta=None, mtype=MediaType.MOVIE, source="themoviedb", mediaid="123"
+    )
+    assert result is None
+
+
+def test_musicbrainz_module_recognize_media_uses_detail_when_meta_has_identity(monkeypatch):
     """meta 携带 source+media_id 时应走详情分支，不再触发搜索。"""
-    chain = MusicChain()
+    module = MusicBrainzModule()
     meta = MetaMusic(title="晴天", media_source="musicbrainz", media_id="recording-1")
     expected = _music_info()
-    monkeypatch.setattr(chain, "recognize", Mock(return_value=expected))
+    monkeypatch.setattr(module, "recognize_music", Mock(return_value=expected))
     search_mock = Mock(return_value=[])
-    monkeypatch.setattr(chain, "run_module", search_mock)
+    monkeypatch.setattr(module, "search_music", search_mock)
 
-    result = chain.recognize_by_meta(meta, source="musicbrainz")
+    result = module.recognize_media(meta=meta, source="musicbrainz")
 
-    chain.recognize.assert_called_once_with("musicbrainz", "recording-1")
+    module.recognize_music.assert_called_once_with("musicbrainz", "recording-1")
     search_mock.assert_not_called()
     assert result is expected
 
 
-def test_music_chain_recognize_by_meta_matches_search_candidate(monkeypatch):
+def test_musicbrainz_module_recognize_media_matches_search_candidate(monkeypatch):
     """无身份时应按标题搜索并选择匹配候选。"""
-    chain = MusicChain()
+    module = MusicBrainzModule()
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidate = _music_info()
-    monkeypatch.setattr(chain, "run_module", Mock(return_value=[candidate]))
+    monkeypatch.setattr(module, "search_music", Mock(return_value=[candidate]))
 
-    result = chain.recognize_by_meta(meta)
+    result = module.recognize_media(meta=meta)
 
     assert result is candidate
 
 
-def test_music_chain_recognize_by_meta_falls_back_to_offline_when_no_match(monkeypatch):
-    """搜索无候选时应返回离线兜底，且兜底结果不带远端 source。"""
-    chain = MusicChain()
+def test_musicbrainz_module_recognize_media_falls_back_to_offline_when_no_match(monkeypatch):
+    """搜索无候选时应返回元数据兜底，且兜底结果不带远端身份。"""
+    module = MusicBrainzModule()
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
-    monkeypatch.setattr(chain, "run_module", Mock(return_value=[]))
+    monkeypatch.setattr(module, "search_music", Mock(return_value=[]))
 
-    result = chain.recognize_by_meta(meta)
+    result = module.recognize_media(meta=meta)
 
     assert result is not None
     assert result.title == "未知曲目"
-    # 离线兜底不携带远端来源，订阅等场景据此判定未真实命中
-    assert result.source is None
+    assert isinstance(result, MusicInfo)
+
+
+def test_musicbrainz_module_recognize_media_by_music_type_and_media_id(monkeypatch):
+    """mtype 为音乐且指定数据源原生 ID 时应直接按音乐详情识别。"""
+    module = MusicBrainzModule()
+    expected = _music_info()
+    monkeypatch.setattr(module, "recognize_music", Mock(return_value=expected))
+
+    result = module.recognize_media(
+        mtype=MediaType.MUSIC, source="musicbrainz", mediaid="recording-1"
+    )
+
+    module.recognize_music.assert_called_once_with("musicbrainz", "recording-1")
+    assert result is expected
+
+
+def test_musicbrainz_module_async_recognize_media(monkeypatch):
+    """异步模块入口应在线程池中调用同步实现。"""
+    module = MusicBrainzModule()
+    expected = _music_info()
+    sync_mock = Mock(return_value=expected)
+    monkeypatch.setattr(module, "recognize_media", sync_mock)
+
+    result = asyncio.run(module.async_recognize_media(
+        meta=MetaMusic(title="晴天"), mtype=MediaType.MUSIC
+    ))
+
+    sync_mock.assert_called_once()
+    assert result is expected
+
+
+def test_chain_recognize_media_returns_musicinfo_without_shared_report():
+    """ChainBase.recognize_media 收到 MusicInfo 结果应直接返回，不触发影视共享上报。"""
+    expected = _music_info()
+    chain = MediaChain()
+    chain.run_module = Mock(return_value=expected)
+    with patch(
+        "app.helper.server.MoviePilotServerHelper.report_recognize_share"
+    ) as report_mock:
+        result = chain.recognize_media(meta=MetaMusic(title="晴天"))
+
+    report_mock.assert_not_called()
+    assert result is expected
+
+
+def test_chain_async_recognize_media_returns_musicinfo_without_shared_report():
+    """异步 ChainBase 收到 MusicInfo 结果应直接返回，不触发影视共享上报。"""
+    expected = _music_info()
+    chain = MediaChain()
+    chain.async_run_module = AsyncMock(return_value=expected)
+    with patch(
+        "app.helper.server.MoviePilotServerHelper.async_report_recognize_share"
+    ) as report_mock:
+        async def runner():
+            return await chain.async_recognize_media(meta=MetaMusic(title="晴天"))
+
+        result = asyncio.run(runner())
+
+    report_mock.assert_not_called()
+    assert result is expected

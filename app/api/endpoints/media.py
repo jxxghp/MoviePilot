@@ -201,10 +201,10 @@ async def search(
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    模糊搜索媒体、合集或人物信息列表。
+    模糊搜索媒体、合集、人物或音乐信息列表。
 
     :param title: 搜索关键词
-    :param type: 搜索类型，支持 media、collection、person
+    :param type: 搜索类型，支持 media、music、collection、person
     :param page: 页码
     :param count: 每页数量
     :param source: 请求级搜索数据源
@@ -221,6 +221,13 @@ async def search(
         return obj.source
 
     media_chain = MediaChain()
+    if type == "music" or source == "musicbrainz":
+        # 音乐搜索统一入口，与影视搜索共用 /media/search
+        music_infos = await MusicChain().async_search(title=title, limit=count)
+        return [
+            info.to_dict()
+            for info in music_infos
+        ] if music_infos else []
     if type == "media":
         _, medias = await media_chain.async_search(title=title, source=source)
         result = [media.to_dict() for media in medias] if medias else []
@@ -287,13 +294,15 @@ def scrape(
             return schemas.Response(success=False, message="MusicBrainz 只能用于音乐刮削")
         music_info: Optional[MusicInfo] = None
         if normalized_media_id:
-            music_info = MusicChain().recognize(
+            # 音乐与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
+            music_info = MediaChain().recognize_media(
                 source=media_source or "musicbrainz",
-                media_id=normalized_media_id,
+                mediaid=normalized_media_id,
+                mtype=MediaType.MUSIC,
             )
             if not music_info:
                 return schemas.Response(success=False, message="刮削失败，无法识别音乐信息")
-        success, message = MusicChain().scrape_metadata(
+        success, message = MediaChain().scrape_music_metadata(
             fileitem=fileitem,
             mediainfo=music_info,
             overwrite=True,

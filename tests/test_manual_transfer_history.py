@@ -74,7 +74,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
     )
     monkeypatch.setattr(
         "app.chain.transfer.MetaInfoPath",
-        lambda path, custom_words=None: FakeMeta(1),
+        lambda path, custom_words=None, **kwargs: FakeMeta(1),
     )
 
 

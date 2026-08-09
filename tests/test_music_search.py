@@ -44,8 +44,8 @@ def test_music_context_builder_keeps_only_music_category():
     assert contexts[0].torrent_info.category == MediaType.MUSIC.value
 
 
-def test_search_by_id_routes_music_identity_to_music_chain():
-    """MusicBrainz 精确身份搜索应使用 MusicChain 识别并进入现有搜索处理链。"""
+def test_search_by_id_routes_music_identity_to_recognize_and_process():
+    """MusicBrainz 精确身份搜索应经统一识别入口识别后进入现有搜索处理链。"""
     chain = SearchChain()
     music = MusicInfo(
         source="musicbrainz",
@@ -56,10 +56,9 @@ def test_search_by_id_routes_music_identity_to_music_chain():
     expected = [Mock()]
 
     with (
-        patch("app.chain.search.MusicChain") as music_chain,
+        patch.object(chain, "recognize_media", return_value=music) as recognize,
         patch.object(chain, "process", return_value=expected) as process,
     ):
-        music_chain.return_value.recognize.return_value = music
         result = chain.search_by_id(
             source="musicbrainz",
             mediaid="recording-1",
@@ -68,9 +67,14 @@ def test_search_by_id_routes_music_identity_to_music_chain():
         )
 
     assert result == expected
-    music_chain.return_value.recognize.assert_called_once_with(
+    recognize.assert_called_once_with(
         source="musicbrainz",
-        media_id="recording-1",
+        mediaid="recording-1",
+        tmdbid=None,
+        doubanid=None,
+        bangumiid=None,
+        anilistid=None,
+        mtype=MediaType.MUSIC,
     )
     process.assert_called_once_with(
         mediainfo=music,

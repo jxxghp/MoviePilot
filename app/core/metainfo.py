@@ -419,17 +419,19 @@ def _requires_python_metainfo(
     return contains_extended_id and not rust_accel.supports_extended_media_ids()
 
 
-def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None) -> MetaBase:
+def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
+             force_video: bool = False) -> MetaBase:
     """
     根据标题和副标题识别元数据
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :param custom_words: 自定义识别词列表
+    :param force_video: 音频后缀的影视附加轨（如评论音轨）强制按视频解析，用于影视整理场景
     :return: MetaAnime、MetaVideo、MetaMusic
     """
-    # 音频文件名直接走音乐分支，避免进入影视季集解析
+    # 音频文件名直接走音乐分支，避免进入影视季集解析，但影视附加音轨强制走视频解析
     audio_suffix = Path(title).suffix.lower() if title else ""
-    if audio_suffix in settings.RMT_AUDIOEXT:
+    if not force_video and audio_suffix in settings.RMT_AUDIOEXT:
         return MetaMusic(
             org_string=title,
             title=Path(title).stem,
@@ -451,15 +453,16 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
     return meta
 
 
-def MetaInfoPath(path: Path, custom_words: List[str] = None) -> MetaBase:
+def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool = False) -> MetaBase:
     """
     根据路径识别元数据
     :param path: 路径
     :param custom_words: 自定义识别词列表
+    :param force_video: 音频后缀的影视附加轨（如评论音轨）强制按视频解析，用于影视整理场景
     """
-    # 音频文件直接构造音乐元数据，不参与父目录季集合并
+    # 音频文件直接构造音乐元数据，不参与父目录季集合并，影视附加音轨强制走视频解析
     audio_suffix = path.suffix.lower()
-    if audio_suffix in settings.RMT_AUDIOEXT:
+    if not force_video and audio_suffix in settings.RMT_AUDIOEXT:
         return MetaMusic(
             org_string=path.name,
             title=path.stem,

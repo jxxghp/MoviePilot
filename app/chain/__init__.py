@@ -14,7 +14,7 @@ from transmission_rpc import File
 
 from app.core.cache import FileCache, AsyncFileCache, fresh, async_fresh
 from app.core.config import settings
-from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
+from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
@@ -683,7 +683,7 @@ class ChainBase(metaclass=ABCMeta):
             bangumiid=bangumiid,
             anilistid=anilistid,
         )
-        # 显式 TMDB ID 由模块自行消歧，不能被标题推断类型误导。
+        # 检索显式 TMDB ID 由请求方自行消歧，不能被标题推断类型误导。
         if not mtype and not tmdbid and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
             mtype = meta.type
         share_query_meta = share_meta or meta
@@ -705,6 +705,9 @@ class ChainBase(metaclass=ABCMeta):
                 **module_kwargs,
             )
         if mediainfo:
+            # 音乐识别结果不参与影视共享上报
+            if isinstance(mediainfo, MusicInfo):
+                return mediainfo
             if not mediainfo.recognize_cache_hit:
                 MoviePilotServerHelper.report_recognize_share(
                     meta=meta,
@@ -713,7 +716,7 @@ class ChainBase(metaclass=ABCMeta):
                 )
             return mediainfo
 
-        if not source and self._can_use_media_recognize_share(
+        if not source and mtype != MediaType.MUSIC and self._can_use_media_recognize_share(
                 share_query_meta, tmdbid, doubanid, bangumiid, anilistid
         ):
             shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
@@ -815,6 +818,9 @@ class ChainBase(metaclass=ABCMeta):
                 **module_kwargs,
             )
         if mediainfo:
+            # 音乐识别结果不参与影视共享上报
+            if isinstance(mediainfo, MusicInfo):
+                return mediainfo
             if not mediainfo.recognize_cache_hit:
                 await MoviePilotServerHelper.async_report_recognize_share(
                     meta=meta,
@@ -823,7 +829,7 @@ class ChainBase(metaclass=ABCMeta):
                 )
             return mediainfo
 
-        if not source and self._can_use_media_recognize_share(
+        if not source and mtype != MediaType.MUSIC and self._can_use_media_recognize_share(
                 share_query_meta, tmdbid, doubanid, bangumiid, anilistid
         ):
             shared_cache_meta = self._snapshot_recognize_cache_meta(meta)

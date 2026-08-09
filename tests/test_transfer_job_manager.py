@@ -861,7 +861,7 @@ class TransferJobManagerTest(unittest.TestCase):
             return_value=storage_chain,
         ), patch(
             "app.chain.transfer.MetaInfoPath",
-            side_effect=lambda path, custom_words=None: FakeMeta(1),
+            side_effect=lambda path, custom_words=None, **kwargs: FakeMeta(1),
         ):
             state, errmsg = TransferChain.do_transfer(
                 chain,
@@ -942,7 +942,7 @@ class TransferJobManagerTest(unittest.TestCase):
             return_value=storage_chain,
         ), patch(
             "app.chain.transfer.MetaInfoPath",
-            side_effect=lambda path, custom_words=None: FakeMeta(1),
+            side_effect=lambda path, custom_words=None, **kwargs: FakeMeta(1),
         ):
             state, errmsg = TransferChain.do_transfer(
                 chain,

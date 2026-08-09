@@ -490,6 +490,7 @@ class ScrapingTarget(NameValueEnum):
     TV = "电视剧"
     SEASON = "季"
     EPISODE = "集"
+    MUSIC = "音乐"
 
 
 # 刮削元数据类型

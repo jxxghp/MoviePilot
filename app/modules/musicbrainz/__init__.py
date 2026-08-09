@@ -1,6 +1,9 @@
+import re
 import threading
 import time
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, Union
+
+from fastapi.concurrency import run_in_threadpool
 
 from app.core.cache import cached
 from app.core.config import settings
@@ -11,10 +14,10 @@ from app.core.context import (
     MusicInfo,
     MusicRelease,
 )
-from app.core.meta import MetaMusic
+from app.core.meta import MetaBase, MetaMusic
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import MediaRecognizeType, ModuleType
+from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
 from app.utils.http import RequestUtils
 
 
@@ -94,8 +97,8 @@ class MusicBrainzModule(_ModuleBase):
 
     @staticmethod
     def get_priority() -> int:
-        """返回音乐元数据模块执行优先级。"""
-        return 5
+        """音乐识别在所有 MediaRecognize 模块中最先响应，避免音乐请求被影视模块误识别。"""
+        return 0
 
     def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
         """根据标准音乐搜索条件返回 MusicBrainz 录音候选。"""
@@ -111,6 +114,108 @@ class MusicBrainzModule(_ModuleBase):
             for item in (payload or {}).get("recordings") or []
             if (info := self._recording_to_info(item))
         ]
+
+    def recognize_media(
+            self,
+            meta: MetaBase = None,
+            mtype: MediaType = None,
+            source: Optional[str] = None,
+            mediaid: Optional[str] = None,
+            **kwargs,
+    ) -> Optional[MusicInfo]:
+        """跟随统一媒体识别分发，仅在音乐类型请求下返回 MusicBrainz 识别结果。"""
+        # 非音乐请求交给影视识别模块，不占用识别管线
+        if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and source != self._source:
+            return None
+        # 无 MetaMusic 元数据时仅响应本数据源的详情识别请求
+        if not isinstance(meta, MetaMusic):
+            if source == self._source and mediaid:
+                return self.recognize_music(source, str(mediaid))
+            return None
+        # 携带数据源与原生 ID 的请求优先按详情识别
+        resolved_source = source or meta.media_source
+        if resolved_source and (mediaid or meta.media_id):
+            info = self.recognize_music(resolved_source, str(mediaid or meta.media_id))
+            if info:
+                return info
+        # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兜底
+        candidates = self.search_music(meta, limit=10)
+        matched = self._select_candidate(meta, candidates, source=resolved_source or self._source)
+        return matched or self._info_from_meta(meta)
+
+    async def async_recognize_media(
+            self,
+            meta: MetaBase = None,
+            mtype: MediaType = None,
+            source: Optional[str] = None,
+            mediaid: Optional[str] = None,
+            **kwargs,
+    ) -> Optional[MusicInfo]:
+        """同步分发到音乐识别的异步版本，避免阻塞共享事件循环。"""
+        return await run_in_threadpool(
+            self.recognize_media,
+            meta,
+            mtype=mtype,
+            source=source,
+            mediaid=mediaid,
+            **kwargs,
+        )
+
+    @classmethod
+    def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], source: str) -> Optional[MusicInfo]:
+        """按标题、艺术家和专辑匹配度选择最可信的搜索候选。"""
+        normalized_source = cls._normalize_text(source).casefold()
+        ranked: list[tuple[int, MusicInfo]] = []
+        for candidate in candidates:
+            if normalized_source and (candidate.source or "").casefold() != normalized_source:
+                continue
+            score = 0
+            if meta.title and cls._same_text(meta.title, candidate.title):
+                score += 4
+            if meta.artists and any(
+                    cls._same_text(meta.artists[0], artist)
+                    for artist in candidate.artists
+            ):
+                score += 3
+            if meta.album and cls._same_text(meta.album, candidate.album):
+                score += 2
+            if meta.isrc and cls._same_text(meta.isrc, candidate.isrc):
+                score += 5
+            ranked.append((score, candidate))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return ranked[0][1] if ranked[0][0] > 0 else None
+
+    @classmethod
+    def _info_from_meta(cls, meta: MetaMusic) -> MusicInfo:
+        """音乐识别无候选时，把元数据转换为可展示的最小信息。"""
+        return MusicInfo(
+            source=meta.media_source,
+            media_id=meta.media_id,
+            title=meta.title,
+            artists=list(meta.artists),
+            album=meta.album,
+            album_artist=meta.album_artist,
+            year=meta.year,
+            disc_number=meta.disc_number,
+            track_number=meta.track_number,
+            total_tracks=meta.total_tracks,
+            duration=meta.duration,
+            isrc=meta.isrc,
+            version=meta.version,
+            names=[name for name in (meta.title, meta.album) if name],
+        )
+
+    @classmethod
+    def _same_text(cls, left: Optional[str], right: Optional[str]) -> bool:
+        """忽略大小写比较两个音乐文本字段。"""
+        return cls._normalize_text(left).casefold() == cls._normalize_text(right).casefold()
+
+    @classmethod
+    def _normalize_text(cls, value: Optional[str]) -> str:
+        """清理音乐检索文本中的多余空白。"""
+        return re.sub(r"\s+", " ", str(value or "")).strip()
 
     def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:
         """按 MusicBrainz 标准 ID 获取音乐详情，单曲不存在时回退到专辑。"""

@@ -1,6 +1,7 @@
 from app.chain.music import MusicChain
 from app.core.meta import MetaMusic
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.modules.musicbrainz import MusicBrainzModule
 
 
 def test_parse_query_supports_artist_title_format():
@@ -155,7 +156,7 @@ def test_async_chart_applies_music_explore_filters(monkeypatch):
     assert [item.title for item in results] == ["B", "C"]
 
 
-def test_select_path_candidate_prefers_matching_audio_tags():
+def test_musicbrainz_module_select_candidate_prefers_matching_audio_tags():
     """文件识别应优先选择标题、艺术家和专辑均匹配的 MusicBrainz 候选。"""
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidates = [
@@ -169,7 +170,7 @@ def test_select_path_candidate_prefers_matching_audio_tags():
         ),
     ]
 
-    selected = MusicChain._select_path_candidate(meta, candidates, source="musicbrainz")
+    selected = MusicBrainzModule._select_candidate(meta, candidates, source="musicbrainz")
 
     assert selected is candidates[1]
 

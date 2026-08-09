@@ -1340,29 +1340,31 @@ class SubscribeChain(ChainBase):
     @staticmethod
     def _recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
         """按订阅身份恢复音乐目标，缺少身份时按标题查询首个候选。"""
-        musicchain = MusicChain()
         if subscribe.media_source and subscribe.media_id:
-            mediainfo = musicchain.recognize(
+            # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
+            mediainfo = MediaChain().recognize_media(
                 source=subscribe.media_source,
-                media_id=str(subscribe.media_id),
+                mediaid=str(subscribe.media_id),
+                mtype=MediaType.MUSIC,
             )
             if mediainfo:
                 return mediainfo
-        candidates = musicchain.search(subscribe.name, limit=1)
+        candidates = MusicChain().search(subscribe.name, limit=1)
         return candidates[0] if candidates else None
 
     @staticmethod
     async def _async_recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
         """异步按订阅身份恢复音乐目标，缺少身份时按标题查询首个候选。"""
-        musicchain = MusicChain()
         if subscribe.media_source and subscribe.media_id:
-            mediainfo = await musicchain.async_recognize(
+            # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
+            mediainfo = await MediaChain().async_recognize_media(
                 source=subscribe.media_source,
-                media_id=str(subscribe.media_id),
+                mediaid=str(subscribe.media_id),
+                mtype=MediaType.MUSIC,
             )
             if mediainfo:
                 return mediainfo
-        candidates = await musicchain.async_search(subscribe.name, limit=1)
+        candidates = await MusicChain().async_search(subscribe.name, limit=1)
         return candidates[0] if candidates else None
 
     def _search_music_subscribe(self, subscribe: Subscribe) -> None:

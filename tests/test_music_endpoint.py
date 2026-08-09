@@ -12,17 +12,16 @@ from app.api.endpoints.music import (
     music_artist_albums,
     music_artist_related,
     recognize_music,
-    search_music,
 )
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
 from app.schemas.music import MusicRecognizeRequest
+from app.schemas.types import MediaType
 
 
 def test_music_routes_are_registered():
-    """V1 API 应注册音乐搜索、详情识别、探索及艺术家专辑浏览路由。"""
+    """V1 API 应注册音乐详情识别、探索及艺术家专辑浏览路由。"""
     routes = {(route.path, tuple(route.methods or [])) for route in api_router.routes}
 
-    assert any(path == "/music/search" and "GET" in methods for path, methods in routes)
     assert any(path == "/music/recognize" and "POST" in methods for path, methods in routes)
     assert any(path == "/music/explore" and "GET" in methods for path, methods in routes)
     assert any(path == "/music/album/{album_id}" and "GET" in methods for path, methods in routes)
@@ -35,35 +34,17 @@ def test_music_routes_are_registered():
         path == "/music/artist/{artist_id}/related" and "GET" in methods
         for path, methods in routes
     )
-
-
-def test_search_music_serializes_chain_results():
-    """音乐搜索接口应返回统一的 MusicInfo 响应。"""
-    chain = Mock()
-    chain.async_search = AsyncMock(
-        return_value=[
-            MusicInfo(
-                source="musicbrainz",
-                media_id="recording-1",
-                title="晴天",
-                artists=["周杰伦"],
-            )
-        ]
+    assert any(
+        path == "/media/search" and "GET" in methods for path, methods in routes
     )
-
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
-        result = asyncio.run(search_music(query="晴天", count=10, _=Mock()))
-
-    assert len(result) == 1
-    assert result[0].title == "晴天"
-    assert result[0].artist == "周杰伦"
-    chain.async_search.assert_awaited_once_with(query="晴天", limit=10)
 
 
 def test_recognize_music_returns_detail():
-    """音乐识别接口应按来源和 ID 返回详情。"""
+    """音乐识别接口应按来源和 ID 经统一识别入口返回详情。"""
+    from app.chain.media import MediaChain
+
     chain = Mock()
-    chain.async_recognize = AsyncMock(
+    chain.async_recognize_media = AsyncMock(
         return_value=MusicInfo(
             source="musicbrainz",
             media_id="recording-1",
@@ -71,7 +52,7 @@ def test_recognize_music_returns_detail():
         )
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(
             recognize_music(
                 request=MusicRecognizeRequest(
@@ -83,19 +64,22 @@ def test_recognize_music_returns_detail():
         )
 
     assert result.media_id == "recording-1"
-    chain.async_recognize.assert_awaited_once_with(
+    chain.async_recognize_media.assert_awaited_once_with(
         source="musicbrainz",
-        media_id="recording-1",
+        mediaid="recording-1",
+        mtype=MediaType.MUSIC,
     )
 
 
 def test_recognize_music_returns_404_for_unknown_item():
     """音乐详情不存在时接口应返回 404。"""
+    from app.chain.media import MediaChain
+
     chain = Mock()
-    chain.async_recognize = AsyncMock(return_value=None)
+    chain.async_recognize_media = AsyncMock(return_value=None)
 
     with (
-        patch("app.api.endpoints.music.MusicChain", return_value=chain),
+        patch("app.api.endpoints.music.MediaChain", return_value=chain),
         pytest.raises(HTTPException) as error,
     ):
         asyncio.run(

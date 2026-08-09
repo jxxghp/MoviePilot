@@ -547,16 +547,11 @@ class SearchChain(ChainBase):
                 season=season,
                 sites=sites,
             )
-        if mtype == MediaType.MUSIC:
-            mediainfo = MusicChain().recognize(
-                source=source,
-                media_id=str(mediaid) if mediaid is not None else "",
-            )
-        else:
-            mediainfo = self.recognize_media(
-                source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
-                bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
-            )
+        # 音乐统一在 recognize_media 内路由到 MusicChain
+        mediainfo = self.recognize_media(
+            source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
+            bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+        )
         if not mediainfo:
             logger.error(f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} 媒体信息识别失败！')
             return []
@@ -880,16 +875,11 @@ class SearchChain(ChainBase):
                 season=season,
                 sites=sites,
             )
-        if mtype == MediaType.MUSIC:
-            mediainfo = await MusicChain().async_recognize(
-                source=source,
-                media_id=str(mediaid) if mediaid is not None else "",
-            )
-        else:
-            mediainfo = await self.async_recognize_media(
-                source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
-                bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
-            )
+        # 音乐统一在 async_recognize_media 内路由到 MusicChain
+        mediainfo = await self.async_recognize_media(
+            source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
+            bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+        )
         if not mediainfo:
             logger.error(
                 f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} '
@@ -1083,16 +1073,11 @@ class SearchChain(ChainBase):
                 season=season,
                 sites=sites,
             )
-        if mtype == MediaType.MUSIC:
-            mediainfo = await MusicChain().async_recognize(
-                source=source,
-                media_id=str(mediaid) if mediaid is not None else "",
-            )
-        else:
-            mediainfo = await self.async_recognize_media(
-                source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
-                bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
-            )
+        # 音乐统一在 async_recognize_media 内路由到 MusicChain
+        mediainfo = await self.async_recognize_media(
+            source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
+            bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+        )
         if not mediainfo:
             logger.error(
                 f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} '
