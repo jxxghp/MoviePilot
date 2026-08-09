@@ -112,7 +112,7 @@ chmod +x scripts/start-local.sh
 
 ### 4.1 GitHub 发版时生成插件市场默认值
 
-源码分支中的 `ConfigModel.PLUGIN_MARKET` 只保留官方插件仓库作为离线兜底。GitHub 的 V3 正式版与 Beta 镜像构建会检出 `MoviePilot-Wiki` 的 `v3` 分支，并由 `scripts/generate_plugin_market_default.py` 读取 `plugin.md` 中 `plugin-market-repos:start/end` 标记区域，将规范化、去重后的公开仓库清单写入构建工作区。
+源码分支中的 `ConfigModel.PLUGIN_MARKET` 只保留官方插件仓库作为离线兜底。GitHub 的 V3 正式版与 Beta 镜像构建会检出 `MoviePilot-Wiki` 的 `main` 分支，并由 `scripts/generate_plugin_market_default.py` 读取 `plugin.md` 中 `plugin-market-repos:start/end` 标记区域，将规范化、去重后的公开仓库清单写入构建工作区。
 
 生成过程遵循以下约束：
 

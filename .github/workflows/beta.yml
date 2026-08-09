@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jxxghp/MoviePilot-Wiki
-          ref: v3
+          ref: main
           path: .build/moviepilot-wiki
           sparse-checkout: plugin.md
           sparse-checkout-cone-mode: false

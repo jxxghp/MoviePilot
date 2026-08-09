@@ -31,21 +31,21 @@ def test_install_and_docker_paths_do_not_reference_v2_resources():
         assert "resources.v3" in content
 
 
-def test_v3_release_workflows_use_isolated_branches_and_images():
-    """V3 正式版和 Beta 构建不得写入 V2 或无版本后缀的镜像仓库。"""
+def test_v3_release_workflows_use_main_wiki_and_isolated_images():
+    """V3 正式版和 Beta 构建应读取主 Wiki 分支并保持镜像仓库隔离。"""
     build_workflow = (ROOT_DIR / ".github" / "workflows" / "build-v3.yml").read_text(encoding="utf-8")
     beta_workflow = (ROOT_DIR / ".github" / "workflows" / "beta.yml").read_text(encoding="utf-8")
 
     assert "name: MoviePilot Builder v3" in build_workflow
     assert "      - v3" in build_workflow
-    assert "          ref: v3" in build_workflow
+    assert "          repository: jxxghp/MoviePilot-Wiki\n          ref: main" in build_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot-v3" in build_workflow
     assert "ghcr.io/${{ github.repository }}-v3" in build_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot-v2" not in build_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot\n" not in build_workflow
     assert "git tag -l 'v3.*'" in build_workflow
 
-    assert "          ref: v3" in beta_workflow
+    assert "          repository: jxxghp/MoviePilot-Wiki\n          ref: main" in beta_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot-v3" in beta_workflow
     assert "ghcr.io/${{ github.repository }}-v3" in beta_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot-v2" not in beta_workflow
