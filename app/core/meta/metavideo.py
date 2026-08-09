@@ -28,22 +28,27 @@ DIY_TITLE_RE = re.compile(r'-DIY@', re.IGNORECASE)
 DESCRIPTION_SPLIT_RE = re.compile(r'[\s/|]+')
 SPACE_RE = re.compile(r'\s+')
 SEASON_SUFFIX_RE = re.compile(r"SEASON$", re.IGNORECASE)
-REMUX_RESOURCE_RE = re.compile(r'(?<![A-Z0-9])REMUX(?![A-Z0-9])', re.IGNORECASE)
 
-
-def normalize_resource_type(resource_type: Optional[str], title: Optional[str]) -> Optional[str]:
-    """
-    根据原始标题补全连续出现的复合资源类型。
-
-    :param resource_type: 解析器已识别的资源类型
-    :param title: 原始标题
-    :return: 补全后的资源类型
-    """
-    if resource_type == "UHD BluRay" \
-            and title \
-            and REMUX_RESOURCE_RE.search(title):
-        return f"{resource_type} REMUX"
-    return resource_type
+SOURCE_RE = (
+    r"^BLURAY$|^HDTV$|^UHDTV$|^HDDVD$|^WEBRIP$|^DVDRIP$|^BDRIP$|"
+    r"^BLU$|^WEB$|^BD$|^HDRip$|^REMUX$|^UHD$"
+)
+SOURCE_PATTERN = re.compile(r"(%s)" % SOURCE_RE, re.IGNORECASE)
+SOURCE_NAMES = {
+    "BLURAY": "BluRay",
+    "HDTV": "HDTV",
+    "UHDTV": "UHDTV",
+    "HDDVD": "HDDVD",
+    "WEBRIP": "WEBRip",
+    "DVDRIP": "DVDRip",
+    "BDRIP": "BDRIP",
+    "BLU": "BLU",
+    "WEB": "WEB",
+    "BD": "BD",
+    "HDRIP": "HDRip",
+    "REMUX": "REMUX",
+    "UHD": "UHD",
+}
 
 
 class MetaVideo(MetaBase):
@@ -57,14 +62,14 @@ class MetaVideo(MetaBase):
     _last_token_type = ""
     _continue_flag = True
     _unknown_name_str = ""
-    _source = ""
+    _sources = []
     _effect = []
     # 正则式区
     _season_re = r"S(\d{3})|^S(\d{1,3})$|S(\d{1,3})E"
     _episode_re = r"EP?(\d{2,4})$|^EP?(\d{1,4})$|^S\d{1,2}EP?(\d{1,4})$|S\d{2}EP?(\d{2,4})"
     _part_re = r"(^PART[0-9ABI]{0,2}$|^CD[0-9]{0,2}$|^DVD[0-9]{0,2}$|^DISK[0-9]{0,2}$|^DISC[0-9]{0,2}$)"
     _roman_numerals = r"^(?=[MDCLXVI])M*(C[MD]|D?C{0,3})(X[CL]|L?X{0,3})(I[XV]|V?I{0,3})$"
-    _source_re = r"^BLURAY$|^HDTV$|^UHDTV$|^HDDVD$|^WEBRIP$|^DVDRIP$|^BDRIP$|^BLU$|^WEB$|^BD$|^HDRip$|^REMUX$|^UHD$"
+    _source_re = SOURCE_RE
     _effect_re = r"^SDR$|^HDR\d*$|^HDRVIVID$|^DOLBY$|^DOVI$|^DV$|^3D$|^REPACK$|^HLG$|^HDR10(\+|Plus)$|^HDR10P$|^VIVID$|^EDR$|^HQ$"
     _resources_type_re = r"%s|%s" % (_source_re, _effect_re)
     _name_no_begin_re = r"^[\[【].+?[\]】]"
@@ -91,7 +96,7 @@ class MetaVideo(MetaBase):
     _episode_pattern = re.compile(_episode_re, re.IGNORECASE)
     _part_pattern = re.compile(_part_re, re.IGNORECASE)
     _roman_numerals_pattern = re.compile(_roman_numerals)
-    _source_pattern = re.compile(r"(%s)" % _source_re, re.IGNORECASE)
+    _source_pattern = SOURCE_PATTERN
     _effect_pattern = re.compile(r"(%s)" % _effect_re, re.IGNORECASE)
     _resources_type_pattern = re.compile(r"(%s)" % _resources_type_re, re.IGNORECASE)
     _name_no_chinese_pattern = re.compile(_name_no_chinese_re, re.IGNORECASE)
@@ -114,7 +119,7 @@ class MetaVideo(MetaBase):
         if not title:
             return
         original_title = title
-        self._source = ""
+        self._sources = []
         self._effect = []
         self._index = 0
         # 判断是否纯数字命名
@@ -200,8 +205,8 @@ class MetaVideo(MetaBase):
         if self._effect:
             self._effect.reverse()
             self.resource_effect = " ".join(self._effect)
-        if self._source:
-            self.resource_type = normalize_resource_type(self._source.strip(), original_title)
+        if self._sources:
+            self.resource_type = " ".join(self._sources)
         # 提取原盘DIY
         if self.resource_type and "BluRay" in self.resource_type:
             if (self.subtitle and DIY_RE.search(self.subtitle)) \
@@ -590,6 +595,29 @@ class MetaVideo(MetaBase):
         elif token.upper() == "EPISODE":
             self._last_token_type = "EPISODE"
 
+    def __append_resource_source(self, source: str) -> None:
+        """
+        按出现顺序追加资源类型并忽略重复项。
+
+        :param source: 原始资源类型标记
+        """
+        source_name = SOURCE_NAMES.get(source.upper(), source)
+        if source_name.casefold() not in {
+            item.casefold() for item in self._sources
+        }:
+            self._sources.append(source_name)
+
+    def __replace_last_resource_source(self, source: str, replacement: str) -> None:
+        """
+        将拆分的资源类型前缀替换为完整规范名称。
+
+        :param source: 待替换的末尾资源类型
+        :param replacement: 完整资源类型
+        """
+        if self._sources and self._sources[-1].casefold() == source.casefold():
+            self._sources.pop()
+        self.__append_resource_source(replacement)
+
     def __init_resource_type(self, token):
         """
         识别资源类型
@@ -599,32 +627,17 @@ class MetaVideo(MetaBase):
         if token.upper() == "DL" \
                 and self._last_token_type == "source" \
                 and self._last_token == "WEB":
-            self._source = "WEB-DL"
+            self.__replace_last_resource_source("WEB", "WEB-DL")
             self._continue_flag = False
             return
         elif token.upper() == "RAY" \
                 and self._last_token_type == "source" \
                 and self._last_token == "BLU":
-            # UHD BluRay组合
-            if self._source == "UHD":
-                self._source = "UHD BluRay"
-            else:
-                self._source = "BluRay"
+            self.__replace_last_resource_source("BLU", "BluRay")
             self._continue_flag = False
             return
         elif token.upper() == "WEBDL":
-            self._source = "WEB-DL"
-            self._continue_flag = False
-            return
-            # UHD REMUX组合
-        if token.upper() == "REMUX" \
-                and self._source == "BluRay":
-            self._source = "BluRay REMUX"
-            self._continue_flag = False
-            return
-        elif token.upper() == "BLURAY" \
-                and self._source == "UHD":
-            self._source = "UHD BluRay"
+            self.__append_resource_source("WEB-DL")
             self._continue_flag = False
             return
         source_res = self._source_pattern.search(token)
@@ -632,9 +645,9 @@ class MetaVideo(MetaBase):
             self._last_token_type = "source"
             self._continue_flag = False
             self._stop_name_flag = True
-            if not self._source:
-                self._source = source_res.group(1)
-                self._last_token = self._source.upper()
+            source = source_res.group(1)
+            self.__append_resource_source(source)
+            self._last_token = source.upper()
             return
         effect_res = self._effect_pattern.search(token)
         if effect_res:

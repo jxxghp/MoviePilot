@@ -11,7 +11,6 @@ from app.core.meta.infopath import (
     clear_parsed_title_for_parent_merge,
     should_use_parent_title_for_file_stem,
 )
-from app.core.meta.metavideo import normalize_resource_type
 from app.core.meta.words import WordsMatcher
 from app.log import logger
 from app.schemas.types import MediaType
@@ -380,10 +379,7 @@ def _meta_from_rust(parsed: dict) -> Optional[MetaBase]:
         "begin_episode": parsed.get("begin_episode"),
         "end_episode": parsed.get("end_episode"),
         "part": parsed.get("part"),
-        "resource_type": normalize_resource_type(
-            parsed.get("resource_type"),
-            parsed.get("org_string") or parsed.get("title"),
-        ),
+        "resource_type": parsed.get("resource_type"),
         "resource_effect": parsed.get("resource_effect"),
         "resource_pix": parsed.get("resource_pix"),
         "resource_team": parsed.get("resource_team"),

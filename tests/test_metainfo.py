@@ -3,6 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from app.core.metainfo import MetaInfo, MetaInfoPath, find_metainfo
 from app.core.meta import MetaBase, MetaMusic
 from app.core.meta.metaanime import MetaAnime
@@ -173,25 +175,46 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
     assert meta.audio_encode == "DDP 5.1"
 
 
-def test_metainfo_preserves_uhd_bluray_remux_resource_type():
-    """默认解析入口应保留 UHD、BluRay 与 REMUX 三段资源类型。"""
-    meta = MetaInfo(
+RESOURCE_TYPE_CASES = [
+    (
         "They.Will.Kill.You.2026.2160p.UHD.BluRay.Remux."
-        "HEVC.DV.TrueHD.7.1.Atmos.mkv"
-    )
+        "HEVC.DV.TrueHD.7.1.Atmos.mkv",
+        "UHD BluRay REMUX",
+    ),
+    (
+        "Movie.2026.2160p.UHD.Blu-ray.Remux.BDRip.HEVC.mkv",
+        "UHD BluRay REMUX BDRIP",
+    ),
+    (
+        "Movie.2026.2160p.UHD.BluRay.UHD.Remux.Remux.HEVC.mkv",
+        "UHD BluRay REMUX",
+    ),
+    (
+        "Movie.2026.1080p.WEB-DL.WEBRip.Remux.H264.mkv",
+        "WEB-DL WEBRip REMUX",
+    ),
+]
 
-    assert meta.resource_type == "UHD BluRay REMUX"
+
+@pytest.mark.parametrize(("title", "expected"), RESOURCE_TYPE_CASES)
+def test_metainfo_preserves_all_resource_types(title, expected):
+    """默认解析入口应按顺序保留并去重所有受支持的资源类型。"""
+    meta = MetaInfo(title)
+
+    assert meta.resource_type == expected
+    assert meta.edition.startswith(expected)
+    assert expected in meta.resource_term
 
 
-def test_python_metainfo_preserves_uhd_bluray_remux_resource_type():
-    """Python 兜底解析应保留 UHD、BluRay 与 REMUX 三段资源类型。"""
+@pytest.mark.parametrize(("title", "expected"), RESOURCE_TYPE_CASES)
+def test_python_metainfo_preserves_all_resource_types(title, expected):
+    """Python 兜底解析应按顺序保留并去重所有受支持的资源类型。"""
     with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
-        meta = MetaInfo(
-            "They.Will.Kill.You.2026.2160p.UHD.BluRay.Remux."
-            "HEVC.DV.TrueHD.7.1.Atmos.mkv"
-        )
+        meta = MetaInfo(title)
 
-    assert meta.resource_type == "UHD BluRay REMUX"
+    assert meta.resource_type == expected
+    assert meta.edition.startswith(expected)
+    assert expected in meta.resource_term
 
 
 def test_metainfo_routes_audio_filename_to_music():
