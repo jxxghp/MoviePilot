@@ -21,6 +21,7 @@ def test_subscribe_source_keyword_includes_episode_group():
         anilistid=None,
         media_source="themoviedb",
         media_id="12345",
+        music_type=None,
     )
 
     source = SubscribeChain.get_subscribe_source_keyword(subscribe)

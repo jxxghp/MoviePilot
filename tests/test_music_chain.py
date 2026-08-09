@@ -25,8 +25,9 @@ def test_parse_query_keeps_plain_title():
 
 
 def test_build_site_keywords_prefers_artist_album():
-    """站点关键词应优先使用艺术家和专辑组合。"""
+    """专辑订阅只按艺术家与专辑名搜索，不混入其中某首单曲。"""
     info = MusicInfo(
+        music_type="album",
         title="Get Lucky",
         artists=["Daft Punk"],
         album="Random Access Memories",
@@ -34,8 +35,21 @@ def test_build_site_keywords_prefers_artist_album():
 
     assert MusicChain.build_site_keywords(info) == [
         "Daft Punk Random Access Memories",
-        "Daft Punk Get Lucky",
         "Random Access Memories",
+    ]
+
+
+def test_build_site_keywords_keeps_recording_out_of_album_search():
+    """单曲订阅只按艺术家与曲名搜索，不能优先命中所属整张专辑。"""
+    info = MusicInfo(
+        music_type="recording",
+        title="Get Lucky",
+        artists=["Daft Punk"],
+        album="Random Access Memories",
+    )
+
+    assert MusicChain.build_site_keywords(info) == [
+        "Daft Punk Get Lucky",
         "Get Lucky",
     ]
 

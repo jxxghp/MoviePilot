@@ -39,18 +39,21 @@ class MusicChain(ChainBase):
 
     @classmethod
     def build_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
-        """根据音乐元数据生成按精确度递减的站点搜索关键词。"""
+        """按单曲或专辑实体生成站点关键词，避免单曲订阅优先搜到所属整专。"""
         artists = music.artists or []
         artist = artists[0] if artists else music.album_artist
         keywords = []
-        if artist and music.album:
-            keywords.append(f"{artist} {music.album}")
-        if artist and music.title:
-            keywords.append(f"{artist} {music.title}")
-        if music.album:
-            keywords.append(music.album)
-        if music.title:
-            keywords.append(music.title)
+        if getattr(music, "music_type", None) == MUSIC_ENTITY_ALBUM:
+            album = music.album or music.title
+            if artist and album:
+                keywords.append(f"{artist} {album}")
+            if album:
+                keywords.append(album)
+        else:
+            if artist and music.title:
+                keywords.append(f"{artist} {music.title}")
+            if music.title:
+                keywords.append(music.title)
         return cls._unique_texts(keywords)
 
     @classmethod

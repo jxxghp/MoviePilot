@@ -1,7 +1,7 @@
 import time
 from typing import Tuple, List, Optional
 
-from app.core.context import MediaInfo, MusicInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo, MusicInfo
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
@@ -36,9 +36,11 @@ def _music_subscription_fields(mediainfo: MediaInfo | MusicInfo) -> dict:
     """从标准媒体信息提取音乐订阅需要持久化的专辑级字段。"""
     if mediainfo.type != MediaType.MUSIC:
         return {"music_type": None, "total_tracks": None}
+    music_type = getattr(mediainfo, "music_type", None)
     return {
-        "music_type": getattr(mediainfo, "music_type", None),
-        "total_tracks": getattr(mediainfo, "total_tracks", None),
+        "music_type": music_type,
+        "total_tracks": getattr(mediainfo, "total_tracks", None)
+        if music_type == MUSIC_ENTITY_ALBUM else None,
     }
 
 
@@ -65,6 +67,8 @@ class SubscribeOper(DbOper):
             "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": getattr(mediainfo, "music_type", None)
+            if mediainfo.type == MediaType.MUSIC else None,
             "season": kwargs.get("season"),
             "episode_group": mediainfo.episode_group,
         }
@@ -128,6 +132,8 @@ class SubscribeOper(DbOper):
             "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": getattr(mediainfo, "music_type", None)
+            if mediainfo.type == MediaType.MUSIC else None,
             "season": kwargs.get("season"),
             "episode_group": mediainfo.episode_group,
         }
@@ -178,6 +184,7 @@ class SubscribeOper(DbOper):
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
             season: Optional[int] = None, episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> bool:
         """
         按媒体身份、季号及可选剧集组判断订阅是否存在。
@@ -189,6 +196,7 @@ class SubscribeOper(DbOper):
             "anilistid": anilistid,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": music_type,
             "season": season,
             "episode_group": episode_group,
         }
@@ -211,13 +219,14 @@ class SubscribeOper(DbOper):
             tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
         """
         根据条件查询订阅
         """
         return Subscribe.get_by(
             self._db, type, season, tmdbid, doubanid, bangumiid, anilistid,
-            media_source, media_id,
+            media_source, media_id, music_type,
         )
 
     async def async_get_by(
@@ -225,13 +234,14 @@ class SubscribeOper(DbOper):
             tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
         """
         根据条件查询订阅
         """
         return await Subscribe.async_get_by(
             self._db, type, season, tmdbid, doubanid, bangumiid, anilistid,
-            media_source, media_id,
+            media_source, media_id, music_type,
         )
 
     def list(self, state: Optional[str] = None) -> List[Subscribe]:
@@ -327,6 +337,7 @@ class SubscribeOper(DbOper):
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
             season: Optional[int] = None, episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> bool:
         """
         按媒体身份、季号及可选剧集组判断订阅历史是否存在。
@@ -338,6 +349,7 @@ class SubscribeOper(DbOper):
             "anilistid": anilistid,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": music_type,
             "season": season,
             "episode_group": episode_group,
         }

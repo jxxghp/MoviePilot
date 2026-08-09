@@ -220,6 +220,53 @@ class SubscribeEndpointTest(TestCase):
         self.assertNotIn("username", payload["fields"])
         self.assertEqual(payload["subscribe_info"]["username"], "alice")
 
+    def test_update_subscribe_preserves_recognized_music_entity(self):
+        """普通编辑不得把专辑改为单曲或覆盖整专完成判定所需的曲目总数。"""
+        from app.api.endpoints.subscribe import update_subscribe
+
+        subscribe = _EndpointSubscribe(
+            id=23,
+            username="alice",
+            name="叶惠美",
+            type=MediaType.MUSIC.value,
+            music_type="album",
+            total_tracks=11,
+            total_episode=0,
+            lack_episode=0,
+            vote=0.0,
+            sites=[],
+            search_imdbid=0,
+            filter_groups=[],
+            start_episode=0,
+        )
+        subscribe_in = Subscribe(
+            id=23,
+            name="叶惠美",
+            type=MediaType.MUSIC.value,
+            music_type="recording",
+            total_tracks=1,
+        )
+
+        with patch(
+            "app.api.endpoints.subscribe.Subscribe.async_get",
+            new=AsyncMock(side_effect=[subscribe, subscribe]),
+        ), patch(
+            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ):
+            response = asyncio.run(
+                update_subscribe(
+                    subscribe_in=subscribe_in,
+                    db=object(),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        self.assertTrue(response.success)
+        self.assertEqual(subscribe.type, MediaType.MUSIC.value)
+        self.assertEqual(subscribe.music_type, "album")
+        self.assertEqual(subscribe.total_tracks, 11)
+
     def test_superuser_can_update_other_and_legacy_subscribe(self):
         """
         超级用户可以管理他人和 legacy 订阅。
@@ -311,6 +358,43 @@ class SubscribeEndpointTest(TestCase):
 
         self.assertEqual(result.id, 14)
 
+    def test_subscribe_mediaid_distinguishes_recording_and_album_entities(self):
+        """同一来源身份下查询专辑时不能返回单曲订阅。"""
+        from app.api.endpoints.subscribe import subscribe_mediaid
+
+        recording = _EndpointSubscribe(
+            id=21,
+            username="alice",
+            type=MediaType.MUSIC.value,
+            music_type="recording",
+            media_source="musicbrainz",
+            media_id="shared-id",
+        )
+        album = _EndpointSubscribe(
+            id=22,
+            username="alice",
+            type=MediaType.MUSIC.value,
+            music_type="album",
+            media_source="musicbrainz",
+            media_id="shared-id",
+        )
+
+        with patch(
+            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
+            new=AsyncMock(return_value=[recording, album]),
+        ) as list_by_identity:
+            result = asyncio.run(
+                subscribe_mediaid(
+                    mediaid="musicbrainz:shared-id",
+                    music_type="album",
+                    db=object(),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        self.assertEqual(result.id, 22)
+        self.assertEqual(list_by_identity.await_args.kwargs["music_type"], "album")
+
     def test_delete_subscribe_by_mediaid_deletes_owner_when_other_douban_match_first(self):
         """
         按媒体删除订阅时，应在候选集合中删除当前用户自己的订阅。
@@ -346,6 +430,32 @@ class SubscribeEndpointTest(TestCase):
         self.assertTrue(response.success)
         self.assertEqual(db.deleted, [own])
         send_event.assert_awaited_once()
+
+    def test_delete_subscribe_by_mediaid_forwards_music_entity(self):
+        """取消专辑订阅时必须把实体类型传给统一身份查询。"""
+        from app.api.endpoints.subscribe import delete_subscribe_by_mediaid
+
+        db = _EndpointAsyncDb()
+        with patch(
+            "app.api.endpoints.subscribe.list_subscribes_by_media_key",
+            new=AsyncMock(return_value=[]),
+        ) as list_by_key:
+            response = asyncio.run(
+                delete_subscribe_by_mediaid(
+                    mediaid="musicbrainz:release-group-1",
+                    music_type="album",
+                    db=db,
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        self.assertTrue(response.success)
+        list_by_key.assert_awaited_once_with(
+            db,
+            "musicbrainz:release-group-1",
+            None,
+            "album",
+        )
 
     def test_search_subscribes_regular_user_schedules_only_owned_rows(self):
         """

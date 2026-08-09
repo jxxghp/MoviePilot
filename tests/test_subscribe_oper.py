@@ -168,6 +168,35 @@ def test_music_album_subscription_persists_entity_and_track_count():
     assert payload["total_tracks"] == 11
 
 
+def test_music_recording_subscription_drops_album_track_count_and_scopes_identity():
+    """单曲只持久化实体类型，重复查询也必须携带实体，不能与专辑身份串用。"""
+    persisted = SimpleNamespace(id=95)
+    created = SimpleNamespace(create=MagicMock())
+    media = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        music_type="recording",
+        title="晴天",
+        album="叶惠美",
+        total_tracks=11,
+    )
+
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.exists.side_effect = [None, persisted]
+        subscribe_model.return_value = created
+
+        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+
+    assert sid == 95
+    payload = subscribe_model.call_args.kwargs
+    assert payload["music_type"] == "recording"
+    assert payload["total_tracks"] is None
+    assert all(
+        call.kwargs["music_type"] == "recording"
+        for call in subscribe_model.exists.call_args_list
+    )
+
+
 @pytest.mark.parametrize("episode_group", [None, "eg-1"])
 def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     """异步新增与同步路径使用相同的剧集组身份契约。"""
@@ -294,6 +323,55 @@ def test_subscribe_exists_distinguishes_same_season_episode_groups():
             Subscribe.delete(oper._db, rid=subscribe_id)
 
 
+def test_subscribe_exists_distinguishes_music_entities_with_same_source_id():
+    """统一来源 ID 相同时，单曲与专辑仍是两条独立订阅身份。"""
+    oper = SubscribeOper()
+    media_id = f"music-shared-{os.getpid()}"
+    created_ids = []
+    rows = [
+        Subscribe(
+            name="同名单曲",
+            type=MediaType.MUSIC.value,
+            state="N",
+            media_source="musicbrainz",
+            media_id=media_id,
+            music_type="recording",
+        ),
+        Subscribe(
+            name="同名专辑",
+            type=MediaType.MUSIC.value,
+            state="N",
+            media_source="musicbrainz",
+            media_id=media_id,
+            music_type="album",
+            total_tracks=10,
+        ),
+    ]
+    try:
+        for row in rows:
+            row.create(oper._db)
+
+        recording = Subscribe.exists(
+            oper._db,
+            media_source="musicbrainz",
+            media_id=media_id,
+            music_type="recording",
+        )
+        created_ids.append(recording.id)
+        album = Subscribe.exists(
+            oper._db,
+            media_source="musicbrainz",
+            media_id=media_id,
+            music_type="album",
+        )
+        created_ids.append(album.id)
+        assert recording.name == "同名单曲"
+        assert album.name == "同名专辑"
+    finally:
+        for subscribe_id in created_ids:
+            Subscribe.delete(oper._db, rid=subscribe_id)
+
+
 def test_subscribe_chain_exists_forwards_episode_group():
     """订阅前置存在性检查必须查询当前剧集组，不能退回主季范围。"""
     from app.chain.subscribe import SubscribeChain
@@ -312,6 +390,7 @@ def test_subscribe_chain_exists_forwards_episode_group():
         anilistid=media.anilist_id,
         media_source="themoviedb",
         media_id=str(media.tmdb_id),
+        music_type=None,
         season=1,
         episode_group="eg-1",
     )

@@ -19,6 +19,7 @@ from app.chain.torrents import TorrentsChain
 from app.core.config import settings, global_vars
 from app.core.context import (
     MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
     Context,
     MediaInfo,
     MusicInfo,
@@ -71,7 +72,7 @@ def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
             title=subscribe.name,
             album=subscribe.name if is_album else None,
             year=subscribe.year,
-            total_tracks=getattr(subscribe, "total_tracks", None),
+            total_tracks=getattr(subscribe, "total_tracks", None) if is_album else None,
             media_source=subscribe.media_source,
             media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
         )
@@ -983,6 +984,15 @@ class SubscribeChain(ChainBase):
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
             return None, "未识别到媒体信息"
 
+        if mtype == MediaType.MUSIC:
+            music_error = self._validate_music_subscribe_target(
+                mediainfo,
+                requested_music_type=kwargs.get("music_type"),
+            )
+            if music_error:
+                logger.warning(f"音乐订阅目标校验失败：{title} - {music_error}")
+                return None, music_error
+
         # 总集数
         if mediainfo.type == MediaType.TV:
             if season is None:
@@ -1103,7 +1113,8 @@ class SubscribeChain(ChainBase):
             "media_source": media_source,
             "media_id": media_id,
             "music_type": getattr(mediainfo, "music_type", None),
-            "total_tracks": getattr(mediainfo, "total_tracks", None),
+            "total_tracks": getattr(mediainfo, "total_tracks", None)
+            if getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM else None,
             "season": season,
             "poster": mediainfo.get_poster_image(),
             "backdrop": mediainfo.get_backdrop_image(),
@@ -1200,6 +1211,15 @@ class SubscribeChain(ChainBase):
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
             return None, "未识别到媒体信息"
+
+        if mtype == MediaType.MUSIC:
+            music_error = self._validate_music_subscribe_target(
+                mediainfo,
+                requested_music_type=kwargs.get("music_type"),
+            )
+            if music_error:
+                logger.warning(f"音乐订阅目标校验失败：{title} - {music_error}")
+                return None, music_error
 
         # 总集数
         if mediainfo.type == MediaType.TV:
@@ -1321,7 +1341,8 @@ class SubscribeChain(ChainBase):
             "media_source": media_source,
             "media_id": media_id,
             "music_type": getattr(mediainfo, "music_type", None),
-            "total_tracks": getattr(mediainfo, "total_tracks", None),
+            "total_tracks": getattr(mediainfo, "total_tracks", None)
+            if getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM else None,
             "season": season,
             "poster": mediainfo.get_poster_image(),
             "backdrop": mediainfo.get_backdrop_image(),
@@ -1344,11 +1365,58 @@ class SubscribeChain(ChainBase):
                 anilistid=mediainfo.anilist_id,
                 media_source=media_source,
                 media_id=media_id,
+                music_type=getattr(mediainfo, "music_type", None)
+                if mediainfo.type == MediaType.MUSIC else None,
                 season=meta.begin_season if meta else None,
                 episode_group=mediainfo.episode_group,
         ):
             return True
         return False
+
+    @staticmethod
+    def _validate_music_subscribe_target(
+            mediainfo: MediaInfo,
+            requested_music_type: Optional[str] = None,
+    ) -> Optional[str]:
+        """校验音乐订阅实体一致性，并确保专辑具备可验证的曲目总数。"""
+        if mediainfo.type != MediaType.MUSIC:
+            return "识别结果不是音乐"
+        music_type = getattr(mediainfo, "music_type", None)
+        supported_types = {MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM}
+        if requested_music_type and requested_music_type not in supported_types:
+            return "音乐订阅仅支持单曲或专辑"
+        if music_type not in supported_types:
+            return "音乐订阅仅支持单曲或专辑"
+        if requested_music_type and requested_music_type != music_type:
+            return f"音乐订阅类型不匹配：请求 {requested_music_type}，识别为 {music_type}"
+        if music_type == MUSIC_ENTITY_ALBUM:
+            try:
+                total_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)
+            except (TypeError, ValueError):
+                total_tracks = 0
+            if total_tracks <= 0:
+                return "专辑总曲目数未知，无法校验整张专辑资源"
+        return None
+
+    @staticmethod
+    def _ensure_music_subscribe_entity(
+            subscribe: Subscribe,
+            mediainfo: Optional[MusicInfo],
+    ) -> Optional[MusicInfo]:
+        """保持已持久化的单曲/专辑实体边界，拒绝远端详情把订阅类型改写。"""
+        if not mediainfo:
+            return None
+        expected_type = getattr(subscribe, "music_type", None)
+        if expected_type and expected_type not in {MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM}:
+            logger.warning(f"音乐订阅 {subscribe.name} 的实体类型无效：{expected_type}")
+            return None
+        if expected_type and mediainfo.music_type != expected_type:
+            logger.warning(
+                f"音乐订阅 {subscribe.name} 实体不匹配："
+                f"订阅为 {expected_type}，远端识别为 {mediainfo.music_type}，使用订阅快照"
+            )
+            return SubscribeChain._music_info_from_subscribe(subscribe)
+        return mediainfo
 
     @staticmethod
     def _recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
@@ -1361,8 +1429,8 @@ class SubscribeChain(ChainBase):
                 mtype=MediaType.MUSIC,
             )
             if mediainfo:
-                return mediainfo
-            if getattr(subscribe, "music_type", None):
+                return SubscribeChain._ensure_music_subscribe_entity(subscribe, mediainfo)
+            if getattr(subscribe, "music_type", None) in {MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM}:
                 return SubscribeChain._music_info_from_subscribe(subscribe)
             # 旧订阅没有保存实体类型时不能猜测为单曲，否则可能误把专辑按单曲完成。
             return None
@@ -1387,8 +1455,8 @@ class SubscribeChain(ChainBase):
                 mtype=MediaType.MUSIC,
             )
             if mediainfo:
-                return mediainfo
-            if getattr(subscribe, "music_type", None):
+                return SubscribeChain._ensure_music_subscribe_entity(subscribe, mediainfo)
+            if getattr(subscribe, "music_type", None) in {MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM}:
                 return SubscribeChain._music_info_from_subscribe(subscribe)
             return None
         if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
@@ -1411,7 +1479,8 @@ class SubscribeChain(ChainBase):
             title=subscribe.name,
             album=subscribe.name if music_type == MUSIC_ENTITY_ALBUM else None,
             year=int(year_text) if year_text.isdigit() else None,
-            total_tracks=getattr(subscribe, "total_tracks", None),
+            total_tracks=getattr(subscribe, "total_tracks", None)
+            if music_type == MUSIC_ENTITY_ALBUM else None,
             cover_url=getattr(subscribe, "poster", None) or getattr(subscribe, "backdrop", None),
         )
 
@@ -1421,8 +1490,9 @@ class SubscribeChain(ChainBase):
         update_data = {}
         if mediainfo.music_type and getattr(subscribe, "music_type", None) != mediainfo.music_type:
             update_data["music_type"] = mediainfo.music_type
-        if mediainfo.total_tracks and getattr(subscribe, "total_tracks", None) != mediainfo.total_tracks:
-            update_data["total_tracks"] = mediainfo.total_tracks
+        total_tracks = mediainfo.total_tracks if mediainfo.music_type == MUSIC_ENTITY_ALBUM else None
+        if getattr(subscribe, "total_tracks", None) != total_tracks:
+            update_data["total_tracks"] = total_tracks
         if not update_data:
             return
         SubscribeOper().update(subscribe.id, update_data)
@@ -2448,9 +2518,11 @@ class SubscribeChain(ChainBase):
                 "total_episode": total_episode,
             }
             if meta.type == MediaType.MUSIC:
+                music_type = getattr(mediainfo, "music_type", None)
                 update_data.update({
-                    "music_type": getattr(mediainfo, "music_type", None),
-                    "total_tracks": getattr(mediainfo, "total_tracks", None),
+                    "music_type": music_type,
+                    "total_tracks": getattr(mediainfo, "total_tracks", None)
+                    if music_type == MUSIC_ENTITY_ALBUM else None,
                 })
             update_data.update(progress_update)
             for key, value in progress_update.items():
@@ -2479,6 +2551,7 @@ class SubscribeChain(ChainBase):
             if k in [
                 "type", "season", "tmdbid", "doubanid", "bangumiid",
                 "anilistid", "media_source", "media_id",
+                "music_type",
             ]
         }
         # 暂时不考虑订阅历史, 若有必要再添加
@@ -2525,6 +2598,7 @@ class SubscribeChain(ChainBase):
                                         anilistid=share_sub.get("anilistid"),
                                         media_source=share_sub.get("media_source"),
                                         media_id=share_sub.get("media_id"),
+                                        music_type=share_sub.get("music_type"),
                                         season=share_sub.get("season"),
                                         episode_group=share_sub.get("episode_group")):
                     continue
@@ -2535,6 +2609,7 @@ class SubscribeChain(ChainBase):
                                                anilistid=share_sub.get("anilistid"),
                                                media_source=share_sub.get("media_source"),
                                                media_id=share_sub.get("media_id"),
+                                               music_type=share_sub.get("music_type"),
                                                season=share_sub.get("season"),
                                                episode_group=share_sub.get("episode_group")):
                     continue
@@ -2546,7 +2621,7 @@ class SubscribeChain(ChainBase):
                 subscribe_in = schemas.Subscribe(**share_sub)
                 mtype = MediaType(subscribe_in.type)
                 # 豆瓣标题处理
-                if (
+                if mtype != MediaType.MUSIC and (
                         subscribe_in.doubanid
                         or subscribe_in.bangumiid
                         or subscribe_in.anilistid
@@ -2573,6 +2648,8 @@ class SubscribeChain(ChainBase):
                                                     anilistid=subscribe_in.anilistid,
                                                     media_source=subscribe_in.media_source,
                                                     media_id=subscribe_in.media_id,
+                                                    music_type=subscribe_in.music_type,
+                                                    total_tracks=subscribe_in.total_tracks,
                                                     username="订阅分享",
                                                     best_version=subscribe_in.best_version,
                                                     save_path=subscribe_in.save_path,
@@ -2711,8 +2788,10 @@ class SubscribeChain(ChainBase):
                 # 电影只有一个条目，设置为 [1]
                 items = [1]
             elif mediainfo.type == MediaType.MUSIC:
-                # 音乐订阅和电影一样，一次成功下载即记录单项完成事实。
-                items = [1]
+                # 专辑只能记录已由下载层确认的整专资源；单曲任一成功任务即可完成。
+                if getattr(subscribe, "music_type", None) != MUSIC_ENTITY_ALBUM \
+                        or context.confirmed_full_coverage:
+                    items = [1]
             if not items:
                 continue
             # 合并已下载的集数或电影项（去重）
@@ -4627,6 +4706,7 @@ class SubscribeChain(ChainBase):
             'anilistid': subscribe.anilistid,
             'media_source': subscribe.media_source,
             'media_id': subscribe.media_id,
+            'music_type': getattr(subscribe, 'music_type', None),
         }
         return f"Subscribe|{json.dumps(source_keyword, ensure_ascii=False)}"
 

@@ -79,6 +79,7 @@ def _load_subscribe_chain_class():
     context_module.MediaInfo = SimpleNamespace
     context_module.MusicInfo = SimpleNamespace
     context_module.MUSIC_ENTITY_ALBUM = "album"
+    context_module.MUSIC_ENTITY_RECORDING = "recording"
 
     event_module = ensure_module("app.core.event", types.ModuleType("app.core.event"))
 

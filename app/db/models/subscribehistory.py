@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Float, JSON, Index, select
+from sqlalchemy import Column, Integer, String, Float, JSON, Index, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -144,10 +144,17 @@ class SubscribeHistory(Base):
             doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None,
             anilistid: Optional[int] = None,
+            music_type: Optional[str] = None,
     ):
         """按统一媒体身份优先级构造订阅历史查询条件。"""
         if media_source and media_id:
-            return (cls.media_source == media_source) & (cls.media_id == str(media_id))
+            condition = (cls.media_source == media_source) & (cls.media_id == str(media_id))
+            if music_type == "recording":
+                # 旧历史记录没有实体字段，历史语义等同单曲。
+                return condition & or_(cls.music_type == music_type, cls.music_type.is_(None))
+            if music_type:
+                return condition & (cls.music_type == music_type)
+            return condition
         if tmdbid is not None:
             return cls.tmdbid == tmdbid
         if doubanid:
@@ -166,10 +173,11 @@ class SubscribeHistory(Base):
             anilistid: Optional[int] = None, media_source: Optional[str] = None,
             media_id: Optional[str] = None, season: Optional[int] = None,
             episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
     ):
         """按媒体身份、季号及可选剧集组查询订阅历史。"""
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid
+            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
         )
         if condition is None:
             return None
@@ -187,10 +195,11 @@ class SubscribeHistory(Base):
             anilistid: Optional[int] = None, media_source: Optional[str] = None,
             media_id: Optional[str] = None, season: Optional[int] = None,
             episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
     ):
         """异步按媒体身份、季号及可选剧集组查询订阅历史。"""
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid
+            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
         )
         if condition is None:
             return None

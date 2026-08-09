@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
-from app.core.context import MediaInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaInfo
 from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_apitoken
@@ -105,16 +105,38 @@ def select_accessible_subscribe(
     return None
 
 
+def matches_subscribe_music_type(
+        subscribe: Subscribe,
+        music_type: Optional[str],
+) -> bool:
+    """匹配订阅音乐实体，并把迁移前未标注类型的历史记录兼容为单曲。"""
+    if not music_type:
+        return True
+    subscribe_music_type = getattr(subscribe, "music_type", None)
+    return subscribe_music_type == music_type \
+        or (music_type == MUSIC_ENTITY_RECORDING and subscribe_music_type is None)
+
+
 async def list_subscribes_by_media_key(
-        db: AsyncSession, media_key: str, season: Optional[int] = None,
+        db: AsyncSession,
+        media_key: str,
+        season: Optional[int] = None,
+        music_type: Optional[str] = None,
 ) -> List[Subscribe]:
-    """按统一媒体键查询订阅，并兼容迁移前的专用 ID 字段。"""
+    """按统一媒体键及音乐实体查询订阅，并兼容迁移前的专用 ID 字段。"""
     source, media_id = parse_media_key(media_key)
     if not source or not media_id:
-        return await Subscribe.async_list_by_mediaid(db, media_key)
+        subscribes = list(await Subscribe.async_list_by_mediaid(db, media_key))
+        return [
+            subscribe for subscribe in subscribes
+            if matches_subscribe_music_type(subscribe, music_type)
+        ]
 
     subscribes = list(await Subscribe.async_list_by_media_identity(
-        db, media_source=source, media_id=media_id
+        db,
+        media_source=source,
+        media_id=media_id,
+        music_type=music_type,
     ))
     if source == "themoviedb" and media_id.isdigit():
         subscribes.extend(await Subscribe.async_get_by_tmdbid(db, int(media_id), season))
@@ -125,7 +147,11 @@ async def list_subscribes_by_media_key(
     elif source == "anilist" and media_id.isdigit():
         subscribes.extend(await Subscribe.async_list_by_anilistid(db, int(media_id)))
 
-    unique_subscribes = {subscribe.id: subscribe for subscribe in subscribes}
+    unique_subscribes = {
+        subscribe.id: subscribe
+        for subscribe in subscribes
+        if matches_subscribe_music_type(subscribe, music_type)
+    }
     if season is not None:
         return [
             subscribe for subscribe in unique_subscribes.values()
@@ -218,6 +244,12 @@ async def update_subscribe(
     old_subscribe_dict = subscribe.to_dict()
     subscribe_dict = subscribe_in.to_public_write_payload()
     subscribe_dict["username"] = subscribe.username
+    if getattr(subscribe, "type", None) == MediaType.MUSIC.value:
+        # 音乐实体与曲目总数来自识别链，编辑接口不得把专辑改成单曲而提前完成订阅。
+        subscribe_dict["type"] = subscribe.type
+        subscribe_dict["music_type"] = subscribe.music_type
+        subscribe_dict["total_tracks"] = subscribe.total_tracks \
+            if subscribe.music_type == MUSIC_ENTITY_ALBUM else None
     if subscribe_in.total_episode and subscribe_in.total_episode > (subscribe.total_episode or 0):
         # 扩大目标范围时，新增加的集数尚无下载事实，应同步计入缺失集数。
         subscribe_dict["lack_episode"] = (subscribe.lack_episode or 0) + (
@@ -281,13 +313,14 @@ async def subscribe_mediaid(
     mediaid: str,
     season: Optional[int] = None,
     title: Optional[str] = None,
+    music_type: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user_async),
 ) -> Any:
     """
     根据 TMDB、豆瓣、Bangumi、AniList 或插件媒体键查询订阅。
     """
-    subscribes = await list_subscribes_by_media_key(db, mediaid, season)
+    subscribes = await list_subscribes_by_media_key(db, mediaid, season, music_type)
     result = select_accessible_subscribe(subscribes, current_user)
     source, _ = parse_media_key(mediaid)
     title_check = not result and bool(title) and source != "themoviedb"
@@ -299,6 +332,11 @@ async def subscribe_mediaid(
         subscribes = await Subscribe.async_list_by_title(
             db, title=meta.name, season=meta.begin_season
         )
+        if music_type:
+            subscribes = [
+                subscribe for subscribe in subscribes
+                if matches_subscribe_music_type(subscribe, music_type)
+            ]
         result = select_accessible_subscribe(subscribes, current_user)
 
     return result if result else Subscribe()
@@ -429,13 +467,14 @@ async def search_subscribe(
 async def delete_subscribe_by_mediaid(
     mediaid: str,
     season: Optional[int] = None,
+    music_type: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user_async),
 ) -> Any:
     """
     根据任意媒体数据源 ID 删除订阅。
     """
-    delete_subscribes = await list_subscribes_by_media_key(db, mediaid, season)
+    delete_subscribes = await list_subscribes_by_media_key(db, mediaid, season, music_type)
     delete_events = []
     for subscribe in [
         subscribe
