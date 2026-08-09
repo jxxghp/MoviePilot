@@ -169,6 +169,7 @@
     "订阅不存在": "Subscription does not exist",
     "无效的订阅状态": "Invalid subscription status",
     "不支持的通知类型": "Unsupported notification type",
+    "不支持的媒体类型": "Unsupported media type",
     "请求参数不正确": "Request parameters are incorrect",
     "所有配置项更新成功": "All configuration items were updated successfully",
     "不支持的 Wiki 同步地址": "Unsupported Wiki sync URL",
