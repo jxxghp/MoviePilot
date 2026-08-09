@@ -13,6 +13,7 @@ from app.api.endpoints.music import (
     music_artist_related,
     recognize_music,
 )
+from app.api.endpoints import media as media_endpoints
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
 from app.schemas.music import MusicRecognizeRequest
 from app.schemas.types import MediaType
@@ -37,6 +38,46 @@ def test_music_routes_are_registered():
     assert any(
         path == "/media/search" and "GET" in methods for path, methods in routes
     )
+
+
+def test_media_search_routes_music_queries_with_query_kwarg():
+    """统一媒体搜索的音乐分支应以 AsyncSearch 的关键字参数调用 MusicChain。"""
+    from app.chain.music import MusicChain
+
+    chain = Mock()
+    chain.async_search = AsyncMock(
+        return_value=[
+            MusicInfo(
+                source="musicbrainz",
+                media_id="recording-1",
+                music_type="recording",
+                title="晴天",
+                artists=["周杰伦"],
+                release_date="2003-07-31",
+                category="Album / Studio",
+            )
+        ]
+    )
+
+    with (
+        patch("app.api.endpoints.media.MusicChain", return_value=chain) as music_chain,
+        patch.object(media_endpoints, "MediaChain") as media_chain,
+    ):
+        result = asyncio.run(
+            media_endpoints.search(
+                title="晴天",
+                type="music",
+                count=30,
+                page=1,
+                _=Mock(),
+            )
+        )
+
+    assert result[0]["media_id"] == "recording-1"
+    assert result[0]["music_type"] == "recording"
+    assert result[0]["title"] == "晴天"
+    chain.async_search.assert_awaited_once_with(query="晴天", limit=30)
+    media_chain.return_value.async_search.assert_not_called()
 
 
 def test_recognize_music_returns_detail():

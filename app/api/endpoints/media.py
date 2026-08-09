@@ -223,7 +223,7 @@ async def search(
     media_chain = MediaChain()
     if type == "music" or source == "musicbrainz":
         # 音乐搜索统一入口，与影视搜索共用 /media/search
-        music_infos = await MusicChain().async_search(title=title, limit=count)
+        music_infos = await MusicChain().async_search(query=title, limit=count)
         return [
             info.to_dict()
             for info in music_infos
