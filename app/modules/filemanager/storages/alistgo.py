@@ -4,7 +4,7 @@ from app.schemas.types import StorageSchema
 
 class AlistGo(Alist):
     """
-    AList相关操作
+    AListGo 相关操作
 
     API 文档：https://docs.alistgo.com/
     """
