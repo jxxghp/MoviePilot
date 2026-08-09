@@ -2,12 +2,12 @@ import json
 import platform
 from pathlib import Path
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 from app.core.cache import cached
 from app.core.config import settings
-from app.core.context import MediaInfo
+from app.core.context import MediaInfo, MusicInfo
 from app.core.meta import MetaBase
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -1366,11 +1366,11 @@ class MoviePilotServerHelper:
     def report_recognize_share(
             cls,
             meta: Optional[MetaBase],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             keyword_meta: Optional[MetaBase] = None,
     ) -> bool:
         """
-        上报共享识别结果。
+        上报共享识别结果，电影、电视剧、音乐共用。
         """
         if not settings.MEDIA_RECOGNIZE_SHARE:
             return False
@@ -1388,11 +1388,11 @@ class MoviePilotServerHelper:
     async def async_report_recognize_share(
             cls,
             meta: Optional[MetaBase],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             keyword_meta: Optional[MetaBase] = None,
     ) -> bool:
         """
-        异步上报共享识别结果。
+        异步上报共享识别结果，电影、电视剧、音乐共用。
         """
         if not settings.MEDIA_RECOGNIZE_SHARE:
             return False
@@ -1409,7 +1409,7 @@ class MoviePilotServerHelper:
     @classmethod
     def to_recognize_params(cls, item: Optional[dict]) -> Optional[dict]:
         """
-        将服务端返回的共享识别结果转成本地识别参数。
+        将服务端返回的共享识别结果转成本地识别参数，音乐仅携带数据源原生 ID。
         """
         if not isinstance(item, dict):
             return None
@@ -1461,13 +1461,15 @@ class MoviePilotServerHelper:
         统一媒体类型，兼容枚举、中文值和 agent 风格字符串。
         """
         normalized = media_type_to_agent(media_type)
-        if normalized in {"movie", "tv"}:
+        if normalized in {"movie", "tv", "music"}:
             return normalized
         if isinstance(media_type, str):
             if media_type == MediaType.MOVIE.value:
                 return "movie"
             if media_type == MediaType.TV.value:
                 return "tv"
+            if media_type == MediaType.MUSIC.value:
+                return "music"
         return None
 
     @staticmethod
@@ -1495,9 +1497,10 @@ class MoviePilotServerHelper:
         media_type = cls._normalize_media_type(mtype)
         if media_type:
             return media_type
-        if mediainfo and mediainfo.type in {MediaType.MOVIE, MediaType.TV}:
+        shareable_types = {MediaType.MOVIE, MediaType.TV, MediaType.MUSIC}
+        if mediainfo and mediainfo.type in shareable_types:
             return mediainfo.type.to_agent()
-        if meta and meta.type in {MediaType.MOVIE, MediaType.TV}:
+        if meta and meta.type in shareable_types:
             return meta.type.to_agent()
         if meta and (meta.begin_season is not None or meta.begin_episode is not None):
             return "tv"
@@ -1566,11 +1569,11 @@ class MoviePilotServerHelper:
     def _build_recognize_report_payload(
             cls,
             meta: Optional[MetaBase],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             keyword_meta: Optional[MetaBase] = None,
     ) -> Optional[dict]:
         """
-        组装共享识别上报载荷。
+        组装共享识别上报载荷，电影、电视剧、音乐共用同一结构。
         """
         if not meta or not mediainfo:
             return None

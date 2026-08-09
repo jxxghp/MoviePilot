@@ -3,7 +3,7 @@
 覆盖 MediaChain 同步/异步 ``recognize_by_meta`` 与 ``recognize_by_path`` 按
 ``MetaMusic`` 路由到音乐模块，以及 MusicBrainz 模块 ``recognize_media`` /
 ``async_recognize_media`` 对音乐请求的详情、搜索匹配与兜底分支，ChainBase
-对 MusicInfo 结果短路返回（不参与影视共享上报）。
+对 MusicInfo 结果与影视统一走共享识别上报。
 """
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
@@ -148,8 +148,8 @@ def test_musicbrainz_module_async_recognize_media(monkeypatch):
     assert result is expected
 
 
-def test_chain_recognize_media_returns_musicinfo_without_shared_report():
-    """ChainBase.recognize_media 收到 MusicInfo 结果应直接返回，不触发影视共享上报。"""
+def test_chain_recognize_media_returns_musicinfo_and_reports_share():
+    """ChainBase.recognize_media 收到 MusicInfo 结果应与影视统一上报共享识别。"""
     expected = _music_info()
     chain = MediaChain()
     chain.run_module = Mock(return_value=expected)
@@ -158,22 +158,25 @@ def test_chain_recognize_media_returns_musicinfo_without_shared_report():
     ) as report_mock:
         result = chain.recognize_media(meta=MetaMusic(title="晴天"))
 
-    report_mock.assert_not_called()
+    report_mock.assert_called_once()
+    assert report_mock.call_args.kwargs["mediainfo"] is expected
     assert result is expected
 
 
-def test_chain_async_recognize_media_returns_musicinfo_without_shared_report():
-    """异步 ChainBase 收到 MusicInfo 结果应直接返回，不触发影视共享上报。"""
+def test_chain_async_recognize_media_returns_musicinfo_and_reports_share():
+    """异步 ChainBase 收到 MusicInfo 结果应与影视统一上报共享识别。"""
     expected = _music_info()
     chain = MediaChain()
     chain.async_run_module = AsyncMock(return_value=expected)
     with patch(
-        "app.helper.server.MoviePilotServerHelper.async_report_recognize_share"
+        "app.helper.server.MoviePilotServerHelper.async_report_recognize_share",
+        AsyncMock(),
     ) as report_mock:
         async def runner():
             return await chain.async_recognize_media(meta=MetaMusic(title="晴天"))
 
         result = asyncio.run(runner())
 
-    report_mock.assert_not_called()
+    report_mock.assert_awaited_once()
+    assert report_mock.call_args.kwargs["mediainfo"] is expected
     assert result is expected

@@ -14,7 +14,7 @@ from transmission_rpc import File
 
 from app.core.cache import FileCache, AsyncFileCache, fresh, async_fresh
 from app.core.config import settings
-from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
@@ -705,10 +705,8 @@ class ChainBase(metaclass=ABCMeta):
                 **module_kwargs,
             )
         if mediainfo:
-            # 音乐识别结果不参与影视共享上报
-            if isinstance(mediainfo, MusicInfo):
-                return mediainfo
-            if not mediainfo.recognize_cache_hit:
+            # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
+            if not getattr(mediainfo, "recognize_cache_hit", False):
                 MoviePilotServerHelper.report_recognize_share(
                     meta=meta,
                     mediainfo=mediainfo,
@@ -716,7 +714,7 @@ class ChainBase(metaclass=ABCMeta):
                 )
             return mediainfo
 
-        if not source and mtype != MediaType.MUSIC and self._can_use_media_recognize_share(
+        if not source and self._can_use_media_recognize_share(
                 share_query_meta, tmdbid, doubanid, bangumiid, anilistid
         ):
             shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
@@ -818,10 +816,8 @@ class ChainBase(metaclass=ABCMeta):
                 **module_kwargs,
             )
         if mediainfo:
-            # 音乐识别结果不参与影视共享上报
-            if isinstance(mediainfo, MusicInfo):
-                return mediainfo
-            if not mediainfo.recognize_cache_hit:
+            # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
+            if not getattr(mediainfo, "recognize_cache_hit", False):
                 await MoviePilotServerHelper.async_report_recognize_share(
                     meta=meta,
                     mediainfo=mediainfo,
@@ -829,7 +825,7 @@ class ChainBase(metaclass=ABCMeta):
                 )
             return mediainfo
 
-        if not source and mtype != MediaType.MUSIC and self._can_use_media_recognize_share(
+        if not source and self._can_use_media_recognize_share(
                 share_query_meta, tmdbid, doubanid, bangumiid, anilistid
         ):
             shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
