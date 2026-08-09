@@ -255,7 +255,7 @@ class Plex:
         """按歌曲、艺术家或专辑名称查询 Plex 音乐条目。"""
         if not self._plex:
             return []
-        query = " ".join(filter(None, [title, artist, album])).strip()
+        query = album or title or artist
         if not query:
             return []
         results: List[schemas.MediaServerItem] = []
@@ -264,15 +264,27 @@ class Plex:
                 if library.type not in ("artist", "music"):
                     continue
                 for item in library.search(title=query):
+                    item_type = getattr(item, "type", None)
+                    if item_type == "track":
+                        item_artist = getattr(item, "grandparentTitle", None)
+                        item_album = getattr(item, "parentTitle", None)
+                    else:
+                        item_artist = getattr(item, "parentTitle", None)
+                        item_album = getattr(item, "title", None) if item_type == "album" else None
                     results.append(schemas.MediaServerItem(
                         server="plex",
                         library=library.key,
                         item_id=getattr(item, "ratingKey", None) or getattr(item, "key", None),
-                        item_type=MediaType.MUSIC.value,
+                        item_type=item_type or MediaType.MUSIC.value,
                         title=getattr(item, "title", None),
                         original_title=getattr(item, "title", None),
                         year=getattr(item, "year", None),
                         path=getattr(item, "file", None),
+                        note={
+                            "artist": item_artist,
+                            "album": item_album,
+                            "song_count": getattr(item, "leafCount", None),
+                        },
                     ))
         except Exception as e:
             logger.debug(f"查询Plex音乐出错：{e}")

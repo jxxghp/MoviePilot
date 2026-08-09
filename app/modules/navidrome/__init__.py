@@ -3,8 +3,9 @@
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app import schemas
-from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo
+from app.core.context import MediaInfo
 from app.core.event import eventmanager
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.navidrome.navidrome import Navidrome
@@ -100,18 +101,6 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
                 return credentials
         return None
 
-    @staticmethod
-    def _has_complete_album(mediainfo: MediaInfo, item: schemas.MediaServerItem) -> bool:
-        """校验 Navidrome 专辑条目的曲目数是否覆盖订阅目标。"""
-        if getattr(mediainfo, "music_type", None) != MUSIC_ENTITY_ALBUM:
-            return True
-        try:
-            expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)
-            actual_tracks = int((item.note or {}).get("song_count") or 0)
-        except (AttributeError, TypeError, ValueError):
-            return False
-        return expected_tracks > 0 and actual_tracks >= expected_tracks
-
     def media_exists(
         self, mediainfo: MediaInfo, itemid: Optional[str] = None, server: Optional[str] = None
     ) -> Optional[schemas.ExistMediaInfo]:
@@ -127,23 +116,15 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
             if not service:
                 continue
             item = service.get_iteminfo(str(itemid)) if itemid else None
-            if item and self._has_complete_album(mediainfo, item):
+            if item and MusicMediaServerHelper.item_matches(mediainfo, item):
                 return schemas.ExistMediaInfo(
                     type=MediaType.MUSIC,
                     server_type="navidrome",
                     server=name,
                     itemid=itemid,
                 )
-            is_album = getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
-            matches = service.search_music(
-                title=None if is_album else getattr(mediainfo, "title", None),
-                artist=getattr(mediainfo, "artist", None),
-                album=getattr(mediainfo, "title", None) if is_album else None,
-            )
-            match = next(
-                (candidate for candidate in matches if self._has_complete_album(mediainfo, candidate)),
-                None,
-            )
+            matches = service.search_music(**MusicMediaServerHelper.search_params(mediainfo))
+            match = MusicMediaServerHelper.find_match(mediainfo, matches)
             if match:
                 return schemas.ExistMediaInfo(
                     type=MediaType.MUSIC,

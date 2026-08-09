@@ -9,6 +9,7 @@ from requests import Response
 
 from app import schemas
 from app.core.config import settings
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.schemas import MediaServerItem
 from app.schemas.types import MediaType
@@ -434,6 +435,8 @@ class Emby:
         url = f"{self._host}emby/Users/{self.user}/Items"
         params = {
             "IncludeItemTypes": "MusicAlbum,Audio",
+            "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                      "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
             "SearchTerm": query,
             "Recursive": "true",
             "Limit": 20,
@@ -747,6 +750,8 @@ class Emby:
                 imdbid=item.get("ProviderIds", {}).get("Imdb"),
                 tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
                 path=item.get("Path"),
+                note=MusicMediaServerHelper.build_note(item)
+                if item.get("Type") in {"MusicAlbum", "Audio"} else None,
                 user_state=user_state
 
             )
@@ -819,7 +824,9 @@ class Emby:
         params = {
             "ParentId": parent,
             "api_key": self._apikey,
-            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId"
+            "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                      "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,"
+                      "UserDataLastPlayedDate,ParentId"
         }
         if limit is not None and limit != -1:
             params.update({

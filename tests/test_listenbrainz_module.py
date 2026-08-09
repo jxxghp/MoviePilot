@@ -159,6 +159,10 @@ class _FakeListenBrainzResponse:
         """返回预设的 JSON 负载。"""
         return self._payload
 
+    def __bool__(self):
+        """模拟 requests.Response：HTTP 错误状态在布尔判断中为 False。"""
+        return self.status_code < 400
+
     def close(self):
         """无需释放的资源。"""
 

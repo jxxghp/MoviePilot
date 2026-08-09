@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union, Any, List, Generator, Dict
 from app import schemas
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.plex.plex import Plex
@@ -162,17 +163,14 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             if not s:
                 continue
             if mediainfo.type == MediaType.MUSIC:
-                matches = s.get_music(
-                    title=getattr(mediainfo, "title", None),
-                    artist=getattr(mediainfo, "artist", None),
-                    album=getattr(mediainfo, "album", None),
-                )
-                if matches:
+                matches = s.get_music(**MusicMediaServerHelper.search_params(mediainfo))
+                match = MusicMediaServerHelper.find_match(mediainfo, matches)
+                if match:
                     return schemas.ExistMediaInfo(
                         type=MediaType.MUSIC,
                         server_type="plex",
                         server=name,
-                        itemid=matches[0].item_id,
+                        itemid=match.item_id,
                     )
                 continue
             if mediainfo.type == MediaType.MOVIE:

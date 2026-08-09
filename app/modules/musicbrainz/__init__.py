@@ -775,13 +775,14 @@ class MusicBrainzModule(_ModuleBase):
             proxies=settings.PROXY,
             timeout=20,
         ).get_res(f"{cls._base_url}{path}", params=params)
-        if not response:
+        if response is None:
             return None
         try:
             if response.status_code == 404:
                 # 单曲与专辑共用同一套 ID 入口，404 属于正常的探测结果
                 logger.debug(f"MusicBrainz 资源不存在：{path}")
-                return None
+                # 使用空对象区分稳定的不存在与瞬时请求失败，使有界缓存能够复用探测结果。
+                return {}
             if response.status_code != 200:
                 logger.warning(
                     f"MusicBrainz 请求失败：{response.status_code} {response.text[:200]}"

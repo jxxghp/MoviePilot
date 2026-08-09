@@ -71,10 +71,26 @@ class MusicChain(ChainBase):
             # Recording 的 names 兼容字段会包含所属专辑名；单曲匹配只能使用曲名，
             # 否则整专资源会被当成单曲下载并在首个任务后误销订阅。
             candidates = cls._unique_texts([music.title])
-        return any(
+        title_matches = any(
             normalized_target and normalized_target in normalized_resource
             for normalized_target in (
                 cls._normalize_match_text(candidate) for candidate in candidates
+            )
+        )
+        if not title_matches:
+            return False
+        artists = cls._unique_texts([
+            music.artist,
+            music.album_artist,
+            *(music.artists or []),
+        ])
+        if not artists:
+            return True
+        # 同名歌曲和专辑十分常见，已知艺术家时必须同时出现在资源标题中。
+        return any(
+            normalized_artist and normalized_artist in normalized_resource
+            for normalized_artist in (
+                cls._normalize_match_text(artist) for artist in artists
             )
         )
 
@@ -291,7 +307,7 @@ class MusicChain(ChainBase):
     @staticmethod
     def _normalize_match_text(value: Optional[str]) -> str:
         """移除大小写、空白和标点差异，生成站点标题匹配使用的紧凑文本。"""
-        return re.sub(r"[^\w]+", "", str(value or "").casefold(), flags=re.UNICODE)
+        return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
 
     @classmethod
     def is_audio_path(cls, path: str | Path) -> bool:

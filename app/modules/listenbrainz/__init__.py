@@ -180,7 +180,7 @@ class ListenBrainzModule(_ModuleBase):
             proxies=settings.PROXY,
             timeout=20,
         ).get_res(f"{cls._base_url}{path}", params=params)
-        if not response:
+        if response is None:
             return None
         try:
             if response.status_code == 204:

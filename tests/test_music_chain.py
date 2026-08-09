@@ -86,6 +86,19 @@ def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
     ) is False
 
 
+def test_resource_match_requires_artist_when_target_artist_is_known():
+    """同名作品很多，目标已知艺术家时资源标题也必须包含该艺术家。"""
+    recording = MusicInfo(
+        music_type="recording",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+
+    assert MusicChain.matches_site_resource(recording, "周杰伦 - 晴天 FLAC") is True
+    assert MusicChain.matches_site_resource(recording, "其他艺人 - 晴天 FLAC") is False
+    assert MusicChain.matches_site_resource(recording, "晴天 FLAC") is False
+
+
 def test_normalize_candidates_deduplicates_source_identity():
     """同一来源和媒体 ID 的音乐候选应只保留一次。"""
     results = MusicChain.normalize_candidates(

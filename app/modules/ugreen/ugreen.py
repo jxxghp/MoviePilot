@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.modules.ugreen.api import Api
 from app.schemas import MediaType
@@ -667,7 +668,7 @@ class Ugreen:
         """按歌曲、艺术家或专辑名称查询绿联影视音乐条目。"""
         if not self.is_authenticated() or not self._api:
             return []
-        query = " ".join(filter(None, [album, title, artist])).strip()
+        query = album or title or artist
         if not query:
             return []
 
@@ -682,6 +683,7 @@ class Ugreen:
             for info in self.__extract_video_info_list(data.get(bucket)):
                 media_item = self.__build_media_server_item(info)
                 if media_item:
+                    media_item.note = MusicMediaServerHelper.build_note(info)
                     results.append(media_item)
         return results
 

@@ -8,6 +8,7 @@ from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 from requests import Response
 
 from app import schemas
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.schemas import MediaServerItem
 from app.schemas.types import MediaType
@@ -569,7 +570,8 @@ class ZSpace:
         url = f"{self._host}emby/Items"
         params = {
             "IncludeItemTypes": "MusicAlbum,Audio",
-            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
+            "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                      "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
             "SearchTerm": query,
             "Recursive": "true",
             "Limit": 20,
@@ -830,6 +832,8 @@ class ZSpace:
                 imdbid=item.get("ProviderIds", {}).get("Imdb"),
                 tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
                 path=item.get("Path"),
+                note=MusicMediaServerHelper.build_note(item)
+                if item.get("Type") in {"MusicAlbum", "Audio"} else None,
                 user_state=user_state
 
             )
@@ -904,7 +908,8 @@ class ZSpace:
                 "Recursive": "true",
                 "StartIndex": current_start_index,
                 "Limit": page_size,
-                "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,"
+                "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                          "ProviderIds,OriginalTitle,ProductionYear,Path,"
                           "UserDataPlayCount,UserDataLastPlayedDate,ParentId"
             }
             try:
@@ -921,7 +926,10 @@ class ZSpace:
                             if sub_item:
                                 yield sub_item
                         continue
-                    if item.get("Type") not in ["Movie", "Series"]:
+                    if item.get("Type") not in ["Movie", "Series", "MusicAlbum"]:
+                        continue
+                    if item.get("Type") == "MusicAlbum":
+                        yield self.__format_item_info(item)
                         continue
                     provider_ids = item.get("ProviderIds") or {}
                     needs_detail = (

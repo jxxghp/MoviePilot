@@ -1472,11 +1472,18 @@ class SubscribeChain(ChainBase):
         """从订阅行恢复不依赖远端请求的最小音乐目标，保留专辑完成判断所需字段。"""
         year_text = str(subscribe.year or "")[:4]
         music_type = getattr(subscribe, "music_type", None)
+        # 音乐订阅的 description 由标准 MusicInfo.overview 生成，首段固定为艺术家。
+        artist_text = str(getattr(subscribe, "description", None) or "") \
+            .split(" · ", maxsplit=1)[0].strip()
+        artists = [
+            artist.strip() for artist in artist_text.split(" / ") if artist.strip()
+        ]
         return MusicInfo(
             source=subscribe.media_source,
             media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
             music_type=music_type,
             title=subscribe.name,
+            artists=artists,
             album=subscribe.name if music_type == MUSIC_ENTITY_ALBUM else None,
             year=int(year_text) if year_text.isdigit() else None,
             total_tracks=getattr(subscribe, "total_tracks", None)
@@ -1513,16 +1520,105 @@ class SubscribeChain(ChainBase):
             return True
         return any(context.confirmed_full_coverage for context in downloads)
 
-    def _search_music_subscribe(self, subscribe: Subscribe) -> None:
-        """复用站点标题搜索、订阅过滤和批量下载完成单个音乐订阅。"""
+    def _prepare_music_subscribe(
+            self,
+            subscribe: Subscribe,
+    ) -> Optional[Tuple[MusicInfo, MetaMusic]]:
+        """识别音乐订阅目标、同步实体快照，并在搜索前处理已完整入库的目标。"""
         mediainfo = self._recognize_music_subscribe(subscribe)
         if not mediainfo:
             logger.warning(
                 f"未识别到音乐订阅目标：{subscribe.name}，"
                 f"媒体源：{subscribe.media_source}，媒体ID：{subscribe.media_id}"
             )
-            return
+            return None
         self._sync_music_subscribe_target(subscribe, mediainfo)
+        meta = MusicChain.to_meta(mediainfo)
+        exists, _ = self.check_and_handle_existing_media(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=_subscribe_media_key(subscribe),
+        )
+        if exists:
+            return None
+        return mediainfo, meta
+
+    def _filter_music_subscribe_contexts(
+            self,
+            subscribe: Subscribe,
+            mediainfo: MusicInfo,
+            contexts: List[Context],
+    ) -> List[Context]:
+        """按站点、音乐实体、订阅参数和优先级规则筛选并绑定下载上下文。"""
+        sites = self.get_sub_sites(subscribe)
+        rule_groups = subscribe.filter_groups \
+                      or SystemConfigOper().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+        torrent_helper = TorrentHelper()
+        matched: List[Context] = []
+        for source_context in contexts or []:
+            torrent = source_context.torrent_info
+            if not torrent or torrent.category not in (MediaType.MUSIC, MediaType.MUSIC.value):
+                continue
+            if sites and torrent.site not in sites:
+                continue
+            if not MusicChain.matches_site_resource(mediainfo, torrent.title):
+                continue
+            if not torrent_helper.filter_torrent(torrent, self.get_params(subscribe)):
+                continue
+            filtered = self.filter_torrents(
+                rule_groups=rule_groups,
+                torrent_list=[torrent],
+                mediainfo=mediainfo,
+            )
+            if filtered is not None and not filtered:
+                continue
+
+            context = copy.copy(source_context)
+            meta = MusicChain.to_meta(mediainfo)
+            meta.org_string = torrent.title
+            context.meta_info = meta
+            context.media_info = mediainfo
+            context.match_source = mediainfo.source or "title"
+            context.candidate_recognized = False
+            context.media_info_is_target = True
+            if subscribe.media_category:
+                context.media_info.category = subscribe.media_category
+            matched.append(context)
+        return matched
+
+    def _download_music_subscribe(
+            self,
+            subscribe: Subscribe,
+            mediainfo: MusicInfo,
+            contexts: List[Context],
+    ) -> None:
+        """批量择优下载音乐候选，并按单曲或整专完成语义推进订阅。"""
+        if not contexts:
+            return
+        downloads, _ = DownloadChain().batch_download(
+            contexts=contexts,
+            username=subscribe.username,
+            save_path=subscribe.save_path,
+            downloader=subscribe.downloader,
+            source=self.get_subscribe_source_keyword(subscribe),
+            custom_words=subscribe.custom_words,
+        )
+        current_subscribe = SubscribeOper().get(subscribe.id)
+        if current_subscribe:
+            self.finish_subscribe_or_not(
+                subscribe=current_subscribe,
+                meta=MusicChain.to_meta(mediainfo),
+                mediainfo=mediainfo,
+                downloads=downloads,
+            )
+
+    def _search_music_subscribe(self, subscribe: Subscribe) -> None:
+        """复用站点标题搜索、订阅过滤和批量下载完成单个音乐订阅。"""
+        target = self._prepare_music_subscribe(subscribe)
+        if not target:
+            return
+        mediainfo, _ = target
 
         sites = self.get_sub_sites(subscribe)
         rule_groups = subscribe.filter_groups \
@@ -1540,17 +1636,11 @@ class SubscribeChain(ChainBase):
                 mtype=MediaType.MUSIC,
                 rule_groups=rule_groups,
             )
-            contexts = [
-                context
-                for context in contexts
-                if context.torrent_info
-                and context.torrent_info.category in (MediaType.MUSIC, MediaType.MUSIC.value)
-                and MusicChain.matches_site_resource(mediainfo, context.torrent_info.title)
-                and TorrentHelper().filter_torrent(
-                    context.torrent_info,
-                    self.get_params(subscribe),
-                )
-            ]
+            contexts = self._filter_music_subscribe_contexts(
+                subscribe=subscribe,
+                mediainfo=mediainfo,
+                contexts=contexts,
+            )
             if contexts:
                 break
 
@@ -1558,33 +1648,27 @@ class SubscribeChain(ChainBase):
             logger.warning(f"音乐订阅 {subscribe.keyword or subscribe.name} 未搜索到符合条件的资源")
             return
 
-        for context in contexts:
-            meta = MusicChain.to_meta(mediainfo)
-            meta.org_string = context.torrent_info.title
-            context.meta_info = meta
-            context.media_info = mediainfo
-            context.match_source = mediainfo.source or "title"
-            context.candidate_recognized = False
-            context.media_info_is_target = True
-            if subscribe.media_category:
-                context.media_info.category = subscribe.media_category
+        self._download_music_subscribe(subscribe, mediainfo, contexts)
 
-        downloads, _ = DownloadChain().batch_download(
+    def _match_music_subscribe(
+            self,
+            subscribe: Subscribe,
+            contexts: List[Context],
+    ) -> None:
+        """直接匹配本轮 RSS 缓存中的音乐资源，避免再次调用站点搜索接口。"""
+        target = self._prepare_music_subscribe(subscribe)
+        if not target:
+            return
+        mediainfo, _ = target
+        matched = self._filter_music_subscribe_contexts(
+            subscribe=subscribe,
+            mediainfo=mediainfo,
             contexts=contexts,
-            username=subscribe.username,
-            save_path=subscribe.save_path,
-            downloader=subscribe.downloader,
-            source=self.get_subscribe_source_keyword(subscribe),
-            custom_words=subscribe.custom_words,
         )
-        current_subscribe = SubscribeOper().get(subscribe.id)
-        if current_subscribe:
-            self.finish_subscribe_or_not(
-                subscribe=current_subscribe,
-                meta=MusicChain.to_meta(mediainfo),
-                mediainfo=mediainfo,
-                downloads=downloads,
-            )
+        if not matched:
+            logger.info(f"音乐订阅 {subscribe.name} 未匹配到符合条件的 RSS 资源")
+            return
+        self._download_music_subscribe(subscribe, mediainfo, matched)
 
     def search(
             self,
@@ -2046,6 +2130,13 @@ class SubscribeChain(ChainBase):
                 for context in contexts:
                     if global_vars.is_system_stopped:
                         break
+                    if context.torrent_info and getattr(context.torrent_info, "category", None) in (
+                            MediaType.MUSIC,
+                            MediaType.MUSIC.value,
+                    ):
+                        # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
+                        processed_torrents[domain].append(context)
+                        continue
                     # 如果种子未识别且失败次数未超过3次，尝试识别
                     if (
                             not context.media_info
@@ -2110,8 +2201,12 @@ class SubscribeChain(ChainBase):
                         )
                     logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
                     if subscribe.type == MediaType.MUSIC.value:
-                        # 音乐不参与影视预识别缓存，直接复用音乐订阅搜索链处理。
-                        self._search_music_subscribe(subscribe)
+                        music_contexts = [
+                            context
+                            for contexts in processed_torrents.values()
+                            for context in contexts
+                        ]
+                        self._match_music_subscribe(subscribe, music_contexts)
                         continue
                     mediakey = _subscribe_media_key(subscribe)
                     try:

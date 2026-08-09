@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
+from app.core.cache import cached
 from app.core.config import settings
 from app.core.context import (
     MUSIC_ENTITY_ALBUM,
@@ -1521,25 +1522,33 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return True, message
 
     @staticmethod
-    def _download_music_cover(url: Optional[str]) -> tuple[Optional[bytes], str]:
-        """通过统一请求封装下载音乐封面，并返回图片内容与 MIME 类型。"""
-        if not url:
-            return None, "image/jpeg"
+    @cached(maxsize=64, ttl=settings.CONF.meta, skip_none=True)
+    def _request_music_cover(url: str) -> Optional[tuple[Optional[bytes], str]]:
+        """下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。"""
         response = RequestUtils(
             proxies=settings.PROXY,
             ua=settings.NORMAL_USER_AGENT,
             timeout=20,
         ).get_res(url)
-        if not response:
-            return None, "image/jpeg"
+        if response is None:
+            return None
         try:
+            if response.status_code == 404:
+                return None, "image/jpeg"
             if response.status_code != 200:
                 logger.warning(f"音乐封面下载失败：{response.status_code} {url}")
-                return None, "image/jpeg"
+                return None
             mime = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0]
             return response.content, mime
         finally:
             response.close()
+
+    @staticmethod
+    def _download_music_cover(url: Optional[str]) -> tuple[Optional[bytes], str]:
+        """通过有界缓存下载音乐封面，并统一返回图片内容与 MIME 类型。"""
+        if not url:
+            return None, "image/jpeg"
+        return MediaChain._request_music_cover(url) or (None, "image/jpeg")
 
     @staticmethod
     def _is_music_audio_file(path: str) -> bool:

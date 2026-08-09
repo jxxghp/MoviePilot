@@ -55,6 +55,7 @@ def _subscribe(**overrides) -> SimpleNamespace:
         best_version=0,
         state="R",
         note=None,
+        description=None,
         poster=None,
         backdrop=None,
     )
@@ -88,6 +89,8 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     download_chain.batch_download.return_value = ([context], None)
     chain = SubscribeChain()
     chain.finish_subscribe_or_not = Mock()
+    chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=target), \
             patch("app.chain.subscribe.SearchChain", return_value=search_chain), \
@@ -102,10 +105,12 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
         mtype=MediaType.MUSIC,
         rule_groups=[],
     )
-    assert context.media_info is target
-    assert isinstance(context.meta_info, MetaMusic)
-    assert context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
     download_chain.batch_download.assert_called_once()
+    matched_context = download_chain.batch_download.call_args.kwargs["contexts"][0]
+    assert matched_context is not context
+    assert matched_context.media_info is target
+    assert isinstance(matched_context.meta_info, MetaMusic)
+    assert matched_context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
     chain.finish_subscribe_or_not.assert_called_once()
 
 
@@ -121,6 +126,7 @@ def test_music_subscribe_ignores_non_music_category():
     search_chain = Mock()
     search_chain.search_by_title.return_value = [context]
     chain = SubscribeChain()
+    chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
             patch("app.chain.subscribe.SearchChain", return_value=search_chain), \
@@ -142,12 +148,75 @@ def test_music_subscribe_ignores_unrelated_music_title():
     search_chain = Mock()
     search_chain.search_by_title.return_value = [context]
 
+    chain = SubscribeChain()
+    chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
+
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
             patch("app.chain.subscribe.SearchChain", return_value=search_chain), \
             patch("app.chain.subscribe.DownloadChain") as download_chain:
-        SubscribeChain()._search_music_subscribe(subscribe)
+        chain._search_music_subscribe(subscribe)
 
     download_chain.assert_not_called()
+
+
+def test_music_subscribe_skips_search_when_target_is_already_in_library():
+    """单曲或完整专辑已在媒体库时应直接完成查重处理，不得重复搜索和下载。"""
+    subscribe = _subscribe()
+    chain = SubscribeChain()
+    chain.check_and_handle_existing_media = Mock(return_value=(True, {}))
+
+    with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
+            patch("app.chain.subscribe.SearchChain") as search_chain, \
+            patch("app.chain.subscribe.DownloadChain") as download_chain:
+        chain._search_music_subscribe(subscribe)
+
+    chain.check_and_handle_existing_media.assert_called_once()
+    search_chain.assert_not_called()
+    download_chain.assert_not_called()
+
+
+def test_music_rss_match_reuses_cached_context_without_second_site_search():
+    """订阅刷新应直接消费 RSS 音乐上下文，不得为每条音乐订阅再次调用站点搜索。"""
+    subscribe = _subscribe()
+    target = _music_info()
+    source_context = Context(
+        torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 FLAC",
+            category=MediaType.MUSIC.value,
+            site=1,
+            site_name="MusicSite",
+        )
+    )
+    subscribe_oper = Mock()
+    subscribe_oper.list.return_value = [subscribe]
+    subscribe_oper.get.return_value = subscribe
+    download_chain = Mock()
+    download_chain.batch_download.side_effect = lambda **kwargs: (kwargs["contexts"], None)
+    chain = SubscribeChain()
+    chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
+    chain.get_sub_sites = Mock(return_value=[])
+    chain.get_params = Mock(return_value={})
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+    chain.finish_subscribe_or_not = Mock()
+
+    torrent_helper = Mock()
+    torrent_helper.filter_torrent.return_value = True
+    with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=target), \
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.TorrentHelper", return_value=torrent_helper), \
+            patch("app.chain.subscribe.DownloadChain", return_value=download_chain), \
+            patch("app.chain.subscribe.SearchChain") as search_chain, \
+            patch("app.chain.subscribe.MediaChain") as media_chain:
+        chain.match({"music.example": [source_context]})
+
+    search_chain.assert_not_called()
+    media_chain.assert_not_called()
+    download_chain.batch_download.assert_called_once()
+    matched_context = download_chain.batch_download.call_args.kwargs["contexts"][0]
+    assert matched_context is not source_context
+    assert matched_context.media_info is target
+    assert matched_context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
+    chain.finish_subscribe_or_not.assert_called_once()
 
 
 def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavailable():
@@ -157,6 +226,7 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         total_tracks=11,
+        description="周杰伦 · Album · 2003-07-31",
     )
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
@@ -167,6 +237,7 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
 
     assert restored.music_type == MUSIC_ENTITY_ALBUM
     assert restored.album == "叶惠美"
+    assert restored.artists == ["周杰伦"]
     assert restored.total_tracks == 11
     search.assert_not_called()
 

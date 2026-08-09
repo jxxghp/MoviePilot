@@ -3,6 +3,7 @@ from typing import Any, Generator, List, Optional, Tuple, Union
 from app import schemas
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.ugreen.ugreen import Ugreen
@@ -164,16 +165,15 @@ class UgreenModule(_ModuleBase, _MediaServerBase[Ugreen]):
                 continue
             if mediainfo.type == MediaType.MUSIC:
                 matches = getattr(s, "get_music", lambda **_: [])(
-                    title=getattr(mediainfo, "title", None),
-                    artist=getattr(mediainfo, "artist", None),
-                    album=getattr(mediainfo, "album", None),
+                    **MusicMediaServerHelper.search_params(mediainfo)
                 )
-                if matches:
+                match = MusicMediaServerHelper.find_match(mediainfo, matches)
+                if match:
                     return schemas.ExistMediaInfo(
                         type=MediaType.MUSIC,
                         server_type="ugreen",
                         server=name,
-                        itemid=matches[0].item_id,
+                        itemid=match.item_id,
                     )
                 continue
             if mediainfo.type == MediaType.MOVIE:

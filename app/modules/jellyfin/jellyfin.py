@@ -7,6 +7,7 @@ from requests import Response
 
 from app import schemas
 from app.core.config import settings
+from app.helper.mediaserver import MusicMediaServerHelper
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
@@ -490,6 +491,8 @@ class Jellyfin:
         url = f"{self._host}Users/{self.user}/Items"
         params = {
             "IncludeItemTypes": "MusicAlbum,Audio",
+            "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                      "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
             "searchTerm": query,
             "Recursive": "true",
             "Limit": 20,
@@ -904,6 +907,8 @@ class Jellyfin:
                 imdbid=item.get("ProviderIds", {}).get("Imdb"),
                 tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
                 path=item.get("Path"),
+                note=MusicMediaServerHelper.build_note(item)
+                if item.get("Type") in {"MusicAlbum", "Audio"} else None,
                 user_state=user_state
 
             )
@@ -977,7 +982,9 @@ class Jellyfin:
         params = {
             "ParentId": parent,
             "api_key": self._apikey,
-            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId",
+            "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                      "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,"
+                      "UserDataLastPlayedDate,ParentId",
         }
         if limit is not None and limit != -1:
             params.update({

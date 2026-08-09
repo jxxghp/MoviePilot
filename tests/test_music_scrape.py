@@ -95,6 +95,28 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     )
 
 
+def test_music_cover_download_uses_bounded_external_response_cache() -> None:
+    """重复刮削同一封面时应复用缓存内容，避免再次访问外部图片接口。"""
+    response = SimpleNamespace(
+        status_code=200,
+        headers={"Content-Type": "image/webp"},
+        content=b"cover",
+        close=Mock(),
+    )
+    request = Mock()
+    request.get_res.return_value = response
+    MediaChain._request_music_cover.cache_clear()
+
+    with patch("app.chain.media.RequestUtils", return_value=request):
+        first = MediaChain._download_music_cover("https://example.com/album.webp")
+        second = MediaChain._download_music_cover("https://example.com/album.webp")
+
+    assert first == second == (b"cover", "image/webp")
+    request.get_res.assert_called_once_with("https://example.com/album.webp")
+    response.close.assert_called_once()
+    MediaChain._request_music_cover.cache_clear()
+
+
 def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
     """单曲身份不得覆盖整目录，否则会把同一首歌的标签写到专辑内所有文件。"""
     chain = _media_chain()

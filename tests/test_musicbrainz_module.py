@@ -458,6 +458,10 @@ class _FakeMusicBrainzResponse:
         """返回预设的 JSON 负载。"""
         return self._payload
 
+    def __bool__(self):
+        """模拟 requests.Response：HTTP 错误状态在布尔判断中为 False。"""
+        return self.status_code < 400
+
     def close(self):
         """无需释放的资源。"""
 
@@ -487,8 +491,8 @@ def test_request_json_caches_repeated_calls(monkeypatch):
     assert network_calls["count"] == 1
 
 
-def test_request_json_does_not_cache_not_found(monkeypatch):
-    """404 等空结果不应缓存，以便后续重新探测单曲与专辑入口。"""
+def test_request_json_caches_not_found(monkeypatch):
+    """MusicBrainz 稳定 404 应进入有界缓存，避免重复探测单曲与专辑入口。"""
     import app.modules.musicbrainz as musicbrainz_module
 
     monkeypatch.setattr(
@@ -497,14 +501,15 @@ def test_request_json_does_not_cache_not_found(monkeypatch):
     network_calls = {"count": 0}
 
     def fake_get_res(_self, url, params=None):
-        """始终返回 404，用于验证空结果不会被缓存。"""
+        """始终返回 404，用于验证稳定不存在结果会被缓存。"""
         network_calls["count"] += 1
         return _FakeMusicBrainzResponse(None, status_code=404)
 
     monkeypatch.setattr(musicbrainz_module.RequestUtils, "get_res", fake_get_res)
     MusicBrainzModule._request_json.cache_clear()
 
-    MusicBrainzModule._request_json("/recording/missing", params={"fmt": "json"})
-    MusicBrainzModule._request_json("/recording/missing", params={"fmt": "json"})
+    first = MusicBrainzModule._request_json("/recording/missing", params={"fmt": "json"})
+    second = MusicBrainzModule._request_json("/recording/missing", params={"fmt": "json"})
 
-    assert network_calls["count"] == 2
+    assert first == second == {}
+    assert network_calls["count"] == 1
