@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from fastapi.concurrency import run_in_threadpool
+
 from app import schemas
 from app.chain import ChainBase
 from app.core.config import settings
@@ -12,6 +14,7 @@ from app.core.context import (
     MusicInfo,
 )
 from app.core.meta import MetaMusic
+from app.helper.audio import AudioMetadataHelper
 from app.log import logger
 
 
@@ -242,17 +245,21 @@ class MusicChain(ChainBase):
         return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
 
     @classmethod
-    def parse_path_meta(cls, path: str | Path) -> MetaMusic:
-        """按音频文件名解析最小音乐元数据，识别阶段不读取文件标签。"""
-        return cls.parse_query(Path(path).stem)
+    def read_path_meta(cls, path: str | Path) -> MetaMusic:
+        """读取本地音频标签，不可访问时按文件名构造最小音乐元数据。"""
+        file_path = Path(path)
+        if file_path.exists() and file_path.is_file():
+            return AudioMetadataHelper.read(file_path)
+        return cls.parse_query(file_path.stem)
 
     async def async_recognize_by_path(
             self,
             path: str | Path,
             source: str = "musicbrainz",
     ) -> tuple[MetaMusic, MusicInfo]:
-        """根据文件名的歌曲信息识别音乐，远端不可用时仍返回最小音乐信息。"""
-        meta = self.parse_path_meta(path)
+        """根据音频标签和文件名识别音乐，远端不可用时仍返回最小音乐信息。"""
+        # Mutagen 会同步读取本地文件，异步识别入口需要移出事件循环。
+        meta = await run_in_threadpool(self.read_path_meta, path)
         # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兜底
         info = await self.async_recognize_media(meta=meta, source=source)
         return meta, info or self._info_from_meta(meta)
@@ -262,8 +269,8 @@ class MusicChain(ChainBase):
             path: str | Path,
             source: str = "musicbrainz",
     ) -> tuple[MetaMusic, MusicInfo]:
-        """同步根据文件名识别音乐，并保留离线最小结果。"""
-        meta = self.parse_path_meta(path)
+        """同步根据音频标签和文件名识别音乐，并保留离线最小结果。"""
+        meta = self.read_path_meta(path)
         # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兜底
         info = self.recognize_media(meta=meta, source=source)
         return meta, info or self._info_from_meta(meta)

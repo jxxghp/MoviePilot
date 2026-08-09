@@ -1,6 +1,9 @@
+from unittest.mock import AsyncMock
+
 from app.chain.music import MusicChain
-from app.core.meta import MetaMusic
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.core.meta import MetaMusic
+from app.helper.audio import AudioMetadataHelper
 from app.modules.musicbrainz import MusicBrainzModule
 
 
@@ -173,6 +176,41 @@ def test_musicbrainz_module_select_candidate_prefers_matching_audio_tags():
     selected = MusicBrainzModule._select_candidate(meta, candidates, source="musicbrainz")
 
     assert selected is candidates[1]
+
+
+def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
+    """本地音频识别应使用内嵌标签补全艺术家、专辑并提高封面候选命中率。"""
+    audio_path = tmp_path / "02. 眼泪成诗.m4a"
+    audio_path.write_bytes(b"audio")
+    meta = MetaMusic(
+        title="眼泪成诗",
+        artists=["孙燕姿"],
+        album="完美的一天",
+        track_number=2,
+        duration=221,
+    )
+    info = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="眼泪成诗",
+        artists=["孙燕姿"],
+        album="完美的一天",
+        cover_url="https://coverartarchive.org/release-group/album-1/front-500",
+    )
+    chain = MusicChain()
+    recognize = AsyncMock(return_value=info)
+    monkeypatch.setattr(AudioMetadataHelper, "read", lambda path: meta)
+    monkeypatch.setattr(chain, "async_recognize_media", recognize)
+
+    import asyncio
+
+    recognized_meta, recognized_info = asyncio.run(
+        chain.async_recognize_by_path(audio_path)
+    )
+
+    assert recognized_meta is meta
+    assert recognized_info is info
+    recognize.assert_awaited_once_with(meta=meta, source="musicbrainz")
 
 
 def test_async_chart_forwards_album_entity(monkeypatch):
