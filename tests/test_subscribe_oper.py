@@ -120,6 +120,29 @@ def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
     assert payload["backdrop"] == media.cover_url
 
 
+def test_music_subscribe_persists_numeric_year_as_string():
+    """音乐识别链路的年份可能是数字，写库前必须转字符串避免 PostgreSQL 类型错误。"""
+    persisted = SimpleNamespace(id=93)
+    created = SimpleNamespace(create=MagicMock())
+    media = MusicInfo(
+        source="musicbrainz",
+        media_id="2af54891-e954-40e8-8b90-b7e98c740f21",
+        title="心愿",
+        year=2025,
+        cover_url="https://coverartarchive.org/release/example/front-500",
+    )
+
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.exists.side_effect = [None, persisted]
+        subscribe_model.return_value = created
+
+        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+
+    assert sid == 93
+    payload = subscribe_model.call_args.kwargs
+    assert payload["year"] == "2025"
+
+
 @pytest.mark.parametrize("episode_group", [None, "eg-1"])
 def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     """异步新增与同步路径使用相同的剧集组身份契约。"""

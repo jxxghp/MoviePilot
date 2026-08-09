@@ -21,6 +21,16 @@ def _normalize_integer_flags(payload: dict, fields: Tuple[str, ...] = INTEGER_FL
     return normalized_payload
 
 
+def _normalize_year(year: Optional[int | str]) -> Optional[str]:
+    """
+    订阅表的 year 列为字符串类型，而识别链路的媒体年份可能是数字
+    （音乐等来源），写库前统一转换为字符串避免数据库类型错误。
+    """
+    if year is None:
+        return None
+    return str(year)
+
+
 class SubscribeOper(DbOper):
     """
     订阅管理
@@ -55,7 +65,7 @@ class SubscribeOper(DbOper):
             subscribe = Subscribe.exists(self._db, **identity_params)
         kwargs.update({
             "name": mediainfo.title,
-            "year": mediainfo.year,
+            "year": _normalize_year(mediainfo.year),
             "type": mediainfo.type.value,
             "tmdbid": mediainfo.tmdb_id,
             "imdbid": mediainfo.imdb_id,
@@ -117,7 +127,7 @@ class SubscribeOper(DbOper):
             subscribe = await Subscribe.async_exists(self._db, **identity_params)
         kwargs.update({
             "name": mediainfo.title,
-            "year": mediainfo.year,
+            "year": _normalize_year(mediainfo.year),
             "type": mediainfo.type.value,
             "tmdbid": mediainfo.tmdb_id,
             "imdbid": mediainfo.imdb_id,
