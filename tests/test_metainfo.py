@@ -173,6 +173,27 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
     assert meta.audio_encode == "DDP 5.1"
 
 
+def test_metainfo_preserves_uhd_bluray_remux_resource_type():
+    """默认解析入口应保留 UHD、BluRay 与 REMUX 三段资源类型。"""
+    meta = MetaInfo(
+        "They.Will.Kill.You.2026.2160p.UHD.BluRay.Remux."
+        "HEVC.DV.TrueHD.7.1.Atmos.mkv"
+    )
+
+    assert meta.resource_type == "UHD BluRay REMUX"
+
+
+def test_python_metainfo_preserves_uhd_bluray_remux_resource_type():
+    """Python 兜底解析应保留 UHD、BluRay 与 REMUX 三段资源类型。"""
+    with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            "They.Will.Kill.You.2026.2160p.UHD.BluRay.Remux."
+            "HEVC.DV.TrueHD.7.1.Atmos.mkv"
+        )
+
+    assert meta.resource_type == "UHD BluRay REMUX"
+
+
 def test_metainfo_routes_audio_filename_to_music():
     """音频文件名应直接走音乐分支，不再进入影视季集解析。"""
     meta = MetaInfo("周杰伦 - 晴天.flac")

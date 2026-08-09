@@ -28,6 +28,22 @@ DIY_TITLE_RE = re.compile(r'-DIY@', re.IGNORECASE)
 DESCRIPTION_SPLIT_RE = re.compile(r'[\s/|]+')
 SPACE_RE = re.compile(r'\s+')
 SEASON_SUFFIX_RE = re.compile(r"SEASON$", re.IGNORECASE)
+REMUX_RESOURCE_RE = re.compile(r'(?<![A-Z0-9])REMUX(?![A-Z0-9])', re.IGNORECASE)
+
+
+def normalize_resource_type(resource_type: Optional[str], title: Optional[str]) -> Optional[str]:
+    """
+    根据原始标题补全连续出现的复合资源类型。
+
+    :param resource_type: 解析器已识别的资源类型
+    :param title: 原始标题
+    :return: 补全后的资源类型
+    """
+    if resource_type == "UHD BluRay" \
+            and title \
+            and REMUX_RESOURCE_RE.search(title):
+        return f"{resource_type} REMUX"
+    return resource_type
 
 
 class MetaVideo(MetaBase):
@@ -185,7 +201,7 @@ class MetaVideo(MetaBase):
             self._effect.reverse()
             self.resource_effect = " ".join(self._effect)
         if self._source:
-            self.resource_type = self._source.strip()
+            self.resource_type = normalize_resource_type(self._source.strip(), original_title)
         # 提取原盘DIY
         if self.resource_type and "BluRay" in self.resource_type:
             if (self.subtitle and DIY_RE.search(self.subtitle)) \
