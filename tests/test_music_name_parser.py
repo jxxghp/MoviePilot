@@ -1,5 +1,5 @@
 from app.core.meta import MetaMusic
-from app.helper.music_name import MusicNameParser
+from app.helper.music import MusicNameParser
 
 
 def test_strip_track_prefix_handles_dot_separator():

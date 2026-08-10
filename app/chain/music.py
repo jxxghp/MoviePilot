@@ -17,7 +17,7 @@ from app.core.context import (
 )
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
-from app.helper.music_name import MusicNameParser
+from app.helper.music import MusicNameParser
 from app.log import logger
 
 

@@ -12,7 +12,7 @@ from app.core.meta.infopath import (
     should_use_parent_title_for_file_stem,
 )
 from app.core.meta.words import WordsMatcher
-from app.helper.music_name import MusicNameParser
+from app.helper.music import MusicNameParser
 from app.log import logger
 from app.schemas.types import MediaType
 from app.utils import rust_accel
