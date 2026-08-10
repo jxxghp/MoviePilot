@@ -68,6 +68,21 @@ class AddSubscribeInput(BaseModel):
         None,
         description="Effect filter as regular expression (optional, e.g., 'HDR|DV|SDR')",
     )
+    audio_quality: Optional[str] = Field(
+        None,
+        description="Music quality tier filter: hires, lossless, lossy, or a regular-expression combination",
+    )
+    audio_format: Optional[str] = Field(
+        None,
+        description="Music audio-format filter as a regular expression, e.g. FLAC|ALAC|DSD",
+    )
+    min_bitrate: Optional[int] = Field(None, description="Minimum music bitrate in bits per second")
+    min_bit_depth: Optional[int] = Field(None, description="Minimum music bit depth")
+    min_sample_rate: Optional[int] = Field(None, description="Minimum music sample rate in Hz")
+    best_version: Optional[int] = Field(
+        None,
+        description="Enable quality upgrades: 0 for no, 1 for yes. Music upgrades use normalized audio quality",
+    )
     filter_groups: Optional[List[str]] = Field(
         None,
         description="List of filter rule group names to apply (optional, can be obtained from query_rule_groups tool)",
@@ -169,6 +184,12 @@ class AddSubscribeTool(MoviePilotTool):
         quality: Optional[str] = None,
         resolution: Optional[str] = None,
         effect: Optional[str] = None,
+        audio_quality: Optional[str] = None,
+        audio_format: Optional[str] = None,
+        min_bitrate: Optional[int] = None,
+        min_bit_depth: Optional[int] = None,
+        min_sample_rate: Optional[int] = None,
+        best_version: Optional[int] = None,
         filter_groups: Optional[List[str]] = None,
         sites: Optional[List[int]] = None,
         **kwargs,
@@ -205,6 +226,13 @@ class AddSubscribeTool(MoviePilotTool):
                     return "错误：音乐订阅没有季集参数，不能传入 season、start_episode 或 total_episode"
             elif music_type:
                 return "错误：music_type 仅能与 media_type='music' 一起使用"
+            audio_filter_values = (
+                audio_quality, audio_format, min_bitrate, min_bit_depth, min_sample_rate
+            )
+            if media_type_enum != MediaType.MUSIC and any(
+                    value is not None for value in audio_filter_values
+            ):
+                return "错误：audio_quality、audio_format 和音频技术参数仅用于音乐订阅"
             effective_season = (
                 season
                 if season is not None
@@ -228,6 +256,18 @@ class AddSubscribeTool(MoviePilotTool):
                 subscribe_kwargs["resolution"] = resolution
             if effect:
                 subscribe_kwargs["effect"] = effect
+            if audio_quality:
+                subscribe_kwargs["audio_quality"] = audio_quality
+            if audio_format:
+                subscribe_kwargs["audio_format"] = audio_format
+            if min_bitrate is not None:
+                subscribe_kwargs["min_bitrate"] = min_bitrate
+            if min_bit_depth is not None:
+                subscribe_kwargs["min_bit_depth"] = min_bit_depth
+            if min_sample_rate is not None:
+                subscribe_kwargs["min_sample_rate"] = min_sample_rate
+            if best_version is not None:
+                subscribe_kwargs["best_version"] = best_version
             if filter_groups:
                 subscribe_kwargs["filter_groups"] = filter_groups
             if sites:
@@ -276,6 +316,18 @@ class AddSubscribeTool(MoviePilotTool):
                         params.append(f"分辨率过滤: {resolution}")
                     if effect:
                         params.append(f"特效过滤: {effect}")
+                    if audio_quality:
+                        params.append(f"音质等级: {audio_quality}")
+                    if audio_format:
+                        params.append(f"音频格式: {audio_format}")
+                    if min_bitrate is not None:
+                        params.append(f"最低码率: {round(min_bitrate / 1000)}kbps")
+                    if min_bit_depth is not None:
+                        params.append(f"最低位深: {min_bit_depth}bit")
+                    if min_sample_rate is not None:
+                        params.append(f"最低采样率: {min_sample_rate / 1000:g}kHz")
+                    if best_version is not None:
+                        params.append(f"音质洗版: {'开启' if best_version else '关闭'}")
                     if filter_groups:
                         params.append(f"规则组: {', '.join(filter_groups)}")
                     if sites:

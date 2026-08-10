@@ -109,6 +109,16 @@ class TransferHistory(BaseModel):
     music_type: Optional[str] = None
     # 专辑预期总曲目数
     total_tracks: Optional[int] = None
+    # 实际音频格式
+    audio_format: Optional[str] = None
+    # 是否无损音频
+    audio_lossless: Optional[bool] = None
+    # 实际位深（bit）
+    bit_depth: Optional[int] = None
+    # 实际采样率（Hz）
+    sample_rate: Optional[int] = None
+    # 实际码率（bps）
+    bitrate: Optional[int] = None
     # 季Sxx
     seasons: Optional[str] = None
     # 集Exx

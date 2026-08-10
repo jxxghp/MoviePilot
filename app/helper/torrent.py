@@ -11,6 +11,7 @@ from app.core.cache import TTLCache, FileCache
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
 from app.core.meta import MetaBase
+from app.core.meta.metamusic import audio_quality_tier, normalize_audio_format, parse_audio_quality
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -502,7 +503,7 @@ class TorrentHelper:
 
     @staticmethod
     def filter_torrent(torrent_info: TorrentInfo,
-                       filter_params: Dict[str, str]) -> bool:
+                       filter_params: Dict[str, Any]) -> bool:
         """
         检查种子是否匹配订阅过滤规则
         """
@@ -546,6 +547,39 @@ class TorrentHelper:
             if not _filter_pattern_search(effect, torrent_info.title):
                 logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
                 return False
+
+        # 音乐音质。技术参数从标题、副标题和标签统一解析，避免只靠用户正则筛选。
+        audio_filters = {
+            key: filter_params.get(key)
+            for key in ("audio_quality", "audio_format", "min_bitrate", "min_bit_depth", "min_sample_rate")
+            if filter_params.get(key) not in (None, "")
+        }
+        if audio_filters:
+            specs = parse_audio_quality(content)
+            tier = audio_quality_tier(**specs)
+            audio_quality = audio_filters.get("audio_quality")
+            quality_pattern = "hires|lossless" \
+                if str(audio_quality).casefold() == "lossless" else audio_quality
+            if audio_quality and (not tier or not _filter_pattern_search(quality_pattern, tier)):
+                logger.info(f"{torrent_info.title} 不匹配音乐音质规则 {audio_quality}")
+                return False
+            audio_format = audio_filters.get("audio_format")
+            normalized_format = normalize_audio_format(specs.get("audio_format"))
+            if audio_format and (
+                    not normalized_format or not _filter_pattern_search(audio_format, normalized_format)
+            ):
+                logger.info(f"{torrent_info.title} 不匹配音频格式规则 {audio_format}")
+                return False
+            for key, spec_key, label in (
+                ("min_bitrate", "bitrate", "码率"),
+                ("min_bit_depth", "bit_depth", "位深"),
+                ("min_sample_rate", "sample_rate", "采样率"),
+            ):
+                minimum = audio_filters.get(key)
+                actual = specs.get(spec_key)
+                if minimum is not None and (actual is None or int(actual) < int(minimum)):
+                    logger.info(f"{torrent_info.title} 不满足最低{label} {minimum}")
+                    return False
 
         # 大小
         size_range = filter_params.get("size")

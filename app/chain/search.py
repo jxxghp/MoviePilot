@@ -1022,10 +1022,12 @@ class SearchChain(ChainBase):
     ) -> Any:
         """根据限定媒体类型构造模糊搜索结果的上下文元数据。"""
         if mtype == MediaType.MUSIC:
-            return MetaMusic(
+            meta = MetaMusic(
                 org_string=torrent.title,
                 title=torrent.title,
             )
+            meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}")
+            return meta
         return MetaInfo(title=torrent.title, subtitle=torrent.description)
 
     def __filter_title_search_torrents(self,
@@ -1383,6 +1385,7 @@ class SearchChain(ChainBase):
         for torrent in torrents:
             meta = MusicChain.to_meta(mediainfo)
             meta.org_string = torrent.title
+            meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}", overwrite=True)
             contexts.append(
                 Context(
                     torrent_info=torrent,

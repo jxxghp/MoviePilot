@@ -273,6 +273,8 @@ class SystemConfigKey(Enum):
     DefaultMovieSubscribeConfig = "DefaultMovieSubscribeConfig"
     # 默认电视剧订阅规则
     DefaultTvSubscribeConfig = "DefaultTvSubscribeConfig"
+    # 默认音乐订阅规则
+    DefaultMusicSubscribeConfig = "DefaultMusicSubscribeConfig"
     # 用户站点认证参数
     UserSiteAuthParams = "UserSiteAuthParams"
     # Follow订阅分享者

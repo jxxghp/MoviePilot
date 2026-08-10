@@ -31,6 +31,7 @@ class MusicChain(ChainBase):
         """将用户输入的搜索关键词解析为音乐元数据。"""
         normalized = cls._normalize_text(query)
         meta = MetaMusic(org_string=query, title=normalized)
+        meta.apply_audio_quality(normalized)
         match = cls._artist_title_pattern.match(normalized)
         if match:
             meta.artists = [match.group("artist").strip()]
@@ -332,7 +333,7 @@ class MusicChain(ChainBase):
         meta = await run_in_threadpool(self.read_path_meta, path)
         # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兜底
         info = await self.async_recognize_media(meta=meta, source=source)
-        return meta, info or self._info_from_meta(meta)
+        return meta, self._merge_audio_quality(info or self._info_from_meta(meta), meta)
 
     def recognize_by_path(
             self,
@@ -343,7 +344,7 @@ class MusicChain(ChainBase):
         meta = self.read_path_meta(path)
         # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兜底
         info = self.recognize_media(meta=meta, source=source)
-        return meta, info or self._info_from_meta(meta)
+        return meta, self._merge_audio_quality(info or self._info_from_meta(meta), meta)
 
     @classmethod
     def to_meta(cls, info: MusicInfo) -> MetaMusic:
@@ -358,6 +359,11 @@ class MusicChain(ChainBase):
             track_number=info.track_number,
             total_tracks=info.total_tracks,
             version=info.version,
+            audio_format=info.audio_format,
+            audio_lossless=info.audio_lossless,
+            bit_depth=info.bit_depth,
+            sample_rate=info.sample_rate,
+            bitrate=info.bitrate,
             duration=info.duration,
             isrc=info.isrc,
             media_source=info.source,
@@ -381,8 +387,22 @@ class MusicChain(ChainBase):
             duration=meta.duration,
             isrc=meta.isrc,
             version=meta.version,
+            audio_format=meta.audio_format,
+            audio_lossless=meta.audio_lossless,
+            bit_depth=meta.bit_depth,
+            sample_rate=meta.sample_rate,
+            bitrate=meta.bitrate,
             names=[name for name in (meta.title, meta.album) if name],
         )
+
+    @staticmethod
+    def _merge_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
+        """将本地文件的实际音频参数合并到远端音乐身份识别结果。"""
+        for key in ("audio_format", "audio_lossless", "bit_depth", "sample_rate", "bitrate"):
+            value = getattr(meta, key, None)
+            if value is not None:
+                setattr(info, key, value)
+        return info
 
     @classmethod
     def _candidate_identity(cls, info: MusicInfo) -> tuple[str, ...]:

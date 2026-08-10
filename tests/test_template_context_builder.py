@@ -12,6 +12,7 @@ import threading
 
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
+from app.core.meta import MetaMusic
 from app.helper.message import TemplateContextBuilder
 from app.schemas.types import MediaType
 from app.schemas.tmdb import TmdbEpisode
@@ -138,3 +139,24 @@ def test_build_preserves_special_season_context() -> None:
     assert context["season"] == "0"
     assert context["season_fmt"] == "S00"
     assert context["season_year"] == "2024"
+
+
+def test_build_exposes_music_audio_specs_for_notifications() -> None:
+    """下载和整理通知上下文应包含格式化音质及可独立引用的技术参数。"""
+    meta = MetaMusic(
+        title="晴天",
+        artists=["周杰伦"],
+        album="叶惠美",
+        track_number=3,
+        audio_format="FLAC",
+        bit_depth=24,
+        sample_rate=96000,
+        bitrate=2304000,
+    )
+
+    context = TemplateContextBuilder().build(meta=meta)
+
+    assert context["audio_quality"] == "hires"
+    assert context["audio_specs"] == "FLAC · 24-bit · 96 kHz · 2,304 kbps"
+    assert context["bitrate_kbps"] == 2304
+    assert context["sample_rate_khz"] == "96"

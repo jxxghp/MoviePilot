@@ -106,12 +106,18 @@ Key columns: `id`, `path`, `type`, `title`, `year`, `tmdbid`, `imdbid`, `doubani
 Key columns: `id`, `downloader`, `download_hash`, `fullpath`, `savepath`, `filepath`, `torrentname`, `state`
 
 ### transferhistory
+
+Music rows persist actual `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, and `bitrate` values read during organization. Bitrate uses bps and sample rate uses Hz.
 Key columns: `id`, `src`, `dest`, `mode`, `type`, `category`, `title`, `year`, `tmdbid`, `seasons`, `episodes`, `download_hash`, `status`, `errmsg`, `date`
 
 ### subscribe
+
+Music filters use `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, and `min_sample_rate`. Quality upgrades reuse `current_priority` and persist the current exact values in `current_audio_format`, `current_bitrate`, `current_bit_depth`, and `current_sample_rate`.
 Key columns: `id`, `name`, `year`, `type`, `tmdbid`, `doubanid`, `season`, `total_episode`, `start_episode`, `lack_episode`, `state`, `filter`, `include`, `exclude`, `quality`, `resolution`, `sites`, `best_version`, `best_version_full`, `date`, `username`
 
 ### subscribehistory
+
+Completed music subscriptions retain both audio filters and the final current-quality snapshot for auditing.
 Key columns: `id`, `name`, `year`, `type`, `tmdbid`, `doubanid`, `season`, `total_episode`, `start_episode`, `date`, `username`
 
 ### user

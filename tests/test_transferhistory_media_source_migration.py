@@ -112,6 +112,72 @@ def test_transferhistory_music_migration_is_idempotent(monkeypatch) -> None:
     assert {"music_type", "total_tracks"}.issubset(columns)
 
 
+def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
+    """音乐音质字段迁移应可重复执行且不覆盖自定义通知模板。"""
+    migration = importlib.import_module(
+        "database.versions.e8b1c4d7a2f9_2_2_18"
+    )
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    for table_name in ("subscribe", "subscribehistory", "transferhistory"):
+        sa.Table(
+            table_name,
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+        )
+    config_oper = Mock()
+    config_oper.get.return_value = {
+        "organizeSuccess": "custom organize template",
+        "downloadAdded": "custom download template",
+    }
+    monkeypatch.setattr(
+        "app.db.systemconfig_oper.SystemConfigOper",
+        lambda: config_oper,
+    )
+
+    with engine.begin() as connection:
+        metadata.create_all(connection)
+        context = MigrationContext.configure(connection)
+        monkeypatch.setattr(migration, "op", Operations(context))
+
+        migration.upgrade()
+        migration.upgrade()
+
+        inspector = sa.inspect(connection)
+        subscribe_columns = {
+            column["name"] for column in inspector.get_columns("subscribe")
+        }
+        history_columns = {
+            column["name"]
+            for column in inspector.get_columns("subscribehistory")
+        }
+        transfer_columns = {
+            column["name"]
+            for column in inspector.get_columns("transferhistory")
+        }
+
+    assert {
+        "audio_quality",
+        "audio_format",
+        "min_bitrate",
+        "min_bit_depth",
+        "min_sample_rate",
+        "current_audio_format",
+        "current_bitrate",
+        "current_bit_depth",
+        "current_sample_rate",
+    }.issubset(subscribe_columns)
+    assert {"current_priority", "current_audio_format"}.issubset(history_columns)
+    assert {
+        "audio_format",
+        "audio_lossless",
+        "bit_depth",
+        "sample_rate",
+        "bitrate",
+    }.issubset(transfer_columns)
+    config_oper.set.assert_not_called()
+
+
 def test_transfer_history_preserves_album_entity_context() -> None:
     """整理成功记录应保存整专实体和预期曲目数供 Agent 重试。"""
     oper = object.__new__(TransferHistoryOper)
@@ -126,6 +192,7 @@ def test_transfer_history_preserves_album_entity_context() -> None:
         total_tracks=11,
     )
     meta = MetaMusic(title="叶惠美", artists=["周杰伦"], total_tracks=11)
+    meta.apply_audio_quality("FLAC Lossless 24bit 96kHz 2304kbps")
 
     oper.add_success(
         fileitem=FileItem(
@@ -148,3 +215,8 @@ def test_transfer_history_preserves_album_entity_context() -> None:
     call = oper.add_force.call_args
     assert call.kwargs["music_type"] == "album"
     assert call.kwargs["total_tracks"] == 11
+    assert call.kwargs["audio_format"] == "FLAC"
+    assert call.kwargs["audio_lossless"] is True
+    assert call.kwargs["bit_depth"] == 24
+    assert call.kwargs["sample_rate"] == 96_000
+    assert call.kwargs["bitrate"] == 2_304_000

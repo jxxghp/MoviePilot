@@ -45,6 +45,11 @@ def _subscribe(**overrides) -> SimpleNamespace:
         quality=None,
         resolution=None,
         effect=None,
+        audio_quality=None,
+        audio_format=None,
+        min_bitrate=None,
+        min_bit_depth=None,
+        min_sample_rate=None,
         include=None,
         exclude=None,
         username="admin",
@@ -53,6 +58,12 @@ def _subscribe(**overrides) -> SimpleNamespace:
         custom_words=None,
         media_category=None,
         best_version=0,
+        best_version_full=0,
+        current_priority=None,
+        current_audio_format=None,
+        current_bitrate=None,
+        current_bit_depth=None,
+        current_sample_rate=None,
         state="R",
         note=None,
         description=None,
@@ -111,6 +122,113 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     assert matched_context.media_info is target
     assert isinstance(matched_context.meta_info, MetaMusic)
     assert matched_context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
+    assert matched_context.meta_info.audio_format == "FLAC"
+    assert matched_context.meta_info.audio_lossless is True
+    chain.finish_subscribe_or_not.assert_called_once()
+
+
+def test_music_subscribe_filters_declared_bitrate_and_format():
+    """音乐订阅应按规范化格式和最低码率过滤站点资源。"""
+    subscribe = _subscribe(audio_format="MP3", min_bitrate=320000)
+    contexts = [
+        Context(torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 MP3 192kbps", category=MediaType.MUSIC.value,
+        )),
+        Context(torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 MP3 320kbps", category=MediaType.MUSIC.value,
+        )),
+    ]
+    chain = SubscribeChain()
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+
+    matched = chain._filter_music_subscribe_contexts(subscribe, _music_info(), contexts)
+
+    assert len(matched) == 1
+    assert matched[0].meta_info.bitrate == 320000
+
+
+def test_music_best_version_only_accepts_higher_audio_score():
+    """音乐洗版只能接收高于当前版本的候选，并把音质分数写入下载优先级。"""
+    subscribe = _subscribe(best_version=1, current_priority=90)
+    contexts = [
+        Context(torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 FLAC 16bit 44.1kHz", category=MediaType.MUSIC.value,
+        )),
+        Context(torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 FLAC 24bit 96kHz", category=MediaType.MUSIC.value,
+        )),
+    ]
+    chain = SubscribeChain()
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+
+    matched = chain._filter_music_subscribe_contexts(subscribe, _music_info(), contexts)
+
+    assert len(matched) == 1
+    assert matched[0].meta_info.audio_quality_score == 96
+    assert matched[0].torrent_info.pri_order == 96
+
+
+def test_music_best_version_preserves_configured_format_priority():
+    """音乐洗版应优先采用用户规则组给出的格式顺序，而非覆盖为自动音质分数。"""
+    subscribe = _subscribe(best_version=1, current_priority=90)
+    context = Context(torrent_info=TorrentInfo(
+        title="周杰伦 - 晴天 MP3 320kbps",
+        category=MediaType.MUSIC.value,
+    ))
+    chain = SubscribeChain()
+
+    def apply_rule_priority(**kwargs):
+        """模拟音乐格式规则组把当前候选排到最高优先级。"""
+        kwargs["torrent_list"][0].pri_order = 100
+        return kwargs["torrent_list"]
+
+    chain.filter_torrents = Mock(side_effect=apply_rule_priority)
+
+    matched = chain._filter_music_subscribe_contexts(
+        subscribe,
+        _music_info(),
+        [context],
+    )
+
+    assert matched[0].meta_info.audio_quality_score == 80
+    assert matched[0].torrent_info.pri_order == 100
+
+
+def test_music_best_version_persists_downloaded_rule_priority():
+    """音乐洗版成功后应按实际采用的规则优先级和音频参数更新当前版本。"""
+    subscribe = _subscribe(best_version=1, current_priority=90)
+    meta = MetaMusic(title="晴天")
+    meta.apply_audio_quality("MP3 320kbps")
+    downloaded = Context(
+        torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 MP3 320kbps",
+            category=MediaType.MUSIC.value,
+            pri_order=100,
+        ),
+        meta_info=meta,
+    )
+    download_chain = Mock()
+    download_chain.batch_download.return_value = ([downloaded], None)
+    subscribe_oper = Mock()
+    subscribe_oper.get.return_value = subscribe
+    chain = SubscribeChain()
+    chain.finish_subscribe_or_not = Mock()
+
+    with patch("app.chain.subscribe.DownloadChain", return_value=download_chain), \
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper):
+        chain._download_music_subscribe(subscribe, _music_info(), [downloaded])
+
+    subscribe_oper.update.assert_called_once_with(
+        subscribe.id,
+        {
+            "current_priority": 100,
+            "current_audio_format": "MP3",
+            "current_bitrate": 320_000,
+            "current_bit_depth": None,
+            "current_sample_rate": None,
+        },
+    )
+    assert subscribe.current_priority == 100
     chain.finish_subscribe_or_not.assert_called_once()
 
 

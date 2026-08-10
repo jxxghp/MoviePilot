@@ -5,6 +5,13 @@ from typing import List, Dict, Any, Tuple, Optional, Set, Union, Self
 
 from app.core.config import settings
 from app.core.meta import MetaBase
+from app.core.meta.metamusic import (
+    audio_quality_score,
+    audio_quality_tier,
+    format_audio_quality,
+    infer_audio_lossless,
+    normalize_audio_format,
+)
 from app.core.metainfo import MetaInfo
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
@@ -146,6 +153,11 @@ class MusicInfo:
     cover_url: str | None = None
     lyrics: str | None = None
     version: str | None = None
+    audio_format: str | None = None
+    audio_lossless: bool | None = None
+    bit_depth: int | None = None
+    sample_rate: int | None = None
+    bitrate: int | None = None
     category: str = ""
     genres: list[str] = field(default_factory=list)
     names: list[str] = field(default_factory=list)
@@ -157,6 +169,27 @@ class MusicInfo:
     def artist(self) -> str:
         """返回兼容现有展示组件的艺术家文本。"""
         return " / ".join(self.artists)
+
+    @property
+    def audio_quality(self) -> str | None:
+        """返回 hires、lossless 或 lossy 音质等级。"""
+        return audio_quality_tier(
+            self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
+        )
+
+    @property
+    def audio_quality_score(self) -> int:
+        """返回音乐订阅洗版使用的音质优先级。"""
+        return audio_quality_score(
+            self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
+        )
+
+    @property
+    def audio_specs(self) -> str | None:
+        """返回识别结果和通知使用的格式化音频参数。"""
+        return format_audio_quality(
+            self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
+        )
 
     @property
     def tmdb_id(self) -> None:
@@ -255,6 +288,9 @@ class MusicInfo:
                 "mediaid_prefix": self.source,
                 "overview": self.overview,
                 "vote_average": self.vote_average,
+                "audio_quality": self.audio_quality,
+                "audio_quality_score": self.audio_quality_score,
+                "audio_specs": self.audio_specs,
             }
         )
         return payload
@@ -269,6 +305,10 @@ class MusicInfo:
         values["genres"] = _music_string_list(values.get("genres"))
         values["names"] = _music_string_list(values.get("names"))
         values["music_type"] = str(values.get("music_type") or MUSIC_ENTITY_RECORDING)
+        values["audio_format"] = normalize_audio_format(values.get("audio_format"))
+        values["audio_lossless"] = infer_audio_lossless(
+            values.get("audio_format"), values.get("audio_lossless")
+        )
         values["raw_data"] = dict(values.get("raw_data") or {})
         for key in (
             "year",
@@ -277,6 +317,9 @@ class MusicInfo:
             "total_tracks",
             "duration",
             "listen_count",
+            "bit_depth",
+            "sample_rate",
+            "bitrate",
         ):
             values[key] = _music_optional_int(values.get(key))
         return cls(**values)

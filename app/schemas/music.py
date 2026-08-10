@@ -20,6 +20,10 @@ class MusicMeta(BaseModel):
     total_tracks: Optional[int] = None
     version: Optional[str] = None
     audio_format: Optional[str] = None
+    audio_lossless: Optional[bool] = None
+    audio_quality: Optional[Literal["hires", "lossless", "lossy"]] = None
+    audio_quality_score: int = 0
+    audio_specs: Optional[str] = None
     bit_depth: Optional[int] = None
     sample_rate: Optional[int] = None
     bitrate: Optional[int] = None
@@ -55,6 +59,14 @@ class MusicInfo(BaseModel):
     cover_url: Optional[str] = None
     lyrics: Optional[str] = None
     version: Optional[str] = None
+    audio_format: Optional[str] = None
+    audio_lossless: Optional[bool] = None
+    audio_quality: Optional[Literal["hires", "lossless", "lossy"]] = None
+    audio_quality_score: int = 0
+    audio_specs: Optional[str] = None
+    bit_depth: Optional[int] = None
+    sample_rate: Optional[int] = None
+    bitrate: Optional[int] = None
     category: Optional[str] = ""
     genres: list[str] = Field(default_factory=list)
     names: list[str] = Field(default_factory=list)

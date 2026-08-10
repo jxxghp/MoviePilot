@@ -58,6 +58,16 @@ class TransferHistory(Base):
     music_type = Column(String)
     # 专辑预期总曲目数
     total_tracks = Column(Integer)
+    # 实际音频格式
+    audio_format = Column(String)
+    # 是否无损音频
+    audio_lossless = Column(Boolean)
+    # 实际位深（bit）
+    bit_depth = Column(Integer)
+    # 实际采样率（Hz）
+    sample_rate = Column(Integer)
+    # 实际码率（bps）
+    bitrate = Column(Integer)
     # Sxx
     seasons = Column(String)
     # Exx

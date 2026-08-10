@@ -157,6 +157,11 @@ Subscribe to a specific season:
 Subscribe starting from a specific episode:
 `moviepilot tool run add_subscribe title="..." year="2024" media_type="tv" tmdb_id=12345 season=1 start_episode=13`
 
+Subscribe to a complete lossless album and keep upgrading its audio quality:
+`moviepilot tool run add_subscribe title="..." media_type="music" music_type="album" media_source="musicbrainz" media_id="<release-group-id>" audio_quality="hires|lossless" audio_format="DSD|FLAC|ALAC" min_bit_depth=24 best_version=1`
+
+Audio bitrate and sample-rate values use bps and Hz. For example, pass `min_bitrate=320000` and `min_sample_rate=96000`.
+
 ### Manage Downloads
 
 List download tasks and get hash for further operations:

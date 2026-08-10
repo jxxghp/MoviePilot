@@ -3,6 +3,12 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app.core.context import MusicInfo
+from app.core.meta.metamusic import (
+    audio_quality_score,
+    audio_quality_tier,
+    format_audio_quality,
+    parse_audio_quality,
+)
 from app.helper.audio import AudioMetadataHelper
 
 
@@ -38,6 +44,62 @@ def test_read_audio_metadata_maps_easy_tags(monkeypatch):
     assert meta.total_tracks == 13
     assert meta.duration == 369
     assert meta.audio_format == "FLAC"
+    assert meta.audio_lossless is True
+    assert meta.audio_quality == "lossless"
+    assert meta.audio_specs == "FLAC · 16-bit · 44.1 kHz · 1,411 kbps"
+
+
+def test_parse_declared_hires_audio_quality_from_resource_title():
+    """站点资源标题中的格式、位深和采样率应形成可筛选的统一音质参数。"""
+    specs = parse_audio_quality("周杰伦 - 叶惠美 FLAC 24bit 96kHz Hi-Res")
+
+    assert specs == {
+        "audio_format": "FLAC",
+        "audio_lossless": True,
+        "bit_depth": 24,
+        "sample_rate": 96000,
+        "bitrate": None,
+    }
+    assert audio_quality_tier(**specs) == "hires"
+    assert audio_quality_score(**specs) == 96
+    assert format_audio_quality(**specs) == "FLAC · 24-bit · 96 kHz"
+
+
+def test_audio_quality_score_orders_lossy_lossless_and_terminal_hires():
+    """音乐洗版分数必须稳定满足有损、无损、顶级 Hi-Res 的递增关系。"""
+    mp3_score = audio_quality_score("MP3", bitrate=320000)
+    flac_score = audio_quality_score("FLAC", bit_depth=16, sample_rate=44100)
+    hires_score = audio_quality_score("FLAC", bit_depth=24, sample_rate=192000)
+
+    assert 0 < mp3_score < flac_score < hires_score
+    assert hires_score == 100
+
+
+def test_music_info_serialization_exposes_derived_audio_quality():
+    """音乐 REST 序列化应同时返回原始技术参数和规范化音质展示字段。"""
+    payload = MusicInfo(
+        title="晴天",
+        audio_format="FLAC",
+        bit_depth=24,
+        sample_rate=96_000,
+        bitrate=2_304_000,
+    ).to_dict()
+
+    assert payload["audio_quality"] == "hires"
+    assert payload["audio_quality_score"] == 96
+    assert payload["audio_specs"] == "FLAC · 24-bit · 96 kHz · 2,304 kbps"
+
+
+def test_parse_compact_audio_quality_tokens_without_false_sample_bitrate():
+    """紧凑资源命名中的 FLAC24bit 和 320K 应可识别，96kHz 不得误判为码率。"""
+    lossless = parse_audio_quality("Album.FLAC24bit.96kHz")
+    lossy = parse_audio_quality("Album.MP3.320K")
+
+    assert lossless["audio_format"] == "FLAC"
+    assert lossless["bit_depth"] == 24
+    assert lossless["sample_rate"] == 96000
+    assert lossless["bitrate"] is None
+    assert lossy["bitrate"] == 320000
 
 
 def test_read_audio_metadata_falls_back_to_filename(monkeypatch):

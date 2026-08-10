@@ -868,6 +868,16 @@ class SubscribeChain(ChainBase):
                 "resolution") else kwargs.get("resolution"),
             'effect': self.__get_default_subscribe_config(mtype, "effect") if not kwargs.get(
                 "effect") else kwargs.get("effect"),
+            'audio_quality': self.__get_default_subscribe_config(mtype, "audio_quality") if not kwargs.get(
+                "audio_quality") else kwargs.get("audio_quality"),
+            'audio_format': self.__get_default_subscribe_config(mtype, "audio_format") if not kwargs.get(
+                "audio_format") else kwargs.get("audio_format"),
+            'min_bitrate': self.__get_default_subscribe_config(mtype, "min_bitrate") if not kwargs.get(
+                "min_bitrate") else kwargs.get("min_bitrate"),
+            'min_bit_depth': self.__get_default_subscribe_config(mtype, "min_bit_depth") if not kwargs.get(
+                "min_bit_depth") else kwargs.get("min_bit_depth"),
+            'min_sample_rate': self.__get_default_subscribe_config(mtype, "min_sample_rate") if not kwargs.get(
+                "min_sample_rate") else kwargs.get("min_sample_rate"),
             'include': self.__get_default_subscribe_config(mtype, "include") if not kwargs.get(
                 "include") else kwargs.get("include"),
             'exclude': self.__get_default_subscribe_config(mtype, "exclude") if not kwargs.get(
@@ -888,9 +898,8 @@ class SubscribeChain(ChainBase):
                 "filter_groups") else kwargs.get("filter_groups")
         }
         if mtype == MediaType.MUSIC:
-            # 音乐订阅当前只负责首次获取，不复用影视洗版和 IMDB 搜索语义。
+            # 音乐允许按音质洗版，但没有电视剧整包洗版和 IMDB 搜索语义。
             defaults.update({
-                "best_version": 0,
                 "best_version_full": 0,
                 "search_imdbid": 0,
             })
@@ -1552,8 +1561,9 @@ class SubscribeChain(ChainBase):
     ) -> List[Context]:
         """按站点、音乐实体、订阅参数和优先级规则筛选并绑定下载上下文。"""
         sites = self.get_sub_sites(subscribe)
-        rule_groups = subscribe.filter_groups \
-                      or SystemConfigOper().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+        default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
+            if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
+        rule_groups = subscribe.filter_groups or SystemConfigOper().get(default_rule_key) or []
         torrent_helper = TorrentHelper()
         matched: List[Context] = []
         for source_context in contexts or []:
@@ -1577,6 +1587,18 @@ class SubscribeChain(ChainBase):
             context = copy.copy(source_context)
             meta = MusicChain.to_meta(mediainfo)
             meta.org_string = torrent.title
+            meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}", overwrite=True)
+            if subscribe.best_version:
+                # 用户规则组可用格式、码率等内置规则定义洗版顺序；未命中规则
+                # 优先级时再回退到规范化音质分数，确保零配置也能自动升级。
+                music_priority = torrent.pri_order or meta.audio_quality_score
+                if music_priority <= (subscribe.current_priority or 0):
+                    logger.info(
+                        f"{torrent.title} 音质优先级 {music_priority} "
+                        f"未高于当前版本 {subscribe.current_priority or 0}"
+                    )
+                    continue
+                torrent.pri_order = music_priority
             context.meta_info = meta
             context.media_info = mediainfo
             context.match_source = mediainfo.source or "title"
@@ -1604,6 +1626,23 @@ class SubscribeChain(ChainBase):
             source=self.get_subscribe_source_keyword(subscribe),
             custom_words=subscribe.custom_words,
         )
+        successful = [
+            context for context in downloads or []
+            if context and context.meta_info and context.torrent_info
+        ]
+        if subscribe.best_version and successful:
+            best_context = max(successful, key=lambda item: item.torrent_info.pri_order)
+            best_meta = best_context.meta_info
+            quality_data = {
+                "current_priority": best_context.torrent_info.pri_order,
+                "current_audio_format": best_meta.audio_format,
+                "current_bitrate": best_meta.bitrate,
+                "current_bit_depth": best_meta.bit_depth,
+                "current_sample_rate": best_meta.sample_rate,
+            }
+            SubscribeOper().update(subscribe.id, quality_data)
+            for key, value in quality_data.items():
+                setattr(subscribe, key, value)
         current_subscribe = SubscribeOper().get(subscribe.id)
         if current_subscribe:
             self.finish_subscribe_or_not(
@@ -1621,8 +1660,9 @@ class SubscribeChain(ChainBase):
         mediainfo, _ = target
 
         sites = self.get_sub_sites(subscribe)
-        rule_groups = subscribe.filter_groups \
-                      or SystemConfigOper().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+        default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
+            if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
+        rule_groups = subscribe.filter_groups or SystemConfigOper().get(default_rule_key) or []
         keywords = [subscribe.keyword] if subscribe.keyword else MusicChain.build_site_keywords(mediainfo)
         if not keywords:
             keywords = [subscribe.name]
@@ -4171,6 +4211,8 @@ class SubscribeChain(ChainBase):
             default_subscribe_key = SystemConfigKey.DefaultTvSubscribeConfig.value
         if mtype == MediaType.MOVIE:
             default_subscribe_key = SystemConfigKey.DefaultMovieSubscribeConfig.value
+        if mtype == MediaType.MUSIC:
+            default_subscribe_key = SystemConfigKey.DefaultMusicSubscribeConfig.value
 
         if not default_subscribe_key:
             return None
@@ -4199,6 +4241,11 @@ class SubscribeChain(ChainBase):
                 "quality": subscribe.quality or default_rule.get("quality"),
                 "resolution": subscribe.resolution or default_rule.get("resolution"),
                 "effect": subscribe.effect or default_rule.get("effect"),
+                "audio_quality": getattr(subscribe, "audio_quality", None),
+                "audio_format": getattr(subscribe, "audio_format", None),
+                "min_bitrate": getattr(subscribe, "min_bitrate", None),
+                "min_bit_depth": getattr(subscribe, "min_bit_depth", None),
+                "min_sample_rate": getattr(subscribe, "min_sample_rate", None),
                 "tv_size": default_rule.get("tv_size"),
                 "movie_size": default_rule.get("movie_size"),
                 "min_seeders": default_rule.get("min_seeders"),

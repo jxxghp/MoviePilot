@@ -56,6 +56,16 @@ class Subscribe(Base):
     resolution = Column(String)
     # 特效
     effect = Column(String)
+    # 音乐音质等级：hires/lossless/lossy，可用正则组合
+    audio_quality = Column(String)
+    # 音频格式，可用正则组合
+    audio_format = Column(String)
+    # 最低码率（bps）
+    min_bitrate = Column(Integer)
+    # 最低位深（bit）
+    min_bit_depth = Column(Integer)
+    # 最低采样率（Hz）
+    min_sample_rate = Column(Integer)
     # 总集数
     total_episode = Column(Integer)
     # 开始集数
@@ -82,6 +92,14 @@ class Subscribe(Base):
     best_version_full = Column(Integer, default=0)
     # 当前优先级
     current_priority = Column(Integer)
+    # 当前音乐版本格式
+    current_audio_format = Column(String)
+    # 当前音乐版本码率（bps）
+    current_bitrate = Column(Integer)
+    # 当前音乐版本位深（bit）
+    current_bit_depth = Column(Integer)
+    # 当前音乐版本采样率（Hz）
+    current_sample_rate = Column(Integer)
     # 洗版时已下载剧集的优先级状态，格式：{"1": 90, "2": 100}
     episode_priority = Column(JSON)
     # 保存路径

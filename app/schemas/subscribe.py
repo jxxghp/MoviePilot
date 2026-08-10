@@ -48,6 +48,7 @@ class Subscribe(BaseModel):
     PUBLIC_WRITE_EXCLUDED_FIELDS: ClassVar[frozenset[str]] = frozenset({
         "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode",
         "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
+        "current_audio_format", "current_bitrate", "current_bit_depth", "current_sample_rate",
     })
 
     id: Optional[int] = None
@@ -92,6 +93,16 @@ class Subscribe(BaseModel):
     resolution: Optional[str] = None
     # 特效
     effect: Optional[str] = None
+    # 音乐音质等级，可用 | 组合 hires/lossless/lossy
+    audio_quality: Optional[str] = None
+    # 音频格式正则，如 FLAC|ALAC
+    audio_format: Optional[str] = None
+    # 最低码率（bps）
+    min_bitrate: Optional[int] = None
+    # 最低位深（bit）
+    min_bit_depth: Optional[int] = None
+    # 最低采样率（Hz）
+    min_sample_rate: Optional[int] = None
     # 总集数
     total_episode: Optional[int] = 0
     # 开始集数
@@ -118,6 +129,14 @@ class Subscribe(BaseModel):
     best_version_full: Optional[int] = None
     # 当前优先级
     current_priority: Optional[int] = None
+    # 当前音乐版本格式
+    current_audio_format: Optional[str] = None
+    # 当前音乐版本码率（bps）
+    current_bitrate: Optional[int] = None
+    # 当前音乐版本位深（bit）
+    current_bit_depth: Optional[int] = None
+    # 当前音乐版本采样率（Hz）
+    current_sample_rate: Optional[int] = None
     # 洗版时已下载剧集的优先级状态
     episode_priority: Optional[Dict[str, int]] = None
     # 保存路径
@@ -222,6 +241,16 @@ class SubscribeShare(BaseModel):
     resolution: Optional[str] = None
     # 特效
     effect: Optional[str] = None
+    # 音乐音质等级
+    audio_quality: Optional[str] = None
+    # 音频格式
+    audio_format: Optional[str] = None
+    # 最低码率（bps）
+    min_bitrate: Optional[int] = None
+    # 最低位深（bit）
+    min_bit_depth: Optional[int] = None
+    # 最低采样率（Hz）
+    min_sample_rate: Optional[int] = None
     # 总集数
     total_episode: Optional[int] = 0
     # 时间

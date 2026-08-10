@@ -109,6 +109,31 @@ def test_builtin_cnsub_rule_ignores_trailing_file_size_unit():
     assert explicit_gb_subtitle.pri_order == 100
 
 
+def test_builtin_music_rules_assign_format_and_bitrate_priority():
+    """内置音乐规则应允许格式和码率共同参与订阅洗版优先级。"""
+    module = _build_filter_module(
+        rule_string="FLAC > BITRATE320",
+        rule_set=BUILTIN_RULE_SET,
+    )
+    lossless = TorrentInfo(
+        title="Artist Album FLAC 24bit 96kHz",
+        description="",
+    )
+    lossy = TorrentInfo(
+        title="Artist Album MP3 320kbps",
+        description="",
+    )
+
+    filtered = module.filter_torrents(
+        rule_groups=["test"],
+        torrent_list=[lossless, lossy],
+    )
+
+    assert filtered == [lossless, lossy]
+    assert lossless.pri_order == 100
+    assert lossy.pri_order == 99
+
+
 def test_filter_torrents_keeps_lazy_priority_level_parsing():
     """
     命中高优先级规则后不应解析低优先级坏规则。

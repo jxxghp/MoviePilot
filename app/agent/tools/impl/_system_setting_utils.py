@@ -119,6 +119,10 @@ SYSTEMCONFIG_SETTING_METADATA = {
         "group": "subscribe_defaults",
         "label": "默认电视剧订阅规则",
     },
+    SystemConfigKey.DefaultMusicSubscribeConfig.value: {
+        "group": "subscribe_defaults",
+        "label": "默认音乐订阅规则",
+    },
     SystemConfigKey.UserInstalledPlugins.value: {
         "group": "plugins",
         "label": "已安装插件列表",

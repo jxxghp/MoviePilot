@@ -47,6 +47,11 @@ class UpdateSubscribeInput(BaseModel):
         None,
         description="Effect filter as regular expression (optional, e.g., 'HDR|DV|SDR')",
     )
+    audio_quality: Optional[str] = Field(None, description="Music quality tier filter")
+    audio_format: Optional[str] = Field(None, description="Music audio-format regular expression")
+    min_bitrate: Optional[int] = Field(None, description="Minimum music bitrate in bits per second")
+    min_bit_depth: Optional[int] = Field(None, description="Minimum music bit depth")
+    min_sample_rate: Optional[int] = Field(None, description="Minimum music sample rate in Hz")
     include: Optional[str] = Field(
         None, description="Include filter as regular expression (optional)"
     )
@@ -144,6 +149,11 @@ class UpdateSubscribeTool(MoviePilotTool):
         quality: Optional[str] = None,
         resolution: Optional[str] = None,
         effect: Optional[str] = None,
+        audio_quality: Optional[str] = None,
+        audio_format: Optional[str] = None,
+        min_bitrate: Optional[int] = None,
+        min_bit_depth: Optional[int] = None,
+        min_sample_rate: Optional[int] = None,
         include: Optional[str] = None,
         exclude: Optional[str] = None,
         filter: Optional[str] = None,
@@ -185,6 +195,14 @@ class UpdateSubscribeTool(MoviePilotTool):
                         "success": False,
                         "message": "音乐订阅不能更新季集、整季洗版或剧集组字段",
                     },
+                    ensure_ascii=False,
+                )
+            if media_type_to_agent(subscribe.type) != "music" and any(
+                    value is not None
+                    for value in (audio_quality, audio_format, min_bitrate, min_bit_depth, min_sample_rate)
+            ):
+                return json.dumps(
+                    {"success": False, "message": "音质等级、音频格式和音频技术参数仅用于音乐订阅"},
                     ensure_ascii=False,
                 )
 
@@ -231,6 +249,16 @@ class UpdateSubscribeTool(MoviePilotTool):
                 subscribe_dict["resolution"] = resolution
             if effect is not None:
                 subscribe_dict["effect"] = effect
+            if audio_quality is not None:
+                subscribe_dict["audio_quality"] = audio_quality
+            if audio_format is not None:
+                subscribe_dict["audio_format"] = audio_format
+            if min_bitrate is not None:
+                subscribe_dict["min_bitrate"] = min_bitrate
+            if min_bit_depth is not None:
+                subscribe_dict["min_bit_depth"] = min_bit_depth
+            if min_sample_rate is not None:
+                subscribe_dict["min_sample_rate"] = min_sample_rate
             if include is not None:
                 subscribe_dict["include"] = include
             if exclude is not None:
