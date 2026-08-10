@@ -9,6 +9,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.helper.server import MoviePilotServerHelper
 from app.log import logger
+from app.schemas.types import media_type_to_agent
+from ._music_utils import normalize_music_type
 
 MAX_PAGE_SIZE = 50
 
@@ -25,6 +27,8 @@ class QuerySubscribeSharesInput(BaseModel):
 
 
 class QuerySubscribeSharesTool(MoviePilotTool):
+    """查询社区共享的影视、单曲与专辑订阅。"""
+
     name: str = "query_subscribe_shares"
     tags: list[str] = [
         ToolTag.Read,
@@ -60,6 +64,7 @@ class QuerySubscribeSharesTool(MoviePilotTool):
                   min_rating: Optional[float] = None,
                   max_rating: Optional[float] = None,
                   sort_type: Optional[str] = None, **kwargs) -> str:
+        """查询订阅分享并保留音乐实体及整专曲目字段。"""
         logger.info(
             f"执行工具: {self.name}, 参数: name={name}, page={page}, count={count}, genre_id={genre_id}, "
             f"min_rating={min_rating}, max_rating={max_rating}, sort_type={sort_type}")
@@ -88,11 +93,23 @@ class QuerySubscribeSharesTool(MoviePilotTool):
             # 简化字段，只保留关键信息
             simplified_shares = []
             for share in shares:
+                normalized_type = media_type_to_agent(share.get("type"))
+                normalized_music_type = None
+                if normalized_type == "music":
+                    normalized_music_type = normalize_music_type(
+                        share.get("music_type") or "recording",
+                        allow_artist=False,
+                    )
+                    if not normalized_music_type:
+                        logger.warning(
+                            f"跳过未知音乐订阅分享实体: {share.get('music_type')}"
+                        )
+                        continue
                 simplified = {
                     "id": share.get("id"),
                     "name": share.get("name"),
                     "year": share.get("year"),
-                    "type": share.get("type"),
+                    "type": normalized_type,
                     "season": share.get("season"),
                     "tmdbid": share.get("tmdbid"),
                     "doubanid": share.get("doubanid"),
@@ -100,6 +117,9 @@ class QuerySubscribeSharesTool(MoviePilotTool):
                     "anilistid": share.get("anilistid"),
                     "media_source": share.get("media_source"),
                     "media_id": share.get("media_id"),
+                    "music_type": normalized_music_type,
+                    "total_tracks": share.get("total_tracks"),
+                    "description": share.get("description"),
                     "poster": share.get("poster"),
                     "vote": share.get("vote"),
                     "share_title": share.get("share_title"),

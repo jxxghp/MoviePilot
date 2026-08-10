@@ -40,13 +40,13 @@ task_types:
       - "Analyze the error message to determine the best retry strategy."
       - "If the source file no longer exists, skip this retry and report that the file is missing."
       - "Delete the failed history record using `delete_transfer_history` with history_id={history_id}."
-      - "Re-identify the media using `recognize_media` with the source file path."
-      - "If recognition fails, try `search_media` with keywords from the filename."
-      - "Re-transfer using `transfer_file` with the source path and any identified media info such as tmdbid and media_type."
+      - "Re-identify the media using `recognize_media` with the source file path. For audio files, set media_type='music' and preserve artist/title/album context."
+      - "If recognition fails, try `search_media` with keywords from the filename. For music, distinguish recording, album, and browse-only artist results."
+      - "Re-transfer using `transfer_file` with the source path and exact identity fields. Reuse media_source + media_id + media_type + music_type for music, or the applicable video IDs."
       - "Report the final result."
   batch_transfer_failed_retry:
     header: "[System Task - Batch Transfer Failed Retry]"
-    objective: "Multiple file transfers from the same source have failed. These files likely belong to the same media. Please use the `transfer-failed-retry` skill to retry them efficiently."
+    objective: "Multiple file transfers have failed. Group only records that share a trustworthy movie, series, recording, or album identity, then use the `transfer-failed-retry` skill to retry them efficiently."
     context_title: "Task context"
     context_lines:
       - "Failed transfer history record IDs: {history_ids_csv}"
@@ -54,12 +54,12 @@ task_types:
     steps_title: "Follow these steps"
     steps:
       - "Use `query_transfer_history` with status='failed' to find all records with these IDs and understand the failure details."
-      - "Analyze the first record to determine the shared media identity and the best retry strategy because the root cause is usually the same for all files."
-      - "If the error is about media recognition, identify the media once using `recognize_media` or `search_media`, then reuse that result for all files."
+      - "Group records by exact media identity and source directory before retrying. Do not assume all selected files belong to one media."
+      - "If the error is about media recognition, identify each group once using `recognize_media` or `search_media`, then reuse that result inside the group. Album tracks should normally be retried from the shared album directory with the album identity."
       - "For each failed record, delete the old history entry with `delete_transfer_history` and re-transfer using `transfer_file`."
       - "Report how many retries succeeded and how many still failed."
     task_rules:
-      - "These files share the same media identity. Do NOT call `recognize_media` or `search_media` repeatedly for each file."
+      - "Within one verified group, do NOT call `recognize_media` or `search_media` repeatedly for each file. A music recording is one track; a music album is one multi-track directory; an artist is never a transfer target."
   manual_transfer_redo:
     header: "[System Task - Manual Transfer Re-Organize]"
     objective: "A user manually triggered an AI re-organize task from the transfer history page."
@@ -83,6 +83,8 @@ task_types:
       - "- Current AniList ID: {anilistid}"
       - "- Current media source: {media_source}"
       - "- Current source-native ID: {media_id}"
+      - "- Music entity type: {music_type}"
+      - "- Expected album tracks: {total_tracks}"
       - "- Error message: {error_message}"
     steps_title: "Required workflow"
     steps:
@@ -94,7 +96,7 @@ task_types:
       - "Only continue when you have high confidence in the target media."
       - "Before re-organizing, delete the old transfer history record with `delete_transfer_history` so the system will not skip the source file."
       - "Then use `transfer_file` to organize the source path directly."
-      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, and media_type."
+      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, media_type, and music_type. For an album, retry the album directory once with the album identity when the records share that directory."
       - "If this record is already correct and no re-organize is needed, do not perform destructive actions; simply report that no change is necessary."
     task_rules:
       - "Do NOT rely on previous chat context. Work only from the record above."
@@ -116,11 +118,11 @@ task_types:
       - "Review the selected records below first and group them by likely shared media identity, source directory, or retry strategy when possible."
       - "Use the provided record context as the primary source of truth. Call `query_transfer_history` only when you need extra confirmation."
       - "For each group, decide whether the current recognition is trustworthy."
-      - "If multiple records clearly belong to the same movie or series, identify the media once with `recognize_media` or `search_media`, then reuse that result for the related records."
+      - "If multiple records clearly belong to the same movie, series, or music album, identify the media once with `recognize_media` or `search_media`, then reuse that result for the related records. A recording remains a single-track target, and an artist is browse-only."
       - "If a source file no longer exists or cannot be safely processed, skip that record and note the reason."
       - "Before re-organizing a record, delete the old transfer history record with `delete_transfer_history` so the system will not skip the source file."
       - "Then use `transfer_file` to organize the source path directly."
-      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, and media_type."
+      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, media_type, and music_type. Prefer one directory transfer for a verified complete album instead of treating each track as an unrelated media item."
       - "If a record is already correct and no re-organize is needed, do not perform destructive actions; simply mark it as skipped."
       - "Report only the aggregate outcome, including how many records succeeded, skipped, and failed."
     task_rules:

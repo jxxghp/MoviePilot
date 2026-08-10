@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 10
+version: 11
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -175,18 +175,31 @@ AniList endpoints prefer the `anilist-chinese` proxy and fall back to official A
 | GET | `/api/v1/anilist/person/{person_id}` | Staff detail |
 | GET | `/api/v1/anilist/person/credits/{person_id}` | Staff anime credits. Params: `page`, `count` |
 
-### Music (3 endpoints)
+### Music (6 entity endpoints plus unified search)
 
 Music uses the independent `MusicMeta` / `MusicInfo` contract and a
-`musicbrainz:<recording_mbid>` identity. MoviePilot searches, recognizes,
-subscribes to, downloads, and organizes music; it does not manage a music
-library, playlists, or an artist library.
+source-native MusicBrainz identity. `music_type=recording` is one track,
+`album` is a multi-track collection, and `artist` is browse-only. MoviePilot
+searches, recognizes, subscribes to, downloads, organizes, scrapes, and checks
+music on configured music-capable media servers; it does not manage playlists.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/music/search` | Search tracks, albums, or artists. Params: `query`, `count` |
+| GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or `source=musicbrainz`. Params: `title`, `type`, `count` |
 | POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `source`, `media_id` |
-| GET | `/api/v1/music/explore` | Explore the monthly site-wide music chart. Params: `page`, `count` |
+| GET | `/api/v1/music/explore` | Explore ListenBrainz charts or fresh albums. Params: `mode`, `entity`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
+| GET | `/api/v1/music/album/{album_id}` | Album detail with tracks and releases. Params: `source` |
+| GET | `/api/v1/music/artist/{artist_id}` | Browse artist detail. Params: `source` |
+| GET | `/api/v1/music/artist/{artist_id}/albums` | Browse artist albums/EPs/singles. Params: `source`, `page`, `count`, `album_type` |
+| GET | `/api/v1/music/artist/{artist_id}/related` | Browse related artists. Params: `source`, `count` |
+
+Music acquisition rules:
+
+- Reuse `source`, `media_id`, and `music_type` from search/detail results. Never substitute a same-name entity.
+- Subscribe/download one recording as one track. Subscribe/download one album as a complete multi-track pack.
+- Album torrent validation compares supported audio files with `total_tracks`; incomplete resources do not complete the subscription.
+- Artist IDs are never subscription, torrent, download, transfer, or library-existence targets.
+- `/api/v1/media/scrape/{storage}` writes configured music tags/covers and can fetch LRCLIB lyrics as `.lrc`/`.txt` sidecars. External metadata, cover, exploration, statistics, and lyrics requests use bounded TTL/LRU caches in their owning modules/helpers.
 
 ### Search / Torrents / Subtitles (11 endpoints)
 
@@ -224,7 +237,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/subscribe/` | List all subscriptions |
-| POST | `/api/v1/subscribe/` | Add subscription. Body accepts `media_source` + `media_id` and compatible `tmdbid`, `doubanid`, `bangumiid`, `anilistid` fields |
+| POST | `/api/v1/subscribe/` | Add subscription. Music requires `type=music`, `music_type=recording|album`, and exact `media_source` + `media_id`; video also accepts compatible dedicated IDs |
 | PUT | `/api/v1/subscribe/` | Update subscription. Body: Subscribe JSON |
 | GET | `/api/v1/subscribe/list` | List subscriptions (API_TOKEN auth, use `--token-param`) |
 | GET | `/api/v1/subscribe/{subscribe_id}` | Subscription detail |
@@ -614,6 +627,26 @@ python scripts/mp-api.py GET /api/v1/search/last
 # 5. Add download
 python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_url":"<url_from_search>"}'
 ```
+
+### Search and subscribe to one recording or complete album
+
+```bash
+# 1. Search MusicBrainz entities through the unified media search
+python scripts/mp-api.py GET /api/v1/media/search title="Artist - Title" type="music" count=20
+
+# 2a. For an album, inspect its complete track list before subscribing
+python scripts/mp-api.py GET /api/v1/music/album/<album_mbid> source="musicbrainz"
+
+# 2b. Check the exact entity subscription separately; music_type prevents recording/album ambiguity
+python scripts/mp-api.py GET /api/v1/subscribe/media/musicbrainz:<mbid> music_type="album"
+
+# 3. Add one exact album subscription. REST enum values use the localized MediaType value.
+python scripts/mp-api.py POST /api/v1/subscribe/ --json '{"name":"Album Title","type":"音乐","music_type":"album","media_source":"musicbrainz","media_id":"<album_mbid>"}'
+
+# For one track, use that track's recording MBID and music_type=recording instead.
+```
+
+Do not create an artist subscription. Select a recording or album from the artist catalog first. For an album manual download, use one matched album resource; the download layer rejects resources whose audio-file list does not cover `total_tracks`.
 
 ### Search and download subtitles
 

@@ -17,6 +17,7 @@ def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
             source_storage = history.dest_storage or "local"
     source_path = source_path or history.src or ""
     season_episode = f"{history.seasons or ''}{history.episodes or ''}".strip()
+    is_music = str(history.type or "") in {"music", "音乐"}
     return {
         "history_id": history.id,
         "current_status": "success" if history.status else "failed",
@@ -36,6 +37,12 @@ def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
         "anilistid": history.anilistid or "none",
         "media_source": history.media_source or "none",
         "media_id": history.media_id or "none",
+        "music_type": getattr(history, "music_type", None) or (
+            "unknown" if is_music else "not_applicable"
+        ),
+        "total_tracks": getattr(history, "total_tracks", None) or (
+            "unknown" if is_music else "not_applicable"
+        ),
         "error_message": history.errmsg or "none",
     }
 
@@ -63,6 +70,8 @@ def format_manual_redo_record_context(history: Any) -> str:
             f"- Current AniList ID: {context['anilistid']}",
             f"- Current media source: {context['media_source']}",
             f"- Current source-native ID: {context['media_id']}",
+            f"- Music entity type: {context['music_type']}",
+            f"- Expected album tracks: {context['total_tracks']}",
             f"- Error message: {context['error_message']}",
         ]
     )

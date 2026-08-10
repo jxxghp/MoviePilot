@@ -6,9 +6,10 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.core.meta import MetaBase
+from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.core.meta import MetaBase, MetaMusic
 from app.db.transferhistory_oper import TransferHistoryOper
-from app.schemas import FileItem
+from app.schemas import FileItem, TransferInfo
 
 
 def test_transferhistory_migration_backfills_existing_source_ids(monkeypatch) -> None:
@@ -80,3 +81,70 @@ def test_failed_transfer_history_preserves_explicit_media_source() -> None:
     call = oper.add_force.call_args
     assert call.kwargs["media_source"] == "anilist"
     assert call.kwargs["media_id"] == "154587"
+
+
+def test_transferhistory_music_migration_is_idempotent(monkeypatch) -> None:
+    """整理历史音乐字段迁移应支持重复执行。"""
+    migration = importlib.import_module(
+        "database.versions.d4f6a8c2e1b7_2_2_17"
+    )
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    sa.Table(
+        "transferhistory",
+        metadata,
+        sa.Column("id", sa.Integer(), primary_key=True),
+    )
+
+    with engine.begin() as connection:
+        metadata.create_all(connection)
+        context = MigrationContext.configure(connection)
+        monkeypatch.setattr(migration, "op", Operations(context))
+
+        migration.upgrade()
+        migration.upgrade()
+
+        columns = {
+            column["name"]
+            for column in sa.inspect(connection).get_columns("transferhistory")
+        }
+
+    assert {"music_type", "total_tracks"}.issubset(columns)
+
+
+def test_transfer_history_preserves_album_entity_context() -> None:
+    """整理成功记录应保存整专实体和预期曲目数供 Agent 重试。"""
+    oper = object.__new__(TransferHistoryOper)
+    oper.add_force = Mock(return_value=SimpleNamespace(id=1))
+    media = MusicInfo(
+        source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        artists=["周杰伦"],
+        total_tracks=11,
+    )
+    meta = MetaMusic(title="叶惠美", artists=["周杰伦"], total_tracks=11)
+
+    oper.add_success(
+        fileitem=FileItem(
+            storage="local",
+            path="/downloads/叶惠美/01.flac",
+            type="file",
+        ),
+        mode="copy",
+        meta=meta,
+        mediainfo=media,
+        transferinfo=TransferInfo(
+            target_item=FileItem(
+                storage="local",
+                path="/music/周杰伦/叶惠美/01.flac",
+                type="file",
+            ),
+        ),
+    )
+
+    call = oper.add_force.call_args
+    assert call.kwargs["music_type"] == "album"
+    assert call.kwargs["total_tracks"] == 11

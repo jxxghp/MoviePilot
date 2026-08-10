@@ -142,7 +142,7 @@ FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶�
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `source` |
 | GET | `/api/v1/media/{mediaid}` | 查询媒体详情，`mediaid` 支持 `tmdb:`、`douban:`、`bangumi:`、`anilist:` 及插件自定义来源前缀 |
-| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧）可指定本次刮削媒体 |
+| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）。音乐会按策略处理音频标签、封面和歌词 |
 | POST | `/api/v1/transfer/manual/target-path` | 匹配手动整理目标路径；请求体可用 `media_source` + `media_id` 指定数据源原生ID |
 | POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
 | POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源，同时兼容 `tmdbid`、`doubanid`、`bangumiid`、`anilistid`；命中失败历史时自动清理旧目标和记录后重试，`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
@@ -188,14 +188,20 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 #### 音乐元数据 / 推荐 / 探索
 
-音乐元数据使用 `MusicMeta` / `MusicInfo` 独立模型，媒体身份为 `musicbrainz:<recording_mbid>`。这些接口只负责搜索、识别、订阅和资源获取，不提供音乐库、歌单或歌手库管理。
+音乐元数据使用 `MusicMeta` / `MusicInfo` 独立模型。`music_type=recording` 表示单曲，`album` 表示包含多首曲目的完整专辑，`artist` 仅用于浏览；稳定身份分别使用对应的 `musicbrainz:<mbid>`。单曲和专辑可进入搜索、订阅、下载、整理、刮削和已配置音乐媒体服务器的入库检查，艺术家不能作为订阅或下载目标。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/music/search` | 按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`query`、`count` |
+| GET | `/api/v1/media/search` | 当 `type=music` 或 `source=musicbrainz` 时按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`title`、`type`、`count` |
 | POST | `/api/v1/music/recognize` | 按 `source` + `media_id` 识别音乐详情，请求体：`MusicRecognizeRequest` |
-| GET | `/api/v1/music/explore` | 浏览月度热门音乐，参数：`page`、`count` |
+| GET | `/api/v1/music/explore` | 浏览 ListenBrainz 热门单曲/专辑或新发行专辑，参数：`mode=chart|fresh`、`entity=recording|album`、`range_name`、`sort_by`、`sort`、`days`、`past`、`future`、`min_listen_count`、`with_cover`、`page`、`count` |
+| GET | `/api/v1/music/album/{album_id}` | 按 MusicBrainz 专辑 ID 查询专辑详情、完整曲目和发行版本，参数：`source` |
+| GET | `/api/v1/music/artist/{artist_id}` | 查询艺术家详情；艺术家为只读浏览实体，参数：`source` |
+| GET | `/api/v1/music/artist/{artist_id}/albums` | 分页查询艺术家的专辑、EP 和单曲，参数：`source`、`page`、`count`、`album_type` |
+| GET | `/api/v1/music/artist/{artist_id}/related` | 查询关联艺术家，参数：`source`、`count` |
 | GET | `/api/v1/recommend/music_weekly` | 浏览本周热门音乐，参数：`page`、`count` |
+
+专辑下载与订阅按“整包”处理：下载层会读取种子文件清单并以专辑 `total_tracks` 校验独立音频文件数量；未确认完整覆盖时不会把专辑订阅销订，也不会把部分曲目报告为完整专辑已入库。音乐刮削遵循 `music` 的标签、封面和歌词策略，歌词通过带有界 TTL/LRU 缓存的 LRCLIB 模块保存为同名 `.lrc` 或 `.txt` 旁挂文件。
 
 #### 下载
 
@@ -280,7 +286,9 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 其中 `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
 `start_line`、`end_line` 指定更小的行号范围继续读取。
 
-媒体相关 MCP 工具（如 `query_media_detail`、`search_torrents`、`query_library_exists`、`add_subscribe`、`transfer_file`）接受 `tmdb_id`/`tmdbid`、`douban_id`/`doubanid`、`bangumi_id`/`bangumiid`、`anilist_id`/`anilistid`，也接受 `media_source` + `media_id`。工具返回的媒体、订阅、下载和整理记录会同步带回可用的四种专用 ID 及通用主身份。
+媒体相关 MCP 工具（如 `search_media`、`query_media_detail`、`search_torrents`、`query_library_exists`、`add_subscribe`、`transfer_file`、`scrape_metadata`）接受 `tmdb_id`/`tmdbid`、`douban_id`/`doubanid`、`bangumi_id`/`bangumiid`、`anilist_id`/`anilistid`，也接受 `media_source` + `media_id`。音乐调用还使用 `media_type=music` 与 `music_type=recording|album|artist`；其中艺术家只允许搜索和详情浏览。工具返回的媒体、订阅、下载和整理记录会带回可复用的专用 ID、通用主身份以及音乐实体字段。
+
+Agent 音乐流程与影视共用同一采集管线，但实体边界不同：单曲通过 `music_type=recording` 按一个文件处理；专辑通过 `music_type=album` 类似电视剧整季包，按一个目录/资源处理并校验总曲目数；艺术家不是采集目标。`scrape_metadata(media_type="music")` 会按策略写音频标签、封面和歌词，并返回歌词新增、已存在、未匹配和失败数量。
 
 `get_search_results` 可使用 `title_pattern` 对种子标题执行正则筛选，也可使用 `content_pattern` 联合匹配种子标题、简介和标签。`title_pattern` 保持仅匹配标题的兼容语义；需要在结果中查看种子简介时，传入 `include_description=true`。两种正则参数与站点、分辨率等结构化筛选条件同时传入时按 AND 关系组合。
 
@@ -339,7 +347,7 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
         },
         ...
       },
-      "required": ["title", "year", "media_type"]
+      "required": ["title", "media_type"]
     }
   },
   ...
@@ -413,7 +421,7 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
       },
       ...
     },
-    "required": ["title", "year", "media_type"]
+    "required": ["title", "media_type"]
   }
 }
 ```

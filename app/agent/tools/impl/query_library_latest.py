@@ -1,4 +1,4 @@
-"""查询媒体服务器最近入库影片工具"""
+"""查询媒体服务器最近入库条目工具"""
 
 import asyncio
 import json
@@ -16,7 +16,7 @@ PAGE_SIZE = 20
 
 
 class QueryLibraryLatestInput(BaseModel):
-    """查询媒体服务器最近入库影片工具的输入参数模型"""
+    """查询媒体服务器最近入库条目工具的输入参数模型"""
 
     server: Optional[str] = Field(
         None,
@@ -28,13 +28,18 @@ class QueryLibraryLatestInput(BaseModel):
 
 
 class QueryLibraryLatestTool(MoviePilotTool):
+    """查询媒体服务器最近入库的影视或音乐条目。"""
+
     name: str = "query_library_latest"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Library,
         ToolTag.Media,
     ]
-    description: str = "Query the latest media items added to the media server (Plex, Emby, Jellyfin). Returns recently added movies and TV series with their titles, images, links, and other metadata. Supports pagination with 20 items per page."
+    description: str = (
+        "Query the latest media items added to configured media servers. Returns any server-supported movies, "
+        "TV, recordings, or albums with titles, images, links, and metadata. Supports 20-item pagination."
+    )
     args_schema: Type[BaseModel] = QueryLibraryLatestInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -42,7 +47,7 @@ class QueryLibraryLatestTool(MoviePilotTool):
         server = kwargs.get("server")
         page = kwargs.get("page", 1)
 
-        parts = ["查询媒体服务器最近入库影片"]
+        parts = ["查询媒体服务器最近入库条目"]
 
         if server:
             parts.append(f"服务器: {server}")
@@ -82,6 +87,7 @@ class QueryLibraryLatestTool(MoviePilotTool):
     async def run(
         self, server: Optional[str] = None, page: Optional[int] = 1, **kwargs
     ) -> str:
+        """并行读取媒体服务器最近入库结果并执行统一分页。"""
         page = max(1, page or 1)
         # 为了支持分页，需要获取足够多的数据再切片
         fetch_count = page * PAGE_SIZE
@@ -118,7 +124,7 @@ class QueryLibraryLatestTool(MoviePilotTool):
 
             if not results:
                 server_info = f"服务器 {server}" if server else "所有服务器"
-                return f"未找到 {server_info} 的最近入库影片"
+                return f"未找到 {server_info} 的最近入库条目"
 
             # 分页
             total_count = len(results)

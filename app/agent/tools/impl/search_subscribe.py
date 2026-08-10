@@ -1,4 +1,4 @@
-"""搜索订阅缺失剧集工具"""
+"""搜索订阅缺失资源工具"""
 
 import json
 from typing import Optional, Type, List
@@ -14,14 +14,16 @@ from app.schemas.types import media_type_to_agent
 
 
 class SearchSubscribeInput(BaseModel):
-    """搜索订阅缺失剧集工具的输入参数模型"""
-    subscribe_id: int = Field(..., description="The ID of the subscription to search for missing episodes (can be obtained from query_subscribes tool)")
+    """搜索订阅缺失资源工具的输入参数模型"""
+    subscribe_id: int = Field(..., description="The subscription ID to search for missing resources (from query_subscribes)")
     manual: Optional[bool] = Field(False, description="Whether this is a manual search (default: False)")
     filter_groups: Optional[List[str]] = Field(None,
                                                description="List of filter rule group names to apply for this search (optional, can be obtained from query_rule_groups tool. If provided, will temporarily update the subscription's filter groups before searching)")
 
 
 class SearchSubscribeTool(MoviePilotTool):
+    """立即搜索电影、剧集、单曲或专辑订阅的缺失资源。"""
+
     name: str = "search_subscribe"
     tags: list[str] = [
         ToolTag.Read,
@@ -29,7 +31,11 @@ class SearchSubscribeTool(MoviePilotTool):
         ToolTag.Subscription,
         ToolTag.Resource,
     ]
-    description: str = "Search for missing episodes/resources for a specific subscription. This tool will search torrent sites for the missing episodes of the subscription and automatically download matching resources. Use this when a user wants to search for missing episodes of a specific subscription."
+    description: str = (
+        "Search and automatically download missing resources for one subscription. Supports movies, TV episodes, "
+        "single recordings, and complete albums. Album search keeps the subscription active unless downloaded "
+        "files are confirmed to cover the expected track count."
+    )
     args_schema: Type[BaseModel] = SearchSubscribeInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -37,7 +43,7 @@ class SearchSubscribeTool(MoviePilotTool):
         subscribe_id = kwargs.get("subscribe_id")
         manual = kwargs.get("manual", False)
 
-        message = f"搜索订阅 #{subscribe_id} 的缺失剧集"
+        message = f"搜索订阅 #{subscribe_id} 的缺失资源"
         if manual:
             message += "（手动搜索）"
 
@@ -45,6 +51,7 @@ class SearchSubscribeTool(MoviePilotTool):
 
     async def run(self, subscribe_id: int, manual: Optional[bool] = False,
                   filter_groups: Optional[List[str]] = None, **kwargs) -> str:
+        """验证订阅状态并触发一次订阅资源搜索。"""
         logger.info(
             f"执行工具: {self.name}, 参数: subscribe_id={subscribe_id}, manual={manual}, filter_groups={filter_groups}")
 
@@ -75,6 +82,9 @@ class SearchSubscribeTool(MoviePilotTool):
                 "anilistid": subscribe.anilistid,
                 "media_source": subscribe.media_source,
                 "media_id": subscribe.media_id,
+                "music_type": subscribe.music_type,
+                "total_tracks": subscribe.total_tracks,
+                "description": subscribe.description,
             }
 
             # 检查订阅状态
@@ -122,8 +132,8 @@ class SearchSubscribeTool(MoviePilotTool):
             return json.dumps(result, ensure_ascii=False, indent=2)
 
         except Exception as e:
-            error_message = f"搜索订阅缺失剧集失败: {str(e)}"
-            logger.error(f"搜索订阅缺失剧集失败: {e}", exc_info=True)
+            error_message = f"搜索订阅缺失资源失败: {str(e)}"
+            logger.error(f"搜索订阅缺失资源失败: {e}", exc_info=True)
             return json.dumps({
                 "success": False,
                 "message": error_message,

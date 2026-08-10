@@ -22,12 +22,18 @@ class QueryTransferHistoryInput(BaseModel):
 
 
 class QueryTransferHistoryTool(MoviePilotTool):
+    """查询影视与音乐整理历史及可复用的媒体身份。"""
+
     name: str = "query_transfer_history"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Transfer,
     ]
-    description: str = "Query file transfer history records. Shows transfer status, source and destination paths, media information, and transfer details. Supports filtering by title and status."
+    description: str = (
+        "Query movie, TV, and music transfer history. Returns source/destination paths, status, errors, and "
+        "stable media_source/media_id values that can be reused for retries. Music album retries should group "
+        "tracks by the shared album directory/identity instead of treating every track as unrelated media."
+    )
     args_schema: Type[BaseModel] = QueryTransferHistoryInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -51,6 +57,7 @@ class QueryTransferHistoryTool(MoviePilotTool):
     async def run(self, title: Optional[str] = None,
                   status: Optional[str] = "all",
                   page: Optional[int] = 1, **kwargs) -> str:
+        """执行整理历史筛选并返回有界分页结果。"""
         logger.info(f"执行工具: {self.name}, 参数: title={title}, status={status}, page={page}")
 
         try:
@@ -128,6 +135,10 @@ class QueryTransferHistoryTool(MoviePilotTool):
                     simplified["media_source"] = record.media_source
                 if record.media_id:
                     simplified["media_id"] = record.media_id
+                if getattr(record, "music_type", None):
+                    simplified["music_type"] = record.music_type
+                if getattr(record, "total_tracks", None):
+                    simplified["total_tracks"] = record.total_tracks
                 simplified_records.append(simplified)
 
             result_json = json.dumps(simplified_records, ensure_ascii=False, indent=2)

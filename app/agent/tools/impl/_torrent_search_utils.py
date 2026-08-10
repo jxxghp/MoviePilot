@@ -4,8 +4,10 @@ import re
 from typing import List, Optional
 
 from app.core.context import Context
+from app.schemas.types import MediaType, media_type_to_agent
 from app.utils.crypto import HashUtils
 from app.utils.string import StringUtils
+from ._music_utils import simplify_music_info
 
 SEARCH_RESULT_CACHE_FILE = "__search_result__"
 TORRENT_RESULT_LIMIT = 50
@@ -162,28 +164,44 @@ def simplify_search_result(
             simplified["torrent_info"]["description"] = torrent_info.description
 
     if media_info:
-        simplified["media_info"] = {
-            "title": media_info.title,
-            "en_title": media_info.en_title,
-            "year": media_info.year,
-            "type": media_info.type.value if media_info.type else None,
-            "season": media_info.season,
-            "tmdb_id": media_info.tmdb_id,
-        }
+        if getattr(media_info, "type", None) == MediaType.MUSIC:
+            simplified["media_info"] = simplify_music_info(media_info)
+        else:
+            simplified["media_info"] = {
+                "title": getattr(media_info, "title", None),
+                "en_title": getattr(media_info, "en_title", None),
+                "year": getattr(media_info, "year", None),
+                "type": media_type_to_agent(getattr(media_info, "type", None)),
+                "season": getattr(media_info, "season", None),
+                "tmdb_id": getattr(media_info, "tmdb_id", None),
+            }
 
     if meta_info:
-        simplified["meta_info"] = {
-            "name": meta_info.name,
-            "cn_name": meta_info.cn_name,
-            "en_name": meta_info.en_name,
-            "year": meta_info.year,
-            "type": meta_info.type.value if meta_info.type else None,
-            "begin_season": meta_info.begin_season,
-            "season_episode": meta_info.season_episode,
-            "resource_team": meta_info.resource_team,
-            "video_encode": meta_info.video_encode,
-            "edition": meta_info.edition,
-            "resource_pix": meta_info.resource_pix,
-        }
+        if getattr(meta_info, "type", None) == MediaType.MUSIC:
+            simplified["meta_info"] = {
+                key: getattr(meta_info, key, None)
+                for key in (
+                    "title", "artists", "album", "album_artist", "year",
+                    "disc_number", "track_number", "total_tracks", "version",
+                    "audio_format", "bit_depth", "sample_rate", "bitrate",
+                    "duration", "isrc", "media_source", "media_id",
+                )
+                if getattr(meta_info, key, None) not in (None, "", [])
+            }
+            simplified["meta_info"]["type"] = "music"
+        else:
+            simplified["meta_info"] = {
+                "name": getattr(meta_info, "name", None),
+                "cn_name": getattr(meta_info, "cn_name", None),
+                "en_name": getattr(meta_info, "en_name", None),
+                "year": getattr(meta_info, "year", None),
+                "type": media_type_to_agent(getattr(meta_info, "type", None)),
+                "begin_season": getattr(meta_info, "begin_season", None),
+                "season_episode": getattr(meta_info, "season_episode", None),
+                "resource_team": getattr(meta_info, "resource_team", None),
+                "video_encode": getattr(meta_info, "video_encode", None),
+                "edition": getattr(meta_info, "edition", None),
+                "resource_pix": getattr(meta_info, "resource_pix", None),
+            }
 
     return simplified

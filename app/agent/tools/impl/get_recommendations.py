@@ -7,9 +7,16 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.chain.music import MusicChain
 from app.chain.recommend import RecommendChain
 from app.log import logger
+from app.modules.listenbrainz import (
+    LISTENBRAINZ_CHART_RANGES,
+    LISTENBRAINZ_FRESH_MAX_DAYS,
+    LISTENBRAINZ_FRESH_SORTS,
+)
 from app.schemas.types import MediaType, media_type_to_agent
+from ._music_utils import normalize_music_type, simplify_music_info
 
 
 class GetRecommendationsInput(BaseModel):
@@ -31,24 +38,53 @@ class GetRecommendationsInput(BaseModel):
         "'douban_tv_weekly_chinese' for Douban Chinese TV weekly chart, "
         "'douban_tv_weekly_global' for Douban global TV weekly chart, "
         "'douban_tv_animation' for Douban popular animation, "
-        "'bangumi_calendar' for Bangumi anime calendar",
+        "'bangumi_calendar' for Bangumi anime calendar, "
+        "'listenbrainz_chart' for popular recordings/albums, "
+        "'listenbrainz_fresh' for fresh album releases",
     )
     media_type: Optional[str] = Field(
-        "all", description="Allowed values: movie, tv, all"
+        "all", description="Allowed values: movie, tv, music, all"
     )
     page: Optional[int] = Field(
         1, description="Page number for pagination (default: 1, 20 items per page)"
     )
+    music_type: Optional[str] = Field(
+        None,
+        description="For listenbrainz_chart: recording or album. Fresh releases are always albums",
+    )
+    range_name: Optional[str] = Field(
+        "this_month",
+        description="ListenBrainz chart range such as this_week, this_month, this_year, or all_time",
+    )
+    sort_by: Optional[str] = Field(
+        "listen_count.desc",
+        description="ListenBrainz chart sort: listen_count.desc or listen_count.asc",
+    )
+    days: Optional[int] = Field(14, description="Fresh release window in days, max 90")
+    fresh_sort: Optional[str] = Field(
+        "release_date",
+        description="Fresh release sort: release_date, artist_credit_name, or release_name",
+    )
+    past: Optional[bool] = Field(True, description="Include already released albums")
+    future: Optional[bool] = Field(True, description="Include upcoming albums")
+    min_listen_count: Optional[int] = Field(0, description="Minimum chart listen count")
+    with_cover: Optional[bool] = Field(False, description="Only return music results with cover art")
 
 
 class GetRecommendationsTool(MoviePilotTool):
+    """获取影视推荐或 ListenBrainz 音乐探索结果。"""
+
     name: str = "get_recommendations"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Media,
         ToolTag.Recommendation,
     ]
-    description: str = "Get trending and popular media recommendations from various sources. Returns curated lists of popular movies, TV shows, and anime based on different criteria like trending, ratings, or calendar schedules. Supports pagination with 20 items per page."
+    description: str = (
+        "Get movie, TV, anime, or music discovery results. Music supports ListenBrainz chart periods, "
+        "recording/album modes, listen-count sorting, and fresh album releases. Returned music IDs can be "
+        "passed directly to detail, library, subscription, and torrent tools."
+    )
     args_schema: Type[BaseModel] = GetRecommendationsInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -72,6 +108,8 @@ class GetRecommendationsTool(MoviePilotTool):
             "douban_tv_weekly_global": "豆瓣全球剧集榜",
             "douban_tv_animation": "豆瓣热门动漫",
             "bangumi_calendar": "番组计划",
+            "listenbrainz_chart": "ListenBrainz 音乐榜单",
+            "listenbrainz_fresh": "ListenBrainz 新发行专辑",
         }
         source_desc = source_map.get(source, source)
 
@@ -87,8 +125,18 @@ class GetRecommendationsTool(MoviePilotTool):
         source: Optional[str] = "tmdb_trending",
         media_type: Optional[str] = "all",
         page: Optional[int] = 1,
+        music_type: Optional[str] = None,
+        range_name: Optional[str] = "this_month",
+        sort_by: Optional[str] = "listen_count.desc",
+        days: Optional[int] = 14,
+        fresh_sort: Optional[str] = "release_date",
+        past: Optional[bool] = True,
+        future: Optional[bool] = True,
+        min_listen_count: Optional[int] = 0,
+        with_cover: Optional[bool] = False,
         **kwargs,
     ) -> str:
+        """按来源校验参数并返回有界推荐列表。"""
         page = max(1, page or 1)
         page_size = 20
         logger.info(
@@ -98,8 +146,65 @@ class GetRecommendationsTool(MoviePilotTool):
             if media_type != "all":
                 media_type_enum = MediaType.from_agent(media_type)
                 if not media_type_enum:
-                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'all'"
-                media_type = media_type_enum.to_agent()  # 归一化为 "movie"/"tv"
+                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music', 'all'"
+                media_type = media_type_enum.to_agent()
+
+            if source in {"listenbrainz_chart", "listenbrainz_fresh"}:
+                if media_type not in {"all", "music"}:
+                    return "错误：ListenBrainz 来源只能与 media_type='music' 或 'all' 一起使用"
+                normalized_music_type = None
+                if music_type:
+                    normalized_music_type = normalize_music_type(
+                        music_type,
+                        allow_artist=False,
+                    )
+                    if not normalized_music_type:
+                        return (
+                            f"错误：无效的音乐实体类型 '{music_type}'，"
+                            "支持的类型：'recording', 'album'"
+                        )
+                music_chain = MusicChain()
+                if source == "listenbrainz_chart":
+                    if range_name not in LISTENBRAINZ_CHART_RANGES:
+                        return f"错误：无效的榜单周期 '{range_name}'"
+                    if sort_by not in {"listen_count.desc", "listen_count.asc"}:
+                        return f"错误：无效的榜单排序 '{sort_by}'"
+                    results = await music_chain.async_chart(
+                        range_name=range_name,
+                        page=page,
+                        count=page_size,
+                        sort_by=sort_by,
+                        min_listen_count=max(0, min_listen_count or 0),
+                        with_cover=bool(with_cover),
+                        entity=normalized_music_type or "recording",
+                    )
+                else:
+                    if normalized_music_type and normalized_music_type != "album":
+                        return "错误：ListenBrainz 新发行结果只支持 music_type='album'"
+                    if fresh_sort not in LISTENBRAINZ_FRESH_SORTS:
+                        return f"错误：无效的新发行排序 '{fresh_sort}'"
+                    if not past and not future:
+                        return "错误：past 和 future 不能同时为 false"
+                    normalized_days = max(1, min(days or 14, LISTENBRAINZ_FRESH_MAX_DAYS))
+                    results = await music_chain.async_fresh_releases(
+                        days=normalized_days,
+                        sort=fresh_sort,
+                        past=bool(past),
+                        future=bool(future),
+                        page=page,
+                        count=page_size,
+                        with_cover=bool(with_cover),
+                    )
+                if not results:
+                    return "未找到音乐推荐内容。"
+                return json.dumps(
+                    [simplify_music_info(item) for item in results],
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            if media_type == "music":
+                return "错误：音乐推荐请使用 listenbrainz_chart 或 listenbrainz_fresh 来源"
 
             recommend_chain = RecommendChain()
             results = []
@@ -186,6 +291,8 @@ class GetRecommendationsTool(MoviePilotTool):
                     "douban_tv_weekly_global",
                     "douban_tv_animation",
                     "bangumi_calendar",
+                    "listenbrainz_chart",
+                    "listenbrainz_fresh",
                 ]
                 return f"不支持的推荐来源: {source}。支持的来源包括: {', '.join(supported_sources)}"
 

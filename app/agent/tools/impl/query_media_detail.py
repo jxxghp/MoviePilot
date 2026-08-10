@@ -1,5 +1,6 @@
 """查询媒体详情工具"""
 
+import asyncio
 import json
 from typing import Optional, Type
 
@@ -8,8 +9,20 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
+from app.core.context import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_ARTIST,
+    MUSIC_ENTITY_RECORDING,
+)
 from app.log import logger
 from app.schemas.types import MediaType
+from ._music_utils import (
+    normalize_music_type,
+    simplify_music_album,
+    simplify_music_artist,
+    simplify_music_info,
+)
 
 DIRECTOR_PREVIEW_LIMIT = 10
 ACTOR_PREVIEW_LIMIT = 20
@@ -24,16 +37,40 @@ class QueryMediaDetailInput(BaseModel):
     anilist_id: Optional[int] = Field(None, description="AniList media ID")
     media_source: Optional[str] = Field(None, description="Media metadata source")
     media_id: Optional[str] = Field(None, description="Native ID for media_source")
-    media_type: str = Field(..., description="Allowed values: movie, tv")
+    media_type: str = Field(..., description="Allowed values: movie, tv, music")
+    music_type: Optional[str] = Field(
+        None,
+        description="Required for music: recording, album, or artist",
+    )
+    include_artist_albums: Optional[bool] = Field(
+        False,
+        description="For artist detail, include a paged album/EP/single catalog preview",
+    )
+    include_related_artists: Optional[bool] = Field(
+        False,
+        description="For artist detail, include related artists",
+    )
+    page: Optional[int] = Field(1, description="Artist album catalog page, default 1")
+    count: Optional[int] = Field(20, description="Artist catalog/related result count, max 30")
+    album_type: Optional[str] = Field(
+        None,
+        description="Optional artist catalog filter: album, single, ep, broadcast, other, compilation, soundtrack, live, or remix",
+    )
 
 
 class QueryMediaDetailTool(MoviePilotTool):
+    """按稳定媒体身份查询影视、单曲、专辑或艺术家详情。"""
+
     name: str = "query_media_detail"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Media,
     ]
-    description: str = "Query supplementary media details from a metadata source by ID and media_type. Accepts a TMDB, Douban, Bangumi, AniList, or source-native media ID. media_type accepts 'movie' or 'tv'. Returns non-duplicated detail fields such as status, genres, directors, actors, and season info for TV series."
+    description: str = (
+        "Query details by stable metadata ID for movies, TV, music recordings, albums, or artists. "
+        "Music requires media_source, media_id, and music_type. Album details include a bounded track list; "
+        "artist details may optionally include catalog and related-artist previews. Artists are browse-only."
+    )
     args_schema: Type[BaseModel] = QueryMediaDetailInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -56,9 +93,18 @@ class QueryMediaDetailTool(MoviePilotTool):
             self, media_type: str, tmdb_id: Optional[int] = None,
             douban_id: Optional[str] = None, bangumi_id: Optional[int] = None,
             anilist_id: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None, **kwargs,
+            media_id: Optional[str] = None, music_type: Optional[str] = None,
+            include_artist_albums: Optional[bool] = False,
+            include_related_artists: Optional[bool] = False,
+            page: Optional[int] = 1, count: Optional[int] = 20,
+            album_type: Optional[str] = None, **kwargs,
     ) -> str:
-        logger.info(f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}")
+        """执行媒体详情查询，并限制音乐目录型结果的上下文大小。"""
+        logger.info(
+            f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, "
+            f"media_type={media_type}, music_type={music_type}, media_source={media_source}, "
+            f"media_id={media_id}"
+        )
 
         if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
             return json.dumps({
@@ -67,15 +113,110 @@ class QueryMediaDetailTool(MoviePilotTool):
             }, ensure_ascii=False)
 
         try:
-            media_chain = MediaChain()
-
             media_type_enum = MediaType.from_agent(media_type)
             if not media_type_enum:
                 return json.dumps({
                     "success": False,
-                    "message": f"无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
+                    "message": (
+                        f"无效的媒体类型 '{media_type}'，"
+                        "支持的类型：'movie', 'tv', 'music'"
+                    )
                 }, ensure_ascii=False)
 
+            if media_type_enum == MediaType.MUSIC:
+                normalized_music_type = normalize_music_type(music_type)
+                if not normalized_music_type:
+                    return json.dumps({
+                        "success": False,
+                        "message": (
+                            "查询音乐详情必须提供 music_type："
+                            "'recording', 'album' 或 'artist'"
+                        ),
+                    }, ensure_ascii=False)
+                if not media_source or not media_id:
+                    return json.dumps({
+                        "success": False,
+                        "message": "查询音乐详情必须同时提供 media_source 和 media_id",
+                    }, ensure_ascii=False)
+
+                music_chain = MusicChain()
+                if normalized_music_type == MUSIC_ENTITY_ALBUM:
+                    album_info = await music_chain.async_album(media_source, media_id)
+                    if not album_info:
+                        return json.dumps({
+                            "success": False,
+                            "message": f"未找到专辑 {media_source}:{media_id}",
+                        }, ensure_ascii=False)
+                    return json.dumps(
+                        simplify_music_album(album_info),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+
+                if normalized_music_type == MUSIC_ENTITY_ARTIST:
+                    artist_info = await music_chain.async_artist(media_source, media_id)
+                    if not artist_info:
+                        return json.dumps({
+                            "success": False,
+                            "message": f"未找到艺术家 {media_source}:{media_id}",
+                        }, ensure_ascii=False)
+                    normalized_page = max(1, page or 1)
+                    normalized_count = max(1, min(count or 20, 30))
+                    result = simplify_music_artist(artist_info)
+                    pending = []
+                    if include_artist_albums:
+                        pending.append((
+                            "albums",
+                            music_chain.async_artist_albums(
+                                source=media_source,
+                                media_id=media_id,
+                                page=normalized_page,
+                                count=normalized_count,
+                                album_type=album_type,
+                            ),
+                        ))
+                    if include_related_artists:
+                        pending.append((
+                            "related_artists",
+                            music_chain.async_artist_related(
+                                source=media_source,
+                                media_id=media_id,
+                                count=normalized_count,
+                            ),
+                        ))
+                    if pending:
+                        values = await asyncio.gather(*(call for _, call in pending))
+                        for (key, _), items in zip(pending, values):
+                            result[key] = [
+                                simplify_music_info(item)
+                                if key == "albums"
+                                else simplify_music_artist(item)
+                                for item in items
+                            ]
+                    return json.dumps(result, ensure_ascii=False, indent=2)
+
+                media_chain = MediaChain()
+                mediainfo = await media_chain.async_recognize_media(
+                    source=media_source,
+                    mediaid=media_id,
+                    mtype=MediaType.MUSIC,
+                )
+                if (
+                    not mediainfo
+                    or getattr(mediainfo, "music_type", MUSIC_ENTITY_RECORDING)
+                    != MUSIC_ENTITY_RECORDING
+                ):
+                    return json.dumps({
+                        "success": False,
+                        "message": f"未找到单曲 {media_source}:{media_id}",
+                    }, ensure_ascii=False)
+                return json.dumps(
+                    simplify_music_info(mediainfo),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            media_chain = MediaChain()
             mediainfo = await media_chain.async_recognize_media(
                 tmdbid=tmdb_id,
                 doubanid=douban_id,

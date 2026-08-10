@@ -7,8 +7,10 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING
 from app.log import logger
 from app.schemas import FileItem, MediaType
+from ._music_utils import normalize_music_type
 
 
 class TransferFileInput(BaseModel):
@@ -30,7 +32,11 @@ class TransferFileInput(BaseModel):
         None,
         description="Target storage type (optional, uses default storage if not specified)",
     )
-    media_type: Optional[str] = Field(None, description="Allowed values: movie, tv")
+    media_type: Optional[str] = Field(None, description="Allowed values: movie, tv, music")
+    music_type: Optional[str] = Field(
+        None,
+        description="For music: recording for one audio file or album for one album directory. Artists cannot be transferred",
+    )
     tmdbid: Optional[int] = Field(
         None,
         description="TMDB ID for precise media identification (optional but recommended for accuracy)",
@@ -40,8 +46,14 @@ class TransferFileInput(BaseModel):
     )
     bangumiid: Optional[int] = Field(None, description="Bangumi media ID")
     anilistid: Optional[int] = Field(None, description="AniList media ID")
-    media_source: Optional[str] = Field(None, description="Media metadata source")
-    media_id: Optional[str] = Field(None, description="Native ID for media_source")
+    media_source: Optional[str] = Field(
+        None,
+        description="Media metadata source; for music use the MusicBrainz recording or album source from search_media",
+    )
+    media_id: Optional[str] = Field(
+        None,
+        description="Native ID for media_source; an album ID organizes the directory as one album",
+    )
     season: Optional[int] = Field(
         None, description="Season number for TV shows (optional)"
     )
@@ -56,6 +68,8 @@ class TransferFileInput(BaseModel):
 
 
 class TransferFileTool(MoviePilotTool):
+    """通过统一整理链将影视或音乐文件写入媒体库。"""
+
     name: str = "transfer_file"
     tags: list[str] = [
         ToolTag.Write,
@@ -64,12 +78,20 @@ class TransferFileTool(MoviePilotTool):
         ToolTag.File,
         ToolTag.Admin,
     ]
-    description: str = "Transfer/organize a file or directory to the media library. Automatically recognizes media information and organizes files according to configured rules. Supports custom target paths, media identification, and transfer modes."
+    description: str = (
+        "Transfer/organize movie, TV, or music files through MoviePilot's configured library pipeline. "
+        "For a complete album, pass the album directory once with media_type='music', music_type='album', "
+        "and its source-native ID; for one recording, pass one audio file with music_type='recording'."
+    )
     args_schema: Type[BaseModel] = TransferFileInput
     require_admin: bool = True
 
     @staticmethod
-    def _get_fileitem_type(file_path: str, storage: Optional[str] = "local") -> str:
+    def _get_fileitem_type(
+        file_path: str,
+        storage: Optional[str] = "local",
+        music_type: Optional[str] = None,
+    ) -> str:
         """
         判断待整理路径的文件类型。
 
@@ -78,6 +100,9 @@ class TransferFileTool(MoviePilotTool):
         :return: ``dir`` 或 ``file``
         """
         if (storage or "local") == "local" and Path(file_path).is_dir():
+            return "dir"
+        if (storage or "local") != "local" and music_type == MUSIC_ENTITY_ALBUM:
+            # 远程存储无法 stat，显式专辑语义比路径尾斜杠更可靠。
             return "dir"
         return "dir" if file_path.endswith("/") else "file"
 
@@ -111,6 +136,7 @@ class TransferFileTool(MoviePilotTool):
         target_path: Optional[str] = None,
         target_storage: Optional[str] = None,
         media_type: Optional[str] = None,
+        music_type: Optional[str] = None,
         tmdbid: Optional[int] = None,
         doubanid: Optional[str] = None,
         bangumiid: Optional[int] = None,
@@ -135,18 +161,51 @@ class TransferFileTool(MoviePilotTool):
         elif not file_path.startswith("/"):
             file_path = "/" + file_path
 
-        fileitem = FileItem(
-            storage=storage or "local",
-            path=file_path,
-            type=TransferFileTool._get_fileitem_type(file_path, storage),
-        )
-        target_path_obj = Path(target_path) if target_path else None
-
         media_type_enum = None
         if media_type:
             media_type_enum = MediaType.from_agent(media_type)
             if not media_type_enum:
-                return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
+                return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music'"
+        normalized_music_type = None
+        if music_type:
+            normalized_music_type = normalize_music_type(
+                music_type,
+                allow_artist=False,
+            )
+            if not normalized_music_type:
+                return (
+                    f"错误：无效的音乐实体类型 '{music_type}'，"
+                    "支持的类型：'recording', 'album'"
+                )
+            if media_type_enum != MediaType.MUSIC:
+                return "错误：music_type 仅能与 media_type='music' 一起使用"
+        if bool(media_source) != bool(media_id):
+            return "错误：media_source 和 media_id 必须同时提供"
+        if media_type_enum == MediaType.MUSIC and season is not None:
+            return "错误：音乐没有季号，整理音乐时不能传入 season"
+
+        fileitem = FileItem(
+            storage=storage or "local",
+            path=file_path,
+            type=TransferFileTool._get_fileitem_type(
+                file_path,
+                storage,
+                normalized_music_type,
+            ),
+        )
+        if (
+            media_type_enum == MediaType.MUSIC
+            and normalized_music_type == MUSIC_ENTITY_ALBUM
+            and fileitem.type != "dir"
+        ):
+            return "错误：专辑必须按一个目录整理，不能把单个音频文件作为整张专辑"
+        if (
+            media_type_enum == MediaType.MUSIC
+            and normalized_music_type == MUSIC_ENTITY_RECORDING
+            and fileitem.type != "file"
+        ):
+            return "错误：单曲必须按一个音频文件整理，不能把目录作为一首单曲"
+        target_path_obj = Path(target_path) if target_path else None
 
         from app.chain.transfer import TransferChain
 
@@ -188,6 +247,7 @@ class TransferFileTool(MoviePilotTool):
         target_path: Optional[str] = None,
         target_storage: Optional[str] = None,
         media_type: Optional[str] = None,
+        music_type: Optional[str] = None,
         tmdbid: Optional[int] = None,
         doubanid: Optional[str] = None,
         bangumiid: Optional[int] = None,
@@ -199,9 +259,11 @@ class TransferFileTool(MoviePilotTool):
         background: Optional[bool] = False,
         **kwargs,
     ) -> str:
+        """在线程池中执行文件整理并返回最终状态。"""
         logger.info(
             f"执行工具: {self.name}, 参数: file_path={file_path}, storage={storage}, target_path={target_path}, "
-            f"target_storage={target_storage}, media_type={media_type}, tmdbid={tmdbid}, doubanid={doubanid}, "
+            f"target_storage={target_storage}, media_type={media_type}, music_type={music_type}, "
+            f"tmdbid={tmdbid}, doubanid={doubanid}, "
             f"season={season}, transfer_type={transfer_type}, background={background}"
         )
 
@@ -214,6 +276,7 @@ class TransferFileTool(MoviePilotTool):
                 target_path,
                 target_storage,
                 media_type,
+                music_type,
                 tmdbid,
                 doubanid,
                 bangumiid,

@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.mediaserver import MediaServerChain
+from app.core.context import MUSIC_ENTITY_ALBUM
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
+from ._music_utils import normalize_music_type
 
 
 def _sort_seasons(seasons: Optional[dict]) -> dict:
@@ -83,17 +85,27 @@ class QueryLibraryExistsInput(BaseModel):
     anilist_id: Optional[int] = Field(None, description="AniList media ID")
     media_source: Optional[str] = Field(None, description="Media metadata source")
     media_id: Optional[str] = Field(None, description="Native ID for media_source")
-    media_type: Optional[str] = Field(None, description="Allowed values: movie, tv")
+    media_type: Optional[str] = Field(None, description="Allowed values: movie, tv, music")
+    music_type: Optional[str] = Field(
+        None,
+        description="For music: recording or album. Artists are not library acquisition targets",
+    )
 
 
 class QueryLibraryExistsTool(MoviePilotTool):
+    """查询影视、单曲或完整专辑是否已存在于媒体服务器。"""
+
     name: str = "query_library_exists"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Library,
         ToolTag.Media,
     ]
-    description: str = "Check whether media already exists in Plex, Emby, or Jellyfin by a TMDB, Douban, Bangumi, AniList, or source-native media ID. Results are grouped by media server; TV results include existing episodes, total episodes, and missing episodes/seasons."
+    description: str = (
+        "Check whether movies, TV, music recordings, or complete albums exist on configured media servers. "
+        "TV results include episode coverage. Album existence is true only when the server confirms complete "
+        "track coverage for the expected album size; artists cannot be queried as acquisition targets."
+    )
     args_schema: Type[BaseModel] = QueryLibraryExistsInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -128,7 +140,9 @@ class QueryLibraryExistsTool(MoviePilotTool):
     async def run(self, tmdb_id: Optional[int] = None, douban_id: Optional[str] = None,
                   bangumi_id: Optional[int] = None, anilist_id: Optional[int] = None,
                   media_source: Optional[str] = None, media_id: Optional[str] = None,
-                  media_type: Optional[str] = None, **kwargs) -> str:
+                  media_type: Optional[str] = None,
+                  music_type: Optional[str] = None, **kwargs) -> str:
+        """识别精确媒体身份并按服务器汇总存在性或完整性。"""
         logger.info(f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}")
         try:
             if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
@@ -138,7 +152,23 @@ class QueryLibraryExistsTool(MoviePilotTool):
             if media_type:
                 media_type_enum = MediaType.from_agent(media_type)
                 if not media_type_enum:
-                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
+                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music'"
+
+            normalized_music_type = None
+            if music_type:
+                normalized_music_type = normalize_music_type(
+                    music_type,
+                    allow_artist=False,
+                )
+                if not normalized_music_type:
+                    return (
+                        f"错误：无效的音乐实体类型 '{music_type}'，"
+                        "支持的类型：'recording', 'album'"
+                    )
+                if media_type_enum != MediaType.MUSIC:
+                    return "错误：music_type 仅能与 media_type='music' 一起使用"
+            if media_type_enum == MediaType.MUSIC and (not media_source or not media_id):
+                return "错误：音乐媒体库查询必须同时提供 media_source 和 media_id"
 
             media_chain = MediaServerChain()
             mediainfo = await media_chain.async_recognize_media(
@@ -153,10 +183,19 @@ class QueryLibraryExistsTool(MoviePilotTool):
             if not mediainfo:
                 identity = media_id or tmdb_id or douban_id or bangumi_id or anilist_id
                 return f"未识别到媒体信息: {identity}"
+            if normalized_music_type and (
+                getattr(mediainfo, "music_type", None) != normalized_music_type
+            ):
+                return (
+                    f"音乐实体类型不匹配：请求 {normalized_music_type}，"
+                    f"实际 {getattr(mediainfo, 'music_type', None) or 'unknown'}"
+                )
 
             # 2. 遍历所有媒体服务器，分别查询存在性信息
             server_results = OrderedDict()
-            total_seasons = _filter_regular_seasons(mediainfo.seasons)
+            total_seasons = _filter_regular_seasons(
+                mediainfo.seasons if mediainfo.type == MediaType.TV else None
+            )
             service_names = self._get_media_server_names()
 
             server_checks = await asyncio.gather(
@@ -183,7 +222,16 @@ class QueryLibraryExistsTool(MoviePilotTool):
                     )
                 else:
                     server_results[service_name] = {
-                        "exists": True
+                        "exists": True,
+                        **(
+                            {
+                                "complete": True,
+                                "expected_tracks": mediainfo.total_tracks,
+                            }
+                            if mediainfo.type == MediaType.MUSIC
+                            and getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
+                            else {}
+                        ),
                     }
 
             if not server_results:
@@ -201,7 +249,16 @@ class QueryLibraryExistsTool(MoviePilotTool):
                     )
                 else:
                     server_results[fallback_server_name] = {
-                        "exists": True
+                        "exists": True,
+                        **(
+                            {
+                                "complete": True,
+                                "expected_tracks": mediainfo.total_tracks,
+                            }
+                            if mediainfo.type == MediaType.MUSIC
+                            and getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
+                            else {}
+                        ),
                     }
 
             # 3. 组装统一的存在性结果，不查询媒体服务器详情
@@ -211,6 +268,15 @@ class QueryLibraryExistsTool(MoviePilotTool):
                 "type": media_type_to_agent(mediainfo.type),
                 "servers": server_results
             }
+            if mediainfo.type == MediaType.MUSIC:
+                result_dict.update({
+                    "music_type": mediainfo.music_type,
+                    "artists": list(mediainfo.artists or []),
+                    "album": mediainfo.album,
+                    "total_tracks": mediainfo.total_tracks,
+                    "media_source": mediainfo.source,
+                    "media_id": mediainfo.media_id,
+                })
 
             return json.dumps([result_dict], ensure_ascii=False)
         except Exception as e:

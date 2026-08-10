@@ -12,13 +12,18 @@ from app.core.context import MediaInfo
 from app.helper.server import MoviePilotServerHelper
 from app.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
+from ._music_utils import normalize_music_type
 
 MAX_PAGE_SIZE = 50
 
 
 class QueryPopularSubscribesInput(BaseModel):
     """查询热门订阅工具的输入参数模型"""
-    media_type: str = Field(..., description="Allowed values: movie, tv")
+    media_type: str = Field(..., description="Allowed values: movie, tv, music")
+    music_type: Optional[str] = Field(
+        None,
+        description="Optional music entity filter: recording or album",
+    )
     page: Optional[int] = Field(1, description="Page number for pagination (default: 1)")
     count: Optional[int] = Field(30, description="Number of items per page (default: 30, max: 50)")
     min_sub: Optional[int] = Field(None, description="Minimum number of subscribers filter (optional, e.g., 5)")
@@ -29,13 +34,18 @@ class QueryPopularSubscribesInput(BaseModel):
 
 
 class QueryPopularSubscribesTool(MoviePilotTool):
+    """查询社区热门的影视、单曲或专辑订阅。"""
+
     name: str = "query_popular_subscribes"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Subscription,
         ToolTag.Recommendation,
     ]
-    description: str = "Query popular subscriptions based on user shared data. Shows media with the most subscribers, supports filtering by genre, rating, minimum subscribers, and pagination."
+    description: str = (
+        "Query popular movie, TV, recording, or album subscriptions from shared statistics. "
+        "Music results can be filtered by recording or album entity type."
+    )
     args_schema: Type[BaseModel] = QueryPopularSubscribesInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -60,6 +70,7 @@ class QueryPopularSubscribesTool(MoviePilotTool):
         return " | ".join(parts) if len(parts) > 1 else parts[0]
 
     async def run(self, media_type: str,
+                  music_type: Optional[str] = None,
                   page: Optional[int] = 1,
                   count: Optional[int] = 30,
                   min_sub: Optional[int] = None,
@@ -67,6 +78,7 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                   min_rating: Optional[float] = None,
                   max_rating: Optional[float] = None,
                   sort_type: Optional[str] = None, **kwargs) -> str:
+        """查询有界的订阅统计并保留音乐实体身份。"""
         logger.info(
             f"执行工具: {self.name}, 参数: media_type={media_type}, page={page}, count={count}, min_sub={min_sub}, "
             f"genre_id={genre_id}, min_rating={min_rating}, max_rating={max_rating}, sort_type={sort_type}")
@@ -80,7 +92,20 @@ class QueryPopularSubscribesTool(MoviePilotTool):
             count = min(count, MAX_PAGE_SIZE)
             media_type_enum = MediaType.from_agent(media_type)
             if not media_type_enum:
-                return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
+                return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music'"
+            normalized_music_type = None
+            if music_type:
+                normalized_music_type = normalize_music_type(
+                    music_type,
+                    allow_artist=False,
+                )
+                if not normalized_music_type:
+                    return (
+                        f"错误：无效的音乐实体类型 '{music_type}'，"
+                        "支持的类型：'recording', 'album'"
+                    )
+                if media_type_enum != MediaType.MUSIC:
+                    return "错误：music_type 仅能与 media_type='music' 一起使用"
 
             subscribes = await MoviePilotServerHelper.async_get_subscribe_statistic(
                 stype=media_type_enum.to_agent(),
@@ -106,6 +131,37 @@ class QueryPopularSubscribesTool(MoviePilotTool):
 
                 media = MediaInfo()
                 raw_type = str(sub.get("type") or "").strip().lower()
+                if raw_type in ["music", "音乐"]:
+                    sub_music_type = normalize_music_type(
+                        sub.get("music_type") or "recording",
+                        allow_artist=False,
+                    )
+                    if not sub_music_type:
+                        logger.warning(f"跳过未知音乐订阅实体: {sub.get('music_type')}")
+                        continue
+                    if normalized_music_type and sub_music_type != normalized_music_type:
+                        continue
+                    artists = sub.get("artists") or []
+                    if isinstance(artists, str):
+                        artists = [artists]
+                    if not artists and sub.get("artist"):
+                        artists = [sub.get("artist")]
+                    ret_medias.append({
+                        "type": "music",
+                        "title": sub.get("name"),
+                        "year": sub.get("year"),
+                        "music_type": sub_music_type,
+                        "artists": artists,
+                        "album": sub.get("album"),
+                        "total_tracks": sub.get("total_tracks"),
+                        "media_source": sub.get("media_source"),
+                        "media_id": sub.get("media_id"),
+                        "poster_path": sub.get("poster"),
+                        "backdrop_path": sub.get("backdrop"),
+                        "subscriber_count": subscriber_count,
+                        "popularity": subscriber_count,
+                    })
+                    continue
                 if raw_type in ["movie", "电影"]:
                     media.type = MediaType.MOVIE
                 elif raw_type in ["tv", "电视剧"]:
@@ -143,6 +199,9 @@ class QueryPopularSubscribesTool(MoviePilotTool):
             # 转换为字典格式，只保留关键信息
             simplified_medias = []
             for media in ret_medias:
+                if isinstance(media, dict):
+                    simplified_medias.append(media)
+                    continue
                 media_dict = media.to_dict()
                 simplified = {
                     "type": media_type_to_agent(media_dict.get("type")),

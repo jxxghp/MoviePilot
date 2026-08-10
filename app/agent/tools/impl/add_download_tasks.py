@@ -1,5 +1,6 @@
 """添加下载任务工具"""
 
+import copy
 import re
 from pathlib import Path
 from typing import List, Optional, Type, Union
@@ -17,7 +18,7 @@ from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.helper.directory import DirectoryHelper, validate_download_save_path
 from app.log import logger
-from app.schemas import FileURI, TorrentInfo
+from app.schemas import FileURI
 from app.utils.crypto import HashUtils
 
 
@@ -279,18 +280,25 @@ class AddDownloadTasksTool(MoviePilotTool):
                         failed_messages.append(f"{torrent_input} 未找到站点信息 {site_name}")
                         continue
 
-                    torrent_info = TorrentInfo(
+                    # 复制完整搜索上下文，只刷新可能变化的站点凭据。音乐上下文中的
+                    # MetaMusic、专辑总曲目数和完整覆盖状态必须保留到下载校验层。
+                    context = copy.copy(cached_context)
+                    torrent_info = copy.copy(cached_torrent)
+                    torrent_info.title = torrent_title
+                    torrent_info.description = torrent_description
+                    torrent_info.enclosure = enclosure
+                    torrent_info.site_name = site_name
+                    torrent_info.site_ua = siteinfo.ua
+                    torrent_info.site_cookie = siteinfo.cookie
+                    torrent_info.site_proxy = siteinfo.proxy
+                    torrent_info.site_order = siteinfo.pri
+                    torrent_info.site_downloader = siteinfo.downloader
+                    context.torrent_info = torrent_info
+
+                    meta_info = cached_context.meta_info or MetaInfo(
                         title=torrent_title,
-                        description=torrent_description,
-                        enclosure=enclosure,
-                        site_name=site_name,
-                        site_ua=siteinfo.ua,
-                        site_cookie=siteinfo.cookie,
-                        site_proxy=siteinfo.proxy,
-                        site_order=siteinfo.pri,
-                        site_downloader=siteinfo.downloader
+                        subtitle=torrent_description,
                     )
-                    meta_info = MetaInfo(title=torrent_title, subtitle=torrent_description)
                     media_info = cached_context.media_info if cached_context.media_info else None
                     if not media_info:
                         media_info = await MediaChain().async_recognize_by_meta(
@@ -300,12 +308,8 @@ class AddDownloadTasksTool(MoviePilotTool):
                     if not media_info:
                         failed_messages.append(f"{torrent_input} 无法识别媒体信息")
                         continue
-
-                    context = Context(
-                        torrent_info=torrent_info,
-                        meta_info=meta_info,
-                        media_info=media_info
-                    )
+                    context.meta_info = meta_info
+                    context.media_info = media_info
                 else:
                     if not self._is_magnet_link_input(torrent_input):
                         failed_messages.append(

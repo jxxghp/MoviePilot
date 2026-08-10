@@ -54,6 +54,10 @@ class TransferHistory(Base):
     # 统一媒体数据源与原生ID
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
+    # 音乐实体类型：recording 单曲、album 专辑
+    music_type = Column(String)
+    # 专辑预期总曲目数
+    total_tracks = Column(Integer)
     # Sxx
     seasons = Column(String)
     # Exx

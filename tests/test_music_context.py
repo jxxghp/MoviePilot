@@ -14,6 +14,9 @@ def test_media_type_supports_music_agent_conversion():
     assert MediaType.MUSIC.to_agent() == "music"
     assert media_type_to_agent(MediaType.MUSIC) == "music"
     assert media_type_to_agent("music") == "music"
+    assert media_type_to_agent(MediaType.MUSIC.value) == "music"
+    assert media_type_to_agent(MediaType.MOVIE.value) == "movie"
+    assert media_type_to_agent(MediaType.TV.value) == "tv"
 
 
 def test_music_meta_round_trip_preserves_list_isolation():

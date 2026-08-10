@@ -12,6 +12,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
+from ._music_utils import normalize_music_type
 from ._torrent_search_utils import (
     SEARCH_RESULT_CACHE_FILE,
     build_filter_options,
@@ -26,13 +27,19 @@ class SearchTorrentsInput(BaseModel):
     anilist_id: Optional[int] = Field(None, description="AniList media ID")
     media_source: Optional[str] = Field(None, description="Media metadata source")
     media_id: Optional[str] = Field(None, description="Native ID for media_source")
-    media_type: Optional[str] = Field(None, description="Allowed values: movie, tv")
+    media_type: Optional[str] = Field(None, description="Allowed values: movie, tv, music")
+    music_type: Optional[str] = Field(
+        None,
+        description="Music target entity: recording or album. Artists cannot be searched as torrent targets",
+    )
     area: Optional[str] = Field(None, description="Search scope: 'title' (default) or 'imdbid'")
     sites: Optional[List[int]] = Field(None,
                                        description="Array of specific site IDs to search on (optional, if not provided searches all configured sites)")
 
 
 class SearchTorrentsTool(MoviePilotTool):
+    """按稳定媒体身份搜索影视、单曲或整张专辑资源。"""
+
     name: str = "search_torrents"
     tags: list[str] = [
         ToolTag.Read,
@@ -43,7 +50,8 @@ class SearchTorrentsTool(MoviePilotTool):
     description: str = (
         "Search for torrent files by media ID across configured indexer sites, cache the matched results, "
         "and return available filter options for follow-up selection. "
-        "Accepts a TMDB, Douban, Bangumi, AniList, or source-native media ID for accurate matching.")
+        "Accepts a TMDB, Douban, Bangumi, AniList, MusicBrainz, or plugin source-native media ID. "
+        "Music targets are one recording or one complete album; artists are browse-only.")
     args_schema: Type[BaseModel] = SearchTorrentsInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -74,7 +82,9 @@ class SearchTorrentsTool(MoviePilotTool):
                   bangumi_id: Optional[int] = None, anilist_id: Optional[int] = None,
                   media_source: Optional[str] = None, media_id: Optional[str] = None,
                   media_type: Optional[str] = None, area: Optional[str] = None,
-                  sites: Optional[List[int]] = None, **kwargs) -> str:
+                  sites: Optional[List[int]] = None,
+                  music_type: Optional[str] = None, **kwargs) -> str:
+        """执行精确资源搜索并缓存带完整音乐上下文的候选。"""
         logger.info(
             f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}, area={area}, sites={sites}")
 
@@ -87,7 +97,26 @@ class SearchTorrentsTool(MoviePilotTool):
             if media_type:
                 media_type_enum = MediaType.from_agent(media_type)
                 if not media_type_enum:
-                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
+                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music'"
+
+            normalized_music_type = None
+            if music_type:
+                normalized_music_type = normalize_music_type(
+                    music_type,
+                    allow_artist=False,
+                )
+                if not normalized_music_type:
+                    return (
+                        f"错误：无效的音乐实体类型 '{music_type}'，"
+                        "支持的类型：'recording', 'album'"
+                    )
+                if media_type_enum != MediaType.MUSIC:
+                    return "错误：music_type 仅能与 media_type='music' 一起使用"
+            if media_type_enum == MediaType.MUSIC:
+                if not media_source or not media_id:
+                    return "错误：音乐资源搜索必须同时提供 media_source 和 media_id"
+                if area == "imdbid":
+                    return "错误：音乐不支持按 IMDb ID 搜索"
 
             filtered_torrents = await search_chain.async_search_by_id(
                 tmdbid=tmdb_id,
@@ -101,6 +130,13 @@ class SearchTorrentsTool(MoviePilotTool):
                 sites=sites,
                 cache_local=False,
             )
+            if normalized_music_type:
+                filtered_torrents = [
+                    context
+                    for context in filtered_torrents or []
+                    if getattr(context.media_info, "music_type", None)
+                    == normalized_music_type
+                ]
 
             # 获取站点信息
             all_indexers = await SitesHelper().async_get_indexers()

@@ -34,6 +34,8 @@ class QueryDownloadTasksInput(BaseModel):
 
 
 class QueryDownloadTasksTool(MoviePilotTool):
+    """查询下载器任务并用下载历史补全影视或音乐身份。"""
+
     name: str = "query_download_tasks"
     tags: list[str] = [
         ToolTag.Read,
@@ -103,14 +105,33 @@ class QueryDownloadTasksTool(MoviePilotTool):
         if not history:
             return
         if hasattr(torrent, "media"):
-            torrent.media = {
+            media_payload = {
                 "tmdbid": history.tmdbid,
                 "type": history.type,
                 "title": history.title,
                 "season": history.seasons,
                 "episode": history.episodes,
                 "image": history.image,
+                "poster": history.poster,
+                "media_source": history.media_source,
+                "media_id": history.media_id,
             }
+            music_note = (
+                (history.note or {}).get("music")
+                if isinstance(history.note, dict)
+                else None
+            ) or {}
+            music_media = music_note.get("media") or {}
+            if media_type_to_agent(history.type) == "music":
+                media_payload.update({
+                    "music_type": music_media.get("music_type") or "recording",
+                    "artists": music_media.get("artists") or [],
+                    "album": music_media.get("album"),
+                    "album_id": music_media.get("album_id"),
+                    "total_tracks": music_media.get("total_tracks"),
+                    "track_number": music_media.get("track_number"),
+                })
+            torrent.media = media_payload
         if hasattr(torrent, "username"):
             torrent.username = history.username
         torrent.userid = history.userid
@@ -272,6 +293,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
                   include_all_tags: Optional[bool] = False,
                   include_trackers: Optional[bool] = False,
                   **kwargs) -> str:
+        """执行下载任务查询并输出有界的状态摘要。"""
         logger.info(
             f"执行工具: {self.name}, 参数: downloader={downloader}, status={status}, "
             f"hash={hash}, title={title}, tag={tag}, include_all_tags={include_all_tags}, "
@@ -333,7 +355,15 @@ class QueryDownloadTasksTool(MoviePilotTool):
                             "type": media_type_to_agent(media.get("type")),
                             "title": media.get("title"),
                             "season": media.get("season"),
-                            "episode": media.get("episode")
+                            "episode": media.get("episode"),
+                            "media_source": media.get("media_source"),
+                            "media_id": media.get("media_id"),
+                            "music_type": media.get("music_type"),
+                            "artists": media.get("artists"),
+                            "album": media.get("album"),
+                            "album_id": media.get("album_id"),
+                            "total_tracks": media.get("total_tracks"),
+                            "track_number": media.get("track_number"),
                         }
                     simplified_downloads.append(simplified)
                 result_json = json.dumps(simplified_downloads, ensure_ascii=False, indent=2)

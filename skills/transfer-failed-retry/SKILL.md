@@ -1,7 +1,7 @@
 ---
 name: transfer-failed-retry
-version: 2
-description: Use this skill when you need to retry failed file transfers/organizations. Given one or more failed transfer history record IDs, this skill guides you through querying the failure details, deleting the old records, and re-identifying and re-organizing the files. Supports batch processing of multiple files from the same media (e.g., multiple episodes of a TV show). This skill is automatically triggered when the system detects transfer failures and the AI agent retry feature is enabled.
+version: 3
+description: Use this skill when you need to retry failed video or music transfers/organizations. Given failed transfer history IDs, query the exact records, group by trustworthy movie/series/recording/album identity, delete only the old records being retried, then re-identify and re-organize through MoviePilot. This skill is automatically triggered when transfer failures occur and AI retry is enabled.
 allowed-tools: query_transfer_history delete_transfer_history recognize_media transfer_file search_media
 ---
 
@@ -16,7 +16,7 @@ You need the following tools:
 - `delete_transfer_history` - Delete a transfer history record
 - `recognize_media` - Recognize media info from file path or title
 - `transfer_file` - Transfer/organize files to the media library
-- `search_media` - Search TMDB for media information
+- `search_media` - Search video metadata or MusicBrainz recording/album/artist candidates
 
 ## Workflow
 
@@ -35,11 +35,12 @@ From each record, extract the following key information:
 - **src**: Source file path
 - **title**: The recognized title (may be incorrect)
 - **errmsg**: The error message explaining why the transfer failed
-- **type**: Media type (movie/tv)
+- **type**: Media type (movie/tv/music)
 - **tmdbid**: TMDB ID (if available)
 - **seasons/episodes**: Season/episode info (if TV show)
 - **downloader**: Which downloader was used
 - **download_hash**: The torrent hash
+- **media_source/media_id**: Exact source-native identity; required to preserve selected music entities
 
 ### Step 2: Analyze the Failure Reason
 
@@ -47,7 +48,7 @@ Common failure reasons and how to handle them:
 
 | Error Message | Cause | Solution |
 |---------------|-------|----------|
-| 未识别到媒体信息 | File name couldn't be matched to any media | Use `search_media` to find the correct TMDB ID, then use `transfer_file` with explicit `tmdbid` |
+| 未识别到媒体信息 | File name or audio tags could not be matched | Use `search_media` to find the exact video ID or music recording/album identity, then transfer with explicit IDs |
 | 源目录不存在 | Source file was moved or deleted | Cannot retry - skip this record |
 | 目标路径不存在 | Target directory issue | Retry transfer - the directory config may have been fixed |
 | 文件已存在 | Target file already exists | May need to use `force` mode or skip |
@@ -73,14 +74,18 @@ Based on the failure analysis in Step 2:
    recognize_media(path="<source_file_path>")
    ```
 
-2. If recognition fails, try searching TMDB with keywords extracted from the filename:
+2. If recognition fails, search the appropriate metadata source with keywords extracted from the filename or audio tags:
    ```
    search_media(title="<extracted_title>", media_type="movie" or "tv")
+   # or for music
+   search_media(title="<artist> - <track_or_album>", media_type="music", music_type="recording" or "album")
    ```
 
-3. Once you have the correct TMDB ID, re-transfer with explicit identification:
+3. Once you have the exact identity, re-transfer with explicit identification:
    ```
    transfer_file(file_path="<source_path>", tmdbid=<tmdb_id>, media_type="movie" or "tv")
+   # or for music
+   transfer_file(file_path="<source_path>", media_type="music", music_type="recording" or "album", media_source="musicbrainz", media_id="<recording_or_album_id>")
    ```
 
 #### Case B: Transfer Error (file operation failed)
@@ -99,6 +104,13 @@ For TV shows where episode info couldn't be determined:
    transfer_file(file_path="<source_path>", tmdbid=<tmdb_id>, media_type="tv", season=<season_number>)
    ```
 
+#### Case D: Music Recording Or Album
+
+1. A recording is one track. Retry the individual audio file with its recording ID.
+2. An album is a collection like a TV season pack. If several failed tracks share one album directory and album ID, verify the group and retry the directory once with the album ID.
+3. Never use an artist ID as a transfer target. Search/select a recording or album instead.
+4. Do not infer that a directory is complete merely because it has multiple files. Preserve the album identity and let the transfer/download pipeline enforce expected-track semantics where available.
+
 ### Step 5: Report Result
 
 After the retry attempt, report the result:
@@ -108,13 +120,13 @@ After the retry attempt, report the result:
 
 ## Batch Processing (批量处理)
 
-When multiple files from the same source fail simultaneously (e.g., 10 episodes of the same TV show all fail with the same error), the system groups them and triggers a single batch retry.
+When multiple files fail simultaneously (for example, TV episodes or tracks from one album), the system may trigger one batch retry. Treat the batch as candidates for grouping, not proof that every record has the same identity.
 
 ### Key Optimization Rules for Batch Processing:
 
-1. **Identify media ONCE, apply to ALL files**: Since batch files typically belong to the same media, perform media recognition (`recognize_media`) or search (`search_media`) only ONCE using the first file, then reuse the result (tmdbid, media_type) for all subsequent files.
+1. **Group first, identify once per verified group**: Group by source directory and exact media identity. Reuse video IDs within one movie/series group and reuse an album ID for tracks from one album. Do not apply one recording ID to multiple different tracks.
 
-2. **Process each file individually for delete + transfer**: Even though the media identity is shared, you must still:
+2. **Choose the correct retry unit**: For movies, recordings, and TV episode files, delete and retry each exact failed record/file as needed. For a verified album directory, delete the selected failed records and submit the album directory once rather than repeatedly transferring every track.
    - Delete each failed history record individually
    - Transfer each file individually (they have different source paths)
 
@@ -158,7 +170,8 @@ transfer_file(file_path="/downloads/Show.Name.S01E04.1080p.mkv", tmdbid=789, med
 - **Do not retry** if the error is about missing directory configuration - this requires user intervention.
 - **For unrecognized media**, always try `recognize_media` with the file path first before falling back to `search_media`.
 - **Be cautious with TV shows** - ensure the correct season and episode information is used.
-- **For batch processing**, always reuse media identification results across all files to save time and resources.
+- **For batch processing**, reuse media identification only inside a verified group. Same source location alone does not prove shared identity.
+- **For music**, keep recording, album, and artist semantics distinct. Artists are browse-only; albums are multi-track retry units.
 - When this skill is triggered automatically by the system, it provides the `history_id`(s) directly. Start from Step 1 with those specific IDs.
 
 ## Example: Single File Retry Flow

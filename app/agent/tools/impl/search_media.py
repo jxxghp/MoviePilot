@@ -8,9 +8,11 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
 from app.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
 from app.utils.media import resolve_media_identity
+from ._music_utils import normalize_music_type, simplify_music_info
 
 
 class SearchMediaInput(BaseModel):
@@ -18,18 +20,28 @@ class SearchMediaInput(BaseModel):
     title: str = Field(..., description="The title of the media to search for (e.g., 'The Matrix', 'Breaking Bad')")
     year: Optional[str] = Field(None, description="Release year of the media (optional, helps narrow down results)")
     media_type: Optional[str] = Field(None,
-                                      description="Allowed values: movie, tv")
+                                      description="Allowed values: movie, tv, music")
+    music_type: Optional[str] = Field(
+        None,
+        description="Music entity filter: recording, album, or artist. Only valid when media_type='music'",
+    )
     season: Optional[int] = Field(None,
                                   description="Season number for TV shows and anime (optional, only applicable for series)")
 
 
 class SearchMediaTool(MoviePilotTool):
+    """按标题搜索影视或音乐元数据候选。"""
+
     name: str = "search_media"
     tags: list[str] = [
         ToolTag.Read,
         ToolTag.Media,
     ]
-    description: str = "Search TMDB database for media resources (movies, TV shows, anime, etc.) by title, year, type, and other criteria. Returns detailed media information from TMDB. Use 'recognize_media' to extract info from torrent titles/file paths, or 'scrape_metadata' to generate metadata files."
+    description: str = (
+        "Search metadata databases for movies, TV shows, music recordings, albums, or artists. "
+        "For music, set media_type='music' and optionally filter music_type as recording, album, or artist. "
+        "Returns source-native IDs that must be reused for detail, subscription, torrent, and library operations."
+    )
     args_schema: Type[BaseModel] = SearchMediaInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
@@ -37,6 +49,7 @@ class SearchMediaTool(MoviePilotTool):
         title = kwargs.get("title", "")
         year = kwargs.get("year")
         media_type = kwargs.get("media_type")
+        music_type = kwargs.get("music_type")
         season = kwargs.get("season")
         
         message = f"搜索媒体: {title}"
@@ -44,32 +57,76 @@ class SearchMediaTool(MoviePilotTool):
             message += f" ({year})"
         if media_type:
             message += f" [{media_type}]"
+        if music_type:
+            message += f" [{music_type}]"
         if season is not None:
             message += f" 第{season}季"
         
         return message
 
     async def run(self, title: str, year: Optional[str] = None,
-                  media_type: Optional[str] = None, season: Optional[int] = None, **kwargs) -> str:
+                  media_type: Optional[str] = None, season: Optional[int] = None,
+                  music_type: Optional[str] = None, **kwargs) -> str:
+        """执行元数据搜索并返回可复用的精简媒体身份。"""
         logger.info(
-            f"执行工具: {self.name}, 参数: title={title}, year={year}, media_type={media_type}, season={season}")
+            f"执行工具: {self.name}, 参数: title={title}, year={year}, "
+            f"media_type={media_type}, season={season}, music_type={music_type}")
 
         try:
+            media_type_enum = None
+            if media_type:
+                media_type_enum = MediaType.from_agent(media_type)
+                if not media_type_enum:
+                    return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music'"
+
+            if music_type and media_type_enum != MediaType.MUSIC:
+                return "错误：music_type 仅能与 media_type='music' 一起使用"
+
+            if media_type_enum == MediaType.MUSIC:
+                if season is not None:
+                    return "错误：音乐没有季号，搜索音乐时不能传入 season"
+                normalized_music_type = None
+                if music_type:
+                    normalized_music_type = normalize_music_type(music_type)
+                    if not normalized_music_type:
+                        return (
+                            f"错误：无效的音乐实体类型 '{music_type}'，"
+                            "支持的类型：'recording', 'album', 'artist'"
+                        )
+                results = await MusicChain().async_search(query=title, limit=100)
+                filtered_music = [
+                    item
+                    for item in results or []
+                    if (not year or str(item.year or "") == str(year))
+                    and (
+                        not normalized_music_type
+                        or item.music_type == normalized_music_type
+                    )
+                ]
+                if not filtered_music:
+                    return f"未找到符合条件的音乐资源: {title}"
+                total_count = len(filtered_music)
+                limited_results = filtered_music[:30]
+                result_json = json.dumps(
+                    [simplify_music_info(item) for item in limited_results],
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                if total_count > len(limited_results):
+                    return (
+                        f"注意：搜索结果共找到 {total_count} 条，为节省上下文空间，"
+                        f"仅显示前 {len(limited_results)} 条结果。\n\n{result_json}"
+                    )
+                return result_json
+
             media_chain = MediaChain()
-            # 使用 MediaChain.search 方法
-            meta, results = await media_chain.async_search(title=title)
+            _, results = await media_chain.async_search(title=title)
 
             # 过滤结果
             if results:
-                media_type_enum = None
-                if media_type:
-                    media_type_enum = MediaType.from_agent(media_type)
-                    if not media_type_enum:
-                        return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv'"
-
                 filtered_results = []
                 for result in results:
-                    if year and result.year != year:
+                    if year and str(result.year or "") != str(year):
                         continue
                     if media_type_enum and result.type != media_type_enum:
                         continue

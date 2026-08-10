@@ -9,8 +9,13 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
+from app.chain.music import MusicChain
+from app.core.config import settings
+from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_ARTIST
 from app.log import logger
 from app.schemas import FileItem
+from app.schemas.types import MediaType, media_type_to_agent
+from ._music_utils import normalize_music_type, simplify_music_info
 
 
 class ScrapeMetadataInput(BaseModel):
@@ -28,9 +33,27 @@ class ScrapeMetadataInput(BaseModel):
         False,
         description="Whether to overwrite existing metadata files (default: False)",
     )
+    media_type: Optional[str] = Field(
+        None,
+        description="Allowed values: movie, tv, music. Audio files are auto-detected; music directories should set music explicitly",
+    )
+    music_type: Optional[str] = Field(
+        None,
+        description="For an explicit music ID: recording for one file or album for a complete album directory",
+    )
+    media_source: Optional[str] = Field(
+        None,
+        description="Music metadata source, normally musicbrainz. Must be paired with media_id",
+    )
+    media_id: Optional[str] = Field(
+        None,
+        description="Source-native recording or album ID. Must be paired with media_source",
+    )
 
 
 class ScrapeMetadataTool(MoviePilotTool):
+    """刮削影视 NFO/图片或音乐标签、封面与旁挂歌词。"""
+
     name: str = "scrape_metadata"
     tags: list[str] = [
         ToolTag.Write,
@@ -39,7 +62,12 @@ class ScrapeMetadataTool(MoviePilotTool):
         ToolTag.File,
         ToolTag.Admin,
     ]
-    description: str = "Generate metadata files (NFO files, posters, backgrounds, etc.) for existing media files or directories. Automatically recognizes media information from the file path and creates metadata files. Supports both local and remote storage. Use 'search_media' to search TMDB database, or 'recognize_media' to extract info from torrent titles/file paths without generating files."
+    description: str = (
+        "Scrape existing movie, TV, or music files on local/remote storage. Video generates configured NFO and "
+        "images. Music applies configured audio-tag and cover policies and can automatically download LRCLIB "
+        "lyrics as same-name .lrc/.txt sidecars. A directory with an album ID is treated as one complete album; "
+        "without an ID, each audio file is recognized independently."
+    )
     require_admin: bool = True
     args_schema: Type[BaseModel] = ScrapeMetadataInput
 
@@ -48,12 +76,15 @@ class ScrapeMetadataTool(MoviePilotTool):
         path = kwargs.get("path", "")
         storage = kwargs.get("storage", "local")
         overwrite = kwargs.get("overwrite", False)
+        media_type = kwargs.get("media_type")
 
         message = f"刮削媒体元数据: {path}"
         if storage != "local":
             message += f" [存储: {storage}]"
         if overwrite:
             message += " [覆盖模式]"
+        if media_type:
+            message += f" [{media_type}]"
 
         return message
 
@@ -62,10 +93,17 @@ class ScrapeMetadataTool(MoviePilotTool):
         path: str,
         storage: Optional[str] = "local",
         overwrite: Optional[bool] = False,
+        media_type: Optional[str] = None,
+        music_type: Optional[str] = None,
+        media_source: Optional[str] = None,
+        media_id: Optional[str] = None,
         **kwargs,
     ) -> str:
+        """识别刮削类型并将同步文件及外部元数据操作放入线程池。"""
         logger.info(
-            f"执行工具: {self.name}, 参数: path={path}, storage={storage}, overwrite={overwrite}"
+            f"执行工具: {self.name}, 参数: path={path}, storage={storage}, "
+            f"overwrite={overwrite}, media_type={media_type}, music_type={music_type}, "
+            f"media_source={media_source}, media_id={media_id}"
         )
 
         try:
@@ -76,9 +114,30 @@ class ScrapeMetadataTool(MoviePilotTool):
                     ensure_ascii=False,
                 )
 
-            # 创建 FileItem
+            media_type_enum = None
+            if media_type:
+                media_type_enum = MediaType.from_agent(media_type)
+                if not media_type_enum:
+                    return json.dumps({
+                        "success": False,
+                        "message": (
+                            f"无效的媒体类型 '{media_type}'，"
+                            "支持的类型：'movie', 'tv', 'music'"
+                        ),
+                    }, ensure_ascii=False)
+            if bool(media_source) != bool(media_id):
+                return json.dumps({
+                    "success": False,
+                    "message": "media_source 和 media_id 必须同时提供",
+                }, ensure_ascii=False)
+
+            local_path = Path(path)
+            is_local_directory = (storage or "local") == "local" and local_path.is_dir()
+            file_type = "dir" if is_local_directory or not local_path.suffix else "file"
             fileitem = FileItem(
-                storage=storage, path=path, type="file" if Path(path).suffix else "dir"
+                storage=storage or "local",
+                path=path,
+                type=file_type,
             )
 
             # 检查本地存储路径是否存在
@@ -89,8 +148,85 @@ class ScrapeMetadataTool(MoviePilotTool):
                         ensure_ascii=False,
                     )
 
-            # 识别媒体信息
             media_chain = MediaChain()
+            is_audio_file = (
+                fileitem.type == "file"
+                and Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+            )
+            scrape_music = media_type_enum == MediaType.MUSIC or (
+                media_type_enum is None and is_audio_file
+            )
+            if scrape_music:
+                normalized_music_type = None
+                if music_type:
+                    normalized_music_type = normalize_music_type(music_type)
+                    if not normalized_music_type:
+                        return json.dumps({
+                            "success": False,
+                            "message": (
+                                f"无效的音乐实体类型 '{music_type}'，"
+                                "支持的类型：'recording', 'album'"
+                            ),
+                        }, ensure_ascii=False)
+                    if normalized_music_type == MUSIC_ENTITY_ARTIST:
+                        return json.dumps({
+                            "success": False,
+                            "message": "艺术家是浏览实体，不能用于文件刮削",
+                        }, ensure_ascii=False)
+
+                mediainfo = None
+                if media_source and media_id:
+                    if normalized_music_type == MUSIC_ENTITY_ALBUM:
+                        album_info = await MusicChain().async_album(
+                            source=media_source,
+                            media_id=media_id,
+                        )
+                        mediainfo = album_info.to_music_info() if album_info else None
+                    else:
+                        mediainfo = await media_chain.async_recognize_media(
+                            source=media_source,
+                            mediaid=media_id,
+                            mtype=MediaType.MUSIC,
+                        )
+                    if not mediainfo:
+                        return json.dumps({
+                            "success": False,
+                            "message": f"未识别到音乐信息: {media_source}:{media_id}",
+                        }, ensure_ascii=False)
+                    actual_music_type = getattr(mediainfo, "music_type", None)
+                    if normalized_music_type and actual_music_type != normalized_music_type:
+                        return json.dumps({
+                            "success": False,
+                            "message": (
+                                f"音乐实体类型不匹配：请求 {normalized_music_type}，"
+                                f"实际 {actual_music_type or 'unknown'}"
+                            ),
+                        }, ensure_ascii=False)
+
+                success, message = await self.run_blocking(
+                    "storage",
+                    media_chain.scrape_music_metadata,
+                    fileitem=fileitem,
+                    mediainfo=mediainfo,
+                    overwrite=bool(overwrite),
+                )
+                result = {
+                    "success": success,
+                    "message": message,
+                    "path": path,
+                    "type": "music",
+                }
+                if mediainfo:
+                    result["media_info"] = simplify_music_info(mediainfo)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            if music_type or media_source or media_id:
+                return json.dumps({
+                    "success": False,
+                    "message": "music_type、media_source 和 media_id 仅能用于音乐刮削",
+                }, ensure_ascii=False)
+
+            # 影视沿用路径识别与 NFO/图片刮削链路。
             context = await media_chain.async_recognize_by_path(
                 path,
                 obtain_images=True,
@@ -124,7 +260,7 @@ class ScrapeMetadataTool(MoviePilotTool):
                     "media_info": {
                         "title": context.media_info.title,
                         "year": context.media_info.year,
-                        "type": context.media_info.type.value if context.media_info.type else None,
+                        "type": media_type_to_agent(context.media_info.type),
                         "tmdb_id": context.media_info.tmdb_id,
                         "season": context.media_info.season,
                     },

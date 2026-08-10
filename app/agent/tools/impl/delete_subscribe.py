@@ -23,6 +23,8 @@ class DeleteSubscribeInput(BaseModel):
 
 
 class DeleteSubscribeTool(MoviePilotTool):
+    """按订阅 ID 删除影视、单曲或专辑订阅。"""
+
     name: str = "delete_subscribe"
     tags: list[str] = [
         ToolTag.Write,
@@ -39,6 +41,7 @@ class DeleteSubscribeTool(MoviePilotTool):
         return f"删除订阅 (ID: {subscribe_id})"
 
     async def run(self, subscribe_id: int, **kwargs) -> str:
+        """删除订阅并同步刷新带音乐实体维度的共享统计。"""
         logger.info(f"执行工具: {self.name}, 参数: subscribe_id={subscribe_id}")
 
         try:
@@ -61,6 +64,8 @@ class DeleteSubscribeTool(MoviePilotTool):
                     "anilistid": subscribe.anilistid,
                     "media_source": subscribe.media_source,
                     "media_id": subscribe.media_id,
+                    "music_type": subscribe.music_type,
+                    "total_tracks": subscribe.total_tracks,
                     "season": subscribe.season,
                 }
             )

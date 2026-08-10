@@ -30,11 +30,16 @@ class MediaType(Enum):
 
 
 def media_type_to_agent(value) -> Optional[str]:
-    """将 MediaType 枚举或字符串统一转换为 Agent 媒体类型。"""
+    """将枚举、Agent 键或数据库枚举值统一转换为 Agent 媒体类型。"""
     if isinstance(value, MediaType):
         return value.to_agent()
     if isinstance(value, str):
         mt = MediaType.from_agent(value)
+        if not mt:
+            try:
+                mt = MediaType(value)
+            except ValueError:
+                pass
         return mt.to_agent() if mt else value
     return None
 

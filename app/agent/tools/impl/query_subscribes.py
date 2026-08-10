@@ -10,7 +10,8 @@ from app.agent.tools.tags import ToolTag
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
 from app.schemas.subscribe import Subscribe as SubscribeSchema
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, media_type_to_agent
+from ._music_utils import normalize_music_type
 
 PAGE_SIZE = 100
 
@@ -19,6 +20,14 @@ QUERY_SUBSCRIBE_OUTPUT_FIELDS = [
     "name",
     "year",
     "type",
+    "tmdbid",
+    "doubanid",
+    "bangumiid",
+    "anilistid",
+    "media_source",
+    "media_id",
+    "music_type",
+    "total_tracks",
     "season",
     "total_episode",
     "start_episode",
@@ -42,6 +51,10 @@ QUERY_SUBSCRIBE_OUTPUT_FIELDS = [
     "media_category",
     "filter_groups",
     "episode_group",
+    "poster",
+    "backdrop",
+    "description",
+    "username",
 ]
 
 
@@ -53,7 +66,11 @@ class QuerySubscribesInput(BaseModel):
         description="Filter subscriptions by status: 'R' for enabled subscriptions, 'S' for paused ones, 'all' for all subscriptions",
     )
     media_type: Optional[str] = Field(
-        "all", description="Allowed values: movie, tv, all"
+        "all", description="Allowed values: movie, tv, music, all"
+    )
+    music_type: Optional[str] = Field(
+        None,
+        description="Optional music subscription filter: recording or album",
     )
     tmdb_id: Optional[int] = Field(
         None,
@@ -73,6 +90,8 @@ class QuerySubscribesInput(BaseModel):
 
 
 class QuerySubscribesTool(MoviePilotTool):
+    """查询电影、电视剧、单曲与专辑订阅。"""
+
     name: str = "query_subscribes"
     tags: list[str] = [
         ToolTag.Read,
@@ -106,6 +125,7 @@ class QuerySubscribesTool(MoviePilotTool):
         self,
         status: Optional[str] = "all",
         media_type: Optional[str] = "all",
+        music_type: Optional[str] = None,
         tmdb_id: Optional[int] = None,
         douban_id: Optional[str] = None,
         bangumi_id: Optional[int] = None,
@@ -115,13 +135,27 @@ class QuerySubscribesTool(MoviePilotTool):
         page: Optional[int] = 1,
         **kwargs,
     ) -> str:
+        """按状态、媒体身份及音乐实体类型筛选订阅。"""
         page = max(1, page or 1)
         logger.info(
             f"执行工具: {self.name}, 参数: status={status}, media_type={media_type}, tmdb_id={tmdb_id}, douban_id={douban_id}, page={page}"
         )
         try:
             if media_type != "all" and not MediaType.from_agent(media_type):
-                return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'all'"
+                return f"错误：无效的媒体类型 '{media_type}'，支持的类型：'movie', 'tv', 'music', 'all'"
+            normalized_music_type = None
+            if music_type:
+                normalized_music_type = normalize_music_type(
+                    music_type,
+                    allow_artist=False,
+                )
+                if not normalized_music_type:
+                    return (
+                        f"错误：无效的音乐实体类型 '{music_type}'，"
+                        "支持的类型：'recording', 'album'"
+                    )
+                if media_type not in ("all", "music"):
+                    return "错误：music_type 仅能与 media_type='music' 或 'all' 一起使用"
 
             subscribe_oper = SubscribeOper()
             subscribes = await subscribe_oper.async_list()
@@ -146,6 +180,10 @@ class QuerySubscribesTool(MoviePilotTool):
                     continue
                 if media_id is not None and sub.media_id != media_id:
                     continue
+                if normalized_music_type:
+                    sub_music_type = sub.music_type or "recording"
+                    if sub_music_type != normalized_music_type:
+                        continue
                 filtered_subscribes.append(sub)
             if filtered_subscribes:
                 total_count = len(filtered_subscribes)
@@ -158,12 +196,18 @@ class QuerySubscribesTool(MoviePilotTool):
                     total_pages = (total_count + PAGE_SIZE - 1) // PAGE_SIZE
                     return f"第 {page} 页没有数据，共 {total_count} 条结果，共 {total_pages} 页。"
 
-                full_subscribes = [
-                    SubscribeSchema.model_validate(s, from_attributes=True).model_dump(
+                full_subscribes = []
+                for subscribe in page_subscribes:
+                    payload = SubscribeSchema.model_validate(
+                        subscribe,
+                        from_attributes=True,
+                    ).model_dump(
                         include=set(QUERY_SUBSCRIBE_OUTPUT_FIELDS), exclude_none=True
                     )
-                    for s in page_subscribes
-                ]
+                    payload["type"] = media_type_to_agent(payload.get("type"))
+                    if payload["type"] == "music" and not payload.get("music_type"):
+                        payload["music_type"] = "recording"
+                    full_subscribes.append(payload)
                 result_json = json.dumps(full_subscribes, ensure_ascii=False, indent=2)
 
                 total_pages = (total_count + PAGE_SIZE - 1) // PAGE_SIZE
