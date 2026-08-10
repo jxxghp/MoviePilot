@@ -15,7 +15,7 @@ from jinja2 import Template
 
 from app.core.cache import TTLCache
 from app.core.config import global_vars
-from app.core.context import MediaInfo, MusicInfo, TorrentInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo, MusicInfo, TorrentInfo
 from app.core.meta import MetaBase, MetaMusic
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
@@ -93,8 +93,13 @@ class TemplateContextBuilder:
         if not mediainfo:
             return
         if isinstance(mediainfo, MusicInfo):
-            # 专辑识别结果会被同一批次的所有曲目复用，不能覆盖每个文件自己的曲名和曲序。
-            title = context.get("title") or cls.__convert_invalid_characters(mediainfo.title)
+            # 专辑实体的下载/整理是整批曲目共享一次通知：标题应以专辑为主
+            # 题，且不展示单曲序号；单曲场景继续使用每个文件自己的曲名和曲序。
+            is_album_context = mediainfo.music_type == MUSIC_ENTITY_ALBUM
+            if is_album_context and mediainfo.album:
+                title = cls.__convert_invalid_characters(mediainfo.album)
+            else:
+                title = context.get("title") or cls.__convert_invalid_characters(mediainfo.title)
             artists = context.get("artists") or [
                 cls.__convert_invalid_characters(item) for item in mediainfo.artists
             ]
@@ -103,13 +108,21 @@ class TemplateContextBuilder:
             album_artist = context.get("album_artist") or cls.__convert_invalid_characters(
                 mediainfo.album_artist
             )
-            year = context.get("year") or mediainfo.year
+            year = (
+                mediainfo.year
+                if (is_album_context and mediainfo.year)
+                else (context.get("year") or mediainfo.year)
+            )
             disc_number = context.get("disc_number") or mediainfo.disc_number
-            track_number = context.get("track_number") or mediainfo.track_number
+            track_number = (
+                None
+                if is_album_context
+                else (context.get("track_number") or mediainfo.track_number)
+            )
             context.update({
                 "type": mediainfo.type.value,
                 "title": title,
-                "name": context.get("name") or title,
+                "name": title if is_album_context else (context.get("name") or title),
                 "artists": artists,
                 "artist": artist,
                 "album": album,

@@ -17,8 +17,10 @@ import importlib.util
 
 import pytest
 
+from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.core.meta import MetaMusic
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.message import MessageTemplateHelper, TemplateHelper
+from app.helper.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
 from app.schemas.message import Notification
 from app.schemas.types import ContentType, SystemConfigKey
 
@@ -54,6 +56,57 @@ def notification_templates() -> SystemConfigOper:
     original = config_oper.get(SystemConfigKey.NotificationTemplates)
     yield config_oper
     config_oper.set(SystemConfigKey.NotificationTemplates, original)
+
+
+def test_album_batch_context_uses_album_title_for_notification() -> None:
+    """
+    专辑实体批量入库的通知上下文应以专辑名作为标题，
+    不得展示批次中某个单曲的曲名和曲序。
+    """
+    meta = MetaMusic(
+        title="晴天",
+        artists=["周杰伦"],
+        album="叶惠美",
+        track_number=3,
+        year=2003,
+    )
+    mediainfo = MusicInfo(
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="晴天",
+        album="叶惠美",
+        artists=["周杰伦"],
+        year=2003,
+    )
+
+    context = TemplateContextBuilder().build(meta=meta, mediainfo=mediainfo)
+
+    assert context["title"] == "叶惠美"
+    assert context["title_year"] == "叶惠美 (2003)"
+    assert context.get("track_number") is None
+
+    rendered = TemplateHelper().render(
+        template_content=MUSIC_ORGANIZE_TEMPLATE,
+        **dict(context, file_count=11, total_size="1.2 GB"),
+    )
+    assert isinstance(rendered, dict)
+    assert rendered["title"] == "叶惠美 (2003) 已入库"
+    assert "艺术家：周杰伦" in rendered["text"]
+    assert "#3" not in rendered["title"]
+
+
+def test_single_track_context_keeps_track_title_and_number() -> None:
+    """
+    单曲下载/整理的通知上下文应继续使用曲目标题和曲序，
+    不受专辑场景调整的影响。
+    """
+    context = MUSIC_CONTEXT.copy()
+
+    rendered = TemplateHelper().render(
+        template_content=MUSIC_ORGANIZE_TEMPLATE, **context
+    )
+
+    assert isinstance(rendered, dict)
+    assert rendered["title"] == "晴天 (2003) #3 已入库"
 
 
 def test_literal_template_with_quoted_condition_renders_music() -> None:
