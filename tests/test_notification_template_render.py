@@ -78,7 +78,9 @@ def test_album_batch_context_uses_album_title_for_notification() -> None:
         year=2003,
     )
 
-    context = TemplateContextBuilder().build(meta=meta, mediainfo=mediainfo)
+    context = TemplateContextBuilder().build(
+        meta=meta, mediainfo=mediainfo, aggregate_music_album=True
+    )
 
     assert context["title"] == "叶惠美"
     assert context["title_year"] == "叶惠美 (2003)"
@@ -92,6 +94,32 @@ def test_album_batch_context_uses_album_title_for_notification() -> None:
     assert rendered["title"] == "叶惠美 (2003) 已入库"
     assert "艺术家：周杰伦" in rendered["text"]
     assert "#3" not in rendered["title"]
+
+
+def test_album_batch_context_keeps_track_identity_for_rename() -> None:
+    """
+    重命名等逐文件场景（未开启整专聚合）应继续使用每个文件的曲名和曲序，
+    不能把专辑名写成所有目标文件名。
+    """
+    meta = MetaMusic(
+        title="晴天",
+        artists=["周杰伦"],
+        album="叶惠美",
+        track_number=3,
+        year=2003,
+    )
+    mediainfo = MusicInfo(
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="晴天",
+        album="叶惠美",
+        artists=["周杰伦"],
+        year=2003,
+    )
+
+    context = TemplateContextBuilder().build(meta=meta, mediainfo=mediainfo)
+
+    assert context["title"] == "晴天"
+    assert context["track"] == "03"
 
 
 def test_single_track_context_keeps_track_title_and_number() -> None:

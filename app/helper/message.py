@@ -49,6 +49,7 @@ class TemplateContextBuilder:
             file_extension: Optional[str] = None,
             episodes_info: Optional[List[TmdbEpisode]] = None,
             include_raw_objects: bool = True,
+            aggregate_music_album: bool = False,
             **kwargs
     ) -> Dict[str, Any]:
         """
@@ -64,11 +65,14 @@ class TemplateContextBuilder:
         :param file_extension: 文件扩展名
         :param episodes_info: 当前季的全部集信息
         :param include_raw_objects: 是否在 dict 里附带原始对象引用（``__meta__`` 等）
+        :param aggregate_music_album: 是否按整专聚合（通知场景）：专辑实体
+            批量下载/入库只发一条通知，标题取专辑名且不展示单曲序号；
+            重命名等逐文件场景必须为 False 以保留每个文件的曲名和曲序
         :return: 渲染上下文字典
         """
         context: Dict[str, Any] = {}
         self._add_episode_details(context, meta, episodes_info)
-        self._add_media_info(context, mediainfo)
+        self._add_media_info(context, mediainfo, aggregate_music_album)
         self._add_transfer_info(context, transferinfo)
         self._add_torrent_info(context, torrentinfo)
         self._add_file_info(context, file_extension)
@@ -82,20 +86,29 @@ class TemplateContextBuilder:
         return {k: v for k, v in context.items() if v is not None}
 
     @classmethod
-    def _add_media_info(cls, context: Dict[str, Any], mediainfo: Optional[MediaInfo]) -> None:
+    def _add_media_info(
+            cls,
+            context: Dict[str, Any],
+            mediainfo: Optional[MediaInfo],
+            aggregate_music_album: bool = False,
+    ) -> None:
         """
         将 MediaInfo 中的标题、季年份、海报等业务字段就地写入 ``context``。
 
         会读取 ``context`` 中由 ``_add_episode_details`` 先填好的 ``season`` /
         ``year`` / ``title_year`` 占位，保证电视剧场景下季/年优先沿用 meta 解析值；
-        音乐场景保留文件标签解析出的曲目级字段，仅用识别结果补齐专辑级字段。
+        音乐场景保留文件标签解析出的曲目级字段，仅用识别结果补齐专辑级字段；
+        通知场景（``aggregate_music_album=True``）下整专批量以专辑为标题主体。
         """
         if not mediainfo:
             return
         if isinstance(mediainfo, MusicInfo):
-            # 专辑实体的下载/整理是整批曲目共享一次通知：标题应以专辑为主
-            # 题，且不展示单曲序号；单曲场景继续使用每个文件自己的曲名和曲序。
-            is_album_context = mediainfo.music_type == MUSIC_ENTITY_ALBUM
+            # 专辑实体批量下载/入库只发一条通知：标题取专辑名、不展示单曲
+            # 序号；重命名等逐文件场景保持 False，继续使用文件自己的曲名和曲序。
+            is_album_context = (
+                    aggregate_music_album
+                    and mediainfo.music_type == MUSIC_ENTITY_ALBUM
+            )
             if is_album_context and mediainfo.album:
                 title = cls.__convert_invalid_characters(mediainfo.album)
             else:
@@ -502,7 +515,7 @@ class TemplateHelper(metaclass=SingletonClass):
             if not parsed:
                 raise ValueError("模板解析失败")
 
-            context = self.builder.build(**kwargs)
+            context = self.builder.build(aggregate_music_album=True, **kwargs)
             if not context:
                 raise ValueError("上下文构建失败")
 
