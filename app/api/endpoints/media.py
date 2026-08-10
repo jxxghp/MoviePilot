@@ -11,7 +11,7 @@ from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import Context, MusicInfo
 from app.core.event import eventmanager
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db.models import User
@@ -122,6 +122,9 @@ async def recognize(
     """
     # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
     metainfo = _build_recognize_metainfo(title, subtitle, custom_words)
+    # MusicBrainz 仅支持音乐识别，非音频后缀的标题统一按音乐元数据解析
+    if source == "musicbrainz" and not isinstance(metainfo, MetaMusic):
+        metainfo = MusicChain.parse_query(title)
     mediainfo = await MediaChain().async_recognize_by_meta(
         metainfo,
         source=source,
