@@ -2370,26 +2370,34 @@ class SubscribeChain(ChainBase):
                             )[1]:
                                 if torrent_mediainfo.type != mediainfo.type:
                                     continue
-                                if torrent_mediainfo.tmdb_id \
-                                        and torrent_mediainfo.tmdb_id != mediainfo.tmdb_id:
+                                torrent_mediainfo = self.__reconcile_candidate_media(
+                                    target_mediainfo=mediainfo,
+                                    candidate_mediainfo=torrent_mediainfo,
+                                    torrent_meta=torrent_meta,
+                                    torrent_info=torrent_info,
+                                    context=_context,
+                                )
+                                if not torrent_mediainfo:
                                     continue
-                                if torrent_mediainfo.douban_id \
-                                        and torrent_mediainfo.douban_id != mediainfo.douban_id:
-                                    continue
-                                logger.info(
-                                    f'{mediainfo.title_year} 通过媒体ID匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
                                 match_source = _context.match_source
                                 if match_source == "title":
                                     # 标题兜底使用的是订阅目标 media_info，不能标记为候选自身识别结果。
                                     _context.candidate_recognized = False
                                     _context.media_info_is_target = True
+                                    match_label = "标题复核"
                                 elif match_source == "unknown":
                                     _context.match_source = self.__get_media_id_match_source(torrent_mediainfo)
                                     _context.candidate_recognized = True
                                     _context.media_info_is_target = False
+                                    match_label = "媒体ID"
                                 else:
                                     _context.candidate_recognized = True
                                     _context.media_info_is_target = False
+                                    match_label = "媒体ID"
+                                logger.info(
+                                    f'{mediainfo.title_year} 通过{match_label}匹配到可选资源：'
+                                    f'{torrent_info.site_name} - {torrent_info.title}'
+                                )
                             else:
                                 continue
 
@@ -4808,6 +4816,80 @@ class SubscribeChain(ChainBase):
         if mediainfo and all(resolve_media_identity(media=mediainfo)):
             return "plugin"
         return "unknown"
+
+    @staticmethod
+    def __reconcile_candidate_media(
+            target_mediainfo: MediaInfo,
+            candidate_mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+            torrent_info: TorrentInfo,
+            context: Context,
+    ) -> Optional[MediaInfo]:
+        """
+        在推断媒体 ID 冲突时，以订阅目标对候选标题做严格复核。
+
+        标题携带明确媒体身份或目标缺少同来源 ID 时保持严格拒绝；只有普通
+        标题推断产生冲突且标题、别名、类型和年份复核通过时才回填订阅目标。
+
+        :param target_mediainfo: 订阅目标媒体信息
+        :param candidate_mediainfo: RSS 或首页候选的识别结果
+        :param torrent_meta: 候选标题解析信息
+        :param torrent_info: 候选种子信息
+        :param context: 当前订阅使用的候选上下文副本
+        :return: 可继续匹配的媒体信息，拒绝时返回 None
+        """
+        identity_pairs = (
+            ("TMDB", candidate_mediainfo.tmdb_id, target_mediainfo.tmdb_id),
+            ("豆瓣", candidate_mediainfo.douban_id, target_mediainfo.douban_id),
+        )
+        conflicts = [
+            (source, str(candidate_id), str(target_id) if target_id is not None else None)
+            for source, candidate_id, target_id in identity_pairs
+            if candidate_id is not None
+            and str(candidate_id) != (str(target_id) if target_id is not None else None)
+        ]
+        if not conflicts:
+            return candidate_mediainfo
+
+        conflict_text = "、".join(
+            f"{source} {candidate_id} != {target_id if target_id is not None else '缺失'}"
+            for source, candidate_id, target_id in conflicts
+        )
+        if any(target_id is None for _, _, target_id in conflicts):
+            logger.debug(
+                f'{torrent_info.site_name} - {torrent_info.title} 候选媒体ID与订阅目标不可比较：'
+                f'{conflict_text}'
+            )
+            return None
+
+        explicit_source, explicit_id = resolve_media_identity(media=torrent_meta)
+        if explicit_source and explicit_id:
+            logger.debug(
+                f'{torrent_info.site_name} - {torrent_info.title} 标题含明确媒体ID '
+                f'{explicit_source}:{explicit_id}，保持严格校验：{conflict_text}'
+            )
+            return None
+
+        if not TorrentHelper.match_torrent(
+                mediainfo=target_mediainfo,
+                torrent_meta=torrent_meta,
+                torrent=torrent_info,
+        ):
+            logger.debug(
+                f'{torrent_info.site_name} - {torrent_info.title} 候选媒体ID冲突且标题复核失败：'
+                f'{conflict_text}'
+            )
+            return None
+
+        context.media_info = target_mediainfo
+        context.match_source = "title"
+        context.candidate_recognized = False
+        context.media_info_is_target = True
+        logger.debug(
+            f'{target_mediainfo.title_year} 候选媒体ID冲突（{conflict_text}），'
+            f'经标题或别名复核匹配到订阅目标：{torrent_info.site_name} - {torrent_info.title}'
+        )
+        return target_mediainfo
 
     @staticmethod
     def get_states_for_search(state: str) -> str:
