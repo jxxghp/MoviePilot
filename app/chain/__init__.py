@@ -1040,6 +1040,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("tvdb_info", tvdbid=tvdbid)
 
+    def tvdb_slug(self, tvdbid: int) -> Optional[str]:
+        """
+        获取TVDB剧集 slug（别名），用于构建 TheTvDb 直达链接。
+        :param tvdbid: int
+        :return: slug 字符串
+        """
+        return self.run_module("tvdb_slug", tvdbid=tvdbid)
+
     def tmdb_info(
             self, tmdbid: int, mtype: MediaType, season: Optional[int] = None
     ) -> Optional[dict]:

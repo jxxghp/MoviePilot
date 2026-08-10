@@ -521,6 +521,11 @@ async def detail(
     # 识别
     if mediainfo:
         await mediachain.async_obtain_images(mediainfo)
+        # 电视剧且有 TVDB ID 时，补充获取 slug 用于构建 TheTvDb 直达链接
+        if mediainfo.type == MediaType.TV and mediainfo.tvdb_id and not mediainfo.tvdb_slug:
+            slug = mediachain.tvdb_slug(mediainfo.tvdb_id)
+            if slug:
+                mediainfo.tvdb_slug = slug
         return mediainfo.to_dict()
 
     return schemas.MediaInfo()

@@ -707,7 +707,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo.category = tmdb_media.category
         if not mediainfo.genre_ids:
             mediainfo.genre_ids = list(tmdb_media.genre_ids or [])
-        for field in ("imdb_id", "tvdb_id", "collection_id"):
+        for field in ("imdb_id", "tvdb_id", "tvdb_slug", "collection_id"):
             if not getattr(mediainfo, field, None):
                 setattr(mediainfo, field, getattr(tmdb_media, field, None))
         return mediainfo

@@ -143,6 +143,21 @@ class TheTvDbModule(_ModuleBase):
             logger.error(f"获取TVDB信息失败: {str(err)}")
             return None
 
+    def tvdb_slug(self, tvdbid: int) -> Optional[str]:
+        """
+        获取TVDB剧集的 slug（别名），用于构建 TheTvDb 直达链接。
+        :param tvdbid: int
+        :return: slug 字符串，如 "speed-and-love"
+        """
+        try:
+            result = self._handle_tvdb_call("get_series", tvdbid)
+            if result and isinstance(result, dict):
+                return result.get("slug")
+            return None
+        except Exception as err:
+            logger.error(f"获取TVDB slug 失败: {str(err)}")
+            return None
+
     def search_tvdb(self, title: str) -> list:
         """
         用标题搜索TVDB剧集

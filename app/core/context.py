@@ -207,6 +207,11 @@ class MusicInfo:
         return None
 
     @property
+    def tvdb_slug(self) -> None:
+        """音乐不使用 TVDB Slug，兼容现有字段。"""
+        return None
+
+    @property
     def douban_id(self) -> None:
         """音乐不使用豆瓣 ID，兼容现有下载历史字段。"""
         return None
@@ -888,6 +893,8 @@ class MediaInfo:
     imdb_id: str = None
     # TVDB ID
     tvdb_id: int = None
+    # TVDB Slug（别名，用于构建 TheTvDb 直达链接）
+    tvdb_slug: str = None
     # 豆瓣ID
     douban_id: str = None
     # Bangumi ID

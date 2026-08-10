@@ -105,6 +105,8 @@ class MediaInfo(BaseModel):
     imdb_id: Optional[str] = None
     # TVDB ID
     tvdb_id: Optional[int] = None
+    # TVDB Slug（别名，用于构建 TheTvDb 直达链接）
+    tvdb_slug: Optional[str] = None
     # 豆瓣ID
     douban_id: Optional[str] = None
     # Bangumi ID
