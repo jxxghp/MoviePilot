@@ -44,10 +44,13 @@ def _build_statistic(db: Session, name: Optional[str] = None) -> schemas.Statist
     else:
         ret_statistic = schemas.Statistic()
 
-    movie_count_month, tv_count_month, episode_count_month = TransferHistory.monthly_media_statistics(db)
+    movie_count_month, tv_count_month, episode_count_month, music_count_month = (
+        TransferHistory.monthly_media_statistics(db)
+    )
     ret_statistic.movie_count_month = movie_count_month
     ret_statistic.tv_count_month = tv_count_month
     ret_statistic.episode_count_month = episode_count_month
+    ret_statistic.music_count_month = music_count_month
     return ret_statistic
 
 

@@ -24,6 +24,8 @@ class Statistic(BaseModel):
     tv_count_month: Optional[int] = 0
     # 本月新增剧集数量
     episode_count_month: Optional[int] = 0
+    # 本月新增音乐数量
+    music_count_month: Optional[int] = 0
 
 
 class Storage(BaseModel):

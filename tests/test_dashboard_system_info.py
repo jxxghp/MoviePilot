@@ -74,13 +74,18 @@ def test_monthly_media_statistics_counts_successful_unique_media():
         TransferHistory(status=True, date=f"{month}02 10:00:00", type=MediaType.MOVIE.value, tmdbid=1, title="电影"),
         TransferHistory(status=True, date=f"{month}03 10:00:00", type=MediaType.TV.value, tmdbid=2, title="剧集", episodes="E01-E03"),
         TransferHistory(status=False, date=f"{month}04 10:00:00", type=MediaType.TV.value, tmdbid=3, title="失败剧集"),
+        # 同一首歌多次整理只计一首，无媒体 ID 的曲目按记录计数
+        TransferHistory(status=True, date=f"{month}05 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_id="musicbrainz:r1"),
+        TransferHistory(status=True, date=f"{month}06 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_id="musicbrainz:r1"),
+        TransferHistory(status=True, date=f"{month}07 10:00:00", type=MediaType.MUSIC.value, title="未知曲目"),
+        TransferHistory(status=False, date=f"{month}08 10:00:00", type=MediaType.MUSIC.value, title="失败曲目"),
     ]
     db = SessionFactory()
     try:
         db.add_all(histories)
         db.commit()
 
-        assert TransferHistory.monthly_media_statistics(db) == (1, 1, 3)
+        assert TransferHistory.monthly_media_statistics(db) == (1, 1, 3, 2)
     finally:
         history_ids = [history.id for history in histories if history.id is not None]
         if history_ids:

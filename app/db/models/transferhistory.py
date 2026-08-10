@@ -338,22 +338,32 @@ class TransferHistory(Base):
     @db_query
     def monthly_media_statistics(cls, db: Session):
         """
-        统计当月成功整理的电影、电视剧和剧集数量。
+        统计当月成功整理的电影、电视剧、剧集和音乐数量。
 
         电影和电视剧按媒体身份去重；剧集优先按历史记录中的集数字段计算，
-        缺少集数时按单条成功整理记录计数。
+        缺少集数时按单条成功整理记录计数；音乐按曲目计数，识别到媒体 ID 的曲目按 ID 去重。
         """
         month_prefix = time.strftime("%Y-%m-", time.localtime())
         histories = db.query(cls).filter(
             cls.status.is_(True),
             cls.date.like(f"{month_prefix}%"),
-            cls.type.in_([MediaType.MOVIE.value, MediaType.TV.value]),
+            cls.type.in_([MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value]),
         ).all()
         movie_identities = set()
         tv_identities = set()
         episode_count = 0
+        music_count = 0
+        music_identities = set()
 
         for history in histories:
+            if history.type == MediaType.MUSIC.value:
+                # 有媒体 ID 的曲目按 ID 去重，避免同一首歌多次整理重复计数
+                if history.media_id:
+                    music_identities.add(history.media_id)
+                else:
+                    music_count += 1
+                continue
+
             identity = (history.tmdbid or 0, history.title or "", history.year or "")
             if history.type == MediaType.MOVIE.value:
                 movie_identities.add(identity)
@@ -362,7 +372,7 @@ class TransferHistory(Base):
             tv_identities.add(identity)
             episode_count += cls._history_episode_count(history)
 
-        return len(movie_identities), len(tv_identities), episode_count
+        return len(movie_identities), len(tv_identities), episode_count, music_count + len(music_identities)
 
     @staticmethod
     def _history_episode_count(history: "TransferHistory") -> int:
