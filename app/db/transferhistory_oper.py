@@ -2,7 +2,7 @@ import time
 from typing import Any, List, Optional
 
 from app.core.context import MediaInfo
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import TransferInfo, FileItem
@@ -224,6 +224,17 @@ class TransferHistoryOper(DbOper):
         """
         TransferHistory.update_download_hash(self._db, historyid, download_hash)
 
+    @staticmethod
+    def _history_title(
+            meta: MetaBase, mediainfo: Optional[MediaInfo] = None
+    ) -> Optional[str]:
+        """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
+        if isinstance(meta, MetaMusic) and meta.title:
+            return meta.title
+        if mediainfo and mediainfo.title:
+            return mediainfo.title
+        return meta.name
+
     def add_success(self, fileitem: FileItem, mode: str, meta: MetaBase,
                     mediainfo: MediaInfo, transferinfo: TransferInfo,
                     downloader: Optional[str] = None, download_hash: Optional[str] = None):
@@ -240,7 +251,7 @@ class TransferHistoryOper(DbOper):
             mode=mode,
             type=mediainfo.type.value,
             category=mediainfo.category,
-            title=mediainfo.title,
+            title=self._history_title(meta, mediainfo),
             year=mediainfo.year,
             tmdbid=mediainfo.tmdb_id,
             imdbid=mediainfo.imdb_id,
@@ -282,7 +293,7 @@ class TransferHistoryOper(DbOper):
                 mode=mode,
                 type=mediainfo.type.value,
                 category=mediainfo.category,
-                title=mediainfo.title or meta.name,
+                title=self._history_title(meta, mediainfo),
                 year=mediainfo.year or meta.year,
                 tmdbid=mediainfo.tmdb_id,
                 imdbid=mediainfo.imdb_id,
@@ -311,7 +322,7 @@ class TransferHistoryOper(DbOper):
             )
         else:
             his = self.add_force(
-                title=meta.name,
+                title=self._history_title(meta),
                 year=meta.year,
                 tmdbid=meta.tmdbid,
                 doubanid=meta.doubanid,

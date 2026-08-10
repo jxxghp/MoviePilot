@@ -493,15 +493,31 @@ class TemplateHelper(metaclass=SingletonClass):
             if not context:
                 raise ValueError("上下文构建失败")
 
-            rendered = self.render_with_context(parsed, context)
-            if not rendered:
-                raise ValueError("模板渲染失败")
+            if isinstance(parsed, dict):
+                # 字典模板按字段独立渲染，避免 JSON 序列化转义引号
+                # 破坏 {% if type == "音乐" %} 等带引号的 Jinja 表达式
+                rendered = json.dumps(
+                    {
+                        key: self.render_with_context(value, context)
+                        if isinstance(value, str) else value
+                        for key, value in parsed.items()
+                    },
+                    ensure_ascii=False,
+                )
+                if not rendered:
+                    raise ValueError("模板渲染失败")
+                processed = self.__process_formatted_string(rendered)
+            else:
+                rendered = self.render_with_context(parsed, context)
+                if not rendered:
+                    raise ValueError("模板渲染失败")
+                processed = rendered if template_type == 'string' else self.__process_formatted_string(rendered)
 
-            if rendered := rendered if template_type == 'string' else self.__process_formatted_string(rendered):
+            if processed:
                 # 缓存上下文
-                self.set_cache_context(rendered, context)
+                self.set_cache_context(processed, context)
                 # 返回渲染结果
-                return rendered
+                return processed
             return None
         except Exception as e:
             raise ValueError(f"模板处理失败: {str(e)}") from e
@@ -519,14 +535,14 @@ class TemplateHelper(metaclass=SingletonClass):
 
     @staticmethod
     def parse_template_content(template_content: Union[str, dict],
-                               template_type: Literal['string', 'dict', 'literal'] = None) -> Optional[str]:
+                               template_type: Literal['string', 'dict', 'literal'] = None) -> Optional[Union[str, dict]]:
         """
         解析模板字符
         :param template_content 模板格式字符
         :param template_type 模板字符类型
         """
 
-        def parse_literal(_template_content: str) -> str:
+        def parse_literal(_template_content: str) -> Union[dict, str]:
             """
             解析Python字面量
             """
@@ -535,7 +551,7 @@ class TemplateHelper(metaclass=SingletonClass):
                                                                                   str) else _template_content
                 if not isinstance(template_dict, dict):
                     raise ValueError("解析结果必须是一个字典")
-                return json.dumps(template_dict, ensure_ascii=False)
+                return template_dict
             except (ValueError, SyntaxError) as err:
                 raise ValueError(f"无效的Python字面量格式: {str(err)}")
 
@@ -543,14 +559,14 @@ class TemplateHelper(metaclass=SingletonClass):
             if template_type:
                 parse_map = {
                     'string': lambda x: str(x),
-                    'dict': lambda x: json.dumps(x, ensure_ascii=False),
+                    'dict': lambda x: x,
                     'literal': parse_literal
                 }
                 return parse_map[template_type](template_content)
 
             # 自动判断模板类型
             if isinstance(template_content, dict):
-                return json.dumps(template_content, ensure_ascii=False)
+                return template_content
             elif isinstance(template_content, str):
                 try:
                     json.loads(template_content)
@@ -661,7 +677,17 @@ class MessageTemplateHelper:
         """
         try:
             if template := MessageTemplateHelper._get_template(message):
-                rendered = TemplateHelper().render(template_content=template, *args, **kwargs)
+                try:
+                    rendered = TemplateHelper().render(
+                        template_content=template, *args, **kwargs
+                    )
+                except ValueError as err:
+                    logger.warning(
+                        f"通知模板 {message.ctype.value} 渲染失败，消息保持原样：{str(err)}"
+                    )
+                    return message
+                if not isinstance(rendered, dict):
+                    raise ValueError("通知模板渲染结果必须是字典")
                 for key, value in rendered.items():
                     if hasattr(message, key):
                         setattr(message, key, value)
@@ -675,8 +701,15 @@ class MessageTemplateHelper:
         """
         获取消息模板
         """
-        template_dict: dict[str, str] = SystemConfigOper().get(SystemConfigKey.NotificationTemplates)
-        return template_dict.get(message.ctype.value)
+        try:
+            template_dict = SystemConfigOper().get(SystemConfigKey.NotificationTemplates) or {}
+            if isinstance(template_dict, dict):
+                configured = template_dict.get(message.ctype.value)
+                if str(configured or "").strip() not in {"", "{}", "{ }"}:
+                    return configured
+        except Exception as err:
+            logger.warning(f"读取通知模板失败：{str(err)}")
+        return None
 
 
 class MessageQueueManager(metaclass=SingletonClass):

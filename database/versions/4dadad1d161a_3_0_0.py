@@ -1,0 +1,69 @@
+"""3.0.0
+V3 大版本初始化默认通知模板
+
+Revision ID: 4dadad1d161a
+Revises: e8b1c4d7a2f9
+Create Date: 2026-08-10
+"""
+
+from app.db.systemconfig_oper import SystemConfigOper
+from app.schemas.types import SystemConfigKey
+
+# revision identifiers, used by Alembic.
+revision = "4dadad1d161a"
+down_revision = "e8b1c4d7a2f9"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # V3 为大版本升级，通知模板直接覆盖用户旧设置，且迁移只执行一次；
+    # 默认模板同时兼容影视与音乐（音乐的下载、入库通知补齐艺术家/专辑/音质信息）。
+    value = {
+        "organizeSuccess": """
+{
+    'title': '{{ title_year }}{% if track_number %} #{{ track_number }}{% endif %}'
+            '{% if season_episode %} {{ season_episode }}{% endif %} 已入库',
+    'text': '类型：{{ type }}{% if category %}，类别：{{ category }}{% endif %}'
+            '{% if type == "音乐" and artist %}\\n艺术家：{{ artist }}{% endif %}'
+            '{% if type == "音乐" and album %}\\n专辑：{{ album }}{% endif %}'
+            '{% if type == "音乐" and audio_specs %}\\n音质：{{ audio_specs }}{% endif %}'
+            '{% if resource_term %}，质量：{{ resource_term }}{% endif %}'
+            '，共{{ file_count }}个文件，大小：{{ total_size }}'
+            '{% if err_msg %}，以下文件处理失败：{{ err_msg }}{% endif %}'
+}""",
+        "downloadAdded": """
+{
+    'title': '{{ title_year }}{% if track_number %} #{{ track_number }}{% endif %}'
+            '{% if download_episodes %} {{ season_fmt }} {{ download_episodes }}{% else %}{{ season_episode }}{% endif %} 开始下载',
+    'text': '{% if site_name %}站点：{{ site_name }}{% endif %}'
+            '{% if type == "音乐" and artist %}\\n艺术家：{{ artist }}{% endif %}'
+            '{% if type == "音乐" and album %}\\n专辑：{{ album }}{% endif %}'
+            '{% if type == "音乐" and audio_specs %}\\n音质：{{ audio_specs }}{% endif %}'
+            '{% if resource_term %}\\n质量：{{ resource_term }}{% endif %}'
+            '{% if size %}\\n大小：{{ size }}{% endif %}'
+            '{% if torrent_title %}\\n种子：{{ torrent_title }}{% endif %}'
+            '{% if pubdate %}\\n发布时间：{{ pubdate }}{% endif %}'
+            '{% if freedate %}\\n免费时间：{{ freedate }}{% endif %}'
+            '{% if seeders %}\\n做种数：{{ seeders }}{% endif %}'
+            '{% if volume_factor %}\\n促销：{{ volume_factor }}{% endif %}'
+            '{% if hit_and_run %}\\nHit&Run：{{ hit_and_run }}{% endif %}'
+            '{% if labels %}\\n标签：{{ labels }}{% endif %}'
+            '{% if description %}\\n描述：{{ description }}{% endif %}'
+}""",
+        "subscribeAdded": "{'title': '{{ title_year }}{% if season_fmt %} {{ season_fmt }}{% endif %} 已添加订阅'}",
+        "subscribeComplete": """
+{
+    'title': '{{ title_year }}'
+            '{% if season_fmt %} {{ season_fmt }}{% endif %} 已完成{{ msgstr }}',
+    'text': '{% if vote_average %}评分：{{ vote_average }}{% endif %}'
+            '{% if username %}，来自用户：{{ username }}{% endif %}'
+            '{% if actors %}\\n演员：{{ actors }}{% endif %}'
+            '{% if overview %}\\n简介：{{ overview }}{% endif %}'
+}"""
+    }
+    SystemConfigOper().set(SystemConfigKey.NotificationTemplates, value)
+
+
+def downgrade() -> None:
+    pass
