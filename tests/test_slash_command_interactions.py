@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.testing.bootstrap import ensure_optional_stub
 
@@ -237,3 +237,31 @@ class TestSlashCommandInteractions(unittest.TestCase):
             "| 12 | Example Show | 电视剧 | 2024 | 第1季 [7/10] | 订阅中 |",
             notification.text,
         )
+
+
+class TestUpdateOrPostMessage(unittest.TestCase):
+    def test_fallback_post_keeps_original_message_context(self):
+        """编辑失败回退发新消息时，必须保留原消息/会话上下文，供渠道回复到原会话。"""
+        from app.helper.interaction import update_or_post_message
+
+        chain = SimpleNamespace(
+            edit_message=MagicMock(return_value=False),
+            post_message=MagicMock(),
+        )
+
+        update_or_post_message(
+            chain=chain,
+            channel=MessageChannel.Feishu,
+            source="feishu-main",
+            userid="ou_user",
+            username="tester",
+            title="标题",
+            text="正文",
+            original_message_id="om_origin",
+            original_chat_id="oc_group",
+        )
+
+        chain.post_message.assert_called_once()
+        notification = chain.post_message.call_args[0][0]
+        self.assertEqual(notification.original_message_id, "om_origin")
+        self.assertEqual(notification.original_chat_id, "oc_group")

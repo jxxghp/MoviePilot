@@ -54,10 +54,16 @@ class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
     def _resolve_message_target(
             message: Notification,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """优先使用 open_id，其次回退 user_id 或 chat_id。"""
+        """解析发送目标：交互式回复优先回到原会话（群聊@回复必须回原群），其次 open_id，最后回退 user_id 或 chat_id。"""
         userid = str(message.userid).strip() if message.userid else None
         chat_id = None
         receive_id_type = "open_id" if userid else None
+
+        # 回复类消息携带原会话 ID 时，必须发回原会话，
+        # 否则群聊 @ 机器人的回复会错误地发送到机器人与用户的私聊窗口。
+        original_chat_id = str(message.original_chat_id or "").strip() or None
+        if original_chat_id:
+            return None, original_chat_id, "chat_id"
 
         targets = message.targets or {}
         if not userid and targets:

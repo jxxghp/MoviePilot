@@ -1490,3 +1490,93 @@ class TestFeishu(unittest.TestCase):
             client.send_notification.call_args.kwargs["original_message_id"],
             "om_source",
         )
+
+    def test_module_resolve_message_target_prefers_original_chat_id(self):
+        """群聊@回复必须优先发回原会话，而不是按 open_id 发到私聊。"""
+        userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
+            Notification(userid="ou_user", original_chat_id="oc_group")
+        )
+        self.assertIsNone(userid)
+        self.assertEqual(chat_id, "oc_group")
+        self.assertEqual(receive_id_type, "chat_id")
+
+        # 非回复类消息仍按原有逻辑优先 open_id。
+        userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
+            Notification(userid="ou_user")
+        )
+        self.assertEqual(userid, "ou_user")
+        self.assertIsNone(chat_id)
+        self.assertEqual(receive_id_type, "open_id")
+
+        # 无用户ID时回退 targets 中的飞书字段。
+        userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
+            Notification(targets={"feishu_chat_id": "oc_config"})
+        )
+        self.assertIsNone(userid)
+        self.assertEqual(chat_id, "oc_config")
+
+    def test_module_post_message_replies_to_original_chat_for_group_message(self):
+        """携带原会话上下文的回复应定向到原会话（群聊）。"""
+        module = FeishuModule()
+        conf = SimpleNamespace(name="feishu-main")
+        client = MagicMock()
+
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
+            module.post_message(
+                Notification(
+                    title="标题",
+                    text="正文",
+                    userid="ou_user",
+                    original_chat_id="oc_group",
+                )
+            )
+
+        client.send_notification.assert_called_once_with(
+            message=ANY,
+            userid=None,
+            chat_id="oc_group",
+            receive_id_type="chat_id",
+            original_message_id=None,
+        )
+
+    def test_send_notification_broadcasts_to_remembered_chats_without_target(self):
+        """无显式目标且未配置默认目标时，应回退向最近互动过的会话发送。"""
+        client = self._build_client()
+        client._api_client, message_api = self._build_message_api(
+            create_response=self._success_response()
+        )
+        client._user_chat_mapping = {
+            "ou_user_a": "oc_group_a",
+            "ou_user_b": "oc_group_a",
+            "ou_user_c": "oc_p2p_c",
+        }
+
+        result = client.send_notification(
+            Notification(title="插件通知", text="无目标通知")
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(message_api.create.call_count, 2)
+        receive_ids = [
+            call.args[0].request_body.receive_id
+            for call in message_api.create.call_args_list
+        ]
+        self.assertEqual(sorted(receive_ids), ["oc_group_a", "oc_p2p_c"])
+        for call in message_api.create.call_args_list:
+            self.assertEqual(call.args[0].receive_id_type, "chat_id")
+
+    def test_send_without_target_raises_config_hint_when_nothing_available(self):
+        """既无目标又无历史互动时，应报出含配置指引的明确错误。"""
+        client = self._build_client()
+        client._api_client, _ = self._build_message_api(
+            create_response=self._success_response()
+        )
+
+        with self.assertRaises(ValueError) as ctx:
+            client._send_with_fallback_broadcast("text", {"text": "hello"})
+        self.assertIn("FEISHU_OPEN_ID", str(ctx.exception))
+        self.assertIn("FEISHU_CHAT_ID", str(ctx.exception))

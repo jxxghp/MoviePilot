@@ -737,8 +737,8 @@ class Feishu:
             userid: Optional[str] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
-    ) -> Tuple[str, str]:
-        """解析飞书发送目标，优先走显式用户，其次回退默认配置。"""
+    ) -> Optional[Tuple[str, str]]:
+        """解析飞书发送目标，优先走显式用户，其次回退默认配置；无可用目标时返回 None。"""
         resolved_userid = (userid or "").strip() or None
         resolved_chat_id = (chat_id or "").strip() or None
         normalized_receive_id_type = (receive_id_type or "").strip() or None
@@ -756,7 +756,55 @@ class Feishu:
             return resolved_userid, remembered_type or "open_id"
         if resolved_chat_id:
             return resolved_chat_id, "chat_id"
-        raise ValueError("未找到可发送的飞书目标")
+        return None
+
+    def _remembered_broadcast_targets(self) -> List[Tuple[str, str]]:
+        """无显式目标且未配置默认目标时，回退到最近互动过的会话逐一发送（与企业微信广播策略一致）。"""
+        seen = set()
+        targets = []
+        for remembered_chat_id in self._user_chat_mapping.values():
+            normalized = (remembered_chat_id or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            targets.append((normalized, "chat_id"))
+        return targets
+
+    def _send_with_fallback_broadcast(
+            self,
+            msg_type: str,
+            content: dict,
+            userid: Optional[str] = None,
+            chat_id: Optional[str] = None,
+            receive_id_type: Optional[str] = None,
+    ) -> Optional[dict]:
+        """按解析目标发送消息；无可用目标时回退向已互动会话广播，仍无目标则报明确错误。"""
+        resolved = self._resolve_target(
+            userid=userid,
+            chat_id=chat_id,
+            receive_id_type=receive_id_type,
+        )
+        targets = [resolved] if resolved else self._remembered_broadcast_targets()
+        if not targets:
+            raise ValueError(
+                "未找到可发送的飞书目标，请在飞书通知配置中设置默认接收人（FEISHU_OPEN_ID）或默认会话（FEISHU_CHAT_ID）"
+            )
+        result = None
+        for receive_id, resolved_receive_id_type in targets:
+            # 广播场景下单个会话发送失败不应阻断其余会话。
+            try:
+                sent = self._send_message(
+                    receive_id,
+                    resolved_receive_id_type,
+                    msg_type,
+                    content,
+                )
+            except Exception as err:
+                logger.error(f"飞书消息发送失败：receive_id={receive_id}, err={err}")
+                sent = None
+            if sent:
+                result = result or sent
+        return result
 
     @staticmethod
     def _escape_card_text(text: Optional[str]) -> str:
@@ -1184,16 +1232,12 @@ class Feishu:
                 content={"type": "card", "data": {"card_id": card_id}},
             )
         else:
-            receive_id, resolved_receive_id_type = self._resolve_target(
+            result = self._send_with_fallback_broadcast(
+                "interactive",
+                {"type": "card", "data": {"card_id": card_id}},
                 userid=userid,
                 chat_id=chat_id,
                 receive_id_type=receive_id_type,
-            )
-            result = self._send_message(
-                receive_id,
-                resolved_receive_id_type,
-                "interactive",
-                {"type": "card", "data": {"card_id": card_id}},
             )
         if not result:
             return None
@@ -1235,16 +1279,12 @@ class Feishu:
                 image_key=image_key,
             )
             try:
-                receive_id, resolved_receive_id_type = self._resolve_target(
+                self._send_with_fallback_broadcast(
+                    "interactive",
+                    payload,
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
-                )
-                self._send_message(
-                    receive_id,
-                    resolved_receive_id_type,
-                    "interactive",
-                    payload,
                 )
                 sent_images.append(image_url)
             except Exception as err:
@@ -1527,16 +1567,12 @@ class Feishu:
                     content={"text": text},
                 )
             else:
-                receive_id, resolved_receive_id_type = self._resolve_target(
+                result = self._send_with_fallback_broadcast(
+                    "text",
+                    {"text": text},
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
-                )
-                result = self._send_message(
-                    receive_id,
-                    resolved_receive_id_type,
-                    "text",
-                    {"text": text},
                 )
         except Exception as err:
             logger.error(f"飞书文本消息发送失败：{err}")
@@ -1586,16 +1622,12 @@ class Feishu:
                         content=payload,
                     )
                 else:
-                    receive_id, resolved_receive_id_type = self._resolve_target(
+                    result = self._send_with_fallback_broadcast(
+                        "interactive",
+                        payload,
                         userid=userid,
                         chat_id=chat_id,
                         receive_id_type=receive_id_type,
-                    )
-                    result = self._send_message(
-                        receive_id,
-                        resolved_receive_id_type,
-                        "interactive",
-                        payload,
                     )
             else:
                 file_key = self._upload_file(local_file, file_name=file_name)
@@ -1608,16 +1640,12 @@ class Feishu:
                         content={"file_key": file_key},
                     )
                 else:
-                    receive_id, resolved_receive_id_type = self._resolve_target(
+                    result = self._send_with_fallback_broadcast(
+                        "file",
+                        {"file_key": file_key},
                         userid=userid,
                         chat_id=chat_id,
                         receive_id_type=receive_id_type,
-                    )
-                    result = self._send_message(
-                        receive_id,
-                        resolved_receive_id_type,
-                        "file",
-                        {"file_key": file_key},
                     )
             if result and (title or text) and not is_image:
                 self.send_text(
@@ -1663,16 +1691,12 @@ class Feishu:
                     content={"file_key": file_key},
                 )
             else:
-                receive_id, resolved_receive_id_type = self._resolve_target(
+                result = self._send_with_fallback_broadcast(
+                    "audio",
+                    {"file_key": file_key},
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
-                )
-                result = self._send_message(
-                    receive_id,
-                    resolved_receive_id_type,
-                    "audio",
-                    {"file_key": file_key},
                 )
             if result and caption:
                 self.send_text(
@@ -1754,16 +1778,12 @@ class Feishu:
                     content=payload,
                 )
             else:
-                receive_id, resolved_receive_id_type = self._resolve_target(
+                result = self._send_with_fallback_broadcast(
+                    "interactive",
+                    payload,
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
-                )
-                result = self._send_message(
-                    receive_id,
-                    resolved_receive_id_type,
-                    "interactive",
-                    payload,
                 )
         except Exception as err:
             logger.error(f"飞书通知发送失败：{err}")

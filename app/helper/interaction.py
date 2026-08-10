@@ -222,6 +222,10 @@ def update_or_post_message(
             title=title,
             text=text,
             buttons=buttons,
+            # 编辑失败回退发新消息时保留原消息上下文，
+            # 保证飞书等渠道能回复到原会话（如群聊），而不是发给私聊。
+            original_message_id=original_message_id,
+            original_chat_id=original_chat_id,
             save_history=False,
         )
     )
