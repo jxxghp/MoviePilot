@@ -234,13 +234,15 @@ def test_metainfo_routes_audio_filename_to_music():
 
 
 def test_metainfo_routes_audio_path_to_music_without_parent_merge():
-    """音频路径应直接构造音乐元数据，不与父目录季集合并。"""
+    """音频路径应直接构造音乐元数据，不参与影视季集合并，并拆分歌手与曲名。"""
     meta = MetaInfoPath(Path("/music/叶惠美/周杰伦 - 晴天.flac"))
 
     assert isinstance(meta, MetaMusic)
     assert meta.type == MediaType.MUSIC
     assert meta.org_string == "周杰伦 - 晴天.flac"
-    assert meta.title == "周杰伦 - 晴天"
+    # 文件名中的歌手与曲名应拆分，便于无标签音频搜索识别
+    assert meta.title == "晴天"
+    assert meta.artists == ["周杰伦"]
     assert meta.audio_format == "FLAC"
 
 
@@ -259,7 +261,8 @@ def test_metainfo_music_round_trip_preserves_fields():
     restored = MetaMusic.from_dict(payload)
 
     assert restored.type == MediaType.MUSIC
-    assert restored.title == "周杰伦 - 晴天"
+    assert restored.title == "晴天"
+    assert restored.artists == ["周杰伦"]
     assert restored.audio_format == "FLAC"
     assert payload["type"] == "音乐"
 

@@ -17,6 +17,7 @@ from app.core.context import (
 )
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
+from app.helper.music_name import MusicNameParser
 from app.log import logger
 
 
@@ -25,6 +26,11 @@ class MusicChain(ChainBase):
 
     _artist_title_pattern = re.compile(r"^\s*(?P<artist>.+?)\s+[-–—]\s+(?P<title>.+?)\s*$")
     _spaces_pattern = re.compile(r"\s+")
+    # 专辑目录匹配结果缓存：{目录路径: (音频文件数, 匹配结果)}，避免逐文件整理时重复请求远端
+    _album_dir_cache: dict[str, tuple[int, dict[str, MusicInfo]]] = {}
+    _album_dir_cache_max = 128
+    # 目录级匹配至少需要两个音频文件，单文件由单曲搜索链路处理
+    _album_match_min_files = 2
 
     @classmethod
     def parse_query(cls, query: str) -> MetaMusic:
@@ -317,11 +323,14 @@ class MusicChain(ChainBase):
 
     @classmethod
     def read_path_meta(cls, path: str | Path) -> MetaMusic:
-        """读取本地音频标签，不可访问时按文件名构造最小音乐元数据。"""
+        """读取本地音频标签，标签缺失时用文件名和目录线索补齐。"""
         file_path = Path(path)
         if file_path.exists() and file_path.is_file():
-            return AudioMetadataHelper.read(file_path)
-        return cls.parse_query(file_path.stem)
+            meta = AudioMetadataHelper.read(file_path)
+        else:
+            meta = cls.parse_query(file_path.stem)
+        # WAV 无标签、FLAC/MP3 标签不全时，依靠文件名和目录结构补充识别线索
+        return MusicNameParser.apply_path_context(meta, file_path)
 
     async def async_recognize_by_path(
             self,
@@ -331,10 +340,16 @@ class MusicChain(ChainBase):
         """根据音频标签和文件名识别音乐，远端不可用时仍返回最小音乐信息。"""
         # Mutagen 会同步读取本地文件，异步识别入口需要移出事件循环。
         meta = await run_in_threadpool(self.read_path_meta, path)
-        # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兜底
+        # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兑底
         info = await self.async_recognize_media(meta=meta, source=source)
-        return meta, self._merge_audio_quality(info or self._info_from_meta(meta), meta)
-
+        result = self._merge_audio_quality(info or self._info_from_meta(meta), meta)
+        if not result.source:
+            # 单曲搜索未命中时，按所在目录做专辑级匹配兑底
+            matched = await run_in_threadpool(self._album_dir_fallback, path)
+            if matched:
+                result = self._merge_audio_quality(matched, meta)
+        return meta, result
+    
     def recognize_by_path(
             self,
             path: str | Path,
@@ -342,9 +357,171 @@ class MusicChain(ChainBase):
     ) -> tuple[MetaMusic, MusicInfo]:
         """同步根据音频标签和文件名识别音乐，并保留离线最小结果。"""
         meta = self.read_path_meta(path)
-        # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兜底
+        # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兑底
         info = self.recognize_media(meta=meta, source=source)
-        return meta, self._merge_audio_quality(info or self._info_from_meta(meta), meta)
+        result = self._merge_audio_quality(info or self._info_from_meta(meta), meta)
+        if not result.source:
+            # 单曲搜索未命中时，按所在目录做专辑级匹配兑底
+            matched = self._album_dir_fallback(path)
+            if matched:
+                result = self._merge_audio_quality(matched, meta)
+        return meta, result
+    
+    def _album_dir_fallback(self, path: str | Path) -> Optional[MusicInfo]:
+        """单曲识别无远端身份时，查找所在目录专辑匹配中属于当前文件的结果。"""
+        file_path = Path(path)
+        if not file_path.exists() or not file_path.is_file():
+            return None
+        try:
+            matched = self.recognize_album_directory(file_path.parent)
+        except Exception as err:
+            logger.debug(f"专辑目录匹配失败：{file_path.parent} - {err}")
+            return None
+        return matched.get(str(file_path.resolve()))
+    
+    def recognize_album_directory(self, path: str | Path) -> dict[str, MusicInfo]:
+        """按目录级线索批量识别整目录音频，返回 文件路径 到标准音乐信息的映射。
+    
+        适用于 WAV 无标签或标签不全的整专目录：先用目录名和文件标签构造专辑线索，
+        再交给音乐元数据模块用曲目数、时长等特征对位到具体发行版本。
+        """
+        dir_path = Path(path)
+        if not dir_path.is_dir():
+            return {}
+        files = self._directory_audio_files(dir_path)
+        if len(files) < self._album_match_min_files:
+            return {}
+        cache_key = str(dir_path)
+        cached = self._album_dir_cache.get(cache_key)
+        # 目录内音频数量变化时视为内容更新，需要重新匹配
+        if cached and cached[0] == len(files):
+            return cached[1]
+        matched = self._match_album_directory(dir_path, files)
+        if len(self._album_dir_cache) >= self._album_dir_cache_max:
+            self._album_dir_cache.clear()
+        self._album_dir_cache[cache_key] = (len(files), matched)
+        return matched
+    
+    async def async_recognize_album_directory(self, path: str | Path) -> dict[str, MusicInfo]:
+        """目录级批量识别的异步版本，本地文件读取移出事件循环。"""
+        return await run_in_threadpool(self.recognize_album_directory, path)
+    
+    @classmethod
+    def _directory_audio_files(cls, dir_path: Path) -> list[Path]:
+        """收集目录及其一级子目录（如 CD1/CD2）内的音频文件。"""
+        audio_exts = settings.RMT_AUDIOEXT
+        files: list[Path] = []
+    
+        def collect(current: Path) -> None:
+            try:
+                entries = sorted(current.iterdir())
+            except OSError:
+                return
+            for entry in entries:
+                if entry.name.startswith("."):
+                    continue
+                if entry.is_file() and entry.suffix.lower() in audio_exts:
+                    files.append(entry)
+    
+        collect(dir_path)
+        try:
+            subdirs = sorted(entry for entry in dir_path.iterdir()
+                             if entry.is_dir() and not entry.name.startswith("."))
+        except OSError:
+            subdirs = []
+        for subdir in subdirs:
+            collect(subdir)
+        return files
+    
+    def _match_album_directory(
+            self,
+            dir_path: Path,
+            files: list[Path],
+    ) -> dict[str, MusicInfo]:
+        """执行目录级专辑匹配，并把专辑曲目对位到具体音频文件。"""
+        metas = [self.read_path_meta(file) for file in files]
+        album_meta = self._album_meta_from_context(dir_path, metas)
+        if not (album_meta.album or album_meta.title or album_meta.artists):
+            logger.debug(f"目录缺少专辑识别线索，跳过专辑匹配：{dir_path}")
+            return {}
+        candidates = self.run_module("match_music_album", meta=album_meta, tracks=metas)
+        album = next(
+            (item for item in candidates or [] if isinstance(item, MusicAlbumInfo) and item.tracks),
+            None,
+        )
+        if not album:
+            return {}
+        logger.info(f"目录 {dir_path.name} 匹配到专辑：{album.title_year}（{album.source}）")
+        matched: dict[str, MusicInfo] = {}
+        for file, info in self._align_album_tracks(files, metas, album.tracks).items():
+            matched[str(file.resolve())] = info
+        return matched
+    
+    @classmethod
+    def _album_meta_from_context(cls, dir_path: Path, metas: list[MetaMusic]) -> MetaMusic:
+        """汇总目录名和文件标签中的专辑线索，作为专辑搜索条件。"""
+        dir_info = MusicNameParser.parse_album_dir(dir_path.name)
+        # 文件标签中的专辑信息比目录名更可靠，多数文件一致时优先采用
+        album_votes: dict[str, int] = {}
+        artist_votes: dict[str, int] = {}
+        for meta in metas:
+            if meta.album:
+                album_votes[meta.album] = album_votes.get(meta.album, 0) + 1
+            if meta.album_artist:
+                artist_votes[meta.album_artist] = artist_votes.get(meta.album_artist, 0) + 1
+            elif meta.artists:
+                artist_votes[meta.artists[0]] = artist_votes.get(meta.artists[0], 0) + 1
+        majority_album = max(album_votes, key=album_votes.get) if album_votes else None
+        majority_artist = max(artist_votes, key=artist_votes.get) if artist_votes else None
+        # 多数文件共享同一专辑标签才可信，避免杂集目录的个别错误标签带偏搜索
+        album = majority_album if majority_album and album_votes[majority_album] >= max(2, len(metas) // 2) else None
+        artist = majority_artist if majority_artist and artist_votes[majority_artist] >= max(2, len(metas) // 2) else None
+        return MetaMusic(
+            org_string=dir_path.name,
+            title=album or dir_info.get("album") or dir_path.name,
+            album=album or dir_info.get("album"),
+            artists=[artist or dir_info.get("artist")] if (artist or dir_info.get("artist")) else [],
+            album_artist=artist or dir_info.get("artist"),
+            year=dir_info.get("year"),
+        )
+    
+    @classmethod
+    def _align_album_tracks(
+            cls,
+            files: list[Path],
+            metas: list[MetaMusic],
+            tracks: list[MusicInfo],
+    ) -> dict[Path, MusicInfo]:
+        """把专辑曲目对位到目录内的音频文件。
+    
+        带曲序标签的文件按（碟号, 曲序）精确对位，其余文件按排序顺序依次补齐。
+        """
+        matched: dict[Path, MusicInfo] = {}
+        used_keys: set[tuple[int, int]] = set()
+        by_position: dict[tuple[int, int], MusicInfo] = {}
+        for track in tracks:
+            if track.track_number:
+                by_position[(track.disc_number or 1, track.track_number)] = track
+        pending: list[tuple[Path, MetaMusic]] = []
+        for file, meta in zip(files, metas):
+            key = (meta.disc_number or 1, meta.track_number)
+            track = by_position.get(key) if meta.track_number else None
+            if track and key not in used_keys:
+                matched[file] = track
+                used_keys.add(key)
+            else:
+                pending.append((file, meta))
+        if not pending:
+            return matched
+        remaining = [
+            track for track in tracks
+            if (track.disc_number or 1, track.track_number or 0) not in used_keys
+        ]
+        # 无曲序线索的文件按碟号和文件名排序，与剩余曲目顺序对位
+        pending.sort(key=lambda item: (item[1].disc_number or 1, item[0].name.casefold()))
+        for (file, _meta), track in zip(pending, remaining):
+            matched[file] = track
+        return matched
 
     @classmethod
     def to_meta(cls, info: MusicInfo) -> MetaMusic:

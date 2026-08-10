@@ -1064,6 +1064,64 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
 
     @classmethod
+    def _match_music_album_context(
+            cls,
+            file_item: FileItem,
+            file_path: Path,
+            file_meta: MetaMusic,
+    ) -> tuple[MetaMusic, Optional[MusicInfo]]:
+        """为缺少远端身份的本地音频尝试目录级专辑匹配，命中后回填文件元数据。
+
+        WAV 等无标签文件只能依靠目录结构和曲目特征识别；匹配结果在 MusicChain
+        内按目录缓存，同一专辑目录内的后续文件不会重复请求远端。
+        """
+        # 目录级匹配需要读取本地音频时长，远端存储文件无法参与
+        if file_meta.media_id or getattr(file_item, "storage", "local") != "local":
+            return file_meta, None
+        try:
+            from app.chain.music import MusicChain
+            matched = MusicChain().recognize_album_directory(file_path.parent)
+        except Exception as err:
+            logger.debug(f"音乐专辑目录匹配失败：{file_path} - {err}")
+            return file_meta, None
+        info = matched.get(str(file_path.resolve()))
+        if not info or not info.media_id:
+            return file_meta, None
+        logger.info(f"{file_path.name} 通过专辑目录匹配识别为：{info.artist} - {info.title}")
+        merged_meta = deepcopy(file_meta)
+        # 保留本地音频的实际技术参数，仅回填身份和名称字段
+        if info.title:
+            merged_meta.title = info.title
+        if info.artists:
+            merged_meta.artists = list(info.artists)
+        if info.album:
+            merged_meta.album = info.album
+        if info.album_artist:
+            merged_meta.album_artist = info.album_artist
+        if info.year:
+            merged_meta.year = info.year
+        if info.disc_number:
+            merged_meta.disc_number = info.disc_number
+        if info.track_number:
+            merged_meta.track_number = info.track_number
+        if info.total_tracks:
+            merged_meta.total_tracks = info.total_tracks
+        merged_meta.media_source = info.source
+        merged_meta.media_id = info.media_id
+        merged_info = cls._music_info_from_meta(merged_meta)
+        # 补齐曲目级远端信息，供后续刮削和展示使用
+        merged_info.music_type = info.music_type
+        merged_info.artist_ids = list(info.artist_ids)
+        merged_info.album_id = info.album_id
+        merged_info.album_type = info.album_type
+        merged_info.release_date = info.release_date
+        merged_info.cover_url = info.cover_url
+        merged_info.category = info.category
+        merged_info.genres = list(info.genres)
+        merged_info.detail_link = info.detail_link
+        return merged_meta, merged_info
+
+    @classmethod
     def _restore_music_download_context(
             cls,
             download_history: Optional[DownloadHistory],
@@ -3626,7 +3684,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
                 task_mediainfo = mediainfo or history_music_info
                 if not task_mediainfo and isinstance(file_meta, MetaMusic):
-                    task_mediainfo = self._music_info_from_meta(file_meta)
+                    # 无标签音频按目录级专辑匹配补齐曲目身份，命中结果带缓存不会逐文件重复请求
+                    file_meta, task_mediainfo = self._match_music_album_context(
+                        file_item, file_path, file_meta
+                    )
+                    if not task_mediainfo:
+                        task_mediainfo = self._music_info_from_meta(file_meta)
                 if (
                         not manual
                         and self._is_movie_year_conflict(file_meta, task_mediainfo)

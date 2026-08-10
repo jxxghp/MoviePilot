@@ -12,6 +12,7 @@ from app.core.meta.infopath import (
     should_use_parent_title_for_file_stem,
 )
 from app.core.meta.words import WordsMatcher
+from app.helper.music_name import MusicNameParser
 from app.log import logger
 from app.schemas.types import MediaType
 from app.utils import rust_accel
@@ -463,11 +464,13 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool =
     # 音频文件直接构造音乐元数据，不参与父目录季集合并，影视附加音轨强制走视频解析
     audio_suffix = path.suffix.lower()
     if not force_video and audio_suffix in settings.RMT_AUDIOEXT:
-        return MetaMusic(
+        music_meta = MetaMusic(
             org_string=path.name,
             title=path.stem,
             audio_format=audio_suffix.lstrip(".").upper() or None,
         )
+        # 无标签音频只能依靠文件名和目录结构，补充曲序、碟号、歌手和专辑线索
+        return MusicNameParser.apply_path_context(music_meta, path)
     path_context = " ".join(
         [path.name, path.parent.name, path.parent.parent.name]
     )

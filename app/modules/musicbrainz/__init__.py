@@ -1,6 +1,7 @@
 import re
 import threading
 import time
+from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, Union
 
 from fastapi.concurrency import run_in_threadpool
@@ -182,6 +183,254 @@ class MusicBrainzModule(_ModuleBase):
                         break
             index += 1
         return results
+
+    def match_music_album(
+            self,
+            meta: MetaMusic,
+            tracks: list[MetaMusic],
+            limit: int = 5,
+    ) -> Optional[MusicAlbumInfo]:
+        """按目录线索和曲目特征把本地音频集合对位到 MusicBrainz 发行版本。
+
+        适用于无标签整专目录：用专辑名、歌手搜索候选发行版本，再用曲目数、
+        总时长和逐曲时长相似度打分，选出最可信的版本并返回其曲目表。
+        """
+        if not tracks:
+            return None
+        best_album: Optional[MusicAlbumInfo] = None
+        best_score = 0.0
+        for release in self._search_release_candidates(meta, tracks, limit=limit):
+            release_id = release.get("id")
+            if not release_id:
+                continue
+            detail = self._request_json(
+                f"/release/{release_id}",
+                params={"inc": "recordings+media+artist-credits", "fmt": "json"},
+            )
+            if not detail:
+                continue
+            summary = self._release_track_summary(detail)
+            score = self._score_release(meta, tracks, detail, summary)
+            if score > best_score:
+                best_score = score
+                best_album = self._release_to_album(detail)
+        # 得分低于阈值时宁可不匹配，避免把曲目写到错误的专辑上
+        if best_score < self._album_match_threshold:
+            return None
+        return best_album
+
+    _album_match_threshold = 60.0
+
+    def _search_release_candidates(
+            self,
+            meta: MetaMusic,
+            tracks: list[MetaMusic],
+            limit: int,
+    ) -> list[dict[str, Any]]:
+        """按专辑名和曲名线索搜索候选发行版本，多个查询按命中顺序去重。"""
+        releases: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for query in self._release_queries(meta, tracks):
+            payload = self._request_json(
+                "/release",
+                params={"query": query, "limit": max(1, min(limit, 25)), "fmt": "json"},
+            )
+            for item in (payload or {}).get("releases") or []:
+                release_id = item.get("id")
+                if release_id and release_id not in seen:
+                    seen.add(release_id)
+                    releases.append(item)
+            if len(releases) >= limit:
+                break
+        return releases[:limit]
+
+    @classmethod
+    def _release_queries(cls, meta: MetaMusic, tracks: list[MetaMusic]) -> list[str]:
+        """构造专辑搜索表达式：优先专辑名+歌手，无专辑线索时用曲名兜底。"""
+        queries: list[str] = []
+        album_title = meta.album or meta.title
+        artist = meta.artists[0] if meta.artists else meta.album_artist
+        if album_title:
+            if artist:
+                queries.append(
+                    f'release:"{cls._escape_query(album_title)}" AND artist:"{cls._escape_query(artist)}"'
+                )
+            queries.append(f'release:"{cls._escape_query(album_title)}"')
+        # 目录名无意义时（如 Various Artists 合集），用代表性曲名反查所属发行版本
+        titles = cls._unique_texts(
+            [track.title for track in tracks if track.title and not track.title.strip().isdigit()]
+        )[:3]
+        if titles:
+            recording_clause = " OR ".join(
+                f'recording:"{cls._escape_query(title)}"' for title in titles
+            )
+            query = f"({recording_clause})"
+            if artist:
+                query += f' AND artist:"{cls._escape_query(artist)}"'
+            queries.append(query)
+        return queries
+
+    @classmethod
+    def _release_track_summary(cls, detail: dict[str, Any]) -> list[dict[str, Any]]:
+        """提取发行版本的曲目概要（碟号、曲序、时长、标题）供打分使用。"""
+        summary: list[dict[str, Any]] = []
+        for medium in detail.get("media") or []:
+            disc = cls._optional_int(medium.get("position")) or 1
+            for track in medium.get("tracks") or []:
+                recording = track.get("recording") or {}
+                summary.append({
+                    "disc": disc,
+                    "position": cls._optional_int(track.get("position")),
+                    "length": cls._duration_seconds(
+                        track.get("length") or recording.get("length")
+                    ),
+                    "title": track.get("title") or recording.get("title"),
+                })
+        return summary
+
+    @classmethod
+    def _score_release(
+            cls,
+            meta: MetaMusic,
+            tracks: list[MetaMusic],
+            detail: dict[str, Any],
+            summary: list[dict[str, Any]],
+    ) -> float:
+        """给候选发行版本打分（0-100），综合标题、歌手、曲目数和时长相似度。"""
+        local_count = len(tracks)
+        release_count = len(summary)
+        if not release_count:
+            return 0.0
+        # 曲目数差异过大直接排除，避免单曲误命中整专或反之
+        diff = abs(local_count - release_count)
+        if diff > max(4, int(local_count * 0.5)):
+            return 0.0
+        # 本地文件比发行版本多出的曲目无法被覆盖，超出容忍范围视为错误候选
+        if local_count > release_count and diff > max(1, int(release_count * 0.25)):
+            return 0.0
+        score = 0.0
+        # 标题相似度：专辑目录名或文件标签中的专辑名/曲名
+        title_hints = cls._unique_texts([meta.album, meta.title])
+        title_sim = max(
+            (cls._text_similarity(hint, detail.get("title")) for hint in title_hints),
+            default=0.0,
+        )
+        artist_names = cls._artist_credits(detail.get("artist-credit"))[0]
+        if meta.artists and artist_names:
+            artist_sim = max(
+                cls._text_similarity(meta.artists[0], name) for name in artist_names
+            )
+            score += 40 * title_sim + 15 * artist_sim
+        else:
+            # 缺少歌手线索时把权重让给标题
+            score += 50 * title_sim
+        # 曲目数：完全一致是最强信号
+        if diff == 0:
+            score += 15
+        elif diff == 1:
+            score += 8
+        elif diff <= max(2, int(local_count * 0.15)):
+            score += 2
+        # 曲名重合度：部分曲目目录（只下载了整专的一部分）依靠曲名对位确认
+        release_titles = {cls._match_text(item["title"]) for item in summary}
+        named_tracks = [track for track in tracks if track.title and not track.title.strip().isdigit()]
+        if named_tracks and release_titles:
+            overlap = sum(
+                1 for track in named_tracks if cls._match_text(track.title) in release_titles
+            )
+            score += 15 * overlap / len(named_tracks)
+        # 总时长：无损整专 rip 的总时长与 MusicBrainz 记录高度接近
+        local_total = sum(track.duration or 0 for track in tracks)
+        release_total = sum(item["length"] or 0 for item in summary)
+        local_durations = [track.duration for track in tracks if track.duration]
+        if local_durations and release_total:
+            delta = abs(local_total - release_total) / max(local_total, release_total)
+            if delta <= 0.02:
+                score += 15
+            elif delta <= 0.05:
+                score += 10
+            elif delta <= 0.10:
+                score += 5
+        # 逐曲时长对位：曲目数一致时逐首比较
+        if diff == 0 and len(local_durations) == local_count:
+            similarities = []
+            for track, item in zip(
+                sorted(tracks, key=lambda item: (item.disc_number or 1, item.track_number or 0)),
+                summary,
+            ):
+                if track.duration and item["length"]:
+                    similarities.append(cls._duration_similarity(track.duration, item["length"]))
+            if similarities:
+                score += 15 * sum(similarities) / len(similarities)
+        return score
+
+    @staticmethod
+    def _duration_similarity(left: int, right: int) -> float:
+        """比较两个时长的接近程度，完全一致为 1，差异越大越接近 0。"""
+        if not left or not right:
+            return 0.0
+        return max(0.0, 1 - abs(left - right) / max(left, right))
+
+    @classmethod
+    def _text_similarity(cls, left: Optional[str], right: Optional[str]) -> float:
+        """忽略大小写和标点后比较两段音乐文本的相似度。"""
+        normalized_left = cls._match_text(left)
+        normalized_right = cls._match_text(right)
+        if not normalized_left or not normalized_right:
+            return 0.0
+        return SequenceMatcher(None, normalized_left, normalized_right).ratio()
+
+    @staticmethod
+    def _match_text(value: Optional[str]) -> str:
+        """移除大小写、空白和标点差异，生成相似度比较使用的紧凑文本。"""
+        return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
+
+    @classmethod
+    def _unique_texts(cls, values: Iterable[Optional[str]]) -> list[str]:
+        """按规范化文本去重并保留原始顺序。"""
+        results: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            normalized = cls._normalize_text(value)
+            identity = normalized.casefold()
+            if not normalized or identity in seen:
+                continue
+            seen.add(identity)
+            results.append(normalized)
+        return results
+
+    @classmethod
+    def _release_to_album(cls, detail: dict[str, Any]) -> Optional[MusicAlbumInfo]:
+        """将 MusicBrainz Release 详情转换为带曲目表的标准化专辑信息。"""
+        release_id = detail.get("id")
+        title = detail.get("title")
+        if not release_id or not title:
+            return None
+        release_group = detail.get("release-group") or {}
+        group_id = release_group.get("id")
+        artists, artist_ids = cls._artist_credits(detail.get("artist-credit"))
+        album = MusicAlbumInfo(
+            source=cls._source,
+            # 优先使用 Release Group ID，与专辑详情和封面入口保持一致
+            media_id=str(group_id or release_id),
+            title=str(title),
+            artists=artists,
+            artist_ids=artist_ids,
+            album_type=release_group.get("primary-type"),
+            secondary_types=[str(item) for item in release_group.get("secondary-types") or []],
+            release_date=detail.get("date") or None,
+            cover_url=cls._build_cover_url(group_id),
+            genres=cls._names_of(detail.get("genres")),
+            detail_link=f"https://musicbrainz.org/release/{release_id}",
+            raw_data={"release_id": str(release_id)},
+        )
+        album.tracks = [
+            info
+            for medium in detail.get("media") or []
+            for track in medium.get("tracks") or []
+            if (info := cls._track_to_info(album, medium, track))
+        ]
+        return album
 
     def recognize_media(
             self,
