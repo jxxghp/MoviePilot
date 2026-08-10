@@ -28,6 +28,8 @@ class HaiDanSpider:
     # 电影分类
     _movie_category = ['401', '404', '405']
     _tv_category = ['402', '403', '404', '405']
+    # 音乐分类：408 为海胆 HQ Audio(音乐) 分区；406 MV 属于视频，不计入音乐
+    _music_category = ['408']
 
     # 足销状态 1-普通，2-免费，3-2X，4-2X免费，5-50%，6-2X50%，7-30%
     _dl_state = {
@@ -88,6 +90,8 @@ class HaiDanSpider:
             categories = []
         elif mtype == MediaType.TV:
             categories = self._tv_category
+        elif mtype == MediaType.MUSIC:
+            categories = self._music_category
         else:
             categories = self._movie_category
 
@@ -113,8 +117,11 @@ class HaiDanSpider:
         torrents = []
         data = result.get('data') or {}
         for tid, item in data.items():
-            category_value = result.get('category')
-            if category_value in self._tv_category \
+            # 分类字段在每条种子内，接口顶层没有 category 字段
+            category_value = str(item.get('category') or '')
+            if category_value in self._music_category:
+                category = MediaType.MUSIC.value
+            elif category_value in self._tv_category \
                     and category_value not in self._movie_category:
                 category = MediaType.TV.value
             elif category_value in self._movie_category:

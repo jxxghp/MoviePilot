@@ -35,6 +35,7 @@ class RousiSpider:
     # API 不支持多分类搜索，每次只使用一个分类
     _movie_category = 'movie'
     _tv_category = 'tv'
+    _music_category = 'music'
 
     # API KEY
     _apikey = None
@@ -67,7 +68,7 @@ class RousiSpider:
         构建 API 请求参数
 
         :param keyword: 搜索关键词
-        :param mtype: 媒体类型 (MOVIE/TV)
+        :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
         :param cat: 用户选择的分类 ID（逗号分隔的字符串）
         :param page: 页码（从 0 开始，API 需要从 1 开始）
         :return: 请求参数字典
@@ -93,6 +94,8 @@ class RousiSpider:
                 params["category"] = self._movie_category
             elif mtype == MediaType.TV:
                 params["category"] = self._tv_category
+            elif mtype == MediaType.MUSIC:
+                params["category"] = self._music_category
 
         return params
 
@@ -112,6 +115,7 @@ class RousiSpider:
             '2': 'tv',
             '3': 'documentary',
             '4': 'animation',
+            '5': 'music',
             '6': 'variety'
         }
 
@@ -178,6 +182,8 @@ class RousiSpider:
                     category = MediaType.MOVIE.value
                 elif cat_val == self._tv_category:
                     category = MediaType.TV.value
+                elif cat_val == self._music_category:
+                    category = MediaType.MUSIC.value
                 else:
                     category = MediaType.UNKNOWN.value
 
@@ -219,7 +225,7 @@ class RousiSpider:
         同步搜索种子
 
         :param keyword: 搜索关键词
-        :param mtype: 媒体类型 (MOVIE/TV)
+        :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
         :param cat: 用户选择的分类 ID（逗号分隔）
         :param page: 页码（从 0 开始）
         :return: (是否发生错误, 种子列表)
@@ -247,7 +253,7 @@ class RousiSpider:
         异步搜索种子
 
         :param keyword: 搜索关键词
-        :param mtype: 媒体类型 (MOVIE/TV)
+        :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
         :param cat: 用户选择的分类 ID（逗号分隔）
         :param page: 页码（从 0 开始）
         :return: (是否发生错误, 种子列表)

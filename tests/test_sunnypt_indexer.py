@@ -473,3 +473,54 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
     )
     assert not any("sunny-secret" in message for message in log_messages)
     assert not any("temporary-credential" in message for message in log_messages)
+
+
+def test_sunnypt_music_search_uses_music_media_type(monkeypatch):
+    """SunnyPT 音乐搜索应提交 music 媒体类型并将结果标记为音乐。"""
+    calls = []
+
+    def fake_get_res(request, url: str, params: dict = None, **_kwargs):
+        """按请求路径回放分类和种子响应。"""
+        calls.append((url, params))
+        if url.endswith("/categories"):
+            return _FakeResponse({
+                "code": 0,
+                "msg": "ok",
+                "data": [
+                    {"id": 408, "name": "音乐", "media_types": ["music"]},
+                ],
+            })
+        return _FakeResponse({
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "items": [{
+                    "id": 321,
+                    "title": "Album 2026 FLAC",
+                    "media_type": "music",
+                    "size": 1024,
+                    "created_at": "2026-08-10T00:00:00+08:00",
+                    "seeders": 1,
+                    "leechers": 0,
+                    "completed": 1,
+                }],
+            },
+        })
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.sunnypt.RequestUtils.get_res",
+        fake_get_res,
+    )
+
+    error, torrents = SunnyPTSpider(_build_indexer()).search(
+        keyword="Album",
+        mtype=MediaType.MUSIC,
+        page=0,
+    )
+
+    assert not error
+    search_url, search_params = calls[-1]
+    assert search_url == "https://api.sunnypt.top/api/v1/mp/torrents"
+    assert search_params["media_type"] == "music"
+    assert search_params["categories"] == "408"
+    assert torrents[0]["category"] == MediaType.MUSIC.value

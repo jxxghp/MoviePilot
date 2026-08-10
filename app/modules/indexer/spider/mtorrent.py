@@ -34,7 +34,10 @@ class MTorrentSpider:
 
     # 电影分类
     _movie_category = ['401', '419', '420', '421', '439', '405', '404']
+    # 电视剧分类
     _tv_category = ['403', '402', '435', '438', '404', '405']
+    # 音乐分类：406 为馒头 Music(音樂) 分区
+    _music_category = ['406']
 
     # API KEY
     _apikey = None
@@ -84,6 +87,8 @@ class MTorrentSpider:
             categories = []
         elif mtype == MediaType.TV:
             categories = self._tv_category
+        elif mtype == MediaType.MUSIC:
+            categories = self._music_category
         else:
             categories = self._movie_category
         # mtorrent搜索imdb需要输入完整imdb链接，参见 https://wiki.m-team.cc/zh-tw/imdbtosearch
@@ -107,7 +112,9 @@ class MTorrentSpider:
 
         for result in results:
             category_value = result.get('category')
-            if category_value in self._tv_category \
+            if category_value in self._music_category:
+                category = MediaType.MUSIC.value
+            elif category_value in self._tv_category \
                     and category_value not in self._movie_category:
                 category = MediaType.TV.value
             elif category_value in self._movie_category:

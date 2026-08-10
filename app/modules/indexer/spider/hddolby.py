@@ -28,6 +28,8 @@ class HddolbySpider:
     # 分类
     _movie_category = [401, 405]
     _tv_category = [402, 403, 404, 405]
+    # 音乐分类：408 为杜比音乐唱片分区；406 演唱会蓝光属于视频，不计入音乐
+    _music_category = [408]
 
     # 标签
     _labels = {
@@ -88,6 +90,8 @@ class HddolbySpider:
             categories = self._tv_category
         elif mtype == MediaType.MOVIE:
             categories = self._movie_category
+        elif mtype == MediaType.MUSIC:
+            categories = self._music_category
         else:
             categories = list(set(self._movie_category + self._tv_category))
 
@@ -137,7 +141,9 @@ class HddolbySpider:
             """
             # 类别
             category_value = result.get('category')
-            if category_value in self._tv_category:
+            if category_value in self._music_category:
+                category = MediaType.MUSIC.value
+            elif category_value in self._tv_category:
                 category = MediaType.TV.value
             elif category_value in self._movie_category:
                 category = MediaType.MOVIE.value

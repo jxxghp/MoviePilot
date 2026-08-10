@@ -54,12 +54,12 @@ class SunnyPTSpider:
     @staticmethod
     def _parse_configured_categories(category_config: dict) -> dict:
         """
-        从站点索引配置提取电影和电视剧分类 ID，作为分类接口不可用时的兜底
+        从站点索引配置提取电影、电视剧和音乐分类 ID，作为分类接口不可用时的兜底
 
         :param category_config: Build 站点配置中的分类段
         :return: 按 API media_type 索引的分类 ID
         """
-        category_map = {"movie": [], "tv": []}
+        category_map = {"movie": [], "tv": [], "music": []}
         for media_type in category_map:
             for item in category_config.get(media_type) or []:
                 category_id = item.get("id") if isinstance(item, dict) else item
@@ -75,7 +75,7 @@ class SunnyPTSpider:
         :param items: SunnyPT 分类接口 data 数组
         :return: 按 API media_type 索引的分类 ID
         """
-        category_map = {"movie": [], "tv": []}
+        category_map = {"movie": [], "tv": [], "music": []}
         for item in items or []:
             if not isinstance(item, dict) or item.get("id") is None:
                 continue
@@ -199,12 +199,14 @@ class SunnyPTSpider:
         将 MoviePilot 媒体类型转换为 SunnyPT API 枚举
 
         :param media_type: MoviePilot 媒体类型
-        :return: movie、tv 或 None
+        :return: movie、tv、music 或 None
         """
         if media_type == MediaType.MOVIE:
             return "movie"
         if media_type == MediaType.TV:
             return "tv"
+        if media_type == MediaType.MUSIC:
+            return "music"
         return None
 
     def _build_params(
@@ -259,6 +261,8 @@ class SunnyPTSpider:
                 category = MediaType.MOVIE.value
             elif media_type == "tv":
                 category = MediaType.TV.value
+            elif media_type == "music":
+                category = MediaType.MUSIC.value
             else:
                 category = MediaType.UNKNOWN.value
 
