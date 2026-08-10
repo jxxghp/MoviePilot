@@ -7,6 +7,7 @@ Create Date: 2026-08-10
 """
 
 from app.db.systemconfig_oper import SystemConfigOper
+from app.log import logger
 from app.schemas.types import SystemConfigKey
 
 # revision identifiers, used by Alembic.
@@ -19,6 +20,10 @@ depends_on = None
 def upgrade() -> None:
     # V3 为大版本升级，通知模板直接覆盖用户旧设置，且迁移只执行一次；
     # 默认模板同时兼容影视与音乐（音乐的下载、入库通知补齐艺术家/专辑/音质信息）。
+    # 覆盖前先将用户现有模板完整输出到日志，作为备份供用户恢复参考。
+    old_value = SystemConfigOper().get(SystemConfigKey.NotificationTemplates)
+    if old_value:
+        logger.info(f"即将使用 V3 默认通知模板覆盖用户现有通知模板，现有模板内容备份如下：\n{old_value}")
     value = {
         "organizeSuccess": """
 {
