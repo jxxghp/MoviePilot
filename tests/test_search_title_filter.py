@@ -123,8 +123,49 @@ def test_async_search_by_title_stream_filters_batches_before_yield(monkeypatch):
     assert [item["torrent_info"]["title"] for item in append_event["items"]] == [keep.title]
     assert done_event["type"] == "done"
     assert done_event["total_items"] == 1
+    assert done_event["candidate_items"] == 2
     assert [item["torrent_info"]["title"] for item in done_event["items"]] == [keep.title]
     assert len(filter_calls) == 1
     assert filter_calls[0]["rule_groups"] == ["exclude-remux"]
     assert filter_calls[0]["torrent_list"] == [keep, drop]
     assert filter_calls[0]["mediainfo"] is None
+
+
+def test_async_search_by_title_stream_reports_candidates_when_all_filtered(monkeypatch):
+    """
+    标题搜索流在候选全部被过滤时，应在完成事件中报告过滤前的候选资源数。
+    """
+    chain = _make_chain()
+    drop = TorrentInfo(title="Movie 2026 2160p REMUX", description="")
+
+    async def search_stream(**_kwargs):
+        """
+        模拟站点页完成后返回一批候选资源。
+        """
+        yield {
+            "type": "append",
+            "stage": "searching",
+            "items": [drop],
+            "total_items": 1,
+        }
+
+    chain._SearchChain__async_search_all_sites_stream = search_stream
+    chain.filter_torrents = lambda **_kwargs: []
+    _patch_search_filter_rule_groups(monkeypatch, ["exclude-remux"])
+
+    async def collect_events():
+        """
+        收集标题搜索流全部事件。
+        """
+        return [
+            event
+            async for event in chain.async_search_by_title_stream(title="Movie")
+        ]
+
+    events = asyncio.run(collect_events())
+
+    done_event = events[-1]
+    assert done_event["type"] == "done"
+    assert done_event["total_items"] == 0
+    assert done_event["candidate_items"] == 1
+    assert done_event["items"] == []

@@ -976,11 +976,14 @@ class SearchChain(ChainBase):
             logger.info(f'开始渐进式浏览资源，站点：{sites} ...')
 
         contexts: List[Context] = []
+        # 记录过滤前的候选资源数，供前端在全部被过滤时给出友好提示
+        candidate_count = 0
         if rule_groups is None:
             rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
         async for event in self.__async_search_all_sites_stream(
                 keyword=title, sites=sites, page=page, mtype=mtype):
             result = event.pop("items", []) or []
+            candidate_count += len(result)
             result = await run_in_threadpool(
                 self.__filter_title_search_torrents,
                 torrents=result,
@@ -1012,7 +1015,8 @@ class SearchChain(ChainBase):
             "type": "done",
             "text": f"搜索完成，共 {len(contexts)} 个资源",
             "items": [context.to_dict() for context in contexts],
-            "total_items": len(contexts)
+            "total_items": len(contexts),
+            "candidate_items": candidate_count
         }
 
     @staticmethod
@@ -1792,7 +1796,8 @@ class SearchChain(ChainBase):
             "value": 100,
             "text": f"过滤匹配完成，共 {len(contexts)} 个资源",
             "items": final_items,
-            "total_items": len(contexts)
+            "total_items": len(contexts),
+            "candidate_items": len(candidate_contexts)
         }
         yield {
             "type": "done",
@@ -1800,6 +1805,7 @@ class SearchChain(ChainBase):
             "text": f"搜索完成，共 {len(contexts)} 个资源",
             "items": final_items,
             "total_items": len(contexts),
+            "candidate_items": len(candidate_contexts),
             "contexts": contexts
         }
 
