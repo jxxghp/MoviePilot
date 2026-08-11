@@ -192,6 +192,14 @@ class MusicBrainzModule(_ModuleBase):
         text = str(value or "").strip()
         return cls._normalize_text(text.split(" ", 1)[0]) if text else ""
 
+    # 系列专辑的卷号后缀（好歌茹芸, Vol. 3）是发行分卷标记，条目本体不含卷号
+    _VOLUME_SUFFIX_RE = re.compile(r",?\s*vol\.?\s*\d+$", re.IGNORECASE)
+
+    @classmethod
+    def _strip_volume_suffix(cls, value: Optional[str]) -> str:
+        """剔除标题尾部的卷号后缀，返回专辑本体名。"""
+        return cls._normalize_text(cls._VOLUME_SUFFIX_RE.sub("", str(value or "")))
+
     # 演唱会资源的标题常带演出后缀（S.H.E十七音乐会），条目仅保留演出名本体
     _PERFORMANCE_SUFFIX_RE = re.compile(
         r"\s*(?:音乐会|音樂會|演唱会|演唱會|巡回|巡演|Live|Tour)$", re.IGNORECASE)
@@ -249,8 +257,7 @@ class MusicBrainzModule(_ModuleBase):
         artist = meta.artists[0] if meta.artists else None
         # 括号注释与 Vol. 卷号在条目中常以 disambiguation 形式存在，变体名兜底检索
         bare_title = cls._strip_parenthetical(title)
-        bare_title = re.sub(r",?\s*vol\.?\s*\d+$", "", bare_title, flags=re.IGNORECASE)
-        bare_title = cls._normalize_text(bare_title)
+        bare_title = cls._strip_volume_suffix(bare_title)
         # 专辑名开头的艺术家署名前缀同样是命名习惯，用主体名检索
         title = cls._strip_artist_prefix(title, meta.artists)
         bare_title = cls._strip_artist_prefix(bare_title, meta.artists)
@@ -613,8 +620,9 @@ class MusicBrainzModule(_ModuleBase):
         # 曲名开头的艺术家署名前缀是命名习惯，用主体名比对
         clean_title = cls._strip_artist_prefix(cls._search_title(meta.title), meta.artists)
         # 条目的影视 tie-in 注释多为全角括号，与资源半角注释无法精确相等，
-        # 去括号后的主体曲名一致视为弱匹配，且需艺术家同时命中才采信
-        bare_title = cls._strip_parenthetical(clean_title)
+        # 去括号后的主体曲名一致视为弱匹配，且需艺术家同时命中才采信；
+        # 卷号后缀（Vol. 3）是发行分卷标记，条目本体不含卷号
+        bare_title = cls._strip_volume_suffix(cls._strip_parenthetical(clean_title))
         ranked: list[tuple[int, MusicInfo]] = []
         for candidate in candidates:
             if normalized_source and (candidate.source or "").casefold() != normalized_source:
@@ -692,7 +700,8 @@ class MusicBrainzModule(_ModuleBase):
             cls._search_title(meta.album or meta.title), meta.artists)
         if not clean_title:
             return None
-        bare_title = cls._strip_parenthetical(clean_title)
+        # 去括号与卷号后缀后的本体名用于弱匹配（好歌茹芸, Vol. 3 -> 好歌茹芸）
+        bare_title = cls._strip_volume_suffix(cls._strip_parenthetical(clean_title))
         ranked: list[tuple[int, MusicInfo]] = []
         for album in albums:
             score = 0
@@ -960,7 +969,7 @@ class MusicBrainzModule(_ModuleBase):
         r"[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]")
     # 检索词元切分：按空白、标点与括号拆分，保留 CJK 串与拉丁词（括号对逐字检索无意义）
     _QUERY_TOKEN_SPLIT_RE = re.compile(
-        r"[\s\-–—−－。，、；：！？·．…()（）「」『』【】\[\]《》]+")
+        r"[\s\-–—−－。，、；：！？·．…()（）「」『』【】\[\]《》,;]+")
 
     @classmethod
     def _query_phrase(cls, value: Optional[str]) -> Optional[str]:

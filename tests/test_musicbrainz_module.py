@@ -679,6 +679,24 @@ def test_select_album_candidate_matches_performance_suffix():
     assert matched.media_id == "album-1"
 
 
+def test_select_album_candidate_strips_volume_suffix():
+    """系列专辑卷号后缀（Vol. 3）是发行分卷标记，本体名一致应弱匹配命中。"""
+    meta = MetaMusic(title="好歌茹芸, Vol. 3", artists=["许茹芸"], year=2011)
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-1",
+        title="好歌, 茹芸: Valen Hsu Greatest Hits",
+        artists=["許茹芸"],
+        year=2011,
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-1"
+
+
 def test_select_album_candidate_matches_contained_title():
     """条目带额外前缀完整包含资源主体名（原声带类）时应弱匹配命中。"""
     meta = MetaMusic(
