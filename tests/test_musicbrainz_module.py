@@ -674,6 +674,23 @@ def test_select_album_candidate_matches_colon_subtitle():
     assert matched.media_id == "album-colon"
 
 
+def test_select_album_candidate_matches_head_title():
+    """条目「曲名-歌手《巡演名》」连字符前置命名应与资源曲名弱匹配命中。"""
+    meta = MetaMusic(title="为你盛开", artists=["许巍"])
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-head",
+        title="为你盛开-许巍《无尽光芒》巡回演唱会现场纪念",
+        artists=["许巍"],
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-head"
+
+
 def test_search_title_strips_trailing_year():
     """检索式应剥离曲名尾部独立年份，避免年份文本造成精确短语零命中。"""
     assert MusicBrainzModule._search_title("Funky Jazz Saxophone 2024") == "Funky Jazz Saxophone"

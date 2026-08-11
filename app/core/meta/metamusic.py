@@ -183,32 +183,52 @@ def _optional_int(value: Any) -> Optional[int]:
 
 # 资源标题中的音质规格与发行标记（格式、位深采样、年份括号、发行实体标记），
 # 拆分艺术家/曲名前需先剔除，否则「曲名 - FLAC [16B-44.1kHz]」会被误拆成艺术家与曲名
+_MUSIC_FORMAT_TOKEN_ALT = (
+    r"DSD(?:64|128|256|512)?|DSF|DFF|FLAC|ALAC|APE|CUE|WAV|WAVE|AIFF?|PCM|"
+    r"MP3|AAC|M4A|OGG|VORBIS|OPUS|WMA|WEB-?DL|WEBRip|WEB"
+)
+_MUSIC_VIDEO_TOKEN_ALT = (
+    r"1080[pi]|720p|2160[pi]|480[pi]|4k|8k|uhd|"
+    r"bluray|blu-ray|bdrip|uhd\s*bd|hddvd|hdvd|hdtv|webrip|remux|"
+    r"avc|hevc|x26[45]|h\.?26[45]|mpeg-?2|vc-?1|prores|av1|"
+    r"dts(?:-hd\s*(?:ma|hra)?)?(?:\s*[257]\.1)?|"
+    r"truehd|atmos|ddp?(?:\+[\w.]*)?|eac3|ac3|lpcm|flac\s*[257]\.1|"
+    r"[257]\.1(?:\s*ch(?:annels?)?)?|stereo|mono|"
+    r"hdr10\+?|dovi|dolby\s*vision|sub(?:title)?s?|chs&cht"
+)
 _MUSIC_QUALITY_TOKEN_RE = re.compile(
     r"\[[^\]]*\]|\((?:19|20)\d{2}\)|"
-    r"\b(?:DSD(?:64|128|256|512)?|DSF|DFF|FLAC|ALAC|APE|WAV|WAVE|AIFF?|PCM|"
-    r"MP3|AAC|M4A|OGG|VORBIS|OPUS|WMA|WEB-?DL|WEBRip|WEB)\b|"
+    rf"\b(?:{_MUSIC_FORMAT_TOKEN_ALT})\b|"
     r"\b\d{1,3}\s*-?\s*bits?\b|\b\d{2,4}(?:\.\d)?\s*k(?:hz|bps?)\b|"
-    # 无损声明词与流媒体发行实体标记（- Single / - EP），不是曲名的一部分
-    r"\b(?:single|ep|album)\b|(?<![A-Za-z0-9])(?:lossless|无损音质|无损)(?![A-Za-z0-9])",
+    # 无损声明词、 ripping 方式与流媒体发行实体标记（- Single / - EP），不是曲名的一部分
+    r"\b(?:single|ep|album)\b|(?<![A-Za-z0-9])(?:lossless|无损音质|无损|分轨|整轨)(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
 # 演唱会/音乐视频种子的视频编码标记：分辨率、编码、容器与声道描述，
 # 不是音乐文本信息，不剔除会污染曲名并阻断艺术家/曲名拆分
-_MUSIC_VIDEO_TOKEN_RE = re.compile(
-    r"\b(?:1080[pi]|720p|2160[pi]|480[pi]|4k|8k|uhd)\b|"
-    r"\b(?:bluray|blu-ray|bdrip|uhd\s*bd|hddvd|hdvd|hdtv|webrip|remux|"
-    r"avc|hevc|x26[45]|h\.?26[45]|mpeg-?2|vc-?1|prores|av1)\b|"
-    r"\b(?:dts(?:-hd\s*(?:ma|hra)?)?(?:\s*[257]\.1)?|"
-    r"truehd|atmos|ddp?(?:\+[\w.]*)?|eac3|ac3|lpcm|flac\s*[257]\.1|"
-    r"[257]\.1(?:\s*ch(?:annels?)?)?|stereo|mono)\b|"
-    r"\b(?:hdr10\+?|dovi|dolby\s*vision|sub(?:title)?s?|chs&cht)\b",
+_MUSIC_VIDEO_TOKEN_RE = re.compile(rf"\b(?:{_MUSIC_VIDEO_TOKEN_ALT})\b", re.IGNORECASE)
+# 尾部规格段判定：整段仅由格式词、视频标记、位深采样、无损声明词与发布组标签组成，
+# 曲名含任何自然语言文本时判定失败，保证「曲名 (注释) - WEB-DL」不被误剥
+_MUSIC_SPEC_SEGMENT_RE = re.compile(
+    rf"^(?:\b(?:{_MUSIC_FORMAT_TOKEN_ALT}|{_MUSIC_VIDEO_TOKEN_ALT}|single|ep|album)\b"
+    r"|\d{1,3}\s*-?\s*bits?|\d{2,4}(?:\.\d)?\s*k(?:hz|bps?)"
+    r"|lossless|无损音质|无损|分轨|整轨"
+    r"|[\s\-–—−－/+]+(?![\s\-–—−－/+])"
+    r"|(?:(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{3,})"
+    r")+$",
     re.IGNORECASE,
+)
+# 尾部规格段定位：最后一个「空白+连字符」或「格式词连字符」分隔的片段；
+# 片段内不允许连字符，保证匹配落在最尾部片段而不是从左吞掉整个尾巴
+_MUSIC_TRAILING_SEGMENT_RE = re.compile(
+    r"(?:\s+[\-–—−－]+\s*|(?P<prefix>[A-Za-z0-9]+)[\-–—−－]+)"
+    r"(?P<segment>[^\s\-–—−－]+(?:\s+[^\s\-–—−－]+)*)\s*$"
 )
 # 年份括号：(2000)（2000）【2000】形式的发行年份，作为候选消歧线索
 _MUSIC_YEAR_RE = re.compile(r"[\(（【]((?:19|20)\d{2})[\)）】]")
-# 标题尾部独立年份：「xxx音乐会 2018」「Funky Jazz Saxophone 2024」，
+# 标题尾部独立年份：「xxx音乐会 2018」「Funky Jazz Saxophone 2024」「系列-2007」，
 # 提取为发行年份线索并从曲名剥离，避免年份文本进入检索式造成零命中
-_MUSIC_TRAILING_YEAR_RE = re.compile(r"(?<!\d)\s+((?:19|20)\d{2})\s*$")
+_MUSIC_TRAILING_YEAR_RE = re.compile(r"(?<!\d)[\s\-–—]+((?:19|20)\d{2})\s*$")
 # 无括号年份区间：全集/精选标题尾部的 1967-1995、2015-16，取结束年作为发行年份线索；
 # CJK 字符属于 \w，不能用 \b 定界，改用数字负向断言；
 # 短年右侧禁止再跟数字，避免把 2024-01-27 这类日期的 2024-01 误当区间；
@@ -240,6 +260,15 @@ _MUSIC_ALIAS_PREFIX_RE = re.compile(
 _MUSIC_ARTIST_TITLE_RE = re.compile(
     r"^\s*(?P<artist>.+?)\s+[\-–—−－]+\s+(?P<title>.+?)\s*$"
 )
+# 曲名后含书名号的括号注释（影视原声说明等）：「等得到 (电影《如影随心》主题曲 独唱版)」，
+# 注释内的《》会抢先触发专辑书名号判定，需在结构解析前提取；
+# 单层括号注释（电影版/Live）是 MusicBrainz 条目的消歧后缀，不提取
+_MUSIC_TITLE_COMMENT_RE = re.compile(r"\s*[\(（](?P<comment>[^)）]*[《》][^)）]*)[\)）]\s*$")
+# CJK「歌手《专辑名》」书名号命名：提取艺术家与专辑，专辑内尾部 -CD2 为碟号
+_MUSIC_ALBUM_MARKER_RE = re.compile(
+    r"^\s*(?P<artist>[^《》]+?)\s*《(?P<album>[^《》]+)》\s*(?P<rest>.*)$"
+)
+_MUSIC_ALBUM_DISC_RE = re.compile(r"[\s\-–—−－]*(?:cd|disc)\s*(\d{1,2})$", re.IGNORECASE)
 # 曲名尾部重复的艺术家署名（如「名人名曲-毛阿敏」「xxx - 许茹芸」）
 _MUSIC_ARTIST_SUFFIX_RE = re.compile(r"[\-–—−－]\s*(?P<suffix>[^\-–—−－]+?)\s*$")
 # 艺术家段尾部的合集修饰词：「邓丽君作品全集」需剥离为「邓丽君」才能命中条目署名
@@ -280,7 +309,7 @@ _FULLWIDTH_MAP = {
     0x300C: "[", 0x300D: "]",    # 「」
     0x300E: "[", 0x300F: "]",    # 『』
     0x3010: "[", 0x3011: "]",    # 【】
-    0x300A: "[", 0x300B: "]",    # 《》
+    # 《》多为专辑书名号（歌手《专辑名》），不属于格式注释，保留原样由专辑结构规则处理
     0xFF08: "(", 0xFF09: ")",    # （）
     0xFF3B: "[", 0xFF3D: "]",    # ［］
     0xFF5B: "{", 0xFF5D: "}",    # ｛｝
@@ -454,12 +483,58 @@ class MetaMusic(MetaBase):
         if years and not self.year:
             # 多个年份括号时取最后一个，资源标题中年份通常位于末位
             self.year = int(years[-1])
-        # 音质标记先剔除再拆分，避免规格文本独占曲名位置
-        cleaned = self._strip_quality_tokens(normalized)
+        # 音质标记先剔除再拆分，避免规格文本独占曲名位置；
+        # 尾部纯规格段（含发布组标签）先整段剔除，保护「曲名 (注释)」不被拆散
+        cleaned = self._strip_spec_segments(normalized)
+        cleaned = self._strip_quality_tokens(cleaned)
         # 广播/发行日期前缀与年份区间在规格剔除后处理，避免误伤曲名中的短数字序列
         cleaned, range_year = self._strip_date_prefix(cleaned)
         if range_year and not self.year:
             self.year = range_year
+        # 曲名尾部括号注释先提取：注释内嵌套《》会干扰专辑书名号判定；
+        # 注释是曲名的版本说明，最终拼回曲名供展示与弱匹配
+        comment = None
+        comment_match = _MUSIC_TITLE_COMMENT_RE.search(cleaned)
+        if comment_match:
+            comment = comment_match.group("comment").strip()
+            cleaned = cleaned[: comment_match.start()].strip()
+        # CJK「歌手《专辑名》」书名号命名优先于连字符拆分，提取艺术家与专辑实体
+        marker = None if self.artists else _MUSIC_ALBUM_MARKER_RE.match(cleaned)
+        if marker:
+            # 书名号前的艺术家段可能是「曲名-歌手」无空格连字符写法（为你盛开-许巍），
+            # 反向拆分后首段是曲名线索，比专辑名更接近单曲检索目标
+            song_hint: Optional[str] = None
+            hyphen_artists, head_title = self._split_cjk_hyphen(marker.group("artist"))
+            if hyphen_artists:
+                self.artists = hyphen_artists
+                song_hint = self._clean_tail(head_title)
+            else:
+                self.artists = self._split_artists(marker.group("artist"))
+            album = self._normalize_text(marker.group("album"))
+            disc_match = _MUSIC_ALBUM_DISC_RE.search(album)
+            if disc_match:
+                # 专辑名尾部 -CD2 是碟号线索不是专辑名内容
+                self.disc_number = self.disc_number or int(disc_match.group(1))
+                album = album[: disc_match.start()].strip()
+            self.album = album
+            rest = marker.group("rest").strip(" \t-–—−－_《》.")
+            # 书名号后仅剩年份时作为发行年份线索
+            if rest and re.fullmatch(r"(19|20)\d{2}", rest):
+                if not self.year:
+                    self.year = int(rest)
+                rest = ""
+            # 书名号后仅剩碟号（CD2/Disc1）时提取为碟号线索
+            rest_disc = re.fullmatch(r"(?:cd|disc|disk)\s*(\d{1,2})", rest, re.IGNORECASE) if rest else None
+            if rest_disc:
+                self.disc_number = self.disc_number or int(rest_disc.group(1))
+                rest = ""
+            # 曲名回退依次用剩余文本、曲名线索与专辑名供检索
+            self._finalize_title(rest or song_hint or album)
+            if comment:
+                # 书名号结构下注释属于专辑后的补充说明，拼回曲名
+                self.title = f"{self.title} ({comment})" if self.title else comment
+            self._apply_track_prefix()
+            return
         match = _MUSIC_ARTIST_TITLE_RE.match(cleaned)
         if match and not self.artists:
             self.artists = self._split_artists(match.group("artist"))
@@ -484,6 +559,9 @@ class MetaMusic(MetaBase):
                     self._finalize_title(self._strip_cjk_artist_suffix(title))
         else:
             self.title = None
+        # 括号注释属于曲名的版本/出处说明，剥离的规格文本之后拼回展示
+        if comment and self.title:
+            self.title = f"{self.title} ({comment})"
         self._apply_track_prefix()
 
     @classmethod
@@ -530,25 +608,50 @@ class MetaMusic(MetaBase):
     @staticmethod
     def _clean_tail(value: str) -> str:
         """修剪曲名尾部残留：流媒体文件名消毒产生的下划线与悬空分隔符。"""
-        return re.sub(r"[\s_\-–—−－/]+$", "", str(value or "")).strip()
+        return re.sub(r"[\s_\-–—−－/.+]+$", "", str(value or "")).strip()
+
+    @classmethod
+    def _strip_spec_segments(cls, value: str) -> str:
+        """从尾部反复剥离纯规格段（- WEB-DL - 16bit ALAC-HHWEB）。
+
+        规格段在艺术家/曲名拆分前整段剔除，避免规格后缀把主拆分位置推到
+        「艺术家 - 曲名」的连字符上；曲名含自然语言文本的段永远不会被误剥。
+        """
+        text = str(value or "").strip()
+        while True:
+            segment_match = _MUSIC_TRAILING_SEGMENT_RE.search(text)
+            if not segment_match:
+                return text
+            prefix = segment_match.group("prefix")
+            segment = segment_match.group("segment")
+            # 无空格连字符段（FLAC-HHWEB）只有紧跟格式词时才是发布组标签，
+            # 否则是「曲名-歌手」类连字符命名，交由后续拆分规则处理
+            if prefix and not re.fullmatch(rf"{_MUSIC_FORMAT_TOKEN_ALT}", prefix, re.IGNORECASE):
+                return text
+            # 年份括号是发行线索不是规格词，占位后再判定，避免「曲名 (2000)」被误当规格段
+            probe = re.sub(r"\((?:19|20)\d{2}\)", " ", segment)
+            has_spec_token = bool(
+                _MUSIC_QUALITY_TOKEN_RE.search(probe) or _MUSIC_VIDEO_TOKEN_RE.search(probe)
+            )
+            # 加号是 APE+CUE 类格式联合写法的分隔符，占位为空格后再判定
+            probe = _MUSIC_VIDEO_TOKEN_RE.sub(" ", _MUSIC_QUALITY_TOKEN_RE.sub(" ", probe))
+            residue = probe.replace("+", " ").strip()
+            if residue and not _MUSIC_SPEC_SEGMENT_RE.fullmatch(residue):
+                return text
+            # 不含任何规格词的纯标签段，仅在紧跟格式词的无空格形态下才是发布组标签；
+            # 「艺术家 - 单词曲名」的曲名段不含规格词，必须保留
+            if not has_spec_token and not prefix:
+                return text
+            text = text[: segment_match.start()].rstrip()
 
     @classmethod
     def _strip_quality_tokens(cls, value: str) -> str:
         """剥离音频格式、视频编码、规格参数与年份括号，保留有效的艺术家与曲名文本。"""
         raw = str(value or "")
-        has_quality_token = bool(_MUSIC_QUALITY_TOKEN_RE.search(raw) or _MUSIC_VIDEO_TOKEN_RE.search(raw))
         text = _MUSIC_QUALITY_TOKEN_RE.sub(" ", raw)
         text = _MUSIC_VIDEO_TOKEN_RE.sub(" ", text)
-        # 规格剥离后可能残留悬空分隔符，统一修剪
-        text = cls._normalize_text(re.sub(r"^[\s\-–—−－/]+|[\s\-–—−－/]+$", "", text))
-        if not has_quality_token:
-            return text
-        # 格式标记后紧跟的场景发布组标签（如 ALAC-HHWEB、AAC-FHDMv），整体剔除避免污染曲名；
-        # 仅在存在音质标记时剔除，否则「艺术家 - 单词曲名」会被误当标签吞掉；
-        # 要求标签至少含一个字母，避免误吞年份区间尾巴（-1995）
-        return re.sub(
-            r"[-–—−－]\s*(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{3,}\s*$", "", text, flags=re.IGNORECASE
-        ).strip()
+        # 规格剥离后可能残留悬空分隔符（含 APE+CUE 类格式联合写法残留的加号），统一修剪
+        return cls._normalize_text(re.sub(r"^[\s\-–—−－/+]+|[\s\-–—−－/+]+$", "", text))
 
     @classmethod
     def _strip_artist_suffix(cls, value: str, artists: list[str]) -> str:

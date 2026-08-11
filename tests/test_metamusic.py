@@ -274,6 +274,35 @@ def test_apply_title_keeps_single_word_title():
     assert meta.title == "Maraboot"
 
 
+def test_apply_title_keeps_title_with_quality_tokens():
+    """存在音质标记时，空格连字符后的单词曲名也不应被当发布组标签剔除。"""
+    meta = parse_title("Yes - Aurora [Bonus Tracks Edition, 24-bit Hi-Res] (2026) [FLAC]")
+
+    assert meta.artists == ["Yes"]
+    assert meta.title == "Aurora"
+    assert meta.year == 2026
+
+
+def test_apply_title_album_marker():
+    """「歌手《专辑名》」书名号命名应提取艺术家、专辑与碟号。"""
+    meta = parse_title("李宗盛《理性与感性作品音乐会-CD2》2006-FLAC-分轨")
+
+    assert meta.artists == ["李宗盛"]
+    assert meta.album == "理性与感性作品音乐会"
+    assert meta.title == "理性与感性作品音乐会"
+    assert meta.disc_number == 2
+    assert meta.year == 2006
+
+
+def test_apply_title_strips_cue_and_plus():
+    """APE+CUE 类格式联合写法应剔除，残留加号不阻断标题提取。"""
+    meta = parse_title("世界著名古典大师名版收藏（15）RCA发烧古典系列-2007-FLAC-APE+CUE")
+
+    assert meta.artists == []
+    assert meta.title == "世界著名古典大师名版收藏(15)RCA发烧古典系列"
+    assert meta.year == 2007
+
+
 def test_apply_title_cjk_hyphen_artist_suffix():
     """CJK「曲名-歌手」无空格连字符写法应反向拆分艺术家。"""
     meta = parse_title("因为有你-毛阿敏")
@@ -321,3 +350,43 @@ def test_apply_title_bracket_date_prefix():
 
     assert meta.artists == ["某歌手"]
     assert meta.title == "某曲名"
+
+
+def test_apply_title_spec_segments_do_not_shift_split():
+    """尾部规格段（WEB-DL/位深/发布组）不应把拆分点推到艺术家与曲名的连字符上。"""
+    meta = parse_title(
+        "许茹芸 - 等得到 (电影《如影随心》主题曲 独唱版) (2019) - WEB-DL - 24bit ALAC-HHWEB")
+
+    assert meta.artists == ["许茹芸"]
+    # 含书名号的括号注释是版本说明，应拼回曲名而不触发专辑结构
+    assert meta.title == "等得到 (电影《如影随心》主题曲 独唱版)"
+    assert meta.year == 2019
+
+
+def test_apply_title_album_marker_with_song_artist_prefix():
+    """书名号前的「曲名-歌手」连字符段应反向拆分，首段作为曲名线索。"""
+    meta = parse_title("为你盛开-许巍《无尽光芒》2019.FLAC")
+
+    assert meta.artists == ["许巍"]
+    assert meta.album == "无尽光芒"
+    assert meta.title == "为你盛开"
+    assert meta.year == 2019
+
+
+def test_apply_title_album_marker_rest_disc_number():
+    """书名号后仅剩碟号时应提取为碟号，曲名回退用专辑名。"""
+    meta = parse_title("李宗盛《理性与感性作品音乐会》 CD2 (2006)")
+
+    assert meta.artists == ["李宗盛"]
+    assert meta.album == "理性与感性作品音乐会"
+    assert meta.disc_number == 2
+    assert meta.title == "理性与感性作品音乐会"
+    assert meta.year == 2006
+
+
+def test_apply_title_keeps_single_paren_disambiguation():
+    """单层括号注释是条目消歧后缀，应保留在曲名中。"""
+    meta = parse_title("周杰伦 - 晴天 (电影版)")
+
+    assert meta.artists == ["周杰伦"]
+    assert meta.title == "晴天 (电影版)"

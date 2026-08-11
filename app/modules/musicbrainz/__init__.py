@@ -177,6 +177,12 @@ class MusicBrainzModule(_ModuleBase):
         text = re.split(r"\s*[：:]\s*", str(value or ""), maxsplit=1)[0]
         return cls._normalize_text(text)
 
+    @classmethod
+    def _head_title(cls, value: Optional[str]) -> str:
+        """提取候选「曲名-歌手」「曲名《巡演名》…」命名的首段曲名。"""
+        text = re.split(r"\s*[-–—−－：:]\s*|\s*《", str(value or ""), maxsplit=1)[0]
+        return cls._normalize_text(text)
+
     def _search_albums(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
         """按标题和可选艺术家搜索 Release Group 专辑候选，检索式同样逐级放宽。"""
         for query in self._album_queries(meta):
@@ -591,6 +597,8 @@ class MusicBrainzModule(_ModuleBase):
                     cls._same_text(bare_title, cls._strip_parenthetical(candidate.title))
                     # 条目「天國的情人：鄧麗君逝世十周年…」这类冒号副标题，主标题一致视为弱匹配
                     or cls._same_text(bare_title, cls._main_title(candidate.title))
+                    # 条目「为你盛开-许巍《无尽光芒》…」这类连字符前置命名，首段曲名一致视为弱匹配
+                    or cls._same_text(bare_title, cls._head_title(candidate.title))
                 )
             ):
                 score += 2
@@ -645,6 +653,8 @@ class MusicBrainzModule(_ModuleBase):
                     cls._same_text(bare_title, cls._strip_parenthetical(album_title))
                     # 条目「天國的情人：鄧麗君逝世十周年…」这类冒号副标题，主标题一致视为弱匹配
                     or cls._same_text(bare_title, cls._main_title(album_title))
+                    # 条目「为你盛开-许巍《无尽光芒》…」这类连字符前置命名，首段曲名一致视为弱匹配
+                    or cls._same_text(bare_title, cls._head_title(album_title))
                 )
             ):
                 # 「我爱夜 (新歌+精选)」对位条目「我爱夜」这类注释差异
