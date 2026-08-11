@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import AliasChoices, AliasPath, BaseModel, ValidationError
 
 
 REDACTED_VALUE = "***"
@@ -62,6 +62,8 @@ _PRIVATE_KEY_OPEN_PATTERN = re.compile(
     r"-----BEGIN [^-]*PRIVATE KEY-----.*",
     re.DOTALL,
 )
+_CONTAINER_PAIRS = {"[": "]", "{": "}", "(": ")"}
+_CONTAINER_CLOSERS = frozenset(_CONTAINER_PAIRS.values())
 
 
 def _normalize_key(key: Any) -> str:
@@ -160,6 +162,67 @@ def _quote_wrapper_end(
     return len(value)
 
 
+def _unquoted_assignment_value_end(
+    value: str,
+    value_start: int,
+    delimiters: str,
+    outer_quote: str,
+) -> int:
+    """线性扫描未引号值，仅在容器外识别字段分隔符。"""
+    stack = []
+    cursor = value_start
+    while cursor < len(value):
+        char = value[cursor]
+        if not stack and outer_quote and char == outer_quote:
+            return cursor
+
+        if char == "\\":
+            slash_end = cursor
+            while slash_end < len(value) and value[slash_end] == "\\":
+                slash_end += 1
+            if slash_end >= len(value):
+                return len(value)
+
+            slash_count = slash_end - cursor
+            next_char = value[slash_end]
+            if next_char in ("\"", "'"):
+                cursor = _quote_wrapper_end(
+                    value,
+                    slash_end + 1,
+                    next_char,
+                    slash_count,
+                )
+                continue
+            if next_char in _CONTAINER_PAIRS:
+                stack.append(_CONTAINER_PAIRS[next_char])
+                cursor = slash_end + 1
+                continue
+            cursor = slash_end + 1 if slash_count % 2 else slash_end
+            continue
+        if char in ("\"", "'"):
+            cursor = _quote_wrapper_end(
+                value,
+                cursor + 1,
+                char,
+                0,
+            )
+            continue
+        if char in _CONTAINER_PAIRS:
+            stack.append(_CONTAINER_PAIRS[char])
+        elif char in _CONTAINER_CLOSERS:
+            if not stack:
+                return cursor if char in delimiters else len(value)
+            if char != stack[-1]:
+                return len(value)
+            stack.pop()
+        elif not stack and char in delimiters:
+            return cursor
+        cursor += 1
+
+    # 未闭合结构无法可靠区分后续字段，按敏感尾部处理。
+    return len(value)
+
+
 def _find_assignment_header(
     value: str,
     search_from: int,
@@ -244,12 +307,12 @@ def _assignment_value_end(
     if match_start > 0 and value[match_start - 1] in "?&#":
         delimiters += "&#"
 
-    value_end = value_start
-    while value_end < len(value) and value[value_end] not in delimiters:
-        value_end += 1
-    if value[value_start:value_end][-1:] in ("\"", "'"):
-        value_end -= 1
-    return value_end
+    return _unquoted_assignment_value_end(
+        value,
+        value_start,
+        delimiters,
+        active_quote,
+    )
 
 
 def _sanitize_assignments(value: str) -> str:
@@ -441,6 +504,70 @@ def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
     return field_names
 
 
+def _pydantic_alias_names(
+    alias: Any,
+    *,
+    _budget: list[int] | None = None,
+) -> tuple[str, ...] | None:
+    """提取有界的 Pydantic 外部字段名；未知结构要求调用方保守处理。"""
+    if alias is None:
+        return ()
+    budget = _budget if _budget is not None else [_MAX_ITEMS]
+    if type(alias) is AliasChoices:
+        choices = alias.choices
+        if type(choices) is not list:
+            return None
+    else:
+        choices = (alias,)
+    if len(choices) > budget[0]:
+        return None
+
+    names = []
+    for choice in choices:
+        if type(choice) is str:
+            if budget[0] <= 0:
+                return None
+            budget[0] -= 1
+            names.append(choice)
+        elif type(choice) is AliasPath:
+            path = choice.path
+            if type(path) is not list or len(path) > budget[0]:
+                return None
+            budget[0] -= len(path)
+            for part in path:
+                if type(part) is str:
+                    names.append(part)
+                elif type(part) is not int:
+                    return None
+        else:
+            return None
+    return tuple(names)
+
+
+def _pydantic_field_is_secret(field_name: str, field_info: Any) -> bool:
+    """按 Python 字段名及 Pydantic 的输入输出别名共同判定凭据字段。"""
+    if _is_secret_key(field_name):
+        return True
+    if field_info is None:
+        return True
+    try:
+        aliases = (
+            field_info.alias,
+            field_info.validation_alias,
+            field_info.serialization_alias,
+        )
+    except Exception:
+        return True
+    alias_budget = [_MAX_ITEMS]
+    for alias in aliases:
+        alias_names = _pydantic_alias_names(alias, _budget=alias_budget)
+        if alias_names is None or any(
+            _is_secret_key(alias_name) for alias_name in alias_names
+        ):
+            return True
+    return False
+
+
 def _validation_error_details(error: ValidationError) -> dict[str, int | str]:
     """提取不含任何动态错误文本的校验计数。"""
     try:
@@ -523,7 +650,10 @@ def sanitize_for_host(
                         item = _unavailable(value)
                     sanitized[field_name] = (
                         REDACTED_VALUE
-                        if _is_secret_key(field_name)
+                        if _pydantic_field_is_secret(
+                            field_name,
+                            model_fields.get(field_name),
+                        )
                         else sanitize_for_host(
                             item,
                             _depth=_depth + 1,
@@ -535,6 +665,11 @@ def sanitize_for_host(
 
             if is_dataclass(value) and not isinstance(value, type):
                 sanitized = {}
+                pydantic_fields = getattr(
+                    type(value),
+                    "__pydantic_fields__",
+                    None,
+                )
                 for index, field_info in enumerate(fields(value)):
                     if index >= _MAX_ITEMS:
                         sanitized["<truncated>"] = "more fields"
@@ -546,9 +681,18 @@ def sanitize_for_host(
                         item = getattr(value, field_info.name)
                     except Exception:
                         item = _unavailable(value)
+                    if pydantic_fields is None:
+                        secret_field = _is_secret_key(field_info.name)
+                    elif isinstance(pydantic_fields, Mapping):
+                        secret_field = _pydantic_field_is_secret(
+                            field_info.name,
+                            pydantic_fields.get(field_info.name),
+                        )
+                    else:
+                        secret_field = True
                     sanitized[field_info.name] = (
                         REDACTED_VALUE
-                        if _is_secret_key(field_info.name)
+                        if secret_field
                         else sanitize_for_host(
                             item,
                             _depth=_depth + 1,

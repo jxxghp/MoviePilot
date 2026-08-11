@@ -1,13 +1,21 @@
 import asyncio
 from statistics import median
 from time import perf_counter
-from typing import NamedTuple
+from typing import Annotated, NamedTuple
 from unittest.mock import MagicMock, patch
 
 import pytest
 from langgraph.types import Command
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    Field,
+    ValidationError,
+    field_validator,
+)
 from pydantic_core import PydanticCustomError
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 import app.agent.policy.sanitizer as sanitizer_module
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
@@ -57,6 +65,95 @@ class _NamedTupleCredential(NamedTuple):
 
     api_key: str
     label: str
+
+
+class _AliasedCredentialResult(BaseModel):
+    """模拟外部凭据名与 Python 属性名不同的结构化结果。"""
+
+    credential: str = Field(alias="apiKey")
+
+
+class _ValidationAliasedCredentialResult(BaseModel):
+    """模拟仅通过 validation alias 接受凭据的 Pydantic 字段。"""
+
+    credential: str = Field(validation_alias="apiToken")
+
+
+class _ChoiceAliasedCredentialResult(BaseModel):
+    """模拟敏感名称位于后续 choice 的 Pydantic 字段。"""
+
+    credential: str = Field(
+        validation_alias=AliasChoices("credentialLabel", "apiKey")
+    )
+
+
+class _PathAliasedCredentialResult(BaseModel):
+    """模拟通过带整数索引的嵌套路径接收凭据的 Pydantic 字段。"""
+
+    credential: str = Field(
+        validation_alias=AliasPath("payload", 0, "clientSecret")
+    )
+
+
+class _ChoicePathAliasedCredentialResult(BaseModel):
+    """模拟后续 choice 使用嵌套路径的 Pydantic 凭据字段。"""
+
+    credential: str = Field(
+        validation_alias=AliasChoices(
+            "credentialLabel",
+            AliasPath("payload", "refreshToken"),
+        )
+    )
+
+
+class _SerializationAliasedCredentialResult(BaseModel):
+    """模拟仅在序列化契约中使用凭据名称的结构化结果。"""
+
+    credential: str = Field(serialization_alias="clientSecret")
+
+
+class _AliasedMetadataResult(BaseModel):
+    """模拟外部 metadata 名称与 Python 属性名不同的结构化结果。"""
+
+    count: int = Field(alias="tokenCount")
+
+
+class _DisguisedSecretAlias(str):
+    """保存敏感底层值但通过字符串协议伪装成 metadata 名称。"""
+
+    def __str__(self) -> str:
+        return "tokenCount"
+
+
+class _HostileAliasedCredentialResult(BaseModel):
+    """模拟使用 hostile str 子类作为直接别名的 Pydantic 字段。"""
+
+    credential: str = Field(alias=_DisguisedSecretAlias("apiKey"))
+
+
+class _HostilePathAliasedCredentialResult(BaseModel):
+    """模拟 AliasPath 中包含 hostile str 子类的 Pydantic 字段。"""
+
+    credential: str = Field(
+        validation_alias=AliasPath(
+            "payload",
+            _DisguisedSecretAlias("clientSecret"),
+        )
+    )
+
+
+@pydantic_dataclass
+class _AliasedCredentialDataclass:
+    """模拟通过赋值形式声明外部凭据名的 Pydantic dataclass。"""
+
+    credential: str = Field(alias="apiKey")
+
+
+@pydantic_dataclass
+class _AnnotatedAliasedCredentialDataclass:
+    """模拟通过 Annotated 声明外部凭据名的 Pydantic dataclass。"""
+
+    credential: Annotated[str, Field(alias="refreshToken")]
 
 
 class _SecretResultTool(MoviePilotTool):
@@ -124,6 +221,110 @@ def test_recursive_sanitizer_redacts_named_tuple_secret_fields() -> None:
     sanitized = sanitize_for_host(payload)
 
     assert sanitized == {"api_key": "***", "label": "visible-label"}
+    assert SECRET_MARKER not in str(sanitized)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        _AliasedCredentialResult(apiKey=SECRET_MARKER),
+        _ValidationAliasedCredentialResult(apiToken=SECRET_MARKER),
+        _ChoiceAliasedCredentialResult(apiKey=SECRET_MARKER),
+        _PathAliasedCredentialResult(
+            payload=[{"clientSecret": SECRET_MARKER}]
+        ),
+        _ChoicePathAliasedCredentialResult(
+            payload={"refreshToken": SECRET_MARKER}
+        ),
+        _SerializationAliasedCredentialResult(credential=SECRET_MARKER),
+        _HostileAliasedCredentialResult.model_validate(
+            {"apiKey": SECRET_MARKER}
+        ),
+        _HostilePathAliasedCredentialResult.model_validate(
+            {"payload": {"clientSecret": SECRET_MARKER}}
+        ),
+    ],
+)
+def test_recursive_sanitizer_redacts_pydantic_secret_aliases(
+    value: BaseModel,
+) -> None:
+    """Pydantic 字段的输入、路径及输出别名均参与凭据判定。"""
+    sanitized = sanitize_for_host(value)
+
+    assert sanitized == {"credential": "***"}
+    assert SECRET_MARKER not in str(sanitized)
+
+
+def test_recursive_sanitizer_preserves_pydantic_metadata_alias() -> None:
+    """非敏感 Pydantic 外部别名不应遮蔽 metadata 值。"""
+    assert sanitize_for_host(_AliasedMetadataResult(tokenCount=12)) == {
+        "count": 12
+    }
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        _AliasedCredentialDataclass(apiKey=SECRET_MARKER),
+        _AnnotatedAliasedCredentialDataclass(refreshToken=SECRET_MARKER),
+    ],
+)
+def test_recursive_sanitizer_redacts_pydantic_dataclass_secret_aliases(
+    value: object,
+) -> None:
+    """Pydantic dataclass 的解析后别名元数据同样参与凭据判定。"""
+    sanitized = sanitize_for_host(value)
+
+    assert sanitized == {"credential": "***"}
+    assert SECRET_MARKER not in str(sanitized)
+
+
+def test_pydantic_alias_path_limit_applies_before_iteration() -> None:
+    """AliasPath 必须先验证长度边界，再读取或复制任何 path part。"""
+
+    class _TrackingPath(list):
+        """记录 alias path 实际向 sanitizer 交付的 part 数量。"""
+
+        yielded_parts = 0
+
+        def __iter__(self):
+            for part in super().__iter__():
+                type(self).yielded_parts += 1
+                yield part
+
+    alias = AliasPath("placeholder")
+    alias.path = _TrackingPath(
+        ["metadata"] * (sanitizer_module._MAX_ITEMS + 1)
+    )
+
+    assert sanitizer_module._pydantic_alias_names(alias) is None
+    assert _TrackingPath.yielded_parts == 0
+
+
+def test_pydantic_alias_choices_share_one_part_budget() -> None:
+    """AliasPath 与普通 choice 共用额度，耗尽后必须 fail-closed。"""
+    alias = AliasChoices(
+        AliasPath(*(["metadata"] * sanitizer_module._MAX_ITEMS)),
+        "metadataTail",
+    )
+    budget = [sanitizer_module._MAX_ITEMS]
+
+    assert sanitizer_module._pydantic_alias_names(
+        alias,
+        _budget=budget,
+    ) is None
+    assert budget == [0]
+
+    class _OversizedAliasResult(BaseModel):
+        """模拟 alias part 总量超过宿主固定额度的第三方模型。"""
+
+        credential: str = Field(validation_alias=alias)
+
+    sanitized = sanitize_for_host(
+        _OversizedAliasResult.model_construct(credential=SECRET_MARKER)
+    )
+
+    assert sanitized == {"credential": "***"}
     assert SECRET_MARKER not in str(sanitized)
 
 
@@ -519,6 +720,26 @@ def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
     assert max_duration <= small_duration * 10 + 0.02
 
 
+def test_secret_assignment_slash_run_scales_at_text_limit() -> None:
+    """凭据值中的连续反斜杠必须单向扫描，不能重复遍历同一后缀。"""
+
+    def median_duration(slash_count: int) -> float:
+        source = "password=" + "\\" * slash_count + "tail"
+        durations = []
+        for _ in range(3):
+            started_at = perf_counter()
+            sanitized = str(sanitize_for_host(source))
+            durations.append(perf_counter() - started_at)
+            assert sanitized.startswith("password=***")
+        return median(durations)
+
+    small_duration = median_duration(4 * 1024)
+    max_duration = median_duration(sanitizer_module._MAX_TEXT_CHARS)
+
+    # 4x 输入允许 10x 时间与 50ms 调度余量，同时排除平方级同步扫描。
+    assert max_duration <= small_duration * 10 + 0.05
+
+
 def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
     """超长结构化字段只允许固定窗口进入凭据名规范化。"""
 
@@ -690,6 +911,147 @@ def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
 
     assert all(SECRET_MARKER not in summary for summary in summaries)
     assert all("***" in summary for summary in summaries)
+
+
+@pytest.mark.parametrize(
+    "container_value",
+    [
+        f"['{SECRET_MARKER}', 'second-list-secret']",
+        (
+            "{'primary': '"
+            f"{SECRET_MARKER}', 'nested': ['second-dict-secret', {{'ok': true}}]}}"
+        ),
+        f"('{SECRET_MARKER}', ('second-tuple-secret', 2))",
+    ],
+)
+def test_sanitizer_redacts_complete_unquoted_secret_container_assignment(
+    container_value: str,
+) -> None:
+    """未加引号的嵌套容器凭据值必须整体遮蔽并保留后续字段。"""
+    source = f"password={container_value}, operation=connect"
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == "password=***, operation=connect"
+    assert SECRET_MARKER not in sanitized
+    assert "second-" not in sanitized
+
+
+def test_sanitizer_fails_closed_for_unclosed_secret_container_assignment() -> None:
+    """未闭合的凭据容器无法确认边界时遮蔽剩余文本。"""
+    source = (
+        f"password=['{SECRET_MARKER}', 'unclosed-container-secret', "
+        "operation=connect"
+    )
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == "password=***"
+    assert SECRET_MARKER not in sanitized
+    assert "unclosed-container-secret" not in sanitized
+
+
+def test_sanitizer_redacts_secret_tail_after_closed_assignment_container() -> None:
+    """容器闭合符不代表凭据值结束，尾随内容也必须遮蔽。"""
+    source = (
+        f"password=['{SECRET_MARKER}']tail-container-secret, "
+        "operation=connect"
+    )
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == "password=***, operation=connect"
+    assert "tail-container-secret" not in sanitized
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f"password=[first\\], {SECRET_MARKER}], status=ok",
+        f"password=(first\\), {SECRET_MARKER}), status=ok",
+        "password={first\\}, " + SECRET_MARKER + "}, status=ok",
+    ],
+)
+def test_sanitizer_ignores_escaped_assignment_container_closers(
+    source: str,
+) -> None:
+    """未引号容器中的转义闭合符不得提前结束凭据扫描。"""
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == "password=***, status=ok"
+    assert SECRET_MARKER not in sanitized
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f"password=prefix[{SECRET_MARKER}, second-prefix-secret], status=ok",
+        f"password=call({SECRET_MARKER}, second-call-secret), status=ok",
+        (
+            "password=\\["
+            f"{SECRET_MARKER}, second-escaped-open-secret], status=ok"
+        ),
+    ],
+)
+def test_sanitizer_tracks_containers_after_unquoted_value_prefix(
+    source: str,
+) -> None:
+    """未引号值任意位置的容器均须屏蔽其内部字段分隔符。"""
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == "password=***, status=ok"
+    assert SECRET_MARKER not in sanitized
+    assert "second-" not in sanitized
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            f'password=prefix"{SECRET_MARKER}, second-double-secret", status=ok',
+            "password=***, status=ok",
+        ),
+        (
+            f"password=prefix'{SECRET_MARKER}, second-single-secret', status=ok",
+            "password=***, status=ok",
+        ),
+        (
+            f'message="password=prefix\'{SECRET_MARKER}, second-inner-secret\'"; '
+            "status=ok",
+            'message="password=***"; status=ok',
+        ),
+    ],
+)
+def test_sanitizer_tracks_quoted_fragments_inside_unquoted_secret_value(
+    source: str,
+    expected: str,
+) -> None:
+    """值中途的 quoted fragment 不得让内部逗号提前结束脱敏。"""
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == expected
+    assert SECRET_MARKER not in sanitized
+    assert "second-" not in sanitized
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+@pytest.mark.parametrize("escape_layers", [1, 2, 3])
+def test_sanitizer_tracks_escaped_quoted_fragments_inside_secret_value(
+    quote: str,
+    escape_layers: int,
+) -> None:
+    """多层 slash-escaped quoted fragment 的内部逗号仍属于凭据值。"""
+    wrapper = "\\" * escape_layers + quote
+    source = (
+        f"password=prefix{wrapper}{SECRET_MARKER}, second-escaped-secret"
+        f"{wrapper}, status=ok"
+    )
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == "password=***, status=ok"
+    assert SECRET_MARKER not in sanitized
+    assert "second-escaped-secret" not in sanitized
 
 
 def test_sanitizer_redacts_unquoted_multiword_secret_in_error_summary() -> None:
