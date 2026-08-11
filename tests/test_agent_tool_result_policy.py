@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from statistics import median
 from time import perf_counter
 from typing import Annotated, NamedTuple
@@ -211,6 +212,59 @@ def test_recursive_sanitizer_redacts_nested_structures_and_json_text() -> None:
     assert "***" in serialized
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "auth",
+        "basicAuth",
+        "authentication",
+        "httpAuthentication",
+        "credential",
+        "credentials",
+        "serviceCredentials",
+    ],
+)
+def test_recursive_sanitizer_redacts_credential_containers(
+    field_name: str,
+) -> None:
+    """认证与凭据容器必须在读取内部用户名或密码前整体遮蔽。"""
+    payload = {
+        field_name: ("alice", SECRET_MARKER),
+        "authEnabled": True,
+        "credentialCount": 1,
+    }
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized == {
+        field_name: "***",
+        "authEnabled": True,
+        "credentialCount": 1,
+    }
+    assert SECRET_MARKER not in str(sanitized)
+
+
+@pytest.mark.parametrize("field_name", ["oauth", "OAuth", "oauth2", "OAuth2"])
+def test_recursive_sanitizer_redacts_oauth_credential_containers(
+    field_name: str,
+) -> None:
+    """OAuth 容器判敏必须与字段大小写及数字分词无关。"""
+    payload = {
+        field_name: ("alice", SECRET_MARKER),
+        "oauthEnabled": True,
+        "OAuthVersion": 2,
+    }
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized == {
+        field_name: "***",
+        "oauthEnabled": True,
+        "OAuthVersion": 2,
+    }
+    assert SECRET_MARKER not in str(sanitized)
+
+
 def test_recursive_sanitizer_redacts_named_tuple_secret_fields() -> None:
     """命名元组必须保留字段语义并按字段名脱敏。"""
     payload = _NamedTupleCredential(
@@ -222,6 +276,36 @@ def test_recursive_sanitizer_redacts_named_tuple_secret_fields() -> None:
 
     assert sanitized == {"api_key": "***", "label": "visible-label"}
     assert SECRET_MARKER not in str(sanitized)
+
+
+def test_sanitizer_rejects_hostile_named_tuple_metadata_without_protocols() -> None:
+    """伪造的 `_fields` 与 tuple 覆盖协议不得参与 named-tuple 分类。"""
+    calls = []
+
+    class _HostileFields(tuple):
+        def __len__(self) -> int:
+            calls.append("fields.__len__")
+            raise AssertionError("hostile fields length executed")
+
+        def __getitem__(self, index):
+            calls.append("fields.__getitem__")
+            raise AssertionError("hostile fields item executed")
+
+    class _TupleLike(tuple):
+        _fields = _HostileFields(("label",))
+
+        def __len__(self) -> int:
+            calls.append("value.__len__")
+            raise AssertionError("hostile value length executed")
+
+        def __getitem__(self, index):
+            calls.append("value.__getitem__")
+            raise AssertionError("hostile value item executed")
+
+    sanitized = sanitize_for_host(_TupleLike(("visible",)))
+
+    assert calls == []
+    assert sanitized == ["visible"]
 
 
 @pytest.mark.parametrize(
@@ -466,6 +550,157 @@ def test_sanitizer_redacts_secret_assignments(
 def test_sanitizer_preserves_metadata_assignments(source: str) -> None:
     """带凭据词根但以 metadata 语义结尾的字段保持诊断价值。"""
     assert sanitize_for_host(source) == source
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["api key", "access token", "client secret", "refresh token"],
+)
+@pytest.mark.parametrize("quote", ['"', "'"])
+@pytest.mark.parametrize("escape_layers", range(4))
+def test_sanitizer_redacts_escaped_quoted_secret_keys_with_spaces(
+    field_name: str,
+    quote: str,
+    escape_layers: int,
+) -> None:
+    """转义 JSON 片段中的空格分隔凭据名必须复用结构化判敏语义。"""
+    wrapper = "\\" * escape_layers + quote
+    source = (
+        f"payload={{{wrapper}{field_name}{wrapper}:"
+        f"{wrapper}{SECRET_MARKER}{wrapper}}}"
+    )
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert SECRET_MARKER not in sanitized
+    assert "***" in sanitized
+    assert field_name in sanitized
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+@pytest.mark.parametrize("escape_layers", range(7))
+@pytest.mark.parametrize("leading_whitespace", [" ", "\t", " \t"])
+def test_sanitizer_redacts_quoted_secret_keys_with_leading_whitespace(
+    quote: str,
+    escape_layers: int,
+    leading_whitespace: str,
+) -> None:
+    """quoted key 的前导横向空白不得绕过凭据名识别。"""
+    wrapper = "\\" * escape_layers + quote
+    source = (
+        f"payload={{{wrapper}{leading_whitespace}api key{wrapper}:"
+        f"{wrapper}{SECRET_MARKER}{wrapper}}}"
+    )
+
+    outputs = (
+        str(sanitize_for_host(source)),
+        summarize_input(source),
+        summarize_result(source),
+        summarize_error(RuntimeError(source)),
+    )
+
+    assert all(SECRET_MARKER not in output for output in outputs)
+    assert all("***" in output for output in outputs)
+
+
+def test_sanitizer_preserves_escaped_quoted_metadata_key_with_spaces() -> None:
+    """空格分隔的 metadata key 不应因 quoted-key 支持而被误判。"""
+    source = r'payload=\"{\\\"token count\\\":12}\"'
+
+    assert sanitize_for_host(source) == source
+
+
+@pytest.mark.parametrize("header", ["Authorization", "Proxy-Authorization"])
+def test_sanitizer_redacts_basic_auth_in_builtin_tuple_key(
+    header: str,
+) -> None:
+    """内建 tuple key 中的 Basic Auth 与 URI userinfo 都不得进入输出 key。"""
+    basic_token = "YWxpY2U6c3ludGhldGljLXBhc3N3b3Jk"
+    payload = {
+        (
+            header,
+            f"Basic {basic_token} https://alice:{SECRET_MARKER}@example.invalid",
+        ): "ok"
+    }
+
+    sanitized = sanitize_for_host(payload)
+    output_key = next(iter(sanitized))
+
+    assert sanitized[output_key] == "ok"
+    assert basic_token not in output_key
+    assert SECRET_MARKER not in output_key
+    assert "Basic ***" in output_key
+    assert "https://***@example.invalid" in output_key
+
+
+@pytest.mark.parametrize("scheme", ["Basic", "basic", "BASIC"])
+@pytest.mark.parametrize(
+    "basic_token",
+    [
+        "dTpw",
+        "YWxpY2U6cA==",
+        "YWxpY2U6c3ludGhldGljLXBhc3N3b3Jk",
+    ],
+)
+def test_sanitizer_redacts_basic_auth_across_host_summaries(
+    scheme: str,
+    basic_token: str,
+) -> None:
+    """裸 Basic Auth token 在全部宿主摘要入口复用中央文本脱敏。"""
+    source = f"upstream returned {scheme} {basic_token}. status=failed"
+
+    outputs = (
+        str(sanitize_for_host(source)),
+        summarize_input(source),
+        summarize_result(source),
+        summarize_error(RuntimeError(source)),
+    )
+
+    assert all(basic_token not in output for output in outputs)
+    assert all(f"{scheme} ***" in output for output in outputs)
+    assert all("status=failed" in output for output in outputs)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "transport uses basic mode",
+        "scheme=Basic dG9rZW4=",
+    ],
+)
+def test_sanitizer_preserves_noncredential_basic_metadata(source: str) -> None:
+    """普通 basic 文案及不含 user:password 的 Base64 metadata 保持可见。"""
+    assert sanitize_for_host(source) == source
+
+
+def test_sanitizer_fails_closed_for_truncated_basic_auth_token() -> None:
+    """Basic token 在文本上限内未闭合时遮蔽整个已保留前缀。"""
+    prefix = "log: Basic "
+    token = base64.b64encode(
+        b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS
+    ).decode()
+    source = prefix + token
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert sanitized == f"{prefix}***<truncated>"
+    assert token[:100] not in sanitized
+
+
+def test_sanitizer_fails_closed_for_truncated_basic_auth_in_tuple_key() -> None:
+    """tuple renderer 的内部截断事实必须传给 Basic token 脱敏。"""
+    token = base64.b64encode(
+        b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS
+    ).decode()
+    payload = {("Authorization", f"Basic {token}"): "ok"}
+
+    sanitized = sanitize_for_host(payload)
+    output_key = next(iter(sanitized))
+
+    assert sanitized[output_key] == "ok"
+    assert "Basic ***" in output_key
+    assert "<truncated>" in output_key
+    assert token[:100] not in output_key
 
 
 @pytest.mark.parametrize(
@@ -787,37 +1022,29 @@ def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
     assert camel_pattern.max_chars <= 1024
 
 
-@pytest.mark.parametrize(
-    ("first_name", "second_name", "value", "expected"),
-    [
-        ("api_key", "label", SECRET_MARKER, "***"),
-        ("tokenCount", "api_key", 12, 12),
-    ],
-)
-def test_sanitizer_uses_one_snapshot_for_stateful_mapping_key(
-    first_name: str,
-    second_name: str,
+@pytest.mark.parametrize("value", [SECRET_MARKER, 12])
+def test_sanitizer_does_not_stringify_dynamic_mapping_key(
     value: object,
-    expected: object,
 ) -> None:
-    """动态 Mapping key 的输出名和判敏必须复用同一次字符串快照。"""
+    """动态 Mapping key 不执行字符串协议，值按未知字段保守遮蔽。"""
 
     class _StatefulKey:
-        """每次字符串化返回不同字段名的第三方 key。"""
+        """通过字符串协议伪装字段语义的第三方 key。"""
 
         def __init__(self) -> None:
             self.calls = 0
 
         def __str__(self) -> str:
             self.calls += 1
-            return first_name if self.calls == 1 else second_name
+            return "api_key"
 
     key = _StatefulKey()
 
     sanitized = sanitize_for_host({key: value})
 
-    assert key.calls == 1
-    assert sanitized == {first_name: expected}
+    assert key.calls == 0
+    assert sanitized == {"<key:_StatefulKey>": "***"}
+    assert SECRET_MARKER not in str(sanitized)
 
 
 def test_sanitizer_redacts_value_for_uninspectable_mapping_key() -> None:
@@ -1149,6 +1376,87 @@ def test_sanitizer_type_fallback_ignores_hostile_metaclass() -> None:
     assert escaped is False
     assert str(sanitized).startswith("<unavailable:")
     assert secret_marker not in str(sanitized)
+
+
+def test_sanitizer_does_not_stringify_unsupported_leaf_objects() -> None:
+    """未知叶对象只输出固定类型占位，不能执行无界字符串协议。"""
+
+    class _UnsupportedLeaf:
+        """记录 sanitizer 是否调用第三方字符串协议。"""
+
+        calls = 0
+        class_reads = 0
+
+        def __getattribute__(self, name: str):
+            if name == "__class__":
+                type(self).class_reads += 1
+            return object.__getattribute__(self, name)
+
+        def __str__(self) -> str:
+            type(self).calls += 1
+            return SECRET_MARKER
+
+    leaf = _UnsupportedLeaf()
+
+    sanitized = sanitize_for_host(leaf)
+    summary = summarize_result(leaf)
+
+    assert _UnsupportedLeaf.calls == 0
+    assert _UnsupportedLeaf.class_reads == 0
+    assert sanitized == "<unavailable:_UnsupportedLeaf>"
+    assert summary == "<unavailable:_UnsupportedLeaf>"
+    assert SECRET_MARKER not in summary
+
+
+def test_sanitizer_does_not_query_hostile_metaclass_for_dataclass_marker() -> None:
+    """未知叶对象的 dataclass 分派不得执行自定义 metaclass 属性协议。"""
+
+    class _HostileMeta(type):
+        dataclass_reads = 0
+
+        def __getattribute__(cls, name: str):
+            if name == "__dataclass_fields__":
+                reads = type.__getattribute__(_HostileMeta, "dataclass_reads")
+                type.__setattr__(_HostileMeta, "dataclass_reads", reads + 1)
+                raise RuntimeError(SECRET_MARKER)
+            return type.__getattribute__(cls, name)
+
+    class _UnsupportedLeaf(metaclass=_HostileMeta):
+        pass
+
+    sanitized = sanitize_for_host(_UnsupportedLeaf())
+
+    assert type.__getattribute__(_HostileMeta, "dataclass_reads") == 0
+    assert sanitized == "<unavailable:_UnsupportedLeaf>"
+    assert SECRET_MARKER not in sanitized
+
+
+def test_sanitizer_reads_exception_args_without_custom_string_protocol() -> None:
+    """异常摘要保留安全参数，但不得调用异常子类的自定义字符串协议。"""
+
+    class _HostileError(RuntimeError):
+        """通过字符串协议回显凭据的第三方异常。"""
+
+        calls = 0
+        class_reads = 0
+
+        def __getattribute__(self, name: str):
+            if name in ("__class__", "args"):
+                type(self).class_reads += 1
+            return RuntimeError.__getattribute__(self, name)
+
+        def __str__(self) -> str:
+            type(self).calls += 1
+            return SECRET_MARKER
+
+    error = _HostileError("operation=connect")
+
+    summary = summarize_error(error)
+
+    assert _HostileError.calls == 0
+    assert _HostileError.class_reads == 0
+    assert "operation=connect" in summary
+    assert SECRET_MARKER not in summary
 
 
 def test_sanitizer_bounds_json_shaped_text_before_parsing() -> None:

@@ -1,9 +1,11 @@
 """宿主工具输入、结果与异常的递归脱敏摘要。"""
 
+import base64
+import binascii
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import fields, is_dataclass
+from dataclasses import fields
 from typing import Any
 
 from pydantic import AliasChoices, AliasPath, BaseModel, ValidationError
@@ -48,7 +50,20 @@ _COMPACT_SECRET_SUFFIXES = (
     "secretkey",
     "token",
 )
+_SECRET_CONTAINER_SUFFIXES = (
+    "auth",
+    "authentication",
+    "credential",
+    "credentials",
+)
+_SECRET_CONTAINER_ENDINGS = tuple(
+    f"_{suffix}" for suffix in _SECRET_CONTAINER_SUFFIXES
+)
+_COMPACT_SECRET_CONTAINERS = frozenset(("oauth", "oauth2"))
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")
+_BASIC_AUTH_PATTERN = re.compile(
+    r"(?i)(\bbasic\s+)([A-Za-z0-9+/]+={0,2})(?![A-Za-z0-9+/=])"
+)
 _SENSITIVE_HEADER_PATTERN = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization|cookie|set-cookie|"
     r"x-api-key|api[_-]?key|api[_-]?token)\s*[:=]\s*)[^\r\n]+"
@@ -68,10 +83,9 @@ _CONTAINER_CLOSERS = frozenset(_CONTAINER_PAIRS.values())
 
 def _normalize_key(key: Any) -> str:
     """把结构化字段名转换为可比较的 snake_case。"""
-    try:
-        text = str(key)
-    except Exception:
+    if type(key) is not str:
         return ""
+    text = key
     # 凭据判定只依赖完整短字段或字段尾部，固定尾窗可保留后缀语义并限制同步扫描成本。
     if len(text) > _MAX_KEY_SCAN_CHARS:
         text = text[-_MAX_KEY_SCAN_CHARS:]
@@ -86,6 +100,12 @@ def _is_secret_key(key: Any) -> bool:
     if normalized in _SECRET_KEYS:
         return True
     compact = normalized.replace("_", "")
+    if compact in _COMPACT_SECRET_CONTAINERS:
+        return True
+    if normalized in _SECRET_CONTAINER_SUFFIXES or normalized.endswith(
+        _SECRET_CONTAINER_ENDINGS
+    ):
+        return True
     return compact.endswith(_COMPACT_SECRET_SUFFIXES)
 
 
@@ -119,6 +139,11 @@ def _is_assignment_key_start(char: str) -> bool:
 def _is_assignment_key_char(char: str) -> bool:
     """判断字符是否属于常见日志或配置字段名。"""
     return _is_assignment_key_start(char) or char in (".", "-")
+
+
+def _is_quoted_assignment_key_char(char: str) -> bool:
+    """quoted key 额外允许横向空白，普通文本字段名仍保持窄边界。"""
+    return _is_assignment_key_char(char) or char in (" ", "\t")
 
 
 def _quote_wrapper_at(value: str, start: int) -> tuple[str, int, int]:
@@ -243,6 +268,9 @@ def _find_assignment_header(
                 cursor = key_start
                 continue
             key_start = cursor
+        else:
+            while key_start < len(value) and value[key_start] in (" ", "\t"):
+                key_start += 1
         if key_start >= len(value) or not _is_assignment_key_start(
             value[key_start]
         ):
@@ -250,7 +278,10 @@ def _find_assignment_header(
             continue
 
         key_end = key_start + 1
-        while key_end < len(value) and _is_assignment_key_char(value[key_end]):
+        key_char_predicate = (
+            _is_quoted_assignment_key_char if quote else _is_assignment_key_char
+        )
+        while key_end < len(value) and key_char_predicate(value[key_end]):
             key_end += 1
 
         header_end = key_end
@@ -463,14 +494,39 @@ def _sanitize_uri_userinfo(value: str, *, truncated: bool = False) -> str:
     return "".join(fragments)
 
 
-def _sanitize_text(value: str) -> str:
+def _redact_basic_auth(
+    match: re.Match[str],
+    *,
+    truncated: bool = False,
+) -> str:
+    """仅遮蔽可解码为 `user:password` 的 Basic token。"""
+    if truncated and match.end(2) == len(match.string):
+        return f"{match.group(1)}{REDACTED_VALUE}"
+    token = match.group(2)
+    if len(token) % 4 == 1:
+        return match.group(0)
+    padded_token = token + "=" * (-len(token) % 4)
+    try:
+        decoded = base64.b64decode(padded_token, validate=True)
+    except (binascii.Error, ValueError):
+        return match.group(0)
+    if b":" not in decoded:
+        return match.group(0)
+    return f"{match.group(1)}{REDACTED_VALUE}"
+
+
+def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
     """清理非结构化文本中的常见凭据表达。"""
-    truncated = len(value) > _MAX_TEXT_CHARS
-    bounded_value = value[:_MAX_TEXT_CHARS] if truncated else value
+    truncated = truncated_input or len(value) > _MAX_TEXT_CHARS
+    bounded_value = value[:_MAX_TEXT_CHARS]
     sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, bounded_value)
     sanitized = _PRIVATE_KEY_OPEN_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _SENSITIVE_HEADER_PATTERN.sub(r"\1***", sanitized)
     sanitized = _BEARER_PATTERN.sub(r"\1***", sanitized)
+    sanitized = _BASIC_AUTH_PATTERN.sub(
+        lambda match: _redact_basic_auth(match, truncated=truncated),
+        sanitized,
+    )
     sanitized = _sanitize_uri_userinfo(sanitized, truncated=truncated)
     sanitized = _sanitize_assignments(sanitized)
     sanitized = _OPENAI_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
@@ -493,15 +549,66 @@ def _unavailable(value: Any) -> str:
 
 def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
     """返回合法命名元组的字段契约，普通 tuple 仍按序列处理。"""
-    if not isinstance(value, tuple):
+    value_type = type(value)
+    if not issubclass(value_type, tuple):
         return None
-    field_names = getattr(type(value), "_fields", None)
-    if not isinstance(field_names, tuple) or len(field_names) != len(value):
+    try:
+        field_names = type.__getattribute__(value_type, "_fields")
+    except Exception:
+        return None
+    if type(field_names) is not tuple or tuple.__len__(field_names) != tuple.__len__(
+        value
+    ):
         return None
     bounded_names = field_names[:_MAX_ITEMS]
-    if not all(isinstance(field_name, str) for field_name in bounded_names):
+    if not all(type(field_name) is str for field_name in bounded_names):
         return None
     return field_names
+
+
+def _bounded_mapping_key_text(key: Any) -> tuple[str, bool] | None:
+    """为受信内建 key 生成有界快照，未知对象不执行字符串协议。"""
+    if type(key) is str:
+        return key, False
+    if type(key) in (bool, int, float, type(None)):
+        return str(key), False
+    if type(key) is not tuple or len(key) > _MAX_ITEMS:
+        return None
+
+    fragments = []
+    remaining = _MAX_TEXT_CHARS - 2
+    truncated = False
+    for index, part in enumerate(key):
+        if type(part) is not str:
+            return None
+        separator = ", " if index else ""
+        if remaining <= len(separator):
+            truncated = True
+            break
+        fragments.append(separator)
+        remaining -= len(separator)
+        if len(part) > remaining:
+            fragments.append(part[:remaining])
+            truncated = True
+            remaining = 0
+            break
+        fragments.append(part)
+        remaining -= len(part)
+    text = f"({''.join(fragments)}"
+    return (text, True) if truncated else (f"{text})", False)
+
+
+def _is_dataclass_type(value_type: type) -> bool:
+    """绕过自定义 metaclass 协议检查 dataclass 类型标记。"""
+    try:
+        mro = type.__getattribute__(value_type, "__mro__")
+        return any(
+            "__dataclass_fields__"
+            in type.__getattribute__(candidate, "__dict__")
+            for candidate in mro
+        )
+    except Exception:
+        return False
 
 
 def _pydantic_alias_names(
@@ -599,9 +706,10 @@ def sanitize_for_host(
             return "<work-limit>"
         if _depth >= _MAX_DEPTH:
             return "<max-depth>"
-        if value is None or isinstance(value, (bool, int, float)):
+        value_type = type(value)
+        if value is None or value_type in (bool, int, float):
             return value
-        if isinstance(value, str):
+        if value_type is str:
             truncated = len(value) > _MAX_TEXT_CHARS
             if not truncated and value.strip().startswith(("{", "[")):
                 try:
@@ -615,17 +723,32 @@ def sanitize_for_host(
                         _seen=_seen,
                         _budget=budget,
                     )
-                    return json.dumps(sanitized_json, ensure_ascii=False, default=str)
+                    return json.dumps(sanitized_json, ensure_ascii=False)
             return _sanitize_text(value)
-        if isinstance(value, (bytes, bytearray, memoryview)):
+        if value_type in (bytes, bytearray, memoryview):
             return f"<bytes:{len(value)}>"
-        if isinstance(value, ValidationError):
+        if issubclass(value_type, ValidationError):
             return _validation_error_details(value)
 
         seen = _seen if _seen is not None else set()
-        track_identity = (
-            isinstance(value, (BaseModel, Mapping, Sequence, set, frozenset))
-            or is_dataclass(value)
+        is_exception = issubclass(value_type, BaseException)
+        is_model = issubclass(value_type, BaseModel)
+        is_mapping = issubclass(value_type, Mapping)
+        is_set = issubclass(value_type, (set, frozenset))
+        is_sequence = issubclass(value_type, Sequence) and not issubclass(
+            value_type,
+            (str, bytes, bytearray),
+        )
+        is_dataclass_value = _is_dataclass_type(value_type)
+        track_identity = any(
+            (
+                is_exception,
+                is_model,
+                is_mapping,
+                is_set,
+                is_sequence,
+                is_dataclass_value,
+            )
         )
         value_id = id(value)
         if track_identity:
@@ -634,9 +757,21 @@ def sanitize_for_host(
             seen.add(value_id)
 
         try:
-            if isinstance(value, BaseModel):
+            if is_exception:
+                try:
+                    error_args = BaseException.__getattribute__(value, "args")
+                except Exception:
+                    return _unavailable(value)
+                return sanitize_for_host(
+                    error_args,
+                    _depth=_depth + 1,
+                    _seen=seen,
+                    _budget=budget,
+                )
+
+            if is_model:
                 sanitized = {}
-                model_fields = getattr(type(value), "model_fields", {})
+                model_fields = getattr(value_type, "model_fields", {})
                 for index, field_name in enumerate(model_fields):
                     if index >= _MAX_ITEMS:
                         sanitized["<truncated>"] = "more fields"
@@ -663,14 +798,14 @@ def sanitize_for_host(
                     )
                 return sanitized
 
-            if is_dataclass(value) and not isinstance(value, type):
+            if is_dataclass_value:
                 sanitized = {}
                 pydantic_fields = getattr(
-                    type(value),
+                    value_type,
                     "__pydantic_fields__",
                     None,
                 )
-                for index, field_info in enumerate(fields(value)):
+                for index, field_info in enumerate(fields(value_type)):
                     if index >= _MAX_ITEMS:
                         sanitized["<truncated>"] = "more fields"
                         break
@@ -712,7 +847,7 @@ def sanitize_for_host(
                         sanitized["<work-limit>"] = "more fields"
                         break
                     output_key = _sanitize_text(field_name)
-                    item = value[index]
+                    item = tuple.__getitem__(value, index)
                     sanitized[output_key] = (
                         REDACTED_VALUE
                         if _is_secret_key(field_name)
@@ -723,11 +858,11 @@ def sanitize_for_host(
                             _budget=budget,
                         )
                     )
-                if len(named_tuple_fields) > _MAX_ITEMS:
+                if tuple.__len__(named_tuple_fields) > _MAX_ITEMS:
                     sanitized["<truncated>"] = "more fields"
                 return sanitized
 
-            if isinstance(value, Mapping):
+            if is_mapping:
                 sanitized = {}
                 items = iter(value.items())
                 for index in range(_MAX_ITEMS + 1):
@@ -742,8 +877,14 @@ def sanitize_for_host(
                         sanitized["<truncated>"] = "more items"
                         break
                     try:
-                        key_text = str(key)
-                        output_key = _sanitize_text(key_text)
+                        key_snapshot = _bounded_mapping_key_text(key)
+                        if key_snapshot is None:
+                            raise TypeError("unsupported mapping key")
+                        key_text, key_truncated = key_snapshot
+                        output_key = _sanitize_text(
+                            key_text,
+                            truncated_input=key_truncated,
+                        )
                         secret_key = _is_secret_key(key_text)
                     except Exception:
                         output_key = f"<key:{stable_type_name(key)}>"
@@ -760,10 +901,7 @@ def sanitize_for_host(
                     )
                 return sanitized
 
-            if isinstance(value, (set, frozenset)) or (
-                isinstance(value, Sequence)
-                and not isinstance(value, (str, bytes, bytearray))
-            ):
+            if is_set or is_sequence:
                 items = iter(value)
                 sanitized_items = []
                 for index in range(_MAX_ITEMS + 1):
@@ -787,11 +925,7 @@ def sanitize_for_host(
                     )
                 return sanitized_items
 
-            try:
-                text = str(value)
-            except Exception:
-                return _unavailable(value)
-            return _sanitize_text(text)
+            return _unavailable(value)
         finally:
             if track_identity:
                 seen.discard(value_id)
@@ -807,7 +941,7 @@ def _bounded_summary(value: Any, *, max_chars: int) -> str:
     else:
         # 保留调用方字段顺序，避免排序后由大型低价值字段挤掉前部诊断信息。
         try:
-            text = json.dumps(sanitized, ensure_ascii=False, default=str)
+            text = json.dumps(sanitized, ensure_ascii=False)
         except Exception:
             text = _unavailable(sanitized)
     if max_chars <= 0:
