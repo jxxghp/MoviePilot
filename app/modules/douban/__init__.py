@@ -17,6 +17,7 @@ from app.schemas.types import MediaType, ModuleType, MediaRecognizeType
 from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.limit import rate_limit_exponential
+from app.utils.media import is_media_source_enabled
 from app.utils.zhconv import convert as zhconv_convert
 
 
@@ -844,9 +845,7 @@ class DoubanModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if source and source != "douban":
-            return None
-        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "douban"):
             return None
         if not meta.name:
             return []
@@ -865,9 +864,7 @@ class DoubanModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if source and source != "douban":
-            return None
-        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "douban"):
             return None
         if not meta.name:
             return []
@@ -886,9 +883,7 @@ class DoubanModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if source and source != "douban":
-            return None
-        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "douban"):
             return None
         if not name:
             return []
@@ -913,9 +908,7 @@ class DoubanModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if source and source != "douban":
-            return None
-        if not source and settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "douban"):
             return None
         if not name:
             return []

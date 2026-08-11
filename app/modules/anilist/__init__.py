@@ -9,6 +9,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
 from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
+from app.utils.media import is_media_source_enabled
 
 
 class AniListModule(_ModuleBase):
@@ -309,9 +310,7 @@ class AniListModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 统一媒体信息列表
         """
-        if source and source != "anilist":
-            return None
-        if not source and settings.SEARCH_SOURCE and "anilist" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "anilist"):
             return None
         if not meta or not meta.name:
             return []
@@ -331,9 +330,7 @@ class AniListModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 统一媒体信息列表
         """
-        if source and source != "anilist":
-            return None
-        if not source and settings.SEARCH_SOURCE and "anilist" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "anilist"):
             return None
         if not meta or not meta.name:
             return []

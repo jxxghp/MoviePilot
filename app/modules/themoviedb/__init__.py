@@ -16,6 +16,7 @@ from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.schemas.category import CategoryConfig
 from app.schemas.types import MediaType, MediaImageType, ModuleType, MediaRecognizeType
 from app.utils.http import RequestUtils
+from app.utils.media import is_media_source_enabled, is_media_source_selected
 from app.utils.zhconv import convert as zhconv_convert
 
 
@@ -744,9 +745,7 @@ class TheMovieDbModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 媒体信息列表
         """
-        if source and source != "themoviedb":
-            return None
-        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "themoviedb"):
             return None
         if not meta.name:
             return []
@@ -778,9 +777,7 @@ class TheMovieDbModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if source and source != "themoviedb":
-            return None
-        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "themoviedb"):
             return None
         if not name:
             return []
@@ -798,9 +795,7 @@ class TheMovieDbModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if source and source != "themoviedb":
-            return None
-        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "themoviedb"):
             return None
         if not name:
             return []
@@ -818,7 +813,7 @@ class TheMovieDbModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 合集信息列表
         """
-        if source and source != "themoviedb":
+        if source and not is_media_source_selected(source, "themoviedb"):
             return None
         if not name:
             return []
@@ -836,7 +831,7 @@ class TheMovieDbModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 合集信息列表
         """
-        if source and source != "themoviedb":
+        if source and not is_media_source_selected(source, "themoviedb"):
             return None
         if not name:
             return []
@@ -1232,9 +1227,7 @@ class TheMovieDbModule(_ModuleBase):
         :param source: 请求级搜索数据源
         :return: 媒体信息列表
         """
-        if source and source != "themoviedb":
-            return None
-        if not source and settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+        if not is_media_source_enabled(source, "themoviedb"):
             return None
         if not meta.name:
             return []

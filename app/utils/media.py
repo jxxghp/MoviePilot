@@ -1,5 +1,7 @@
 from typing import Any, Optional, Tuple
 
+from app.core.config import settings
+
 
 MEDIA_SOURCE_ALIASES = {
     "tmdb": "themoviedb",
@@ -30,6 +32,38 @@ def normalize_media_source(source: Optional[str]) -> Optional[str]:
         return None
     normalized = str(source).strip().casefold()
     return MEDIA_SOURCE_ALIASES.get(normalized, normalized or None)
+
+
+def is_media_source_selected(source: Optional[str], source_key: str) -> bool:
+    """
+    判断请求级搜索数据源列表（逗号分隔，可为多个）中是否包含指定数据源。
+
+    :param source: 请求级搜索数据源，逗号分隔多个来源，空表示不作限制
+    :param source_key: 当前模块对应的数据源标识
+    :return: 是否包含
+    """
+    if not source:
+        return True
+    normalized_key = normalize_media_source(source_key) or source_key
+    return normalized_key in [
+        normalize_media_source(item) for item in str(source).split(",")
+    ]
+
+
+def is_media_source_enabled(source: Optional[str], source_key: str) -> bool:
+    """
+    判断媒体搜索时数据源是否启用：请求级 source（逗号分隔多数据源）优先，
+    未指定时回退到全局 SEARCH_SOURCE 配置，两者均未配置时全部启用。
+
+    :param source: 请求级搜索数据源，逗号分隔多个来源
+    :param source_key: 当前模块对应的数据源标识
+    :return: 是否启用
+    """
+    if source:
+        return is_media_source_selected(source, source_key)
+    if settings.SEARCH_SOURCE:
+        return is_media_source_selected(settings.SEARCH_SOURCE, source_key)
+    return True
 
 
 def parse_media_key(media_key: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
