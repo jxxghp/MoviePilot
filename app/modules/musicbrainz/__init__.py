@@ -154,12 +154,12 @@ class MusicBrainzModule(_ModuleBase):
         queries: list[str] = []
         for query in [
             cls._build_query(meta),
-            f'recording:"{cls._escape_query(title)}"',
-            f'recording:"{cls._escape_query(bare_title)}" AND artist:"{cls._escape_query(artist)}"'
+            f"recording:{cls._query_phrase(title)}" if title else None,
+            f'recording:{cls._query_phrase(bare_title)} AND artist:"{cls._escape_query(artist)}"'
             if artist and bare_title and bare_title != title else None,
             # 艺术家署名变体（外文艺名等）导致 AND 条件零命中时，仅按主体曲名检索，
             # 候选挑选阶段要求艺术家命中兜住同名异曲
-            f'recording:"{cls._escape_query(bare_title)}"' if bare_title else None,
+            f"recording:{cls._query_phrase(bare_title)}" if bare_title else None,
         ]:
             if query and query not in queries:
                 queries.append(query)
@@ -216,13 +216,13 @@ class MusicBrainzModule(_ModuleBase):
         bare_title = cls._normalize_text(bare_title)
         queries: list[str] = []
         for query in [
-            f'releasegroup:"{cls._escape_query(title)}" AND artist:"{cls._escape_query(artist)}"'
+            f'releasegroup:{cls._query_phrase(title)} AND artist:"{cls._escape_query(artist)}"'
             if artist else None,
-            f'releasegroup:"{cls._escape_query(title)}"',
-            f'releasegroup:"{cls._escape_query(bare_title)}" AND artist:"{cls._escape_query(artist)}"'
+            f"releasegroup:{cls._query_phrase(title)}" if title else None,
+            f'releasegroup:{cls._query_phrase(bare_title)} AND artist:"{cls._escape_query(artist)}"'
             if artist and bare_title and bare_title != title else None,
             # 署名变体兜底：仅按去注释专辑名检索，挑选阶段要求艺术家同时命中
-            f'releasegroup:"{cls._escape_query(bare_title)}"' if bare_title else None,
+            f"releasegroup:{cls._query_phrase(bare_title)}" if bare_title else None,
         ]:
             if query and query not in queries:
                 queries.append(query)
@@ -231,15 +231,12 @@ class MusicBrainzModule(_ModuleBase):
     def _search_artists(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
         """按用户输入中的艺术家部分搜索 Artist 浏览候选。"""
         artist_name = meta.artists[0] if meta.artists else meta.title
-        if not artist_name:
+        phrase = self._query_phrase(artist_name)
+        if not phrase:
             return []
         payload = self._request_json(
             "/artist",
-            params={
-                "query": f'artist:"{self._escape_query(artist_name)}"',
-                "limit": max(1, min(limit, 100)),
-                "fmt": "json",
-            },
+            params={"query": f"artist:{phrase}", "limit": max(1, min(limit, 100)), "fmt": "json"},
         )
         return [
             artist.to_music_info()
@@ -582,6 +579,7 @@ class MusicBrainzModule(_ModuleBase):
             if normalized_source and (candidate.source or "").casefold() != normalized_source:
                 continue
             score = 0
+            title_match = False
             # 多艺术家资源任一命中即可，联名候选不会因主艺术家顺序失配
             artist_match = bool(meta.artists) and any(
                 cls._same_text(artist_name, candidate_artist)
@@ -590,6 +588,7 @@ class MusicBrainzModule(_ModuleBase):
             )
             if clean_title and cls._same_text(clean_title, candidate.title):
                 score += 4
+                title_match = True
             elif (
                 bare_title
                 and artist_match
@@ -602,6 +601,7 @@ class MusicBrainzModule(_ModuleBase):
                 )
             ):
                 score += 2
+                title_match = True
             if artist_match:
                 score += 3
             if meta.album and cls._same_text(meta.album, candidate.album):
@@ -613,8 +613,11 @@ class MusicBrainzModule(_ModuleBase):
             if meta.year and candidate.year and int(meta.year) == int(candidate.year):
                 score += 1
             # 已知艺术家时，艺术家未命中的候选不能采信（ISRC 精确身份除外），
-            # 兜住宽检索阶梯下同名异曲的误配
-            if meta.artists and not artist_match and not isrc_match:
+            # 兜住宽检索阶梯下同名异曲的误配；CJK 逐字 OR 检索召回宽，
+            # 标题未命中的候选同样不能仅凭艺术家署名得分（ISRC 除外）
+            if (meta.artists and not artist_match and not isrc_match) or (
+                not title_match and not isrc_match
+            ):
                 score = 0
             ranked.append((score, candidate))
         if not ranked:
@@ -696,8 +699,35 @@ class MusicBrainzModule(_ModuleBase):
         """忽略大小写、空白与标点差异比较两个音乐文本字段。"""
         compact_left = cls._match_text(left)
         compact_right = cls._match_text(right)
-        # 空文本不参与比对，避免缺失字段被误判为相等
-        return bool(compact_left) and compact_left == compact_right
+        if compact_left and compact_left == compact_right:
+            return True
+        # 条目与资源标题的汉字数字写法不一致（十三首/13首），归一后再比对
+        return bool(compact_left) and cls._convert_cjk_numerals(
+            compact_left) == cls._convert_cjk_numerals(compact_right)
+
+    # 常见汉字数字归一为阿拉伯数字：十三首/13首、二十周年/20周年 在条目与资源标题间混用
+    _CJK_DIGIT_MAP = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+                      "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+    _CJK_NUMERAL_RUN_RE = re.compile(r"[零一二两三四五六七八九十百]+")
+
+    @classmethod
+    def _convert_cjk_numerals(cls, value: str) -> str:
+        """将文本中连续的汉字数字转换为阿拉伯数字，支持十位与百位组合。"""
+
+        def _convert(run: str) -> str:
+            total, current = 0, 0
+            for char in run:
+                if char in cls._CJK_DIGIT_MAP:
+                    current = cls._CJK_DIGIT_MAP[char]
+                elif char == "十":
+                    total += (current or 1) * 10
+                    current = 0
+                elif char == "百":
+                    total += (current or 1) * 100
+                    current = 0
+            return str(total + current)
+
+        return cls._CJK_NUMERAL_RUN_RE.sub(lambda m: _convert(m.group()), str(value or ""))
 
     @classmethod
     def _normalize_text(cls, value: Optional[str]) -> str:
@@ -839,7 +869,7 @@ class MusicBrainzModule(_ModuleBase):
         # 资源标题先剥离音质标记，避免规格文本污染检索式导致零命中
         title = cls._search_title(meta.title)
         if title:
-            clauses.append(f'recording:"{cls._escape_query(title)}"')
+            clauses.append(f"recording:{cls._query_phrase(title)}")
         if meta.artists:
             clauses.append(f'artist:"{cls._escape_query(meta.artists[0])}"')
         if meta.album:
@@ -852,6 +882,47 @@ class MusicBrainzModule(_ModuleBase):
     def _escape_query(value: str) -> str:
         """转义 MusicBrainz 查询中的引号和反斜线。"""
         return value.replace("\\", "\\\\").replace('"', '\\"').strip()
+
+    # 中日韩字符：Lucene 标准分词器不会切分连续 CJK，短语检索对中文标题永远零命中
+    _QUERY_CJK_RE = re.compile(
+        r"[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]")
+    # 检索词元切分：按空白、标点与括号拆分，保留 CJK 串与拉丁词（括号对逐字检索无意义）
+    _QUERY_TOKEN_SPLIT_RE = re.compile(
+        r"[\s\-–—−－。，、；：！？·．…()（）「」『』【】\[\]《》]+")
+
+    @classmethod
+    def _query_phrase(cls, value: Optional[str]) -> Optional[str]:
+        """构造适配 Lucene 分词的检索表达式。
+
+        无 CJK 的普通文本返回带引号短语；含 CJK 的文本拆为词元后用 OR 交集检索，
+        MusicBrainz 索引中连续 CJK 是单一词元，逐字 OR 才能命中（「茹此精彩十三首」）；
+        过宽的召回由候选挑选阶段的标题与艺术家比对收紧。
+        """
+        text = str(value or "").strip()
+        if not text:
+            return None
+        if not cls._QUERY_CJK_RE.search(text):
+            return f'"{cls._escape_query(text)}"'
+        tokens = [
+            token for token in cls._QUERY_TOKEN_SPLIT_RE.split(text) if token.strip()
+        ]
+        if not tokens:
+            return None
+        parts = [
+            f'"{cls._escape_query(token)}"'
+            if not cls._QUERY_CJK_RE.search(token) else cls._or_group(
+                [f'"{cls._escape_query(char)}"' for char in token]
+            )
+            for token in tokens
+        ]
+        return cls._or_group(parts)
+
+    @staticmethod
+    def _or_group(parts: list[str]) -> str:
+        """拼接 OR 检索表达式，多项时用括号包裹避免与外层 AND 产生优先级歧义。"""
+        if len(parts) == 1:
+            return parts[0]
+        return "(" + " OR ".join(parts) + ")"
 
     @classmethod
     def _recording_to_info(cls, recording: dict[str, Any]) -> Optional[MusicInfo]:

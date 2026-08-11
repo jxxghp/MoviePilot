@@ -35,7 +35,8 @@ def test_build_query_strips_audio_quality_tokens():
         )
     )
 
-    assert query == 'recording:"永远是朋友" AND artist:"毛阿敏"'
+    # CJK 短语在 Lucene 索引中是单一词元，检索式拆为逐字 OR，OR 组带括号避免 AND 优先级歧义
+    assert query == 'recording:("永" OR "远" OR "是" OR "朋" OR "友") AND artist:"毛阿敏"'
 
 
 def test_select_candidate_matches_traditional_chinese_title():
@@ -165,8 +166,8 @@ def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):
     assert results[1].album == "叶惠美"
     assert results[2].title == "周杰伦"
     assert results[2].artists == []
-    assert requested[1][1]["query"] == 'releasegroup:"晴天" AND artist:"周杰伦"'
-    assert requested[2][1]["query"] == 'artist:"周杰伦"'
+    assert requested[1][1]["query"] == 'releasegroup:("晴" OR "天") AND artist:"周杰伦"'
+    assert requested[2][1]["query"] == 'artist:("周" OR "杰" OR "伦")'
 
 
 def test_file_recognition_searches_recordings_only(monkeypatch):
@@ -608,11 +609,29 @@ def test_recording_queries_ladder_relaxes_to_bare_title_last():
         MetaMusic(title="晴天 (电影版)", artists=["周杰伦"])
     )
 
-    assert queries[0] == 'recording:"晴天 (电影版)" AND artist:"周杰伦"'
-    assert queries[1] == 'recording:"晴天 (电影版)"'
-    assert queries[2] == 'recording:"晴天" AND artist:"周杰伦"'
+    full = '("晴" OR "天") OR ("电" OR "影" OR "版")'
+    assert queries[0] == f'recording:({full}) AND artist:"周杰伦"'
+    assert queries[1] == f'recording:({full})'
+    assert queries[2] == 'recording:("晴" OR "天") AND artist:"周杰伦"'
     # 署名变体兜底放在最后，由候选挑选的艺术家要求收紧
-    assert queries[-1] == 'recording:"晴天"'
+    assert queries[-1] == 'recording:("晴" OR "天")'
+
+
+def test_query_phrase_latin_unchanged_and_cjk_char_or():
+    """拉丁文本保持短语检索，CJK 文本拆为逐字 OR，混合文本按词元拆分。"""
+    assert MusicBrainzModule._query_phrase("Fearless") == '"Fearless"'
+    assert MusicBrainzModule._query_phrase("晴天") == '("晴" OR "天")'
+    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3") == (
+        '(("好" OR "歌" OR "茹" OR "芸") OR "Vol." OR "3")'
+    )
+    assert MusicBrainzModule._query_phrase("") is None
+
+
+def test_same_text_normalizes_cjk_numerals():
+    """汉字数字与阿拉伯数字写法差异不应阻断候选比对。"""
+    assert MusicBrainzModule._same_text("茹此精彩十三首", "茹此精彩13首")
+    assert MusicBrainzModule._same_text("二十周年演唱会", "20周年演唱会")
+    assert not MusicBrainzModule._same_text("茹此精彩十三首", "茹此精彩14首")
 
 
 def test_select_candidate_rejects_wrong_artist_same_title():
@@ -627,6 +646,21 @@ def test_select_candidate_rejects_wrong_artist_same_title():
     )
 
     assert MusicBrainzModule._select_candidate(meta, [wrong_artist], source="musicbrainz") is None
+
+
+def test_select_candidate_rejects_artist_only_match():
+    """CJK 逐字 OR 检索召回宽，标题未命中的候选不能仅凭艺术家署名被采信。"""
+    meta = MetaMusic(title="茹此精彩十三首", artists=["许茹芸"])
+    same_artist_other_song = MusicInfo(
+        source="musicbrainz",
+        music_type="recording",
+        media_id="recording-wrong",
+        title="半首歌",
+        artists=["许茹芸"],
+    )
+
+    assert MusicBrainzModule._select_candidate(
+        meta, [same_artist_other_song], source="musicbrainz") is None
 
 
 def test_select_album_candidate_requires_title_and_artist():
