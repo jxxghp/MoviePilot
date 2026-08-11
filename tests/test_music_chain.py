@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.meta import MetaMusic
@@ -307,7 +308,7 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
         album="完美的一天",
         cover_url="https://coverartarchive.org/release-group/album-1/front-500",
     )
-    chain = MusicChain()
+    chain = MediaChain()
     recognize = AsyncMock(return_value=info)
     monkeypatch.setattr(AudioMetadataHelper, "read", lambda path: meta)
     monkeypatch.setattr(chain, "async_recognize_media", recognize)

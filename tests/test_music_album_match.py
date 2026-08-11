@@ -1,5 +1,6 @@
 import pytest
 
+from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.core.context import MusicAlbumInfo, MusicInfo
 from app.core.meta import MetaMusic
@@ -177,7 +178,7 @@ def test_recognize_album_directory_skips_single_file(tmp_path, music_chain, monk
     assert music_chain.recognize_album_directory(album_dir) == {}
 
 
-def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, music_chain, monkeypatch):
+def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch):
     """单曲识别无远端身份时应用目录级匹配结果兜底。"""
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
@@ -192,16 +193,16 @@ def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, music_chain
         album="七里香",
         track_number=1,
     )
+    # recognize_music_by_path 已下沉至 MediaChain 统一识别入口
+    chain = MediaChain()
+    monkeypatch.setattr(chain, "recognize_media", lambda **kwargs: None)
     monkeypatch.setattr(
-        music_chain, "recognize_media", lambda **kwargs: None
-    )
-    monkeypatch.setattr(
-        music_chain,
-        "recognize_album_directory",
-        lambda path: {str(file.resolve()): matched_info},
+        chain,
+        "_music_album_dir_fallback",
+        lambda path: matched_info,
     )
 
-    meta, info = music_chain.recognize_music_by_path(file)
+    meta, info = chain.recognize_music_by_path(file)
 
     assert info.media_id == "rec-1"
     assert info.title == "我的地盘"

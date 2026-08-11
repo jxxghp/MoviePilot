@@ -14,7 +14,9 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
     chain = Mock()
     chain.recognize_media.return_value = media_info
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain:
+        # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
+        mock_chain.is_audio_path.return_value = False
         result = scrape(
             fileitem=fileitem,
             storage="alist",
@@ -46,7 +48,9 @@ def test_scrape_keeps_automatic_recognition_compatible() -> None:
     chain = Mock()
     chain.recognize_by_path.return_value = Context(meta_info=meta_info, media_info=media_info)
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain:
+        # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
+        mock_chain.is_audio_path.return_value = False
         result = scrape(
             fileitem=fileitem,
             storage="alist",
