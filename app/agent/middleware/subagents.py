@@ -24,7 +24,16 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
 
 from app.agent.llm import LLMHelper
+from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.utils import append_to_system_message
+from app.agent.policy import (
+    AuthSource,
+    PrincipalType,
+    ToolOrigin,
+    ToolPolicyContext,
+    sanitize_for_host,
+    summarize_error,
+)
 from app.agent.runtime import SubAgentDefinition, agent_runtime_manager
 from app.agent.tools.tags import ToolTag
 from app.log import logger
@@ -91,6 +100,36 @@ Requirements:
 - If user confirmation or a high-impact change is needed, explain why the main agent must confirm it instead of executing it yourself.
 - Return a concise structured Chinese result with key evidence, judgment, and recommended next step.
 """
+
+
+def _default_subagent_policy_context(tools: list[BaseTool]) -> ToolPolicyContext:
+    """从已注入工具继承会话归属，确保独立构造的子图也经过宿主策略。"""
+    for tool in tools:
+        session_id = getattr(tool, "_session_id", None)
+        user_id = getattr(tool, "_user_id", None)
+        if not session_id and not user_id:
+            continue
+        agent_context = getattr(tool, "_agent_context", None)
+        if not isinstance(agent_context, dict):
+            agent_context = {}
+        return ToolPolicyContext(
+            session_id=str(session_id or "subagent"),
+            user_id=str(user_id or "subagent"),
+            origin=ToolOrigin.SUBAGENT,
+            principal_type=PrincipalType.SUBAGENT,
+            auth_source=AuthSource.INTERNAL,
+            agent_context=agent_context,
+            channel=getattr(tool, "_channel", None),
+            source=getattr(tool, "_source", None),
+        )
+    return ToolPolicyContext(
+        session_id="subagent",
+        user_id="subagent",
+        origin=ToolOrigin.SUBAGENT,
+        principal_type=PrincipalType.SUBAGENT,
+        auth_source=AuthSource.INTERNAL,
+        agent_context={},
+    )
 
 
 @dataclass(frozen=True)
@@ -378,12 +417,14 @@ class _SubAgentAgentProvider:
         profiles: tuple[_SubAgentProfile, ...],
         tools: list[BaseTool],
         server_tools: Optional[list[dict[str, Any]]] = None,
+        policy_context: Optional[ToolPolicyContext] = None,
     ) -> None:
         """初始化子代理执行器。"""
         self._model = model
         self._profiles = {profile.name: profile for profile in profiles}
         self._tools = tools
         self._server_tools = server_tools or []
+        self._policy_context = policy_context or _default_subagent_policy_context(tools)
         self._agents = {}
         self._default_agent_name = "general-purpose"
 
@@ -409,6 +450,7 @@ class _SubAgentAgentProvider:
             tools=[*subagent_tools, *self._server_tools],
             system_prompt=profile.prompt,
             name=profile.name,
+            middleware=[AgentPolicyMiddleware(context=self._policy_context)],
         )
         self._agents[profile.name] = agent
         return profile.name, agent
@@ -444,7 +486,7 @@ class _SubAgentAgentProvider:
         except Exception as err:
             logger.error(
                 f"子代理调用失败: subagent_type={agent_name}, "
-                f"task_id={log_task_id}, error={err}"
+                f"task_id={log_task_id}, error={summarize_error(err)}"
             )
             raise
         final_text = _extract_final_text(result)
@@ -468,6 +510,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         system_prompt: str = SUBAGENT_PARENT_PROMPT,
         task_description: str = SUBAGENT_TASK_DESCRIPTION,
         stream_handler: Any = None,
+        policy_context: Optional[ToolPolicyContext] = None,
     ) -> None:
         """初始化同步子代理中间件。"""
         self.system_prompt = system_prompt
@@ -477,6 +520,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
             profiles=profiles,
             tools=tools,
             server_tools=server_tools,
+            policy_context=policy_context,
         )
         self.tools = [
             StructuredTool.from_function(
@@ -527,9 +571,12 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
             return await handler(request)
 
         tool_args = _extract_tool_call_args(request)
+        logged_args = sanitize_for_host(tool_args)
+        if not isinstance(logged_args, dict):
+            logged_args = {}
         logger.info(
             f"开始执行子代理工具: tool_name={tool_name}, "
-            f"subagent_type={tool_args.get('subagent_type') or '-'}"
+            f"subagent_type={logged_args.get('subagent_type') or '-'}"
         )
         _record_subagent_tool_call(
             stream_handler=self.stream_handler,
@@ -539,7 +586,10 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         try:
             result = await handler(request)
         except Exception as err:
-            logger.error(f"子代理工具执行失败: tool_name={tool_name}, error={err}")
+            logger.error(
+                f"子代理工具执行失败: tool_name={tool_name}, "
+                f"error={summarize_error(err)}"
+            )
             raise
         logger.info(f"子代理工具执行完成: tool_name={tool_name}")
         return result
@@ -557,6 +607,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         server_tools: Optional[list[dict[str, Any]]] = None,
         task_description: str = SUBAGENT_CONTROL_DESCRIPTION,
         stream_handler: Any = None,
+        policy_context: Optional[ToolPolicyContext] = None,
     ) -> None:
         """初始化异步子代理调度中间件。"""
         self.stream_handler = stream_handler
@@ -565,6 +616,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             profiles=profiles,
             tools=tools,
             server_tools=server_tools,
+            policy_context=policy_context,
         )
         self._semaphore = asyncio.Semaphore(SUBAGENT_MAX_CONCURRENT_TASKS)
         self._tasks: dict[str, _SubAgentRuntimeTask] = {}
@@ -628,7 +680,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
         error = record.task.exception()
         if error:
-            payload["error"] = str(error)
+            payload["error"] = summarize_error(error)
             return payload
 
         result, result_truncated = _clip_text(
@@ -733,7 +785,10 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 )
                 raise
             except Exception as err:
-                logger.error(f"子代理任务执行失败: task_id={record.task_id}, error={err}")
+                logger.error(
+                    f"子代理任务执行失败: task_id={record.task_id}, "
+                    f"error={summarize_error(err)}"
+                )
                 raise
 
     def _mark_task_finished(self, task_id: str, task: asyncio.Task) -> None:
@@ -901,7 +956,10 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 )
                 raise
             except Exception as err:
-                logger.error(f"管道子代理任务执行失败: task_id={record.task_id}, error={err}")
+                logger.error(
+                    f"管道子代理任务执行失败: task_id={record.task_id}, "
+                    f"error={summarize_error(err)}"
+                )
                 raise
 
     @staticmethod
@@ -975,8 +1033,13 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 )
                 return records, error
             except Exception as err:
-                error = f"第 {step_index} 个管道子代理任务执行失败: {err}"
-                logger.info(f"{error} task_id={record.task_id}")
+                error = (
+                    f"第 {step_index} 个管道子代理任务执行失败: "
+                    f"{summarize_error(err)}"
+                )
+                logger.info(
+                    f"{error} task_id={record.task_id}"
+                )
                 return records, error
 
             previous_results.append((record, result))
@@ -1003,7 +1066,10 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 tasks=tasks,
             )
             if error:
-                logger.info(f"子代理管控操作未启动任务: action={action}, error={error}")
+                logger.info(
+                    f"子代理管控操作未启动任务: action={action}, "
+                    f"error={sanitize_for_host(error)}"
+                )
                 return self._json_response({"success": False, "error": error})
 
             logger.info(f"准备启动子代理任务: action={action}, tasks={len(specs)}")
@@ -1095,10 +1161,13 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             return await handler(request)
 
         tool_args = _extract_tool_call_args(request)
+        logged_args = sanitize_for_host(tool_args)
+        if not isinstance(logged_args, dict):
+            logged_args = {}
         logger.info(
             f"开始执行子代理工具: tool_name={tool_name}, "
-            f"action={tool_args.get('action') or '-'}, "
-            f"subagent_type={tool_args.get('subagent_type') or '-'}"
+            f"action={logged_args.get('action') or '-'}, "
+            f"subagent_type={logged_args.get('subagent_type') or '-'}"
         )
         _record_subagent_tool_call(
             stream_handler=self.stream_handler,
@@ -1108,7 +1177,10 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         try:
             result = await handler(request)
         except Exception as err:
-            logger.error(f"子代理工具执行失败: tool_name={tool_name}, error={err}")
+            logger.error(
+                f"子代理工具执行失败: tool_name={tool_name}, "
+                f"error={summarize_error(err)}"
+            )
             raise
         logger.info(f"子代理工具执行完成: tool_name={tool_name}")
         return result
@@ -1120,6 +1192,7 @@ def create_subagent_middlewares(
     tools: list[BaseTool],
     server_tools: Optional[list[dict[str, Any]]] = None,
     stream_handler: Any = None,
+    policy_context: Optional[ToolPolicyContext] = None,
 ) -> tuple[list[AgentMiddleware], list[BaseTool]]:
     """创建子代理中间件列表和任务工具列表。"""
     runtime_signature = agent_runtime_manager.current_signature()
@@ -1130,6 +1203,7 @@ def create_subagent_middlewares(
         tools=tools,
         server_tools=server_tools or [],
         stream_handler=stream_handler,
+        policy_context=policy_context,
     )
     control_middleware = SubAgentTaskControlMiddleware(
         model=model,
@@ -1137,6 +1211,7 @@ def create_subagent_middlewares(
         tools=tools,
         server_tools=server_tools or [],
         stream_handler=stream_handler,
+        policy_context=policy_context,
     )
 
     task_tools = [
