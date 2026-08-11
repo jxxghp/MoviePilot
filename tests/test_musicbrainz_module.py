@@ -720,6 +720,55 @@ def test_select_album_candidate_matches_contained_title():
     assert matched.media_id == "album-1"
 
 
+def test_soundtrack_body_extracts_movie_name():
+    """原声带描述词尾部剔除返回电影名本体，非原声带标题与词内后缀不受影响。"""
+    body = MusicBrainzModule._soundtrack_body
+    assert body("Pulp Fiction Original Motion Picture Soundtrack") == "Pulp Fiction"
+    assert body("Reply 1988 OST") == "Reply 1988"
+    # Ghost 尾部的 ost 是单词组成部分，不能剔除
+    assert body("Ghost") == ""
+    assert body("晴天") == ""
+
+
+def test_search_title_strips_repeated_trailing_year():
+    """场景命名重复携带的尾部年份应全部剥离，避免年份文本阻断精确匹配。"""
+    assert MusicBrainzModule._search_title("Live At Montreux 2011 2011") == "Live At Montreux"
+    # 纯年份标题无前导空白不受影响
+    assert MusicBrainzModule._search_title("1999") == "1999"
+
+
+def test_album_queries_include_soundtrack_body():
+    """原声带专辑检索阶梯应包含电影名本体变体。"""
+    queries = MusicBrainzModule._album_queries(
+        MetaMusic(title="Pulp Fiction Original Motion Picture Soundtrack",
+                  artists=["Various Artists"], year=1994)
+    )
+
+    assert 'releasegroup:"Pulp Fiction" AND artist:"Various Artists"' in queries
+
+
+def test_select_album_candidate_matches_soundtrack_body():
+    """条目以冒号副标题保留描述词时，电影名本体一致应弱匹配命中。"""
+    meta = MetaMusic(
+        title="Pulp Fiction Original Motion Picture Soundtrack",
+        artists=["Various Artists"],
+        year=1994,
+    )
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-1",
+        title="Pulp Fiction: Music From the Motion Picture",
+        artists=["Various Artists"],
+        year=1994,
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-1"
+
+
 def test_select_candidate_rejects_wrong_artist_same_title():
     """已知艺术家时，同名异曲的候选不能因标题相等被采信。"""
     meta = MetaMusic(title="因为有你", artists=["毛阿敏"])

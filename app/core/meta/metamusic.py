@@ -251,10 +251,10 @@ _MUSIC_DATE_PREFIX_RE = re.compile(
 _MUSIC_ARTIST_SEPARATOR_RE = re.compile(r"\s*(?:&|,|，|、|/)\s*")
 # 合辑资源的 Various Artists 署名别名：VA 是场景命名常用缩写，
 # 归一为 MusicBrainz 规范署名 Various Artists 才能命中合辑条目
-_MUSIC_ARTIST_ALIASES = {"va": "Various Artists"}
-# VA-Title 无空格连字符前缀写法（场景命名），主拆分不适用需单独处理
+_MUSIC_ARTIST_ALIASES = {"va": "Various Artists", "various artists": "Various Artists"}
+# VA-Title / Various Artists-Title 无空格连字符前缀写法（场景命名），主拆分不适用需单独处理
 _MUSIC_ALIAS_PREFIX_RE = re.compile(
-    r"^\s*(?P<alias>VA)\s*[-–—−－]\s*(?P<title>.+\S)\s*$",
+    r"^\s*(?P<alias>VA|Various\.?\s*Artists)\s*[-–—−－]\s*(?P<title>.+\S)\s*$",
     re.IGNORECASE,
 )
 # 艺术家与曲名的主分隔：半角/全角空格包裹的连字符（- – — − －）
@@ -566,7 +566,9 @@ class MetaMusic(MetaBase):
             # 场景命名的 VA-Title 无空格连字符写法，主拆分不适用，按别名前缀单独拆分
             alias_match = None if self.artists else _MUSIC_ALIAS_PREFIX_RE.match(cleaned)
             if alias_match:
-                self.artists = [_MUSIC_ARTIST_ALIASES[alias_match.group("alias").casefold()]]
+                # 别名前缀均为合辑署名写法，未收录变体统一归一为 Various Artists
+                self.artists = [_MUSIC_ARTIST_ALIASES.get(
+                    alias_match.group("alias").casefold(), "Various Artists")]
                 self._finalize_title(self._clean_tail(alias_match.group("title")))
             else:
                 # CJK 标题常见「专辑名-歌手」无空格连字符写法，主拆分未命中时兑底反向拆分

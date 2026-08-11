@@ -200,6 +200,23 @@ class MusicBrainzModule(_ModuleBase):
         """剔除标题尾部的卷号后缀，返回专辑本体名。"""
         return cls._normalize_text(cls._VOLUME_SUFFIX_RE.sub("", str(value or "")))
 
+    # 原声带资源标题的通用描述词尾部（条目本体是电影名）；
+    # 尾部描述词保留时作为原声带形态标记参与弱匹配判定
+    _SOUNDTRACK_SUFFIX_RE = re.compile(
+        r"\s*(?:original\s+motion\s+picture|motion\s+picture)?\s*"
+        r"(?<![A-Za-z0-9])(?:original\s+)?(?:soundtrack|score|ost)$",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _soundtrack_body(cls, value: Optional[str]) -> str:
+        """剔除原声带标题尾部的通用描述词，返回电影名本体；无描述词返回空串。"""
+        text = str(value or "").strip()
+        body = cls._SOUNDTRACK_SUFFIX_RE.sub("", text)
+        if not body or body == text:
+            return ""
+        return cls._normalize_text(body)
+
     # 演唱会资源的标题常带演出后缀（S.H.E十七音乐会），条目仅保留演出名本体
     _PERFORMANCE_SUFFIX_RE = re.compile(
         r"\s*(?:音乐会|音樂會|演唱会|演唱會|巡回|巡演|Live|Tour)$", re.IGNORECASE)
@@ -261,6 +278,12 @@ class MusicBrainzModule(_ModuleBase):
         # 专辑名开头的艺术家署名前缀同样是命名习惯，用主体名检索
         title = cls._strip_artist_prefix(title, meta.artists)
         bare_title = cls._strip_artist_prefix(bare_title, meta.artists)
+        # 原声带标题的通用描述词（Original Motion Picture Soundtrack）在条目中常省略，
+        # 用电影名本体补充一级检索（The Hateful Eight / Pulp Fiction）；
+        # 本体过短（The Score 类）时不作为独立检索目标避免噪声
+        soundtrack_body = cls._soundtrack_body(bare_title)
+        if len(cls._match_text(soundtrack_body)) < 4:
+            soundtrack_body = ""
         queries: list[str] = []
         for query in [
             f'releasegroup:{cls._query_phrase(title)} AND artist:"{cls._escape_query(artist)}"'
@@ -268,6 +291,9 @@ class MusicBrainzModule(_ModuleBase):
             f"releasegroup:{cls._query_phrase(title)}" if title else None,
             f'releasegroup:{cls._query_phrase(bare_title)} AND artist:"{cls._escape_query(artist)}"'
             if artist and bare_title and bare_title != title else None,
+            f'releasegroup:{cls._query_phrase(soundtrack_body)} AND artist:"{cls._escape_query(artist)}"'
+            if artist and soundtrack_body else None,
+            f"releasegroup:{cls._query_phrase(soundtrack_body)}" if soundtrack_body else None,
             # 署名变体兜底：仅按去注释专辑名检索，挑选阶段要求艺术家同时命中
             f"releasegroup:{cls._query_phrase(bare_title)}" if bare_title else None,
         ]:
@@ -739,6 +765,15 @@ class MusicBrainzModule(_ModuleBase):
                         cls._performance_title(bare_title)
                         and cls._same_text(cls._performance_title(bare_title), album_title)
                     )
+                    # 原声带资源的描述词在条目中常省略（Pulp Fiction: Music From the…），
+                    # 电影名本体与条目标题或主标题一致视为弱匹配
+                    or (
+                        len(cls._match_text(cls._soundtrack_body(bare_title))) >= 4
+                        and (
+                            cls._same_text(cls._soundtrack_body(bare_title), album_title)
+                            or cls._same_text(cls._soundtrack_body(bare_title), cls._main_title(album_title))
+                        )
+                    )
                 )
             ):
                 # 「我爱夜 (新歌+精选)」对位条目「我爱夜」这类注释差异
@@ -844,8 +879,14 @@ class MusicBrainzModule(_ModuleBase):
         # 格式标记后紧跟的场景发布组标签（如 ALAC-HHWEB），整体剔除
         text = re.sub(r"[-–—]\s*[A-Z0-9]{3,}\s*$", "", text)
         # 曲名尾部独立年份是发行线索不是曲名一部分（解析阶段通常已提取），
-        # 检索时剥离避免年份文本造成精确短语零命中
-        text = re.sub(r"(?<!\d)\s+(?:19|20)\d{2}$", "", cls._normalize_text(text))
+        # 反复剥离尾部年份：场景命名可能重复携带（Live At Montreux 2011 2011）
+        text = cls._normalize_text(text)
+        while True:
+            # 仅剔除空白分隔的尾部年份，纯年份标题（1999）无前导空白不受影响
+            stripped = re.sub(r"\s+(?:19|20)\d{2}$", "", text)
+            if stripped == text:
+                break
+            text = stripped
         return cls._normalize_text(text)
 
     def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:

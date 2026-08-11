@@ -171,6 +171,14 @@ def test_apply_title_strips_video_tokens():
     assert meta.year == 2018
 
 
+def test_apply_title_splits_various_artists_prefix():
+    """场景命名的 Various Artists-Title 无空格连字符前缀应拆分为合辑署名。"""
+    meta = parse_title("Various.Artists-Reply.1988.OST")
+
+    assert meta.artists == ["Various Artists"]
+    assert meta.title == "Reply 1988 OST"
+
+
 def test_apply_title_restores_letter_abbrev():
     """单字母点号缩写还原不误伤合法缩写与单词。"""
     meta = parse_title("E.S.Posthumus - Ashielf Alpen FLAC")
