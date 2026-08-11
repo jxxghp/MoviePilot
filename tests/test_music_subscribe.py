@@ -593,3 +593,21 @@ def test_follow_preserves_album_entity_and_track_count():
     assert subscribe_oper.exist_history.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
     assert add.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
     assert add.call_args.kwargs["total_tracks"] == 11
+
+
+def test_refresh_enables_music_entry_fetch_when_music_subscribe_exists():
+    """存在音乐订阅时，订阅刷新应要求种子链额外抓取站点音乐专用入口。"""
+    chain = SubscribeChain()
+    subscribe_oper = Mock()
+    # get_subscribed_sites 不带状态查询，has_music_subscribe 按可搜索状态查询
+    subscribe_oper.list.side_effect = lambda state=None: [_subscribe(state="R")]
+    torrents_chain = Mock()
+    torrents_chain.refresh.return_value = {}
+
+    with patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.SystemConfigOper") as system_config, \
+            patch("app.chain.subscribe.TorrentsChain", return_value=torrents_chain):
+        system_config.return_value.get.return_value = []
+        chain.refresh()
+
+    assert torrents_chain.refresh.call_args.kwargs["include_music"] is True

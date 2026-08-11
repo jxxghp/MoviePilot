@@ -254,9 +254,14 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 | GET | `/api/v1/tmdb/cache` | 查询 TheMovieDb 识别缓存统计、共享识别累计成功命中次数及开关状态 |
 | DELETE | `/api/v1/tmdb/cache/{cache_key}` | 按缓存键删除单条 TheMovieDb 识别缓存，缓存键需要进行 URL 编码 |
 | DELETE | `/api/v1/tmdb/cache` | 清空全部 TheMovieDb 识别缓存 |
+| GET | `/api/v1/music/cache` | 查询 MusicBrainz 音乐识别缓存统计及条目列表 |
+| DELETE | `/api/v1/music/cache/{cache_key}` | 按缓存键删除单条音乐识别缓存，缓存键需要进行 URL 编码 |
+| DELETE | `/api/v1/music/cache` | 清空全部音乐识别缓存 |
 
 TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`、`data`，以及共享识别统计字段
 `shared_recognized` 和开关字段 `shared_recognize_enabled`。共享命中次数仅在共享结果驱动的二次媒体识别成功后累计。
+
+音乐识别缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized` 和 `data`；条目字段包括缓存键、`media_id`、`title`、`artists`、`album`、`year`、`music_type` 和 `cover_url`。未携带远端身份的兜底负缓存仅保留在内存，不参与持久化。
 
 ### 插件补充接口
 

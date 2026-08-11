@@ -32,6 +32,14 @@ def _get_search_url(indexer: dict, keyword: str | list[str], mtype: MediaType = 
     return spider._SiteSpider__get_search_url()
 
 
+def _get_browse_url(indexer: dict, mtype: MediaType = None, page: int = 0) -> str:
+    """
+    调用 SiteSpider 无关键词浏览的 URL 构造逻辑，模拟订阅刷新抓取首页。
+    """
+    spider = SiteSpider(indexer=indexer, keyword=None, mtype=mtype, page=page)
+    return spider._SiteSpider__get_search_url()
+
+
 def _get_haidan_params(keyword: str | None, mtype: MediaType = None) -> dict:
     """
     调用 HaiDanSpider 私有参数构造逻辑，避免真实请求站点。
@@ -215,6 +223,64 @@ def test_typed_search_path_falls_back_to_all_path():
     parsed_url = urlparse(_get_search_url(indexer, "电影", MediaType.MOVIE))
 
     assert parsed_url.path == "/torrents.php"
+
+
+def test_music_browse_uses_dedicated_music_entry():
+    """
+    订阅刷新浏览音乐资源时应使用站点的音乐专用入口，而不是默认首页。
+    """
+    indexer = _build_indexer(
+        id="hhanclub",
+        domain="https://hhanclub.net/",
+        search={
+            "paths": [
+                {"path": "torrents.php", "type": "all"},
+                {"path": "special.php", "type": "music"},
+            ],
+            "params": {"search": "{keyword}"},
+        },
+    )
+
+    assert urlparse(_get_browse_url(indexer, MediaType.MUSIC)).path == "/special.php"
+    # 未指定媒体类型时仍浏览默认首页，保持影视刷新行为不变
+    assert urlparse(_get_browse_url(indexer)).path == "/torrents.php"
+
+
+def test_music_browse_overrides_browse_config_path():
+    """
+    同时配置 browse 路径和音乐专用路径时，音乐浏览应优先使用专用入口。
+    """
+    indexer = _build_indexer(
+        search={
+            "paths": [
+                {"path": "torrents.php", "type": "all"},
+                {"path": "music.php", "type": "music"},
+            ],
+            "params": {"search": "{keyword}"},
+        },
+        browse={"path": "browse.php"},
+    )
+
+    assert urlparse(_get_browse_url(indexer, MediaType.MUSIC)).path == "/music.php"
+    assert urlparse(_get_browse_url(indexer)).path == "/browse.php"
+
+
+def test_browse_pagination_appends_existing_query_string():
+    """
+    浏览路径自带查询参数时翻页应追加 & 连接符，不能拼出两个问号。
+    """
+    indexer = _build_indexer(
+        search={
+            "paths": [{"path": "torrents.php?action=advanced&searchstr={keyword}"}],
+        },
+    )
+
+    browse_url = _get_browse_url(indexer, page=1)
+
+    assert browse_url.count("?") == 1
+    query = parse_qs(urlparse(browse_url).query)
+    assert query["page"] == ["1"]
+    assert query["action"] == ["advanced"]
 
 
 def test_category_item_can_use_distinct_search_parameter_value():

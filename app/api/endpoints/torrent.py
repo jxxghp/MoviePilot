@@ -118,8 +118,11 @@ async def delete_cache(
         if len(cache_data[domain]) == original_count:
             return schemas.Response(success=False, message="未找到指定的种子")
 
-        # 保存更新后的缓存
-        await torrents_chain.async_save_cache(cache_data, torrents_chain.cache_file)
+        # 保存更新后的缓存：影视与音乐分别回写各自存储文件
+        video_cache, music_cache = torrents_chain.split_cache_contexts(cache_data)
+        video_file, music_file = torrents_chain.cache_files()
+        await torrents_chain.async_save_cache(video_cache, video_file)
+        await torrents_chain.async_save_cache(music_cache, music_file)
 
         return schemas.Response(success=True, message="种子删除成功")
     except Exception as e:
@@ -248,8 +251,11 @@ async def reidentify_cache(
         # 更新上下文中的媒体信息
         target_context.media_info = mediainfo
 
-        # 保存更新后的缓存
-        await torrents_chain.async_save_cache(cache_data, TorrentsChain().cache_file)
+        # 保存更新后的缓存：影视与音乐分别回写各自存储文件
+        video_cache, music_cache = torrents_chain.split_cache_contexts(cache_data)
+        video_file, music_file = torrents_chain.cache_files()
+        await torrents_chain.async_save_cache(video_cache, video_file)
+        await torrents_chain.async_save_cache(music_cache, music_file)
 
         return schemas.Response(
             success=True,

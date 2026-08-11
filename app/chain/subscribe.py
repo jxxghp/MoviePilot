@@ -2081,6 +2081,8 @@ class SubscribeChain(ChainBase):
         torrents = TorrentsChain().refresh(
             sites=sites,
             progress_callback=_update_refresh_progress if progress_callback else None,
+            # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
+            include_music=self.has_music_subscribe(),
         )
         self.match(
             torrents,
@@ -2131,6 +2133,13 @@ class SubscribeChain(ChainBase):
             ret_sites = list(set(ret_sites))
 
         return ret_sites
+
+    def has_music_subscribe(self) -> bool:
+        """判断是否存在可搜索状态的音乐订阅，用于决定是否额外刷新站点音乐入口。"""
+        return any(
+            subscribe.type == MediaType.MUSIC.value
+            for subscribe in SubscribeOper().list(self.get_states_for_search('R')) or []
+        )
 
     def match(
             self,

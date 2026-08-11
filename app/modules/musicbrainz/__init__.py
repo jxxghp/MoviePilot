@@ -19,6 +19,7 @@ from app.core.context import (
 from app.core.meta import MetaBase, MetaMusic
 from app.log import logger
 from app.modules import _ModuleBase
+from app.modules.musicbrainz.music_cache import MusicBrainzCache
 from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
 from app.utils.http import RequestUtils
 from app.utils.zhconv import convert as zhconv_convert
@@ -36,6 +37,8 @@ class MusicBrainzModule(_ModuleBase):
     _request_interval = 1.0
     _request_lock = threading.Lock()
     _last_request_at = 0.0
+    # 本地识别缓存，由模块管理器初始化时挂载
+    cache: MusicBrainzCache = None
     # 全局复用 HTTP 会话：keep-alive 省去每次请求的 DNS+TLS 握手（约 6s → 0.4s）
     _session: Optional[Session] = None
     _session_lock = threading.Lock()
@@ -72,14 +75,32 @@ class MusicBrainzModule(_ModuleBase):
     )
 
     def init_module(self) -> None:
-        """初始化无状态的 MusicBrainz 模块。"""
+        """初始化 MusicBrainz 模块并挂载本地识别缓存。"""
+        self.cache = MusicBrainzCache()
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """MusicBrainz 无需独立密钥或启用开关。"""
         return None
 
     def stop(self) -> None:
-        """停止模块；当前实现没有需要释放的持久资源。"""
+        """停止模块，退出前持久化识别缓存。"""
+        if self.cache:
+            try:
+                self.cache.save()
+            except Exception as err:
+                logger.error(f"保存音乐识别缓存失败：{str(err)}")
+
+    def scheduler_job(self) -> None:
+        """定时任务，每10分钟持久化一次音乐识别缓存。"""
+        if self.cache:
+            self.cache.save()
+
+    def clear_cache(self) -> None:
+        """响应全局缓存清理事件，清空音乐识别缓存。"""
+        logger.info("开始清除音乐识别缓存 ...")
+        if self.cache:
+            self.cache.clear()
+        logger.info("音乐识别缓存清除完成")
 
     def test(self) -> Tuple[bool, str]:
         """测试 MusicBrainz 搜索接口连通性。"""
@@ -610,11 +631,23 @@ class MusicBrainzModule(_ModuleBase):
             if source == self._source and mediaid:
                 return self.recognize_music(source, str(mediaid))
             return None
+        # 识别缓存命中直接响应，避免重复搜索占用 MusicBrainz 限流配额
+        cache_enabled = bool(kwargs.get("cache", True))
+        if cache_enabled and self.cache:
+            cached_info = self.cache.get(meta)
+            if cached_info:
+                if cached_info.media_id:
+                    logger.info(f"{meta.title} 使用音乐识别缓存：{cached_info.title}")
+                else:
+                    logger.info(f"{meta.title} 使用音乐识别缓存：无法识别")
+                cached_info.recognize_cache_hit = True
+                return cached_info
         # 携带数据源与原生 ID 的请求优先按详情识别
         resolved_source = source or meta.media_source
         if resolved_source and (mediaid or meta.media_id):
             info = self.recognize_music(resolved_source, str(mediaid or meta.media_id))
             if info:
+                self._update_recognize_cache(meta, info)
                 return info
         # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兑底
         # 文件识别只能从 Recording 中挑选，专辑或艺术家同名结果不能成为音轨身份。
@@ -626,7 +659,38 @@ class MusicBrainzModule(_ModuleBase):
         if not matched and meta.artists:
             albums = self._search_albums(meta, limit=10)
             matched = self._select_album_candidate(meta, albums)
-        return matched or self._info_from_meta(meta)
+        result = matched or self._info_from_meta(meta)
+        # 无远端身份的兑底结果同样入缓存，避免批量识别时反复搜索同一文件
+        self._update_recognize_cache(meta, result)
+        return result
+
+    def _update_recognize_cache(self, meta: MetaMusic, info: Optional[MusicInfo]) -> None:
+        """识别完成后把结果写入本地识别缓存，未挂载缓存时静默跳过。"""
+        if self.cache:
+            self.cache.update(meta, info)
+
+    def update_recognize_cache(
+            self,
+            meta: MetaBase,
+            mediainfo: MusicInfo,
+    ) -> Optional[bool]:
+        """回填音乐本地识别缓存，共享识别成功后避免重复回查。"""
+        if not meta or not mediainfo:
+            return None
+        if not isinstance(meta, MetaMusic) or not isinstance(mediainfo, MusicInfo):
+            return None
+        if mediainfo.source != self._source:
+            return None
+        self._update_recognize_cache(meta, mediainfo)
+        return True
+
+    async def async_update_recognize_cache(
+            self,
+            meta: MetaBase,
+            mediainfo: MusicInfo,
+    ) -> Optional[bool]:
+        """异步回填音乐本地识别缓存。"""
+        return self.update_recognize_cache(meta=meta, mediainfo=mediainfo)
 
     async def async_recognize_media(
             self,

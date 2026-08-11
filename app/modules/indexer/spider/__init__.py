@@ -165,6 +165,8 @@ class SiteSpider:
         # 种子搜索相对路径
         paths = self.search.get('paths', [])
         torrentspath = ""
+        # 是否选中了媒体类型专用路径，浏览模式下专用路径优先于 browse 配置
+        typed_path_selected = False
         if len(paths) == 1:
             torrentspath = paths[0].get('path', '')
         else:
@@ -183,6 +185,7 @@ class SiteSpider:
                     not expected_type and path_type == "all"
                 ):
                     torrentspath = path.get('path', '')
+                    typed_path_selected = bool(expected_type and path_type == expected_type)
                     break
             if not torrentspath:
                 torrentspath = fallback_path
@@ -282,16 +285,18 @@ class SiteSpider:
                 "page": self.page or 0,
                 "keyword": ""
             }
-            # 有单独浏览路径
-            if self.browse:
+            # 有单独浏览路径；指定了媒体类型专用路径时不覆盖，确保音乐等专用入口可达
+            if self.browse and not typed_path_selected:
                 torrentspath = self.browse.get("path")
                 if self.browse.get("start"):
                     start_page = int(self.browse.get("start")) + int(self.page or 0)
                     inputs_dict.update({
                         "page": start_page
                     })
-            elif self.page:
-                torrentspath = torrentspath + f"?page={self.page}"
+            elif self.page and "{page}" not in str(torrentspath):
+                # 按路径是否已带查询参数选择连接符，避免拼出两个问号的非法地址
+                separator = "&" if "?" in str(torrentspath) else "?"
+                torrentspath = torrentspath + f"{separator}page={self.page}"
             # 搜索Url
             searchurl = self.domain + str(torrentspath).format(**inputs_dict)
 

@@ -8,11 +8,14 @@ from app.chain.music import MusicChain
 from app.schemas.types import MediaType
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.security import verify_token
+from app.db.models.user import User
+from app.db.user_oper import get_current_active_superuser_async
 from app.modules.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,
     LISTENBRAINZ_FRESH_SORTS,
 )
+from app.modules.musicbrainz.music_cache import MusicBrainzCache
 
 router = APIRouter()
 
@@ -65,6 +68,53 @@ async def recognize_music(
     if not info:
         raise HTTPException(status_code=404, detail="未识别到音乐信息")
     return _serialize_music(info)
+
+
+@router.get(
+    "/cache", summary="查询音乐识别缓存", response_model=schemas.Response
+)
+async def music_recognition_cache(
+    _: User = Depends(get_current_active_superuser_async),
+) -> schemas.Response:
+    """查询可管理的 MusicBrainz 识别缓存。"""
+    cache_items = MusicBrainzCache().list_items()
+    recognized_count = sum(1 for item in cache_items if item["media_id"])
+    return schemas.Response(
+        success=True,
+        data={
+            "count": len(cache_items),
+            "recognized": recognized_count,
+            "unrecognized": len(cache_items) - recognized_count,
+            "data": cache_items,
+        },
+    )
+
+
+@router.delete(
+    "/cache/{cache_key:path}",
+    summary="删除指定音乐识别缓存",
+    response_model=schemas.Response,
+)
+async def delete_music_recognition_cache(
+    cache_key: str,
+    _: User = Depends(get_current_active_superuser_async),
+) -> schemas.Response:
+    """按缓存键删除单条 MusicBrainz 识别缓存。"""
+    deleted_item = MusicBrainzCache().delete(cache_key)
+    if not deleted_item:
+        return schemas.Response(success=False, message="音乐识别缓存不存在")
+    return schemas.Response(success=True, message="音乐识别缓存删除成功")
+
+
+@router.delete(
+    "/cache", summary="清空音乐识别缓存", response_model=schemas.Response
+)
+async def clear_music_recognition_cache(
+    _: User = Depends(get_current_active_superuser_async),
+) -> schemas.Response:
+    """清空全部 MusicBrainz 识别缓存。"""
+    MusicBrainzCache().clear()
+    return schemas.Response(success=True, message="音乐识别缓存清理完成")
 
 
 @router.get(
