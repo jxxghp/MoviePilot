@@ -221,7 +221,7 @@ class UpdateSubscribeTool(MoviePilotTool):
                 subscribe_dict["season"] = season
 
             # 集数相关
-            if total_episode is not None:
+            if total_episode is not None and total_episode != subscribe.total_episode:
                 subscribe_dict["total_episode"] = total_episode
                 # 如果总集数增加，缺失集数也要相应增加
                 if total_episode > (subscribe.total_episode or 0):
@@ -346,6 +346,7 @@ class UpdateSubscribeTool(MoviePilotTool):
                     "season": updated_subscribe.season,
                     "state": updated_subscribe.state,
                     "total_episode": updated_subscribe.total_episode,
+                    "manual_total_episode": updated_subscribe.manual_total_episode,
                     "lack_episode": updated_subscribe.lack_episode,
                     "start_episode": updated_subscribe.start_episode,
                     "quality": updated_subscribe.quality,

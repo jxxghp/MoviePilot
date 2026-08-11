@@ -213,6 +213,8 @@ class QuerySubscribesTool(MoviePilotTool):
                     ).model_dump(
                         include=set(QUERY_SUBSCRIBE_OUTPUT_FIELDS), exclude_none=True
                     )
+                    # 手动总集数是运行锁状态，不属于公共订阅写入 Schema，查询时直接从实体读取。
+                    payload["manual_total_episode"] = subscribe.manual_total_episode or 0
                     payload["type"] = media_type_to_agent(payload.get("type"))
                     if payload["type"] == "music" and not payload.get("music_type"):
                         payload["music_type"] = "recording"
