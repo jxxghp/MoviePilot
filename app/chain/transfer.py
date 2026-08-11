@@ -1197,6 +1197,40 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         file_info.listen_count = saved_info.listen_count
         return file_meta, file_info
 
+    @staticmethod
+    def _is_music_retry_source(history: TransferHistory, src_path: Path) -> bool:
+        """
+        判断重新整理来源是否应走音乐链路：历史类型为音乐，或源路径为音频文件。
+        """
+        if history.type == MediaType.MUSIC.value:
+            return True
+        return src_path.suffix.lower() in settings.RMT_AUDIOEXT
+
+    def _recognize_music_retry_media(
+            self,
+            history: TransferHistory,
+            src_path: Path,
+    ) -> Optional[MusicInfo]:
+        """
+        重新整理重试时恢复音乐信息。
+
+        优先按历史记录中的 MusicBrainz 身份恢复；单音频文件回退按音频标签与文件名识别；
+        音乐专辑目录返回 None，交由整理链按音频后缀逐文件解析识别。
+        """
+        if history.media_source and history.media_id:
+            retry_info = self.recognize_media(
+                mtype=MediaType.MUSIC,
+                source=history.media_source,
+                mediaid=history.media_id,
+            )
+            if retry_info:
+                return retry_info
+        if src_path.is_file():
+            # 音频走统一路径识别入口，自动路由到音乐识别链
+            recognize_context = MediaChain().recognize_by_path(str(src_path))
+            return recognize_context.media_info if recognize_context else None
+        return None
+
     def __is_allowed_file(self, fileitem: FileItem) -> bool:
         """
         判断是否允许的扩展名
@@ -2511,6 +2545,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     downloadhis: DownloadHistory = DownloadHistoryOper().get_by_hash(
                         torrent.hash
                     )
+                    # 下载记录中的媒体类型作为整理类型来源，无下载记录时留空由文件后缀兜底
+                    mtype: Optional[MediaType] = None
                     if downloadhis:
                         # 类型
                         try:
@@ -2551,9 +2587,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             extension=file_path.suffix.lstrip("."),
                         ),
                         mediainfo=mediainfo,
-                            downloader=torrent.downloader,
-                            download_hash=torrent.hash,
-                        )
+                        mtype=mtype,
+                        downloader=torrent.downloader,
+                        download_hash=torrent.hash,
+                    )
                     if progress_callback:
                         progress_callback(
                             value=index / total_num * 100,
@@ -3209,14 +3246,31 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 return built_meta
             return _apply_meta_overrides(built_meta, source_path)
 
+        def _has_reliable_video_source() -> bool:
+            """
+            是否存在可靠的影视类型来源；存在时音频按附加音轨解析，
+            避免影视场景的音频文件误入音乐识别。
+            """
+            if mtype is not None:
+                return mtype != MediaType.MUSIC
+            # 预载媒体信息为非音乐时，整批整理视为影视上下文
+            return mediainfo is not None and not isinstance(mediainfo, MusicInfo)
+
         def _build_path_meta(
                 source_path: Path,
                 custom_word_list: Optional[List[str]] = None,
+                force_video: Optional[bool] = False,
         ) -> Optional[MetaBase]:
             """
             从文件路径识别媒体信息，用于判断附加文件是否属于当前主视频。
+            :param force_video: 强制按视频解析，附加文件归属匹配专用，避免音乐判定干扰归属比较
             """
-            if mtype == MediaType.MUSIC and source_path.suffix.lower() in self._audio_exts:
+            # 音频后缀且无可靠影视类型来源时按音乐解析，走 MusicBrainz 识别链
+            if (
+                    not force_video
+                    and source_path.suffix.lower() in self._audio_exts
+                    and not _has_reliable_video_source()
+            ):
                 path_meta = AudioMetadataHelper.read(source_path)
             else:
                 # 影视场景附加音轨（如评论音轨）强制按视频解析，保留季集归属
@@ -3475,9 +3529,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 custom_words_key = tuple(custom_word_list or [])
                 cache_key = (extra_path.as_posix(), custom_words_key)
                 if cache_key not in extra_meta_cache:
+                    # 归属匹配专用视频解析：此处目的是判断附加文件是否跟随主视频，
+                    # 若按音乐解析会导致影视目录内的音频无法与主视频比较归属
                     extra_meta_cache[cache_key] = _build_path_meta(
                         extra_path,
                         custom_word_list=list(custom_words_key) or None,
+                        force_video=True,
                     )
                 return extra_meta_cache[cache_key]
 
@@ -3950,7 +4007,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
         # 类型
         type_str = id_strs[1] if len(id_strs) > 1 else None
-        if not type_str or type_str not in [MediaType.MOVIE.value, MediaType.TV.value]:
+        if not type_str or type_str not in [
+            MediaType.MOVIE.value,
+            MediaType.TV.value,
+            MediaType.MUSIC.value,
+        ]:
             args_error()
             return
         state, errmsg = self.__re_transfer(
@@ -4016,6 +4077,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 查询媒体信息
         if mtype and mediaid:
             media_source, source_media_id = parse_media_key(mediaid)
+            if mtype == MediaType.MUSIC and not media_source:
+                # 音乐原生 ID 未带来源前缀时默认按 MusicBrainz ID 处理
+                media_source, source_media_id = "musicbrainz", str(mediaid)
             if media_source and source_media_id:
                 mediainfo = self.recognize_media(
                     mtype=mtype,
@@ -4030,9 +4094,13 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     doubanid=mediaid if not str(mediaid).isdigit() else None,
                     episode_group=history.episode_group,
                 )
-            if mediainfo:
+            if mediainfo and not isinstance(mediainfo, MusicInfo):
                 # 更新媒体图片
                 self.obtain_images(mediainfo=mediainfo)
+        elif mtype == MediaType.MUSIC or self._is_music_retry_source(history, src_path):
+            # 音乐重新整理走音乐识别链，避免默认影视识别误入 TMDB
+            mtype = MediaType.MUSIC
+            mediainfo = self._recognize_music_retry_media(history, src_path)
         else:
             recognize_context = MediaChain().recognize_by_path(
                 str(src_path),
@@ -4040,10 +4108,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 obtain_images=True,
             )
             mediainfo = recognize_context.media_info if recognize_context else None
-        if not mediainfo:
-            return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
+        # 音乐专辑目录允许无预识别信息，由整理链按音频后缀逐文件解析识别
+        if not mediainfo and not (mtype == MediaType.MUSIC and src_path.is_dir()):
+            return False, f"未识别到媒体信息，类型：{mtype.value if mtype else None}，id：{mediaid}"
         # 重新执行整理
-        logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
+        if mediainfo:
+            logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
 
         # 删除旧的已整理文件
         if history.dest_fileitem:
@@ -4056,6 +4126,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             state, errmsg = self.do_transfer(
                 fileitem=FileItem(**history.src_fileitem),
                 mediainfo=mediainfo,
+                mtype=mtype,
                 download_hash=history.download_hash,
                 force=True,
                 background=False,

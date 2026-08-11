@@ -162,14 +162,8 @@ async def recognize_file(
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据文件路径识别媒体信息
+    根据文件路径识别媒体信息，影视与音乐统一走媒体链路径识别入口
     """
-    if MusicChain.is_audio_path(path) or source == "musicbrainz":
-        meta_info, media_info = await MusicChain().async_recognize_by_path(
-            path=path,
-            source=source or "musicbrainz",
-        )
-        return Context(meta_info=meta_info, media_info=media_info).to_dict()
     # 识别媒体信息
     context = await MediaChain().async_recognize_by_path(path, source=source)
     if context:
@@ -290,7 +284,7 @@ def scrape(
     is_music = (
         type_name == MediaType.MUSIC
         or media_source == "musicbrainz"
-        or MusicChain.is_audio_path(fileitem.path)
+        or MediaChain.is_audio_path(fileitem.path)
     )
     if is_music:
         if type_name not in (None, MediaType.MUSIC):

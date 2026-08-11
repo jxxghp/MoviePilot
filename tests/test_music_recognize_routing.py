@@ -63,18 +63,63 @@ def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypa
     assert result is expected
 
 
-def test_media_chain_recognize_by_path_routes_audio_file_to_module(monkeypatch):
-    """音频文件路径应经 MetaInfoPath 构造 MetaMusic 并路由到统一模块识别入口。"""
-    expected = _music_info()
+def test_media_chain_recognize_by_path_routes_audio_file_to_music_chain(monkeypatch):
+    """音频文件路径应经统一入口分发到 MediaChain 的音乐路径识别实现。"""
+    expected_meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    expected_info = _music_info()
+    recognize_music = Mock(return_value=(expected_meta, expected_info))
+    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_music)
+
+    context = MediaChain().recognize_by_path("/music/周杰伦 - 晴天.flac")
+
+    recognize_music.assert_called_once()
+    assert recognize_music.call_args.args[0] == "/music/周杰伦 - 晴天.flac"
+    assert context.meta_info is expected_meta
+    assert context.media_info is expected_info
+
+
+def test_media_chain_recognize_by_path_routes_musicbrainz_source_to_music_chain(monkeypatch):
+    """显式指定 MusicBrainz 数据源的路径识别也应分发到音乐实现。"""
+    expected_meta = MetaMusic(title="晴天")
+    expected_info = _music_info()
+    recognize_music = Mock(return_value=(expected_meta, expected_info))
+    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_music)
+
+    context = MediaChain().recognize_by_path("/downloads/晴天", source="musicbrainz")
+
+    recognize_music.assert_called_once()
+    assert recognize_music.call_args.kwargs["source"] == "musicbrainz"
+    assert context.media_info is expected_info
+
+
+def test_async_recognize_music_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
+    """本地音频识别应使用内嵌标签补全艺术家、专辑并保留音频质量参数。"""
+    from unittest.mock import AsyncMock
+
+    from app.helper.audio import AudioMetadataHelper
+
+    audio_path = tmp_path / "02. 眼泪成诗.m4a"
+    audio_path.write_bytes(b"audio")
+    meta = MetaMusic(
+        title="眼泪成诗",
+        artists=["孙燕姿"],
+        album="完美的一天",
+        track_number=2,
+        duration=221,
+    )
+    info = _music_info()
     chain = MediaChain()
-    monkeypatch.setattr(chain, "recognize_media", Mock(return_value=expected))
+    recognize = AsyncMock(return_value=info)
+    monkeypatch.setattr(AudioMetadataHelper, "read", lambda path: meta)
+    monkeypatch.setattr(chain, "async_recognize_media", recognize)
 
-    context = chain.recognize_by_path("/music/周杰伦 - 晴天.flac")
+    recognized_meta, recognized_info = asyncio.run(
+        chain.async_recognize_music_by_path(audio_path)
+    )
 
-    routed_meta = chain.recognize_media.call_args.kwargs["meta"]
-    assert isinstance(routed_meta, MetaMusic)
-    assert context.media_info is expected
-    assert isinstance(context.meta_info, MetaMusic)
+    assert recognized_meta is meta
+    assert recognized_info is info
+    recognize.assert_awaited_once_with(meta=meta, source="musicbrainz")
 
 
 def test_musicbrainz_module_recognize_media_ignores_non_music():

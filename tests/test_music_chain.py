@@ -315,7 +315,7 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
     import asyncio
 
     recognized_meta, recognized_info = asyncio.run(
-        chain.async_recognize_by_path(audio_path)
+        chain.async_recognize_music_by_path(audio_path)
     )
 
     assert recognized_meta is meta

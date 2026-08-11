@@ -119,9 +119,15 @@ class RecognizeMediaTool(MoviePilotTool):
                             ),
                             "path": path,
                         }, ensure_ascii=False)
-                    metainfo, mediainfo = await music_chain.async_recognize_by_path(path)
-                    context = Context(meta_info=metainfo, media_info=mediainfo)
-                    return self._format_context_result(context, "音频文件")
+                    # 影视与音乐共用统一路径识别入口，音频后缀自动路由到音乐识别链
+                    context = await MediaChain().async_recognize_by_path(path)
+                    if context:
+                        return self._format_context_result(context, "音频文件")
+                    return json.dumps({
+                        "success": False,
+                        "message": f"无法识别音乐信息: {path}",
+                        "path": path,
+                    }, ensure_ascii=False)
                 if title:
                     metainfo = music_chain.parse_query(title)
                     if artist:

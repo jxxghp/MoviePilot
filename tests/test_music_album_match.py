@@ -177,7 +177,7 @@ def test_recognize_album_directory_skips_single_file(tmp_path, music_chain, monk
     assert music_chain.recognize_album_directory(album_dir) == {}
 
 
-def test_recognize_by_path_falls_back_to_album_match(tmp_path, music_chain, monkeypatch):
+def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, music_chain, monkeypatch):
     """单曲识别无远端身份时应用目录级匹配结果兜底。"""
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
@@ -201,7 +201,7 @@ def test_recognize_by_path_falls_back_to_album_match(tmp_path, music_chain, monk
         lambda path: {str(file.resolve()): matched_info},
     )
 
-    meta, info = music_chain.recognize_by_path(file)
+    meta, info = music_chain.recognize_music_by_path(file)
 
     assert info.media_id == "rec-1"
     assert info.title == "我的地盘"

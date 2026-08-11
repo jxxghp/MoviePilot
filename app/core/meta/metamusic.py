@@ -713,10 +713,10 @@ class MetaMusic(MetaBase):
         match = _MUSIC_ARTIST_SUFFIX_RE.search(value)
         if not match:
             return value
-        suffix = cls._compact_text(match.group("suffix"))
+        suffix = cls.compact_text(match.group("suffix"))
         if not suffix:
             return value
-        if any(suffix == cls._compact_text(artist) for artist in artists):
+        if any(suffix == cls.compact_text(artist) for artist in artists):
             return value[:match.start()].strip()
         return value
 
@@ -848,7 +848,7 @@ class MetaMusic(MetaBase):
         return None, str(value or ""), None
 
     @staticmethod
-    def _compact_text(value: Any) -> str:
+    def compact_text(value: Any) -> str:
         """移除大小写、空白与标点，生成比对使用的紧凑文本。"""
         return _MUSIC_COMPACT_RE.sub("", str(value or "").casefold())
 

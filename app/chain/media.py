@@ -7,6 +7,8 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+from fastapi.concurrency import run_in_threadpool
+
 from app import schemas
 from app.chain import ChainBase
 from app.chain.storage import StorageChain
@@ -997,6 +999,117 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             name = None
         return name, artist, album, year
 
+    @classmethod
+    def is_audio_path(cls, path: Union[str, Path]) -> bool:
+        """判断路径是否指向系统支持的音频文件。"""
+        return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+
+    @classmethod
+    def read_path_meta(cls, path: Union[str, Path]) -> MetaMusic:
+        """读取本地音频标签，标签缺失时用文件名和目录线索补齐。"""
+        file_path = Path(path)
+        if file_path.exists() and file_path.is_file():
+            meta = AudioMetadataHelper.read(file_path)
+        else:
+            meta = MetaMusic(
+                org_string=file_path.stem, title=file_path.stem, parse_title=True
+            )
+        # WAV 无标签、FLAC/MP3 标签不全时，依靠文件名和目录结构补充识别线索
+        return meta.apply_path_context(file_path)
+
+    @classmethod
+    def _music_info_from_path_meta(cls, meta: MetaMusic) -> MusicInfo:
+        """把音频标签转换为文件管理可展示的最小音乐信息。"""
+        return MusicInfo(
+            source=meta.media_source,
+            media_id=meta.media_id,
+            title=meta.title,
+            artists=list(meta.artists),
+            album=meta.album,
+            album_artist=meta.album_artist,
+            year=meta.year,
+            disc_number=meta.disc_number,
+            track_number=meta.track_number,
+            total_tracks=meta.total_tracks,
+            duration=meta.duration,
+            isrc=meta.isrc,
+            version=meta.version,
+            audio_format=meta.audio_format,
+            audio_lossless=meta.audio_lossless,
+            bit_depth=meta.bit_depth,
+            sample_rate=meta.sample_rate,
+            bitrate=meta.bitrate,
+            names=[name for name in (meta.title, meta.album) if name],
+        )
+
+    @staticmethod
+    def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
+        """将本地文件的实际音频参数合并到远端音乐身份识别结果。"""
+        for key in ("audio_format", "audio_lossless", "bit_depth", "sample_rate", "bitrate"):
+            value = getattr(meta, key, None)
+            if value is not None:
+                setattr(info, key, value)
+        return info
+
+    @staticmethod
+    def _music_album_dir_fallback(path: Union[str, Path]) -> Optional[MusicInfo]:
+        """单曲识别无远端身份时，查找所在目录专辑匹配中属于当前文件的结果。"""
+        file_path = Path(path)
+        if not file_path.exists() or not file_path.is_file():
+            return None
+        try:
+            # 目录级专辑匹配属于音乐域能力，延迟导入避免双向依赖。
+            from app.chain.music import MusicChain
+
+            matched = MusicChain().recognize_album_directory(file_path.parent)
+        except Exception as err:
+            logger.debug(f"专辑目录匹配失败：{file_path.parent} - {err}")
+            return None
+        return matched.get(str(file_path.resolve()))
+
+    def recognize_music_by_path(
+            self,
+            path: Union[str, Path],
+            source: str = "musicbrainz",
+    ) -> Tuple[MetaMusic, MusicInfo]:
+        """同步根据音频标签和文件名识别音乐，并保留离线最小结果。"""
+        meta = self.read_path_meta(path)
+        # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兑底
+        info = self.recognize_media(meta=meta, source=source)
+        result = self._merge_music_audio_quality(
+            info or self._music_info_from_path_meta(meta), meta
+        )
+        if not result.source:
+            # 单曲搜索未命中时，按所在目录做专辑级匹配兑底
+            matched = self._music_album_dir_fallback(path)
+            if matched:
+                result = self._merge_music_audio_quality(matched, meta)
+        return meta, result
+
+    async def async_recognize_music_by_path(
+            self,
+            path: Union[str, Path],
+            source: str = "musicbrainz",
+    ) -> Tuple[MetaMusic, MusicInfo]:
+        """根据音频标签和文件名识别音乐，远端不可用时仍返回最小音乐信息。"""
+        # Mutagen 会同步读取本地文件，异步识别入口需要移出事件循环。
+        meta = await run_in_threadpool(self.read_path_meta, path)
+        # 统一识别入口分发到音乐模块，模块负责详情/搜索/匹配/兑底
+        info = await self.async_recognize_media(meta=meta, source=source)
+        result = self._merge_music_audio_quality(
+            info or self._music_info_from_path_meta(meta), meta
+        )
+        if not result.source:
+            # 单曲搜索未命中时，按所在目录做专辑级匹配兑底
+            matched = await run_in_threadpool(self._music_album_dir_fallback, path)
+            if matched:
+                result = self._merge_music_audio_quality(matched, meta)
+        return meta, result
+
+    def _is_music_path_request(self, path: str, source: Optional[str]) -> bool:
+        """路径识别请求是否属于音乐：音频后缀文件或显式指定音乐数据源。"""
+        return self.is_audio_path(path) or source == "musicbrainz"
+
     def recognize_by_path(
             self,
             path: str,
@@ -1005,7 +1118,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             obtain_images: bool = False,
     ) -> Optional[Context]:
         """
-        根据文件路径识别媒体信息
+        根据文件路径识别媒体信息，影视与音乐统一入口
 
         :param path: 文件路径
         :param source: 请求级识别数据源
@@ -1014,6 +1127,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :return: 识别上下文
         """
         logger.info(f"开始识别媒体信息，文件：{path} ...")
+        # 音频文件直接在本链完成标签读取、搜索匹配与专辑目录兜底，封面等图片由刮削环节补充
+        if self._is_music_path_request(path, source):
+            music_meta, music_info = self.recognize_music_by_path(
+                path, source=source or "musicbrainz"
+            )
+            return Context(meta_info=music_meta, media_info=music_info)
         file_path = Path(path)
         # 元数据
         file_meta = MetaInfoPath(file_path)
@@ -1883,9 +2002,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if mediainfo:
             return None
 
-        # 延迟导入避免 MediaChain 与 MusicChain 在模块加载阶段形成双向依赖。
-        from app.chain.music import MusicChain
-        _, recognized = MusicChain().recognize_by_path(local_path, source="musicbrainz")
+        _, recognized = cls.recognize_music_by_path(local_path, source="musicbrainz")
         return recognized
 
     def _write_music_metadata(
@@ -2598,7 +2715,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             obtain_images: bool = False,
     ) -> Optional[Context]:
         """
-        根据文件路径识别媒体信息（异步版本）
+        根据文件路径识别媒体信息，影视与音乐统一入口（异步版本）
 
         :param path: 文件路径
         :param source: 请求级识别数据源
@@ -2607,6 +2724,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :return: 识别上下文
         """
         logger.info(f"开始识别媒体信息，文件：{path} ...")
+        # 音频文件直接在本链完成标签读取、搜索匹配与专辑目录兜底，封面等图片由刮削环节补充
+        if self._is_music_path_request(path, source):
+            music_meta, music_info = await self.async_recognize_music_by_path(
+                path, source=source or "musicbrainz"
+            )
+            return Context(meta_info=music_meta, media_info=music_info)
         file_path = Path(path)
         # 元数据
         file_meta = MetaInfoPath(file_path)
