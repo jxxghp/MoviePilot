@@ -181,6 +181,12 @@ class ChainEventType(Enum):
     PluginDataReset = "plugin.data.reset"
     # 名称识别
     NameRecognize = "name.recognize"
+    # 音乐名称识别：插件辅助解析音乐标题中的曲名、艺术家、专辑、年份要素
+    MusicNameRecognize = "music.name.recognize"
+    # 媒体识别：原生识别未取得远端身份时，插件按已知要素匹配补充电影、电视剧媒体信息
+    MediaRecognize = "media.recognize"
+    # 音乐媒体识别：原生识别未取得远端身份时，插件按已知要素匹配补充音乐媒体信息
+    MusicMediaRecognize = "music.media.recognize"
     # 认证验证
     AuthVerification = "auth.verification"
     # 认证拦截

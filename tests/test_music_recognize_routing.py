@@ -29,7 +29,7 @@ def _music_info() -> MusicInfo:
 
 
 def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
-    """MetaMusic 应绕过影视识别，由统一模块分发直接响应。"""
+    """MetaMusic 应与影视共用选择流程，由统一模块分发直接响应。"""
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = _music_info()
     chain = MediaChain()
@@ -37,7 +37,11 @@ def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
 
     result = chain.recognize_by_meta(meta, source="musicbrainz")
 
-    chain.recognize_media.assert_called_once_with(meta=meta, source="musicbrainz")
+    # 音乐不再旁路辅助识别选择流程，原生识别带共享元数据与剧集组参数
+    chain.recognize_media.assert_called_once()
+    call_kwargs = chain.recognize_media.call_args.kwargs
+    assert call_kwargs["meta"] is meta
+    assert call_kwargs["source"] == "musicbrainz"
     assert result is expected
 
 
@@ -52,7 +56,10 @@ def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypa
         return await chain.async_recognize_by_meta(meta, source="musicbrainz")
 
     result = asyncio.run(runner())
-    chain.async_recognize_media.assert_awaited_once_with(meta=meta, source="musicbrainz")
+    chain.async_recognize_media.assert_awaited_once()
+    call_kwargs = chain.async_recognize_media.await_args.kwargs
+    assert call_kwargs["meta"] is meta
+    assert call_kwargs["source"] == "musicbrainz"
     assert result is expected
 
 

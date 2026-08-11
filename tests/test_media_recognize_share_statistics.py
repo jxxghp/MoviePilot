@@ -40,9 +40,16 @@ def _mock_counter(monkeypatch) -> Mock:
     return increment
 
 
+def _bare_chain() -> ChainBase:
+    """构造不执行初始化的识别链实例，并挂上无插件响应的事件管理器桩。"""
+    chain = object.__new__(ChainBase)
+    chain.eventmanager = Mock(check=Mock(return_value=False))
+    return chain
+
+
 def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
     """同步共享识别二次识别成功后应累计一次命中。"""
-    chain = object.__new__(ChainBase)
+    chain = _bare_chain()
     meta = _build_meta("共享识别电影")
     media = MediaInfo(
         title="共享识别电影",
@@ -73,7 +80,7 @@ def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
 
 def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
     """共享接口返回数据但二次识别失败时不应累计命中。"""
-    chain = object.__new__(ChainBase)
+    chain = _bare_chain()
     meta = _build_meta("共享识别失败电影")
     increment = _mock_counter(monkeypatch)
     monkeypatch.setattr("app.chain.settings.MEDIA_RECOGNIZE_SHARE", True)
@@ -97,7 +104,7 @@ def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
 
 def test_async_shared_recognize_success_increments_persisted_count(monkeypatch):
     """异步共享识别二次识别成功后应累计一次命中。"""
-    chain = object.__new__(ChainBase)
+    chain = _bare_chain()
     meta = _build_meta("异步共享识别电影")
     media = MediaInfo(
         title="异步共享识别电影",

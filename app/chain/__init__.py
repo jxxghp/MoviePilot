@@ -14,9 +14,9 @@ from transmission_rpc import File
 
 from app.core.cache import FileCache, AsyncFileCache, fresh, async_fresh
 from app.core.config import settings
-from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
-from app.core.event import EventManager
-from app.core.meta import MetaBase
+from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.core.event import Event, EventManager
+from app.core.meta import MetaBase, MetaMusic
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.message_oper import MessageOper
@@ -49,6 +49,7 @@ from app.schemas.types import (
     MediaType,
     MediaImageType,
     EventType,
+    ChainEventType,
     MessageChannel,
     SystemConfigKey,
 )
@@ -704,6 +705,11 @@ class ChainBase(metaclass=ABCMeta):
                 "recognize_media",
                 **module_kwargs,
             )
+        # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
+        mediainfo = self._supplement_media_recognize(
+            meta=meta, mtype=mtype, source=source,
+            mediaid=requested_mediaid, mediainfo=mediainfo,
+        )
         if mediainfo:
             # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
             if not getattr(mediainfo, "recognize_cache_hit", False):
@@ -815,6 +821,11 @@ class ChainBase(metaclass=ABCMeta):
                 "async_recognize_media",
                 **module_kwargs,
             )
+        # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
+        mediainfo = await self._async_supplement_media_recognize(
+            meta=meta, mtype=mtype, source=source,
+            mediaid=requested_mediaid, mediainfo=mediainfo,
+        )
         if mediainfo:
             # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
             if not getattr(mediainfo, "recognize_cache_hit", False):
@@ -855,6 +866,163 @@ class ChainBase(metaclass=ABCMeta):
                     await run_in_threadpool(self._record_media_recognize_share_hit)
                     return mediainfo
         return None
+
+    @staticmethod
+    def _media_recognize_plugin_payload(
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType],
+            source: Optional[str],
+            mediaid: Optional[str],
+            is_music: bool,
+    ) -> dict:
+        """
+        构造媒体识别链式事件的已知要素载荷，供插件匹配媒体信息；影视与音乐统一协议，
+        仅要素字段随媒体类型不同
+        """
+        if is_music:
+            return {
+                "title": getattr(meta, "title", None),
+                "artists": list(getattr(meta, "artists", None) or []),
+                "album": getattr(meta, "album", None),
+                "year": getattr(meta, "year", None),
+                "isrc": getattr(meta, "isrc", None),
+                "source": source,
+                "media_id": mediaid,
+            }
+        return {
+            "title": getattr(meta, "title", None) or getattr(meta, "name", None),
+            "year": getattr(meta, "year", None),
+            "season": getattr(meta, "begin_season", None),
+            "type": mtype.value if isinstance(mtype, MediaType) else None,
+            "source": source,
+            "media_id": mediaid,
+        }
+
+    @classmethod
+    def _media_info_from_plugin(
+            cls,
+            event_data: dict,
+            is_music: bool,
+            mtype: Optional[MediaType] = None,
+    ) -> Optional[MediaInfo]:
+        """
+        解析插件返回的媒体信息，缺少数据源或身份字段的结果不采信；
+        音乐构造 MusicInfo，影视构造 MediaInfo
+        """
+        if not isinstance(event_data, dict):
+            return None
+        plugin_info = event_data.get("mediainfo")
+        if not isinstance(plugin_info, dict):
+            return None
+        if not plugin_info.get("source"):
+            logger.warn("插件返回的媒体信息缺少数据源，忽略 ...")
+            return None
+        try:
+            if is_music:
+                if not plugin_info.get("media_id"):
+                    logger.warn("插件返回的音乐媒体信息缺少媒体ID，忽略 ...")
+                    return None
+                info: MediaInfo = MusicInfo.from_dict(plugin_info)
+                if not info.source or not info.media_id:
+                    return None
+                return info
+            # 影视：插件未提供类型时使用请求推断的类型
+            if not plugin_info.get("type") and mtype:
+                plugin_info = {**plugin_info, "type": mtype}
+            info = MediaInfo()
+            info.from_dict(plugin_info)
+        except Exception as err:
+            logger.warn(f"插件返回的媒体信息格式错误：{err}")
+            return None
+        # 影视与音乐统一要求远端身份，无身份的结果不采信，避免未验证结果进入识别管线
+        if not info.source or not cls._media_info_has_identity(info):
+            logger.warn("插件返回的媒体信息缺少远端身份，忽略 ...")
+            return None
+        return info
+
+    @staticmethod
+    def _media_info_has_identity(mediainfo) -> bool:
+        """判断媒体信息是否具备远端身份（数据源原生 ID 或各元数据源 ID）"""
+        return bool(
+                getattr(mediainfo, "media_id", None)
+                or getattr(mediainfo, "tmdb_id", None)
+                or getattr(mediainfo, "douban_id", None)
+                or getattr(mediainfo, "bangumi_id", None)
+                or getattr(mediainfo, "anilist_id", None)
+        )
+
+    def _supplement_media_recognize(
+            self,
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType],
+            source: Optional[str],
+            mediaid: Optional[str],
+            mediainfo,
+    ):
+        """
+        媒体识别插件补充（影视与音乐统一）：原生模块未给出带远端身份的结果时，
+        广播媒体识别链式事件，允许插件（如第三方媒体源）按已知要素匹配并返回标准信息
+        """
+        is_music = (
+                isinstance(meta, MetaMusic)
+                or mtype == MediaType.MUSIC
+                or isinstance(mediainfo, MusicInfo)
+        )
+        # 已有远端身份时无需插件介入
+        if mediainfo and self._media_info_has_identity(mediainfo):
+            return mediainfo
+        etype = ChainEventType.MusicMediaRecognize if is_music else ChainEventType.MediaRecognize
+        if not self.eventmanager.check(etype):
+            return mediainfo
+        result: Event = self.eventmanager.send_event(
+            etype,
+            self._media_recognize_plugin_payload(meta, mtype, source, mediaid, is_music),
+        )
+        if not result:
+            return mediainfo
+        plugin_info = self._media_info_from_plugin(result.event_data or {}, is_music, mtype)
+        if not plugin_info:
+            return mediainfo
+        logger.info(
+            f"插件补充媒体识别成功：{plugin_info.title}"
+            f"（{plugin_info.source}:{plugin_info.media_id or plugin_info.tmdb_id or plugin_info.douban_id}）"
+        )
+        return plugin_info
+
+    async def _async_supplement_media_recognize(
+            self,
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType],
+            source: Optional[str],
+            mediaid: Optional[str],
+            mediainfo,
+    ):
+        """媒体识别插件补充的异步版本，影视与音乐统一流程"""
+        is_music = (
+                isinstance(meta, MetaMusic)
+                or mtype == MediaType.MUSIC
+                or isinstance(mediainfo, MusicInfo)
+        )
+        # 已有远端身份时无需插件介入
+        if mediainfo and self._media_info_has_identity(mediainfo):
+            return mediainfo
+        etype = ChainEventType.MusicMediaRecognize if is_music else ChainEventType.MediaRecognize
+        if not self.eventmanager.check(etype):
+            return mediainfo
+        result: Event = await self.eventmanager.async_send_event(
+            etype,
+            self._media_recognize_plugin_payload(meta, mtype, source, mediaid, is_music),
+        )
+        if not result:
+            return mediainfo
+        plugin_info = self._media_info_from_plugin(result.event_data or {}, is_music, mtype)
+        if not plugin_info:
+            return mediainfo
+        logger.info(
+            f"插件补充媒体识别成功：{plugin_info.title}"
+            f"（{plugin_info.source}:{plugin_info.media_id or plugin_info.tmdb_id or plugin_info.douban_id}）"
+        )
+        return plugin_info
 
     def match_doubaninfo(
             self,

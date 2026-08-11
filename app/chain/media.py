@@ -587,7 +587,9 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @staticmethod
     def select_recognize_source(
-            log_name: str, log_context: str, native_fn, plugin_fn
+            log_name: str, log_context: str, native_fn, plugin_fn,
+            is_recognized=None,
+            plugin_event: ChainEventType = ChainEventType.NameRecognize,
     ) -> Optional[MediaInfo]:
         """
         选择识别模式，插件优先或原生优先
@@ -596,27 +598,39 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param log_context: 用于日志“未识别到...的媒体信息”处的上下文（如 path 或 title）
         :param native_fn: 原生识别函数
         :param plugin_fn: 插件识别函数
+        :param is_recognized: 判定识别结果是否有效的谓词；音乐原生兜底结果无远端身份，
+            需视为未识别才会请求辅助识别，影视默认按非空判定
+        :param plugin_event: 辅助识别对应的链式事件类型，音乐使用音乐名称识别事件
         """
+        if is_recognized is None:
+            is_recognized = lambda result: bool(result)
         mediainfo = None
-        plugin_available = eventmanager.check(ChainEventType.NameRecognize)
+        plugin_available = eventmanager.check(plugin_event)
         if settings.RECOGNIZE_PLUGIN_FIRST and plugin_available:
             # 插件优先
             logger.info(f"插件识别优先模式已开启。请求辅助识别，标题：{log_name} ...")
-            mediainfo = plugin_fn()
-            if not mediainfo:
+            helped = plugin_fn()
+            if is_recognized(helped):
+                mediainfo = helped
+            else:
                 logger.info(
                     f"辅助识别未识别到 {log_context} 的媒体信息，尝试使用原生识别 ..."
                 )
                 mediainfo = native_fn()
+                # 辅助结果不采信时保留原生兜底，避免丢失已有识别结果（音乐原生兜底恒非空）
+                if helped and not mediainfo:
+                    mediainfo = helped
         else:
             # 原生优先
             logger.info(f"开始识别标题：{log_name} ...")
             mediainfo = native_fn()
-            if not mediainfo and plugin_available:
+            if not is_recognized(mediainfo) and plugin_available:
                 logger.info(
-                    f"未识别到 {log_context} 的媒体信息，尝试使用辅助识别 ..."
+                    f"原生识别未识别到 {log_context} 的媒体信息，尝试使用辅助识别 ..."
                 )
-                mediainfo = plugin_fn()
+                helped = plugin_fn()
+                if is_recognized(helped):
+                    mediainfo = helped
         return mediainfo
 
     def recognize_by_meta(
@@ -771,14 +785,13 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not metainfo:
             return None
-        # 音乐不经影视季集识别与辅助识别，直接走统一模块分发
-        if isinstance(metainfo, MetaMusic):
-            return self.recognize_media(
-                meta=metainfo,
-                source=source,
-            )
         title = metainfo.title
         share_meta = deepcopy(metainfo)
+        # 音乐原生兜底结果无远端身份，需按是否取得身份判定，才会请求辅助识别
+        is_music = isinstance(metainfo, MetaMusic)
+        is_recognized = (
+            (lambda result: bool(result and result.source)) if is_music else None
+        )
 
         def native_recognize() -> Optional[MediaInfo]:
             """使用请求级数据源执行原生识别。"""
@@ -799,12 +812,17 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 episode_group=episode_group,
             )
 
-        # 按 config 中设置的识别顺序识别
+        # 按 config 中设置的识别顺序识别，影视与音乐共用同一选择流程
         mediainfo = self.select_recognize_source(
             log_name=title,
             log_context=title,
             native_fn=native_recognize,
             plugin_fn=plugin_recognize,
+            is_recognized=is_recognized,
+            plugin_event=(
+                ChainEventType.MusicNameRecognize if is_music
+                else ChainEventType.NameRecognize
+            ),
         )
         if not mediainfo:
             return None
@@ -835,7 +853,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             episode_group: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
-        请求辅助识别，返回媒体信息
+        请求辅助识别，返回媒体信息；影视与音乐共用同一流程，仅要素事件与重组方式不同
 
         :param title: 标题
         :param org_meta: 原始元数据
@@ -843,6 +861,14 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param source: 请求级识别数据源
         :param episode_group: 剧集组
         """
+        # 音乐标题要素（曲名/艺术家/专辑/年份）与影视不同，走专用名称识别事件
+        if isinstance(org_meta, MetaMusic):
+            return self._recognize_music_help(
+                title=title,
+                org_meta=org_meta,
+                share_meta=share_meta,
+                source=source,
+            )
         # 发送请求事件，等待结果
         result: Event = eventmanager.send_event(
             ChainEventType.NameRecognize,
@@ -887,6 +913,89 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             share_meta=share_meta,
             episode_group=episode_group,
         )
+
+    def _recognize_music_help(
+            self,
+            title: str,
+            org_meta: MetaMusic,
+            share_meta: MetaBase = None,
+            source: Optional[str] = None,
+    ) -> Optional[MediaInfo]:
+        """
+        请求插件辅助识别音乐标题要素，并按修正后的要素重新匹配媒体信息
+
+        :param title: 原始音乐标题
+        :param org_meta: 原始音乐元数据
+        :param share_meta: 共享识别查询/上报使用的原始元数据
+        :param source: 请求级识别数据源
+        """
+        # 发送音乐名称识别事件，等待插件返回标题要素
+        result: Event = eventmanager.send_event(
+            ChainEventType.MusicNameRecognize,
+            {
+                "title": title,
+                "artist": org_meta.artist,
+                "album": org_meta.album,
+                "year": org_meta.year,
+            },
+        )
+        if not result:
+            return None
+        event_data = result.event_data or {}
+        logger.info(f"获取到音乐辅助识别结果：{event_data}")
+        name, artist, album, year = self._parse_music_recognize_event(event_data)
+        if not name:
+            return None
+        # 辅助识别要素与原始一致时无需重新匹配
+        if (
+                name == org_meta.title
+                and (not artist or artist in org_meta.artists)
+                and (not album or album == org_meta.album)
+                and (not year or year == org_meta.year)
+        ):
+            logger.info("音乐辅助识别与原始识别结果一致，无需重新匹配媒体信息")
+            return None
+        logger.info("音乐辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
+        new_meta = MetaMusic(
+            org_string=org_meta.org_string,
+            title=name,
+            artists=[artist] if artist else list(org_meta.artists or []),
+            album=album or org_meta.album,
+            album_artist=artist or org_meta.album_artist,
+            year=year or org_meta.year,
+            isrc=org_meta.isrc,
+        )
+        # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
+        mediainfo = self.recognize_media(
+            meta=new_meta,
+            source=source,
+            share_meta=share_meta,
+        )
+        return mediainfo if mediainfo and mediainfo.source else None
+
+    @staticmethod
+    def _parse_music_recognize_event(
+            event_data: dict,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int]]:
+        """
+        解析音乐辅助识别返回的标题要素，曲名为空或未知时返回 None
+        """
+        name = None
+        if event_data.get("name"):
+            name = str(event_data["name"]).split("/")[0].strip().replace(".", " ")
+        artist = None
+        if event_data.get("artist"):
+            artist = str(event_data["artist"]).split("/")[0].strip()
+        album = None
+        if event_data.get("album"):
+            album = str(event_data["album"]).split("/")[0].strip()
+        year = None
+        year_text = str(event_data.get("year") or "").split("/")[0].strip()
+        if year_text.isdigit():
+            year = int(year_text)
+        if not name or name == "Unknown":
+            name = None
+        return name, artist, album, year
 
     def recognize_by_path(
             self,
@@ -2215,7 +2324,9 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @staticmethod
     async def async_select_recognize_source(
-            log_name: str, log_context: str, native_fn, plugin_fn
+            log_name: str, log_context: str, native_fn, plugin_fn,
+            is_recognized=None,
+            plugin_event: ChainEventType = ChainEventType.NameRecognize,
     ) -> Optional[MediaInfo]:
         """
         选择识别模式，插件优先或原生优先（异步版本）
@@ -2224,27 +2335,38 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param log_context: 用于日志“未识别到...的媒体信息”处的上下文（如 path 或 title）
         :param native_fn: 原生识别函数
         :param plugin_fn: 插件识别函数
+        :param is_recognized: 判定识别结果是否有效的谓词，语义同同步版本
+        :param plugin_event: 辅助识别对应的链式事件类型，音乐使用音乐名称识别事件
         """
+        if is_recognized is None:
+            is_recognized = lambda result: bool(result)
         mediainfo = None
-        plugin_available = eventmanager.check(ChainEventType.NameRecognize)
+        plugin_available = eventmanager.check(plugin_event)
         if settings.RECOGNIZE_PLUGIN_FIRST and plugin_available:
             # 插件优先
             logger.info(f"插件优先模式已开启。请求辅助识别，标题：{log_name} ...")
-            mediainfo = await plugin_fn()
-            if not mediainfo:
+            helped = await plugin_fn()
+            if is_recognized(helped):
+                mediainfo = helped
+            else:
                 logger.info(
                     f"辅助识别未识别到 {log_context} 的媒体信息，尝试使用原生识别"
                 )
                 mediainfo = await native_fn()
+                # 辅助结果不采信时保留原生兜底，避免丢失已有识别结果（音乐原生兜底恒非空）
+                if helped and not mediainfo:
+                    mediainfo = helped
         else:
             # 原生优先
             logger.info(f"识别标题：{log_name} ...")
             mediainfo = await native_fn()
-            if not mediainfo and plugin_available:
+            if not is_recognized(mediainfo) and plugin_available:
                 logger.info(
                     f"原生识别未识别到 {log_context} 的媒体信息，尝试使用辅助识别"
                 )
-                mediainfo = await plugin_fn()
+                helped = await plugin_fn()
+                if is_recognized(helped):
+                    mediainfo = helped
         return mediainfo
 
     async def async_recognize_by_meta(
@@ -2291,14 +2413,13 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not metainfo:
             return None
-        # 音乐不经影视季集识别与辅助识别，直接走统一模块分发
-        if isinstance(metainfo, MetaMusic):
-            return await self.async_recognize_media(
-                meta=metainfo,
-                source=source,
-            )
         title = metainfo.title
         share_meta = deepcopy(metainfo)
+        # 音乐原生兜底结果无远端身份，需按是否取得身份判定，才会请求辅助识别
+        is_music = isinstance(metainfo, MetaMusic)
+        is_recognized = (
+            (lambda result: bool(result and result.source)) if is_music else None
+        )
 
         async def native_recognize() -> Optional[MediaInfo]:
             """异步使用请求级数据源执行原生识别。"""
@@ -2319,12 +2440,17 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 episode_group=episode_group,
             )
 
-        # 按 config 中设置的识别顺序识别
+        # 按 config 中设置的识别顺序识别，影视与音乐共用同一选择流程
         mediainfo = await self.async_select_recognize_source(
             log_name=title,
             log_context=title,
             native_fn=native_recognize,
             plugin_fn=plugin_recognize,
+            is_recognized=is_recognized,
+            plugin_event=(
+                ChainEventType.MusicNameRecognize if is_music
+                else ChainEventType.NameRecognize
+            ),
         )
         if not mediainfo:
             return None
@@ -2344,7 +2470,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             episode_group: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
-        请求辅助识别，返回媒体信息（异步版本）
+        请求辅助识别，返回媒体信息（异步版本）；影视与音乐共用同一流程
 
         :param title: 标题
         :param org_meta: 原始元数据
@@ -2352,6 +2478,14 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param source: 请求级识别数据源
         :param episode_group: 剧集组
         """
+        # 音乐标题要素（曲名/艺术家/专辑/年份）与影视不同，走专用名称识别事件
+        if isinstance(org_meta, MetaMusic):
+            return await self._async_recognize_music_help(
+                title=title,
+                org_meta=org_meta,
+                share_meta=share_meta,
+                source=source,
+            )
         # 发送请求事件，等待结果
         result: Event = await eventmanager.async_send_event(
             ChainEventType.NameRecognize,
@@ -2396,6 +2530,65 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             share_meta=share_meta,
             episode_group=episode_group,
         )
+
+    async def _async_recognize_music_help(
+            self,
+            title: str,
+            org_meta: MetaMusic,
+            share_meta: MetaBase = None,
+            source: Optional[str] = None,
+    ) -> Optional[MediaInfo]:
+        """
+        请求插件辅助识别音乐标题要素，并按修正后的要素重新匹配媒体信息（异步版本）
+
+        :param title: 原始音乐标题
+        :param org_meta: 原始音乐元数据
+        :param share_meta: 共享识别查询/上报使用的原始元数据
+        :param source: 请求级识别数据源
+        """
+        # 发送音乐名称识别事件，等待插件返回标题要素
+        result: Event = await eventmanager.async_send_event(
+            ChainEventType.MusicNameRecognize,
+            {
+                "title": title,
+                "artist": org_meta.artist,
+                "album": org_meta.album,
+                "year": org_meta.year,
+            },
+        )
+        if not result:
+            return None
+        event_data = result.event_data or {}
+        logger.info(f"获取到音乐辅助识别结果：{event_data}")
+        name, artist, album, year = self._parse_music_recognize_event(event_data)
+        if not name:
+            return None
+        # 辅助识别要素与原始一致时无需重新匹配
+        if (
+                name == org_meta.title
+                and (not artist or artist in org_meta.artists)
+                and (not album or album == org_meta.album)
+                and (not year or year == org_meta.year)
+        ):
+            logger.info("音乐辅助识别与原始识别结果一致，无需重新匹配媒体信息")
+            return None
+        logger.info("音乐辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
+        new_meta = MetaMusic(
+            org_string=org_meta.org_string,
+            title=name,
+            artists=[artist] if artist else list(org_meta.artists or []),
+            album=album or org_meta.album,
+            album_artist=artist or org_meta.album_artist,
+            year=year or org_meta.year,
+            isrc=org_meta.isrc,
+        )
+        # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
+        mediainfo = await self.async_recognize_media(
+            meta=new_meta,
+            source=source,
+            share_meta=share_meta,
+        )
+        return mediainfo if mediainfo and mediainfo.source else None
 
     async def async_recognize_by_path(
             self,
