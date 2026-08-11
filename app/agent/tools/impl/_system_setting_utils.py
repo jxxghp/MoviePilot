@@ -226,13 +226,36 @@ GROUP_ALIASES = {
 }
 
 
+# 这些前缀共同组成可启动、推理和扩展 AI Agent 的同一业务配置域。
+AI_AGENT_CORE_SETTING_PREFIXES = (
+    "AI_AGENT_",
+    "LLM_",
+    "AUDIO_INPUT_",
+    "AUDIO_OUTPUT_",
+    "AI_RECOMMEND_",
+)
+
+
 def _normalize_token(value: str) -> str:
     return str(value).strip().lower().replace("-", "_")
 
 
+def _resolve_core_setting_group(key: str) -> str:
+    """根据基础设置的业务归属返回 Agent 可查询的分类。"""
+
+    if key.startswith(AI_AGENT_CORE_SETTING_PREFIXES):
+        return "ai_agent"
+    return "settings"
+
+
 def _build_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec]]:
     core_specs = {
-        key: SettingSpec(key=key, source="settings", group="settings", label=key)
+        key: SettingSpec(
+            key=key,
+            source="settings",
+            group=_resolve_core_setting_group(key),
+            label=key,
+        )
         for key in Settings.model_fields.keys()
     }
     system_specs = {}
@@ -263,7 +286,7 @@ SINGLE_KEY_GROUP_ALIASES = {
     _normalize_token(alias): next(
         (
             spec.key
-            for spec in SYSTEMCONFIG_SETTING_SPECS.values()
+            for spec in ALL_SETTING_SPECS.values()
             if spec.group == canonical_group
         ),
         None,
@@ -273,7 +296,7 @@ SINGLE_KEY_GROUP_ALIASES = {
     and len(
         [
             spec.key
-            for spec in SYSTEMCONFIG_SETTING_SPECS.values()
+            for spec in ALL_SETTING_SPECS.values()
             if spec.group == canonical_group
         ]
     )
@@ -324,7 +347,7 @@ def list_setting_specs(
     else:
         specs = [
             spec
-            for spec in SYSTEMCONFIG_SETTING_SPECS.values()
+            for spec in ALL_SETTING_SPECS.values()
             if spec.group == normalized_group
         ]
 

@@ -3,10 +3,11 @@ import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.agent.tools.impl._system_setting_utils import list_setting_specs
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.schemas.types import SystemConfigKey
 
 
@@ -96,6 +97,61 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertFalse(payload["include_values"])
         self.assertGreater(payload["matched_count"], 1)
+
+    def test_settings_group_retains_all_basic_settings(self):
+        """settings 分组应继续完整列出基础 Settings 字段。"""
+        specs = list_setting_specs(group="settings")
+
+        self.assertSetEqual(
+            {spec.key for spec in specs},
+            set(Settings.model_fields),
+        )
+        self.assertTrue(all(spec.source == "settings" for spec in specs))
+
+    def test_query_system_settings_ai_agent_group_spans_both_setting_sources(self):
+        """AI Agent 分组应同时返回基础运行配置和 SystemConfig 扩展配置。"""
+        tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
+        expected_values = {
+            "AI_AGENT_ENABLE": True,
+            "LLM_PROVIDER": "openai",
+            "LLM_MODEL": "gpt-test",
+            "LLM_THINKING_LEVEL": "high",
+            "LLM_API_KEY": "llm-secret",
+            "AUDIO_INPUT_PROVIDER": "openai",
+            "AUDIO_OUTPUT_PROVIDER": "openai",
+            "AI_RECOMMEND_ENABLED": True,
+            "AIAgentConfig": {"chatgpt": {"enabled": True}},
+            "AIAgentMcpServers": [],
+        }
+
+        with patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            side_effect=lambda spec: expected_values.get(spec.key),
+        ):
+            result = asyncio.run(
+                tool.run(group="ai_agent", include_values=True)
+            )
+
+        payload = json.loads(result)
+        items = {
+            item["setting_key"]: item
+            for item in payload["settings"]
+        }
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(items["AI_AGENT_ENABLE"]["source"], "settings")
+        self.assertIs(items["AI_AGENT_ENABLE"]["value"], True)
+        self.assertEqual(items["LLM_PROVIDER"]["value"], "openai")
+        self.assertEqual(items["LLM_MODEL"]["value"], "gpt-test")
+        self.assertEqual(items["LLM_THINKING_LEVEL"]["value"], "high")
+        self.assertTrue(items["LLM_API_KEY"]["redacted"])
+        self.assertEqual(items["LLM_API_KEY"]["value"], "***")
+        self.assertEqual(items["AUDIO_INPUT_PROVIDER"]["value"], "openai")
+        self.assertEqual(items["AUDIO_OUTPUT_PROVIDER"]["value"], "openai")
+        self.assertIs(items["AI_RECOMMEND_ENABLED"]["value"], True)
+        self.assertEqual(items["AIAgentConfig"]["source"], "systemconfig")
+        self.assertEqual(items["AIAgentMcpServers"]["source"], "systemconfig")
 
     def test_update_system_settings_merges_dict_and_emits_event(self):
         tool = UpdateSystemSettingsTool(session_id="session-1", user_id="10001")
