@@ -1,4 +1,6 @@
 import asyncio
+from statistics import median
+from time import perf_counter
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -135,6 +137,38 @@ def test_recursive_sanitizer_redacts_camel_case_secret_fields(
             (SECRET_MARKER,),
         ),
         (
+            f"authToken={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"dbPassword={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"secretKey={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"proxyAuthorization={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"awsSecretAccessKey={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"passKey={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"url=https://example.invalid/callback?authToken={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
+            f"{'x' * 300}AuthToken={SECRET_MARKER}",
+            (SECRET_MARKER,),
+        ),
+        (
             "password=unquoted-secret-alpha unquoted-secret-beta; status=failed",
             ("unquoted-secret-alpha", "unquoted-secret-beta"),
         ),
@@ -142,13 +176,17 @@ def test_recursive_sanitizer_redacts_camel_case_secret_fields(
             "DATABASE_PASSWORD=correct horse battery staple, retry=off",
             ("correct", "horse", "battery", "staple"),
         ),
+        (
+            f"DATABASE_PASSWORD={SECRET_MARKER}#password-tail&more, retry=off",
+            (SECRET_MARKER, "password-tail", "more"),
+        ),
     ],
 )
-def test_sanitizer_redacts_quoted_and_prefixed_assignments(
+def test_sanitizer_redacts_secret_assignments(
     source: str,
     secret_parts: tuple[str, ...],
 ) -> None:
-    """带引号多词值和业务前缀环境变量都必须完整脱敏。"""
+    """常见字段拼写、业务前缀和多词凭据都必须完整脱敏。"""
     sanitized = str(sanitize_for_host(source))
 
     assert "***" in sanitized
@@ -159,6 +197,107 @@ def test_sanitizer_redacts_quoted_and_prefixed_assignments(
         assert "; status=failed" in sanitized
     if ", retry=off" in source:
         assert ", retry=off" in sanitized
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "tokenCount=12",
+        "tokenType=usage",
+        "secretVersion=2",
+        "apiKeyId=public-id",
+        "accessTokenExpiresAt=2030-01-01T00:00:00Z",
+        "passwordHash=sha256:diagnostic",
+        "url=https://example.invalid/callback?apiKeyId=public-id",
+    ],
+)
+def test_sanitizer_preserves_metadata_assignments(source: str) -> None:
+    """带凭据词根但以 metadata 语义结尾的字段保持诊断价值。"""
+    assert sanitize_for_host(source) == source
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            f"url=https://example.invalid/cb?authToken={SECRET_MARKER}&status=ok#done",
+            "url=https://example.invalid/cb?authToken=***&status=ok#done",
+        ),
+        (
+            f"url=https://example.invalid/cb?authToken={SECRET_MARKER}"
+            f"&refreshToken={SECRET_MARKER}#done",
+            "url=https://example.invalid/cb?authToken=***&refreshToken=***#done",
+        ),
+        (
+            f'message="authToken={SECRET_MARKER}"; status=failed',
+            'message="authToken=***"; status=failed',
+        ),
+        (
+            'message="authToken="; status=ok',
+            'message="authToken=***"; status=ok',
+        ),
+        (
+            "message='authToken='; status=ok",
+            "message='authToken=***'; status=ok",
+        ),
+        (
+            'message="prefix authToken="; status=ok',
+            'message="prefix authToken=***"; status=ok',
+        ),
+        (
+            'authToken=""',
+            'authToken=***',
+        ),
+        (
+            'url=https://example.invalid/cb?authToken=&status=ok',
+            'url=https://example.invalid/cb?authToken=***&status=ok',
+        ),
+        (
+            'authToken="unterminated',
+            'authToken=***',
+        ),
+    ],
+)
+def test_sanitizer_preserves_nested_assignment_boundaries(
+    source: str,
+    expected: str,
+) -> None:
+    """内层凭据脱敏后保留 URL 分段与外层引号结构。"""
+    assert sanitize_for_host(source) == expected
+
+
+@pytest.mark.parametrize("unit", ["a=", "a."])
+def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
+    """赋值链和无头字段链在宿主文本上限内保持近似线性扫描。"""
+
+    def median_duration(size: int) -> float:
+        source = (unit * (size // len(unit) + 1))[:size]
+        durations = []
+        for _ in range(3):
+            started_at = perf_counter()
+            assert sanitize_for_host(source) == source
+            durations.append(perf_counter() - started_at)
+        return median(durations)
+
+    small_duration = median_duration(4 * 1024)
+    max_duration = median_duration(16 * 1024)
+
+    # 4x 输入允许 10x 时间与 20ms 调度余量，同时约束同步宿主观测的延迟增长。
+    assert max_duration <= small_duration * 10 + 0.02
+
+
+def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
+    """输入、结果和异常摘要共享非结构化凭据赋值的脱敏契约。"""
+    source = f"authToken={SECRET_MARKER}"
+
+    summaries = (
+        summarize_input(source),
+        summarize_result(source),
+        summarize_error(RuntimeError(source)),
+    )
+
+    assert all(SECRET_MARKER not in summary for summary in summaries)
+    assert all("***" in summary for summary in summaries)
 
 
 def test_sanitizer_redacts_unquoted_multiword_secret_in_error_summary() -> None:

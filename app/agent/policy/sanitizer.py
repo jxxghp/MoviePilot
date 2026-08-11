@@ -52,13 +52,6 @@ _SENSITIVE_HEADER_PATTERN = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization|cookie|set-cookie|"
     r"x-api-key|api[_-]?key|api[_-]?token)\s*[:=]\s*)[^\r\n]+"
 )
-_ASSIGNMENT_PATTERN = re.compile(
-    r"(?i)(?<![A-Za-z0-9])([\"']?)((?:[A-Za-z0-9]+[_-])*"
-    r"(?:api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|"
-    r"token|password|passwd|pwd|cookie|client[_-]?secret|private[_-]?key|passkey))\1"
-    r"(\s*[:=]\s*)"
-    r'(?:"(?:\\.|[^"\\])*(?:"|$)|\'(?:\\.|[^\'\\])*(?:\'|$)|[^,;}\r\n]+)'
-)
 _OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b")
 _PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
@@ -90,6 +83,170 @@ def _is_secret_key(key: Any) -> bool:
     return compact.endswith(_COMPACT_SECRET_SUFFIXES)
 
 
+def _advance_quote_context(
+    value: str,
+    start: int,
+    end: int,
+    active_quote: str,
+) -> str:
+    """线性跟踪文本片段内尚未闭合的单双引号。"""
+    cursor = start
+    while cursor < end:
+        char = value[cursor]
+        if char == "\\":
+            cursor += 2
+            continue
+        if active_quote:
+            if char == active_quote:
+                active_quote = ""
+        elif char in ("\"", "'"):
+            active_quote = char
+        cursor += 1
+    return active_quote
+
+
+def _is_assignment_key_start(char: str) -> bool:
+    """判断字符是否可作为 ASCII 赋值字段名的起点。"""
+    return char == "_" or char.isascii() and char.isalnum()
+
+
+def _is_assignment_key_char(char: str) -> bool:
+    """判断字符是否属于常见日志或配置字段名。"""
+    return _is_assignment_key_start(char) or char in (".", "-")
+
+
+def _find_assignment_header(
+    value: str,
+    search_from: int,
+) -> tuple[int, str, int] | None:
+    """单向查找下一个赋值头，返回起点、字段名和值起点。"""
+    cursor = search_from
+    while cursor < len(value):
+        match_start = cursor
+        if match_start > 0 and value[match_start - 1].isascii() and value[
+            match_start - 1
+        ].isalnum():
+            cursor += 1
+            continue
+
+        quote = value[cursor] if value[cursor] in ("\"", "'") else ""
+        key_start = cursor + 1 if quote else cursor
+        if key_start >= len(value) or not _is_assignment_key_start(
+            value[key_start]
+        ):
+            cursor += 1
+            continue
+
+        key_end = key_start + 1
+        while key_end < len(value) and _is_assignment_key_char(value[key_end]):
+            key_end += 1
+
+        header_end = key_end
+        if quote:
+            if header_end >= len(value) or value[header_end] != quote:
+                # 引号不是字段名的一部分时，从引号内首字符重试一次。
+                cursor = key_start
+                continue
+            header_end += 1
+        while header_end < len(value) and value[header_end].isspace():
+            header_end += 1
+        if header_end >= len(value) or value[header_end] not in (":", "="):
+            cursor = key_end
+            continue
+        header_end += 1
+        while header_end < len(value) and value[header_end].isspace():
+            header_end += 1
+        return match_start, value[key_start:key_end], header_end
+    return None
+
+
+def _assignment_value_end(
+    value: str,
+    match_start: int,
+    value_start: int,
+    active_quote: str,
+) -> int:
+    """返回凭据值的安全消费边界，并保留外层文本结构。"""
+    if value_start >= len(value):
+        return value_start
+
+    quote = value[value_start] if value[value_start] in ("\"", "'") else ""
+    if quote and quote == active_quote:
+        return value_start
+    if quote:
+        cursor = value_start + 1
+        while cursor < len(value):
+            if value[cursor] == "\\":
+                cursor += 2
+                continue
+            if value[cursor] == quote:
+                return cursor + 1
+            cursor += 1
+        return len(value)
+
+    delimiters = ",;}\r\n"
+    if match_start > 0 and value[match_start - 1] in "?&#":
+        delimiters += "&#"
+
+    value_end = value_start
+    while value_end < len(value) and value[value_end] not in delimiters:
+        value_end += 1
+    if value[value_start:value_end][-1:] in ("\"", "'"):
+        value_end -= 1
+    return value_end
+
+
+def _sanitize_assignments(value: str) -> str:
+    """按结构化字段的同一判敏规则清理文本赋值。"""
+    fragments = []
+    emitted_until = 0
+    search_from = 0
+    context_from = 0
+    active_quote = ""
+    while header := _find_assignment_header(value, search_from):
+        match_start, key, value_start = header
+        active_quote = _advance_quote_context(
+            value,
+            context_from,
+            match_start,
+            active_quote,
+        )
+        if _is_secret_key(key):
+            fragments.append(value[emitted_until:match_start])
+            fragments.append(value[match_start:value_start])
+            fragments.append(REDACTED_VALUE)
+            emitted_until = _assignment_value_end(
+                value,
+                match_start,
+                value_start,
+                active_quote,
+            )
+            search_from = emitted_until
+            active_quote = _advance_quote_context(
+                value,
+                match_start,
+                emitted_until,
+                active_quote,
+            )
+            context_from = emitted_until
+            continue
+
+        # 只消费字段头，值内部的 URL query 或嵌套诊断仍会继续进入扫描。
+        search_from = value_start
+        active_quote = _advance_quote_context(
+            value,
+            match_start,
+            search_from,
+            active_quote,
+        )
+        context_from = search_from
+
+    if not fragments:
+        return value
+    fragments.append(value[emitted_until:])
+    return "".join(fragments)
+
+
 def _sanitize_text(value: str) -> str:
     """清理非结构化文本中的常见凭据表达。"""
     truncated = len(value) > _MAX_TEXT_CHARS
@@ -98,7 +255,7 @@ def _sanitize_text(value: str) -> str:
     sanitized = _PRIVATE_KEY_OPEN_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _SENSITIVE_HEADER_PATTERN.sub(r"\1***", sanitized)
     sanitized = _BEARER_PATTERN.sub(r"\1***", sanitized)
-    sanitized = _ASSIGNMENT_PATTERN.sub(r"\1\2\1\3***", sanitized)
+    sanitized = _sanitize_assignments(sanitized)
     sanitized = _OPENAI_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
     return f"{sanitized}<truncated>" if truncated else sanitized
 
