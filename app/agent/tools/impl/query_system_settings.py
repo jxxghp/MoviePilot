@@ -28,7 +28,7 @@ class QuerySystemSettingsInput(BaseModel):
         description=(
             "Exact setting key to query. Supports Settings field names like 'APP_DOMAIN' or 'TMDB_API_KEY', "
             "SystemConfigKey values like 'Downloaders' or 'MediaServers', enum names, and some single-key aliases "
-            "such as 'downloaders', 'directories', 'search_sites', 'subscribe_sites', 'site_auth', 'ai_agent', "
+            "such as 'downloaders', 'directories', 'search_sites', 'subscribe_sites', 'site_auth', "
             "and 'custom_identifiers'."
         ),
     )
