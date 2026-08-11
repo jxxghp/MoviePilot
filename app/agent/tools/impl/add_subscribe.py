@@ -9,7 +9,7 @@ from app.agent.tools.tags import ToolTag
 from app.chain.subscribe import SubscribeChain
 from app.db.user_oper import UserOper
 from app.log import logger
-from app.schemas.types import MediaType, MessageChannel
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, MessageChannel
 from ._music_utils import normalize_music_type
 
 
@@ -290,7 +290,7 @@ class AddSubscribeTool(MoviePilotTool):
             if sid:
                 display_year = f" ({year})" if year else ""
                 music_label = (
-                    "专辑" if normalized_music_type == "album" else "单曲"
+                    "专辑" if normalized_music_type == MUSIC_ENTITY_ALBUM else "单曲"
                 ) if normalized_music_type else ""
                 if message and "已存在" in message:
                     result_msg = f"{music_label}订阅已存在：{title}{display_year}"

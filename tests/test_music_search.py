@@ -82,6 +82,23 @@ def test_music_search_continues_after_unrelated_first_keyword_results():
     assert contexts[0].torrent_info.title == matched.title
 
 
+def test_music_search_matches_artist_from_resource_description():
+    """精确音乐搜索应使用副标题中的艺术家，兼容主标题只有曲名的站点。"""
+    music = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+    torrent = TorrentInfo(
+        title="晴天 FLAC",
+        description="周杰伦 - 叶惠美 2003",
+        category=MediaType.MUSIC.value,
+    )
+
+    assert SearchChain._matching_music_torrents([torrent], music) == [torrent]
+
+
 def test_search_by_id_routes_music_identity_to_recognize_and_process():
     """MusicBrainz 精确身份搜索应经统一识别入口识别后进入现有搜索处理链。"""
     chain = SearchChain()
@@ -92,20 +109,23 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
         artists=["周杰伦"],
     )
     expected = [Mock()]
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = music
 
     with (
-        patch.object(chain, "recognize_media", return_value=music) as recognize,
+        patch("app.chain.search.MediaChain", return_value=media_chain),
         patch.object(chain, "process", return_value=expected) as process,
     ):
         result = chain.search_by_id(
             source="musicbrainz",
             mediaid="recording-1",
             mtype=MediaType.MUSIC,
+            music_type="recording",
             sites=[1],
         )
 
     assert result == expected
-    recognize.assert_called_once_with(
+    media_chain.recognize_media.assert_called_once_with(
         source="musicbrainz",
         mediaid="recording-1",
         tmdbid=None,
@@ -113,6 +133,7 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
         bangumiid=None,
         anilistid=None,
         mtype=MediaType.MUSIC,
+        music_type="recording",
     )
     process.assert_called_once_with(
         mediainfo=music,

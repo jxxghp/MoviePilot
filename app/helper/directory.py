@@ -6,7 +6,7 @@ from app import schemas
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
-from app.schemas.types import StorageSchema, SystemConfigKey
+from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
 from app.utils.system import SystemUtils
 
 JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
@@ -167,17 +167,33 @@ class DirectoryHelper:
         return src_storage == tar_storage
 
     @staticmethod
-    def get_media_root_path(rename_format: str, rename_path: Path) -> Optional[Path]:
+    def get_media_root_path(
+            rename_format: str,
+            rename_path: Path,
+            media_type: Optional[MediaType] = None,
+    ) -> Optional[Path]:
         """
         获取重命名后的媒体文件根路径
 
         :param rename_format: 重命名格式
         :param rename_path: 重命名后的路径
+        :param media_type: 媒体类型；音乐需要避开可选碟片目录并返回专辑目录
         :return: 媒体文件根路径
         """
         if not rename_format:
             logger.error("重命名格式不能为空")
             return None
+        if media_type == MediaType.MUSIC:
+            # 音乐模板允许按多碟动态增加 Disc 子目录，不能按静态模板层数反推。
+            # 文件的直接父目录通常就是专辑目录；命中碟片目录时再上移一级。
+            media_root = rename_path.parent
+            if re.fullmatch(
+                    r"(?:cd|disc|disk)\s*0*\d+",
+                    media_root.name,
+                    re.IGNORECASE,
+            ):
+                media_root = media_root.parent
+            return media_root
         # 计算重命名中的文件夹层数
         rename_list = rename_format.split("/")
         rename_format_level = len(rename_list) - 1

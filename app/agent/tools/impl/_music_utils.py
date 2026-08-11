@@ -3,37 +3,20 @@
 from typing import Any, Optional
 
 from app.core.context import (
-    MUSIC_ENTITY_ALBUM,
-    MUSIC_ENTITY_ARTIST,
-    MUSIC_ENTITY_RECORDING,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
 )
-from app.schemas.types import media_type_to_agent
+from app.schemas.types import (
+    MUSIC_ENTITY_TYPES,
+    MUSIC_SUBSCRIBABLE_TYPES,
+    media_type_to_agent,
+)
+from app.utils.media import normalize_music_type
 
-MUSIC_ENTITY_TYPES = frozenset({
-    MUSIC_ENTITY_RECORDING,
-    MUSIC_ENTITY_ALBUM,
-    MUSIC_ENTITY_ARTIST,
-})
-MUSIC_SUBSCRIBABLE_TYPES = frozenset({
-    MUSIC_ENTITY_RECORDING,
-    MUSIC_ENTITY_ALBUM,
-})
+
 MUSIC_TRACK_PREVIEW_LIMIT = 100
 MUSIC_RELEASE_PREVIEW_LIMIT = 20
-
-
-def normalize_music_type(
-        value: Optional[str],
-        *,
-        allow_artist: bool = True,
-) -> Optional[str]:
-    """规范化音乐实体类型，非法值返回 None。"""
-    normalized = str(value or "").strip().lower()
-    allowed = MUSIC_ENTITY_TYPES if allow_artist else MUSIC_SUBSCRIBABLE_TYPES
-    return normalized if normalized in allowed else None
 
 
 def simplify_music_info(info: MusicInfo) -> dict[str, Any]:

@@ -11,7 +11,7 @@ from app.chain.download import DownloadChain
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.log import logger
 from app.schemas import DownloaderTorrent
-from app.schemas.types import TorrentQueryStatus, media_type_to_agent
+from app.schemas.types import MUSIC_ENTITY_RECORDING, TorrentQueryStatus, media_type_to_agent
 
 
 class QueryDownloadTasksInput(BaseModel):
@@ -124,7 +124,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
             music_media = music_note.get("media") or {}
             if media_type_to_agent(history.type) == "music":
                 media_payload.update({
-                    "music_type": music_media.get("music_type") or "recording",
+                    "music_type": music_media.get("music_type") or MUSIC_ENTITY_RECORDING,
                     "artists": music_media.get("artists") or [],
                     "album": music_media.get("album"),
                     "album_id": music_media.get("album_id"),

@@ -89,10 +89,12 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
     mediaserver_chain = MagicMock()
     mediaserver_chain.get_play_url.side_effect = lambda server, item_id: f"https://{server}/item/{item_id}"
     mediaserver_chain.get_season_episode_ids.side_effect = lambda server, item_id, season: {1: f"{item_id}-ep1"}
+    media_chain = MagicMock()
+    media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
     with patch("app.chain.subscribe.DownloadHistoryOper") as download_oper, \
-            patch.object(chain, "recognize_media", return_value=mediainfo), \
+            patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
             patch.object(chain, "media_files", return_value=None), \
             patch.object(chain, "media_exists", side_effect=_media_exists_side_effect), \
             patch("app.chain.subscribe.MediaServerHelper", return_value=helper), \
@@ -133,10 +135,12 @@ def test_subscribe_files_info_uses_season_zero_for_tv():
     mediaserver_chain = MagicMock()
     mediaserver_chain.get_play_url.return_value = "https://emby/item/1"
     mediaserver_chain.get_season_episode_ids.side_effect = _get_season_episode_ids
+    media_chain = MagicMock()
+    media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
     with patch("app.chain.subscribe.DownloadHistoryOper") as download_oper, \
-            patch.object(chain, "recognize_media", return_value=mediainfo), \
+            patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
             patch.object(chain, "media_files", return_value=None), \
             patch.object(chain, "media_exists", side_effect=_media_exists_side_effect), \
             patch("app.chain.subscribe.MediaServerHelper", return_value=helper), \

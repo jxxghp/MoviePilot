@@ -275,6 +275,69 @@ def test_refresh_include_music_fetches_music_entry():
     assert music_titles == {"Daft Punk - Get Lucky [FLAC]"}
 
 
+def test_rss_refresh_include_music_fetches_dedicated_entry():
+    """RSS 模式有音乐订阅时也应补抓独立音乐入口，并写入音乐缓存。"""
+    chain = TorrentsChain()
+    video_torrent = TorrentInfo(
+        site=1,
+        site_name="Test",
+        title="Some.Movie.2026.1080p",
+        enclosure="https://example.com/download?id=1",
+        category=MediaType.MOVIE.value,
+        pubdate="2026-08-07 00:00:00",
+    )
+    music_torrent = TorrentInfo(
+        site=1,
+        site_name="Test",
+        title="Daft Punk - Get Lucky [FLAC]",
+        enclosure="https://example.com/download?id=2",
+        category=MediaType.MUSIC.value,
+        pubdate="2026-08-08 00:00:00",
+    )
+
+    def _fake_browse(domain, keyword=None, cat=None, page=None, mtype=None):
+        """模拟音乐专用入口的两页抓取结果。"""
+        assert mtype == MediaType.MUSIC
+        return [music_torrent] if not page else []
+
+    sites_helper = Mock()
+    sites_helper.get_indexers.return_value = [{
+        "id": 1,
+        "name": "Test",
+        "domain": "https://example.com",
+        "search": {
+            "paths": [
+                {"path": "torrents.php", "type": "all"},
+                {"path": "music.php", "type": "music"},
+            ]
+        },
+    }]
+    saved = {}
+
+    with (
+        patch.object(chain, "load_cache", return_value=None),
+        patch.object(chain, "rss", return_value=[video_torrent]),
+        patch.object(chain, "browse", side_effect=_fake_browse) as browse,
+        patch.object(
+            chain,
+            "save_cache",
+            side_effect=lambda data, filename: saved.__setitem__(filename, copy.deepcopy(data)),
+        ),
+        patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
+        patch("app.chain.torrents.MediaChain"),
+    ):
+        result = chain.refresh(stype="rss", sites=[1], include_music=True)
+
+    browse.assert_called()
+    assert {
+        context.torrent_info.title for context in result["example.com"]
+    } == {video_torrent.title, music_torrent.title}
+    assert {
+        context.torrent_info.title
+        for context in saved[TorrentsChain._music_rss_file]["example.com"]
+    } == {music_torrent.title}
+
+
 def test_music_cache_not_evicted_by_video_torrents():
     """影视缓存按配额裁剪时，音乐独立缓存中的资源不应被挤出。"""
     chain = TorrentsChain()

@@ -12,6 +12,7 @@ from typing import List, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
+from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.core.config import global_vars, settings
 from app.core.context import Context
@@ -234,6 +235,8 @@ class SearchChain(ChainBase):
             "sites": str(params.get("sites") or ""),
             "result_type": str(params.get("result_type") or "torrent"),
         }
+        if params.get("music_type"):
+            normalized["music_type"] = str(params["music_type"])
         return normalized if normalized["keyword"] else None
 
     def save_last_search_params(
@@ -247,6 +250,7 @@ class SearchChain(ChainBase):
             season: Optional[int] = None,
             episode: Optional[int] = None,
             sites: Optional[List[int]] = None,
+            music_type: Optional[str] = None,
             result_type: Optional[str] = "torrent",
     ) -> None:
         """
@@ -262,6 +266,7 @@ class SearchChain(ChainBase):
                 "season": season,
                 "episode": episode,
                 "sites": self._stringify_sites(sites),
+                "music_type": music_type,
                 "result_type": result_type or "torrent",
             }
         )
@@ -279,6 +284,7 @@ class SearchChain(ChainBase):
             season: Optional[int] = None,
             episode: Optional[int] = None,
             sites: Optional[List[int]] = None,
+            music_type: Optional[str] = None,
             result_type: Optional[str] = "torrent",
     ) -> None:
         """
@@ -294,6 +300,7 @@ class SearchChain(ChainBase):
                 "season": season,
                 "episode": episode,
                 "sites": self._stringify_sites(sites),
+                "music_type": music_type,
                 "result_type": result_type or "torrent",
             }
         )
@@ -521,6 +528,7 @@ class SearchChain(ChainBase):
             cache_local: bool = False,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             source: Optional[str] = None, mediaid: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> List[Context]:
         """
         根据数据源媒体 ID 搜索资源，精确匹配，不过滤本地存在的资源
@@ -530,6 +538,7 @@ class SearchChain(ChainBase):
         :param anilistid: AniList ID
         :param source: 媒体数据源
         :param mediaid: 数据源原生 ID
+        :param music_type: 音乐实体类型
         :param mtype: 媒体，电影 or 电视剧
         :param area: 搜索范围，title or imdbid
         :param season: 季数
@@ -546,11 +555,13 @@ class SearchChain(ChainBase):
                 area=area,
                 season=season,
                 sites=sites,
+                music_type=music_type,
             )
         # 音乐统一在 recognize_media 内路由到 MusicChain
-        mediainfo = self.recognize_media(
+        mediainfo = MediaChain().recognize_media(
             source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
             bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+            music_type=music_type,
         )
         if not mediainfo:
             logger.error(f'{self._build_search_keyword(source, mediaid, tmdbid, doubanid, bangumiid, anilistid)} 媒体信息识别失败！')
@@ -746,7 +757,7 @@ class SearchChain(ChainBase):
                 sites=sites,
                 result_type="subtitle",
             )
-        mediainfo = await self.async_recognize_media(
+        mediainfo = await MediaChain().async_recognize_media(
             source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
             bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
         )
@@ -802,7 +813,7 @@ class SearchChain(ChainBase):
                 sites=sites,
                 result_type="subtitle",
             )
-        mediainfo = await self.async_recognize_media(
+        mediainfo = await MediaChain().async_recognize_media(
             source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
             bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
         )
@@ -849,6 +860,7 @@ class SearchChain(ChainBase):
             cache_local: bool = False,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             source: Optional[str] = None, mediaid: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> List[Context]:
         """
         根据数据源媒体 ID 异步搜索资源，精确匹配，不过滤本地存在的资源
@@ -858,6 +870,7 @@ class SearchChain(ChainBase):
         :param anilistid: AniList ID
         :param source: 媒体数据源
         :param mediaid: 数据源原生 ID
+        :param music_type: 音乐实体类型
         :param mtype: 媒体，电影 or 电视剧
         :param area: 搜索范围，title or imdbid
         :param season: 季数
@@ -874,11 +887,13 @@ class SearchChain(ChainBase):
                 area=area,
                 season=season,
                 sites=sites,
+                music_type=music_type,
             )
         # 音乐统一在 async_recognize_media 内路由到 MusicChain
-        mediainfo = await self.async_recognize_media(
+        mediainfo = await MediaChain().async_recognize_media(
             source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
             bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+            music_type=music_type,
         )
         if not mediainfo:
             logger.error(
@@ -1064,6 +1079,7 @@ class SearchChain(ChainBase):
             cache_local: bool = False,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             source: Optional[str] = None, mediaid: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> AsyncIterator[dict]:
         """
         根据数据源媒体 ID 渐进式搜索资源，先返回站点原始候选，再返回过滤匹配后的最终结果
@@ -1078,11 +1094,13 @@ class SearchChain(ChainBase):
                 area=area,
                 season=season,
                 sites=sites,
+                music_type=music_type,
             )
         # 音乐统一在 async_recognize_media 内路由到 MusicChain
-        mediainfo = await self.async_recognize_media(
+        mediainfo = await MediaChain().async_recognize_media(
             source=source, mediaid=mediaid, tmdbid=tmdbid, doubanid=doubanid,
             bangumiid=bangumiid, anilistid=anilistid, mtype=mtype,
+            music_type=music_type,
         )
         if not mediainfo:
             logger.error(
@@ -1413,7 +1431,11 @@ class SearchChain(ChainBase):
             torrent
             for torrent in torrents or []
             if torrent.category in (MediaType.MUSIC, MediaType.MUSIC.value)
-            and MusicChain.matches_site_resource(mediainfo, torrent.title)
+            and MusicChain.matches_site_resource(
+                mediainfo,
+                torrent.title,
+                torrent.description,
+            )
         ]
 
     def _process_music(
@@ -1521,7 +1543,7 @@ class SearchChain(ChainBase):
 
         # 补充媒体信息
         if not mediainfo.names:
-            mediainfo: MediaInfo = self.recognize_media(
+            mediainfo: MediaInfo = MediaChain().recognize_media(
                 mtype=mediainfo.type,
                 **self._media_recognize_kwargs(mediainfo),
             )
@@ -1614,7 +1636,7 @@ class SearchChain(ChainBase):
 
         # 补充媒体信息
         if not mediainfo.names:
-            mediainfo: MediaInfo = await self.async_recognize_media(
+            mediainfo: MediaInfo = await MediaChain().async_recognize_media(
                 mtype=mediainfo.type,
                 **self._media_recognize_kwargs(mediainfo),
             )
@@ -1714,7 +1736,7 @@ class SearchChain(ChainBase):
 
         # 补充媒体信息
         if not mediainfo.names:
-            mediainfo = await self.async_recognize_media(
+            mediainfo = await MediaChain().async_recognize_media(
                 mtype=mediainfo.type,
                 **self._media_recognize_kwargs(mediainfo),
             )
@@ -1969,7 +1991,7 @@ class SearchChain(ChainBase):
         logger.info(f'开始精确搜索字幕，关键词：{mediainfo.title} ...')
 
         if not mediainfo.names:
-            mediainfo = await self.async_recognize_media(
+            mediainfo = await MediaChain().async_recognize_media(
                 mtype=mediainfo.type,
                 **self._media_recognize_kwargs(mediainfo),
             )
@@ -2050,7 +2072,7 @@ class SearchChain(ChainBase):
         logger.info(f'开始渐进式精确搜索字幕，关键词：{mediainfo.title} ...')
 
         if not mediainfo.names:
-            mediainfo = await self.async_recognize_media(
+            mediainfo = await MediaChain().async_recognize_media(
                 mtype=mediainfo.type,
                 **self._media_recognize_kwargs(mediainfo),
             )

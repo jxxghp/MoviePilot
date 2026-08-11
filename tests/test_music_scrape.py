@@ -135,6 +135,39 @@ def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
     assert message == "单曲音乐 ID 仅支持刮削单个音频文件，整目录请选择专辑"
 
 
+def test_generic_scrape_dispatches_music_without_entering_video_handlers() -> None:
+    """统一刮削入口应直接分派音乐，不能因音频后缀过滤或落入电视剧分支。"""
+    chain = _media_chain()
+    chain.scrape_music_metadata = Mock(return_value=(True, "已刮削 1 个音频文件"))
+    music = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+    fileitem = FileItem(
+        storage="local",
+        path="/music/晴天.flac",
+        type="file",
+        name="晴天.flac",
+        extension="flac",
+    )
+
+    result = chain.scrape_metadata(
+        fileitem=fileitem,
+        meta=MetaMusic(title="晴天", artists=["周杰伦"]),
+        mediainfo=music,
+        overwrite=False,
+    )
+
+    assert result == (True, "已刮削 1 个音频文件")
+    chain.scrape_music_metadata.assert_called_once_with(
+        fileitem=fileitem,
+        mediainfo=music,
+        overwrite=False,
+    )
+
+
 def test_default_scraping_config_enables_missing_only_music_lyrics() -> None:
     """新安装和未保存过该字段的用户应默认仅在缺失时下载歌词。"""
     assert ScrapingConfig.get_default_config()["music_lyrics"] == ScrapingPolicy.MISSINGONLY
@@ -204,7 +237,7 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
     )
     music_chain = Mock()
 
-    with patch("app.chain.music.MusicChain", return_value=music_chain):
+    with patch("app.chain.media.MusicChain", return_value=music_chain):
         success, message = chain.scrape_music_metadata(
             FileItem(
                 storage="local",
@@ -336,6 +369,86 @@ def test_music_scrape_event_preserves_independent_policy_overwrite() -> None:
         mediainfo=mediainfo,
         overwrite=False,
     )
+
+
+def test_music_scrape_event_uses_only_batch_files_and_per_track_contexts() -> None:
+    """自动刮削必须按成功文件清单处理，并保留批次内每首歌各自的身份。"""
+    chain = _media_chain()
+    chain.storagechain = Mock()
+    chain.scrape_music_metadata = Mock(return_value=(True, "done"))
+    root = FileItem(storage="local", path="/music/叶惠美", type="dir")
+    paths = ["/music/叶惠美/01 - 以父之名.flac", "/music/叶惠美/03 - 晴天.flac"]
+    audio_files = [
+        FileItem(
+            storage="local",
+            path=path,
+            type="file",
+            name=path.rsplit("/", 1)[-1],
+            extension="flac",
+        )
+        for path in paths
+    ]
+    chain.storagechain.get_file_item.side_effect = audio_files
+    recordings = [
+        MusicInfo(source="musicbrainz", media_id="recording-1", title="以父之名"),
+        MusicInfo(source="musicbrainz", media_id="recording-3", title="晴天"),
+    ]
+
+    chain.scrape_metadata_event(Event(
+        event_type=EventType.MetadataScrape,
+        event_data={
+            "fileitem": root,
+            "file_list": paths,
+            "mediainfo": recordings[0],
+            "file_contexts": [
+                {"path": path, "mediainfo": recording}
+                for path, recording in zip(paths, recordings)
+            ],
+            "overwrite": False,
+        },
+    ))
+
+    chain.scrape_music_metadata.assert_called_once_with(
+        fileitem=root,
+        mediainfo=recordings[0],
+        overwrite=False,
+        audio_files=audio_files,
+        media_by_path=dict(zip(paths, recordings)),
+    )
+
+
+def test_music_scrape_batch_applies_each_recording_to_its_own_file() -> None:
+    """多首单曲批次应逐文件使用对应身份，不触发单曲覆盖整目录保护。"""
+    chain = _media_chain()
+    chain.storagechain = Mock()
+    chain.scraping_policies = Mock()
+    chain.scraping_policies.option.side_effect = lambda _target, metadata: SimpleNamespace(
+        is_skip=metadata == "lyrics",
+        is_overwrite=False,
+    )
+    chain._scrape_music_file = Mock(
+        return_value=_MusicScrapeFileResult(metadata_success=True)
+    )
+    files = [
+        FileItem(storage="local", path="/music/01.flac", type="file", name="01.flac"),
+        FileItem(storage="local", path="/music/02.flac", type="file", name="02.flac"),
+    ]
+    recordings = [
+        MusicInfo(source="musicbrainz", media_id="recording-1", title="Track 1"),
+        MusicInfo(source="musicbrainz", media_id="recording-2", title="Track 2"),
+    ]
+
+    success, message = chain.scrape_music_metadata(
+        fileitem=FileItem(storage="local", path="/music", type="dir"),
+        mediainfo=recordings[0],
+        overwrite=False,
+        audio_files=files,
+        media_by_path=dict(zip((item.path for item in files), recordings)),
+    )
+
+    assert success is True
+    assert message == "已刮削 2 个音频文件"
+    assert [call.args[1] for call in chain._scrape_music_file.call_args_list] == recordings
 
 
 def test_music_download_failure_is_attributed_only_to_enabled_outputs() -> None:

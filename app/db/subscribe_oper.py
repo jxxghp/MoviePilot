@@ -1,11 +1,11 @@
 import time
 from typing import Tuple, List, Optional
 
-from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo, MusicInfo
+from app.core.context import MediaInfo, MusicInfo
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
-from app.schemas.types import MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 from app.utils.media import resolve_media_identity
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")

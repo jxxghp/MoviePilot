@@ -15,7 +15,12 @@ from app.modules.listenbrainz import (
     LISTENBRAINZ_FRESH_MAX_DAYS,
     LISTENBRAINZ_FRESH_SORTS,
 )
-from app.schemas.types import MediaType, media_type_to_agent
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaType,
+    media_type_to_agent,
+)
 from ._music_utils import normalize_music_type, simplify_music_info
 
 
@@ -176,10 +181,10 @@ class GetRecommendationsTool(MoviePilotTool):
                         sort_by=sort_by,
                         min_listen_count=max(0, min_listen_count or 0),
                         with_cover=bool(with_cover),
-                        entity=normalized_music_type or "recording",
+                        entity=normalized_music_type or MUSIC_ENTITY_RECORDING,
                     )
                 else:
-                    if normalized_music_type and normalized_music_type != "album":
+                    if normalized_music_type and normalized_music_type != MUSIC_ENTITY_ALBUM:
                         return "错误：ListenBrainz 新发行结果只支持 music_type='album'"
                     if fresh_sort not in LISTENBRAINZ_FRESH_SORTS:
                         return f"错误：无效的新发行排序 '{fresh_sort}'"

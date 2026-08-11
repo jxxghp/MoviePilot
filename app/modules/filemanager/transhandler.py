@@ -5,10 +5,11 @@ from typing import Optional, List, Tuple
 from jinja2 import Template
 
 from app.core.config import settings
-from app.core.context import MediaInfo
+from app.core.context import MediaInfo, MusicInfo
 from app.core.event import eventmanager
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfoPath
+from app.helper.audio import AudioMetadataHelper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import TemplateHelper
 from app.log import logger
@@ -128,11 +129,41 @@ class TransHandler:
             size=size if item_type == "file" else None,
         )
 
+    @staticmethod
+    def __music_quality_overwrite_decision(
+            meta: MetaBase,
+            mediainfo: MediaInfo | MusicInfo,
+            target_item: FileItem,
+    ) -> Optional[bool]:
+        """比较新旧音乐的实际音质，无法形成可靠结论时交回原覆盖策略。"""
+        if getattr(mediainfo, "type", None) != MediaType.MUSIC or not target_item:
+            return None
+
+        source_score = getattr(meta, "audio_quality_score", 0) or getattr(
+            mediainfo, "audio_quality_score", 0
+        )
+        target_path = Path(target_item.path) if target_item.path else None
+        if (
+                target_path
+                and (target_item.storage or "local") == "local"
+                and target_path.is_file()
+        ):
+            target_music = AudioMetadataHelper.read(target_path)
+        else:
+            target_format = target_item.extension
+            if not target_format and target_path:
+                target_format = target_path.suffix.lstrip(".")
+            target_music = MetaMusic(audio_format=target_format)
+        target_score = target_music.audio_quality_score
+        if not source_score or not target_score or source_score == target_score:
+            return None
+        return source_score > target_score
+
     def transfer_media(
         self,
         fileitem: FileItem,
         in_meta: MetaBase,
-        mediainfo: MediaInfo,
+        mediainfo: MediaInfo | MusicInfo,
         target_storage: str,
         target_path: Path,
         transfer_type: str,
@@ -234,7 +265,9 @@ class TransHandler:
                         )
                     else:
                         new_path = DirectoryHelper.get_media_root_path(
-                            rename_format, rename_path=rendered_path
+                            rename_format,
+                            rename_path=rendered_path,
+                            media_type=mediainfo.type,
                         )
                     if not new_path:
                         self.__update_result(
@@ -369,7 +402,9 @@ class TransHandler:
 
                     # 文件目录
                     folder_path = DirectoryHelper.get_media_root_path(
-                        rename_format, rename_path=new_file
+                        rename_format,
+                        rename_path=new_file,
+                        media_type=mediainfo.type,
                     )
                     if not folder_path:
                         self.__update_result(
@@ -516,27 +551,20 @@ class TransHandler:
                                 # 总是覆盖同名文件
                                 overflag = True
                             elif overwrite_mode == "size":
-                                # 存在时大覆盖小
-                                source_size = (
-                                    plugin_source_size
-                                    if plugin_source_size is not None
-                                    else fileitem.size
+                                # 音乐先比较真实音质，无法判断时再沿用文件大小策略
+                                music_overwrite = self.__music_quality_overwrite_decision(
+                                    meta=in_meta,
+                                    mediainfo=mediainfo,
+                                    target_item=target_item,
                                 )
-                                target_size = (
-                                    plugin_target_size
-                                    if plugin_target_size is not None
-                                    else target_item.size
-                                )
-                                if target_size < source_size:
-                                    logger.info(
-                                        f"目标文件文件大小更小，将覆盖：{new_file}"
-                                    )
+                                if music_overwrite is True:
+                                    logger.info(f"目标音乐音质较低，将覆盖：{new_file}")
                                     overflag = True
-                                else:
+                                elif music_overwrite is False:
                                     self.__update_result(
                                         result=result,
                                         success=False,
-                                        message=f"媒体库存在同名文件，且质量更好",
+                                        message="媒体库存在同名音乐文件，且目标音质更好",
                                         fileitem=fileitem,
                                         target_item=target_item,
                                         target_diritem=target_diritem,
@@ -545,6 +573,35 @@ class TransHandler:
                                         need_notify=need_notify,
                                     )
                                     return result
+                                else:
+                                    source_size = (
+                                        plugin_source_size
+                                        if plugin_source_size is not None
+                                        else fileitem.size
+                                    )
+                                    target_size = (
+                                        plugin_target_size
+                                        if plugin_target_size is not None
+                                        else target_item.size
+                                    )
+                                    if target_size < source_size:
+                                        logger.info(
+                                            f"目标文件文件大小更小，将覆盖：{new_file}"
+                                        )
+                                        overflag = True
+                                    else:
+                                        self.__update_result(
+                                            result=result,
+                                            success=False,
+                                            message=f"媒体库存在同名文件，且质量更好",
+                                            fileitem=fileitem,
+                                            target_item=target_item,
+                                            target_diritem=target_diritem,
+                                            fail_list=[fileitem.path],
+                                            transfer_type=transfer_type,
+                                            need_notify=need_notify,
+                                        )
+                                        return result
                             elif overwrite_mode == "never":
                                 # 存在不覆盖
                                 self.__update_result(

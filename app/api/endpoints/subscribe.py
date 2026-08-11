@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.chain.music import MusicChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
-from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaInfo
+from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_apitoken
@@ -22,7 +23,13 @@ from app.helper.server import MoviePilotServerHelper
 from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas.event import SubscribeModifiedEventData
-from app.schemas.types import MediaType, EventType, SystemConfigKey
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaType,
+    EventType,
+    SystemConfigKey,
+)
 from app.utils.media import normalize_media_source, parse_media_key
 
 router = APIRouter()
@@ -115,6 +122,14 @@ def matches_subscribe_music_type(
     subscribe_music_type = getattr(subscribe, "music_type", None)
     return subscribe_music_type == music_type \
         or (music_type == MUSIC_ENTITY_RECORDING and subscribe_music_type is None)
+
+
+def music_subscribe_title_candidates(title: str) -> List[str]:
+    """生成音乐订阅标题兜底候选，保留精确标题并追加音乐语义解析结果。"""
+    parsed_title = MusicChain.parse_query(title).title
+    return list(dict.fromkeys(
+        candidate for candidate in (title, parsed_title) if candidate
+    ))
 
 
 async def list_subscribes_by_media_key(
@@ -326,18 +341,27 @@ async def subscribe_mediaid(
     title_check = not result and bool(title) and source != "themoviedb"
     # 使用名称检查订阅
     if title_check and title:
-        meta = MetaInfo(title)
-        if season is not None:
-            meta.begin_season = season
-        subscribes = await Subscribe.async_list_by_title(
-            db, title=meta.name, season=meta.begin_season
-        )
+        title_season = None
         if music_type:
-            subscribes = [
-                subscribe for subscribe in subscribes
-                if matches_subscribe_music_type(subscribe, music_type)
-            ]
-        result = select_accessible_subscribe(subscribes, current_user)
+            title_candidates = music_subscribe_title_candidates(title)
+        else:
+            title_meta = MetaInfo(title)
+            if season is not None:
+                title_meta.begin_season = season
+            title_season = title_meta.begin_season
+            title_candidates = [title_meta.name]
+        for candidate_title in title_candidates:
+            subscribes = await Subscribe.async_list_by_title(
+                db, title=candidate_title, season=title_season
+            )
+            if music_type:
+                subscribes = [
+                    subscribe for subscribe in subscribes
+                    if matches_subscribe_music_type(subscribe, music_type)
+                ]
+            result = select_accessible_subscribe(subscribes, current_user)
+            if result:
+                break
 
     return result if result else Subscribe()
 

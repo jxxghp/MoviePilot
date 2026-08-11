@@ -1,6 +1,13 @@
 from typing import Any, Optional, Tuple
 
 from app.core.config import settings
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_ARTIST,
+    MUSIC_ENTITY_RECORDING,
+    MUSIC_ENTITY_TYPES,
+    MUSIC_SUBSCRIBABLE_TYPES,
+)
 
 
 MEDIA_SOURCE_ALIASES = {
@@ -38,6 +45,17 @@ MEDIA_SOURCE_ID_FIELDS = {
 
 MUSIC_MEDIA_SOURCE_ORDER = ("musicbrainz", "theaudiodb", "doubanmusic")
 MUSIC_MEDIA_SOURCES = frozenset(MUSIC_MEDIA_SOURCE_ORDER)
+
+
+def normalize_music_type(
+        value: Optional[object],
+        *,
+        allow_artist: bool = True,
+) -> Optional[str]:
+    """规范化音乐实体类型，非法值返回 None。"""
+    normalized = str(value or "").strip().lower()
+    allowed = MUSIC_ENTITY_TYPES if allow_artist else MUSIC_SUBSCRIBABLE_TYPES
+    return normalized if normalized in allowed else None
 
 
 def is_music_media_source(source: Optional[str]) -> bool:

@@ -11,7 +11,7 @@ from app.agent.tools.tags import ToolTag
 from app.core.context import MediaInfo
 from app.helper.server import MoviePilotServerHelper
 from app.log import logger
-from app.schemas.types import MediaType, media_type_to_agent
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
 from ._music_utils import normalize_music_type
 
 MAX_PAGE_SIZE = 50
@@ -133,7 +133,7 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                 raw_type = str(sub.get("type") or "").strip().lower()
                 if raw_type in ["music", "音乐"]:
                     sub_music_type = normalize_music_type(
-                        sub.get("music_type") or "recording",
+                        sub.get("music_type") or MUSIC_ENTITY_RECORDING,
                         allow_artist=False,
                     )
                     if not sub_music_type:

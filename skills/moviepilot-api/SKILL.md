@@ -111,6 +111,8 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 
 ### Media Search (13 endpoints)
 
+When a video recognition request omits `source`, MoviePilot validates TMDB first and only then queries `douban`, `bangumi`, and `anilist` concurrently to score a fallback. Providing `source` or a source-native ID keeps recognition strict to that source. Music recognition without `source` compares all built-in music sources concurrently.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/media/search` | Search media, collections, or people by title. Params: `title` (required), `type`, `page`, `count`, optional `source`. Supported sources: `media` = `themoviedb`, `douban`, `bangumi`, `anilist`; `collection` = `themoviedb`; `person` = `themoviedb`, `douban` |

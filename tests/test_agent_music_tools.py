@@ -18,6 +18,7 @@ from app.agent.tools.impl.query_subscribe_history import QuerySubscribeHistoryTo
 from app.agent.tools.impl.recognize_media import RecognizeMediaTool
 from app.agent.tools.impl.scrape_metadata import ScrapeMetadataTool
 from app.agent.tools.impl.search_media import SearchMediaTool
+from app.agent.tools.impl.search_torrents import SearchTorrentsTool
 from app.core.context import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
@@ -44,6 +45,31 @@ def _recording() -> MusicInfo:
         track_number=3,
         total_tracks=11,
     )
+
+
+def test_search_torrents_forwards_album_namespace_before_recognition():
+    """Agent 精确搜专辑资源时应在识别阶段绑定 album 命名空间。"""
+    async_search = AsyncMock(return_value=[])
+    async_sites = AsyncMock(return_value=[])
+    tool = SearchTorrentsTool(session_id="session-1", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.search_torrents.SearchChain.async_search_by_id",
+        new=async_search,
+    ), patch(
+        "app.agent.tools.impl.search_torrents.SitesHelper",
+        return_value=SimpleNamespace(async_get_indexers=async_sites),
+    ):
+        asyncio.run(
+            tool.run(
+                media_type="music",
+                music_type="album",
+                media_source="musicbrainz",
+                media_id="release-group-1",
+            )
+        )
+
+    assert async_search.await_args.kwargs["music_type"] == "album"
 
 
 def _album() -> MusicInfo:
@@ -200,6 +226,53 @@ def test_query_album_detail_exposes_complete_track_contract():
     assert payload["total_tracks"] == 2
     assert payload["tracks_total"] == 2
     assert payload["tracks"][0]["media_id"] == "recording-1"
+
+
+def test_query_recording_detail_forwards_recording_namespace():
+    """Agent 查询单曲详情时必须把 Recording 实体传给统一识别入口。"""
+    async_recognize = AsyncMock(return_value=_recording())
+    tool = QueryMediaDetailTool(session_id="session-1", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.query_media_detail.MediaChain.async_recognize_media",
+        new=async_recognize,
+    ):
+        result = asyncio.run(tool.run(
+            media_type="music",
+            music_type="recording",
+            media_source="musicbrainz",
+            media_id="recording-1",
+        ))
+
+    payload = json.loads(result)
+    assert payload["music_type"] == "recording"
+    assert async_recognize.await_args.kwargs["music_type"] == "recording"
+
+
+def test_scrape_album_uses_unified_entity_recognition(tmp_path):
+    """Agent 专辑刮削应通过 MediaChain 识别，不再单独编排 MusicChain 专辑查询。"""
+    album_dir = tmp_path / "叶惠美"
+    album_dir.mkdir()
+    async_recognize = AsyncMock(return_value=_album())
+    tool = ScrapeMetadataTool(session_id="session-1", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.scrape_metadata.MediaChain.async_recognize_media",
+        new=async_recognize,
+    ), patch(
+        "app.agent.tools.impl.scrape_metadata.MediaChain.scrape_music_metadata",
+        return_value=(True, "已刮削专辑"),
+    ):
+        result = asyncio.run(tool.run(
+            path=str(album_dir),
+            media_type="music",
+            music_type="album",
+            media_source="musicbrainz",
+            media_id="release-group-1",
+        ))
+
+    assert json.loads(result)["success"] is True
+    assert async_recognize.await_args.kwargs["music_type"] == "album"
 
 
 def test_query_artist_detail_marks_entity_as_non_subscribable():

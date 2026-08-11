@@ -478,6 +478,7 @@ def test_music_report_payload_includes_source_and_media_id():
     assert payload["doubanid"] is None
     assert payload["media_source"] == "musicbrainz"
     assert payload["media_id"] == "recording-1"
+    assert payload["music_type"] == "recording"
 
 
 def test_music_report_payload_skips_fallback_without_remote_identity():
@@ -506,12 +507,47 @@ def test_music_query_params_build_for_music_type():
     assert params["keyword"] == "晴天"
     assert params["type"] == "music"
     assert params["year"] == "2003"
+    assert params["music_type"] == "recording"
     assert "season" not in params
+
+    album_params = MoviePilotServerHelper._build_recognize_query_params(
+        meta=meta,
+        mtype=MediaType.MUSIC,
+        keyword_meta=keyword_meta,
+        music_type="album",
+    )
+    assert album_params["music_type"] == "album"
+
+
+def test_music_shared_identity_keeps_entity_type():
+    """共享专辑身份转回本地识别参数时必须保留专辑命名空间。"""
+    params = MoviePilotServerHelper.to_recognize_params({
+        "type": "music",
+        "media_source": "musicbrainz",
+        "media_id": "release-group-1",
+        "music_type": "album",
+    })
+
+    assert params["mtype"] == MediaType.MUSIC
+    assert params["source"] == "musicbrainz"
+    assert params["mediaid"] == "release-group-1"
+    assert params["music_type"] == "album"
+
+
+def test_legacy_music_shared_identity_defaults_to_recording():
+    """旧共享记录缺少实体字段时只按自动识别的 Recording 语义兼容。"""
+    params = MoviePilotServerHelper.to_recognize_params({
+        "type": "music",
+        "media_source": "musicbrainz",
+        "media_id": "recording-1",
+    })
+
+    assert params["music_type"] == "recording"
 
 
 def test_chain_recognize_media_reports_music_share_result():
     """音乐识别成功且有远端身份时，应与影视一样走统一共享上报。"""
-    chain = ChainBase()
+    chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"], year=2003)
     music = _music_info()
 
@@ -530,7 +566,7 @@ def test_chain_recognize_media_reports_music_share_result():
 
 def test_chain_recognize_media_queries_music_share_when_local_failed():
     """音乐本地识别失败后应回查共享识别并按数据源原生 ID 二次识别。"""
-    chain = ChainBase()
+    chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     music = _music_info()
 
@@ -542,13 +578,19 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
         return_value=music,
     ) as recognize_source, patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
-        return_value={"type": "music", "media_source": "musicbrainz", "media_id": "recording-1"},
+        return_value={
+            "type": "music",
+            "media_source": "musicbrainz",
+            "media_id": "recording-1",
+            "music_type": "recording",
+        },
     ), patch(
         "app.chain.MoviePilotServerHelper.to_recognize_params",
         return_value={
             "mtype": MediaType.MUSIC,
             "source": "musicbrainz",
             "mediaid": "recording-1",
+            "music_type": "recording",
             "tmdbid": None,
             "doubanid": None,
             "bangumiid": None,
@@ -571,21 +613,141 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
         meta=meta,
         mediaid="recording-1",
         cache=False,
+        music_type="recording",
+    )
+
+
+def test_chain_recognize_media_queries_music_share_after_local_fallback():
+    """本地标签兜底没有远端身份时，仍应通过共享结果补成标准音乐身份。"""
+    chain = MediaChain()
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    fallback = MusicInfo(title="晴天", artists=["周杰伦"])
+    music = _music_info()
+
+    with patch(
+        "app.chain.music.MusicChain.recognize_best",
+        return_value=fallback,
+    ), patch(
+        "app.chain.music.MusicChain.recognize_from_source",
+        return_value=music,
+    ) as recognize_source, patch(
+        "app.chain.MoviePilotServerHelper.query_recognize_share",
+        return_value={
+            "type": "music",
+            "media_source": "musicbrainz",
+            "media_id": "recording-1",
+            "music_type": "recording",
+        },
+    ) as query_share, patch(
+        "app.chain.MoviePilotServerHelper.to_recognize_params",
+        return_value={
+            "mtype": MediaType.MUSIC,
+            "source": "musicbrainz",
+            "mediaid": "recording-1",
+            "music_type": "recording",
+            "tmdbid": None,
+            "doubanid": None,
+            "bangumiid": None,
+            "anilistid": None,
+            "season": None,
+        },
+    ), patch.object(
+        chain,
+        "_update_local_recognize_cache",
+    ), patch(
+        "app.chain.settings.MEDIA_RECOGNIZE_SHARE",
+        True,
+    ):
+        result = chain.recognize_media(meta=meta, cache=False)
+
+    assert result is music
+    query_share.assert_called_once_with(
+        meta=meta,
+        mtype=MediaType.MUSIC,
+        keyword_meta=meta,
+    )
+    recognize_source.assert_called_once()
+
+
+def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
+    """异步音乐识别也必须在返回本地兜底前尝试共享身份补全。"""
+    chain = MediaChain()
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    fallback = MusicInfo(title="晴天", artists=["周杰伦"])
+    music = _music_info()
+
+    async def runner():
+        with patch(
+            "app.chain.music.MusicChain.async_recognize_best",
+            new=AsyncMock(return_value=fallback),
+        ), patch(
+            "app.chain.music.MusicChain.async_recognize_from_source",
+            new=AsyncMock(return_value=music),
+        ) as recognize_source, patch(
+            "app.chain.MoviePilotServerHelper.async_query_recognize_share",
+            new=AsyncMock(return_value={
+                "type": "music",
+                "media_source": "musicbrainz",
+                "media_id": "recording-1",
+                "music_type": "recording",
+            }),
+        ) as query_share, patch(
+            "app.chain.MoviePilotServerHelper.to_recognize_params",
+            return_value={
+                "mtype": MediaType.MUSIC,
+                "source": "musicbrainz",
+                "mediaid": "recording-1",
+                "music_type": "recording",
+                "tmdbid": None,
+                "doubanid": None,
+                "bangumiid": None,
+                "anilistid": None,
+                "season": None,
+            },
+        ), patch.object(
+            chain,
+            "_async_update_local_recognize_cache",
+            new=AsyncMock(),
+        ), patch(
+            "app.chain.settings.MEDIA_RECOGNIZE_SHARE",
+            True,
+        ):
+            result = await chain.async_recognize_media(meta=meta, cache=False)
+        return result, query_share, recognize_source
+
+    result, query_share, recognize_source = asyncio.run(runner())
+
+    assert result is music
+    query_share.assert_awaited_once_with(
+        meta=meta,
+        mtype=MediaType.MUSIC,
+        keyword_meta=meta,
+    )
+    recognize_source.assert_awaited_once_with(
+        source="musicbrainz",
+        meta=meta,
+        mediaid="recording-1",
+        cache=False,
+        music_type="recording",
     )
 
 
 def test_chain_recognize_media_skips_music_report_for_fallback_result():
-    """兜底无远端身份的音乐结果不上报共享识别，由载荷构建返回空保证。"""
-    chain = ChainBase()
+    """共享也未命中时保留音乐标签兜底，且不把无身份结果上报。"""
+    chain = MediaChain()
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
     fallback = MusicInfo(title="未知曲目", artists=["未知艺术家"])
 
     with patch("app.chain.music.MusicChain.recognize_best", return_value=fallback), patch(
-        "app.chain.MoviePilotServerHelper.recognize_report"
+        "app.chain.MoviePilotServerHelper.query_recognize_share",
+        return_value=None,
+    ) as query_mock, patch(
+        "app.chain.MoviePilotServerHelper.report_recognize_share"
     ) as report_mock, patch(
         "app.chain.settings.MEDIA_RECOGNIZE_SHARE", True
     ):
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is fallback
+    query_mock.assert_called_once()
     report_mock.assert_not_called()

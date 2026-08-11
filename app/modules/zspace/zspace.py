@@ -760,24 +760,26 @@ class ZSpace:
                 library_ids.append(library_id)
         if "/" in library_ids:
             return self.refresh_root_library()
+        success = True
         for library_id in library_ids:
             if library_id != "/":
-                return self.__refresh_library_by_id(library_id)
+                refreshed = self.__refresh_library_by_id(library_id)
+                success = bool(refreshed) and success
         logger.info("极影视媒体库刷新完成")
-        return True
+        return success
 
     def __get_library_id_by_item(self, item: schemas.RefreshMediaItem) -> Optional[str]:
         """
         根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
         :param item: {title, year, type, category, target_path}
         """
-        if not item.title or not item.year or not item.type:
+        if not item.type or not item.target_path:
             return None
-        if item.type != MediaType.MOVIE.value:
+        if item.type == MediaType.TV and item.title and item.year:
             item_id = self.__get_series_id_by_name(item.title, item.year)
             if item_id:
                 return item_id
-        else:
+        elif item.type == MediaType.MOVIE and item.title and item.year:
             if self.get_movies(item.title, item.year):
                 return None
         item_path = Path(item.target_path)
@@ -789,11 +791,13 @@ class ZSpace:
                         return folder.get("Id")
                 except Exception as err:
                     logger.debug(f"匹配子目录出错：{err} - {traceback.format_exc()}")
-        for folder in self.folders:
-            for subfolder in folder.get("SubFolders") or []:
-                if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
-                                                       subfolder.get("Path")):
-                    return folder.get("Id")
+        if item.category:
+            for folder in self.folders:
+                for subfolder in folder.get("SubFolders") or []:
+                    if subfolder.get("Path") and re.search(
+                            r"[/\\]%s" % re.escape(item.category), subfolder.get("Path")
+                    ):
+                        return folder.get("Id")
         return "/"
 
     @staticmethod

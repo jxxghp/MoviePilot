@@ -84,7 +84,6 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         tmdb_id=101299,
     )
     recognized_meta = []
-    chain.recognize_media = lambda **kwargs: pytest.fail("不应按合集历史 ID 识别")
     chain.jobview = SimpleNamespace(
         migrate_task=lambda task: False,
         try_remove_job=lambda task: None,
@@ -96,6 +95,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         lambda: SimpleNamespace(
+            recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
             recognize_by_meta=lambda meta, obtain_images: (
                 recognized_meta.append(meta) or fallback_media
             ),

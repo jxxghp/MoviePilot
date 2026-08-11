@@ -395,6 +395,45 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(result.id, 22)
         self.assertEqual(list_by_identity.await_args.kwargs["music_type"], "album")
 
+    def test_subscribe_mediaid_uses_music_title_parser_for_fallback(self):
+        """音乐身份未命中时应先查原题，再按艺术家与曲名语义查询，不能套影视解析。"""
+        from app.api.endpoints.subscribe import subscribe_mediaid
+
+        recording = _EndpointSubscribe(
+            id=23,
+            username="alice",
+            type=MediaType.MUSIC.value,
+            music_type="recording",
+            name="晴天",
+        )
+        title_lookup = AsyncMock(side_effect=[[], [recording]])
+
+        with patch(
+            "app.api.endpoints.subscribe.list_subscribes_by_media_key",
+            new=AsyncMock(return_value=[]),
+        ), patch(
+            "app.api.endpoints.subscribe.Subscribe.async_list_by_title",
+            new=title_lookup,
+        ):
+            result = asyncio.run(
+                subscribe_mediaid(
+                    mediaid="musicbrainz:legacy-recording",
+                    title="周杰伦 - 晴天",
+                    music_type="recording",
+                    db=object(),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        self.assertEqual(result.id, 23)
+        self.assertEqual(
+            [call.kwargs for call in title_lookup.await_args_list],
+            [
+                {"title": "周杰伦 - 晴天", "season": None},
+                {"title": "晴天", "season": None},
+            ],
+        )
+
     def test_delete_subscribe_by_mediaid_deletes_owner_when_other_douban_match_first(self):
         """
         按媒体删除订阅时，应在候选集合中删除当前用户自己的订阅。

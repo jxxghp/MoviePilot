@@ -120,6 +120,59 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
     assert scraped == [("/library/movie.mkv", "meta", "media")]
 
 
+def test_scrape_file_does_not_cache_failed_music_scrape(monkeypatch):
+    """音乐刮削失败时工作流必须计为失败，不能写入成功缓存。"""
+    saved_cache = []
+
+    class FakeStorageChain:
+        """模拟存在的音乐文件。"""
+
+        def exists(self, fileitem):
+            return True
+
+    class FakeMediaChain:
+        """模拟识别成功但音乐产物写入失败。"""
+
+        def recognize_by_path(self, path, obtain_images=False):
+            return SimpleNamespace(meta_info="music-meta", media_info="music")
+
+        def scrape_metadata(self, fileitem, meta=None, mediainfo=None):
+            return False, "歌词保存失败"
+
+    monkeypatch.setattr(scrape_file_module, "StorageChain", FakeStorageChain)
+    monkeypatch.setattr(scrape_file_module, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(
+        scrape_file_module.global_vars,
+        "is_workflow_stopped",
+        lambda workflow_id: False,
+    )
+    monkeypatch.setattr(
+        ScrapeFileAction,
+        "check_cache",
+        lambda self, workflow_id, key: False,
+    )
+    monkeypatch.setattr(
+        ScrapeFileAction,
+        "save_cache",
+        lambda self, workflow_id, data: saved_cache.append(data),
+    )
+
+    action = ScrapeFileAction("scrape-music")
+    action.execute(
+        workflow_id=1,
+        params={},
+        context=ActionContext(
+            fileitems=[
+                FileItem(path="/library/晴天.flac", storage="local", type="file")
+            ]
+        ),
+    )
+
+    assert action.success is False
+    assert action._scraped_files == []
+    assert saved_cache == []
+
+
 def test_execute_with_inputs_maps_contract_inputs_outputs_and_runtime(monkeypatch):
     """新版动作桥接方法应按契约映射输入、输出和运行期信息。"""
 

@@ -3,8 +3,8 @@ from typing import Optional, List, Tuple, Union, Dict, Callable
 
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
+from app.core.context import MediaInfo, MusicInfo
+from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
@@ -14,8 +14,9 @@ from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.types import MediaType, ModuleType, OtherModulesType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType
 from app.utils.system import SystemUtils
+from app.utils.string import StringUtils
 
 
 class FileManagerModule(_ModuleBase):
@@ -549,7 +550,101 @@ class FileManagerModule(_ModuleBase):
                                       source_oper=source_oper,
                                       target_oper=target_oper)
 
-    def media_files(self, mediainfo: MediaInfo) -> List[FileItem]:
+    @staticmethod
+    def _build_library_lookup_meta(
+            mediainfo: Union[MediaInfo, MusicInfo],
+    ) -> MetaBase:
+        """构造标准媒体库路径反查使用的最小元数据。"""
+        if mediainfo.type == MediaType.MUSIC:
+            music_type = getattr(mediainfo, "music_type", None)
+            album = getattr(mediainfo, "album", None)
+            if not album and music_type == MUSIC_ENTITY_ALBUM:
+                album = mediainfo.title
+            return MetaMusic(
+                title=mediainfo.title,
+                artists=list(getattr(mediainfo, "artists", None) or []),
+                album=album,
+                album_artist=getattr(mediainfo, "album_artist", None),
+                year=mediainfo.year,
+                disc_number=getattr(mediainfo, "disc_number", None),
+                track_number=getattr(mediainfo, "track_number", None),
+                total_tracks=getattr(mediainfo, "total_tracks", None),
+                media_source=getattr(mediainfo, "source", None),
+                media_id=getattr(mediainfo, "media_id", None),
+            )
+
+        meta = MetaInfo(mediainfo.title)
+        if meta.type == MediaType.UNKNOWN and mediainfo.type is not None:
+            meta.type = mediainfo.type
+        if meta.year is None:
+            meta.year = mediainfo.year
+        if meta.begin_season is None:
+            meta.begin_season = 1
+        if meta.begin_episode is None:
+            meta.begin_episode = 1
+        return meta
+
+    @staticmethod
+    def _music_file_identity(fileitem: FileItem) -> Tuple[Optional[int], Optional[int], str]:
+        """从标准音乐文件路径提取碟号、曲序和归一化曲名。"""
+        file_path = Path(fileitem.path or fileitem.name or "")
+        file_meta = MetaMusic(
+            org_string=file_path.name,
+            title=file_path.stem,
+        ).apply_path_context(file_path)
+        return (
+            file_meta.disc_number,
+            file_meta.track_number,
+            StringUtils.clear_upper(file_meta.title or file_path.stem),
+        )
+
+    @classmethod
+    def _music_recording_exists(
+            cls,
+            fileitems: List[FileItem],
+            mediainfo: MusicInfo,
+    ) -> bool:
+        """按曲名和可用曲序判断单曲是否存在，避免专辑内任一文件造成误判。"""
+        target_title = StringUtils.clear_upper(mediainfo.title or "")
+        target_track = getattr(mediainfo, "track_number", None)
+        target_disc = getattr(mediainfo, "disc_number", None)
+        if not target_title:
+            return False
+        for fileitem in fileitems:
+            disc_number, track_number, title = cls._music_file_identity(fileitem)
+            if title != target_title:
+                continue
+            if target_track is not None and track_number not in (None, target_track):
+                continue
+            if target_disc is not None and disc_number not in (None, target_disc):
+                continue
+            return True
+        return False
+
+    @classmethod
+    def _music_album_is_complete(
+            cls,
+            fileitems: List[FileItem],
+            total_tracks: Optional[int],
+    ) -> bool:
+        """按去重后的曲序或曲名判断本地专辑是否达到目标曲目数。"""
+        if not fileitems:
+            return False
+        if not total_tracks:
+            return False
+        track_identities = {
+            (
+                disc_number or 1,
+                track_number if track_number is not None else title,
+            )
+            for disc_number, track_number, title in (
+                cls._music_file_identity(fileitem) for fileitem in fileitems
+            )
+            if track_number is not None or title
+        }
+        return len(track_identities) >= total_tracks
+
+    def media_files(self, mediainfo: Union[MediaInfo, MusicInfo]) -> List[FileItem]:
         """
         获取对应媒体的媒体库文件列表
         :param mediainfo: 媒体信息
@@ -569,15 +664,7 @@ class FileManagerModule(_ModuleBase):
             # 重命名格式
             rename_format = settings.RENAME_FORMAT(mediainfo.type)
             # 元数据补上常用属性，尽可能确保重命名后的路径不出现空白
-            meta = MetaInfo(mediainfo.title)
-            if meta.type == MediaType.UNKNOWN and mediainfo.type is not None:
-                meta.type = mediainfo.type
-            if meta.year is None:
-                meta.year = mediainfo.year
-            if meta.begin_season is None:
-                meta.begin_season = 1
-            if meta.begin_episode is None:
-                meta.begin_episode = 1
+            meta = self._build_library_lookup_meta(mediainfo)
             # 获取路径（重命名路径）
             target_path = handler.get_rename_path(
                 path=dir_path,
@@ -587,7 +674,9 @@ class FileManagerModule(_ModuleBase):
             )
             # 获取重命名后的媒体文件根路径
             media_path = DirectoryHelper.get_media_root_path(
-                rename_format, rename_path=target_path
+                rename_format,
+                rename_path=target_path,
+                media_type=mediainfo.type,
             )
             if not media_path:
                 # 忽略
@@ -606,13 +695,25 @@ class FileManagerModule(_ModuleBase):
                 logger.debug(f"获取媒体文件列表失败：{str(e)}")
                 continue
             if media_files:
+                media_extensions = (
+                    settings.RMT_AUDIOEXT
+                    if mediainfo.type == MediaType.MUSIC
+                    else settings.RMT_MEDIAEXT
+                )
                 for media_file in media_files:
-                    if f".{media_file.extension.lower()}" in settings.RMT_MEDIAEXT:
+                    if (
+                            media_file.extension
+                            and f".{media_file.extension.lower()}" in media_extensions
+                    ):
                         if media_file not in ret_fileitems:
                             ret_fileitems.append(media_file)
         return ret_fileitems
 
-    def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
+    def media_exists(
+            self,
+            mediainfo: Union[MediaInfo, MusicInfo],
+            **kwargs,
+    ) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在于文件系统（网盘或本地文件），只支持标准媒体库结构
         :param mediainfo:  识别的媒体信息
@@ -637,7 +738,20 @@ class FileManagerModule(_ModuleBase):
             # 电影存在任何文件为存在
             logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了")
             return ExistMediaInfo(type=MediaType.MOVIE)
-        else:
+        if mediainfo.type == MediaType.MUSIC:
+            if getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM:
+                exists = self._music_album_is_complete(
+                    fileitems,
+                    getattr(mediainfo, "total_tracks", None),
+                )
+            else:
+                exists = self._music_recording_exists(fileitems, mediainfo)
+            if not exists:
+                logger.debug(f"{mediainfo.title_year} 在本地音乐库中尚不完整")
+                return None
+            logger.info(f"{mediainfo.title_year} 在本地音乐库中找到了")
+            return ExistMediaInfo(type=MediaType.MUSIC)
+        if mediainfo.type == MediaType.TV:
             # 电视剧检索集数
             seasons: Dict[int, list] = {}
             for fileitem in fileitems:
@@ -653,3 +767,4 @@ class FileManagerModule(_ModuleBase):
             # 返回剧集情况
             logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了这些季集：{seasons}")
             return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
+        return None

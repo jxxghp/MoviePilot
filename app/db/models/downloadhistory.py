@@ -35,6 +35,8 @@ class DownloadHistory(Base):
     anilistid = Column(Integer, index=True)
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
+    # 音乐实体类型：recording 单曲、album 专辑
+    music_type = Column(String)
     # Sxx
     seasons = Column(String)
     # Exx
@@ -127,14 +129,18 @@ class DownloadHistory(Base):
             doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
             anilistid: Optional[int] = None, media_source: Optional[str] = None,
             media_id: Optional[str] = None,
+            music_type: Optional[str] = None,
     ):
         """按统一媒体身份或兼容 ID 查询下载历史。"""
         query = db.query(DownloadHistory)
         if media_source and media_id:
-            return query.filter(
+            query = query.filter(
                 DownloadHistory.media_source == media_source,
                 DownloadHistory.media_id == str(media_id),
-            ).all()
+            )
+            if music_type:
+                query = query.filter(DownloadHistory.music_type == music_type)
+            return query.all()
         if tmdbid is not None:
             return query.filter(DownloadHistory.tmdbid == tmdbid).all()
         if doubanid:

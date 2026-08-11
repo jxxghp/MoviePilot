@@ -123,9 +123,10 @@ def test_recognize_music_returns_detail():
     with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(
             recognize_music(
-                request=MusicRecognizeRequest(
-                    source="musicbrainz",
-                    media_id="recording-1",
+                    request=MusicRecognizeRequest(
+                        source="musicbrainz",
+                        media_id="recording-1",
+                        music_type="recording",
                 ),
                 _=Mock(),
             )
@@ -136,6 +137,7 @@ def test_recognize_music_returns_detail():
         source="musicbrainz",
         mediaid="recording-1",
         mtype=MediaType.MUSIC,
+        music_type="recording",
     )
 
 

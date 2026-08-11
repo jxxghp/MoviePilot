@@ -178,6 +178,37 @@ def test_recognize_album_directory_skips_single_file(tmp_path, music_chain, monk
     assert music_chain.recognize_album_directory(album_dir) == {}
 
 
+def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
+        tmp_path,
+        music_chain,
+        monkeypatch,
+):
+    """目录内文件数量不变但文件名变化时，专辑曲目映射缓存必须失效。"""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    first = album_dir / "01 - First.wav"
+    second = album_dir / "02 - Second.wav"
+    first.write_bytes(b"RIFF")
+    second.write_bytes(b"RIFF")
+    calls = []
+
+    def fake_match(_dir_path, files):
+        """记录目录匹配输入，返回空映射以专注验证缓存签名。"""
+        calls.append([file.name for file in files])
+        return {}
+
+    monkeypatch.setattr(music_chain, "_match_album_directory", fake_match)
+
+    music_chain.recognize_album_directory(album_dir)
+    first.rename(album_dir / "01 - Renamed.wav")
+    music_chain.recognize_album_directory(album_dir)
+
+    assert calls == [
+        ["01 - First.wav", "02 - Second.wav"],
+        ["01 - Renamed.wav", "02 - Second.wav"],
+    ]
+
+
 def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch):
     """单曲识别无远端身份时应用目录级匹配结果兜底。"""
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"

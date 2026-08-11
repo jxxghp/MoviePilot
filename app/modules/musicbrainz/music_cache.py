@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
 from app.log import logger
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 from app.utils.singleton import WeakSingleton
 
 lock = RLock()
@@ -111,7 +112,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
                     "artists": value.get("artists") or [],
                     "album": value.get("album") or "",
                     "year": value.get("year") or "",
-                    "music_type": value.get("music_type") or "recording",
+                    "music_type": value.get("music_type") or MUSIC_ENTITY_RECORDING,
                     "cover_url": value.get("cover_url") or "",
                 })
             return sorted(cache_items, key=lambda item: item["key"])

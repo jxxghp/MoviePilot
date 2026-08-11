@@ -130,9 +130,10 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
         result = scrape(
             fileitem=fileitem,
             storage="local",
-            media_source="musicbrainz",
-            media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
-            type_name=MediaType.MUSIC,
+        media_source="musicbrainz",
+        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        type_name=MediaType.MUSIC,
+        music_type="recording",
             _=Mock(),
         )
 
@@ -141,6 +142,7 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
         source="musicbrainz",
         mediaid="977e6978-139d-425c-bb98-6b0c62d1e45e",
         mtype=MediaType.MUSIC,
+        music_type="recording",
     )
     media_chain.scrape_music_metadata.assert_called_once_with(
         fileitem=fileitem,
@@ -171,3 +173,59 @@ def test_scrape_music_without_source_keeps_automatic_recognition() -> None:
         overwrite=True,
         source=None,
     )
+
+
+def test_scrape_music_album_forwards_album_namespace() -> None:
+    """手动专辑刮削必须把 Release Group ID 标记为 album。"""
+    fileitem = FileItem(storage="local", path="/music/叶惠美", type="dir")
+    info = MusicInfo(
+        source="musicbrainz",
+        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        music_type="album",
+        title="叶惠美",
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = info
+    media_chain.scrape_music_metadata.return_value = (True, "已刮削专辑")
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+        result = scrape(
+            fileitem=fileitem,
+            storage="local",
+            media_source="musicbrainz",
+            media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+            type_name=MediaType.MUSIC,
+            music_type="album",
+            _=Mock(),
+        )
+
+    assert result.success is True
+    assert media_chain.recognize_media.call_args.kwargs["music_type"] == "album"
+
+
+def test_scrape_music_accepts_douban_recording_composite_id() -> None:
+    """豆瓣音乐曲目 ID 使用“专辑ID:曲序”时应通过入口校验。"""
+    fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
+    info = MusicInfo(
+        source="doubanmusic",
+        media_id="1401853:3",
+        music_type="recording",
+        title="晴天",
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = info
+    media_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+        result = scrape(
+            fileitem=fileitem,
+            storage="local",
+            media_source="doubanmusic",
+            media_id="1401853:3",
+            type_name=MediaType.MUSIC,
+            music_type="recording",
+            _=Mock(),
+        )
+
+    assert result.success is True
+    assert media_chain.recognize_media.call_args.kwargs["mediaid"] == "1401853:3"

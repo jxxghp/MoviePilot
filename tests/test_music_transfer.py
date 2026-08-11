@@ -14,7 +14,7 @@ from app.helper.message import TemplateHelper
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo, TransferTask, TransferTorrent
-from app.schemas.types import MediaType
+from app.schemas.types import EventType, MediaType
 
 
 def _music_context() -> tuple[MetaMusic, MusicInfo]:
@@ -32,6 +32,50 @@ def _music_context() -> tuple[MetaMusic, MusicInfo]:
         category="Album",
     )
     return MusicChain.to_meta(info), info
+
+
+def _music_task(path: str, info: MusicInfo) -> TransferTask:
+    """构造带完整音乐上下文的整理作业任务。"""
+    file_path = Path(path)
+    return TransferTask(
+        fileitem=FileItem(
+            storage="local",
+            path=file_path.as_posix(),
+            name=file_path.name,
+            basename=file_path.stem,
+            type="file",
+            extension=file_path.suffix.lstrip("."),
+        ),
+        meta=MusicChain.to_meta(info),
+        mediainfo=info,
+        mtype=MediaType.MUSIC,
+    )
+
+
+def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
+    """重新整理按历史身份恢复音乐时必须保留单曲或专辑实体类型。"""
+    history = SimpleNamespace(
+        type=MediaType.MUSIC.value,
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type="album",
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = MusicInfo(
+        source="musicbrainz",
+        media_id="release-group-1",
+        music_type="album",
+        title="叶惠美",
+    )
+    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
+
+    result = TransferChain()._recognize_music_retry_media(
+        history,
+        tmp_path / "叶惠美",
+    )
+
+    assert result and result.music_type == "album"
+    assert media_chain.recognize_media.call_args.kwargs["music_type"] == "album"
 
 
 def test_music_rename_context_contains_audio_fields():
@@ -110,6 +154,68 @@ def test_audio_is_primary_only_in_music_context():
     assert chain._is_primary_media_file(audio, None) is False
 
 
+def test_music_scrape_batch_event_preserves_each_track_context():
+    """同一专辑目录的批次刮削事件应保留每个目标音轨自己的识别身份。"""
+    chain = object.__new__(TransferChain)
+    chain._audio_exts = settings.RMT_AUDIOEXT
+    chain._media_exts = settings.RMT_MEDIAEXT
+    chain._scrape_batches = {}
+    chain.eventmanager = Mock()
+    batch_id = "music-scrape-batch"
+    target_dir = FileItem(storage="local", path="/library/Album", type="dir")
+    tasks = []
+    target_paths = []
+
+    for number, title in ((1, "Track One"), (2, "Track Two")):
+        source = FileItem(
+            storage="local",
+            path=f"/downloads/{number:02d}.flac",
+            type="file",
+            name=f"{number:02d}.flac",
+            extension="flac",
+        )
+        target_path = f"/library/Album/{number:02d} - {title}.flac"
+        task = TransferTask(
+            fileitem=source,
+            meta=MetaMusic(title=title, track_number=number),
+            mediainfo=MusicInfo(
+                source="musicbrainz",
+                media_id=f"recording-{number}",
+                title=title,
+                track_number=number,
+            ),
+            transfer_batch_id=batch_id,
+        )
+        tasks.append(task)
+        target_paths.append(target_path)
+        chain._TransferChain__register_scrape_batch_task(task)
+        chain._TransferChain__record_scrape_target(
+            task,
+            TransferInfo(
+                success=True,
+                target_diritem=target_dir,
+                file_list_new=[target_path],
+                need_scrape=True,
+            ),
+        )
+
+    chain._TransferChain__close_scrape_batch(batch_id)
+    for task in tasks:
+        chain._TransferChain__finish_scrape_batch_task(task)
+
+    scrape_calls = [
+        call
+        for call in chain.eventmanager.send_event.call_args_list
+        if call.args[0] == EventType.MetadataScrape
+    ]
+    assert len(scrape_calls) == 1
+    payload = scrape_calls[0].args[1]
+    assert payload["file_list"] == target_paths
+    assert [
+        context["mediainfo"].media_id for context in payload["file_contexts"]
+    ] == ["recording-1", "recording-2"]
+
+
 def test_restore_music_context_from_download_history():
     """自动整理应从下载历史备注恢复标准音乐身份。"""
     meta, info = _music_context()
@@ -134,6 +240,21 @@ def test_restore_music_context_from_download_history():
     assert restored_info.source == "musicbrainz"
     assert restored_info.media_id == "recording-1"
     assert restored_info.album == "Random Access Memories"
+
+
+def test_download_history_music_type_falls_back_to_versioned_note():
+    """旧下载记录缺少独立字段时应从版本化备注恢复实体类型。"""
+    history = SimpleNamespace(
+        music_type=None,
+        note={
+            "music": {
+                "version": 1,
+                "media": {"music_type": "album"},
+            }
+        },
+    )
+
+    assert TransferChain._download_history_music_type(history) == "album"
 
 
 def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_path, monkeypatch):
@@ -254,8 +375,10 @@ def test_restore_music_context_uses_filename_when_source_is_not_locally_accessib
 
     assert restored_meta is not None
     assert restored_info is not None
-    assert restored_meta.title == "10. 明天晴天"
-    assert restored_info.title == "10. 明天晴天"
+    assert restored_meta.title == "明天晴天"
+    assert restored_meta.track_number == 10
+    assert restored_info.title == "明天晴天"
+    assert restored_info.track_number == 10
     context = TemplateHelper().builder.build(
         meta=restored_meta,
         mediainfo=restored_info,
@@ -263,7 +386,7 @@ def test_restore_music_context_uses_filename_when_source_is_not_locally_accessib
         include_raw_objects=False,
     )
     rendered = Template(settings.MUSIC_RENAME_FORMAT).render(context)
-    assert rendered == "孙燕姿/完美的一天 (2005)/10. 明天晴天.m4a"
+    assert rendered == "孙燕姿/完美的一天 (2005)/10 - 明天晴天.m4a"
 
 
 def test_job_manager_serializes_music_queue_models():
@@ -290,6 +413,146 @@ def test_job_manager_serializes_music_queue_models():
     assert job.media.album == "Random Access Memories"
     assert job.tasks[0].meta.type == "音乐"
     assert task.mtype == MediaType.MUSIC
+
+
+def test_job_manager_separates_unidentified_music_recordings():
+    """缺少远端 ID 的不同曲目必须进入不同作业，避免通知和完成状态串组。"""
+    manager = JobManager()
+    first = MusicInfo(title="Intro", artists=["Artist"], album="Album", track_number=1)
+    second = MusicInfo(title="Finale", artists=["Artist"], album="Album", track_number=2)
+
+    assert manager.add_task(_music_task("/music/01 - Intro.flac", first)) is True
+    assert manager.add_task(_music_task("/music/02 - Finale.flac", second)) is True
+
+    assert len(manager.list_jobs()) == 2
+
+
+def test_job_manager_groups_unidentified_album_tracks_by_album_identity():
+    """无远端 ID 的整专曲目应按专辑身份聚合成一个作业。"""
+    manager = JobManager()
+    first = MusicInfo(
+        music_type="album",
+        title="Intro",
+        artists=["Artist"],
+        album="Album",
+        album_artist="Artist",
+        year=2026,
+        track_number=1,
+    )
+    second = MusicInfo(
+        music_type="album",
+        title="Finale",
+        artists=["Artist"],
+        album="Album",
+        album_artist="Artist",
+        year=2026,
+        track_number=2,
+    )
+
+    assert manager.add_task(_music_task("/music/01 - Intro.flac", first)) is True
+    assert manager.add_task(_music_task("/music/02 - Finale.flac", second)) is True
+
+    jobs = manager.list_jobs()
+    assert len(jobs) == 1
+    assert len(jobs[0].tasks) == 2
+
+
+def test_job_manager_separates_music_entity_namespaces_for_same_provider_id():
+    """数据源 ID 相同但实体类型不同的单曲和专辑不能共享作业。"""
+    manager = JobManager()
+    recording = MusicInfo(
+        source="musicbrainz",
+        media_id="shared-id",
+        music_type="recording",
+        title="Track",
+        artists=["Artist"],
+    )
+    album = MusicInfo(
+        source="musicbrainz",
+        media_id="shared-id",
+        music_type="album",
+        title="Album",
+        album="Album",
+        artists=["Artist"],
+    )
+
+    assert manager.add_task(_music_task("/music/Track.flac", recording)) is True
+    assert manager.add_task(_music_task("/music/Album/01.flac", album)) is True
+
+    assert len(manager.list_jobs()) == 2
+
+
+def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directory(monkeypatch):
+    """同目录内交错完成的整专与单曲作业不能互相取走通知文件清单。"""
+    chain = object.__new__(TransferChain)
+    chain.jobview = JobManager()
+    chain._success_target_files = {}
+    chain._scrape_batches = {}
+    chain._media_exts = settings.RMT_MEDIAEXT
+    chain._audio_exts = settings.RMT_AUDIOEXT
+    chain.eventmanager = Mock()
+    chain.transfer_completed = Mock()
+    chain.send_transfer_message = Mock()
+    album_infos = [
+        MusicInfo(
+            music_type="album",
+            title=title,
+            artists=["Artist"],
+            album="Album",
+            album_artist="Artist",
+            year=2026,
+            track_number=number,
+        )
+        for number, title in ((1, "Intro"), (2, "Finale"))
+    ]
+    album_tasks = [
+        _music_task(f"/downloads/{number:02d}.flac", info)
+        for number, info in enumerate(album_infos, start=1)
+    ]
+    recording_task = _music_task(
+        "/downloads/Single.flac",
+        MusicInfo(title="Single", artists=["Artist"], album="Album"),
+    )
+    tasks = [album_tasks[0], recording_task, album_tasks[1]]
+    for task in tasks:
+        task.background = True
+        assert chain.jobview.add_task(task) is True
+
+    target_dir = FileItem(storage="local", path="/library/Artist/Album", type="dir")
+
+    def transfer_info(task: TransferTask) -> TransferInfo:
+        """为指定任务构造同目录下的成功整理结果。"""
+        target = f"/library/Artist/Album/{task.fileitem.name}"
+        return TransferInfo(
+            success=True,
+            fileitem=task.fileitem,
+            target_diritem=target_dir,
+            target_item=FileItem(storage="local", path=target, type="file"),
+            file_list_new=[target],
+            transfer_type="copy",
+            need_notify=True,
+        )
+
+    monkeypatch.setattr(
+        "app.chain.transfer.TransferHistoryOper",
+        lambda: SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=1)),
+    )
+
+    for task in tasks:
+        chain._TransferChain__default_callback(task, transfer_info(task))
+
+    notified_lists = [
+        call.kwargs["transferinfo"].file_list_new
+        for call in chain.send_transfer_message.call_args_list
+    ]
+    assert notified_lists == [
+        ["/library/Artist/Album/Single.flac"],
+        [
+            "/library/Artist/Album/01.flac",
+            "/library/Artist/Album/02.flac",
+        ],
+    ]
+    assert chain._success_target_files == {}
 
 
 def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
@@ -379,6 +642,88 @@ def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
     assert preview["items"][0]["type"] == MediaType.MUSIC.value
 
 
+def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monkeypatch):
+    """明确音乐上下文时只规划音频主文件，混合目录中的视频不得套用音乐身份。"""
+    audio_path = tmp_path / "08 - Get Lucky.flac"
+    video_path = tmp_path / "Get Lucky.mkv"
+    audio_path.write_bytes(b"fake-flac")
+    video_path.write_bytes(b"fake-video")
+    audio_item = FileItem(
+        storage="local",
+        path=audio_path.as_posix(),
+        name=audio_path.name,
+        basename=audio_path.stem,
+        type="file",
+        extension="flac",
+        size=audio_path.stat().st_size,
+    )
+    video_item = FileItem(
+        storage="local",
+        path=video_path.as_posix(),
+        name=video_path.name,
+        basename=video_path.stem,
+        type="file",
+        extension="mkv",
+        size=video_path.stat().st_size,
+    )
+    source_dir = FileItem(
+        storage="local",
+        path=tmp_path.as_posix(),
+        name=tmp_path.name,
+        type="dir",
+    )
+    target_item = FileItem(
+        storage="local",
+        path=(tmp_path / "library" / audio_path.name).as_posix(),
+        name=audio_path.name,
+        basename=audio_path.stem,
+        type="file",
+        extension="flac",
+    )
+    recognized = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="Get Lucky",
+        artists=["Daft Punk"],
+        album="Random Access Memories",
+        track_number=8,
+    )
+    chain = TransferChain()
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_trans_fileitems",
+        Mock(return_value=[(audio_item, False), (video_item, False)]),
+    )
+    monkeypatch.setattr(chain, "_resolve_download_history", Mock(return_value=None))
+    monkeypatch.setattr(MediaChain, "recognize_by_meta", Mock(return_value=recognized))
+    monkeypatch.setattr(
+        chain,
+        "transfer",
+        Mock(
+            return_value=TransferInfo(
+                success=True,
+                fileitem=audio_item,
+                target_item=target_item,
+            )
+        ),
+    )
+
+    state, preview = chain.do_transfer(
+        fileitem=source_dir,
+        target_directory=TransferDirectoryConf(
+            library_path=(tmp_path / "library").as_posix(),
+            library_storage="local",
+        ),
+        mtype=MediaType.MUSIC,
+        force=True,
+        preview=True,
+    )
+
+    assert state is True
+    assert [item["source"] for item in preview["items"]] == [audio_item.path]
+    assert chain.transfer.call_count == 1
+
+
 def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
     """下载器自动整理应把下载历史中的音乐类型传入文件规划，且不调用影视补图模块。"""
     audio_path = tmp_path / "晴天.flac"
@@ -397,10 +742,13 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
         anilistid=None,
         media_source="musicbrainz",
         media_id="recording-1",
+        music_type="recording",
         episode_group=None,
         media_category=None,
     )
     chain = TransferChain()
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = recognized
     run_module = Mock()
     monkeypatch.setattr(
         "app.chain.transfer.DirectoryHelper.get_download_dirs",
@@ -429,14 +777,15 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
             ]
         ),
     )
-    monkeypatch.setattr(chain, "recognize_media", Mock(return_value=recognized))
+    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
     monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
     monkeypatch.setattr(chain, "run_module", run_module)
 
     state = chain.process()
 
     assert state is True
-    assert chain.recognize_media.call_args.kwargs["mtype"] == MediaType.MUSIC
+    assert media_chain.recognize_media.call_args.kwargs["mtype"] == MediaType.MUSIC
+    assert media_chain.recognize_media.call_args.kwargs["music_type"] == "recording"
     assert chain.do_transfer.call_args.kwargs["mtype"] == MediaType.MUSIC
     assert chain.do_transfer.call_args.kwargs["mediainfo"] is recognized
     run_module.assert_not_called()

@@ -1,22 +1,24 @@
+import asyncio
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 from fastapi.concurrency import run_in_threadpool
 
 from app import schemas
 from app.chain import ChainBase
+from app.chain.music import MusicChain
 from app.chain.storage import StorageChain
-from app.core.cache import cached
+from app.core.cache import async_fresh, cached, fresh
 from app.core.config import settings
 from app.core.context import (
-    MUSIC_ENTITY_ALBUM,
-    MUSIC_ENTITY_RECORDING,
     Context,
     MediaInfo,
     MusicAlbumInfo,
@@ -31,8 +33,11 @@ from app.helper.audio import AudioMetadataHelper
 from app.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
     ChainEventType,
     EventType,
+    MediaRecognizeType,
     MediaType,
     ScrapingTarget,
     ScrapingMetadata,
@@ -40,13 +45,15 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 from app.utils.http import RequestUtils
-from app.utils.media import is_music_media_source
+from app.utils.media import (
+    is_music_media_source,
+    normalize_media_source,
+    resolve_media_identity,
+)
 from app.utils.mixins import ConfigReloadMixin
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-
-if TYPE_CHECKING:
-    from app.chain.music import MusicChain
+from app.utils.zhconv import convert as zhconv_convert
 
 recognize_lock = Lock()
 scraping_lock = Lock()
@@ -206,6 +213,16 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         r"^\s*(?:(?:cd|disc)\s*\d+\s*[-_. ]+)?(?:\d+\s*[-_. ]+)+",
         flags=re.IGNORECASE,
     )
+    _video_primary_source = "themoviedb"
+    _video_fallback_source_order = ("douban", "bangumi", "anilist")
+    _video_source_subtypes = {
+        "themoviedb": MediaRecognizeType.TMDB,
+        "douban": MediaRecognizeType.Douban,
+        "bangumi": MediaRecognizeType.Bangumi,
+        "anilist": MediaRecognizeType.AniList,
+    }
+    _video_title_min_similarity = 0.72
+    _video_recognize_min_score = 65.0
 
     def __init__(self):
         super().__init__()
@@ -217,13 +234,32 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             module_kwargs: dict,
             cache: bool,
     ) -> Optional[MediaInfo]:
-        """自动音乐识别交给 MusicChain 多源评分，显式来源保持原有单源分发。"""
+        """统一同步媒体识别路由，音乐请求只进入音乐数据源。"""
         meta = module_kwargs.get("meta")
-        if isinstance(meta, MetaMusic) and not module_kwargs.get("source"):
-            # 延迟导入保持 MediaChain -> MusicChain 的单向依赖。
-            from app.chain.music import MusicChain
-
-            return MusicChain().recognize_best(meta=meta, cache=cache)
+        mtype = module_kwargs.get("mtype")
+        source = module_kwargs.get("source")
+        if (
+                isinstance(meta, MetaMusic)
+                or mtype == MediaType.MUSIC
+                or is_music_media_source(source)
+        ):
+            music_chain = MusicChain()
+            if source:
+                recognize_kwargs = {
+                    "source": source,
+                    "meta": meta if isinstance(meta, MetaMusic) else None,
+                    "mediaid": module_kwargs.get("mediaid"),
+                    "cache": cache,
+                }
+                if "music_type" in module_kwargs:
+                    recognize_kwargs["music_type"] = module_kwargs["music_type"]
+                with fresh(not cache):
+                    return music_chain.recognize_from_source(**recognize_kwargs)
+            if isinstance(meta, MetaMusic):
+                return music_chain.recognize_best(meta=meta, cache=cache)
+            return None
+        if not source and isinstance(meta, MetaBase):
+            return self._recognize_video_best(module_kwargs, cache)
         return super()._run_native_media_recognize(module_kwargs, cache)
 
     async def _async_run_native_media_recognize(
@@ -231,14 +267,353 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             module_kwargs: dict,
             cache: bool,
     ) -> Optional[MediaInfo]:
-        """异步自动音乐识别并发比较多源结果，显式来源保持原有单源分发。"""
+        """统一异步媒体识别路由，音乐请求只进入音乐数据源。"""
         meta = module_kwargs.get("meta")
-        if isinstance(meta, MetaMusic) and not module_kwargs.get("source"):
-            # 延迟导入保持 MediaChain -> MusicChain 的单向依赖。
-            from app.chain.music import MusicChain
-
-            return await MusicChain().async_recognize_best(meta=meta, cache=cache)
+        mtype = module_kwargs.get("mtype")
+        source = module_kwargs.get("source")
+        if (
+                isinstance(meta, MetaMusic)
+                or mtype == MediaType.MUSIC
+                or is_music_media_source(source)
+        ):
+            music_chain = MusicChain()
+            if source:
+                recognize_kwargs = {
+                    "source": source,
+                    "meta": meta if isinstance(meta, MetaMusic) else None,
+                    "mediaid": module_kwargs.get("mediaid"),
+                    "cache": cache,
+                }
+                if "music_type" in module_kwargs:
+                    recognize_kwargs["music_type"] = module_kwargs["music_type"]
+                async with async_fresh(not cache):
+                    return await music_chain.async_recognize_from_source(
+                        **recognize_kwargs
+                    )
+            if isinstance(meta, MetaMusic):
+                return await music_chain.async_recognize_best(meta=meta, cache=cache)
+            return None
+        if not source and isinstance(meta, MetaBase):
+            return await self._async_recognize_video_best(module_kwargs, cache)
         return await super()._async_run_native_media_recognize(module_kwargs, cache)
+
+    def _recognize_video_best(
+            self,
+            module_kwargs: dict,
+            cache: bool,
+    ) -> Optional[MediaInfo]:
+        """先验证 TMDB 主结果，仅在未可靠命中时并发比较内置影视副源。"""
+        meta = module_kwargs.get("meta")
+        mtype = module_kwargs.get("mtype")
+        primary_result = self._recognize_video_from_source(
+            module_kwargs=module_kwargs,
+            source=self._video_primary_source,
+            cache=cache,
+        )
+        primary = self._select_best_video_candidate(
+            meta=meta,
+            mtype=mtype,
+            candidates=[(self._video_primary_source, primary_result)],
+            source_order=(self._video_primary_source,),
+        )
+        if primary:
+            return primary
+
+        logger.info(f"{meta.name} 未可靠命中 TMDB，开始并发查询影视辅助数据源 ...")
+        with ThreadPoolExecutor(
+                max_workers=len(self._video_fallback_source_order),
+                thread_name_prefix="video-recognize",
+        ) as executor:
+            futures = {
+                source: executor.submit(
+                    self._recognize_video_from_source,
+                    module_kwargs,
+                    source,
+                    cache,
+                )
+                for source in self._video_fallback_source_order
+            }
+            candidates = [
+                (source, futures[source].result())
+                for source in self._video_fallback_source_order
+            ]
+        return self._select_best_video_candidate(
+            meta=meta,
+            mtype=mtype,
+            candidates=candidates,
+            source_order=self._video_fallback_source_order,
+        )
+
+    async def _async_recognize_video_best(
+            self,
+            module_kwargs: dict,
+            cache: bool,
+    ) -> Optional[MediaInfo]:
+        """异步先验证 TMDB 主结果，仅在未可靠命中时并发比较影视副源。"""
+        meta = module_kwargs.get("meta")
+        mtype = module_kwargs.get("mtype")
+        primary_result = await self._async_recognize_video_from_source(
+            module_kwargs=module_kwargs,
+            source=self._video_primary_source,
+            cache=cache,
+        )
+        primary = self._select_best_video_candidate(
+            meta=meta,
+            mtype=mtype,
+            candidates=[(self._video_primary_source, primary_result)],
+            source_order=(self._video_primary_source,),
+        )
+        if primary:
+            return primary
+
+        logger.info(f"{meta.name} 未可靠命中 TMDB，开始并发查询影视辅助数据源 ...")
+        results = await asyncio.gather(*(
+            self._async_recognize_video_from_source(
+                module_kwargs=module_kwargs,
+                source=source,
+                cache=cache,
+            )
+            for source in self._video_fallback_source_order
+        ))
+        return self._select_best_video_candidate(
+            meta=meta,
+            mtype=mtype,
+            candidates=zip(self._video_fallback_source_order, results),
+            source_order=self._video_fallback_source_order,
+        )
+
+    def _video_recognize_module(self, source: str) -> Optional[Any]:
+        """按内置影视来源枚举对应的运行中识别模块。"""
+        subtype = self._video_source_subtypes.get(normalize_media_source(source))
+        if not subtype:
+            return None
+        return next(self.modulemanager.get_running_subtype_module(subtype), None)
+
+    @staticmethod
+    def _video_source_kwargs(module_kwargs: dict, source: str) -> dict:
+        """复制单源识别参数和元数据，避免并发模块互相修改解析状态。"""
+        source_kwargs = dict(module_kwargs)
+        if source_kwargs.get("meta"):
+            source_kwargs["meta"] = deepcopy(source_kwargs["meta"])
+        source_kwargs["source"] = source
+        return source_kwargs
+
+    def _recognize_video_from_source(
+            self,
+            module_kwargs: dict,
+            source: str,
+            cache: bool,
+    ) -> Optional[MediaInfo]:
+        """同步调用指定内置影视源，隔离单个来源的查询异常。"""
+        module = self._video_recognize_module(source)
+        if not module:
+            return None
+        try:
+            with fresh(not cache):
+                return module.recognize_media(
+                    **self._video_source_kwargs(module_kwargs, source)
+                )
+        except Exception as err:
+            logger.warning(f"{source} 影视自动识别失败：{err}")
+            return None
+
+    async def _async_recognize_video_from_source(
+            self,
+            module_kwargs: dict,
+            source: str,
+            cache: bool,
+    ) -> Optional[MediaInfo]:
+        """异步调用指定内置影视源，隔离单个来源的查询异常。"""
+        module = self._video_recognize_module(source)
+        if not module:
+            return None
+        source_kwargs = self._video_source_kwargs(module_kwargs, source)
+        try:
+            async with async_fresh(not cache):
+                async_method = getattr(module, "async_recognize_media", None)
+                if async_method:
+                    return await async_method(**source_kwargs)
+                return await run_in_threadpool(module.recognize_media, **source_kwargs)
+        except Exception as err:
+            logger.warning(f"{source} 影视自动识别失败：{err}")
+            return None
+
+    @staticmethod
+    def _normalize_video_candidate(
+            result: Any,
+            source: str,
+    ) -> Optional[MediaInfo]:
+        """校验单源影视结果的领域、来源和原生身份。"""
+        if not isinstance(result, MediaInfo):
+            return None
+        normalized_source = normalize_media_source(source)
+        if normalize_media_source(result.source) != normalized_source:
+            return None
+        identity_source, media_id = resolve_media_identity(media=result)
+        if identity_source != normalized_source or not media_id:
+            return None
+        if result.type not in {MediaType.MOVIE, MediaType.TV}:
+            return None
+        return result
+
+    @staticmethod
+    def _normalize_video_match_name(value: Any) -> str:
+        """统一影视标题的繁简、大小写、空白和标点差异。"""
+        if not isinstance(value, str) or not value.strip():
+            return ""
+        return StringUtils.clear_upper(zhconv_convert(value, "zh-hans"))
+
+    @classmethod
+    def _normalized_video_names(cls, values: Iterable[Any]) -> set[str]:
+        """生成原始标题及去除季集标记后的标准标题集合。"""
+        names: set[str] = set()
+        for value in values:
+            normalized = cls._normalize_video_match_name(value)
+            if normalized:
+                names.add(normalized)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            try:
+                parsed_name = MetaInfo(value).name
+            except Exception:
+                parsed_name = None
+            normalized_parsed = cls._normalize_video_match_name(parsed_name)
+            if normalized_parsed:
+                names.add(normalized_parsed)
+        return names
+
+    @classmethod
+    def _video_title_similarity(
+            cls,
+            meta: MetaBase,
+            candidate: MediaInfo,
+    ) -> float:
+        """计算解析标题与候选全部标题及别名之间的最大相似度。"""
+        expected_names = cls._normalized_video_names([
+            getattr(meta, "name", None),
+            getattr(meta, "cn_name", None),
+            getattr(meta, "en_name", None),
+        ])
+        candidate_names = cls._normalized_video_names([
+            candidate.title,
+            candidate.en_title,
+            candidate.original_title,
+            candidate.original_name,
+            *(candidate.names or []),
+        ])
+        return max(
+            (
+                SequenceMatcher(None, expected, actual).ratio()
+                for expected in expected_names
+                for actual in candidate_names
+            ),
+            default=0.0,
+        )
+
+    @staticmethod
+    def _video_year(value: Any) -> Optional[int]:
+        """从年份或日期字段中提取四位年份。"""
+        match = re.search(r"\d{4}", str(value or ""))
+        return int(match.group()) if match else None
+
+    @classmethod
+    def _video_candidate_year(
+            cls,
+            meta: MetaBase,
+            candidate: MediaInfo,
+    ) -> Optional[int]:
+        """电视剧优先使用请求季年份，电影和整剧使用作品年份。"""
+        season = getattr(meta, "begin_season", None)
+        if candidate.type != MediaType.TV or season is None:
+            return cls._video_year(candidate.year)
+        season_years = candidate.season_years or {}
+        season_year = (
+            season_years.get(season)
+            or season_years.get(str(season))
+        )
+        if season_year:
+            return cls._video_year(season_year)
+        if candidate.season == season or not candidate.seasons:
+            return cls._video_year(candidate.year)
+        return None
+
+    @classmethod
+    def _video_candidate_score(
+            cls,
+            meta: MetaBase,
+            candidate: MediaInfo,
+            mtype: Optional[MediaType] = None,
+    ) -> Optional[float]:
+        """按标题、类型、年份和季信息计算跨影视源可比较的证据分。"""
+        expected_type = mtype if mtype in {MediaType.MOVIE, MediaType.TV} else meta.type
+        if expected_type in {MediaType.MOVIE, MediaType.TV} and candidate.type != expected_type:
+            return None
+
+        title_similarity = cls._video_title_similarity(meta, candidate)
+        if title_similarity < cls._video_title_min_similarity:
+            return None
+        score = title_similarity * 70
+
+        expected_year = cls._video_year(getattr(meta, "year", None))
+        candidate_year = cls._video_candidate_year(meta, candidate)
+        if expected_year and candidate_year:
+            year_delta = abs(expected_year - candidate_year)
+            if year_delta > 1:
+                return None
+            score += 20 if year_delta == 0 else 8
+
+        requested_season = getattr(meta, "begin_season", None)
+        if requested_season is not None:
+            if candidate.type != MediaType.TV:
+                return None
+            available_seasons = {
+                int(season)
+                for season in (candidate.seasons or {})
+                if str(season).isdigit()
+            }
+            if (
+                    available_seasons
+                    and requested_season not in available_seasons
+                    and candidate.season != requested_season
+            ):
+                return None
+            if (
+                    requested_season in available_seasons
+                    or candidate.season == requested_season
+            ):
+                score += 10
+        return score
+
+    @classmethod
+    def _select_best_video_candidate(
+            cls,
+            meta: MetaBase,
+            mtype: Optional[MediaType],
+            candidates: Iterable[tuple[str, Any]],
+            source_order: Iterable[str],
+    ) -> Optional[MediaInfo]:
+        """按统一证据分选择影视候选，同分时使用确定的数据源顺序。"""
+        order = {source: index for index, source in enumerate(source_order)}
+        ranked: list[tuple[float, int, MediaInfo]] = []
+        for source, result in candidates:
+            candidate = cls._normalize_video_candidate(result, source)
+            if not candidate:
+                continue
+            score = cls._video_candidate_score(meta, candidate, mtype)
+            if score is None or score < cls._video_recognize_min_score:
+                continue
+            logger.debug(
+                f"影视自动识别候选：{source} {candidate.title_year}，评分 {score:.1f}"
+            )
+            ranked.append((score, -order.get(source, len(order)), candidate))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        score, _, best = ranked[0]
+        logger.info(
+            f"影视自动识别采用 {best.source}：{best.title_year}，匹配评分 {score:.1f}"
+        )
+        return best
 
     def on_config_changed(self):
         self.scraping_policies = ScrapingConfig.from_system_config()
@@ -671,6 +1046,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
             mtype: Optional[MediaType] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
@@ -680,6 +1056,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param mtype: 上游已确定的媒体类型
+        :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
         """
         mediainfo = self._recognize_with_fallback_by_meta(
             metainfo=metainfo,
@@ -687,6 +1064,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             source=source,
             episode_group=episode_group,
             obtain_images=obtain_images,
+            music_type=music_type,
         )
         if not mediainfo:
             logger.warn(f"{metainfo.title} 未识别到媒体信息")
@@ -808,6 +1186,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         根据标题识别媒体信息，必要时回退到辅助识别。
@@ -817,6 +1196,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param source: 请求级识别数据源
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
+        :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
         :return: 统一媒体信息
         """
         if not metainfo:
@@ -837,6 +1217,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 source=source,
                 share_meta=share_meta,
                 episode_group=episode_group,
+                music_type=music_type,
             )
 
         def plugin_recognize() -> Optional[MediaInfo]:
@@ -849,6 +1230,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 share_meta=share_meta,
                 source=source,
                 episode_group=episode_group,
+                music_type=music_type,
             )
 
         # 按 config 中设置的识别顺序识别，影视与音乐共用同一选择流程
@@ -890,6 +1272,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             share_meta: MetaBase = None,
             source: Optional[str] = None,
             episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         请求辅助识别，返回媒体信息；影视与音乐共用同一流程，仅要素事件与重组方式不同
@@ -899,6 +1282,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param share_meta: 共享识别查询/上报使用的原始元数据
         :param source: 请求级识别数据源
         :param episode_group: 剧集组
+        :param music_type: 音乐实体类型，仅音乐辅助识别使用
         """
         # 音乐标题要素（曲名/艺术家/专辑/年份）与影视不同，走专用名称识别事件
         if isinstance(org_meta, MetaMusic):
@@ -907,6 +1291,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 org_meta=org_meta,
                 share_meta=share_meta,
                 source=source,
+                music_type=music_type,
             )
         # 发送请求事件，等待结果
         result: Event = eventmanager.send_event(
@@ -959,6 +1344,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             org_meta: MetaMusic,
             share_meta: MetaBase = None,
             source: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         请求插件辅助识别音乐标题要素，并按修正后的要素重新匹配媒体信息
@@ -967,6 +1353,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param org_meta: 原始音乐元数据
         :param share_meta: 共享识别查询/上报使用的原始元数据
         :param source: 请求级识别数据源
+        :param music_type: 音乐实体类型
         """
         # 发送音乐名称识别事件，等待插件返回标题要素
         result: Event = eventmanager.send_event(
@@ -976,6 +1363,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 "artist": org_meta.artist,
                 "album": org_meta.album,
                 "year": org_meta.year,
+                "music_type": music_type,
             },
         )
         if not result:
@@ -995,20 +1383,19 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.info("音乐辅助识别与原始识别结果一致，无需重新匹配媒体信息")
             return None
         logger.info("音乐辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
-        new_meta = MetaMusic(
-            org_string=org_meta.org_string,
-            title=name,
-            artists=[artist] if artist else list(org_meta.artists or []),
-            album=album or org_meta.album,
-            album_artist=artist or org_meta.album_artist,
-            year=year or org_meta.year,
-            isrc=org_meta.isrc,
+        new_meta = self._build_music_help_meta(
+            org_meta=org_meta,
+            name=name,
+            artist=artist,
+            album=album,
+            year=year,
         )
         # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
         mediainfo = self.recognize_media(
             meta=new_meta,
             source=source,
             share_meta=share_meta,
+            music_type=music_type,
         )
         return mediainfo if mediainfo and mediainfo.source else None
 
@@ -1036,6 +1423,36 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             name = None
         return name, artist, album, year
 
+    @staticmethod
+    def _build_music_help_meta(
+            org_meta: MetaMusic,
+            name: str,
+            artist: Optional[str],
+            album: Optional[str],
+            year: Optional[int],
+    ) -> MetaMusic:
+        """按插件修正标题要素，并保留本地轨道与音频判定证据。"""
+        return MetaMusic(
+            org_string=org_meta.org_string,
+            title=name,
+            artists=[artist] if artist else list(org_meta.artists or []),
+            album=album or org_meta.album,
+            album_artist=artist or org_meta.album_artist,
+            year=year or org_meta.year,
+            disc_number=org_meta.disc_number,
+            track_number=org_meta.track_number,
+            total_discs=org_meta.total_discs,
+            total_tracks=org_meta.total_tracks,
+            version=org_meta.version,
+            audio_format=org_meta.audio_format,
+            audio_lossless=org_meta.audio_lossless,
+            bit_depth=org_meta.bit_depth,
+            sample_rate=org_meta.sample_rate,
+            bitrate=org_meta.bitrate,
+            duration=org_meta.duration,
+            isrc=org_meta.isrc,
+        )
+
     @classmethod
     def is_audio_path(cls, path: Union[str, Path]) -> bool:
         """判断路径是否指向系统支持的音频文件。"""
@@ -1043,40 +1460,13 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @classmethod
     def read_path_meta(cls, path: Union[str, Path]) -> MetaMusic:
-        """读取本地音频标签，标签缺失时用文件名和目录线索补齐。"""
-        file_path = Path(path)
-        if file_path.exists() and file_path.is_file():
-            return AudioMetadataHelper.read(file_path)
-        meta = MetaMusic(
-            org_string=file_path.stem, title=file_path.stem, parse_title=True
-        )
-        # WAV 无标签、FLAC/MP3 标签不全时，依靠文件名和目录结构补充识别线索
-        return meta.apply_path_context(file_path)
+        """委托音乐领域链读取路径元数据，保持跨域入口与目录匹配语义一致。"""
+        return MusicChain.read_path_meta(path)
 
     @classmethod
     def _music_info_from_path_meta(cls, meta: MetaMusic) -> MusicInfo:
         """把音频标签转换为文件管理可展示的最小音乐信息。"""
-        return MusicInfo(
-            source=meta.media_source,
-            media_id=meta.media_id,
-            title=meta.title,
-            artists=list(meta.artists),
-            album=meta.album,
-            album_artist=meta.album_artist,
-            year=meta.year,
-            disc_number=meta.disc_number,
-            track_number=meta.track_number,
-            total_tracks=meta.total_tracks,
-            duration=meta.duration,
-            isrc=meta.isrc,
-            version=meta.version,
-            audio_format=meta.audio_format,
-            audio_lossless=meta.audio_lossless,
-            bit_depth=meta.bit_depth,
-            sample_rate=meta.sample_rate,
-            bitrate=meta.bitrate,
-            names=[name for name in (meta.title, meta.album) if name],
-        )
+        return MusicInfo.from_meta(meta)
 
     @staticmethod
     def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
@@ -1094,9 +1484,6 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not file_path.exists() or not file_path.is_file():
             return None
         try:
-            # 目录级专辑匹配属于音乐域能力，延迟导入避免双向依赖。
-            from app.chain.music import MusicChain
-
             matched = MusicChain().recognize_album_directory(file_path.parent)
         except Exception as err:
             logger.debug(f"专辑目录匹配失败：{file_path.parent} - {err}")
@@ -1359,10 +1746,26 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         with scraping_lock:
             # 音乐刮削与影视共用 MediaChain 入口，按 ScrapingConfig 的音乐项写入标签与封面
             if getattr(mediainfo, "type", None) == MediaType.MUSIC:
-                _, message = self.scrape_music_metadata(
+                scrape_kwargs: dict[str, Any] = {}
+                if file_list:
+                    scrape_kwargs["audio_files"] = self._music_event_audio_fileitems(
+                        root=fileitem,
+                        file_list=file_list,
+                    )
+                    scrape_kwargs["media_by_path"] = {
+                        Path(context.get("path")).as_posix(): context.get("mediainfo")
+                        for context in event_data.get("file_contexts") or []
+                        if (
+                                isinstance(context, dict)
+                                and context.get("path")
+                                and isinstance(context.get("mediainfo"), MusicInfo)
+                        )
+                    }
+                _, message = self.scrape_metadata(
                     fileitem=fileitem,
                     mediainfo=mediainfo,
                     overwrite=overwrite,
+                    **scrape_kwargs,
                 )
                 if message:
                     logger.info(f"音乐刮削：{message}")
@@ -1624,12 +2027,14 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             fileitem: schemas.FileItem,
             meta: MetaBase = None,
-            mediainfo: MediaInfo = None,
+            mediainfo: Union[MediaInfo, MusicInfo] = None,
             init_folder: bool = True,
             parent: schemas.FileItem = None,
             overwrite: bool = False,
             recursive: bool = True,
-    ):
+            audio_files: Optional[list[schemas.FileItem]] = None,
+            media_by_path: Optional[dict[str, MusicInfo]] = None,
+    ) -> tuple[bool, str]:
         """
         手动刮削媒体信息
 
@@ -1640,16 +2045,43 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param parent: 上级目录
         :param overwrite: 是否覆盖已有文件
         :param recursive: 是否递归处理目录内文件
+        :param audio_files: 音乐批次已确认成功的音频文件清单
+        :param media_by_path: 音乐批次每个音频文件对应的标准身份
         """
         if not fileitem:
-            return
+            return False, "未提供刮削文件"
 
         # 当前文件路径
         filepath = Path(fileitem.path)
+        is_music = (
+            getattr(mediainfo, "type", None) == MediaType.MUSIC
+            or isinstance(meta, MetaMusic)
+            or (
+                fileitem.type == "file"
+                and filepath.suffix.lower() in settings.RMT_AUDIOEXT
+            )
+        )
+        if is_music:
+            music_info = (
+                mediainfo
+                if getattr(mediainfo, "type", None) == MediaType.MUSIC
+                else None
+            )
+            music_kwargs: dict[str, Any] = {}
+            if audio_files is not None:
+                music_kwargs["audio_files"] = audio_files
+            if media_by_path is not None:
+                music_kwargs["media_by_path"] = media_by_path
+            return self.scrape_music_metadata(
+                fileitem=fileitem,
+                mediainfo=music_info,
+                overwrite=overwrite,
+                **music_kwargs,
+            )
         if fileitem.type == "file" and (
                 not filepath.suffix or filepath.suffix.lower() not in settings.RMT_MEDIAEXT
         ):
-            return
+            return False, "刮削路径不是支持的媒体文件"
 
         # 准备元数据和媒体信息
         if not meta:
@@ -1658,7 +2090,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo = self.recognize_by_meta(meta)
         if not mediainfo:
             logger.warn(f"{filepath} 无法识别文件媒体信息！")
-            return
+            return False, "未识别到媒体信息"
 
         logger.info(f"开始刮削：{filepath} ...")
 
@@ -1673,7 +2105,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 overwrite=overwrite,
                 recursive=recursive,
             )
-        else:
+        elif mediainfo.type == MediaType.TV:
             self._handle_tv_scraping(
                 fileitem=fileitem,
                 meta=meta,
@@ -1683,8 +2115,12 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 overwrite=overwrite,
                 recursive=recursive,
             )
+        else:
+            logger.warn(f"{filepath} 媒体类型不支持刮削：{mediainfo.type}")
+            return False, "媒体类型不支持刮削"
 
         logger.info(f"{filepath.name} 刮削完成")
+        return True, f"{filepath.name} 刮削完成"
 
     def scrape_music_metadata(
             self,
@@ -1692,19 +2128,36 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: Optional[MusicInfo] = None,
             overwrite: bool = True,
             source: Optional[str] = None,
+            audio_files: Optional[list[schemas.FileItem]] = None,
+            media_by_path: Optional[dict[str, MusicInfo]] = None,
     ) -> tuple[bool, str]:
         """为音频文件或目录写入音乐标签和封面，应用系统刮削策略，复用现有存储下载上传能力。
 
         音乐刮削被收拢到 MediaChain 统一分发，避免音乐链反向依赖媒体链造成嵌套。
+
+        :param audio_files: 已确认属于本批次的音频文件；为空时按 fileitem 展开
+        :param media_by_path: 每个音频文件对应的音乐身份，避免批次内不同单曲互相覆盖
         """
-        files = self._music_audio_fileitems(fileitem)
+        files = self._normalize_music_audio_fileitems(
+            audio_files if audio_files is not None else self._music_audio_fileitems(fileitem)
+        )
         if not files:
             return False, "刮削路径中没有支持的音频文件"
-        if (
-                mediainfo
-                and len(files) > 1
-                and mediainfo.music_type != MUSIC_ENTITY_ALBUM
-        ):
+        normalized_media_by_path = {
+            Path(path).as_posix(): info
+            for path, info in (media_by_path or {}).items()
+            if isinstance(info, MusicInfo)
+        }
+        file_media = [
+            normalized_media_by_path.get(Path(item.path).as_posix(), mediainfo)
+            for item in files
+        ]
+        distinct_recordings = {
+            self._music_scrape_identity(info)
+            for info in file_media
+            if info and info.music_type != MUSIC_ENTITY_ALBUM
+        }
+        if len(files) > 1 and len(distinct_recordings) == 1 and all(file_media):
             return False, "单曲音乐 ID 仅支持刮削单个音频文件，整目录请选择专辑"
 
         # 三类音乐产物使用独立策略，允许只下载歌词而不改写音频标签。
@@ -1715,28 +2168,11 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False, "音乐标签、封面和歌词刮削策略均为跳过"
 
         with_cover = not poster_option.is_skip
-        shared_cover = (
-            self._download_music_cover(mediainfo.cover_url)
-            if mediainfo and with_cover
-            else None
-        )
         music_chain = None
-        album_info = None
         if not lyrics_option.is_skip:
-            # 延迟导入避免 MediaChain 与 MusicChain 在模块加载阶段形成双向依赖。
-            from app.chain.music import MusicChain
-
             music_chain = MusicChain()
-            if (
-                    mediainfo
-                    and mediainfo.music_type == MUSIC_ENTITY_ALBUM
-                    and mediainfo.source
-                    and mediainfo.media_id
-            ):
-                album_info = music_chain.album(
-                    source=mediainfo.source,
-                    media_id=mediainfo.media_id,
-                )
+        cover_cache: dict[str, tuple[Optional[bytes], str]] = {}
+        album_cache: dict[tuple[str, str], Optional[MusicAlbumInfo]] = {}
 
         failures: list[str] = []
         lyrics_counts = {
@@ -1750,15 +2186,36 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if not nfo_option.is_skip and with_cover
             else "音乐标签" if not nfo_option.is_skip else "封面"
         )
-        for audio_item in files:
+        for audio_item, item_media in zip(files, file_media):
+            item_cover = None
+            cover_url = item_media.cover_url if item_media else None
+            if with_cover and cover_url:
+                if cover_url not in cover_cache:
+                    cover_cache[cover_url] = self._download_music_cover(cover_url)
+                item_cover = cover_cache[cover_url]
+            album_info = None
+            if (
+                    music_chain
+                    and item_media
+                    and item_media.music_type == MUSIC_ENTITY_ALBUM
+                    and item_media.source
+                    and item_media.media_id
+            ):
+                album_key = (item_media.source, item_media.media_id)
+                if album_key not in album_cache:
+                    album_cache[album_key] = music_chain.album(
+                        source=item_media.source,
+                        media_id=item_media.media_id,
+                    )
+                album_info = album_cache[album_key]
             result = self._scrape_music_file(
                 audio_item,
-                mediainfo,
+                item_media,
                 write_tags=not nfo_option.is_skip,
                 tag_overwrite=overwrite or nfo_option.is_overwrite,
                 with_cover=with_cover,
                 cover_overwrite=overwrite or poster_option.is_overwrite,
-                cover=shared_cover,
+                cover=item_cover,
                 lyrics_option=lyrics_option,
                 lyrics_overwrite=overwrite or lyrics_option.is_overwrite,
                 music_chain=music_chain,
@@ -1786,6 +2243,18 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if failures:
             return False, f"{message}；{'；'.join(failures[:3])}"
         return True, message
+
+    @staticmethod
+    def _music_scrape_identity(info: MusicInfo) -> tuple:
+        """构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。"""
+        return (
+            info.source,
+            info.media_id,
+            info.music_type,
+            info.title,
+            info.disc_number,
+            info.track_number,
+        )
 
     @staticmethod
     @cached(maxsize=64, ttl=settings.CONF.meta, skip_none=True)
@@ -1831,6 +2300,57 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if item.type == "file" and self._is_music_audio_file(item.path or "")
         ]
 
+    @classmethod
+    def _normalize_music_audio_fileitems(
+            cls,
+            fileitems: Iterable[schemas.FileItem],
+    ) -> list[schemas.FileItem]:
+        """过滤并按存储路径去重已选音频文件，保持调用方给出的顺序。"""
+        normalized: list[schemas.FileItem] = []
+        seen: set[tuple[str, str]] = set()
+        for item in fileitems or []:
+            if (
+                    not item
+                    or item.type != "file"
+                    or not cls._is_music_audio_file(item.path or "")
+            ):
+                continue
+            key = (item.storage or "local", Path(item.path).as_posix())
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(item)
+        return normalized
+
+    def _music_event_audio_fileitems(
+            self,
+            root: schemas.FileItem,
+            file_list: Iterable[str],
+    ) -> list[schemas.FileItem]:
+        """把刮削事件中的成功路径恢复为文件项，并限制在事件媒体根目录内。"""
+        root_path = Path(root.path)
+        selected: list[schemas.FileItem] = []
+        for raw_path in file_list or []:
+            audio_path = Path(raw_path)
+            if not self._is_music_audio_file(audio_path.as_posix()):
+                continue
+            if root.type == "dir" and not audio_path.is_relative_to(root_path):
+                logger.warning(f"忽略媒体根目录外的音乐刮削路径：{audio_path}")
+                continue
+            item = self.storagechain.get_file_item(
+                storage=root.storage,
+                path=audio_path,
+            )
+            selected.append(item or schemas.FileItem(
+                storage=root.storage,
+                path=audio_path.as_posix(),
+                type="file",
+                name=audio_path.name,
+                basename=audio_path.stem,
+                extension=audio_path.suffix.lstrip("."),
+            ))
+        return self._normalize_music_audio_fileitems(selected)
+
     def _scrape_music_file(
             self,
             fileitem: schemas.FileItem,
@@ -1842,7 +2362,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             cover: Optional[tuple[Optional[bytes], str]] = None,
             lyrics_option: Optional[ScrapingOption] = None,
             lyrics_overwrite: bool = False,
-            music_chain: Optional["MusicChain"] = None,
+            music_chain: Optional[MusicChain] = None,
             album_info: Optional[MusicAlbumInfo] = None,
             source: Optional[str] = None,
     ) -> _MusicScrapeFileResult:
@@ -1908,7 +2428,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             cover: Optional[tuple[Optional[bytes], str]],
             lyrics_option: Optional[ScrapingOption],
             lyrics_overwrite: bool,
-            music_chain: Optional["MusicChain"],
+            music_chain: Optional[MusicChain],
             album_info: Optional[MusicAlbumInfo],
             source: Optional[str],
     ) -> _MusicScrapeFileResult:
@@ -2094,7 +2614,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             scrape_info: Optional[MetaMusic | MusicInfo],
             lyrics_option: Optional[ScrapingOption],
             overwrite: bool,
-            music_chain: Optional["MusicChain"],
+            music_chain: Optional[MusicChain],
             album_info: Optional[MusicAlbumInfo],
     ) -> str:
         """按歌词策略查询单个音轨并保存同名旁挂歌词文件。"""
@@ -2542,6 +3062,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
             mtype: Optional[MediaType] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息（异步版本）
@@ -2551,6 +3072,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param mtype: 上游已确定的媒体类型
+        :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
         :return: 统一媒体信息
         """
         mediainfo = await self._async_recognize_with_fallback_by_meta(
@@ -2559,6 +3081,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             source=source,
             episode_group=episode_group,
             obtain_images=obtain_images,
+            music_type=music_type,
         )
         if not mediainfo:
             logger.warn(f"{metainfo.title} 未识别到媒体信息")
@@ -2571,6 +3094,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             source: Optional[str] = None,
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         异步根据标题识别媒体信息，必要时回退到辅助识别。
@@ -2580,6 +3104,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param source: 请求级识别数据源
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
+        :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
         :return: 统一媒体信息
         """
         if not metainfo:
@@ -2600,6 +3125,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 source=source,
                 share_meta=share_meta,
                 episode_group=episode_group,
+                music_type=music_type,
             )
 
         async def plugin_recognize() -> Optional[MediaInfo]:
@@ -2612,6 +3138,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 share_meta=share_meta,
                 source=source,
                 episode_group=episode_group,
+                music_type=music_type,
             )
 
         # 按 config 中设置的识别顺序识别，影视与音乐共用同一选择流程
@@ -2642,6 +3169,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             share_meta: MetaBase = None,
             source: Optional[str] = None,
             episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         请求辅助识别，返回媒体信息（异步版本）；影视与音乐共用同一流程
@@ -2651,6 +3179,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param share_meta: 共享识别查询/上报使用的原始元数据
         :param source: 请求级识别数据源
         :param episode_group: 剧集组
+        :param music_type: 音乐实体类型，仅音乐辅助识别使用
         """
         # 音乐标题要素（曲名/艺术家/专辑/年份）与影视不同，走专用名称识别事件
         if isinstance(org_meta, MetaMusic):
@@ -2659,6 +3188,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 org_meta=org_meta,
                 share_meta=share_meta,
                 source=source,
+                music_type=music_type,
             )
         # 发送请求事件，等待结果
         result: Event = await eventmanager.async_send_event(
@@ -2711,6 +3241,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             org_meta: MetaMusic,
             share_meta: MetaBase = None,
             source: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         请求插件辅助识别音乐标题要素，并按修正后的要素重新匹配媒体信息（异步版本）
@@ -2719,6 +3250,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param org_meta: 原始音乐元数据
         :param share_meta: 共享识别查询/上报使用的原始元数据
         :param source: 请求级识别数据源
+        :param music_type: 音乐实体类型
         """
         # 发送音乐名称识别事件，等待插件返回标题要素
         result: Event = await eventmanager.async_send_event(
@@ -2728,6 +3260,7 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 "artist": org_meta.artist,
                 "album": org_meta.album,
                 "year": org_meta.year,
+                "music_type": music_type,
             },
         )
         if not result:
@@ -2747,20 +3280,19 @@ class MediaChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.info("音乐辅助识别与原始识别结果一致，无需重新匹配媒体信息")
             return None
         logger.info("音乐辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
-        new_meta = MetaMusic(
-            org_string=org_meta.org_string,
-            title=name,
-            artists=[artist] if artist else list(org_meta.artists or []),
-            album=album or org_meta.album,
-            album_artist=artist or org_meta.album_artist,
-            year=year or org_meta.year,
-            isrc=org_meta.isrc,
+        new_meta = self._build_music_help_meta(
+            org_meta=org_meta,
+            name=name,
+            artist=artist,
+            album=album,
+            year=year,
         )
         # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
         mediainfo = await self.async_recognize_media(
             meta=new_meta,
             source=source,
             share_meta=share_meta,
+            music_type=music_type,
         )
         return mediainfo if mediainfo and mediainfo.source else None
 

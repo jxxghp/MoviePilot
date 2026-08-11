@@ -79,13 +79,24 @@ def test_monthly_media_statistics_counts_successful_unique_media():
         TransferHistory(status=True, date=f"{month}06 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_id="musicbrainz:r1"),
         TransferHistory(status=True, date=f"{month}07 10:00:00", type=MediaType.MUSIC.value, title="未知曲目"),
         TransferHistory(status=False, date=f"{month}08 10:00:00", type=MediaType.MUSIC.value, title="失败曲目"),
+        # 整专内不同目标曲目共享专辑 ID，但应分别计入音乐数量
+        TransferHistory(
+            status=True, date=f"{month}09 10:00:00", type=MediaType.MUSIC.value,
+            title="以父之名", media_source="musicbrainz", media_id="release-group-1",
+            music_type="album", dest="/music/叶惠美/01 - 以父之名.flac",
+        ),
+        TransferHistory(
+            status=True, date=f"{month}10 10:00:00", type=MediaType.MUSIC.value,
+            title="晴天", media_source="musicbrainz", media_id="release-group-1",
+            music_type="album", dest="/music/叶惠美/03 - 晴天.flac",
+        ),
     ]
     db = SessionFactory()
     try:
         db.add_all(histories)
         db.commit()
 
-        assert TransferHistory.monthly_media_statistics(db) == (1, 1, 3, 2)
+        assert TransferHistory.monthly_media_statistics(db) == (1, 1, 3, 4)
     finally:
         history_ids = [history.id for history in histories if history.id is not None]
         if history_ids:

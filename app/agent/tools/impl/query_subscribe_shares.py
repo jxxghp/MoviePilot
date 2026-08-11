@@ -9,7 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.helper.server import MoviePilotServerHelper
 from app.log import logger
-from app.schemas.types import media_type_to_agent
+from app.schemas.types import MUSIC_ENTITY_RECORDING, media_type_to_agent
 from ._music_utils import normalize_music_type
 
 MAX_PAGE_SIZE = 50
@@ -97,7 +97,7 @@ class QuerySubscribeSharesTool(MoviePilotTool):
                 normalized_music_type = None
                 if normalized_type == "music":
                     normalized_music_type = normalize_music_type(
-                        share.get("music_type") or "recording",
+                        share.get("music_type") or MUSIC_ENTITY_RECORDING,
                         allow_artist=False,
                     )
                     if not normalized_music_type:

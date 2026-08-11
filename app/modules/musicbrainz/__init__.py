@@ -19,7 +19,13 @@ from app.core.meta import MetaBase, MetaMusic
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.musicbrainz.music_cache import MusicBrainzCache
-from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaRecognizeType,
+    MediaType,
+    ModuleType,
+)
 from app.utils.http import RequestUtils
 from app.utils.media import is_media_source_selected
 from app.utils.zhconv import convert as zhconv_convert
@@ -635,6 +641,7 @@ class MusicBrainzModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """跟随统一媒体识别分发，仅在音乐类型请求下返回 MusicBrainz 识别结果。"""
+        music_type = kwargs.get("music_type")
         # 显式选择其它音乐源时必须让出识别管线，且不能复用 MusicBrainz 缓存。
         if source and source != self._source:
             return None
@@ -644,8 +651,32 @@ class MusicBrainzModule(_ModuleBase):
         # 无 MetaMusic 元数据时仅响应本数据源的详情识别请求
         if not isinstance(meta, MetaMusic):
             if source == self._source and mediaid:
-                return self.recognize_music(source, str(mediaid))
+                detail_kwargs = (
+                    {"music_type": music_type} if music_type is not None else {}
+                )
+                return self.recognize_music(
+                    source, str(mediaid), **detail_kwargs
+                )
             return None
+        # 显式身份只允许按该 ID 和实体类型读取，失败后不能按标题替换成其它目标。
+        resolved_source = source or meta.media_source
+        resolved_media_id = mediaid or meta.media_id
+        if resolved_source and resolved_media_id:
+            detail_kwargs = (
+                {"music_type": music_type} if music_type is not None else {}
+            )
+            info = self.recognize_music(
+                resolved_source,
+                str(resolved_media_id),
+                **detail_kwargs,
+            )
+            if info:
+                self._update_recognize_cache(meta, info)
+            return info
+        # 专辑名称识别不复用 Recording 缓存，避免同名实体互相覆盖。
+        if music_type == MUSIC_ENTITY_ALBUM:
+            albums = self._search_albums(meta, limit=10)
+            return self._select_album_candidate(meta, albums)
         # 识别缓存命中直接响应，避免重复搜索占用 MusicBrainz 限流配额
         cache_enabled = bool(kwargs.get("cache", True))
         if cache_enabled and self.cache:
@@ -657,13 +688,6 @@ class MusicBrainzModule(_ModuleBase):
                     logger.info(f"{meta.title} 使用音乐识别缓存：无法识别")
                 cached_info.recognize_cache_hit = True
                 return cached_info
-        # 携带数据源与原生 ID 的请求优先按详情识别
-        resolved_source = source or meta.media_source
-        if resolved_source and (mediaid or meta.media_id):
-            info = self.recognize_music(resolved_source, str(mediaid or meta.media_id))
-            if info:
-                self._update_recognize_cache(meta, info)
-                return info
         # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兑底
         # 文件识别只能从 Recording 中挑选，专辑或艺术家同名结果不能成为音轨身份。
         candidates = self._search_recordings(meta, limit=10)
@@ -671,7 +695,7 @@ class MusicBrainzModule(_ModuleBase):
         # 整专/单曲发行类资源在 Recording 检索无果时，回退按专辑实体识别；
         # 专辑挑选要求标题与艺术家同时命中，无艺术家线索时回退检索必然无果，
         # 直接跳过避免浪费限流配额（批量识别场景可减少约半数请求）
-        if not matched and meta.artists:
+        if not matched and meta.artists and music_type != MUSIC_ENTITY_RECORDING:
             albums = self._search_albums(meta, limit=10)
             matched = self._select_album_candidate(meta, albums)
         result = matched or self._info_from_meta(meta)
@@ -885,22 +909,7 @@ class MusicBrainzModule(_ModuleBase):
     @classmethod
     def _info_from_meta(cls, meta: MetaMusic) -> MusicInfo:
         """音乐识别无候选时，把元数据转换为可展示的最小信息。"""
-        return MusicInfo(
-            source=meta.media_source,
-            media_id=meta.media_id,
-            title=meta.title,
-            artists=list(meta.artists),
-            album=meta.album,
-            album_artist=meta.album_artist,
-            year=meta.year,
-            disc_number=meta.disc_number,
-            track_number=meta.track_number,
-            total_tracks=meta.total_tracks,
-            duration=meta.duration,
-            isrc=meta.isrc,
-            version=meta.version,
-            names=[name for name in (meta.title, meta.album) if name],
-        )
+        return MusicInfo.from_meta(meta)
 
     @classmethod
     def _same_text(cls, left: Optional[str], right: Optional[str]) -> bool:
@@ -981,19 +990,27 @@ class MusicBrainzModule(_ModuleBase):
             text = stripped
         return cls._normalize_text(text)
 
-    def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:
-        """按 MusicBrainz 标准 ID 获取音乐详情，单曲不存在时回退到专辑。"""
+    def recognize_music(
+            self,
+            source: str,
+            media_id: str,
+            music_type: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """按 MusicBrainz 标准 ID 和实体类型获取详情；空类型保留旧版探测顺序。"""
         if source != self._source or not media_id:
             return None
-        payload = self._request_json(
-            f"/recording/{media_id}",
-            params={
-                "inc": "artists+releases+release-groups+isrcs+genres",
-                "fmt": "json",
-            },
-        )
-        if payload:
-            return self._recording_to_info(payload)
+        if music_type != MUSIC_ENTITY_ALBUM:
+            payload = self._request_json(
+                f"/recording/{media_id}",
+                params={
+                    "inc": "artists+releases+release-groups+isrcs+genres",
+                    "fmt": "json",
+                },
+            )
+            if payload:
+                return self._recording_to_info(payload)
+            if music_type == MUSIC_ENTITY_RECORDING:
+                return None
         # MusicBrainz 各实体共用 UUID 形式，统一详情入口在 Recording 未命中后继续探测专辑。
         album = self.music_album(source, media_id)
         return album.to_music_info() if album else None

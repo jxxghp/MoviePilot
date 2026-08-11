@@ -9,12 +9,10 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.core.config import settings
-from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_ARTIST
 from app.log import logger
 from app.schemas import FileItem
-from app.schemas.types import MediaType, media_type_to_agent
+from app.schemas.types import MUSIC_ENTITY_ARTIST, MediaType, media_type_to_agent
 from ._music_utils import normalize_music_type, simplify_music_info
 
 
@@ -180,18 +178,16 @@ class ScrapeMetadataTool(MoviePilotTool):
 
                 mediainfo = None
                 if media_source and media_id:
-                    if normalized_music_type == MUSIC_ENTITY_ALBUM:
-                        album_info = await MusicChain().async_album(
-                            source=media_source,
-                            media_id=media_id,
-                        )
-                        mediainfo = album_info.to_music_info() if album_info else None
-                    else:
-                        mediainfo = await media_chain.async_recognize_media(
-                            source=media_source,
-                            mediaid=media_id,
-                            mtype=MediaType.MUSIC,
-                        )
+                    recognize_kwargs = {
+                        "source": media_source,
+                        "mediaid": media_id,
+                        "mtype": MediaType.MUSIC,
+                    }
+                    if normalized_music_type:
+                        recognize_kwargs["music_type"] = normalized_music_type
+                    mediainfo = await media_chain.async_recognize_media(
+                        **recognize_kwargs
+                    )
                     if not mediainfo:
                         return json.dumps({
                             "success": False,

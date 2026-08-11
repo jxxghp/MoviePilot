@@ -2,10 +2,15 @@ from typing import Any, Optional, Tuple, Union
 
 from app.core.cache import cached
 from app.core.config import settings
-from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
+from app.core.context import MusicInfo
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import ModuleType, OtherModulesType
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    ModuleType,
+    OtherModulesType,
+)
 from app.utils.http import RequestUtils
 
 # ListenBrainz 全站统计支持的周期，取值与官方统计页面完全一致

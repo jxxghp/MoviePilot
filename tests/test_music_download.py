@@ -1,9 +1,10 @@
 from unittest.mock import Mock, patch
 
-from app.api.endpoints.download import download
+from app.api.endpoints.download import add, download
 from app.chain.download import DownloadChain
 from app.chain.music import MusicChain
 from app.core.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
+from app.core.meta import MetaMusic
 from app.schemas import ExistMediaInfo
 from app.schemas.context import TorrentInfo
 from app.schemas.music import MusicInfo as MusicInfoSchema
@@ -96,6 +97,19 @@ def test_album_resource_rejects_incomplete_or_unverifiable_pack():
     )
 
 
+def test_album_resource_dedupes_same_track_in_different_formats():
+    """同一盘同一曲序的多种编码不能冒充多首独立曲目。"""
+    context = Context(media_info=_album_info(total_tracks=2))
+
+    error = DownloadChain._validate_music_album_resource(
+        context,
+        ["叶惠美/01 - 以父之名.flac", "叶惠美/01 - 以父之名.mp3"],
+    )
+
+    assert "仅包含 1 个独立音频文件" in (error or "")
+    assert context.confirmed_full_coverage is False
+
+
 def test_download_single_stops_before_client_when_album_pack_is_incomplete():
     """下载入口应在添加任务前拒绝不完整专辑，并记录可供后续候选继续尝试的失败原因。"""
     context = Context(
@@ -155,6 +169,37 @@ def test_download_endpoint_builds_music_context():
     assert context.media_info.media_id == "recording-1"
     assert context.meta_info.type == MediaType.MUSIC
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
+
+
+def test_download_add_forwards_album_namespace_to_media_chain():
+    """无完整媒体上下文的专辑下载必须在精确识别前保留 album 命名空间。"""
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = _album_info(total_tracks=11)
+    download_chain = Mock()
+    download_chain.download_single.return_value = "hash-album"
+
+    with patch("app.api.endpoints.download.MediaChain", return_value=media_chain), patch(
+        "app.api.endpoints.download.DownloadChain", return_value=download_chain
+    ):
+        response = add(
+            torrent_in=TorrentInfo(
+                title="周杰伦 - 叶惠美 FLAC",
+                enclosure="https://example.com/album.torrent",
+                category=MediaType.MUSIC.value,
+            ),
+            media_source="musicbrainz",
+            media_id="release-group-1",
+            music_type="album",
+            current_user=Mock(name="admin"),
+        )
+
+    assert response.success is True
+    recognize_kwargs = media_chain.recognize_media.call_args.kwargs
+    assert isinstance(recognize_kwargs["meta"], MetaMusic)
+    assert recognize_kwargs["mtype"] == MediaType.MUSIC
+    assert recognize_kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info.music_type == MUSIC_ENTITY_ALBUM
 
 
 def test_music_library_exists_uses_atomic_album_lookup():

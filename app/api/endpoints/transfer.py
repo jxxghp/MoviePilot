@@ -53,6 +53,7 @@ def query_name(
         media_path = DirectoryHelper.get_media_root_path(
             rename_format=settings.RENAME_FORMAT(context.media_info.type),
             rename_path=Path(new_path),
+            media_type=context.media_info.type,
         )
         if media_path:
             new_name = media_path.name
@@ -338,6 +339,9 @@ def manual_transfer(
             transer_item.media_id = (
                 history.media_id or transer_item.media_id
             )
+            transer_item.music_type = (
+                getattr(history, "music_type", None) or transer_item.music_type
+            )
             transer_item.season = (
                 int(str(history.seasons).replace("S", ""))
                 if history.seasons
@@ -459,6 +463,7 @@ def manual_transfer(
                 anilistid=transer_item.anilistid,
                 media_source=transer_item.media_source,
                 media_id=transer_item.media_id,
+                music_type=transer_item.music_type,
                 mtype=mtype,
                 season=transer_item.season,
                 episode_group=transer_item.episode_group,
@@ -546,6 +551,7 @@ def manual_transfer(
         anilistid=transer_item.anilistid,
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
+        music_type=transer_item.music_type,
         mtype=mtype,
         season=transer_item.season,
         episode_group=transer_item.episode_group,

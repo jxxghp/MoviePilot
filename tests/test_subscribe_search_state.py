@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
@@ -65,11 +65,12 @@ def test_new_subscribe_search_keeps_state_when_recently_created(monkeypatch) -> 
     _SubscribeOper.updates = []
     monkeypatch.setattr(subscribe_module, "SubscribeOper", _SubscribeOper)
 
-    with patch.object(SubscribeChain, "recognize_media", return_value=None) as recognize:
+    media_chain_class = Mock()
+    with patch.object(subscribe_module, "MediaChain", media_chain_class):
         chain = object.__new__(SubscribeChain)
         chain.search(state="N", manual=False)
 
-    recognize.assert_not_called()
+    media_chain_class.assert_not_called()
     assert _SubscribeOper.updates == []
 
 
@@ -81,9 +82,11 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     _SubscribeOper.updates = []
     monkeypatch.setattr(subscribe_module, "SubscribeOper", _SubscribeOper)
 
-    with patch.object(SubscribeChain, "recognize_media", return_value=None) as recognize:
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = None
+    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
         chain.search(state="N", manual=False)
 
-    recognize.assert_called_once()
+    media_chain.recognize_media.assert_called_once()
     assert _SubscribeOper.updates == [(31, {"state": "R"})]

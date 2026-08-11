@@ -83,6 +83,33 @@ def test_failed_transfer_history_preserves_explicit_media_source() -> None:
     assert call.kwargs["media_id"] == "154587"
 
 
+def test_failed_music_history_preserves_media_type_and_entity_namespace() -> None:
+    """未识别音乐的失败记录也应保留音乐类型和单曲实体命名空间。"""
+    oper = object.__new__(TransferHistoryOper)
+    oper.add_force = Mock(return_value=SimpleNamespace(id=1))
+    meta = MetaMusic(
+        title="晴天",
+        artists=["周杰伦"],
+        album="叶惠美",
+        media_source="musicbrainz",
+        media_id="recording-1",
+    )
+
+    oper.add_fail(
+        fileitem=FileItem(
+            storage="local",
+            path="/downloads/周杰伦 - 晴天.flac",
+            type="file",
+        ),
+        mode="copy",
+        meta=meta,
+    )
+
+    call = oper.add_force.call_args
+    assert call.kwargs["type"] == "音乐"
+    assert call.kwargs["music_type"] == "recording"
+
+
 def test_transferhistory_music_migration_is_idempotent(monkeypatch) -> None:
     """整理历史音乐字段迁移应支持重复执行。"""
     migration = importlib.import_module(

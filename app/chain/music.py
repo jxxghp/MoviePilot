@@ -10,8 +10,6 @@ from app.chain import ChainBase
 from app.core.cache import async_fresh, fresh
 from app.core.config import settings
 from app.core.context import (
-    MUSIC_ENTITY_ALBUM,
-    MUSIC_ENTITY_RECORDING,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
@@ -20,11 +18,12 @@ from app.core.context import (
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
 from app.log import logger
-from app.schemas.types import MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 from app.utils.media import (
     MUSIC_MEDIA_SOURCE_ORDER,
     is_music_media_source,
     normalize_media_source,
+    normalize_music_type,
 )
 from app.utils.zhconv import convert as zhconv_convert
 
@@ -32,8 +31,11 @@ from app.utils.zhconv import convert as zhconv_convert
 class MusicChain(ChainBase):
     """音乐元数据搜索、探索与站点搜索参数编排链；媒体识别统一入口见 MediaChain。"""
 
-    # 专辑目录匹配结果缓存：{目录路径: (音频文件数, 匹配结果)}，避免逐文件整理时重复请求远端
-    _album_dir_cache: dict[str, tuple[int, dict[str, MusicInfo]]] = {}
+    # 专辑目录匹配结果缓存：目录内相对路径变化时失效，标签写回不触发重复远端匹配。
+    _album_dir_cache: dict[
+        str,
+        tuple[tuple[str, ...], dict[str, MusicInfo]],
+    ] = {}
     _album_dir_cache_max = 128
     # 目录级匹配至少需要两个音频文件，单文件由单曲搜索链路处理
     _album_match_min_files = 2
@@ -66,9 +68,15 @@ class MusicChain(ChainBase):
         return cls._unique_texts(keywords)
 
     @classmethod
-    def matches_site_resource(cls, music: MusicInfo, resource_title: str) -> bool:
-        """判断站点资源标题是否包含订阅目标名称，避免宽泛搜索结果串专辑或串单曲。"""
-        normalized_resource = cls._normalize_match_text(resource_title)
+    def matches_site_resource(
+            cls,
+            music: MusicInfo,
+            resource_title: str,
+            resource_description: Optional[str] = None,
+    ) -> bool:
+        """判断站点资源标题与副标题是否包含订阅目标，避免串专辑或串单曲。"""
+        resource_text = f"{resource_title or ''} {resource_description or ''}"
+        normalized_resource = cls._normalize_match_text(resource_text)
         if not normalized_resource:
             return False
         if music.music_type == MUSIC_ENTITY_ALBUM:
@@ -185,16 +193,29 @@ class MusicChain(ChainBase):
             meta: Optional[MetaMusic] = None,
             mediaid: Optional[str] = None,
             cache: bool = True,
+            music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
-        """只调用指定音乐数据源进行识别，拒绝影视或未知来源。"""
+        """只调用指定音乐数据源识别指定实体，拒绝影视、未知来源和跨实体结果。"""
         normalized_source = normalize_media_source(source)
         if not is_music_media_source(normalized_source):
             return None
-        return self._recognize_from_source(
+        normalized_music_type = normalize_music_type(
+            music_type, allow_artist=False
+        )
+        if music_type is not None and not normalized_music_type:
+            return None
+        result = self._recognize_from_source(
             meta=meta,
             source=normalized_source,
             cache=cache,
             mediaid=mediaid,
+            music_type=normalized_music_type,
+        )
+        return self._validate_source_recognize_result(
+            result=result,
+            source=normalized_source,
+            mediaid=mediaid,
+            music_type=normalized_music_type,
         )
 
     async def async_recognize_from_source(
@@ -203,16 +224,29 @@ class MusicChain(ChainBase):
             meta: Optional[MetaMusic] = None,
             mediaid: Optional[str] = None,
             cache: bool = True,
+            music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
-        """异步只调用指定音乐数据源进行识别，拒绝影视或未知来源。"""
+        """异步只调用指定音乐数据源识别指定实体，拒绝影视、未知来源和跨实体结果。"""
         normalized_source = normalize_media_source(source)
         if not is_music_media_source(normalized_source):
             return None
-        return await self._async_recognize_from_source(
+        normalized_music_type = normalize_music_type(
+            music_type, allow_artist=False
+        )
+        if music_type is not None and not normalized_music_type:
+            return None
+        result = await self._async_recognize_from_source(
             meta=meta,
             source=normalized_source,
             cache=cache,
             mediaid=mediaid,
+            music_type=normalized_music_type,
+        )
+        return self._validate_source_recognize_result(
+            result=result,
+            source=normalized_source,
+            mediaid=mediaid,
+            music_type=normalized_music_type,
         )
 
     async def async_search(
@@ -433,24 +467,52 @@ class MusicChain(ChainBase):
             return None
         return result
 
+    @staticmethod
+    def _validate_source_recognize_result(
+            result: Optional[MusicInfo],
+            source: str,
+            mediaid: Optional[str],
+            music_type: Optional[str],
+    ) -> Optional[MusicInfo]:
+        """校验指定来源的识别结果，显式 ID 不允许被另一实体或另一身份替代。"""
+        if not isinstance(result, MusicInfo):
+            return None
+        if result.source and result.source != source:
+            return None
+        if music_type and result.music_type != music_type:
+            return None
+        if mediaid and (
+                not result.source
+                or not result.media_id
+                or str(result.media_id) != str(mediaid)
+        ):
+            return None
+        return result
+
     def _recognize_from_source(
             self,
             meta: Optional[MetaMusic],
             source: str,
             cache: bool,
             mediaid: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """调用声明了指定音乐来源的系统模块，隔离单个来源的查询失败。"""
         module = self._music_recognize_module(source)
         if not module:
             return None
         try:
+            recognize_kwargs = {
+                "meta": meta,
+                "mtype": MediaType.MUSIC,
+                "source": source,
+                "mediaid": mediaid,
+                "cache": cache,
+            }
+            if music_type is not None:
+                recognize_kwargs["music_type"] = music_type
             return module.recognize_media(
-                meta=meta,
-                mtype=MediaType.MUSIC,
-                source=source,
-                mediaid=mediaid,
-                cache=cache,
+                **recognize_kwargs,
             )
         except Exception as err:
             logger.warning(f"{source} 音乐自动识别失败：{err}")
@@ -462,28 +524,28 @@ class MusicChain(ChainBase):
             source: str,
             cache: bool,
             mediaid: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步调用指定音乐来源模块，单个来源失败不影响其它候选。"""
         module = self._music_recognize_module(source)
         if not module:
             return None
         try:
+            recognize_kwargs = {
+                "meta": meta,
+                "mtype": MediaType.MUSIC,
+                "source": source,
+                "mediaid": mediaid,
+                "cache": cache,
+            }
+            if music_type is not None:
+                recognize_kwargs["music_type"] = music_type
             async_method = getattr(module, "async_recognize_media", None)
             if async_method:
-                return await async_method(
-                    meta=meta,
-                    mtype=MediaType.MUSIC,
-                    source=source,
-                    mediaid=mediaid,
-                    cache=cache,
-                )
+                return await async_method(**recognize_kwargs)
             return await run_in_threadpool(
                 module.recognize_media,
-                meta=meta,
-                mtype=MediaType.MUSIC,
-                source=source,
-                mediaid=mediaid,
-                cache=cache,
+                **recognize_kwargs,
             )
         except Exception as err:
             logger.warning(f"{source} 音乐自动识别失败：{err}")
@@ -621,14 +683,15 @@ class MusicChain(ChainBase):
         if len(files) < self._album_match_min_files:
             return {}
         cache_key = str(dir_path)
+        signature = self._album_directory_signature(dir_path, files)
         cached = self._album_dir_cache.get(cache_key)
-        # 目录内音频数量变化时视为内容更新，需要重新匹配
-        if cached and cached[0] == len(files):
+        # 新增、删除或重命名音频时重新匹配；标签写回不会改变相对路径签名。
+        if cached and cached[0] == signature:
             return cached[1]
         matched = self._match_album_directory(dir_path, files)
         if len(self._album_dir_cache) >= self._album_dir_cache_max:
             self._album_dir_cache.clear()
-        self._album_dir_cache[cache_key] = (len(files), matched)
+        self._album_dir_cache[cache_key] = (signature, matched)
         return matched
 
     async def async_recognize_album_directory(self, path: str | Path) -> dict[str, MusicInfo]:
@@ -662,6 +725,14 @@ class MusicChain(ChainBase):
             collect(subdir)
         return files
 
+    @staticmethod
+    def _album_directory_signature(dir_path: Path, files: list[Path]) -> tuple[str, ...]:
+        """按相对文件路径生成专辑目录缓存签名，兼容多碟子目录。"""
+        return tuple(
+            str(file.relative_to(dir_path)).casefold()
+            for file in files
+        )
+
     @classmethod
     def read_path_meta(cls, path: Union[str, Path]) -> MetaMusic:
         """读取本地音频标签，标签缺失时用文件名和目录线索补齐。"""
@@ -669,9 +740,11 @@ class MusicChain(ChainBase):
         if file_path.exists() and file_path.is_file():
             return AudioMetadataHelper.read(file_path)
         meta = MetaMusic(
-            org_string=file_path.stem, title=file_path.stem, parse_title=True
+            org_string=file_path.name,
+            title=file_path.stem,
+            audio_format=file_path.suffix.lstrip(".").upper() or None,
         )
-        # WAV 无标签、FLAC/MP3 标签不全时，依靠文件名和目录结构补充识别线索
+        # apply_path_context 会先剥离曲序再解析文件名，不能在构造阶段提前解析一次。
         return meta.apply_path_context(file_path)
 
     def _match_album_directory(
@@ -680,7 +753,7 @@ class MusicChain(ChainBase):
             files: list[Path],
     ) -> dict[str, MusicInfo]:
         """执行目录级专辑匹配，并把专辑曲目对位到具体音频文件。"""
-        # 音频标签读取归口 MediaChain，延迟导入避免模块加载阶段双向依赖。
+        # 标签读取属于音乐领域；MediaChain 只负责编排识别、刮削等跨领域流程。
         metas = [self.read_path_meta(file) for file in files]
         album_meta = self._album_meta_from_context(dir_path, metas)
         if not (album_meta.album or album_meta.title or album_meta.artists):

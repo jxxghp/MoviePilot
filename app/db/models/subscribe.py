@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query, async_db_update
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 
 class Subscribe(Base):
@@ -136,7 +137,7 @@ class Subscribe(Base):
         """按统一媒体身份优先级构造订阅查询条件。"""
         if media_source and media_id:
             condition = (cls.media_source == media_source) & (cls.media_id == str(media_id))
-            if music_type == "recording":
+            if music_type == MUSIC_ENTITY_RECORDING:
                 # 旧音乐订阅没有实体字段，历史语义等同单曲，查询时保持向后兼容。
                 return condition & or_(cls.music_type == music_type, cls.music_type.is_(None))
             if music_type:

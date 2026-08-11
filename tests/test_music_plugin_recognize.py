@@ -34,7 +34,20 @@ def _remote_music() -> MusicInfo:
 def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
     """原生识别无远端身份时应发送音乐名称识别事件，并按修正要素重新匹配。"""
     chain = MediaChain()
-    meta = MetaMusic(title="周杰伦 晴天 FLAC 24bit 48kHz")
+    meta = MetaMusic(
+        title="周杰伦 晴天 FLAC 24bit 48kHz",
+        disc_number=1,
+        track_number=3,
+        total_discs=1,
+        total_tracks=11,
+        version="原版",
+        audio_format="FLAC",
+        bit_depth=24,
+        sample_rate=48_000,
+        bitrate=2_304_000,
+        duration=269,
+        isrc="TW-A53-03-00003",
+    )
     remote = _remote_music()
     recognize_calls = []
 
@@ -66,6 +79,18 @@ def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
     assert rematch_meta.artists == ["周杰伦"]
     assert rematch_meta.album == "叶惠美"
     assert rematch_meta.year == 2003
+    assert rematch_meta.disc_number == 1
+    assert rematch_meta.track_number == 3
+    assert rematch_meta.total_discs == 1
+    assert rematch_meta.total_tracks == 11
+    assert rematch_meta.version == "原版"
+    assert rematch_meta.audio_format == "FLAC"
+    assert rematch_meta.audio_lossless is True
+    assert rematch_meta.bit_depth == 24
+    assert rematch_meta.sample_rate == 48_000
+    assert rematch_meta.bitrate == 2_304_000
+    assert rematch_meta.duration == 269
+    assert rematch_meta.isrc == "TW-A53-03-00003"
 
 
 def test_music_recognize_keeps_fallback_without_plugin(monkeypatch):
@@ -128,7 +153,7 @@ def test_music_recognize_help_keeps_fallback_when_rematch_fails(monkeypatch):
 def test_async_music_recognize_help(monkeypatch):
     """异步音乐识别同样应走插件辅助识别并重匹配。"""
     chain = MediaChain()
-    meta = MetaMusic(title="周杰伦-晴天")
+    meta = MetaMusic(title="周杰伦-晴天", track_number=3, duration=269)
     remote = _remote_music()
     recognize_calls = []
 
@@ -151,6 +176,8 @@ def test_async_music_recognize_help(monkeypatch):
     assert result is remote
     assert recognize_calls[-1].title == "晴天"
     assert recognize_calls[-1].artists == ["周杰伦"]
+    assert recognize_calls[-1].track_number == 3
+    assert recognize_calls[-1].duration == 269
 
 
 def test_plugin_first_keeps_fallback_when_help_unidentified(monkeypatch):
@@ -193,7 +220,12 @@ def test_chain_supplement_music_recognize_uses_plugin_result():
     with patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event) as sender:
         result = chain._supplement_media_recognize(
-            meta=meta, mtype=None, source=None, mediaid=None, mediainfo=None
+            meta=meta,
+            mtype=None,
+            source=None,
+            mediaid=None,
+            mediainfo=None,
+            music_type="recording",
         )
 
     assert isinstance(result, MusicInfo)
@@ -205,6 +237,34 @@ def test_chain_supplement_music_recognize_uses_plugin_result():
     assert payload["title"] == "晴天"
     assert payload["artists"] == ["周杰伦"]
     assert payload["album"] == "叶惠美"
+    assert payload["music_type"] == "recording"
+
+
+def test_chain_supplement_music_rejects_cross_entity_plugin_result():
+    """媒体识别插件返回的音乐实体与请求不一致时应保留原结果。"""
+    chain = ChainBase()
+    fallback = _fallback_music(title="叶惠美")
+    event = Event(ChainEventType.MusicMediaRecognize, {
+        "mediainfo": {
+            "source": "qqmusic",
+            "media_id": "song-123",
+            "music_type": "recording",
+            "title": "叶惠美",
+        },
+    })
+
+    with patch.object(chain.eventmanager, "check", return_value=True), \
+            patch.object(chain.eventmanager, "send_event", return_value=event):
+        result = chain._supplement_media_recognize(
+            meta=MetaMusic(title="叶惠美"),
+            mtype=MediaType.MUSIC,
+            source="qqmusic",
+            mediaid="album-123",
+            mediainfo=fallback,
+            music_type="album",
+        )
+
+    assert result is fallback
 
 
 def test_chain_supplement_video_recognize_uses_plugin_result():
@@ -281,7 +341,7 @@ def test_chain_supplement_media_recognize_skips_identified_result():
 
 def test_chain_recognize_media_music_plugin_supplement():
     """统一识别入口应在原生音乐识别无身份时采信插件补充结果并统一上报。"""
-    chain = ChainBase()
+    chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     fallback = _fallback_music(title="晴天")
     plugin_music = MusicInfo(

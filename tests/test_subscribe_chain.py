@@ -43,6 +43,25 @@ def _load_subscribe_chain_class():
 
     chain_module.ChainBase = _ChainBase
 
+    class _MediaChain:
+        """提供订阅链隔离测试所需的统一媒体识别接口。"""
+
+        def recognize_media(self, *args, **kwargs):
+            """同步识别默认返回空结果，由具体用例显式替换。"""
+            return None
+
+        async def async_recognize_media(self, *args, **kwargs):
+            """异步识别默认返回空结果，由具体用例显式替换。"""
+            return None
+
+        def recognize_by_meta(self, *args, **kwargs):
+            """同步按元数据识别默认返回空结果。"""
+            return None
+
+        async def async_recognize_by_meta(self, *args, **kwargs):
+            """异步按元数据识别默认返回空结果。"""
+            return None
+
     interaction_module = ensure_module("app.helper.interaction", types.ModuleType("app.helper.interaction"))
 
     class _SlashInteractionManager:
@@ -355,7 +374,6 @@ def _load_subscribe_chain_class():
 
     chain_dependencies = {
         "app.chain.download": "DownloadChain",
-        "app.chain.media": "MediaChain",
         "app.chain.mediaserver": "MediaServerChain",
         "app.chain.music": "MusicChain",
         "app.chain.search": "SearchChain",
@@ -365,6 +383,9 @@ def _load_subscribe_chain_class():
     for module_name_key, class_name in chain_dependencies.items():
         module = ensure_module(module_name_key, types.ModuleType(module_name_key))
         setattr(module, class_name, type(class_name, (), {}))
+
+    media_chain_module = ensure_module("app.chain.media", types.ModuleType("app.chain.media"))
+    media_chain_module.MediaChain = _MediaChain
 
     subscribe_path = Path(__file__).resolve().parents[1] / "app" / "chain" / "subscribe.py"
     spec = importlib.util.spec_from_file_location(module_name, subscribe_path)
@@ -379,6 +400,13 @@ def _load_subscribe_chain_class():
 
 
 SUBSCRIBE_CHAIN_MODULE, SubscribeChain = _load_subscribe_chain_class()
+
+
+def _patch_media_recognize(module, result):
+    """将隔离测试中的统一媒体识别入口替换为指定结果或回调。"""
+    recognizer = result if callable(result) else lambda **_kwargs: result
+    media_chain = SimpleNamespace(recognize_media=recognizer)
+    return patch.object(module, "MediaChain", return_value=media_chain)
 
 
 class SubscribeChainTest(TestCase):
@@ -522,14 +550,13 @@ class SubscribeChainTest(TestCase):
                 return [subscribe]
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: mediainfo
         chain.check_and_handle_existing_media = lambda **kwargs: (False, {})
 
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
             SUBSCRIBE_CHAIN_MODULE,
             "TorrentHelper",
             _PlainTorrentHelper,
-        ), self.assertRaises(_ReachedTitleMatch):
+        ), _patch_media_recognize(SUBSCRIBE_CHAIN_MODULE, mediainfo), self.assertRaises(_ReachedTitleMatch):
             chain.match({"test.example": [context]})
 
     def test_match_accepts_special_season_zero_candidate(self):
@@ -604,7 +631,6 @@ class SubscribeChainTest(TestCase):
             return [context], {}
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: mediainfo
         chain.check_and_handle_existing_media = lambda **kwargs: (False, {})
         chain.get_sub_sites = lambda *_args, **_kwargs: []
         chain.get_params = lambda *_args, **_kwargs: {}
@@ -619,7 +645,7 @@ class SubscribeChainTest(TestCase):
             SubscribeChain,
             "_SubscribeChain__download_best_version_with_full_pack_first",
             _download,
-        ):
+        ), _patch_media_recognize(SUBSCRIBE_CHAIN_MODULE, mediainfo):
             chain.match({"test.example": [context]})
 
         self.assertEqual(len(download_calls), 1)
@@ -1793,7 +1819,7 @@ class SubscribeChainTest(TestCase):
             lack_episode=0,
         )
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: SimpleNamespace(
+        mediainfo = SimpleNamespace(
             seasons={1: [1, 2, 3, 4, 5]},
             title="Test Show",
             year="2026",
@@ -1810,7 +1836,8 @@ class SubscribeChainTest(TestCase):
             get_backdrop_image=lambda: "backdrop",
         )
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls:
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, \
+                _patch_media_recognize(SUBSCRIBE_CHAIN_MODULE, mediainfo):
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.list.return_value = [subscribe]
             subscribe_oper.update.return_value = None
@@ -2487,7 +2514,7 @@ class SubscribeProgressEntrypointTest(TestCase):
                 updates.append(payload)
 
         with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
-                patch.object(self.SubscribeChain, "recognize_media", return_value=mediainfo), \
+                _patch_media_recognize(self.module, mediainfo), \
                 patch.object(self.SubscribeChain, "resolve_subscribe_missing", return_value=(False, no_exists)) as resolve_missing:
             summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
 
@@ -2520,7 +2547,7 @@ class SubscribeProgressEntrypointTest(TestCase):
                 raise AssertionError("resolve failure must not write progress")
 
         with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
-                patch.object(self.SubscribeChain, "recognize_media", return_value=mediainfo), \
+                _patch_media_recognize(self.module, mediainfo), \
                 patch.object(self.SubscribeChain, "resolve_subscribe_missing", return_value=(False, {})):
             summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
 
@@ -2536,7 +2563,7 @@ class SubscribeProgressEntrypointTest(TestCase):
                 raise AssertionError("recognition failure must not write progress")
 
         with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
-                patch.object(self.SubscribeChain, "recognize_media", return_value=None):
+                _patch_media_recognize(self.module, None):
             summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
 
         self.assertFalse(summary["updated"])
@@ -3136,9 +3163,9 @@ class SubscribeProgressConsolidationTest(TestCase):
                 updates.append((subscribe_id, payload))
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=5)
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), \
+                _patch_media_recognize(module, lambda **_kwargs: self._mediainfo(total_episode=5)):
             chain.check()
 
         payload = updates[-1][1]
@@ -3182,13 +3209,12 @@ class SubscribeProgressConsolidationTest(TestCase):
                 updates.append((subscribe_id, payload))
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=10)
 
         with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
-        ):
+        ), _patch_media_recognize(module, lambda **_kwargs: self._mediainfo(total_episode=10)):
             chain.check()
 
         payload = updates[-1][1]
@@ -3228,7 +3254,6 @@ class SubscribeProgressConsolidationTest(TestCase):
                 updates.append((subscribe_id, payload))
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: self._mediainfo(total_episode=1)
         chain.resolve_subscribe_missing = lambda **kwargs: (
             False,
             {
@@ -3248,7 +3273,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             module,
             "eventmanager",
             eventmanager,
-        ):
+        ), _patch_media_recognize(module, lambda **_kwargs: self._mediainfo(total_episode=1)):
             chain.check()
 
         payload = updates[-1][1]
@@ -3293,13 +3318,12 @@ class SubscribeProgressConsolidationTest(TestCase):
                 raise AssertionError("non-tv subscribe must not ask external refresh")
 
         chain = SubscribeChain()
-        chain.recognize_media = lambda **kwargs: mediainfo
 
         with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             _EventManager(),
-        ):
+        ), _patch_media_recognize(module, mediainfo):
             chain.check()
 
         self.assertEqual(updates[-1][1]["total_episode"], 100)
@@ -3311,7 +3335,6 @@ class SubscribeProgressConsolidationTest(TestCase):
         eventmanager, captured = self._event_manager(5)
         mediainfo = self._mediainfo(total_episode=10)
         chain = SubscribeChain()
-        chain.recognize_media = lambda **_kwargs: mediainfo
         chain.obtain_images = lambda **_kwargs: None
 
         class _SubscribeOper:
@@ -3323,7 +3346,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             module,
             "eventmanager",
             eventmanager,
-        ):
+        ), _patch_media_recognize(module, mediainfo):
             sid, err_msg = chain.add(
                 title="总集创建剧",
                 year="2026",

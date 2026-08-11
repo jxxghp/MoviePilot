@@ -1,5 +1,22 @@
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
+
+
+# 音乐实体命名空间由公共类型模块统一持有，避免模型、接口和工具层重复定义。
+MUSIC_ENTITY_RECORDING = "recording"
+MUSIC_ENTITY_ALBUM = "album"
+MUSIC_ENTITY_ARTIST = "artist"
+MusicEntityType = Literal["recording", "album", "artist"]
+MusicTargetEntityType = Literal["recording", "album"]
+MUSIC_ENTITY_TYPES = frozenset({
+    MUSIC_ENTITY_RECORDING,
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_ARTIST,
+})
+MUSIC_SUBSCRIBABLE_TYPES = frozenset({
+    MUSIC_ENTITY_RECORDING,
+    MUSIC_ENTITY_ALBUM,
+})
 
 
 # 媒体类型

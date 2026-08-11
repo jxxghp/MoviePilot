@@ -15,14 +15,14 @@ from jinja2 import Template
 
 from app.core.cache import TTLCache
 from app.core.config import global_vars
-from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo, MusicInfo, TorrentInfo
+from app.core.context import MediaInfo, MusicInfo, TorrentInfo
 from app.core.meta import MetaBase, MetaMusic
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.message import Notification
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey
 from app.utils.singleton import Singleton, SingletonClass
 from app.utils.string import StringUtils
 

@@ -9,7 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.db.subscribehistory_oper import SubscribeHistoryOper
 from app.log import logger
-from app.schemas.types import MediaType, media_type_to_agent
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
 from ._music_utils import normalize_music_type
 
 PAGE_SIZE = 20
@@ -197,7 +197,7 @@ class QuerySubscribeHistoryTool(MoviePilotTool):
             return True
         if media_type_to_agent(getattr(record, "type", None)) != "music":
             return False
-        return (getattr(record, "music_type", None) or "recording") == music_type
+        return (getattr(record, "music_type", None) or MUSIC_ENTITY_RECORDING) == music_type
 
     @staticmethod
     def _simplify_records(records) -> list:
@@ -217,7 +217,7 @@ class QuerySubscribeHistoryTool(MoviePilotTool):
                 "media_source": record.media_source,
                 "media_id": record.media_id,
                 "music_type": getattr(record, "music_type", None) or (
-                    "recording" if media_type_to_agent(record.type) == "music" else None
+                    MUSIC_ENTITY_RECORDING if media_type_to_agent(record.type) == "music" else None
                 ),
                 "total_tracks": getattr(record, "total_tracks", None),
                 "poster": record.poster,

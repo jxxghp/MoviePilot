@@ -65,6 +65,37 @@ def test_theaudiodb_module_ignores_other_sources(monkeypatch):
     request.assert_not_called()
 
 
+def test_theaudiodb_detail_respects_requested_entity(monkeypatch):
+    """TheAudioDB 数值 ID 必须按显式实体调用对应接口，不能跨表探测。"""
+    module = TheAudioDbModule()
+    request = Mock(return_value={"album": []})
+    monkeypatch.setattr(module, "_request_json", request)
+
+    result = module.recognize_music(
+        "theaudiodb",
+        "2109619",
+        music_type=MUSIC_ENTITY_ALBUM,
+    )
+
+    assert result is None
+    request.assert_called_once_with("album.php", {"m": "2109619"})
+
+
+def test_douban_detail_rejects_album_id_as_recording(monkeypatch):
+    """豆瓣单曲使用专辑加曲序复合 ID，纯专辑 ID 不能作为 Recording。"""
+    module = DoubanModule()
+    module.doubanapi = Mock()
+
+    result = module.recognize_music(
+        "doubanmusic",
+        "1401853",
+        music_type="recording",
+    )
+
+    assert result is None
+    module.doubanapi.music_detail.assert_not_called()
+
+
 def test_douban_music_search_and_album_mapping(monkeypatch):
     """豆瓣模块应把音乐条目映射为专辑，并生成可用于曲目识别的复合 ID。"""
     module = DoubanModule()

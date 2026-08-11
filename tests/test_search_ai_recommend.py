@@ -416,17 +416,22 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         chain = self._make_chain()
         cached = []
         chain.save_cache = lambda cache, filename: cached.append((filename, cache))
-        chain.recognize_media = lambda **_kwargs: SimpleNamespace(title="Test")
         chain.process = lambda **_kwargs: [SimpleNamespace(title="Result")]
 
-        chain.search_by_id(
-            tmdbid=123,
-            mtype=MediaType.MOVIE,
-            area="title",
-            season=2,
-            sites=[1, 3],
-            cache_local=True,
-        )
+        with patch(
+                "app.chain.search.MediaChain",
+                return_value=SimpleNamespace(
+                    recognize_media=lambda **_kwargs: SimpleNamespace(title="Test")
+                ),
+        ):
+            chain.search_by_id(
+                tmdbid=123,
+                mtype=MediaType.MOVIE,
+                area="title",
+                season=2,
+                sites=[1, 3],
+                cache_local=True,
+            )
 
         self.assertIn(
             (

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query
-from app.schemas.types import MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 
 
 def _text_like(column, pattern: str, wildcard: bool = False):
@@ -341,7 +341,7 @@ class TransferHistory(Base):
         统计当月成功整理的电影、电视剧、剧集和音乐数量。
 
         电影和电视剧按媒体身份去重；剧集优先按历史记录中的集数字段计算，
-        缺少集数时按单条成功整理记录计数；音乐按曲目计数，识别到媒体 ID 的曲目按 ID 去重。
+        缺少集数时按单条成功整理记录计数；音乐按曲目身份去重，整专记录不能只按专辑 ID 合并。
         """
         month_prefix = time.strftime("%Y-%m-", time.localtime())
         histories = db.query(cls).filter(
@@ -352,16 +352,11 @@ class TransferHistory(Base):
         movie_identities = set()
         tv_identities = set()
         episode_count = 0
-        music_count = 0
         music_identities = set()
 
         for history in histories:
             if history.type == MediaType.MUSIC.value:
-                # 有媒体 ID 的曲目按 ID 去重，避免同一首歌多次整理重复计数
-                if history.media_id:
-                    music_identities.add(history.media_id)
-                else:
-                    music_count += 1
+                music_identities.add(cls._music_history_identity(history))
                 continue
 
             identity = (history.tmdbid or 0, history.title or "", history.year or "")
@@ -372,7 +367,20 @@ class TransferHistory(Base):
             tv_identities.add(identity)
             episode_count += cls._history_episode_count(history)
 
-        return len(movie_identities), len(tv_identities), episode_count, music_count + len(music_identities)
+        return len(movie_identities), len(tv_identities), episode_count, len(music_identities)
+
+    @staticmethod
+    def _music_history_identity(history: "TransferHistory") -> tuple:
+        """构造曲目级历史身份，避免整专内全部曲目被同一专辑 ID 合并。"""
+        source = str(history.media_source or "").strip().casefold()
+        media_id = str(history.media_id or "").strip()
+        music_type = str(history.music_type or MUSIC_ENTITY_RECORDING).strip().casefold()
+        path_identity = str(history.dest or history.src or "").replace("\\", "/").casefold()
+        if music_type == MUSIC_ENTITY_ALBUM:
+            return source, media_id, music_type, path_identity or history.title or history.id
+        if media_id:
+            return source, media_id, music_type
+        return source, music_type, path_identity or history.title or history.id
 
     @staticmethod
     def _history_episode_count(history: "TransferHistory") -> int:

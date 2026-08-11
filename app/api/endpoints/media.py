@@ -18,10 +18,11 @@ from app.db.models import User
 from app.db.user_oper import get_current_active_user, get_current_active_superuser
 from app.schemas import MediaType, MediaRecognizeConvertEventData
 from app.schemas.category import CategoryConfig
-from app.schemas.types import ChainEventType
+from app.schemas.types import ChainEventType, MUSIC_ENTITY_RECORDING
 from app.utils.media import (
     MEDIA_SOURCE_ID_FIELDS,
     is_music_media_source,
+    normalize_music_type,
     parse_media_key,
 )
 
@@ -30,13 +31,16 @@ MediaSource = str
 
 
 def _is_valid_source_media_id(source: Optional[str], media_id: str) -> bool:
-    """按媒体数据源校验原生 ID，MusicBrainz 使用 UUID，其它内置来源使用数字 ID。"""
+    """按媒体数据源校验原生 ID，并兼容豆瓣音乐的曲目复合 ID。"""
     if source == "musicbrainz":
         try:
             UUID(media_id)
             return True
         except (TypeError, ValueError):
             return False
+    if source == "doubanmusic" and ":" in media_id:
+        album_id, track_number = media_id.split(":", 1)
+        return album_id.isdigit() and track_number.isdigit()
     return media_id.isdigit()
 
 
@@ -267,6 +271,7 @@ def scrape(
     media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     type_name: Optional[MediaType] = None,
+    music_type: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -277,6 +282,7 @@ def scrape(
     :param media_source: 请求级媒体数据源
     :param media_id: 数据源原生ID
     :param type_name: 媒体类型
+    :param music_type: 音乐实体类型，支持 recording 和 album
     :param _: Token校验
     """
     if not fileitem or not fileitem.path:
@@ -299,11 +305,21 @@ def scrape(
             return schemas.Response(success=False, message="音乐元数据源只能用于音乐刮削")
         music_info: Optional[MusicInfo] = None
         if normalized_media_id:
+            normalized_music_type = normalize_music_type(
+                music_type or MUSIC_ENTITY_RECORDING,
+                allow_artist=False,
+            )
+            if not normalized_music_type:
+                return schemas.Response(
+                    success=False,
+                    message="音乐实体类型无效，仅支持 recording 或 album",
+                )
             # 音乐与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             music_info = MediaChain().recognize_media(
                 source=media_source or "musicbrainz",
                 mediaid=normalized_media_id,
                 mtype=MediaType.MUSIC,
+                music_type=normalized_music_type,
             )
             if not music_info:
                 return schemas.Response(success=False, message="刮削失败，无法识别音乐信息")

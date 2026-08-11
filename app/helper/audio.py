@@ -49,7 +49,7 @@ class AudioMetadataHelper:
             total_discs=total_discs,
             total_tracks=total_tracks,
             version=cls._first(tags, "version") or cls._first(tags, "subtitle"),
-            audio_format=path.suffix.lstrip(".").upper() or None,
+            audio_format=cls._audio_format(path, info),
             bit_depth=cls._optional_int(getattr(info, "bits_per_sample", None)),
             sample_rate=cls._optional_int(getattr(info, "sample_rate", None)),
             bitrate=cls._optional_int(getattr(info, "bitrate", None)),
@@ -216,6 +216,28 @@ class AudioMetadataHelper:
         if not value:
             return None
         return AudioMetadataHelper._optional_int(str(value)[:4])
+
+    @staticmethod
+    def _audio_format(path: Path, info: Any) -> Optional[str]:
+        """结合扩展名与流编码识别音频格式，区分同为 M4A 容器的 AAC 和 ALAC。"""
+        codec_text = " ".join(
+            str(value or "")
+            for value in (
+                getattr(info, "codec", None),
+                getattr(info, "codec_description", None),
+            )
+        ).casefold()
+        codec_formats = (
+            (("alac", "apple lossless"), "ALAC"),
+            (("aac", "mp4a"), "AAC"),
+            (("opus",), "OPUS"),
+            (("vorbis",), "OGG"),
+            (("flac",), "FLAC"),
+        )
+        for markers, audio_format in codec_formats:
+            if any(marker in codec_text for marker in markers):
+                return audio_format
+        return path.suffix.lstrip(".").upper() or None
 
     @staticmethod
     def _optional_int(value: Any) -> Optional[int]:

@@ -34,6 +34,8 @@ class DownloadHistory(BaseModel):
     media_source: Optional[str] = None
     # 数据源原生ID
     media_id: Optional[str] = None
+    # 音乐实体类型：recording 单曲、album 专辑
+    music_type: Optional[str] = None
     # 季Sxx
     seasons: Optional[str] = None
     # 集Exx

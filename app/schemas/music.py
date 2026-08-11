@@ -2,6 +2,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.types import MusicEntityType, MusicTargetEntityType
+
 
 class MusicMeta(BaseModel):
     """音乐名称及音频文件解析结果。"""
@@ -38,7 +40,7 @@ class MusicInfo(BaseModel):
 
     type: Literal["音乐"] = "音乐"
     # 音乐实体类型：recording 单曲、album 专辑、artist 艺术家
-    music_type: Literal["recording", "album", "artist"] = "recording"
+    music_type: MusicEntityType = "recording"
     source: Optional[str] = None
     media_id: Optional[str] = None
     title: Optional[str] = None
@@ -170,3 +172,4 @@ class MusicRecognizeRequest(BaseModel):
 
     source: str
     media_id: str
+    music_type: Optional[MusicTargetEntityType] = None

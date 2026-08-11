@@ -10,13 +10,13 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
 from app.chain.music import MusicChain
-from app.core.context import (
+from app.log import logger
+from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
+    MediaType,
 )
-from app.log import logger
-from app.schemas.types import MediaType
 from ._music_utils import (
     normalize_music_type,
     simplify_music_album,
@@ -200,6 +200,7 @@ class QueryMediaDetailTool(MoviePilotTool):
                     source=media_source,
                     mediaid=media_id,
                     mtype=MediaType.MUSIC,
+                    music_type=normalized_music_type,
                 )
                 if (
                     not mediainfo

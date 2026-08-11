@@ -57,6 +57,44 @@ def test_resource_search_forwards_custom_plugin_source(monkeypatch) -> None:
     assert captured["mtype"] == MediaType.TV
 
 
+def test_resource_search_forwards_music_entity_namespace(monkeypatch) -> None:
+    """音乐资源搜索 API 应在识别前传递单曲或专辑实体类型。"""
+    captured = {}
+
+    class FakeTorrent:
+        """提供音乐资源搜索响应需要的最小种子对象。"""
+
+        @staticmethod
+        def to_dict() -> dict:
+            """返回可序列化的测试种子。"""
+            return {"title": "Album result"}
+
+    class FakeSearchChain:
+        """记录音乐资源搜索链收到的实体命名空间。"""
+
+        async def async_search_by_id(self, **kwargs):
+            """保存搜索参数并返回单条测试结果。"""
+            captured.update(kwargs)
+            return [FakeTorrent()]
+
+    monkeypatch.setattr(search_endpoint, "SearchChain", FakeSearchChain)
+
+    response = asyncio.run(
+        search_endpoint.search_by_id(
+            mediaid="musicbrainz:release-group-1",
+            mtype="music",
+            music_type="album",
+            _=None,
+        )
+    )
+
+    assert response.success
+    assert captured["source"] == "musicbrainz"
+    assert captured["mediaid"] == "release-group-1"
+    assert captured["mtype"] == MediaType.MUSIC
+    assert captured["music_type"] == "album"
+
+
 def test_subtitle_search_forwards_anilist_identity(monkeypatch) -> None:
     """字幕搜索 API 应把 AniList 身份传给字幕搜索链。"""
     captured = {}
@@ -376,11 +414,11 @@ def test_media_seasons_does_not_fallback_to_default_source_for_explicit_identity
 def test_subscribe_add_keeps_inferred_anilist_source_during_title_fallback() -> None:
     """同步新增订阅按兼容 ID 推导来源后，标题兜底仍应限定 AniList。"""
     media_chain = Mock()
+    media_chain.recognize_media.return_value = None
     media_chain.recognize_by_meta.return_value = None
     chain = object.__new__(SubscribeChain)
 
-    with patch.object(SubscribeChain, "recognize_media", return_value=None) as recognize, \
-            patch.object(subscribe_module, "MediaChain", return_value=media_chain):
+    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
         sid, message = chain.add(
             title="AniList 同步订阅",
             year="2026",
@@ -392,22 +430,19 @@ def test_subscribe_add_keeps_inferred_anilist_source_during_title_fallback() -> 
 
     assert sid is None
     assert message == "未识别到媒体信息"
-    assert recognize.call_args.kwargs["source"] == "anilist"
-    assert recognize.call_args.kwargs["mediaid"] == "154587"
+    assert media_chain.recognize_media.call_args.kwargs["source"] == "anilist"
+    assert media_chain.recognize_media.call_args.kwargs["mediaid"] == "154587"
     assert media_chain.recognize_by_meta.call_args.kwargs["source"] == "anilist"
 
 
 def test_subscribe_async_add_keeps_inferred_anilist_source_during_title_fallback() -> None:
     """异步新增订阅按兼容 ID 推导来源后，标题兜底仍应限定 AniList。"""
     media_chain = Mock()
+    media_chain.async_recognize_media = AsyncMock(return_value=None)
     media_chain.async_recognize_by_meta = AsyncMock(return_value=None)
     chain = object.__new__(SubscribeChain)
 
-    with patch.object(
-        SubscribeChain, "async_recognize_media", new=AsyncMock(return_value=None)
-    ) as recognize, patch.object(
-        subscribe_module, "MediaChain", return_value=media_chain
-    ):
+    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
         sid, message = asyncio.run(
             chain.async_add(
                 title="AniList 异步订阅",
@@ -421,6 +456,6 @@ def test_subscribe_async_add_keeps_inferred_anilist_source_during_title_fallback
 
     assert sid is None
     assert message == "未识别到媒体信息"
-    assert recognize.await_args.kwargs["source"] == "anilist"
-    assert recognize.await_args.kwargs["mediaid"] == "154587"
+    assert media_chain.async_recognize_media.await_args.kwargs["source"] == "anilist"
+    assert media_chain.async_recognize_media.await_args.kwargs["mediaid"] == "154587"
     assert media_chain.async_recognize_by_meta.await_args.kwargs["source"] == "anilist"

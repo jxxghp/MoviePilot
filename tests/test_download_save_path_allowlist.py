@@ -528,16 +528,18 @@ def test_resolve_media_download_dir_rejects_bad_subtitle_save_path():
     assert error_msg == "保存路径不在允许的下载目录范围内"
 
 
-def test_download_subtitle_returns_specific_error_for_bad_save_path():
+def test_download_subtitle_returns_specific_error_for_bad_save_path(monkeypatch):
     chain = DownloadChain.__new__(DownloadChain)
-    chain.recognize_media = MagicMock(
-        return_value=MediaInfo(
-            type=MediaType.MOVIE,
-            title="Demo Movie",
-            year="2026",
-            tmdb_id=1,
-        )
+    mediainfo = MediaInfo(
+        type=MediaType.MOVIE,
+        title="Demo Movie",
+        year="2026",
+        tmdb_id=1,
     )
+    media_chain = MagicMock()
+    media_chain.recognize_media.return_value = mediainfo
+    media_chain.supplement_tmdb_info.return_value = mediainfo
+    monkeypatch.setattr(download_module, "MediaChain", MagicMock(return_value=media_chain))
     subtitle = SubtitleInfo(
         title="Demo Movie",
         enclosure="https://example.test/subtitle.srt",

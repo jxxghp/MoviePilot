@@ -709,6 +709,12 @@ class TorrentsChain(ChainBase):
             else:
                 # 刷新RSS种子
                 torrents: List[TorrentInfo] = self.rss(domain=domain)
+                # 混合站点的 RSS 通常不提供媒体分类；有音乐订阅时补抓专用入口，
+                # 后续仍按与 spider 相同的独立缓存和去重规则处理。
+                if include_music and self._music_browse_paths(indexer):
+                    torrents = self.__append_music_browse_torrents(
+                        domain=domain, torrents=torrents
+                    )
             # 按pubdate降序排列
             torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 音乐与影视按同一公共参数独立计算刷新配额，并分别写入各自缓存，音乐不会被影视资源挤出

@@ -14,7 +14,13 @@ from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
 from app.helper.directory import DirectoryHelper
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import (
+    MUSIC_ENTITY_RECORDING,
+    MediaType,
+    MusicTargetEntityType,
+    SystemConfigKey,
+)
+from app.utils.media import is_music_media_source, normalize_music_type
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
@@ -114,6 +120,7 @@ def add(
     anilistid: Annotated[int | None, Body()] = None,
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
+    music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
     downloader: Annotated[str | None, Body()] = None,
     # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
     save_path: Annotated[str | None, Body()] = None,
@@ -122,8 +129,30 @@ def add(
     """
     添加下载任务（不含媒体信息）
     """
+    normalized_music_type = normalize_music_type(music_type, allow_artist=False)
+    if music_type is not None and not normalized_music_type:
+        return schemas.Response(
+            success=False,
+            message="音乐实体类型无效，仅支持 recording 或 album",
+        )
+    is_music = (
+        torrent_in.category in (MediaType.MUSIC, MediaType.MUSIC.value, "music")
+        or is_music_media_source(media_source)
+        or normalized_music_type is not None
+    )
+    if is_music and media_source and not is_music_media_source(media_source):
+        return schemas.Response(
+            success=False,
+            message="音乐下载只能使用音乐元数据源",
+        )
+    if is_music and not normalized_music_type:
+        normalized_music_type = MUSIC_ENTITY_RECORDING
     # 元数据
-    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
+    metainfo = (
+        MusicChain.parse_query(torrent_in.title)
+        if is_music
+        else MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
+    )
     # 媒体信息
     if tmdbid or doubanid or bangumiid or anilistid or media_id:
         mediainfo = MediaChain().recognize_media(
@@ -134,12 +163,16 @@ def add(
             doubanid=doubanid,
             bangumiid=bangumiid,
             anilistid=anilistid,
+            mtype=MediaType.MUSIC if is_music else None,
+            music_type=normalized_music_type,
         )
     else:
         mediainfo = MediaChain().recognize_by_meta(
             metainfo,
             source=media_source,
             obtain_images=False,
+            mtype=MediaType.MUSIC if is_music else None,
+            music_type=normalized_music_type,
         )
     if not mediainfo:
         return schemas.Response(success=False, message="无法识别媒体信息")

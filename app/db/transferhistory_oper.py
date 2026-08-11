@@ -6,6 +6,7 @@ from app.core.meta import MetaBase, MetaMusic
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import TransferInfo, FileItem
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 
 class TransferHistoryOper(DbOper):
@@ -322,6 +323,7 @@ class TransferHistoryOper(DbOper):
             )
         else:
             his = self.add_force(
+                type=meta.type.value if meta.type else None,
                 title=self._history_title(meta),
                 year=meta.year,
                 tmdbid=meta.tmdbid,
@@ -330,6 +332,7 @@ class TransferHistoryOper(DbOper):
                 anilistid=meta.anilistid,
                 media_source=meta.media_source,
                 media_id=meta.media_id,
+                music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
                 audio_format=getattr(meta, "audio_format", None),
                 audio_lossless=getattr(meta, "audio_lossless", None),
                 bit_depth=getattr(meta, "bit_depth", None),

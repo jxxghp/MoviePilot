@@ -6,7 +6,48 @@ from app.api.endpoints.transfer import (
     match_manual_transfer_target_path,
     recommend_episode_format,
 )
-from app.schemas import EpisodeFormatRecommendItem, ManualTransferItem, TransferDirectoryConf
+from app.schemas import (
+    EpisodeFormatRecommendItem,
+    FileItem,
+    ManualTransferItem,
+    TransferDirectoryConf,
+)
+
+
+def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
+    """手动音乐整理应把请求选择的单曲或专辑命名空间传入整理链。"""
+    captured = {}
+
+    class FakeTransferChain:
+        """记录手动整理 API 向整理链传入的参数。"""
+
+        def manual_transfer(self, **kwargs):
+            """保存整理参数并模拟成功。"""
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(
+                storage="local",
+                path="/downloads/叶惠美",
+                name="叶惠美",
+                type="dir",
+            ),
+            type_name="音乐",
+            media_source="musicbrainz",
+            media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+            music_type="album",
+        ),
+        background=True,
+        db=object(),
+        _="token",
+    )
+
+    assert response.success is True
+    assert captured["music_type"] == "album"
 
 
 def test_manual_transfer_from_history_preserves_download_context(monkeypatch):

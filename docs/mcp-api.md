@@ -132,7 +132,7 @@ FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶�
 
 #### 媒体识别 / 整理
 
-媒体识别、搜索和手动整理内置支持 `themoviedb`、`douban`、`bangumi`、`anilist` 四种数据源，也允许插件处理自定义来源。自动识别仍使用系统默认来源；手动操作可通过请求级 `source` 或 `media_source` + `media_id` 临时指定来源，不修改系统默认值。
+媒体识别、搜索和手动整理内置支持 `themoviedb`、`douban`、`bangumi`、`anilist` 四种数据源，也允许插件处理自定义来源。影视自动识别在未指定来源时优先使用 TMDB；TMDB 未可靠命中后才并发查询其它内置来源，并按标题、类型、年份和季信息选择最佳兜底结果。音乐自动识别会并发比较全部内置音乐来源。手动操作可通过请求级 `source` 或 `media_source` + `media_id` 严格指定单一来源，不修改系统默认值，也不会跨来源兜底。
 
 涉及媒体身份的请求统一以 `media_source` + `media_id` 表示本次选定的主身份，同时保留 `tmdbid`、`doubanid`、`bangumiid`、`anilistid` 作为跨数据源映射和旧客户端兼容字段。两者并非两套独立数据流：显式通用主身份优先，专用 ID 用于补全映射和兼容回退。
 

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base, get_id_column, async_db_query
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 
 class SubscribeHistory(Base):
@@ -169,7 +170,7 @@ class SubscribeHistory(Base):
         """按统一媒体身份优先级构造订阅历史查询条件。"""
         if media_source and media_id:
             condition = (cls.media_source == media_source) & (cls.media_id == str(media_id))
-            if music_type == "recording":
+            if music_type == MUSIC_ENTITY_RECORDING:
                 # 旧历史记录没有实体字段，历史语义等同单曲。
                 return condition & or_(cls.music_type == music_type, cls.music_type.is_(None))
             if music_type:

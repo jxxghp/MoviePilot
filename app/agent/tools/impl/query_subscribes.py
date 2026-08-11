@@ -10,7 +10,7 @@ from app.agent.tools.tags import ToolTag
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
 from app.schemas.subscribe import Subscribe as SubscribeSchema
-from app.schemas.types import MediaType, media_type_to_agent
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
 from ._music_utils import normalize_music_type
 
 PAGE_SIZE = 100
@@ -190,7 +190,7 @@ class QuerySubscribesTool(MoviePilotTool):
                 if media_id is not None and sub.media_id != media_id:
                     continue
                 if normalized_music_type:
-                    sub_music_type = sub.music_type or "recording"
+                    sub_music_type = sub.music_type or MUSIC_ENTITY_RECORDING
                     if sub_music_type != normalized_music_type:
                         continue
                 filtered_subscribes.append(sub)
@@ -217,7 +217,7 @@ class QuerySubscribesTool(MoviePilotTool):
                     payload["manual_total_episode"] = subscribe.manual_total_episode or 0
                     payload["type"] = media_type_to_agent(payload.get("type"))
                     if payload["type"] == "music" and not payload.get("music_type"):
-                        payload["music_type"] = "recording"
+                        payload["music_type"] = MUSIC_ENTITY_RECORDING
                     full_subscribes.append(payload)
                 result_json = json.dumps(full_subscribes, ensure_ascii=False, indent=2)
 

@@ -3,6 +3,8 @@ from typing import Any, Callable, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from app.schemas.types import MusicTargetEntityType
+
 from app.schemas.context import MetaInfo, MediaInfo
 from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.file import FileItem
@@ -225,6 +227,8 @@ class ManualTransferItem(BaseModel):
     media_source: Optional[str] = None
     # 数据源原生ID
     media_id: Optional[str] = None
+    # 音乐实体类型
+    music_type: Optional[MusicTargetEntityType] = None
     # 类型
     type_name: Optional[str] = None
     # 季号

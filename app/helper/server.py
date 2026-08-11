@@ -13,9 +13,14 @@ from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.workflow_oper import WorkflowOper
 from app.log import logger
-from app.schemas.types import MediaType, SystemConfigKey, media_type_to_agent
+from app.schemas.types import (
+    MUSIC_ENTITY_RECORDING,
+    MediaType,
+    SystemConfigKey,
+    media_type_to_agent,
+)
 from app.utils.http import AsyncRequestUtils, RequestUtils
-from app.utils.media import resolve_media_identity
+from app.utils.media import normalize_music_type, resolve_media_identity
 from app.utils.system import SystemUtils
 from version import APP_VERSION, FRONTEND_VERSION
 
@@ -1324,6 +1329,7 @@ class MoviePilotServerHelper:
             meta: Optional[MetaBase],
             mtype: Optional[MediaType] = None,
             keyword_meta: Optional[MetaBase] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[dict]:
         """
         查询共享识别结果。
@@ -1334,6 +1340,7 @@ class MoviePilotServerHelper:
             meta=meta,
             mtype=mtype,
             keyword_meta=keyword_meta,
+            music_type=music_type,
         )
         if not params:
             return None
@@ -1346,6 +1353,7 @@ class MoviePilotServerHelper:
             meta: Optional[MetaBase],
             mtype: Optional[MediaType] = None,
             keyword_meta: Optional[MetaBase] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[dict]:
         """
         异步查询共享识别结果。
@@ -1356,6 +1364,7 @@ class MoviePilotServerHelper:
             meta=meta,
             mtype=mtype,
             keyword_meta=keyword_meta,
+            music_type=music_type,
         )
         if not params:
             return None
@@ -1433,6 +1442,8 @@ class MoviePilotServerHelper:
             "anilistid": anilistid,
             "source": media_source,
             "mediaid": media_id,
+            "music_type": normalize_music_type(item.get("music_type"))
+            or (MUSIC_ENTITY_RECORDING if mtype == MediaType.MUSIC else None),
             "season": item.get("season"),
         }
 
@@ -1546,6 +1557,7 @@ class MoviePilotServerHelper:
             meta: Optional[MetaBase],
             mtype: Optional[MediaType] = None,
             keyword_meta: Optional[MetaBase] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[dict]:
         """
         组装共享识别查询参数。
@@ -1558,6 +1570,11 @@ class MoviePilotServerHelper:
         params = {"keyword": keyword}
         if media_type:
             params["type"] = media_type
+        if media_type == "music":
+            params["music_type"] = (
+                normalize_music_type(music_type)
+                or MUSIC_ENTITY_RECORDING
+            )
         if year := cls._extract_year(meta=meta):
             params["year"] = year
         season = cls._extract_season(media_type=media_type, meta=meta)
@@ -1602,6 +1619,10 @@ class MoviePilotServerHelper:
             "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
+            "music_type": (
+                normalize_music_type(getattr(mediainfo, "music_type", None))
+                if media_type == "music" else None
+            ),
         }
 
     @classmethod

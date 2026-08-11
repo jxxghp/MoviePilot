@@ -2,16 +2,15 @@
 
 覆盖 MediaChain 同步/异步 ``recognize_by_meta`` 与 ``recognize_by_path`` 按
 ``MetaMusic`` 路由到音乐模块，以及 MusicBrainz 模块 ``recognize_media`` /
-``async_recognize_media`` 对音乐请求的详情、搜索匹配与兜底分支，ChainBase
+``async_recognize_media`` 对音乐请求的详情、搜索匹配与兜底分支，MediaChain
 对 MusicInfo 结果与影视统一走共享识别上报。
 """
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.music import MusicChain
-from app.core.context import MusicInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.core.meta import MetaMusic
 from app.modules.anilist import AniListModule
 from app.modules.bangumi import BangumiModule
@@ -143,7 +142,7 @@ def test_musicbrainz_module_recognize_media_ignores_non_music():
 def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatch):
     """显式音乐类型和来源应只调用对应音乐模块，不遍历通用影视模块。"""
     expected = _music_info()
-    chain = ChainBase()
+    chain = MediaChain()
     recognize_source = Mock(return_value=expected)
     generic_dispatch = Mock()
     monkeypatch.setattr(MusicChain, "recognize_from_source", recognize_source)
@@ -169,9 +168,41 @@ def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatc
     generic_dispatch.assert_not_called()
 
 
+def test_music_chain_rejects_cross_entity_detail_result(monkeypatch):
+    """指定专辑实体时，即使来源返回同 ID 的单曲也不得采信。"""
+    chain = MusicChain()
+    recognize_source = Mock(return_value=_music_info())
+    monkeypatch.setattr(chain, "_recognize_from_source", recognize_source)
+
+    result = chain.recognize_from_source(
+        source="musicbrainz",
+        mediaid="recording-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+    )
+
+    assert result is None
+    assert recognize_source.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+
+
+def test_music_chain_rejects_replaced_explicit_identity(monkeypatch):
+    """显式 ID 识别不得用标题搜索得到的另一 ID 替换请求目标。"""
+    chain = MusicChain()
+    replaced = _music_info()
+    replaced.media_id = "recording-other"
+    monkeypatch.setattr(chain, "_recognize_from_source", Mock(return_value=replaced))
+
+    result = chain.recognize_from_source(
+        source="musicbrainz",
+        mediaid="recording-requested",
+        music_type="recording",
+    )
+
+    assert result is None
+
+
 def test_chain_music_type_rejects_video_source_before_module_dispatch(monkeypatch):
     """音乐状态即使携带错误影视来源，也不得调用 TMDB 等通用识别模块。"""
-    chain = ChainBase()
+    chain = MediaChain()
     generic_dispatch = Mock()
     async_generic_dispatch = AsyncMock()
     monkeypatch.setattr(chain, "run_module", generic_dispatch)

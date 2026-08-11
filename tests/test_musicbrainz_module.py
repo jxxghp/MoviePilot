@@ -1,5 +1,5 @@
 from app.core.config import settings
-from app.core.context import MusicInfo
+from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
 from app.core.meta import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 
@@ -226,7 +226,7 @@ def test_recognize_music_fetches_recording_detail(monkeypatch):
 
 
 def test_recognize_music_falls_back_to_album(monkeypatch):
-    """单曲 ID 不存在时应按专辑再识别一次，保证专辑订阅可恢复目标。"""
+    """旧调用未给实体类型时保留先单曲后专辑的兼容探测。"""
     module = MusicBrainzModule()
     requested = []
 
@@ -257,6 +257,56 @@ def test_recognize_music_falls_back_to_album(monkeypatch):
     assert info.artists == ["Queen"]
     assert info.artist_ids == ["artist-1"]
     assert requested[0].startswith("/recording/")
+
+
+def test_recognize_music_recording_does_not_probe_album(monkeypatch):
+    """显式 Recording ID 未命中时不得继续请求同 ID 的专辑实体。"""
+    module = MusicBrainzModule()
+    requested = []
+    monkeypatch.setattr(
+        module,
+        "_request_json",
+        lambda path, params=None: requested.append(path),
+    )
+
+    result = module.recognize_music(
+        "musicbrainz",
+        "recording-missing",
+        music_type=MUSIC_ENTITY_RECORDING,
+    )
+
+    assert result is None
+    assert requested == ["/recording/recording-missing"]
+
+
+def test_recognize_music_album_skips_recording_namespace(monkeypatch):
+    """显式 Album ID 应直接读取 Release Group，不先探测 Recording。"""
+    module = MusicBrainzModule()
+    requested = []
+
+    def fake_request(path, params=None):
+        """记录请求路径并返回最小专辑详情。"""
+        requested.append(path)
+        if path.startswith("/release-group/"):
+            return {
+                "id": "release-group-1",
+                "title": "叶惠美",
+                "artist-credit": [],
+                "releases": [],
+            }
+        return None
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    result = module.recognize_music(
+        "musicbrainz",
+        "release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+    )
+
+    assert result and result.music_type == MUSIC_ENTITY_ALBUM
+    assert requested[0] == "/release-group/release-group-1"
+    assert not any(path.startswith("/recording/") for path in requested)
 
 
 def test_music_album_builds_tracks_and_release_variants(monkeypatch):

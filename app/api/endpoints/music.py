@@ -63,10 +63,15 @@ async def recognize_music(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> schemas.MusicInfo:
     """根据音乐元数据来源和媒体 ID 获取标准详情，与影视识别共用统一入口。"""
+    recognize_kwargs = {
+        "source": request.source,
+        "mediaid": request.media_id,
+        "mtype": MediaType.MUSIC,
+    }
+    if request.music_type is not None:
+        recognize_kwargs["music_type"] = request.music_type
     info = await MediaChain().async_recognize_media(
-        source=request.source,
-        mediaid=request.media_id,
-        mtype=MediaType.MUSIC,
+        **recognize_kwargs,
     )
     if not info:
         raise HTTPException(status_code=404, detail="未识别到音乐信息")

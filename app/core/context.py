@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional, Set, Union, Self
 
 from app.core.config import settings
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
 from app.core.meta.metamusic import (
     audio_quality_score,
     audio_quality_tier,
@@ -13,18 +13,18 @@ from app.core.meta.metamusic import (
     normalize_audio_format,
 )
 from app.core.metainfo import MetaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_ARTIST,
+    MUSIC_ENTITY_RECORDING,
+    MediaType,
+)
 from app.utils.string import StringUtils
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
 ANILIST_MOVIE_FORMATS = frozenset({"MOVIE"})
 ANILIST_CHINESE_TITLE_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 ANILIST_JAPANESE_KANA_PATTERN = re.compile(r"[\u3040-\u30ff]")
-
-# 音乐可浏览实体类型：单曲（Recording）、专辑（Release Group）、艺术家（Artist）
-MUSIC_ENTITY_RECORDING = "recording"
-MUSIC_ENTITY_ALBUM = "album"
-MUSIC_ENTITY_ARTIST = "artist"
 
 
 def _validate_music_type(value: object) -> None:
@@ -333,6 +333,31 @@ class MusicInfo:
         ):
             values[key] = _music_optional_int(values.get(key))
         return cls(**values)
+
+    @classmethod
+    def from_meta(cls, meta: MetaMusic) -> Self:
+        """将文件名和音频标签解析结果转换为无远端依赖的标准音乐信息。"""
+        return cls(
+            source=meta.media_source,
+            media_id=meta.media_id,
+            title=meta.title,
+            artists=list(meta.artists),
+            album=meta.album,
+            album_artist=meta.album_artist,
+            year=meta.year,
+            disc_number=meta.disc_number,
+            track_number=meta.track_number,
+            total_tracks=meta.total_tracks,
+            duration=meta.duration,
+            isrc=meta.isrc,
+            version=meta.version,
+            audio_format=meta.audio_format,
+            audio_lossless=meta.audio_lossless,
+            bit_depth=meta.bit_depth,
+            sample_rate=meta.sample_rate,
+            bitrate=meta.bitrate,
+            names=[name for name in (meta.title, meta.album) if name],
+        )
 
 
 @dataclass

@@ -126,18 +126,11 @@ class SearchTorrentsTool(MoviePilotTool):
                 source=media_source,
                 mediaid=media_id,
                 mtype=media_type_enum,
+                music_type=normalized_music_type,
                 area=area or "title",
                 sites=sites,
                 cache_local=False,
             )
-            if normalized_music_type:
-                filtered_torrents = [
-                    context
-                    for context in filtered_torrents or []
-                    if getattr(context.media_info, "music_type", None)
-                    == normalized_music_type
-                ]
-
             # 获取站点信息
             all_indexers = await SitesHelper().async_get_indexers()
             all_sites = [{"id": indexer.get("id"), "name": indexer.get("name")} for indexer in (all_indexers or [])]

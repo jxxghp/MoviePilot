@@ -3,10 +3,10 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Optional
 
 from app import schemas
-from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.core.context import MusicInfo
 from app.helper.service import ServiceBaseHelper
 from app.schemas import MediaServerConf, ServiceInfo
-from app.schemas.types import SystemConfigKey, ModuleType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey, ModuleType
 
 
 class MusicMediaServerHelper:

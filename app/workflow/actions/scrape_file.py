@@ -74,11 +74,17 @@ class ScrapeFileAction(BaseAction):
                 _failed_count += 1
                 logger.info(f"{fileitem.path} 未识别到媒体信息，无法刮削")
                 continue
-            mediachain.scrape_metadata(
+            scrape_result = mediachain.scrape_metadata(
                 fileitem=fileitem,
                 meta=media_context.meta_info,
                 mediainfo=media_context.media_info
             )
+            if isinstance(scrape_result, tuple) and not scrape_result[0]:
+                _failed_count += 1
+                logger.info(
+                    f"{fileitem.path} 刮削失败：{scrape_result[1] or '未知错误'}"
+                )
+                continue
             self._scraped_files.append(fileitem)
             # 保存缓存
             self.save_cache(workflow_id, cache_key)

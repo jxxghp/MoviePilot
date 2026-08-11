@@ -517,14 +517,14 @@ class Plex:
                 result_dict[""] = lib_key
         if "" in result_dict:
             # 如果有匹配失败的,刷新整个库
-            self._plex.library.update()
+            refreshed = self._plex.library.update()
+            return refreshed is not False
         else:
             # 否则一个一个刷新
             for path, lib_key in result_dict.items():
                 logger.info(f"刷新媒体库：{lib_key} - {path}")
                 self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(Path(path).parent.as_posix())}')
-                return None
-        return None
+        return True
 
     @staticmethod
     def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, Optional[Path]]:

@@ -38,6 +38,7 @@ class DownloadHistoryOper(DbOper):
             self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
             bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
             media_source: Optional[str] = None, media_id: Optional[str] = None,
+            music_type: Optional[str] = None,
     ) -> List[DownloadHistory]:
         """
         按媒体ID查询下载记录
@@ -47,6 +48,7 @@ class DownloadHistoryOper(DbOper):
         :param anilistid: AniList ID
         :param media_source: 媒体数据源
         :param media_id: 数据源原生 ID
+        :param music_type: 音乐实体类型
         """
         return DownloadHistory.get_by_mediaid(
             self._db,
@@ -56,6 +58,7 @@ class DownloadHistoryOper(DbOper):
             anilistid=anilistid,
             media_source=media_source,
             media_id=media_id,
+            music_type=music_type,
         )
 
     def add(self, **kwargs):

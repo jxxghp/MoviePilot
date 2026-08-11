@@ -5,7 +5,11 @@ import cn2an
 
 from app import schemas
 from app.core.config import settings
-from app.core.context import MUSIC_ENTITY_ALBUM, MediaInfo, MusicAlbumInfo, MusicInfo
+from app.core.context import (
+    MediaInfo,
+    MusicAlbumInfo,
+    MusicInfo,
+)
 from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo
 from app.log import logger
@@ -13,7 +17,13 @@ from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
 from app.schemas import MediaPerson, APIRateLimitException
-from app.schemas.types import MediaType, ModuleType, MediaRecognizeType
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaType,
+    ModuleType,
+    MediaRecognizeType,
+)
 from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.limit import rate_limit_exponential
@@ -92,11 +102,20 @@ class DoubanModule(_ModuleBase):
         result = self.doubanapi.music_search(keyword=keyword, count=max(1, min(limit, 100)))
         return self._build_music_search_results(result)
 
-    def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:
-        """按豆瓣音乐原生 ID 获取专辑或专辑内曲目详情。"""
+    def recognize_music(
+            self,
+            source: str,
+            media_id: str,
+            music_type: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """按豆瓣音乐原生 ID 和实体类型获取专辑或专辑内曲目详情。"""
         if source != self._music_source or not media_id:
             return None
         album_id, separator, track_id = str(media_id).partition(":")
+        if music_type == MUSIC_ENTITY_RECORDING and not separator:
+            return None
+        if music_type == MUSIC_ENTITY_ALBUM and separator:
+            return None
         album = self.music_album(source, album_id)
         if not album:
             return None
@@ -122,13 +141,19 @@ class DoubanModule(_ModuleBase):
             meta: Optional[MetaMusic],
             source: Optional[str],
             mediaid: Optional[str],
+            music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """执行豆瓣音乐详情识别或按专辑名称匹配。"""
         if source != self._music_source:
             return None
         resolved_media_id = mediaid or (meta.media_id if meta else None)
         if resolved_media_id:
-            return self.recognize_music(source, str(resolved_media_id))
+            detail_kwargs = (
+                {"music_type": music_type} if music_type is not None else {}
+            )
+            return self.recognize_music(
+                source, str(resolved_media_id), **detail_kwargs
+            )
         if not meta:
             return None
         candidates = self.search_music(meta=meta, limit=20, source=source) or []
@@ -142,11 +167,15 @@ class DoubanModule(_ModuleBase):
                 for actual in candidate.artists
             ):
                 continue
+            if music_type == MUSIC_ENTITY_ALBUM:
+                return candidate
             if meta.album and meta.title:
                 album = self.music_album(source, candidate.media_id)
                 matched_track = self._select_douban_music_track(meta, album)
                 if matched_track:
                     return matched_track
+                continue
+            if music_type == MUSIC_ENTITY_RECORDING:
                 continue
             return candidate
         return None
@@ -156,6 +185,7 @@ class DoubanModule(_ModuleBase):
             meta: Optional[MetaMusic],
             source: Optional[str],
             mediaid: Optional[str],
+            music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步执行豆瓣音乐详情识别或按专辑名称匹配。"""
         if source != self._music_source:
@@ -163,6 +193,10 @@ class DoubanModule(_ModuleBase):
         resolved_media_id = mediaid or (meta.media_id if meta else None)
         if resolved_media_id:
             album_id, separator, track_id = str(resolved_media_id).partition(":")
+            if music_type == MUSIC_ENTITY_RECORDING and not separator:
+                return None
+            if music_type == MUSIC_ENTITY_ALBUM and separator:
+                return None
             info = await self.doubanapi.async_music_detail(subject_id=album_id)
             album = self._douban_music_to_album(info) if info else None
             if not album:
@@ -194,6 +228,8 @@ class DoubanModule(_ModuleBase):
                 for actual in candidate.artists
             ):
                 continue
+            if music_type == MUSIC_ENTITY_ALBUM:
+                return candidate
             if meta.album and meta.title:
                 info = await self.doubanapi.async_music_detail(
                     subject_id=str(candidate.media_id)
@@ -202,6 +238,8 @@ class DoubanModule(_ModuleBase):
                 matched_track = self._select_douban_music_track(meta, album)
                 if matched_track:
                     return matched_track
+                continue
+            if music_type == MUSIC_ENTITY_RECORDING:
                 continue
             return candidate
         return None
@@ -690,6 +728,7 @@ class DoubanModule(_ModuleBase):
                 meta=meta if isinstance(meta, MetaMusic) else None,
                 source=source,
                 mediaid=kwargs.get("mediaid"),
+                music_type=kwargs.get("music_type"),
             )
         # 音乐请求必须显式使用 doubanmusic，避免与影视豆瓣源混淆。
         if isinstance(meta, MetaMusic) or mtype == MediaType.MUSIC:
@@ -720,6 +759,7 @@ class DoubanModule(_ModuleBase):
                 meta=meta if isinstance(meta, MetaMusic) else None,
                 source=source,
                 mediaid=kwargs.get("mediaid"),
+                music_type=kwargs.get("music_type"),
             )
         # 音乐请求必须显式使用 doubanmusic，避免与影视豆瓣源混淆。
         if isinstance(meta, MetaMusic) or mtype == MediaType.MUSIC:

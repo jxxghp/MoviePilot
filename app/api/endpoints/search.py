@@ -18,7 +18,7 @@ from app.helper.locale import LocaleHelper
 from app.log import logger
 from app.schemas import MediaRecognizeConvertEventData
 from app.schemas.types import MediaType, ChainEventType
-from app.utils.media import parse_media_key, resolve_media_identity
+from app.utils.media import normalize_music_type, parse_media_key, resolve_media_identity
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
@@ -63,14 +63,30 @@ async def _resolve_media_search_params(
         title: Optional[str] = None,
         year: Optional[str] = None,
         media_season: Optional[int] = None,
+        music_type: Optional[str] = None,
 ) -> tuple[Optional[dict], str]:
     """将任意来源媒体键解析为 SearchChain 可直接使用的识别参数。"""
+    normalized_music_type = None
+    if music_type:
+        normalized_music_type = normalize_music_type(music_type, allow_artist=False)
+        if not normalized_music_type:
+            return None, "音乐实体类型无效，仅支持 recording 或 album"
+        if media_type != MediaType.MUSIC:
+            return None, "music_type 仅能用于音乐资源搜索"
+
+    def build_params(source: str, source_media_id: str) -> dict:
+        """构造带可选音乐实体命名空间的精确搜索参数。"""
+        params = {"source": source, "mediaid": source_media_id}
+        if normalized_music_type:
+            params["music_type"] = normalized_music_type
+        return params
+
     source, source_media_id = parse_media_key(mediaid)
     if source and source_media_id:
         if source in {"themoviedb", "bangumi", "anilist"} \
                 and not source_media_id.isdigit():
             return None, "媒体ID格式错误"
-        return {"source": source, "mediaid": source_media_id}, ""
+        return build_params(source, source_media_id), ""
 
     event_data = MediaRecognizeConvertEventData(
         mediaid=mediaid, convert_type=settings.RECOGNIZE_SOURCE
@@ -82,10 +98,7 @@ async def _resolve_media_search_params(
         event_data = event.event_data
         search_id = event_data.media_dict.get("id")
         if search_id is not None:
-            return {
-                "source": event_data.convert_type,
-                "mediaid": str(search_id),
-            }, ""
+            return build_params(event_data.convert_type, str(search_id)), ""
 
     if not title:
         return None, "未知的媒体ID"
@@ -98,16 +111,16 @@ async def _resolve_media_search_params(
     if media_season is not None:
         meta.type = MediaType.TV
         meta.begin_season = media_season
-    mediainfo = await MediaChain().async_recognize_by_meta(
-        meta,
-        obtain_images=False,
-    )
+    recognize_kwargs = {"obtain_images": False}
+    if normalized_music_type:
+        recognize_kwargs["music_type"] = normalized_music_type
+    mediainfo = await MediaChain().async_recognize_by_meta(meta, **recognize_kwargs)
     if not mediainfo:
         return None, "未识别到媒体信息"
     source, source_media_id = resolve_media_identity(media=mediainfo)
     if not source or not source_media_id:
         return None, "媒体信息缺少有效ID"
-    return {"source": source, "mediaid": source_media_id}, ""
+    return build_params(source, source_media_id), ""
 
 
 def _sse_event(data: dict, locale: Optional[str] = None) -> str:
@@ -390,6 +403,7 @@ async def search_by_id_stream(
     year: Optional[str] = None,
     season: Optional[str] = None,
     sites: Optional[str] = None,
+    music_type: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
@@ -409,6 +423,7 @@ async def search_by_id_stream(
             title=title,
             year=year,
             media_season=media_season,
+            music_type=music_type,
         )
         if not search_params:
             yield {"type": "error", "success": False, "message": message}
@@ -440,6 +455,7 @@ async def search_by_id(
     year: Optional[str] = None,
     season: Optional[str] = None,
     sites: Optional[str] = None,
+    music_type: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -453,6 +469,7 @@ async def search_by_id(
         title=title,
         year=year,
         media_season=media_season,
+        music_type=music_type,
     )
     if not search_params:
         return schemas.Response(success=False, message=message)

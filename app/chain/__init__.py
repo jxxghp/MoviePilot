@@ -41,7 +41,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.utils.identity import normalize_internal_user_id
-from app.utils.media import is_music_media_source, normalize_media_source
+from app.utils.media import normalize_media_source
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
@@ -640,30 +640,7 @@ class ChainBase(metaclass=ABCMeta):
             module_kwargs: dict,
             cache: bool,
     ) -> Optional[MediaInfo]:
-        """按媒体领域执行同步原生识别，音乐请求只允许进入音乐数据源。"""
-        meta = module_kwargs.get("meta")
-        mtype = module_kwargs.get("mtype")
-        source = module_kwargs.get("source")
-        if (
-                isinstance(meta, MetaMusic)
-                or mtype == MediaType.MUSIC
-                or is_music_media_source(source)
-        ):
-            # 延迟导入避免 ChainBase 与 MusicChain 形成模块加载环。
-            from app.chain.music import MusicChain
-
-            music_chain = MusicChain()
-            if source:
-                with fresh(not cache):
-                    return music_chain.recognize_from_source(
-                        source=source,
-                        meta=meta if isinstance(meta, MetaMusic) else None,
-                        mediaid=module_kwargs.get("mediaid"),
-                        cache=cache,
-                    )
-            if isinstance(meta, MetaMusic):
-                return music_chain.recognize_best(meta=meta, cache=cache)
-            return None
+        """执行同步原生媒体模块识别，具体媒体领域可覆写该路由钩子。"""
         with fresh(not cache):
             return self.run_module("recognize_media", **module_kwargs)
 
@@ -672,30 +649,7 @@ class ChainBase(metaclass=ABCMeta):
             module_kwargs: dict,
             cache: bool,
     ) -> Optional[MediaInfo]:
-        """按媒体领域执行异步原生识别，音乐请求只允许进入音乐数据源。"""
-        meta = module_kwargs.get("meta")
-        mtype = module_kwargs.get("mtype")
-        source = module_kwargs.get("source")
-        if (
-                isinstance(meta, MetaMusic)
-                or mtype == MediaType.MUSIC
-                or is_music_media_source(source)
-        ):
-            # 延迟导入避免 ChainBase 与 MusicChain 形成模块加载环。
-            from app.chain.music import MusicChain
-
-            music_chain = MusicChain()
-            if source:
-                async with async_fresh(not cache):
-                    return await music_chain.async_recognize_from_source(
-                        source=source,
-                        meta=meta if isinstance(meta, MetaMusic) else None,
-                        mediaid=module_kwargs.get("mediaid"),
-                        cache=cache,
-                    )
-            if isinstance(meta, MetaMusic):
-                return await music_chain.async_recognize_best(meta=meta, cache=cache)
-            return None
+        """执行异步原生媒体模块识别，具体媒体领域可覆写该路由钩子。"""
         async with async_fresh(not cache):
             return await self.async_run_module(
                 "async_recognize_media", **module_kwargs
@@ -714,6 +668,7 @@ class ChainBase(metaclass=ABCMeta):
             episode_group: Optional[str] = None,
             cache: bool = True,
             share_meta: MetaBase = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片
@@ -728,6 +683,7 @@ class ChainBase(metaclass=ABCMeta):
         :param anilistid: AniList ID
         :param episode_group: 剧集组
         :param cache:    是否使用缓存
+        :param music_type: 音乐实体类型，显式音乐 ID 必须据此区分单曲与专辑
         :return: 识别的媒体信息，包括剧集信息
         """
         # 识别用名中含指定信息情形
@@ -768,13 +724,21 @@ class ChainBase(metaclass=ABCMeta):
             "episode_group": episode_group,
             "cache": cache,
         }
+        if music_type is not None:
+            module_kwargs["music_type"] = music_type
         mediainfo = self._run_native_media_recognize(module_kwargs, cache)
         # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
         mediainfo = self._supplement_media_recognize(
             meta=meta, mtype=mtype, source=source,
             mediaid=requested_mediaid, mediainfo=mediainfo,
+            music_type=music_type,
         )
-        if mediainfo:
+        fallback_mediainfo = (
+            mediainfo
+            if mediainfo and not self._media_info_has_identity(mediainfo)
+            else None
+        )
+        if mediainfo and self._media_info_has_identity(mediainfo):
             # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
             if not getattr(mediainfo, "recognize_cache_hit", False):
                 MoviePilotServerHelper.report_recognize_share(
@@ -788,15 +752,19 @@ class ChainBase(metaclass=ABCMeta):
                 share_query_meta, tmdbid, doubanid, bangumiid, anilistid
         ):
             shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
+            share_query_kwargs = {
+                "meta": meta,
+                "mtype": mtype,
+                "keyword_meta": share_query_meta,
+            }
+            if music_type is not None:
+                share_query_kwargs["music_type"] = music_type
             shared_item = MoviePilotServerHelper.query_recognize_share(
-                meta=meta,
-                mtype=mtype,
-                keyword_meta=share_query_meta,
+                **share_query_kwargs,
             )
             shared_params = MoviePilotServerHelper.to_recognize_params(shared_item)
             if shared_params:
-                mediainfo = self._run_native_media_recognize(
-                    {
+                shared_module_kwargs = {
                         "meta": meta,
                         "mtype": shared_params.get("mtype") or mtype,
                         "source": shared_params.get("source"),
@@ -807,14 +775,21 @@ class ChainBase(metaclass=ABCMeta):
                         "anilistid": shared_params.get("anilistid"),
                         "episode_group": episode_group,
                         "cache": cache,
-                    },
+                }
+                shared_music_type = shared_params.get("music_type") or music_type
+                if shared_music_type is not None:
+                    shared_module_kwargs["music_type"] = shared_music_type
+                mediainfo = self._run_native_media_recognize(
+                    shared_module_kwargs,
                     cache,
                 )
-                if mediainfo:
+                if mediainfo and self._media_info_has_identity(mediainfo):
                     self._update_local_recognize_cache(shared_cache_meta, mediainfo)
                     self._record_media_recognize_share_hit()
                     return mediainfo
-        return None
+                if mediainfo and not fallback_mediainfo:
+                    fallback_mediainfo = mediainfo
+        return fallback_mediainfo
 
     async def async_recognize_media(
             self,
@@ -829,6 +804,7 @@ class ChainBase(metaclass=ABCMeta):
             episode_group: Optional[str] = None,
             cache: bool = True,
             share_meta: MetaBase = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片（异步版本）
@@ -843,6 +819,7 @@ class ChainBase(metaclass=ABCMeta):
         :param anilistid: AniList ID
         :param episode_group: 剧集组
         :param cache:    是否使用缓存
+        :param music_type: 音乐实体类型，显式音乐 ID 必须据此区分单曲与专辑
         :return: 识别的媒体信息，包括剧集信息
         """
         # 识别用名中含指定信息情形
@@ -883,13 +860,21 @@ class ChainBase(metaclass=ABCMeta):
             "episode_group": episode_group,
             "cache": cache,
         }
+        if music_type is not None:
+            module_kwargs["music_type"] = music_type
         mediainfo = await self._async_run_native_media_recognize(module_kwargs, cache)
         # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
         mediainfo = await self._async_supplement_media_recognize(
             meta=meta, mtype=mtype, source=source,
             mediaid=requested_mediaid, mediainfo=mediainfo,
+            music_type=music_type,
         )
-        if mediainfo:
+        fallback_mediainfo = (
+            mediainfo
+            if mediainfo and not self._media_info_has_identity(mediainfo)
+            else None
+        )
+        if mediainfo and self._media_info_has_identity(mediainfo):
             # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
             if not getattr(mediainfo, "recognize_cache_hit", False):
                 await MoviePilotServerHelper.async_report_recognize_share(
@@ -903,15 +888,19 @@ class ChainBase(metaclass=ABCMeta):
                 share_query_meta, tmdbid, doubanid, bangumiid, anilistid
         ):
             shared_cache_meta = self._snapshot_recognize_cache_meta(meta)
+            share_query_kwargs = {
+                "meta": meta,
+                "mtype": mtype,
+                "keyword_meta": share_query_meta,
+            }
+            if music_type is not None:
+                share_query_kwargs["music_type"] = music_type
             shared_item = await MoviePilotServerHelper.async_query_recognize_share(
-                meta=meta,
-                mtype=mtype,
-                keyword_meta=share_query_meta,
+                **share_query_kwargs,
             )
             shared_params = MoviePilotServerHelper.to_recognize_params(shared_item)
             if shared_params:
-                mediainfo = await self._async_run_native_media_recognize(
-                    {
+                shared_module_kwargs = {
                         "meta": meta,
                         "mtype": shared_params.get("mtype") or mtype,
                         "source": shared_params.get("source"),
@@ -922,14 +911,21 @@ class ChainBase(metaclass=ABCMeta):
                         "anilistid": shared_params.get("anilistid"),
                         "episode_group": episode_group,
                         "cache": cache,
-                    },
+                }
+                shared_music_type = shared_params.get("music_type") or music_type
+                if shared_music_type is not None:
+                    shared_module_kwargs["music_type"] = shared_music_type
+                mediainfo = await self._async_run_native_media_recognize(
+                    shared_module_kwargs,
                     cache,
                 )
-                if mediainfo:
+                if mediainfo and self._media_info_has_identity(mediainfo):
                     await self._async_update_local_recognize_cache(shared_cache_meta, mediainfo)
                     await run_in_threadpool(self._record_media_recognize_share_hit)
                     return mediainfo
-        return None
+                if mediainfo and not fallback_mediainfo:
+                    fallback_mediainfo = mediainfo
+        return fallback_mediainfo
 
     @staticmethod
     def _media_recognize_plugin_payload(
@@ -938,6 +934,7 @@ class ChainBase(metaclass=ABCMeta):
             source: Optional[str],
             mediaid: Optional[str],
             is_music: bool,
+            music_type: Optional[str] = None,
     ) -> dict:
         """
         构造媒体识别链式事件的已知要素载荷，供插件匹配媒体信息；影视与音乐统一协议，
@@ -952,6 +949,7 @@ class ChainBase(metaclass=ABCMeta):
                 "isrc": getattr(meta, "isrc", None),
                 "source": source,
                 "media_id": mediaid,
+                "music_type": music_type,
             }
         return {
             "title": getattr(meta, "title", None) or getattr(meta, "name", None),
@@ -968,6 +966,7 @@ class ChainBase(metaclass=ABCMeta):
             event_data: dict,
             is_music: bool,
             mtype: Optional[MediaType] = None,
+            music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         解析插件返回的媒体信息，缺少数据源或身份字段的结果不采信；
@@ -988,6 +987,12 @@ class ChainBase(metaclass=ABCMeta):
                     return None
                 info: MediaInfo = MusicInfo.from_dict(plugin_info)
                 if not info.source or not info.media_id:
+                    return None
+                if music_type and info.music_type != music_type:
+                    logger.warn(
+                        f"插件返回的音乐实体类型为 {info.music_type}，"
+                        f"与请求的 {music_type} 不一致，忽略 ..."
+                    )
                     return None
                 return info
             # 影视：插件未提供类型时使用请求推断的类型
@@ -1022,6 +1027,7 @@ class ChainBase(metaclass=ABCMeta):
             source: Optional[str],
             mediaid: Optional[str],
             mediainfo,
+            music_type: Optional[str] = None,
     ):
         """
         媒体识别插件补充（影视与音乐统一）：原生模块未给出带远端身份的结果时，
@@ -1040,11 +1046,15 @@ class ChainBase(metaclass=ABCMeta):
             return mediainfo
         result: Event = self.eventmanager.send_event(
             etype,
-            self._media_recognize_plugin_payload(meta, mtype, source, mediaid, is_music),
+            self._media_recognize_plugin_payload(
+                meta, mtype, source, mediaid, is_music, music_type
+            ),
         )
         if not result:
             return mediainfo
-        plugin_info = self._media_info_from_plugin(result.event_data or {}, is_music, mtype)
+        plugin_info = self._media_info_from_plugin(
+            result.event_data or {}, is_music, mtype, music_type
+        )
         if not plugin_info:
             return mediainfo
         logger.info(
@@ -1060,6 +1070,7 @@ class ChainBase(metaclass=ABCMeta):
             source: Optional[str],
             mediaid: Optional[str],
             mediainfo,
+            music_type: Optional[str] = None,
     ):
         """媒体识别插件补充的异步版本，影视与音乐统一流程"""
         is_music = (
@@ -1075,11 +1086,15 @@ class ChainBase(metaclass=ABCMeta):
             return mediainfo
         result: Event = await self.eventmanager.async_send_event(
             etype,
-            self._media_recognize_plugin_payload(meta, mtype, source, mediaid, is_music),
+            self._media_recognize_plugin_payload(
+                meta, mtype, source, mediaid, is_music, music_type
+            ),
         )
         if not result:
             return mediainfo
-        plugin_info = self._media_info_from_plugin(result.event_data or {}, is_music, mtype)
+        plugin_info = self._media_info_from_plugin(
+            result.event_data or {}, is_music, mtype, music_type
+        )
         if not plugin_info:
             return mediainfo
         logger.info(

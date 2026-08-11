@@ -16,7 +16,6 @@ from app.chain.storage import StorageChain
 from app.core.cache import FileCache
 from app.core.config import settings, global_vars
 from app.core.context import (
-    MUSIC_ENTITY_ALBUM,
     Context,
     MediaInfo,
     MusicInfo,
@@ -24,7 +23,7 @@ from app.core.context import (
     TorrentInfo,
 )
 from app.core.event import eventmanager, Event
-from app.core.meta import MetaBase
+from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo
 from app.db.downloadfailure_oper import DownloadFailureOper
 from app.db.downloadhistory_oper import DownloadHistoryOper
@@ -35,7 +34,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTorrent, Notification, ResourceSelectionEventData, \
     ResourceDownloadEventData
-from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.media import build_media_key, resolve_media_identity
@@ -112,12 +111,13 @@ class DownloadChain(ChainBase):
         if not file_list:
             return "专辑资源无法校验：种子未提供文件清单，不能确认整专曲目"
 
-        audio_files = {
-            str(Path(str(file)))
+        track_identities = {
+            identity
             for file in file_list
             if Path(str(file)).suffix.lower() in settings.RMT_AUDIOEXT
+            and (identity := DownloadChain._music_resource_track_identity(file))
         }
-        actual_tracks = len(audio_files)
+        actual_tracks = len(track_identities)
         if actual_tracks < expected_tracks:
             return (
                 f"专辑资源不完整：专辑共 {expected_tracks} 首，"
@@ -126,6 +126,21 @@ class DownloadChain(ChainBase):
 
         context.confirmed_full_coverage = True
         return None
+
+    @staticmethod
+    def _music_resource_track_identity(file: str) -> Optional[Tuple[int, Union[int, str]]]:
+        """从资源文件路径提取盘号和曲序，缺少曲序时按归一化曲名去重。"""
+        file_path = Path(str(file))
+        file_meta = MetaMusic(
+            org_string=file_path.name,
+            title=file_path.stem,
+        ).apply_path_context(file_path)
+        track_identity: Union[int, str, None] = file_meta.track_number
+        if track_identity is None:
+            track_identity = StringUtils.clear_upper(file_meta.title or file_path.stem)
+        if track_identity in (None, ""):
+            return None
+        return file_meta.disc_number or 1, track_identity
 
     @staticmethod
     def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
@@ -458,7 +473,7 @@ class DownloadChain(ChainBase):
             return False, "字幕下载链接为空", []
 
         metainfo = MetaInfo(title=subtitle.title, subtitle=subtitle.description)
-        mediainfo = self.recognize_media(
+        mediainfo = MediaChain().recognize_media(
             meta=metainfo,
             source=media_source,
             mediaid=media_id,
@@ -1026,6 +1041,7 @@ class DownloadChain(ChainBase):
                 anilistid=_media.anilist_id,
                 media_source=media_source,
                 media_id=media_id,
+                music_type=getattr(_media, "music_type", None),
                 seasons=_meta.season,
                 episodes=download_episodes or _meta.episode,
                 image=_media.get_backdrop_image(),
@@ -1773,7 +1789,7 @@ class DownloadChain(ChainBase):
         else:
             if not mediainfo.seasons:
                 # 补充媒体信息
-                mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
+                mediainfo: MediaInfo = MediaChain().recognize_media(mtype=mediainfo.type,
                                                             tmdbid=mediainfo.tmdb_id,
                                                             doubanid=mediainfo.douban_id,
                                                             bangumiid=mediainfo.bangumi_id,

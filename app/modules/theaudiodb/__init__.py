@@ -12,7 +12,13 @@ from app.core.context import (
 from app.core.meta import MetaBase, MetaMusic
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaRecognizeType,
+    MediaType,
+    ModuleType,
+)
 from app.utils.http import RequestUtils
 from app.utils.media import is_media_source_selected
 
@@ -93,18 +99,32 @@ class TheAudioDbModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """仅响应显式 TheAudioDB 音乐请求，并返回带原生 ID 的标准音乐信息。"""
+        music_type = kwargs.get("music_type")
         if source != self._source:
             return None
         if not isinstance(meta, MetaMusic):
             if mtype == MediaType.MUSIC and mediaid:
-                return self.recognize_music(source, str(mediaid))
+                detail_kwargs = (
+                    {"music_type": music_type} if music_type is not None else {}
+                )
+                return self.recognize_music(
+                    source, str(mediaid), **detail_kwargs
+                )
             return None
         resolved_media_id = mediaid or meta.media_id
         if resolved_media_id:
-            return self.recognize_music(source, str(resolved_media_id))
-        matched = self._select_track(meta, self._search_tracks(meta))
-        if matched:
-            return matched
+            detail_kwargs = (
+                {"music_type": music_type} if music_type is not None else {}
+            )
+            return self.recognize_music(
+                source, str(resolved_media_id), **detail_kwargs
+            )
+        if music_type != MUSIC_ENTITY_ALBUM:
+            matched = self._select_track(meta, self._search_tracks(meta))
+            if matched:
+                return matched
+            if music_type == MUSIC_ENTITY_RECORDING:
+                return None
         album = self._select_album(meta, self._search_albums(meta))
         return album.to_music_info() if album else None
 
@@ -126,14 +146,22 @@ class TheAudioDbModule(_ModuleBase):
             **kwargs,
         )
 
-    def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:
-        """按 TheAudioDB 原生 ID 获取单曲详情，未命中时回退到专辑。"""
+    def recognize_music(
+            self,
+            source: str,
+            media_id: str,
+            music_type: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """按 TheAudioDB 原生 ID 和实体类型获取详情；空类型保留旧版探测顺序。"""
         if source != self._source or not media_id:
             return None
-        payload = self._request_json("track.php", {"h": media_id})
-        track = self._first_entity(payload, "track", "tracks")
-        if track:
-            return self._track_to_info(track)
+        if music_type != MUSIC_ENTITY_ALBUM:
+            payload = self._request_json("track.php", {"h": media_id})
+            track = self._first_entity(payload, "track", "tracks")
+            if track:
+                return self._track_to_info(track)
+            if music_type == MUSIC_ENTITY_RECORDING:
+                return None
         album = self.music_album(source, media_id)
         return album.to_music_info() if album else None
 
