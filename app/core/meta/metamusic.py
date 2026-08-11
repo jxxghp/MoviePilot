@@ -571,8 +571,11 @@ class MetaMusic(MetaBase):
                     alias_match.group("alias").casefold(), "Various Artists")]
                 self._finalize_title(self._clean_tail(alias_match.group("title")))
             else:
-                # CJK 标题常见「专辑名-歌手」无空格连字符写法，主拆分未命中时兑底反向拆分
+                # CJK 标题常见「专辑名-歌手」无空格连字符写法，主拆分未命中时兜底反向拆分
                 artists, title = self._split_cjk_hyphen(cleaned)
+                if not artists:
+                    # 拉丁「艺术家-专辑」无空格连字符写法（Gene Clark-White Light）
+                    artists, title = self._split_latin_hyphen(cleaned)
                 if artists:
                     self.artists = artists
                     self._finalize_title(self._clean_tail(title))
@@ -782,6 +785,26 @@ class MetaMusic(MetaBase):
             # 艺术家段常见「xx作品全集」合集修饰，剥离后才能与条目署名比对
             artist = _MUSIC_COLLECTION_SUFFIX_RE.sub("", artist_text).strip() or artist_text
             return [artist], head
+        return None, text
+
+    @classmethod
+    def _split_latin_hyphen(cls, value: str) -> tuple[Optional[list[str]], str]:
+        """拉丁「艺术家-专辑」无空格连字符命名拆分（Gene Clark-White Light）。
+
+        首个连字符左侧为艺术家；两侧均需含空格（至少两个词）才采信：
+        左侧保护 Jay-Z 类连字符艺术家名，右侧排除 -ProfessorP 类发布组标签；
+        艺术家身份由候选比对验证。
+        """
+        text = str(value or "").strip()
+        if cls._contains_cjk(text):
+            return None, text
+        head, sep, tail = text.partition("-")
+        if not sep:
+            return None, text
+        head = head.strip(" \t-–—−－")
+        tail = tail.strip(" \t-–—−－")
+        if head and tail and " " in head and " " in tail:
+            return cls._split_artists(head), tail
         return None, text
 
     @staticmethod

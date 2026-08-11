@@ -171,6 +171,17 @@ def test_apply_title_strips_video_tokens():
     assert meta.year == 2018
 
 
+def test_apply_title_splits_latin_hyphen_artist_album():
+    """拉丁「艺术家-专辑」无空格连字符命名应拆分，单侧单词不采信。"""
+    meta = parse_title("Gene Clark-White Light 1971 - FLAC 16bit 44 1khz")
+
+    assert meta.artists == ["Gene Clark"]
+    assert meta.title == "White Light"
+    assert meta.year == 1971
+    # 左侧单词（Heize-Undo）与右侧发布组标签不触发拆分
+    assert parse_title("Heize-Undo.2022.FLAC").artists == []
+
+
 def test_apply_title_splits_various_artists_prefix():
     """场景命名的 Various Artists-Title 无空格连字符前缀应拆分为合辑署名。"""
     meta = parse_title("Various.Artists-Reply.1988.OST")
