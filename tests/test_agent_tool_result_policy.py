@@ -266,7 +266,164 @@ def test_sanitizer_preserves_nested_assignment_boundaries(
     assert sanitize_for_host(source) == expected
 
 
-@pytest.mark.parametrize("unit", ["a=", "a."])
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            f"database_url=postgresql://alice:{SECRET_MARKER}"
+            "@example.invalid/media",
+            "database_url=postgresql://***@example.invalid/media",
+        ),
+        (
+            f"endpoint=https://{SECRET_MARKER}@example.invalid/path",
+            "endpoint=https://***@example.invalid/path",
+        ),
+        (
+            f"dsn=postgresql://alice:{SECRET_MARKER}%40tail"
+            "@[2001:db8::1]:5432/media?sslmode=require",
+            "dsn=postgresql://***@[2001:db8::1]:5432/media?sslmode=require",
+        ),
+        (
+            f"primary=https://alice:{SECRET_MARKER}@one.invalid/a "
+            f"secondary=redis://:{SECRET_MARKER}-two@two.invalid/0",
+            "primary=https://***@one.invalid/a "
+            "secondary=redis://***@two.invalid/0",
+        ),
+        (
+            f"https://alice:{SECRET_MARKER}@one.invalid,"
+            f"redis://:{SECRET_MARKER}-two@two.invalid/0",
+            "https://***@one.invalid,redis://***@two.invalid/0",
+        ),
+        (
+            f"https://alice:{SECRET_MARKER}@one.invalid;"
+            f"redis://:{SECRET_MARKER}-two@two.invalid/0",
+            "https://***@one.invalid;redis://***@two.invalid/0",
+        ),
+        (
+            f"https://alice:{SECRET_MARKER}@one.invalid|"
+            f"redis://:{SECRET_MARKER}-two@two.invalid/0",
+            "https://***@one.invalid|redis://***@two.invalid/0",
+        ),
+    ],
+)
+def test_sanitizer_redacts_uri_userinfo(source: str, expected: str) -> None:
+    """URI authority 中的 userinfo 不得进入宿主摘要。"""
+    assert sanitize_for_host(source) == expected
+
+
+def test_sanitizer_redacts_truncated_uri_with_unresolved_userinfo() -> None:
+    """截断点前无法确认 authority 结束时按敏感内容处理。"""
+    source = (
+        f"dsn=postgresql://alice:{SECRET_MARKER}"
+        f"{'x' * (16 * 1024)}@example.invalid/media"
+    )
+
+    summaries = (
+        summarize_input(source),
+        summarize_result(source),
+        summarize_error(RuntimeError(source)),
+    )
+
+    assert all(SECRET_MARKER not in summary for summary in summaries)
+    assert all("***" in summary for summary in summaries)
+    assert all("<truncated>" in summary for summary in summaries)
+
+
+def test_sanitizer_redacts_truncated_uri_after_early_at_sign() -> None:
+    """截断 authority 内的早期 `@` 不能证明 userinfo 已完整结束。"""
+    trailing_secret = "truncated-uri-tail-secret-5931"
+    prefix = f"https://user:{SECRET_MARKER}@{trailing_secret}"
+    source = (
+        prefix
+        + "x" * (16 * 1024 - len(prefix))
+        + "@example.invalid/media"
+    )
+
+    summaries = (
+        summarize_input(source),
+        summarize_result(source),
+        summarize_error(RuntimeError(source)),
+    )
+
+    assert all(SECRET_MARKER not in summary for summary in summaries)
+    assert all(trailing_secret not in summary for summary in summaries)
+    assert all("***" in summary for summary in summaries)
+    assert all("<truncated>" in summary for summary in summaries)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'payload="{\\"apiKey\\":\\"' + SECRET_MARKER + '\\"}"',
+        rf'payload=\"{{\\\"apiKey\\\":\\\"{SECRET_MARKER}\\\"}}\"',
+    ],
+)
+def test_sanitizer_redacts_escaped_json_secret_fields(source: str) -> None:
+    """普通文本内多层转义的 JSON 凭据字段仍须脱敏。"""
+    sanitized = str(sanitize_for_host(source))
+
+    assert SECRET_MARKER not in sanitized
+    assert "***" in sanitized
+    assert "}" in sanitized
+
+
+def test_sanitizer_preserves_tail_after_escaped_json_secret() -> None:
+    """转义 JSON 凭据中的分隔符不应截断脱敏或吞掉后续字段。"""
+    source = (
+        'payload="{\\"apiKey\\":\\"'
+        f"{SECRET_MARKER},still-secret"
+        '\\",\\"status\\":\\"ok\\"}"'
+    )
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert SECRET_MARKER not in sanitized
+    assert "still-secret" not in sanitized
+    assert "status" in sanitized
+    assert "ok" in sanitized
+
+
+@pytest.mark.parametrize("escape_layers", [0, 1, 2])
+def test_sanitizer_handles_trailing_backslashes_before_secret_quote(
+    escape_layers: int,
+) -> None:
+    """凭据值末尾的 literal backslash 不得吞掉后续敏感字段。"""
+    payload = (
+        '{"authToken":"first-secret\\\\",'
+        '"refreshToken":"second-secret","status":"ok"}'
+    )
+    for _ in range(escape_layers):
+        escaped_payload = payload.replace("\\", "\\\\").replace('"', '\\"')
+        payload = f'"{escaped_payload}"'
+    source = f"payload={payload}"
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert "first-secret" not in sanitized
+    assert "second-secret" not in sanitized
+    assert sanitized.count("***") == 2
+    assert "status" in sanitized
+    assert "ok" in sanitized
+
+
+def test_sanitizer_preserves_escaped_json_metadata_fields() -> None:
+    """转义 JSON 中的 metadata 字段保持诊断值。"""
+    source = 'payload="{\\"apiKeyId\\":\\"public-id\\"}"'
+
+    assert sanitize_for_host(source) == source
+
+
+def test_sanitizer_preserves_uri_without_userinfo() -> None:
+    """不含 userinfo 的 URL 及 query 邮箱保持原始诊断信息。"""
+    source = "url=https://example.invalid/path?email=user@example.invalid"
+
+    assert sanitize_for_host(source) == source
+
+
+@pytest.mark.parametrize(
+    "unit",
+    ["a=", "a.", "a://host/", "\\", "\\\""],
+)
 def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
     """赋值链和无头字段链在宿主文本上限内保持近似线性扫描。"""
 

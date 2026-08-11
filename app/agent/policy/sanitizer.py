@@ -115,6 +115,47 @@ def _is_assignment_key_char(char: str) -> bool:
     return _is_assignment_key_start(char) or char in (".", "-")
 
 
+def _quote_wrapper_at(value: str, start: int) -> tuple[str, int, int]:
+    """识别引号包装，并返回引号、反斜杠数量和已扫描位置。"""
+    quote_at = start
+    while quote_at < len(value) and value[quote_at] == "\\":
+        quote_at += 1
+    if quote_at >= len(value) or value[quote_at] not in ("\"", "'"):
+        return "", quote_at - start, quote_at
+    return value[quote_at], quote_at - start, quote_at + 1
+
+
+def _quote_wrapper_end(
+    value: str,
+    content_start: int,
+    quote: str,
+    slash_count: int,
+) -> int:
+    """查找同层引号结束位置，更深层转义引号视为值内容。"""
+    cursor = content_start
+    while cursor < len(value):
+        if value[cursor] == "\\":
+            slash_start = cursor
+            while cursor < len(value) and value[cursor] == "\\":
+                cursor += 1
+            if (
+                cursor < len(value)
+                and value[cursor] == quote
+                and cursor - slash_start >= slash_count
+                and (cursor - slash_start - slash_count)
+                % (2 * (slash_count + 1))
+                == 0
+            ):
+                return cursor + 1
+            if cursor < len(value):
+                cursor += 1
+            continue
+        if slash_count == 0 and value[cursor] == quote:
+            return cursor + 1
+        cursor += 1
+    return len(value)
+
+
 def _find_assignment_header(
     value: str,
     search_from: int,
@@ -129,8 +170,12 @@ def _find_assignment_header(
             cursor += 1
             continue
 
-        quote = value[cursor] if value[cursor] in ("\"", "'") else ""
-        key_start = cursor + 1 if quote else cursor
+        quote, slash_count, key_start = _quote_wrapper_at(value, cursor)
+        if not quote:
+            if slash_count:
+                cursor = key_start
+                continue
+            key_start = cursor
         if key_start >= len(value) or not _is_assignment_key_start(
             value[key_start]
         ):
@@ -143,11 +188,21 @@ def _find_assignment_header(
 
         header_end = key_end
         if quote:
-            if header_end >= len(value) or value[header_end] != quote:
+            closing_quote_at = header_end
+            while (
+                closing_quote_at < len(value)
+                and value[closing_quote_at] == "\\"
+            ):
+                closing_quote_at += 1
+            if (
+                closing_quote_at >= len(value)
+                or value[closing_quote_at] != quote
+                or closing_quote_at - header_end != slash_count
+            ):
                 # 引号不是字段名的一部分时，从引号内首字符重试一次。
                 cursor = key_start
                 continue
-            header_end += 1
+            header_end = closing_quote_at + 1
         while header_end < len(value) and value[header_end].isspace():
             header_end += 1
         if header_end >= len(value) or value[header_end] not in (":", "="):
@@ -170,19 +225,16 @@ def _assignment_value_end(
     if value_start >= len(value):
         return value_start
 
-    quote = value[value_start] if value[value_start] in ("\"", "'") else ""
-    if quote and quote == active_quote:
+    quote, slash_count, content_start = _quote_wrapper_at(value, value_start)
+    if quote and slash_count == 0 and quote == active_quote:
         return value_start
     if quote:
-        cursor = value_start + 1
-        while cursor < len(value):
-            if value[cursor] == "\\":
-                cursor += 2
-                continue
-            if value[cursor] == quote:
-                return cursor + 1
-            cursor += 1
-        return len(value)
+        return _quote_wrapper_end(
+            value,
+            content_start,
+            quote,
+            slash_count,
+        )
 
     delimiters = ",;}\r\n"
     if match_start > 0 and value[match_start - 1] in "?&#":
@@ -247,6 +299,79 @@ def _sanitize_assignments(value: str) -> str:
     return "".join(fragments)
 
 
+def _is_uri_scheme_char(char: str) -> bool:
+    """判断字符是否属于 RFC 3986 scheme 的 ASCII 字符集。"""
+    return char.isascii() and char.isalnum() or char in ("+", "-", ".")
+
+
+def _starts_uri_scheme(value: str, start: int) -> bool:
+    """判断指定位置是否以完整的 URI scheme 开始。"""
+    if (
+        start >= len(value)
+        or not value[start].isascii()
+        or not value[start].isalpha()
+    ):
+        return False
+    scheme_end = start + 1
+    while scheme_end < len(value) and _is_uri_scheme_char(value[scheme_end]):
+        scheme_end += 1
+    return value.startswith("://", scheme_end)
+
+
+def _sanitize_uri_userinfo(value: str, *, truncated: bool = False) -> str:
+    """清理 URI authority 中 `@` 前的 userinfo 凭据。"""
+    fragments = []
+    emitted_until = 0
+    search_from = 0
+    while (scheme_end := value.find("://", search_from)) >= 0:
+        scheme_start = scheme_end
+        while scheme_start > 0 and _is_uri_scheme_char(value[scheme_start - 1]):
+            scheme_start -= 1
+        if (
+            scheme_start == scheme_end
+            or not value[scheme_start].isascii()
+            or not value[scheme_start].isalpha()
+        ):
+            search_from = scheme_end + 3
+            continue
+
+        authority_start = scheme_end + 3
+        authority_end = authority_start
+        seen_userinfo = False
+        while authority_end < len(value):
+            char = value[authority_end]
+            if char.isspace() or char in ("/", "?", "#"):
+                break
+            if char == "@":
+                seen_userinfo = True
+            elif char in (",", ";", "|") and (
+                seen_userinfo or _starts_uri_scheme(value, authority_end + 1)
+            ):
+                break
+            authority_end += 1
+        if truncated and authority_end == len(value):
+            fragments.append(value[emitted_until:authority_start])
+            fragments.append(REDACTED_VALUE)
+            emitted_until = authority_end
+            search_from = authority_end
+            continue
+
+        userinfo_end = value.rfind("@", authority_start, authority_end)
+        if userinfo_end < 0:
+            search_from = max(authority_end, authority_start)
+            continue
+
+        fragments.append(value[emitted_until:authority_start])
+        fragments.append(f"{REDACTED_VALUE}@")
+        emitted_until = userinfo_end + 1
+        search_from = max(authority_end, emitted_until)
+
+    if not fragments:
+        return value
+    fragments.append(value[emitted_until:])
+    return "".join(fragments)
+
+
 def _sanitize_text(value: str) -> str:
     """清理非结构化文本中的常见凭据表达。"""
     truncated = len(value) > _MAX_TEXT_CHARS
@@ -255,6 +380,7 @@ def _sanitize_text(value: str) -> str:
     sanitized = _PRIVATE_KEY_OPEN_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _SENSITIVE_HEADER_PATTERN.sub(r"\1***", sanitized)
     sanitized = _BEARER_PATTERN.sub(r"\1***", sanitized)
+    sanitized = _sanitize_uri_userinfo(sanitized, truncated=truncated)
     sanitized = _sanitize_assignments(sanitized)
     sanitized = _OPENAI_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
     return f"{sanitized}<truncated>" if truncated else sanitized
