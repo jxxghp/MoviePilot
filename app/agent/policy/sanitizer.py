@@ -28,8 +28,25 @@ _SECRET_KEYS = {
     "pwd",
     "refresh_token",
     "secret",
+    "secret_access_key",
     "token",
 }
+_ACRONYM_BOUNDARY_PATTERN = re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])")
+_CAMEL_CASE_BOUNDARY_PATTERN = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_COMPACT_SECRET_SUFFIXES = (
+    "apikey",
+    "authorization",
+    "cookie",
+    "passkey",
+    "passwd",
+    "password",
+    "privatekey",
+    "pwd",
+    "secret",
+    "secretaccesskey",
+    "secretkey",
+    "token",
+)
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")
 _SENSITIVE_HEADER_PATTERN = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization|cookie|set-cookie|"
@@ -59,6 +76,8 @@ def _normalize_key(key: Any) -> str:
         text = str(key)
     except Exception:
         return ""
+    text = _ACRONYM_BOUNDARY_PATTERN.sub("_", text.strip())
+    text = _CAMEL_CASE_BOUNDARY_PATTERN.sub("_", text)
     return re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
 
 
@@ -67,18 +86,8 @@ def _is_secret_key(key: Any) -> bool:
     normalized = _normalize_key(key)
     if normalized in _SECRET_KEYS:
         return True
-    return normalized.endswith(
-        (
-            "_access_token",
-            "_api_key",
-            "_api_token",
-            "_client_secret",
-            "_cookie",
-            "_password",
-            "_private_key",
-            "_refresh_token",
-        )
-    )
+    compact = normalized.replace("_", "")
+    return compact.endswith(_COMPACT_SECRET_SUFFIXES)
 
 
 def _sanitize_text(value: str) -> str:

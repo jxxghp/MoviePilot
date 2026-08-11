@@ -75,6 +75,43 @@ def test_recursive_sanitizer_redacts_nested_structures_and_json_text() -> None:
 
 
 @pytest.mark.parametrize(
+    "field_name",
+    [
+        "accessToken",
+        "refreshToken",
+        "apiKey",
+        "APIKey",
+        "apikey",
+        "APIKEY",
+        "authToken",
+        "clientSecret",
+        "appSecret",
+        "proxyAuthorization",
+        "dbPwd",
+        "passKey",
+        "secretKey",
+        "SECRETKEY",
+        "AccessKeySecret",
+        "awsSecretAccessKey",
+    ],
+)
+def test_recursive_sanitizer_redacts_camel_case_secret_fields(
+    field_name: str,
+) -> None:
+    """结构化第三方载荷的驼峰凭据字段必须脱敏，统计字段保持可见。"""
+    payload = {
+        field_name: SECRET_MARKER,
+        "tokenCount": 12,
+    }
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized[field_name] == "***"
+    assert sanitized["tokenCount"] == 12
+    assert SECRET_MARKER not in str(sanitized)
+
+
+@pytest.mark.parametrize(
     ("source", "secret_parts"),
     [
         (
