@@ -7,12 +7,13 @@ from dataclasses import fields, is_dataclass
 from itertools import islice
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 
 REDACTED_VALUE = "***"
 _MAX_DEPTH = 8
 _MAX_ITEMS = 100
+_MAX_KEY_SCAN_CHARS = 256
 _MAX_TEXT_CHARS = 16 * 1024
 _SECRET_KEYS = {
     "access_token",
@@ -69,6 +70,9 @@ def _normalize_key(key: Any) -> str:
         text = str(key)
     except Exception:
         return ""
+    # 凭据判定只依赖完整短字段或字段尾部，固定尾窗可保留后缀语义并限制同步扫描成本。
+    if len(text) > _MAX_KEY_SCAN_CHARS:
+        text = text[-_MAX_KEY_SCAN_CHARS:]
     text = _ACRONYM_BOUNDARY_PATTERN.sub("_", text.strip())
     text = _CAMEL_CASE_BOUNDARY_PATTERN.sub("_", text)
     return re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
@@ -400,6 +404,33 @@ def _unavailable(value: Any) -> str:
     return f"<unavailable:{stable_type_name(value)}>"
 
 
+def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
+    """返回合法命名元组的字段契约，普通 tuple 仍按序列处理。"""
+    if not isinstance(value, tuple):
+        return None
+    field_names = getattr(type(value), "_fields", None)
+    if not isinstance(field_names, tuple) or len(field_names) != len(value):
+        return None
+    bounded_names = field_names[:_MAX_ITEMS]
+    if not all(isinstance(field_name, str) for field_name in bounded_names):
+        return None
+    return field_names
+
+
+def _validation_error_details(error: ValidationError) -> dict[str, int | str]:
+    """提取不含任何动态错误文本的校验计数。"""
+    try:
+        errors = error.errors(
+            include_input=False,
+            include_url=False,
+            include_context=False,
+        )
+    except Exception:
+        return {"error_count": "unavailable"}
+    # loc、type、msg 与 ctx 均可能包含第三方提供的动态输入，不能作为可信宿主诊断。
+    return {"error_count": len(errors)}
+
+
 def sanitize_for_host(
     value: Any,
     *,
@@ -429,6 +460,8 @@ def sanitize_for_host(
             return _sanitize_text(value)
         if isinstance(value, (bytes, bytearray, memoryview)):
             return f"<bytes:{len(value)}>"
+        if isinstance(value, ValidationError):
+            return _validation_error_details(value)
 
         seen = _seen if _seen is not None else set()
         track_identity = (
@@ -483,6 +516,27 @@ def sanitize_for_host(
                             _seen=seen,
                         )
                     )
+                return sanitized
+
+            named_tuple_fields = _named_tuple_fields(value)
+            if named_tuple_fields is not None:
+                sanitized = {}
+                for index, field_name in enumerate(
+                    named_tuple_fields[:_MAX_ITEMS]
+                ):
+                    output_key = _sanitize_text(field_name)
+                    item = value[index]
+                    sanitized[output_key] = (
+                        REDACTED_VALUE
+                        if _is_secret_key(field_name)
+                        else sanitize_for_host(
+                            item,
+                            _depth=_depth + 1,
+                            _seen=seen,
+                        )
+                    )
+                if len(named_tuple_fields) > _MAX_ITEMS:
+                    sanitized["<truncated>"] = "more fields"
                 return sanitized
 
             if isinstance(value, Mapping):

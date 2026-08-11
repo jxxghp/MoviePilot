@@ -1,12 +1,15 @@
 import asyncio
 from statistics import median
 from time import perf_counter
+from typing import NamedTuple
 from unittest.mock import MagicMock, patch
 
 import pytest
 from langgraph.types import Command
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic_core import PydanticCustomError
 
+import app.agent.policy.sanitizer as sanitizer_module
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
 from app.agent.tools.base import MoviePilotTool, serialize_tool_result_for_agent
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -19,6 +22,41 @@ class _SecretInput(BaseModel):
     """日志脱敏测试工具的输入契约。"""
 
     payload: dict = Field(description="包含嵌套值的测试载荷")
+
+
+class _InvalidSecretInput(BaseModel):
+    """用于验证 Pydantic 输入错误不会回显凭据原值。"""
+
+    api_key: int
+
+
+class _DynamicSecretLocationInput(BaseModel):
+    """用于验证动态 Mapping key 不会通过错误位置泄漏。"""
+
+    payload: dict[str, int]
+
+
+class _CustomSecretValidationInput(BaseModel):
+    """用于验证自定义错误类型、消息和上下文不会进入宿主摘要。"""
+
+    value: str
+
+    @field_validator("value")
+    @classmethod
+    def reject_value(cls, value: str) -> str:
+        """构造携带输入值的第三方自定义校验错误。"""
+        raise PydanticCustomError(
+            f"custom_{value}",
+            f"rejected {value}",
+            {"rejected_value": value},
+        )
+
+
+class _NamedTupleCredential(NamedTuple):
+    """模拟插件或第三方 SDK 返回的命名元组。"""
+
+    api_key: str
+    label: str
 
 
 class _SecretResultTool(MoviePilotTool):
@@ -74,6 +112,19 @@ def test_recursive_sanitizer_redacts_nested_structures_and_json_text() -> None:
     assert "normal-name" in serialized
     assert sanitized["token_count"] == 12
     assert "***" in serialized
+
+
+def test_recursive_sanitizer_redacts_named_tuple_secret_fields() -> None:
+    """命名元组必须保留字段语义并按字段名脱敏。"""
+    payload = _NamedTupleCredential(
+        api_key=SECRET_MARKER,
+        label="visible-label",
+    )
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized == {"api_key": "***", "label": "visible-label"}
+    assert SECRET_MARKER not in str(sanitized)
 
 
 @pytest.mark.parametrize(
@@ -443,6 +494,53 @@ def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
     assert max_duration <= small_duration * 10 + 0.02
 
 
+def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
+    """超长结构化字段只允许固定窗口进入凭据名规范化。"""
+
+    class _TrackingPattern:
+        """记录正则收到的最大文本长度并复用真实匹配行为。"""
+
+        def __init__(self, pattern) -> None:
+            self.pattern = pattern
+            self.max_chars = 0
+
+        def sub(self, replacement: str, value: str) -> str:
+            self.max_chars = max(self.max_chars, len(value))
+            return self.pattern.sub(replacement, value)
+
+    padding = "x" * (2 * 1024 * 1024)
+    secret_pattern = _TrackingPattern(
+        sanitizer_module._ACRONYM_BOUNDARY_PATTERN
+    )
+    camel_pattern = _TrackingPattern(
+        sanitizer_module._CAMEL_CASE_BOUNDARY_PATTERN
+    )
+    payload = {
+        f"secret-prefix-{padding}AuthToken": SECRET_MARKER,
+        f"metadata-prefix-{padding}tokenCount": 12,
+    }
+
+    with (
+        patch.object(
+            sanitizer_module,
+            "_ACRONYM_BOUNDARY_PATTERN",
+            secret_pattern,
+        ),
+        patch.object(
+            sanitizer_module,
+            "_CAMEL_CASE_BOUNDARY_PATTERN",
+            camel_pattern,
+        ),
+    ):
+        sanitized = sanitize_for_host(payload)
+
+    assert SECRET_MARKER not in str(sanitized)
+    assert "***" in sanitized.values()
+    assert 12 in sanitized.values()
+    assert secret_pattern.max_chars <= 1024
+    assert camel_pattern.max_chars <= 1024
+
+
 def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
     """输入、结果和异常摘要共享非结构化凭据赋值的脱敏契约。"""
     source = f"authToken={SECRET_MARKER}"
@@ -466,6 +564,50 @@ def test_sanitizer_redacts_unquoted_multiword_secret_in_error_summary() -> None:
     assert "alpha" not in summary
     assert "beta" not in summary
     assert "operation=connect" in summary
+
+
+def test_pydantic_validation_error_is_safe_across_host_entry_points() -> None:
+    """Pydantic 原始输入不得从递归 sanitizer 或任一摘要入口回显。"""
+    with pytest.raises(ValidationError) as exc_info:
+        _InvalidSecretInput(api_key=SECRET_MARKER)
+
+    error = exc_info.value
+    sanitized = sanitize_for_host(error)
+    outputs = (
+        str(sanitized),
+        str(sanitize_for_host({"error": error})),
+        summarize_input(error),
+        summarize_result({"error": error}),
+        summarize_error(error),
+    )
+
+    assert all(SECRET_MARKER not in output for output in outputs)
+    assert sanitized == {"error_count": 1}
+    assert "ValidationError" in outputs[-1]
+
+
+def test_pydantic_validation_error_excludes_dynamic_metadata() -> None:
+    """动态错误位置、类型、消息和上下文均不得成为宿主诊断文本。"""
+    with pytest.raises(ValidationError) as location_exc_info:
+        _DynamicSecretLocationInput(
+            payload={SECRET_MARKER: "not-an-integer"}
+        )
+    with pytest.raises(ValidationError) as custom_exc_info:
+        _CustomSecretValidationInput(value=SECRET_MARKER)
+
+    outputs = []
+    for error in (location_exc_info.value, custom_exc_info.value):
+        outputs.extend(
+            (
+                str(sanitize_for_host(error)),
+                str(sanitize_for_host({"error": error})),
+                summarize_result({"error": error}),
+                summarize_error(error),
+            )
+        )
+
+    assert all(SECRET_MARKER not in output for output in outputs)
+    assert all("error_count" in output for output in outputs)
 
 
 def test_sanitizer_type_fallback_ignores_hostile_metaclass() -> None:
