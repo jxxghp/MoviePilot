@@ -362,6 +362,31 @@ def test_sanitizer_redacts_uri_userinfo(source: str, expected: str) -> None:
     assert sanitize_for_host(source) == expected
 
 
+@pytest.mark.parametrize("escape_layers", [1, 2])
+def test_sanitizer_redacts_slash_escaped_uri_userinfo(
+    escape_layers: int,
+) -> None:
+    """嵌入诊断文本中的 slash-escaped URI 仍须清理 userinfo。"""
+    separator = ":" + "\\" * escape_layers + "/" + "\\" * escape_layers + "/"
+    source = (
+        r'payload={\"dsn\":\"postgresql'
+        f"{separator}alice:{SECRET_MARKER}@example.invalid/media"
+        r'\"}'
+    )
+
+    sanitized = str(sanitize_for_host(source))
+
+    assert SECRET_MARKER not in sanitized
+    assert f"postgresql{separator}***@example.invalid/media" in sanitized
+
+
+def test_sanitizer_preserves_slash_escaped_uri_without_userinfo() -> None:
+    """slash-escaped URI 没有 userinfo 时保持原始诊断文本。"""
+    source = r"url=https:\/\/example.invalid/path?email=user@example.invalid"
+
+    assert sanitize_for_host(source) == source
+
+
 def test_sanitizer_redacts_truncated_uri_with_unresolved_userinfo() -> None:
     """截断点前无法确认 authority 结束时按敏感内容处理。"""
     source = (
@@ -541,6 +566,118 @@ def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
     assert camel_pattern.max_chars <= 1024
 
 
+@pytest.mark.parametrize(
+    ("first_name", "second_name", "value", "expected"),
+    [
+        ("api_key", "label", SECRET_MARKER, "***"),
+        ("tokenCount", "api_key", 12, 12),
+    ],
+)
+def test_sanitizer_uses_one_snapshot_for_stateful_mapping_key(
+    first_name: str,
+    second_name: str,
+    value: object,
+    expected: object,
+) -> None:
+    """动态 Mapping key 的输出名和判敏必须复用同一次字符串快照。"""
+
+    class _StatefulKey:
+        """每次字符串化返回不同字段名的第三方 key。"""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __str__(self) -> str:
+            self.calls += 1
+            return first_name if self.calls == 1 else second_name
+
+    key = _StatefulKey()
+
+    sanitized = sanitize_for_host({key: value})
+
+    assert key.calls == 1
+    assert sanitized == {first_name: expected}
+
+
+def test_sanitizer_redacts_value_for_uninspectable_mapping_key() -> None:
+    """无法取得稳定名称的 Mapping key 按敏感字段处理。"""
+
+    class _UninspectableKey:
+        """模拟字符串协议故障的第三方 key。"""
+
+        def __str__(self) -> str:
+            raise RuntimeError(f"unavailable key {SECRET_MARKER}")
+
+    sanitized = sanitize_for_host({_UninspectableKey(): SECRET_MARKER})
+
+    assert sanitized == {"<key:_UninspectableKey>": "***"}
+    assert SECRET_MARKER not in str(sanitized)
+
+
+def test_sanitizer_bounds_shared_reference_expansion() -> None:
+    """整个净化调用共享工作预算，重复引用不能按分支指数展开。"""
+
+    class _CountingValue:
+        """记录共享叶节点被字符串化的次数。"""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __str__(self) -> str:
+            self.calls += 1
+            return "visible-leaf"
+
+    leaf = _CountingValue()
+    payload = leaf
+    for _ in range(7):
+        payload = [payload] * 5
+
+    sanitized = sanitize_for_host(payload)
+
+    assert leaf.calls <= 2000
+    assert "<work-limit>" in str(sanitized)
+
+
+def test_sanitizer_budget_bounds_container_item_expansion() -> None:
+    """共享 DAG 的容器读取和输出项总量必须受全调用预算约束。"""
+
+    class _CountingMapping(dict):
+        """统计 Mapping iterator 实际交付给 sanitizer 的项数。"""
+
+        yielded_items = 0
+
+        def items(self):
+            for item in super().items():
+                type(self).yielded_items += 1
+                yield item
+
+    def count_entries(value: object) -> int:
+        """统计 sanitizer 结果中实际生成的容器项数。"""
+        if isinstance(value, dict):
+            return len(value) + sum(count_entries(item) for item in value.values())
+        if isinstance(value, list):
+            return len(value) + sum(count_entries(item) for item in value)
+        return 0
+
+    shared: object = {"label": "visible"}
+    for level in range(7):
+        node = _CountingMapping(
+            {
+                f"field{level}_{index}ApiKey": SECRET_MARKER
+                for index in range(97)
+            }
+        )
+        node.update({f"child{index}": shared for index in range(3)})
+        shared = node
+
+    sanitized = sanitize_for_host(shared)
+    max_emitted_items = sanitizer_module._MAX_WORK_ITEMS + 16
+
+    assert _CountingMapping.yielded_items <= max_emitted_items
+    assert count_entries(sanitized) <= max_emitted_items
+    assert "<work-limit>" in str(sanitized)
+
+
 def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
     """输入、结果和异常摘要共享非结构化凭据赋值的脱敏契约。"""
     source = f"authToken={SECRET_MARKER}"
@@ -608,6 +745,22 @@ def test_pydantic_validation_error_excludes_dynamic_metadata() -> None:
 
     assert all(SECRET_MARKER not in output for output in outputs)
     assert all("error_count" in output for output in outputs)
+
+
+def test_pydantic_validation_error_count_does_not_expand_details() -> None:
+    """校验错误计数不得构造完整 errors 明细。"""
+    with pytest.raises(ValidationError) as exc_info:
+        _InvalidSecretInput(api_key=SECRET_MARKER)
+
+    with patch.object(
+        ValidationError,
+        "errors",
+        side_effect=AssertionError("validation details must not be expanded"),
+    ) as mock_errors:
+        sanitized = sanitize_for_host(exc_info.value)
+
+    mock_errors.assert_not_called()
+    assert sanitized == {"error_count": 1}
 
 
 def test_sanitizer_type_fallback_ignores_hostile_metaclass() -> None:

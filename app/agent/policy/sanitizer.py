@@ -4,7 +4,6 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
-from itertools import islice
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -15,6 +14,7 @@ _MAX_DEPTH = 8
 _MAX_ITEMS = 100
 _MAX_KEY_SCAN_CHARS = 256
 _MAX_TEXT_CHARS = 16 * 1024
+_MAX_WORK_ITEMS = 1000
 _SECRET_KEYS = {
     "access_token",
     "api_key",
@@ -308,8 +308,25 @@ def _is_uri_scheme_char(char: str) -> bool:
     return char.isascii() and char.isalnum() or char in ("+", "-", ".")
 
 
+def _uri_authority_start(value: str, scheme_end: int) -> int | None:
+    """返回字面量或 slash-escaped 双斜杠后的 authority 起点。"""
+    if scheme_end >= len(value) or value[scheme_end] != ":":
+        return None
+    cursor = scheme_end + 1
+    while cursor < len(value) and value[cursor] == "\\":
+        cursor += 1
+    if cursor >= len(value) or value[cursor] != "/":
+        return None
+    cursor += 1
+    while cursor < len(value) and value[cursor] == "\\":
+        cursor += 1
+    if cursor >= len(value) or value[cursor] != "/":
+        return None
+    return cursor + 1
+
+
 def _starts_uri_scheme(value: str, start: int) -> bool:
-    """判断指定位置是否以完整的 URI scheme 开始。"""
+    """判断指定位置是否以完整的 URI scheme 与 authority 开始。"""
     if (
         start >= len(value)
         or not value[start].isascii()
@@ -319,7 +336,25 @@ def _starts_uri_scheme(value: str, start: int) -> bool:
     scheme_end = start + 1
     while scheme_end < len(value) and _is_uri_scheme_char(value[scheme_end]):
         scheme_end += 1
-    return value.startswith("://", scheme_end)
+    return _uri_authority_start(value, scheme_end) is not None
+
+
+def _find_uri_authority(value: str, search_from: int) -> tuple[int, int] | None:
+    """单向查找下一个 URI scheme 及其 authority 起点。"""
+    while (scheme_end := value.find(":", search_from)) >= 0:
+        scheme_start = scheme_end
+        while scheme_start > 0 and _is_uri_scheme_char(value[scheme_start - 1]):
+            scheme_start -= 1
+        authority_start = _uri_authority_start(value, scheme_end)
+        if (
+            scheme_start < scheme_end
+            and value[scheme_start].isascii()
+            and value[scheme_start].isalpha()
+            and authority_start is not None
+        ):
+            return scheme_end, authority_start
+        search_from = scheme_end + 1
+    return None
 
 
 def _sanitize_uri_userinfo(value: str, *, truncated: bool = False) -> str:
@@ -327,19 +362,8 @@ def _sanitize_uri_userinfo(value: str, *, truncated: bool = False) -> str:
     fragments = []
     emitted_until = 0
     search_from = 0
-    while (scheme_end := value.find("://", search_from)) >= 0:
-        scheme_start = scheme_end
-        while scheme_start > 0 and _is_uri_scheme_char(value[scheme_start - 1]):
-            scheme_start -= 1
-        if (
-            scheme_start == scheme_end
-            or not value[scheme_start].isascii()
-            or not value[scheme_start].isalpha()
-        ):
-            search_from = scheme_end + 3
-            continue
-
-        authority_start = scheme_end + 3
+    while authority := _find_uri_authority(value, search_from):
+        _, authority_start = authority
         authority_end = authority_start
         seen_userinfo = False
         while authority_end < len(value):
@@ -420,15 +444,18 @@ def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
 def _validation_error_details(error: ValidationError) -> dict[str, int | str]:
     """提取不含任何动态错误文本的校验计数。"""
     try:
-        errors = error.errors(
-            include_input=False,
-            include_url=False,
-            include_context=False,
-        )
+        error_count = error.error_count()
     except Exception:
         return {"error_count": "unavailable"}
-    # loc、type、msg 与 ctx 均可能包含第三方提供的动态输入，不能作为可信宿主诊断。
-    return {"error_count": len(errors)}
+    return {"error_count": error_count}
+
+
+def _consume_work_item(budget: list[int]) -> bool:
+    """从全调用预算消费一个递归节点或容器输出项。"""
+    if budget[0] <= 0:
+        return False
+    budget[0] -= 1
+    return True
 
 
 def sanitize_for_host(
@@ -436,9 +463,13 @@ def sanitize_for_host(
     *,
     _depth: int = 0,
     _seen: set[int] | None = None,
+    _budget: list[int] | None = None,
 ) -> Any:
     """递归清理宿主日志/回执使用的数据，不修改调用方原对象。"""
     try:
+        budget = _budget if _budget is not None else [_MAX_WORK_ITEMS]
+        if not _consume_work_item(budget):
+            return "<work-limit>"
         if _depth >= _MAX_DEPTH:
             return "<max-depth>"
         if value is None or isinstance(value, (bool, int, float)):
@@ -455,6 +486,7 @@ def sanitize_for_host(
                         parsed,
                         _depth=_depth + 1,
                         _seen=_seen,
+                        _budget=budget,
                     )
                     return json.dumps(sanitized_json, ensure_ascii=False, default=str)
             return _sanitize_text(value)
@@ -482,6 +514,9 @@ def sanitize_for_host(
                     if index >= _MAX_ITEMS:
                         sanitized["<truncated>"] = "more fields"
                         break
+                    if not _consume_work_item(budget):
+                        sanitized["<work-limit>"] = "more fields"
+                        break
                     try:
                         item = getattr(value, field_name)
                     except Exception:
@@ -493,6 +528,7 @@ def sanitize_for_host(
                             item,
                             _depth=_depth + 1,
                             _seen=seen,
+                            _budget=budget,
                         )
                     )
                 return sanitized
@@ -502,6 +538,9 @@ def sanitize_for_host(
                 for index, field_info in enumerate(fields(value)):
                     if index >= _MAX_ITEMS:
                         sanitized["<truncated>"] = "more fields"
+                        break
+                    if not _consume_work_item(budget):
+                        sanitized["<work-limit>"] = "more fields"
                         break
                     try:
                         item = getattr(value, field_info.name)
@@ -514,6 +553,7 @@ def sanitize_for_host(
                             item,
                             _depth=_depth + 1,
                             _seen=seen,
+                            _budget=budget,
                         )
                     )
                 return sanitized
@@ -524,6 +564,9 @@ def sanitize_for_host(
                 for index, field_name in enumerate(
                     named_tuple_fields[:_MAX_ITEMS]
                 ):
+                    if not _consume_work_item(budget):
+                        sanitized["<work-limit>"] = "more fields"
+                        break
                     output_key = _sanitize_text(field_name)
                     item = value[index]
                     sanitized[output_key] = (
@@ -533,6 +576,7 @@ def sanitize_for_host(
                             item,
                             _depth=_depth + 1,
                             _seen=seen,
+                            _budget=budget,
                         )
                     )
                 if len(named_tuple_fields) > _MAX_ITEMS:
@@ -541,40 +585,62 @@ def sanitize_for_host(
 
             if isinstance(value, Mapping):
                 sanitized = {}
-                items = list(islice(iter(value.items()), _MAX_ITEMS + 1))
-                for key, item in items[:_MAX_ITEMS]:
+                items = iter(value.items())
+                for index in range(_MAX_ITEMS + 1):
+                    if not _consume_work_item(budget):
+                        sanitized["<work-limit>"] = "more items"
+                        break
                     try:
-                        output_key = _sanitize_text(str(key))
+                        key, item = next(items)
+                    except StopIteration:
+                        break
+                    if index >= _MAX_ITEMS:
+                        sanitized["<truncated>"] = "more items"
+                        break
+                    try:
+                        key_text = str(key)
+                        output_key = _sanitize_text(key_text)
+                        secret_key = _is_secret_key(key_text)
                     except Exception:
                         output_key = f"<key:{stable_type_name(key)}>"
+                        secret_key = True
                     sanitized[output_key] = (
                         REDACTED_VALUE
-                        if _is_secret_key(key)
+                        if secret_key
                         else sanitize_for_host(
                             item,
                             _depth=_depth + 1,
                             _seen=seen,
+                            _budget=budget,
                         )
                     )
-                if len(items) > _MAX_ITEMS:
-                    sanitized["<truncated>"] = "more items"
                 return sanitized
 
             if isinstance(value, (set, frozenset)) or (
                 isinstance(value, Sequence)
                 and not isinstance(value, (str, bytes, bytearray))
             ):
-                items = list(islice(iter(value), _MAX_ITEMS + 1))
-                sanitized_items = [
-                    sanitize_for_host(
+                items = iter(value)
+                sanitized_items = []
+                for index in range(_MAX_ITEMS + 1):
+                    if not _consume_work_item(budget):
+                        sanitized_items.append("<work-limit>")
+                        break
+                    try:
+                        item = next(items)
+                    except StopIteration:
+                        break
+                    if index >= _MAX_ITEMS:
+                        sanitized_items.append("<more items>")
+                        break
+                    sanitized_items.append(
+                        sanitize_for_host(
                         item,
                         _depth=_depth + 1,
                         _seen=seen,
+                        _budget=budget,
                     )
-                    for item in items[:_MAX_ITEMS]
-                ]
-                if len(items) > _MAX_ITEMS:
-                    sanitized_items.append("<more items>")
+                    )
                 return sanitized_items
 
             try:
