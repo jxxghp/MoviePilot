@@ -12,7 +12,6 @@ from app.core.meta.infopath import (
     should_use_parent_title_for_file_stem,
 )
 from app.core.meta.words import WordsMatcher
-from app.helper.music import MusicNameParser
 from app.log import logger
 from app.schemas.types import MediaType
 from app.utils import rust_accel
@@ -437,6 +436,7 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
             org_string=title,
             title=Path(title).stem,
             audio_format=audio_suffix.lstrip(".").upper() or None,
+            parse_title=True,
         )
     rust_meta = None
     if not _requires_python_metainfo(title, custom_words):
@@ -468,9 +468,10 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool =
             org_string=path.name,
             title=path.stem,
             audio_format=audio_suffix.lstrip(".").upper() or None,
+            parse_title=True,
         )
         # 无标签音频只能依靠文件名和目录结构，补充曲序、碟号、歌手和专辑线索
-        return MusicNameParser.apply_path_context(music_meta, path)
+        return music_meta.apply_path_context(path)
     path_context = " ".join(
         [path.name, path.parent.name, path.parent.parent.name]
     )

@@ -218,14 +218,15 @@ def test_python_metainfo_preserves_all_resource_types(title, expected):
 
 
 def test_metainfo_routes_audio_filename_to_music():
-    """音频文件名应直接走音乐分支，不再进入影视季集解析。"""
+    """音频文件名应直接走音乐分支并完成艺术家/曲名拆分，不再进入影视季集解析。"""
     meta = MetaInfo("周杰伦 - 晴天.flac")
 
     assert isinstance(meta, MetaMusic)
     assert isinstance(meta, MetaBase)
     assert meta.type == MediaType.MUSIC
     assert meta.org_string == "周杰伦 - 晴天.flac"
-    assert meta.title == "周杰伦 - 晴天"
+    assert meta.title == "晴天"
+    assert meta.artists == ["周杰伦"]
     assert meta.audio_format == "FLAC"
     # 音乐没有季集信息，兼容通用访问
     assert meta.season is None

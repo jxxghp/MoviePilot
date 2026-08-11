@@ -1,6 +1,7 @@
+from app.core.config import settings
+from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
-from app.core.config import settings
 
 
 def test_musicbrainz_cover_domains_are_allowed_by_image_proxy():
@@ -23,6 +24,35 @@ def test_build_query_uses_structured_music_fields():
         'recording:"Love \\"Story\\"" AND '
         'artist:"Taylor Swift" AND release:"Fearless"'
     )
+
+
+def test_build_query_strips_audio_quality_tokens():
+    """资源标题中的格式规格与年份后缀不应污染检索式，繁体统一转简体检索。"""
+    query = MusicBrainzModule._build_query(
+        MetaMusic(
+            title="永遠是朋友(2000) - ALAC [16B-44.1kHz]",
+            artists=["毛阿敏"],
+        )
+    )
+
+    assert query == 'recording:"永远是朋友" AND artist:"毛阿敏"'
+
+
+def test_select_candidate_matches_traditional_chinese_title():
+    """繁体资源标题应能命中 MusicBrainz 简体条目，不因写法差异失配。"""
+    meta = MetaMusic(title="永遠是朋友", artists=["毛阿敏"])
+    candidates = [
+        MusicInfo(
+            source="musicbrainz",
+            media_id="recording-1",
+            title="永远是朋友",
+            artists=["毛阿敏"],
+        ),
+    ]
+
+    selected = MusicBrainzModule._select_candidate(meta, candidates, source="musicbrainz")
+
+    assert selected is candidates[0]
 
 
 def test_recording_to_info_maps_musicbrainz_payload():
@@ -513,3 +543,139 @@ def test_request_json_caches_not_found(monkeypatch):
 
     assert first == second == {}
     assert network_calls["count"] == 1
+
+
+def test_request_json_retries_on_server_busy(monkeypatch):
+    """服务端繁忙（429/5xx）属于瞬时错误，应退避重试而不是直接放弃。"""
+    import time
+
+    import app.modules.musicbrainz as musicbrainz_module
+
+    monkeypatch.setattr(
+        MusicBrainzModule, "_wait_for_rate_limit", classmethod(lambda cls: None)
+    )
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    responses = [
+        _FakeMusicBrainzResponse(None, status_code=503),
+        _FakeMusicBrainzResponse({"id": "recording-busy", "title": "晴天"}),
+    ]
+
+    def fake_get_res(_self, url, params=None):
+        """依次返回繁忙与成功响应，验证重试后拿到结果。"""
+        return responses.pop(0)
+
+    monkeypatch.setattr(musicbrainz_module.RequestUtils, "get_res", fake_get_res)
+    MusicBrainzModule._request_json.cache_clear()
+
+    result = MusicBrainzModule._request_json("/recording/search-busy", params={"fmt": "json"})
+
+    assert result == {"id": "recording-busy", "title": "晴天"}
+    assert not responses
+
+
+def test_same_text_normalizes_traditional_chinese():
+    """候选比对应归一繁简差异，条目繁体写法不与简体资源标题失配。"""
+    assert MusicBrainzModule._same_text("神的遊戲", "神的游戏")
+    assert MusicBrainzModule._same_text("張懸", "张悬")
+    assert not MusicBrainzModule._same_text("神的遊戲", "神的冒险")
+
+
+def test_search_title_replaces_sanitized_underscores():
+    """流媒体文件名消毒产生的下划线应转空格，不破坏检索短语。"""
+    assert MusicBrainzModule._search_title("百年經典7_愛的奉獻") == "百年经典7 爱的奉献"
+
+
+def test_select_candidate_matches_traditional_chinese_recording():
+    """条目为繁体写法时，简体资源标题仍应命中候选。"""
+    meta = MetaMusic(title="芸开了", artists=["许茹芸"])
+    candidate = MusicInfo(
+        source="musicbrainz",
+        music_type="recording",
+        media_id="recording-1",
+        title="芸開了",
+        artists=["許茹芸"],
+    )
+
+    matched = MusicBrainzModule._select_candidate(meta, [candidate], source="musicbrainz")
+
+    assert matched is not None
+    assert matched.media_id == "recording-1"
+
+
+def test_recording_queries_ladder_relaxes_to_bare_title_last():
+    """检索阶梯由严到宽放宽，裸标题兜底只能出现在最后一级。"""
+    queries = MusicBrainzModule._recording_queries(
+        MetaMusic(title="晴天 (电影版)", artists=["周杰伦"])
+    )
+
+    assert queries[0] == 'recording:"晴天 (电影版)" AND artist:"周杰伦"'
+    assert queries[1] == 'recording:"晴天 (电影版)"'
+    assert queries[2] == 'recording:"晴天" AND artist:"周杰伦"'
+    # 署名变体兜底放在最后，由候选挑选的艺术家要求收紧
+    assert queries[-1] == 'recording:"晴天"'
+
+
+def test_select_candidate_rejects_wrong_artist_same_title():
+    """已知艺术家时，同名异曲的候选不能因标题相等被采信。"""
+    meta = MetaMusic(title="因为有你", artists=["毛阿敏"])
+    wrong_artist = MusicInfo(
+        source="musicbrainz",
+        music_type="recording",
+        media_id="recording-wrong",
+        title="因为有你",
+        artists=["张蔷"],
+    )
+
+    assert MusicBrainzModule._select_candidate(meta, [wrong_artist], source="musicbrainz") is None
+
+
+def test_select_album_candidate_requires_title_and_artist():
+    """专辑候选需标题（含去括号弱匹配）与艺术家同时命中才采信。"""
+    meta = MetaMusic(title="我爱夜 (新歌+精选)", artists=["许茹芸"], year=2003)
+    album_hit = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-1",
+        title="我爱夜",
+        artists=["许茹芸"],
+        year=2003,
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album_hit])
+
+    assert matched is not None
+    assert matched.media_id == "album-1"
+
+    album_wrong_artist = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-2",
+        title="我爱夜",
+        artists=["其他歌手"],
+    )
+
+    assert MusicBrainzModule._select_album_candidate(meta, [album_wrong_artist]) is None
+
+
+def test_select_album_candidate_matches_colon_subtitle():
+    """条目「主标题：副标题」结构应与资源主标题弱匹配命中。"""
+    meta = MetaMusic(title="天国的情人", artists=["邓丽君"])
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-colon",
+        title="天國的情人：鄧麗君逝世十周年紀念聲影存集",
+        artists=["鄧麗君"],
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-colon"
+
+
+def test_search_title_strips_trailing_year():
+    """检索式应剥离曲名尾部独立年份，避免年份文本造成精确短语零命中。"""
+    assert MusicBrainzModule._search_title("Funky Jazz Saxophone 2024") == "Funky Jazz Saxophone"
+    # 非尾部年份属于曲名内容，不应剥离
+    assert MusicBrainzModule._search_title("2002年的第一场雪") == "2002年的第一场雪"

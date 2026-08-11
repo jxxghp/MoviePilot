@@ -5,6 +5,7 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, Union
 
 from fastapi.concurrency import run_in_threadpool
+from requests import Session
 
 from app.core.cache import cached
 from app.core.config import settings
@@ -20,6 +21,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
 from app.utils.http import RequestUtils
+from app.utils.zhconv import convert as zhconv_convert
 
 
 class MusicBrainzModule(_ModuleBase):
@@ -34,6 +36,12 @@ class MusicBrainzModule(_ModuleBase):
     _request_interval = 1.0
     _request_lock = threading.Lock()
     _last_request_at = 0.0
+    # 全局复用 HTTP 会话：keep-alive 省去每次请求的 DNS+TLS 握手（约 6s → 0.4s）
+    _session: Optional[Session] = None
+    _session_lock = threading.Lock()
+    # 服务端繁忙（429/5xx）时的重试次数与退避基数，重试间隔随次数翻倍递增
+    _busy_retries = 2
+    _busy_backoff = 5.0
     # 关联艺术家按关系可读性排序，纪念性质的致敬关系数量庞大且价值低，放到最后
     _artist_relation_priority = (
         "member of band",
@@ -116,40 +124,103 @@ class MusicBrainzModule(_ModuleBase):
 
     def _search_recordings(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
         """按音频标签条件搜索 Recording，供全局搜索和文件识别复用。"""
-        query = self._build_query(meta)
-        if not query:
-            return []
-        payload = self._request_json(
-            "/recording",
-            params={"query": query, "limit": max(1, min(limit, 100)), "fmt": "json"},
-        )
-        return [
-            info
-            for item in (payload or {}).get("recordings") or []
-            if (info := self._recording_to_info(item))
-        ]
+        for query in self._recording_queries(meta):
+            payload = self._request_json(
+                "/recording",
+                params={"query": query, "limit": max(1, min(limit, 100)), "fmt": "json"},
+            )
+            results = [
+                info
+                for item in (payload or {}).get("recordings") or []
+                if (info := self._recording_to_info(item))
+            ]
+            if results:
+                return results
+        return []
 
-    def _search_albums(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
-        """按标题和可选艺术家搜索 Release Group 专辑候选。"""
-        title = meta.album or meta.title
+    @classmethod
+    def _recording_queries(cls, meta: MetaMusic) -> list[str]:
+        """构造 Recording 检索式阶梯，由严到宽逐级放宽避免零命中。
+
+        条目括号多为全角、艺术家署名存在变体（如外文艺名），精确 AND 条件容易零命中；
+        放宽后由候选评分负责收紧（已知艺术家时必须艺术家命中），不会产生错误身份。
+        """
+        title = cls._search_title(meta.title)
         if not title:
             return []
-        clauses = [f'releasegroup:"{self._escape_query(title)}"']
-        if meta.artists:
-            clauses.append(f'artist:"{self._escape_query(meta.artists[0])}"')
-        payload = self._request_json(
-            "/release-group",
-            params={
-                "query": " AND ".join(clauses),
-                "limit": max(1, min(limit, 100)),
-                "fmt": "json",
-            },
-        )
-        return [
-            album.to_music_info()
-            for item in (payload or {}).get("release-groups") or []
-            if (album := self._release_group_to_album(item))
-        ]
+        artist = meta.artists[0] if meta.artists else None
+        # 括号内的影视 tie-in、版本说明多为半角，与条目全角写法不一致，准备去注释曲名兜底
+        bare_title = cls._strip_parenthetical(title)
+        queries: list[str] = []
+        for query in [
+            cls._build_query(meta),
+            f'recording:"{cls._escape_query(title)}"',
+            f'recording:"{cls._escape_query(bare_title)}" AND artist:"{cls._escape_query(artist)}"'
+            if artist and bare_title and bare_title != title else None,
+            # 艺术家署名变体（外文艺名等）导致 AND 条件零命中时，仅按主体曲名检索，
+            # 候选挑选阶段要求艺术家命中兜住同名异曲
+            f'recording:"{cls._escape_query(bare_title)}"' if bare_title else None,
+        ]:
+            if query and query not in queries:
+                queries.append(query)
+        return queries
+
+    @classmethod
+    def _strip_parenthetical(cls, value: str) -> str:
+        """去除标题中的括号注释，保留主体曲名。"""
+        text = re.sub(r"[\(（][^\)）]*[\)）]", " ", str(value or ""))
+        return cls._normalize_text(text)
+
+    @classmethod
+    def _main_title(cls, value: Optional[str]) -> str:
+        """提取冒号副标题结构的主标题，兼容全角/半角冒号。"""
+        text = re.split(r"\s*[：:]\s*", str(value or ""), maxsplit=1)[0]
+        return cls._normalize_text(text)
+
+    def _search_albums(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
+        """按标题和可选艺术家搜索 Release Group 专辑候选，检索式同样逐级放宽。"""
+        for query in self._album_queries(meta):
+            payload = self._request_json(
+                "/release-group",
+                params={
+                    "query": query,
+                    "limit": max(1, min(limit, 100)),
+                    "fmt": "json",
+                },
+            )
+            results = [
+                album.to_music_info()
+                for item in (payload or {}).get("release-groups") or []
+                if (album := self._release_group_to_album(item))
+            ]
+            if results:
+                return results
+        return []
+
+    @classmethod
+    def _album_queries(cls, meta: MetaMusic) -> list[str]:
+        """构造专辑检索式阶梯：专辑名+艺术家 → 仅专辑名 → 去括号/卷号变体。"""
+        title = cls._search_title(meta.album or meta.title)
+        if not title:
+            return []
+        artist = meta.artists[0] if meta.artists else None
+        # 括号注释与 Vol. 卷号在条目中常以 disambiguation 形式存在，变体名兜底检索
+        bare_title = cls._strip_parenthetical(title)
+        bare_title = re.sub(r",?\s*vol\.?\s*\d+$", "", bare_title, flags=re.IGNORECASE)
+        bare_title = cls._normalize_text(bare_title)
+        queries: list[str] = []
+        for query in [
+            f'releasegroup:"{cls._escape_query(title)}" AND artist:"{cls._escape_query(artist)}"'
+            if artist else None,
+            f'releasegroup:"{cls._escape_query(title)}"',
+            f'releasegroup:"{cls._escape_query(bare_title)}" AND artist:"{cls._escape_query(artist)}"'
+            if artist and bare_title and bare_title != title else None,
+            # 署名变体兜底：仅按去注释专辑名检索，挑选阶段要求艺术家同时命中
+            f'releasegroup:"{cls._escape_query(bare_title)}"' if bare_title else None,
+        ]:
+            if query and query not in queries:
+                queries.append(query)
+        return queries
 
     def _search_artists(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
         """按用户输入中的艺术家部分搜索 Artist 浏览候选。"""
@@ -382,8 +453,14 @@ class MusicBrainzModule(_ModuleBase):
 
     @staticmethod
     def _match_text(value: Optional[str]) -> str:
-        """移除大小写、空白和标点差异，生成相似度比较使用的紧凑文本。"""
-        return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
+        """移除大小写、空白、标点和繁简差异，生成相似度比较使用的紧凑文本。"""
+        text = str(value or "").casefold()
+        try:
+            # 候选比对统一简体，避免条目繁体写法造成失配
+            text = zhconv_convert(text, "zh-hans")
+        except Exception:  # pylint: disable=broad-except
+            pass
+        return re.sub(r"[\W_]+", "", text, flags=re.UNICODE)
 
     @classmethod
     def _unique_texts(cls, values: Iterable[Optional[str]]) -> list[str]:
@@ -455,10 +532,16 @@ class MusicBrainzModule(_ModuleBase):
             info = self.recognize_music(resolved_source, str(mediaid or meta.media_id))
             if info:
                 return info
-        # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兜底
+        # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兑底
         # 文件识别只能从 Recording 中挑选，专辑或艺术家同名结果不能成为音轨身份。
         candidates = self._search_recordings(meta, limit=10)
         matched = self._select_candidate(meta, candidates, source=resolved_source or self._source)
+        # 整专/单曲发行类资源在 Recording 检索无果时，回退按专辑实体识别；
+        # 专辑挑选要求标题与艺术家同时命中，无艺术家线索时回退检索必然无果，
+        # 直接跳过避免浪费限流配额（批量识别场景可减少约半数请求）
+        if not matched and meta.artists:
+            albums = self._search_albums(meta, limit=10)
+            matched = self._select_album_candidate(meta, albums)
         return matched or self._info_from_meta(meta)
 
     async def async_recognize_media(
@@ -483,23 +566,96 @@ class MusicBrainzModule(_ModuleBase):
     def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], source: str) -> Optional[MusicInfo]:
         """按标题、艺术家和专辑匹配度选择最可信的搜索候选。"""
         normalized_source = cls._normalize_text(source).casefold()
+        # 资源标题携带的音质标记先剥离，再与候选曲名比对
+        clean_title = cls._search_title(meta.title)
+        # 条目的影视 tie-in 注释多为全角括号，与资源半角注释无法精确相等，
+        # 去括号后的主体曲名一致视为弱匹配，且需艺术家同时命中才采信
+        bare_title = cls._strip_parenthetical(clean_title)
         ranked: list[tuple[int, MusicInfo]] = []
         for candidate in candidates:
             if normalized_source and (candidate.source or "").casefold() != normalized_source:
                 continue
             score = 0
-            if meta.title and cls._same_text(meta.title, candidate.title):
+            # 多艺术家资源任一命中即可，联名候选不会因主艺术家顺序失配
+            artist_match = bool(meta.artists) and any(
+                cls._same_text(artist_name, candidate_artist)
+                for artist_name in meta.artists
+                for candidate_artist in candidate.artists
+            )
+            if clean_title and cls._same_text(clean_title, candidate.title):
                 score += 4
-            if meta.artists and any(
-                    cls._same_text(meta.artists[0], artist)
-                    for artist in candidate.artists
+            elif (
+                bare_title
+                and artist_match
+                and (
+                    cls._same_text(bare_title, cls._strip_parenthetical(candidate.title))
+                    # 条目「天國的情人：鄧麗君逝世十周年…」这类冒号副标题，主标题一致视为弱匹配
+                    or cls._same_text(bare_title, cls._main_title(candidate.title))
+                )
             ):
+                score += 2
+            if artist_match:
                 score += 3
             if meta.album and cls._same_text(meta.album, candidate.album):
                 score += 2
-            if meta.isrc and cls._same_text(meta.isrc, candidate.isrc):
+            isrc_match = bool(meta.isrc) and cls._same_text(meta.isrc, candidate.isrc)
+            if isrc_match:
                 score += 5
+            # 同名多版本（如不同年份的重发单曲）靠发行年份消歧
+            if meta.year and candidate.year and int(meta.year) == int(candidate.year):
+                score += 1
+            # 已知艺术家时，艺术家未命中的候选不能采信（ISRC 精确身份除外），
+            # 兜住宽检索阶梯下同名异曲的误配
+            if meta.artists and not artist_match and not isrc_match:
+                score = 0
             ranked.append((score, candidate))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return ranked[0][1] if ranked[0][0] > 0 else None
+
+    @classmethod
+    def _select_album_candidate(cls, meta: MetaMusic, albums: Iterable[MusicInfo]) -> Optional[MusicInfo]:
+        """单曲检索未命中时，从专辑候选中挑选高置信目标。
+
+        专辑重名多，要求标题（含去括号弱匹配）与艺术家同时命中才返回，
+        避免把音轨身份安到错误专辑上。
+        """
+        clean_title = cls._search_title(meta.album or meta.title)
+        if not clean_title:
+            return None
+        bare_title = cls._strip_parenthetical(clean_title)
+        ranked: list[tuple[int, MusicInfo]] = []
+        for album in albums:
+            score = 0
+            album_title = album.title or album.album
+            artist_match = bool(meta.artists) and any(
+                cls._same_text(artist_name, candidate_artist)
+                for artist_name in meta.artists
+                for candidate_artist in album.artists
+            )
+            title_match = False
+            if cls._same_text(clean_title, album_title):
+                score += 4
+                title_match = True
+            elif (
+                artist_match
+                and bare_title
+                and (
+                    cls._same_text(bare_title, cls._strip_parenthetical(album_title))
+                    # 条目「天國的情人：鄧麗君逝世十周年…」这类冒号副标题，主标题一致视为弱匹配
+                    or cls._same_text(bare_title, cls._main_title(album_title))
+                )
+            ):
+                # 「我爱夜 (新歌+精选)」对位条目「我爱夜」这类注释差异
+                score += 2
+                title_match = True
+            if artist_match:
+                score += 3
+            if meta.year and album.year and int(meta.year) == int(album.year):
+                score += 1
+            # 标题与艺术家缺一不可，仅有标题相似不能采信
+            ranked.append((score if title_match and artist_match else 0, album))
         if not ranked:
             return None
         ranked.sort(key=lambda item: item[0], reverse=True)
@@ -527,13 +683,49 @@ class MusicBrainzModule(_ModuleBase):
 
     @classmethod
     def _same_text(cls, left: Optional[str], right: Optional[str]) -> bool:
-        """忽略大小写比较两个音乐文本字段。"""
-        return cls._normalize_text(left).casefold() == cls._normalize_text(right).casefold()
+        """忽略大小写、空白与标点差异比较两个音乐文本字段。"""
+        compact_left = cls._match_text(left)
+        compact_right = cls._match_text(right)
+        # 空文本不参与比对，避免缺失字段被误判为相等
+        return bool(compact_left) and compact_left == compact_right
 
     @classmethod
     def _normalize_text(cls, value: Optional[str]) -> str:
-        """清理音乐检索文本中的多余空白。"""
-        return re.sub(r"\s+", " ", str(value or "")).strip()
+        """清理音乐检索文本中的多余空白，并统一繁简写法避免候选比对失误。"""
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text:
+            return text
+        # MusicBrainz 中文条目以简体为主，资源标题可能是繁体，比对前统一转简体
+        try:
+            return zhconv_convert(text, "zh-hans")
+        except Exception:  # pylint: disable=broad-except
+            return text
+
+    # 资源标题中的音质规格（格式、位深采样参数、年份后缀、发行实体标记）会污染检索式，检索前统一剥离
+    _quality_token_pattern = re.compile(
+        r"\[[^\]]*\]|\((?:19|20)\d{2}\)|"
+        r"\b(?:DSD(?:64|128|256|512)?|DSF|DFF|FLAC|ALAC|APE|WAV|WAVE|AIFF?|PCM|"
+        r"MP3|AAC|M4A|OGG|VORBIS|OPUS|WMA|WEB-?DL|WEBRip|WEB)\b|"
+        r"\b\d{1,3}\s*-?\s*bits?\b|\b\d{2,4}(?:\.\d)?\s*k(?:hz|bps?)\b|"
+        # 流媒体发行实体标记（- Single / - EP），不是曲名的一部分
+        r"\b(?:single|ep|album)\b",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _search_title(cls, value: Optional[str]) -> str:
+        """剥离资源标题中的音频格式、规格参数与年份后缀，只保留曲名用于检索比对。"""
+        text = cls._quality_token_pattern.sub(" ", str(value or ""))
+        # 流媒体文件名消毒产生的下划线转空格，避免破坏检索短语
+        text = text.replace("_", " ")
+        # 规格剥离后可能残留悬空分隔符，统一修剪
+        text = re.sub(r"^[\s\-–—/]+|[\s\-–—/]+$", "", cls._normalize_text(text))
+        # 格式标记后紧跟的场景发布组标签（如 ALAC-HHWEB），整体剔除
+        text = re.sub(r"[-–—]\s*[A-Z0-9]{3,}\s*$", "", text)
+        # 曲名尾部独立年份是发行线索不是曲名一部分（解析阶段通常已提取），
+        # 检索时剥离避免年份文本造成精确短语零命中
+        text = re.sub(r"(?<!\d)\s+(?:19|20)\d{2}$", "", cls._normalize_text(text))
+        return cls._normalize_text(text)
 
     def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:
         """按 MusicBrainz 标准 ID 获取音乐详情，单曲不存在时回退到专辑。"""
@@ -634,8 +826,10 @@ class MusicBrainzModule(_ModuleBase):
     def _build_query(cls, meta: MetaMusic) -> str:
         """构造 MusicBrainz Recording 搜索表达式。"""
         clauses = []
-        if meta.title:
-            clauses.append(f'recording:"{cls._escape_query(meta.title)}"')
+        # 资源标题先剥离音质标记，避免规格文本污染检索式导致零命中
+        title = cls._search_title(meta.title)
+        if title:
+            clauses.append(f'recording:"{cls._escape_query(title)}"')
         if meta.artists:
             clauses.append(f'artist:"{cls._escape_query(meta.artists[0])}"')
         if meta.album:
@@ -998,6 +1192,15 @@ class MusicBrainzModule(_ModuleBase):
         return f"{base}/release-group/{release_group_id}/front-500"
 
     @classmethod
+    def _get_session(cls) -> Session:
+        """懒创建并复用全局 HTTP 会话，批量识别时避免重复建连。"""
+        if cls._session is None:
+            with cls._session_lock:
+                if cls._session is None:
+                    cls._session = Session()
+        return cls._session
+
+    @classmethod
     def _wait_for_rate_limit(cls) -> None:
         """串行控制 MusicBrainz 公共接口的最小请求间隔。"""
         with cls._request_lock:
@@ -1014,32 +1217,49 @@ class MusicBrainzModule(_ModuleBase):
             path: str,
             params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
-        """请求 MusicBrainz JSON 接口并统一处理网络和响应错误。"""
-        cls._wait_for_rate_limit()
-        response = RequestUtils(
-            headers={
-                "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
-                "Accept": "application/json",
-            },
-            proxies=settings.PROXY,
-            timeout=20,
-        ).get_res(f"{cls._base_url}{path}", params=params)
-        if response is None:
-            return None
-        try:
-            if response.status_code == 404:
-                # 单曲与专辑共用同一套 ID 入口，404 属于正常的探测结果
-                logger.debug(f"MusicBrainz 资源不存在：{path}")
-                # 使用空对象区分稳定的不存在与瞬时请求失败，使有界缓存能够复用探测结果。
-                return {}
-            if response.status_code != 200:
-                logger.warning(
-                    f"MusicBrainz 请求失败：{response.status_code} {response.text[:200]}"
-                )
+        """请求 MusicBrainz JSON 接口并统一处理网络和响应错误。
+
+        服务端繁忙（429/5xx）属于瞬时错误，退避重试后再失败才放弃，
+        避免批量识别场景下把限流误判为检索零命中。
+        """
+        attempts = cls._busy_retries + 1
+        for attempt in range(attempts):
+            cls._wait_for_rate_limit()
+            response = RequestUtils(
+                headers={
+                    "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
+                    "Accept": "application/json",
+                },
+                proxies=settings.PROXY,
+                session=cls._get_session(),
+                timeout=20,
+            ).get_res(f"{cls._base_url}{path}", params=params)
+            if response is None:
                 return None
-            return response.json()
-        except (TypeError, ValueError) as err:
-            logger.warning(f"MusicBrainz 响应解析失败：{err}")
-            return None
-        finally:
-            response.close()
+            status_code = response.status_code
+            try:
+                if status_code == 404:
+                    # 单曲与专辑共用同一套 ID 入口，404 属于正常的探测结果
+                    logger.debug(f"MusicBrainz 资源不存在：{path}")
+                    # 使用空对象区分稳定的不存在与瞬时请求失败，使有界缓存能够复用探测结果。
+                    return {}
+                if status_code == 429 or status_code >= 500:
+                    logger.warning(
+                        f"MusicBrainz 服务繁忙：{status_code} {response.text[:200]}"
+                    )
+                    if attempt < attempts - 1:
+                        time.sleep(cls._busy_backoff * (2 ** attempt))
+                        continue
+                    return None
+                if status_code != 200:
+                    logger.warning(
+                        f"MusicBrainz 请求失败：{status_code} {response.text[:200]}"
+                    )
+                    return None
+                return response.json()
+            except (TypeError, ValueError) as err:
+                logger.warning(f"MusicBrainz 响应解析失败：{err}")
+                return None
+            finally:
+                response.close()
+        return None

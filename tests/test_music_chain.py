@@ -24,6 +24,45 @@ def test_parse_query_keeps_plain_title():
     assert meta.title == "Random Access Memories"
 
 
+def test_parse_query_strips_quality_tokens_before_artist_split():
+    """音质规格不应参与艺术家/曲名拆分，年份括号与格式后缀需剔除。"""
+    meta = MusicChain.parse_query("毛阿敏 - 永遠是朋友(2000) - ALAC [16B-44.1kHz]")
+
+    assert meta.artists == ["毛阿敏"]
+    assert meta.title == "永遠是朋友"
+    assert meta.audio_format == "ALAC"
+
+
+def test_parse_query_does_not_misplit_quality_only_tail():
+    """无艺术家时格式规格段不能被误拆成曲名，曲名不能丢字。"""
+    meta = MusicChain.parse_query("永遠是朋友(2000) - ALAC [16B-44.1kHz]")
+
+    assert meta.artists == []
+    assert meta.title == "永遠是朋友"
+
+
+def test_parse_query_strips_trailing_artist_suffix():
+    """曲名尾部重复的艺术家署名应被剥离，不作为曲名参与检索。"""
+    meta = MusicChain.parse_query("毛阿敏 - 名人名曲-毛阿敏(2000)")
+
+    assert meta.artists == ["毛阿敏"]
+    assert meta.title == "名人名曲"
+    assert meta.year == 2000
+
+    meta = MusicChain.parse_query("许茹芸 - 争奇斗艳演唱会实况 2 - 许茹芸 (1996)")
+
+    assert meta.artists == ["许茹芸"]
+    assert meta.title == "争奇斗艳演唱会实况 2"
+
+
+def test_parse_query_keeps_non_artist_suffix():
+    """曲名尾段与艺术家不一致时不应被误剥离。"""
+    meta = MusicChain.parse_query("毛阿敏 - 思念 - 现场版")
+
+    assert meta.artists == ["毛阿敏"]
+    assert meta.title == "思念 - 现场版"
+
+
 def test_build_site_keywords_prefers_artist_album():
     """专辑订阅只按艺术家与专辑名搜索，不混入其中某首单曲。"""
     info = MusicInfo(

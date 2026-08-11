@@ -17,15 +17,12 @@ from app.core.context import (
 )
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
-from app.helper.music import MusicNameParser
 from app.log import logger
 
 
 class MusicChain(ChainBase):
     """音乐元数据搜索、识别与站点搜索参数编排链。"""
 
-    _artist_title_pattern = re.compile(r"^\s*(?P<artist>.+?)\s+[-–—]\s+(?P<title>.+?)\s*$")
-    _spaces_pattern = re.compile(r"\s+")
     # 专辑目录匹配结果缓存：{目录路径: (音频文件数, 匹配结果)}，避免逐文件整理时重复请求远端
     _album_dir_cache: dict[str, tuple[int, dict[str, MusicInfo]]] = {}
     _album_dir_cache_max = 128
@@ -34,15 +31,8 @@ class MusicChain(ChainBase):
 
     @classmethod
     def parse_query(cls, query: str) -> MetaMusic:
-        """将用户输入的搜索关键词解析为音乐元数据。"""
-        normalized = cls._normalize_text(query)
-        meta = MetaMusic(org_string=query, title=normalized)
-        meta.apply_audio_quality(normalized)
-        match = cls._artist_title_pattern.match(normalized)
-        if match:
-            meta.artists = [match.group("artist").strip()]
-            meta.title = match.group("title").strip()
-        return meta
+        """将用户输入的搜索关键词解析为音乐元数据，解析核心在 MetaMusic.apply_title。"""
+        return MetaMusic(org_string=query, title=query, parse_title=True)
 
     @classmethod
     def build_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
@@ -314,7 +304,7 @@ class MusicChain(ChainBase):
     @staticmethod
     def _normalize_match_text(value: Optional[str]) -> str:
         """移除大小写、空白和标点差异，生成站点标题匹配使用的紧凑文本。"""
-        return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
+        return MetaMusic._compact_text(value)
 
     @classmethod
     def is_audio_path(cls, path: str | Path) -> bool:
@@ -330,7 +320,7 @@ class MusicChain(ChainBase):
         else:
             meta = cls.parse_query(file_path.stem)
         # WAV 无标签、FLAC/MP3 标签不全时，依靠文件名和目录结构补充识别线索
-        return MusicNameParser.apply_path_context(meta, file_path)
+        return meta.apply_path_context(file_path)
 
     async def async_recognize_by_path(
             self,
@@ -460,7 +450,7 @@ class MusicChain(ChainBase):
     @classmethod
     def _album_meta_from_context(cls, dir_path: Path, metas: list[MetaMusic]) -> MetaMusic:
         """汇总目录名和文件标签中的专辑线索，作为专辑搜索条件。"""
-        dir_info = MusicNameParser.parse_album_dir(dir_path.name)
+        dir_info = MetaMusic.parse_album_dir(dir_path.name)
         # 文件标签中的专辑信息比目录名更可靠，多数文件一致时优先采用
         album_votes: dict[str, int] = {}
         artist_votes: dict[str, int] = {}
@@ -611,4 +601,4 @@ class MusicChain(ChainBase):
     @classmethod
     def _normalize_text(cls, value: Optional[str]) -> str:
         """清理音乐检索文本中的多余空白。"""
-        return cls._spaces_pattern.sub(" ", str(value or "")).strip()
+        return re.sub(r"\s+", " ", str(value or "")).strip()
