@@ -722,6 +722,9 @@ class MoviePilotAgent:
             "reply_mode": None,
             "should_dispatch_reply": should_dispatch_reply,
             "is_admin": await self._is_system_admin_context(),
+            # 工具回调消息需要发回原会话（群聊@机器人时按钮选择等卡片不能发到私聊），
+            # 后台任务无渠道上下文时置空，交由通知链广播。
+            "original_chat_id": None if self.is_background else self.original_chat_id,
         }
 
     def _should_stream(self) -> bool:

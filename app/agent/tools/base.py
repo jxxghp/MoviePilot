@@ -658,6 +658,16 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                     "original_chat_id": None,
                 }
             )
+        elif not notification.original_chat_id:
+            # 工具回调消息默认回填当前会话的原会话 ID，
+            # 保证群聊 @ 机器人时按钮选择、消息发送等交互消息回复到原群，而不是私聊窗口。
+            original_chat_id = str(
+                self._agent_context.get("original_chat_id") or ""
+            ).strip() or None
+            if original_chat_id:
+                notification = notification.model_copy(
+                    update={"original_chat_id": original_chat_id}
+                )
 
         await ToolChain().async_post_message(notification)
 
