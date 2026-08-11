@@ -111,6 +111,7 @@ def test_musicbrainz_module_recognize_media_falls_back_to_offline_when_no_match(
     module = MusicBrainzModule()
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
     monkeypatch.setattr(module, "_search_recordings", Mock(return_value=[]))
+    monkeypatch.setattr(module, "_search_albums", Mock(return_value=[]))
 
     result = module.recognize_media(meta=meta)
 
