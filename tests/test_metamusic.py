@@ -190,6 +190,31 @@ def test_apply_title_splits_various_artists_prefix():
     assert meta.title == "Reply 1988 OST"
 
 
+def test_apply_title_splits_year_sandwich():
+    """「艺术家 年份 专辑」三明治结构按中部年份拆分并提取年份。"""
+    meta = parse_title("Leehom Wang 2010 The 18 Martial Arts")
+
+    assert meta.artists == ["Leehom Wang"]
+    assert meta.title == "The 18 Martial Arts"
+    assert meta.year == 2010
+
+    # 多艺术家分隔符与单词专辑名同样适用
+    meta = parse_title("ASKA&SENS 1993 YAH YAH YAH")
+    assert meta.artists == ["ASKA", "SENS"]
+    assert meta.title == "YAH YAH YAH"
+    assert meta.year == 1993
+
+
+def test_apply_title_year_sandwich_guards():
+    """三明治拆分的护栏：规格残留与长艺术家段不误拆。"""
+    # 剩余段数字开头是规格（2.0）不是专辑名
+    assert parse_title("K3 Kan Het S02 2014 2.0 -MINIBEL").artists == []
+    # 剩余段连字符开头是发布组标签（-PTer）不是专辑名
+    assert parse_title("Ashton Celebration 2013 -PTer").artists == []
+    # 艺术家段超过 4 个词时拒绝拆分（含曲名与年份的完整标题）
+    assert parse_title("Bee Gees One Night Only 1997 -ProfessorP").artists == []
+
+
 def test_apply_title_restores_letter_abbrev():
     """单字母点号缩写还原不误伤合法缩写与单词。"""
     meta = parse_title("E.S.Posthumus - Ashielf Alpen FLAC")

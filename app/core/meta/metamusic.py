@@ -580,9 +580,18 @@ class MetaMusic(MetaBase):
                     self.artists = artists
                     self._finalize_title(self._clean_tail(title))
                 else:
-                    title = self._clean_tail(cleaned)
-                    # 无艺术家线索时剥离 CJK 标题尾部的「曲名-歌手」署名，候选比对阶段负责验证身份
-                    self._finalize_title(self._strip_cjk_artist_suffix(title))
+                    # 「艺术家 年份 专辑」三明治结构（Leehom Wang 2010 The 18 Martial Arts），
+                    # 其他拆分均无艺术家线索时按中部年份拆分，年份提取为发行线索
+                    artists, title, inner_year = self._split_year_sandwich(cleaned)
+                    if artists:
+                        self.artists = artists
+                        if inner_year and not self.year:
+                            self.year = inner_year
+                        self._finalize_title(self._clean_tail(title))
+                    else:
+                        title = self._clean_tail(cleaned)
+                        # 无艺术家线索时剥离 CJK 标题尾部的「曲名-歌手」署名，候选比对阶段负责验证身份
+                        self._finalize_title(self._strip_cjk_artist_suffix(title))
         else:
             self.title = None
         # 括号注释属于曲名的版本/出处说明，剥离的规格文本之后拼回展示
@@ -806,6 +815,37 @@ class MetaMusic(MetaBase):
         if head and tail and " " in head and " " in tail:
             return cls._split_artists(head), tail
         return None, text
+
+    # 「艺术家 年份 专辑」三明治结构：艺术家段为不超过 4 个词的拉丁词组；
+    # 贪婪匹配艺术家段，避免懒惰量词把首个词当艺术家、剩余词混入专辑名
+    _YEAR_SANDWICH_RE = re.compile(
+        r"^(?P<artist>[A-Za-z][A-Za-z0-9&+.'’\- ]*)\s+(?P<year>(?:19|20)\d{2})\s+(?P<rest>\S.*)$"
+    )
+
+    @classmethod
+    def _split_year_sandwich(cls, value: str) -> tuple[Optional[list[str]], str, Optional[int]]:
+        """按中部独立年份拆分「艺术家 年份 专辑」（Jacky Cheung 1987 Jacky）。
+
+        :return: (艺术家列表, 专辑名, 年份)，不适用时 (None, 原文, None)
+        """
+        match = cls._YEAR_SANDWICH_RE.match(str(value or "").strip())
+        if not match:
+            return None, str(value or ""), None
+        artist_text = match.group("artist").strip()
+        raw_rest = match.group("rest").strip()
+        rest = raw_rest.strip(" \t-–—−－")
+        # 艺术家段限 4 个词以内；年份后紧跟另一个年份时是年份区间不是三明治结构；
+        # 剩余段原文需以字母开头：「… 2014 2.0 -MINIBEL」数字开头、
+        # 「… 2013 -PTer」发布组标签连字符开头都不是专辑名，拒绝拆分
+        if (
+            len(artist_text.split()) <= 4
+            and rest
+            and not re.match(r"(?:19|20)\d{2}\b", raw_rest)
+            and raw_rest[0].isalpha()
+            and any(char.isalpha() for char in rest)
+        ):
+            return cls._split_artists(artist_text), rest, int(match.group("year"))
+        return None, str(value or ""), None
 
     @staticmethod
     def _compact_text(value: Any) -> str:
