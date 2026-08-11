@@ -151,6 +151,9 @@ class MusicBrainzModule(_ModuleBase):
         artist = meta.artists[0] if meta.artists else None
         # 括号内的影视 tie-in、版本说明多为半角，与条目全角写法不一致，准备去注释曲名兜底
         bare_title = cls._strip_parenthetical(title)
+        # 曲名开头的艺术家署名前缀是命名习惯不是曲名内容，用主体名检索
+        title = cls._strip_artist_prefix(title, meta.artists)
+        bare_title = cls._strip_artist_prefix(bare_title, meta.artists)
         queries: list[str] = []
         for query in [
             cls._build_query(meta),
@@ -183,6 +186,31 @@ class MusicBrainzModule(_ModuleBase):
         text = re.split(r"\s*[-–—−－：:]\s*|\s*《", str(value or ""), maxsplit=1)[0]
         return cls._normalize_text(text)
 
+    @classmethod
+    def _lead_token(cls, value: Optional[str]) -> str:
+        """提取候选标题首个空白分隔段（「愛情電影主題曲 雲且留住」的主体名）。"""
+        text = str(value or "").strip()
+        return cls._normalize_text(text.split(" ", 1)[0]) if text else ""
+
+    @classmethod
+    def _strip_artist_prefix(cls, title: Optional[str], artists: Optional[list[str]]) -> str:
+        """剥离曲名开头的艺术家署名前缀（「许茹芸的爱情电影主题曲」）。
+
+        资源命名习惯把署名放在曲名前，条目不含该前缀；署名身份由
+        候选挑选阶段的艺术家要求保证，不会产生错误归属。前缀剥离后
+        无剩余文本时保留原标题（「合集 - 花开」类短标题保护）。
+        """
+        text = str(title or "").strip()
+        for artist in artists or []:
+            artist = str(artist or "").strip()
+            if len(artist) < 2:
+                continue
+            if text.startswith(artist):
+                remainder = re.sub(r"^[的之]\s*", "", text[len(artist):]).strip()
+                if remainder:
+                    return remainder
+        return text
+
     def _search_albums(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
         """按标题和可选艺术家搜索 Release Group 专辑候选，检索式同样逐级放宽。"""
         for query in self._album_queries(meta):
@@ -214,6 +242,9 @@ class MusicBrainzModule(_ModuleBase):
         bare_title = cls._strip_parenthetical(title)
         bare_title = re.sub(r",?\s*vol\.?\s*\d+$", "", bare_title, flags=re.IGNORECASE)
         bare_title = cls._normalize_text(bare_title)
+        # 专辑名开头的艺术家署名前缀同样是命名习惯，用主体名检索
+        title = cls._strip_artist_prefix(title, meta.artists)
+        bare_title = cls._strip_artist_prefix(bare_title, meta.artists)
         queries: list[str] = []
         for query in [
             f'releasegroup:{cls._query_phrase(title)} AND artist:"{cls._escape_query(artist)}"'
@@ -569,8 +600,9 @@ class MusicBrainzModule(_ModuleBase):
     def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], source: str) -> Optional[MusicInfo]:
         """按标题、艺术家和专辑匹配度选择最可信的搜索候选。"""
         normalized_source = cls._normalize_text(source).casefold()
-        # 资源标题携带的音质标记先剥离，再与候选曲名比对
-        clean_title = cls._search_title(meta.title)
+        # 资源标题携带的音质标记先剥离，再与候选曲名比对；
+        # 曲名开头的艺术家署名前缀是命名习惯，用主体名比对
+        clean_title = cls._strip_artist_prefix(cls._search_title(meta.title), meta.artists)
         # 条目的影视 tie-in 注释多为全角括号，与资源半角注释无法精确相等，
         # 去括号后的主体曲名一致视为弱匹配，且需艺术家同时命中才采信
         bare_title = cls._strip_parenthetical(clean_title)
@@ -598,6 +630,11 @@ class MusicBrainzModule(_ModuleBase):
                     or cls._same_text(bare_title, cls._main_title(candidate.title))
                     # 条目「为你盛开-许巍《无尽光芒》…」这类连字符前置命名，首段曲名一致视为弱匹配
                     or cls._same_text(bare_title, cls._head_title(candidate.title))
+                    # 条目「愛情電影主題曲 雲且留住」这类「主体名 补充说明」结构，首段一致视为弱匹配
+                    or (
+                        len(cls._match_text(bare_title)) >= 3
+                        and cls._same_text(bare_title, cls._lead_token(candidate.title))
+                    )
                 )
             ):
                 score += 2
@@ -632,7 +669,8 @@ class MusicBrainzModule(_ModuleBase):
         专辑重名多，要求标题（含去括号弱匹配）与艺术家同时命中才返回，
         避免把音轨身份安到错误专辑上。
         """
-        clean_title = cls._search_title(meta.album or meta.title)
+        clean_title = cls._strip_artist_prefix(
+            cls._search_title(meta.album or meta.title), meta.artists)
         if not clean_title:
             return None
         bare_title = cls._strip_parenthetical(clean_title)
@@ -658,6 +696,11 @@ class MusicBrainzModule(_ModuleBase):
                     or cls._same_text(bare_title, cls._main_title(album_title))
                     # 条目「为你盛开-许巍《无尽光芒》…」这类连字符前置命名，首段曲名一致视为弱匹配
                     or cls._same_text(bare_title, cls._head_title(album_title))
+                    # 条目「愛情電影主題曲 雲且留住」这类「主体名 补充说明」结构，首段一致视为弱匹配
+                    or (
+                        len(cls._match_text(bare_title)) >= 3
+                        and cls._same_text(bare_title, cls._lead_token(album_title))
+                    )
                 )
             ):
                 # 「我爱夜 (新歌+精选)」对位条目「我爱夜」这类注释差异

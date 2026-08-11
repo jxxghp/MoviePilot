@@ -390,3 +390,14 @@ def test_apply_title_keeps_single_paren_disambiguation():
 
     assert meta.artists == ["周杰伦"]
     assert meta.title == "晴天 (电影版)"
+
+
+def test_apply_title_collection_with_space_sample_rate():
+    """合集/精选是发行形态标记，空格写法的采样率（44 1khz）也应剔除；
+    剔除后仅剩悬空分隔符时艺术家仍需拆出。"""
+    meta = parse_title("周杰伦 - 合集  2000-2022 - FLAC 16bit 44 1khz")
+
+    assert meta.artists == ["周杰伦"]
+    assert meta.title is None
+    assert meta.year == 2022
+    assert meta.audio_format == "FLAC"

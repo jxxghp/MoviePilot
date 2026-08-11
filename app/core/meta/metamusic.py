@@ -199,9 +199,10 @@ _MUSIC_VIDEO_TOKEN_ALT = (
 _MUSIC_QUALITY_TOKEN_RE = re.compile(
     r"\[[^\]]*\]|\((?:19|20)\d{2}\)|"
     rf"\b(?:{_MUSIC_FORMAT_TOKEN_ALT})\b|"
-    r"\b\d{1,3}\s*-?\s*bits?\b|\b\d{2,4}(?:\.\d)?\s*k(?:hz|bps?)\b|"
-    # 无损声明词、 ripping 方式与流媒体发行实体标记（- Single / - EP），不是曲名的一部分
-    r"\b(?:single|ep|album)\b|(?<![A-Za-z0-9])(?:lossless|无损音质|无损|分轨|整轨)(?![A-Za-z0-9])",
+    r"\b\d{1,3}\s*-?\s*bits?\b|\b\d{2,4}(?:(?:[.．]|\s)\d)?\s*k(?:hz|bps?)\b|"
+    # 无损声明词、 ripping 方式与流媒体发行实体标记（- Single / - EP），不是曲名的一部分；
+    # 合集/精选是发行形态标记，CJK 词用非字母数字定界（\b 对中文不可靠）
+    r"\b(?:single|ep|album)\b|(?<![A-Za-z0-9])(?:lossless|无损音质|无损|分轨|整轨|合集|精选)(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
 # 演唱会/音乐视频种子的视频编码标记：分辨率、编码、容器与声道描述，
@@ -211,8 +212,8 @@ _MUSIC_VIDEO_TOKEN_RE = re.compile(rf"\b(?:{_MUSIC_VIDEO_TOKEN_ALT})\b", re.IGNO
 # 曲名含任何自然语言文本时判定失败，保证「曲名 (注释) - WEB-DL」不被误剥
 _MUSIC_SPEC_SEGMENT_RE = re.compile(
     rf"^(?:\b(?:{_MUSIC_FORMAT_TOKEN_ALT}|{_MUSIC_VIDEO_TOKEN_ALT}|single|ep|album)\b"
-    r"|\d{1,3}\s*-?\s*bits?|\d{2,4}(?:\.\d)?\s*k(?:hz|bps?)"
-    r"|lossless|无损音质|无损|分轨|整轨"
+    r"|\d{1,3}\s*-?\s*bits?|\d{2,4}(?:(?:[.．]|\s)\d)?\s*k(?:hz|bps?)"
+    r"|lossless|无损音质|无损|分轨|整轨|合集|精选"
     r"|[\s\-–—−－/+]+(?![\s\-–—−－/+])"
     r"|(?:(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{3,})"
     r")+$",
@@ -498,6 +499,14 @@ class MetaMusic(MetaBase):
         if comment_match:
             comment = comment_match.group("comment").strip()
             cleaned = cleaned[: comment_match.start()].strip()
+        # 规格剔除后曲名侧无剩余文本时，尾部悬空分隔符仍是艺术家署名结构
+        # （「周杰伦 - 合集 2000-2022 - FLAC 16bit 44 1khz」剔除后仅剩「周杰伦 -」）
+        dangling = re.fullmatch(r"(?P<artist>.+?)\s+[\-–—−－]+", cleaned) if cleaned else None
+        if dangling and not self.artists:
+            self.artists = self._split_artists(dangling.group("artist"))
+            self.title = None
+            self._apply_track_prefix()
+            return
         # CJK「歌手《专辑名》」书名号命名优先于连字符拆分，提取艺术家与专辑实体
         marker = None if self.artists else _MUSIC_ALBUM_MARKER_RE.match(cleaned)
         if marker:

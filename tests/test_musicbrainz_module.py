@@ -634,6 +634,33 @@ def test_same_text_normalizes_cjk_numerals():
     assert not MusicBrainzModule._same_text("茹此精彩十三首", "茹此精彩14首")
 
 
+def test_strip_artist_prefix_removes_signature_prefix():
+    """曲名开头的艺术家署名前缀是命名习惯，检索与比对应使用主体名。"""
+    assert MusicBrainzModule._strip_artist_prefix(
+        "许茹芸的爱情电影主题曲", ["许茹芸"]) == "爱情电影主题曲"
+    # 剥离后无剩余时保留原标题，短标题不受影响
+    assert MusicBrainzModule._strip_artist_prefix("许茹芸", ["许茹芸"]) == "许茹芸"
+    assert MusicBrainzModule._strip_artist_prefix("晴天", ["周杰伦"]) == "晴天"
+
+
+def test_select_album_candidate_matches_lead_token_structure():
+    """条目「主体名 补充说明」结构与资源主体名首段一致时应弱匹配命中。"""
+    meta = MetaMusic(title="许茹芸的爱情电影主题曲", artists=["许茹芸"], year=2003)
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-1",
+        title="愛情電影主題曲 雲且留住",
+        artists=["許茹芸"],
+        year=2003,
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-1"
+
+
 def test_select_candidate_rejects_wrong_artist_same_title():
     """已知艺术家时，同名异曲的候选不能因标题相等被采信。"""
     meta = MetaMusic(title="因为有你", artists=["毛阿敏"])
