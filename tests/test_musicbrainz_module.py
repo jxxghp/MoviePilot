@@ -697,6 +697,21 @@ def test_select_album_candidate_strips_volume_suffix():
     assert matched.media_id == "album-1"
 
 
+def test_select_album_candidate_rejects_wrong_volume():
+    """资源带卷号时其他分卷候选不能被弱匹配采信。"""
+    meta = MetaMusic(title="Ibiza Lounge Moments, Vol. 1", artists=["Various Artists"], year=2022)
+    wrong_volume = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-wrong",
+        title="Ibiza Lounge Moments, Vol. 3",
+        artists=["Various Artists"],
+        year=2023,
+    )
+
+    assert MusicBrainzModule._select_album_candidate(meta, [wrong_volume]) is None
+
+
 def test_select_album_candidate_matches_contained_title():
     """条目带额外前缀完整包含资源主体名（原声带类）时应弱匹配命中。"""
     meta = MetaMusic(

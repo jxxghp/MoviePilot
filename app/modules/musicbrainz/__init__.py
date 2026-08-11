@@ -194,11 +194,19 @@ class MusicBrainzModule(_ModuleBase):
 
     # 系列专辑的卷号后缀（好歌茹芸, Vol. 3）是发行分卷标记，条目本体不含卷号
     _VOLUME_SUFFIX_RE = re.compile(r",?\s*vol\.?\s*\d+$", re.IGNORECASE)
+    # 卷号提取：标题任意位置的 Vol. N 写法，系列专辑弱匹配时用于分卷一致性校验
+    _VOLUME_NUMBER_RE = re.compile(r"vol\.?\s*(\d+)", re.IGNORECASE)
 
     @classmethod
     def _strip_volume_suffix(cls, value: Optional[str]) -> str:
         """剔除标题尾部的卷号后缀，返回专辑本体名。"""
         return cls._normalize_text(cls._VOLUME_SUFFIX_RE.sub("", str(value or "")))
+
+    @classmethod
+    def _volume_number(cls, value: Optional[str]) -> Optional[str]:
+        """提取标题中的卷号（Vol. 3 -> 3），无卷号返回 None。"""
+        match = cls._VOLUME_NUMBER_RE.search(str(value or ""))
+        return match.group(1) if match else None
 
     # 原声带资源标题的通用描述词尾部（条目本体是电影名）；
     # 尾部描述词保留时作为原声带形态标记参与弱匹配判定
@@ -726,8 +734,10 @@ class MusicBrainzModule(_ModuleBase):
             cls._search_title(meta.album or meta.title), meta.artists)
         if not clean_title:
             return None
-        # 去括号与卷号后缀后的本体名用于弱匹配（好歌茹芸, Vol. 3 -> 好歌茹芸）
+        # 去括号与卷号后缀后的本体名用于弱匹配（好歌茹芸, Vol. 3 -> 好歌茹芸）；
+        # 资源带卷号时弱匹配要求候选卷号一致，避免 Ibiza Vol.1 误配 Vol.3
         bare_title = cls._strip_volume_suffix(cls._strip_parenthetical(clean_title))
+        meta_volume = cls._volume_number(clean_title)
         ranked: list[tuple[int, MusicInfo]] = []
         for album in albums:
             score = 0
@@ -738,7 +748,10 @@ class MusicBrainzModule(_ModuleBase):
                 for candidate_artist in album.artists
             )
             title_match = False
-            if cls._same_text(clean_title, album_title):
+            # 资源带卷号时候选卷号不一致（含其他分卷）直接排除，避免 Vol.1 误配 Vol.3
+            if meta_volume and cls._volume_number(album_title) not in (None, meta_volume):
+                pass
+            elif cls._same_text(clean_title, album_title):
                 score += 4
                 title_match = True
             elif (
