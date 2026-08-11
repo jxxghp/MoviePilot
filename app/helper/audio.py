@@ -16,19 +16,22 @@ class AudioMetadataHelper:
 
     @classmethod
     def read(cls, path: Path) -> MetaMusic:
-        """读取本地音频文件标签；读取失败时返回基于文件名的最小元数据。"""
-        fallback = MetaMusic(
-            org_string=path.name,
-            title=path.stem,
-            audio_format=path.suffix.lstrip(".").upper() or None,
-        )
+        """读取本地音频标签，并以完整文件名模式和目录线索补充缺失字段。"""
+        def filename_fallback() -> MetaMusic:
+            """构造无标签结果，完整文件名解析只在确有需要时执行。"""
+            return MetaMusic(
+                org_string=path.name,
+                title=path.stem,
+                audio_format=path.suffix.lstrip(".").upper() or None,
+            ).apply_path_context(path)
+
         try:
             audio = MutagenFile(path, easy=True)
         except Exception as err:
             logger.warning(f"读取音频标签失败：{path} - {err}")
-            return fallback
+            return filename_fallback()
         if not audio:
-            return fallback
+            return filename_fallback()
 
         tags = audio.tags or {}
         track_number, total_tracks = cls._number_pair(cls._first(tags, "tracknumber"))
@@ -52,7 +55,7 @@ class AudioMetadataHelper:
             bitrate=cls._optional_int(getattr(info, "bitrate", None)),
             duration=round(info.length) if info and getattr(info, "length", None) else None,
             isrc=cls._first(tags, "isrc"),
-        )
+        ).apply_path_context(path)
 
     @classmethod
     def write(

@@ -43,7 +43,11 @@ class ScrapeMetadataInput(BaseModel):
     )
     media_source: Optional[str] = Field(
         None,
-        description="Music metadata source, normally musicbrainz. Must be paired with media_id",
+        description=(
+            "Music metadata source: musicbrainz, theaudiodb, or doubanmusic. "
+            "When omitted, automatic music recognition compares all sources. "
+            "Must be paired with media_id when an ID is supplied"
+        ),
     )
     media_id: Optional[str] = Field(
         None,
@@ -209,6 +213,7 @@ class ScrapeMetadataTool(MoviePilotTool):
                     fileitem=fileitem,
                     mediainfo=mediainfo,
                     overwrite=bool(overwrite),
+                    source=media_source,
                 )
                 result = {
                     "success": success,

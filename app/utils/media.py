@@ -9,6 +9,11 @@ MEDIA_SOURCE_ALIASES = {
     "douban": "douban",
     "bangumi": "bangumi",
     "anilist": "anilist",
+    "musicbrainz": "musicbrainz",
+    "theaudiodb": "theaudiodb",
+    "audio_db": "theaudiodb",
+    "doubanmusic": "doubanmusic",
+    "douban_music": "doubanmusic",
 }
 
 MEDIA_SOURCE_PREFIXES = {
@@ -16,6 +21,9 @@ MEDIA_SOURCE_PREFIXES = {
     "douban": "douban",
     "bangumi": "bangumi",
     "anilist": "anilist",
+    "musicbrainz": "musicbrainz",
+    "theaudiodb": "theaudiodb",
+    "doubanmusic": "doubanmusic",
 }
 
 MEDIA_SOURCE_ID_FIELDS = {
@@ -23,7 +31,18 @@ MEDIA_SOURCE_ID_FIELDS = {
     "douban": ("douban_id", "doubanid"),
     "bangumi": ("bangumi_id", "bangumiid"),
     "anilist": ("anilist_id", "anilistid"),
+    "musicbrainz": ("media_id",),
+    "theaudiodb": ("media_id", "theaudiodb_id"),
+    "doubanmusic": ("media_id", "douban_id", "doubanid"),
 }
+
+MUSIC_MEDIA_SOURCE_ORDER = ("musicbrainz", "theaudiodb", "doubanmusic")
+MUSIC_MEDIA_SOURCES = frozenset(MUSIC_MEDIA_SOURCE_ORDER)
+
+
+def is_music_media_source(source: Optional[str]) -> bool:
+    """判断单个请求级来源是否为内置音乐元数据源。"""
+    return normalize_media_source(source) in MUSIC_MEDIA_SOURCES
 
 
 def normalize_media_source(source: Optional[str]) -> Optional[str]:

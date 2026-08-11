@@ -370,6 +370,31 @@ class DoubanApi(metaclass=WeakSingleton):
         return await self.__async_invoke_search(self._urls["book_search"], q=keyword,
                                                 start=start, count=count, _ts=ts)
 
+    def music_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
+        """搜索豆瓣音乐条目。"""
+        return self.__invoke_search(
+            self._urls["search_subject"],
+            type="music",
+            q=keyword,
+            start=start,
+            count=count,
+            _ts=ts,
+        )
+
+    async def async_music_search(self, keyword: str, start: Optional[int] = 0,
+                                 count: Optional[int] = 20,
+                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
+        """异步搜索豆瓣音乐条目。"""
+        return await self.__async_invoke_search(
+            self._urls["search_subject"],
+            type="music",
+            q=keyword,
+            start=start,
+            count=count,
+            _ts=ts,
+        )
+
     def group_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
@@ -589,6 +614,14 @@ class DoubanApi(metaclass=WeakSingleton):
         书籍详情（异步版本）
         """
         return await self.__async_invoke_search(self._urls["book_detail"] + subject_id)
+
+    def music_detail(self, subject_id: str) -> dict:
+        """获取豆瓣音乐详情。"""
+        return self.__invoke_search(self._urls["music_detail"] + subject_id)
+
+    async def async_music_detail(self, subject_id: str) -> dict:
+        """异步获取豆瓣音乐详情。"""
+        return await self.__async_invoke_search(self._urls["music_detail"] + subject_id)
 
     def movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):

@@ -19,14 +19,18 @@ from app.db.user_oper import get_current_active_user, get_current_active_superus
 from app.schemas import MediaType, MediaRecognizeConvertEventData
 from app.schemas.category import CategoryConfig
 from app.schemas.types import ChainEventType
-from app.utils.media import MEDIA_SOURCE_ID_FIELDS, parse_media_key
+from app.utils.media import (
+    MEDIA_SOURCE_ID_FIELDS,
+    is_music_media_source,
+    parse_media_key,
+)
 
 router = APIRouter()
 MediaSource = str
 
 
 def _is_valid_source_media_id(source: Optional[str], media_id: str) -> bool:
-    """按媒体数据源校验原生 ID，MusicBrainz 使用 UUID，其它现有来源使用数字 ID。"""
+    """按媒体数据源校验原生 ID，MusicBrainz 使用 UUID，其它内置来源使用数字 ID。"""
     if source == "musicbrainz":
         try:
             UUID(media_id)
@@ -122,8 +126,8 @@ async def recognize(
     """
     # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
     metainfo = _build_recognize_metainfo(title, subtitle, custom_words)
-    # MusicBrainz 仅支持音乐识别，非音频后缀的标题统一按音乐元数据解析
-    if source == "musicbrainz" and not isinstance(metainfo, MetaMusic):
+    # 显式音乐来源需要按音乐元数据解析，避免名称测试误入影视识别。
+    if is_music_media_source(source) and not isinstance(metainfo, MetaMusic):
         metainfo = MusicChain.parse_query(title)
     mediainfo = await MediaChain().async_recognize_by_meta(
         metainfo,
@@ -218,9 +222,13 @@ async def search(
         return obj.source
 
     media_chain = MediaChain()
-    if type == "music" or source == "musicbrainz":
+    if type == "music" or is_music_media_source(source):
         # 音乐搜索统一入口，与影视搜索共用 /media/search
-        music_infos = await MusicChain().async_search(query=title, limit=count)
+        music_search_params = {"query": title, "limit": count}
+        # 未指定来源时保留既有调用契约，由 MusicChain 选择默认音乐源。
+        if source:
+            music_search_params["source"] = source
+        music_infos = await MusicChain().async_search(**music_search_params)
         return [
             info.to_dict()
             for info in music_infos
@@ -283,12 +291,12 @@ def scrape(
 
     is_music = (
         type_name == MediaType.MUSIC
-        or media_source == "musicbrainz"
+        or is_music_media_source(media_source)
         or MediaChain.is_audio_path(fileitem.path)
     )
     if is_music:
         if type_name not in (None, MediaType.MUSIC):
-            return schemas.Response(success=False, message="MusicBrainz 只能用于音乐刮削")
+            return schemas.Response(success=False, message="音乐元数据源只能用于音乐刮削")
         music_info: Optional[MusicInfo] = None
         if normalized_media_id:
             # 音乐与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
@@ -303,6 +311,7 @@ def scrape(
             fileitem=fileitem,
             mediainfo=music_info,
             overwrite=True,
+            source=media_source,
         )
         return schemas.Response(success=success, message=message)
 

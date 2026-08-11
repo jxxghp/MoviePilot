@@ -41,7 +41,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.utils.identity import normalize_internal_user_id
-from app.utils.media import normalize_media_source
+from app.utils.media import is_music_media_source, normalize_media_source
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
@@ -635,6 +635,72 @@ class ChainBase(metaclass=ABCMeta):
             return "anilist", None, None, None, int(anilistid)
         return source, None, None, None, None
 
+    def _run_native_media_recognize(
+            self,
+            module_kwargs: dict,
+            cache: bool,
+    ) -> Optional[MediaInfo]:
+        """按媒体领域执行同步原生识别，音乐请求只允许进入音乐数据源。"""
+        meta = module_kwargs.get("meta")
+        mtype = module_kwargs.get("mtype")
+        source = module_kwargs.get("source")
+        if (
+                isinstance(meta, MetaMusic)
+                or mtype == MediaType.MUSIC
+                or is_music_media_source(source)
+        ):
+            # 延迟导入避免 ChainBase 与 MusicChain 形成模块加载环。
+            from app.chain.music import MusicChain
+
+            music_chain = MusicChain()
+            if source:
+                with fresh(not cache):
+                    return music_chain.recognize_from_source(
+                        source=source,
+                        meta=meta if isinstance(meta, MetaMusic) else None,
+                        mediaid=module_kwargs.get("mediaid"),
+                        cache=cache,
+                    )
+            if isinstance(meta, MetaMusic):
+                return music_chain.recognize_best(meta=meta, cache=cache)
+            return None
+        with fresh(not cache):
+            return self.run_module("recognize_media", **module_kwargs)
+
+    async def _async_run_native_media_recognize(
+            self,
+            module_kwargs: dict,
+            cache: bool,
+    ) -> Optional[MediaInfo]:
+        """按媒体领域执行异步原生识别，音乐请求只允许进入音乐数据源。"""
+        meta = module_kwargs.get("meta")
+        mtype = module_kwargs.get("mtype")
+        source = module_kwargs.get("source")
+        if (
+                isinstance(meta, MetaMusic)
+                or mtype == MediaType.MUSIC
+                or is_music_media_source(source)
+        ):
+            # 延迟导入避免 ChainBase 与 MusicChain 形成模块加载环。
+            from app.chain.music import MusicChain
+
+            music_chain = MusicChain()
+            if source:
+                async with async_fresh(not cache):
+                    return await music_chain.async_recognize_from_source(
+                        source=source,
+                        meta=meta if isinstance(meta, MetaMusic) else None,
+                        mediaid=module_kwargs.get("mediaid"),
+                        cache=cache,
+                    )
+            if isinstance(meta, MetaMusic):
+                return await music_chain.async_recognize_best(meta=meta, cache=cache)
+            return None
+        async with async_fresh(not cache):
+            return await self.async_run_module(
+                "async_recognize_media", **module_kwargs
+            )
+
     def recognize_media(
             self,
             meta: MetaBase = None,
@@ -685,7 +751,9 @@ class ChainBase(metaclass=ABCMeta):
             anilistid=anilistid,
         )
         # 检索显式 TMDB ID 由请求方自行消歧，不能被标题推断类型误导。
-        if not mtype and not tmdbid and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
+        if not mtype and not tmdbid and meta and meta.type in [
+            MediaType.TV, MediaType.MOVIE, MediaType.MUSIC
+        ]:
             mtype = meta.type
         share_query_meta = share_meta or meta
         module_kwargs = {
@@ -700,11 +768,7 @@ class ChainBase(metaclass=ABCMeta):
             "episode_group": episode_group,
             "cache": cache,
         }
-        with fresh(not cache):
-            mediainfo = self.run_module(
-                "recognize_media",
-                **module_kwargs,
-            )
+        mediainfo = self._run_native_media_recognize(module_kwargs, cache)
         # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
         mediainfo = self._supplement_media_recognize(
             meta=meta, mtype=mtype, source=source,
@@ -731,20 +795,21 @@ class ChainBase(metaclass=ABCMeta):
             )
             shared_params = MoviePilotServerHelper.to_recognize_params(shared_item)
             if shared_params:
-                with fresh(not cache):
-                    mediainfo = self.run_module(
-                        "recognize_media",
-                        meta=meta,
-                        mtype=shared_params.get("mtype") or mtype,
-                        source=shared_params.get("source"),
-                        mediaid=shared_params.get("mediaid"),
-                        tmdbid=shared_params.get("tmdbid"),
-                        doubanid=shared_params.get("doubanid"),
-                        bangumiid=shared_params.get("bangumiid"),
-                        anilistid=shared_params.get("anilistid"),
-                        episode_group=episode_group,
-                        cache=cache,
-                    )
+                mediainfo = self._run_native_media_recognize(
+                    {
+                        "meta": meta,
+                        "mtype": shared_params.get("mtype") or mtype,
+                        "source": shared_params.get("source"),
+                        "mediaid": shared_params.get("mediaid"),
+                        "tmdbid": shared_params.get("tmdbid"),
+                        "doubanid": shared_params.get("doubanid"),
+                        "bangumiid": shared_params.get("bangumiid"),
+                        "anilistid": shared_params.get("anilistid"),
+                        "episode_group": episode_group,
+                        "cache": cache,
+                    },
+                    cache,
+                )
                 if mediainfo:
                     self._update_local_recognize_cache(shared_cache_meta, mediainfo)
                     self._record_media_recognize_share_hit()
@@ -801,7 +866,9 @@ class ChainBase(metaclass=ABCMeta):
             anilistid=anilistid,
         )
         # 显式 TMDB ID 由模块自行消歧，不能被标题推断类型误导。
-        if not mtype and not tmdbid and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
+        if not mtype and not tmdbid and meta and meta.type in [
+            MediaType.TV, MediaType.MOVIE, MediaType.MUSIC
+        ]:
             mtype = meta.type
         share_query_meta = share_meta or meta
         module_kwargs = {
@@ -816,11 +883,7 @@ class ChainBase(metaclass=ABCMeta):
             "episode_group": episode_group,
             "cache": cache,
         }
-        async with async_fresh(not cache):
-            mediainfo = await self.async_run_module(
-                "async_recognize_media",
-                **module_kwargs,
-            )
+        mediainfo = await self._async_run_native_media_recognize(module_kwargs, cache)
         # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
         mediainfo = await self._async_supplement_media_recognize(
             meta=meta, mtype=mtype, source=source,
@@ -847,20 +910,21 @@ class ChainBase(metaclass=ABCMeta):
             )
             shared_params = MoviePilotServerHelper.to_recognize_params(shared_item)
             if shared_params:
-                async with async_fresh(not cache):
-                    mediainfo = await self.async_run_module(
-                        "async_recognize_media",
-                        meta=meta,
-                        mtype=shared_params.get("mtype") or mtype,
-                        source=shared_params.get("source"),
-                        mediaid=shared_params.get("mediaid"),
-                        tmdbid=shared_params.get("tmdbid"),
-                        doubanid=shared_params.get("doubanid"),
-                        bangumiid=shared_params.get("bangumiid"),
-                        anilistid=shared_params.get("anilistid"),
-                        episode_group=episode_group,
-                        cache=cache,
-                    )
+                mediainfo = await self._async_run_native_media_recognize(
+                    {
+                        "meta": meta,
+                        "mtype": shared_params.get("mtype") or mtype,
+                        "source": shared_params.get("source"),
+                        "mediaid": shared_params.get("mediaid"),
+                        "tmdbid": shared_params.get("tmdbid"),
+                        "doubanid": shared_params.get("doubanid"),
+                        "bangumiid": shared_params.get("bangumiid"),
+                        "anilistid": shared_params.get("anilistid"),
+                        "episode_group": episode_group,
+                        "cache": cache,
+                    },
+                    cache,
+                )
                 if mediainfo:
                     await self._async_update_local_recognize_cache(shared_cache_meta, mediainfo)
                     await run_in_threadpool(self._record_media_recognize_share_hit)
@@ -1122,6 +1186,8 @@ class ChainBase(metaclass=ABCMeta):
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
+        if mediainfo and mediainfo.type == MediaType.MUSIC:
+            return mediainfo
         return self.run_module("obtain_images", mediainfo=mediainfo)
 
     async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
@@ -1130,6 +1196,8 @@ class ChainBase(metaclass=ABCMeta):
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
+        if mediainfo and mediainfo.type == MediaType.MUSIC:
+            return mediainfo
         return await self.async_run_module("async_obtain_images", mediainfo=mediainfo)
 
     def obtain_specific_image(

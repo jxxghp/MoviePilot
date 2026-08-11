@@ -10,7 +10,6 @@ from requests import Session
 from app.core.cache import cached
 from app.core.config import settings
 from app.core.context import (
-    MUSIC_ENTITY_ALBUM,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
@@ -22,6 +21,7 @@ from app.modules import _ModuleBase
 from app.modules.musicbrainz.music_cache import MusicBrainzCache
 from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
 from app.utils.http import RequestUtils
+from app.utils.media import is_media_source_selected
 from app.utils.zhconv import convert as zhconv_convert
 
 
@@ -116,6 +116,11 @@ class MusicBrainzModule(_ModuleBase):
         return "MusicBrainz"
 
     @staticmethod
+    def get_music_source() -> str:
+        """返回多源音乐识别使用的数据源标识。"""
+        return MusicBrainzModule._source
+
+    @staticmethod
     def get_type() -> ModuleType:
         """返回模块所属的媒体识别类型。"""
         return ModuleType.MediaRecognize
@@ -130,8 +135,15 @@ class MusicBrainzModule(_ModuleBase):
         """音乐识别在所有 MediaRecognize 模块中最先响应，避免音乐请求被影视模块误识别。"""
         return 0
 
-    def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
+    def search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            source: Optional[str] = None,
+    ) -> Optional[list[MusicInfo]]:
         """搜索单曲、专辑和艺术家，并交错返回可浏览的 MusicBrainz 候选。"""
+        if not is_media_source_selected(source, self._source):
+            return None
         normalized_limit = max(1, min(limit, 100))
         recordings = self._search_recordings(meta, limit=normalized_limit)
         albums = self._search_albums(meta, limit=normalized_limit)
@@ -623,6 +635,9 @@ class MusicBrainzModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """跟随统一媒体识别分发，仅在音乐类型请求下返回 MusicBrainz 识别结果。"""
+        # 显式选择其它音乐源时必须让出识别管线，且不能复用 MusicBrainz 缓存。
+        if source and source != self._source:
+            return None
         # 非音乐请求交给影视识别模块，不占用识别管线
         if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and source != self._source:
             return None

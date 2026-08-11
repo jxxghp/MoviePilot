@@ -515,7 +515,7 @@ def test_chain_recognize_media_reports_music_share_result():
     meta = MetaMusic(title="晴天", artists=["周杰伦"], year=2003)
     music = _music_info()
 
-    with patch.object(chain, "run_module", return_value=music), patch(
+    with patch("app.chain.music.MusicChain.recognize_best", return_value=music), patch(
         "app.chain.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
     ) as report_mock, patch(
@@ -534,11 +534,13 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     music = _music_info()
 
-    with patch.object(
-        chain,
-        "run_module",
-        side_effect=[None, music],
-    ) as run_module, patch(
+    with patch(
+        "app.chain.music.MusicChain.recognize_best",
+        return_value=None,
+    ) as recognize_best, patch(
+        "app.chain.music.MusicChain.recognize_from_source",
+        return_value=music,
+    ) as recognize_source, patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
         return_value={"type": "music", "media_source": "musicbrainz", "media_id": "recording-1"},
     ), patch(
@@ -563,11 +565,13 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is music
-    assert run_module.call_count == 2
-    second_call = run_module.call_args_list[1]
-    assert second_call.kwargs["mtype"] == MediaType.MUSIC
-    assert second_call.kwargs["source"] == "musicbrainz"
-    assert second_call.kwargs["mediaid"] == "recording-1"
+    recognize_best.assert_called_once_with(meta=meta, cache=False)
+    recognize_source.assert_called_once_with(
+        source="musicbrainz",
+        meta=meta,
+        mediaid="recording-1",
+        cache=False,
+    )
 
 
 def test_chain_recognize_media_skips_music_report_for_fallback_result():
@@ -576,7 +580,7 @@ def test_chain_recognize_media_skips_music_report_for_fallback_result():
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
     fallback = MusicInfo(title="未知曲目", artists=["未知艺术家"])
 
-    with patch.object(chain, "run_module", return_value=fallback), patch(
+    with patch("app.chain.music.MusicChain.recognize_best", return_value=fallback), patch(
         "app.chain.MoviePilotServerHelper.recognize_report"
     ) as report_mock, patch(
         "app.chain.settings.MEDIA_RECOGNIZE_SHARE", True

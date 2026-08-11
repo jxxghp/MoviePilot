@@ -44,6 +44,8 @@ class SystemConfModel(BaseModel):
     fanart: int = 0
     # MusicBrainz请求缓存数量
     musicbrainz: int = 0
+    # TheAudioDB请求缓存数量
+    theaudiodb: int = 0
     # ListenBrainz请求缓存数量
     listenbrainz: int = 0
     # 元数据缓存过期时间（秒）
@@ -205,11 +207,11 @@ class ConfigModel(BaseModel):
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
 
     # ==================== 媒体元数据配置 ====================
-    # 媒体搜索来源 themoviedb/douban/bangumi/anilist，多个用,分隔
+    # 媒体搜索来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb"
-    # 媒体识别来源 themoviedb/douban/bangumi/anilist
+    # 媒体识别来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic
     RECOGNIZE_SOURCE: str = "themoviedb"
-    # 刮削来源 themoviedb/douban/bangumi/anilist
+    # 刮削来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic
     SCRAP_SOURCE: str = "themoviedb"
     # 电视剧动漫的分类genre_ids
     ANIME_GENREIDS: List[int] = Field(default=[16])
@@ -229,6 +231,8 @@ class ConfigModel(BaseModel):
     # ==================== 音乐配置 ====================
     # 音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）
     MUSIC_COVER_PROXY: str = ""
+    # TheAudioDB API Key，默认使用官方公开的免费 V1 Key，可通过环境变量覆盖
+    THEAUDIODB_API_KEY: str = "123"
 
     # ==================== TVDB配置 ====================
     # TVDB API Key
@@ -527,6 +531,7 @@ class ConfigModel(BaseModel):
             "anilist.co",
             "coverartarchive.org",
             "archive.org",
+            "theaudiodb.com",
             "commons.wikimedia.org",
             "upload.wikimedia.org",
         ]
@@ -999,6 +1004,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 bangumi=512,
                 fanart=512,
                 musicbrainz=512,
+                theaudiodb=512,
                 listenbrainz=256,
                 meta=(self.META_CACHE_EXPIRE or 72) * 3600,
                 scheduler=100,
@@ -1012,6 +1018,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             bangumi=256,
             fanart=128,
             musicbrainz=256,
+            theaudiodb=256,
             listenbrainz=128,
             meta=(self.META_CACHE_EXPIRE or 24) * 3600,
             scheduler=50,

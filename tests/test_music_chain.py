@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from app.chain.media import MediaChain
 from app.chain.music import MusicChain
@@ -6,6 +6,7 @@ from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
 from app.modules.musicbrainz import MusicBrainzModule
+from app.schemas.types import MediaType
 
 
 def test_parse_query_supports_artist_title_format():
@@ -321,7 +322,167 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
 
     assert recognized_meta is meta
     assert recognized_info is info
-    recognize.assert_awaited_once_with(meta=meta, source="musicbrainz")
+    recognize.assert_awaited_once_with(meta=meta, source=None)
+
+
+def test_recognize_best_compares_all_sources_and_prefers_stronger_evidence(monkeypatch):
+    """自动识别应查询全部来源，并让专辑、时长和曲序证据更完整的候选胜出。"""
+    chain = MusicChain()
+    meta = MetaMusic(
+        title="Yellow",
+        artists=["Coldplay"],
+        album="Parachutes",
+        duration=269,
+        track_number=5,
+    )
+    candidates = {
+        "musicbrainz": MusicInfo(
+            source="musicbrainz",
+            media_id="mb-1",
+            title="Yellow",
+            artists=["Coldplay"],
+            album="Greatest Hits",
+            duration=240,
+            track_number=1,
+        ),
+        "theaudiodb": MusicInfo(
+            source="theaudiodb",
+            media_id="adb-1",
+            title="Yellow",
+            artists=["Coldplay"],
+            album="Parachutes",
+            duration=269,
+            track_number=5,
+        ),
+        "doubanmusic": MusicInfo(
+            source="doubanmusic",
+            media_id="db-1:5",
+            title="Yellow",
+            artists=["Coldplay"],
+            album="Parachutes",
+        ),
+    }
+    requested = []
+
+    def fake_recognize_source(_meta, source, _cache):
+        """按来源返回候选并记录实际查询顺序。"""
+        requested.append(source)
+        return candidates[source]
+
+    monkeypatch.setattr(chain, "_recognize_from_source", fake_recognize_source)
+
+    result = chain.recognize_best(meta)
+
+    assert requested == ["musicbrainz", "theaudiodb", "doubanmusic"]
+    assert result is candidates["theaudiodb"]
+
+
+def test_recognize_from_source_selects_only_declared_music_module(monkeypatch):
+    """单源识别只允许调用声明该音乐来源的模块，忽略同接口影视模块。"""
+    chain = MusicChain()
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    expected = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+    video_module = Mock(spec=["recognize_media"])
+    music_module = Mock(spec=["get_music_source", "recognize_media"])
+    music_module.get_music_source.return_value = "musicbrainz"
+    music_module.recognize_media.return_value = expected
+    monkeypatch.setattr(
+        chain.modulemanager,
+        "get_running_modules",
+        Mock(return_value=[video_module, music_module]),
+    )
+
+    result = chain.recognize_from_source(
+        source="musicbrainz",
+        meta=meta,
+        cache=True,
+    )
+
+    assert result is expected
+    video_module.recognize_media.assert_not_called()
+    music_module.recognize_media.assert_called_once_with(
+        meta=meta,
+        mtype=MediaType.MUSIC,
+        source="musicbrainz",
+        mediaid=None,
+        cache=True,
+    )
+
+
+def test_recognize_best_uses_source_order_only_for_equal_scores(monkeypatch):
+    """候选证据完全相同时应按 MusicBrainz、TheAudioDB、豆瓣音乐顺序稳定选择。"""
+    chain = MusicChain()
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    candidates = {
+        source: MusicInfo(
+            source=source,
+            media_id=f"{source}-1",
+            title="晴天",
+            artists=["周杰伦"],
+        )
+        for source in ("musicbrainz", "theaudiodb", "doubanmusic")
+    }
+    monkeypatch.setattr(
+        chain,
+        "_recognize_from_source",
+        lambda _meta, source, _cache: candidates[source],
+    )
+
+    assert chain.recognize_best(meta) is candidates["musicbrainz"]
+
+
+def test_async_recognize_best_queries_sources_concurrently(monkeypatch):
+    """异步自动识别应并发查询各来源，而不是串行等待三个远端请求。"""
+    import asyncio
+
+    chain = MusicChain()
+    active = 0
+    max_active = 0
+
+    async def fake_async_recognize_source(_meta, source, _cache):
+        """记录同时执行的来源数并返回同分候选。"""
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return MusicInfo(
+            source=source,
+            media_id=f"{source}-1",
+            title="晴天",
+            artists=["周杰伦"],
+        )
+
+    monkeypatch.setattr(
+        chain,
+        "_async_recognize_from_source",
+        fake_async_recognize_source,
+    )
+
+    result = asyncio.run(
+        chain.async_recognize_best(MetaMusic(title="晴天", artists=["周杰伦"]))
+    )
+
+    assert max_active == 3
+    assert result and result.source == "musicbrainz"
+
+
+def test_recognize_candidate_rejects_wrong_artist_even_when_title_matches():
+    """已知艺术家时，同名异人的候选不能仅凭曲名命中。"""
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    candidate = MusicInfo(
+        source="theaudiodb",
+        media_id="wrong-1",
+        title="晴天",
+        artists=["其他歌手"],
+    )
+
+    assert MusicChain._recognize_candidate_score(meta, candidate) is None
 
 
 def test_async_chart_forwards_album_entity(monkeypatch):

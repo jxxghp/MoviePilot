@@ -146,4 +146,28 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
         fileitem=fileitem,
         mediainfo=info,
         overwrite=True,
+        source="musicbrainz",
+    )
+
+
+def test_scrape_music_without_source_keeps_automatic_recognition() -> None:
+    """未选择音乐源时刮削入口应传递空来源，让底层比较全部识别源。"""
+    fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
+    media_chain = Mock()
+    media_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+        result = scrape(
+            fileitem=fileitem,
+            storage="local",
+            type_name=MediaType.MUSIC,
+            _=Mock(),
+        )
+
+    assert result.success is True
+    media_chain.scrape_music_metadata.assert_called_once_with(
+        fileitem=fileitem,
+        mediainfo=None,
+        overwrite=True,
+        source=None,
     )

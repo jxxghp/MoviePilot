@@ -134,10 +134,7 @@ class RecognizeMediaTool(MoviePilotTool):
                         metainfo.artists = [artist]
                     if album:
                         metainfo.album = album
-                    mediainfo = await music_chain.async_recognize_media(
-                        meta=metainfo,
-                        source="musicbrainz",
-                    )
+                    mediainfo = await MediaChain().async_recognize_by_meta(metainfo)
                     if mediainfo:
                         context = Context(meta_info=metainfo, media_info=mediainfo)
                         return self._format_context_result(context, "音乐标题")

@@ -21,7 +21,10 @@ router = APIRouter()
 
 CountParam = Annotated[int, Query(ge=1, le=100)]
 PageParam = Annotated[int, Query(ge=1)]
-MusicSourceParam = Annotated[str, Query(pattern="^musicbrainz$")]
+MusicSourceParam = Annotated[
+    str,
+    Query(pattern="^(musicbrainz|theaudiodb|doubanmusic)$"),
+]
 MusicModeParam = Annotated[str, Query(pattern="^(chart|fresh)$")]
 MusicEntityParam = Annotated[str, Query(pattern="^(recording|album)$")]
 MusicRangeParam = Annotated[str, Query(pattern=f"^({'|'.join(LISTENBRAINZ_CHART_RANGES)})$")]

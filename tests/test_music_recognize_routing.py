@@ -8,11 +8,15 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
+from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
+from app.modules.anilist import AniListModule
+from app.modules.bangumi import BangumiModule
 from app.modules.musicbrainz import MusicBrainzModule
+from app.modules.themoviedb import TheMovieDbModule
 from app.schemas.types import MediaType
 
 
@@ -35,12 +39,15 @@ def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
     chain = MediaChain()
     monkeypatch.setattr(chain, "recognize_media", Mock(return_value=expected))
 
-    result = chain.recognize_by_meta(meta, source="musicbrainz")
+    result = chain.recognize_by_meta(
+        meta, source="musicbrainz", mtype=MediaType.MUSIC
+    )
 
     # 音乐不再旁路辅助识别选择流程，原生识别带共享元数据与剧集组参数
     chain.recognize_media.assert_called_once()
     call_kwargs = chain.recognize_media.call_args.kwargs
     assert call_kwargs["meta"] is meta
+    assert call_kwargs["mtype"] == MediaType.MUSIC
     assert call_kwargs["source"] == "musicbrainz"
     assert result is expected
 
@@ -53,12 +60,15 @@ def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypa
     monkeypatch.setattr(chain, "async_recognize_media", AsyncMock(return_value=expected))
 
     async def runner():
-        return await chain.async_recognize_by_meta(meta, source="musicbrainz")
+        return await chain.async_recognize_by_meta(
+            meta, source="musicbrainz", mtype=MediaType.MUSIC
+        )
 
     result = asyncio.run(runner())
     chain.async_recognize_media.assert_awaited_once()
     call_kwargs = chain.async_recognize_media.await_args.kwargs
     assert call_kwargs["meta"] is meta
+    assert call_kwargs["mtype"] == MediaType.MUSIC
     assert call_kwargs["source"] == "musicbrainz"
     assert result is expected
 
@@ -119,7 +129,7 @@ def test_async_recognize_music_by_path_reads_local_audio_tags(tmp_path, monkeypa
 
     assert recognized_meta is meta
     assert recognized_info is info
-    recognize.assert_awaited_once_with(meta=meta, source="musicbrainz")
+    recognize.assert_awaited_once_with(meta=meta, source=None)
 
 
 def test_musicbrainz_module_recognize_media_ignores_non_music():
@@ -128,6 +138,133 @@ def test_musicbrainz_module_recognize_media_ignores_non_music():
         meta=None, mtype=MediaType.MOVIE, source="themoviedb", mediaid="123"
     )
     assert result is None
+
+
+def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatch):
+    """显式音乐类型和来源应只调用对应音乐模块，不遍历通用影视模块。"""
+    expected = _music_info()
+    chain = ChainBase()
+    recognize_source = Mock(return_value=expected)
+    generic_dispatch = Mock()
+    monkeypatch.setattr(MusicChain, "recognize_from_source", recognize_source)
+    monkeypatch.setattr(chain, "run_module", generic_dispatch)
+    monkeypatch.setattr(chain.eventmanager, "check", Mock(return_value=False))
+
+    with patch(
+            "app.helper.server.MoviePilotServerHelper.report_recognize_share"
+    ):
+        result = chain.recognize_media(
+            mtype=MediaType.MUSIC,
+            source="musicbrainz",
+            mediaid="recording-1",
+        )
+
+    assert result is expected
+    recognize_source.assert_called_once_with(
+        source="musicbrainz",
+        meta=None,
+        mediaid="recording-1",
+        cache=True,
+    )
+    generic_dispatch.assert_not_called()
+
+
+def test_chain_music_type_rejects_video_source_before_module_dispatch(monkeypatch):
+    """音乐状态即使携带错误影视来源，也不得调用 TMDB 等通用识别模块。"""
+    chain = ChainBase()
+    generic_dispatch = Mock()
+    async_generic_dispatch = AsyncMock()
+    monkeypatch.setattr(chain, "run_module", generic_dispatch)
+    monkeypatch.setattr(chain, "async_run_module", async_generic_dispatch)
+    monkeypatch.setattr(chain.eventmanager, "check", Mock(return_value=False))
+
+    sync_result = chain.recognize_media(
+        mtype=MediaType.MUSIC,
+        source="themoviedb",
+        mediaid="123",
+    )
+    async_result = asyncio.run(chain.async_recognize_media(
+        mtype=MediaType.MUSIC,
+        source="themoviedb",
+        mediaid="123",
+    ))
+
+    assert sync_result is None
+    assert async_result is None
+    generic_dispatch.assert_not_called()
+    async_generic_dispatch.assert_not_awaited()
+
+
+def test_themoviedb_module_recognize_media_ignores_music(monkeypatch):
+    """音乐模块未响应时 TMDB 的同步和异步入口均不得接管音乐请求。"""
+    module = TheMovieDbModule()
+    tmdb = Mock()
+    monkeypatch.setattr(module, "tmdb", tmdb)
+
+    by_meta = module.recognize_media(meta=MetaMusic(title="晴天"))
+    by_type = module.recognize_media(mtype=MediaType.MUSIC, tmdbid=123)
+    async_result = asyncio.run(
+        module.async_recognize_media(meta=MetaMusic(title="晴天"))
+    )
+
+    assert by_meta is None
+    assert by_type is None
+    assert async_result is None
+    assert tmdb.mock_calls == []
+
+
+def test_bangumi_module_recognize_media_ignores_music(monkeypatch):
+    """Bangumi 的同步和异步入口不得把音乐请求识别为动画影视。"""
+    module = BangumiModule()
+    api = Mock()
+    monkeypatch.setattr(module, "bangumiapi", api)
+
+    by_meta = module.recognize_media(meta=MetaMusic(title="晴天"), source="bangumi")
+    by_type = module.recognize_media(mtype=MediaType.MUSIC, bangumiid=123)
+    async_result = asyncio.run(
+        module.async_recognize_media(meta=MetaMusic(title="晴天"), source="bangumi")
+    )
+
+    assert by_meta is None
+    assert by_type is None
+    assert async_result is None
+    assert api.mock_calls == []
+
+
+def test_anilist_module_recognize_media_ignores_music(monkeypatch):
+    """AniList 的同步和异步入口不得把音乐请求识别为动画影视。"""
+    module = AniListModule()
+    api = Mock()
+    monkeypatch.setattr(module, "anilist_api", api)
+
+    by_meta = module.recognize_media(meta=MetaMusic(title="晴天"), source="anilist")
+    by_type = module.recognize_media(mtype=MediaType.MUSIC, anilistid=123)
+    async_result = asyncio.run(
+        module.async_recognize_media(meta=MetaMusic(title="晴天"), source="anilist")
+    )
+
+    assert by_meta is None
+    assert by_type is None
+    assert async_result is None
+    assert api.mock_calls == []
+
+
+def test_chain_obtain_images_skips_music_modules(monkeypatch):
+    """音乐封面来自音乐元数据链，同步和异步补图入口均不得调用影视模块。"""
+    chain = MediaChain()
+    run_module = Mock()
+    async_run_module = AsyncMock()
+    monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(chain, "async_run_module", async_run_module)
+    music = _music_info()
+
+    result = chain.obtain_images(music)
+    async_result = asyncio.run(chain.async_obtain_images(music))
+
+    assert result is music
+    assert async_result is music
+    run_module.assert_not_called()
+    async_run_module.assert_not_awaited()
 
 
 def test_musicbrainz_module_recognize_media_uses_detail_when_meta_has_identity(monkeypatch):
@@ -202,12 +339,11 @@ def test_musicbrainz_module_async_recognize_media(monkeypatch):
 
 
 def test_chain_recognize_media_returns_musicinfo_and_reports_share():
-    """ChainBase.recognize_media 收到 MusicInfo 结果应与影视统一上报共享识别。"""
+    """自动多源识别最终选出的 MusicInfo 应只上报一次共享识别。"""
     expected = _music_info()
     chain = MediaChain()
-    chain.run_module = Mock(return_value=expected)
-    with patch(
-        "app.helper.server.MoviePilotServerHelper.report_recognize_share"
+    with patch.object(MusicChain, "recognize_best", return_value=expected), patch(
+            "app.helper.server.MoviePilotServerHelper.report_recognize_share"
     ) as report_mock:
         result = chain.recognize_media(meta=MetaMusic(title="晴天"))
 
@@ -217,11 +353,14 @@ def test_chain_recognize_media_returns_musicinfo_and_reports_share():
 
 
 def test_chain_async_recognize_media_returns_musicinfo_and_reports_share():
-    """异步 ChainBase 收到 MusicInfo 结果应与影视统一上报共享识别。"""
+    """异步多源识别最终选出的 MusicInfo 应只上报一次共享识别。"""
     expected = _music_info()
     chain = MediaChain()
-    chain.async_run_module = AsyncMock(return_value=expected)
-    with patch(
+    with patch.object(
+            MusicChain,
+            "async_recognize_best",
+            AsyncMock(return_value=expected),
+    ), patch(
         "app.helper.server.MoviePilotServerHelper.async_report_recognize_share",
         AsyncMock(),
     ) as report_mock:

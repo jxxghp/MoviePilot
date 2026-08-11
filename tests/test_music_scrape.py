@@ -132,7 +132,7 @@ def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
     )
 
     assert success is False
-    assert message == "单曲 MusicBrainz ID 仅支持刮削单个音频文件，整目录请选择专辑"
+    assert message == "单曲音乐 ID 仅支持刮削单个音频文件，整目录请选择专辑"
 
 
 def test_default_scraping_config_enables_missing_only_music_lyrics() -> None:

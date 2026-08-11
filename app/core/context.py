@@ -212,9 +212,14 @@ class MusicInfo:
         return None
 
     @property
-    def douban_id(self) -> None:
-        """音乐不使用豆瓣 ID，兼容现有下载历史字段。"""
-        return None
+    def douban_id(self) -> str | None:
+        """豆瓣音乐来源返回原生条目 ID，其它音乐源保持兼容空值。"""
+        return self.media_id if self.source == "doubanmusic" else None
+
+    @property
+    def theaudiodb_id(self) -> str | None:
+        """TheAudioDB 来源返回原生条目 ID，供通用身份解析复用。"""
+        return self.media_id if self.source == "theaudiodb" else None
 
     @property
     def bangumi_id(self) -> None:

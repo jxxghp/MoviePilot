@@ -423,6 +423,8 @@ class MediaRecognizeType(Enum):
     AniList = "AniList"
     # MusicBrainz
     MusicBrainz = "MusicBrainz"
+    # TheAudioDB
+    TheAudioDB = "TheAudioDB"
 
 
 # 用户配置Key字典

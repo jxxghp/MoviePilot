@@ -525,9 +525,10 @@ class JobManager:
                             self._job_view.pop(mediaid)
                         # 移除季集信息
                         if mediaid in self._season_episodes:
+                            episodes = getattr(task.meta, "episode_list", None) or []
                             self._season_episodes[mediaid] = list(
                                 set(self._season_episodes[mediaid])
-                                - set(task.meta.episode_list)
+                                - set(episodes)
                             )
                         return task, mediaid
             return None, None
@@ -2022,7 +2023,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     ):
                         # 下载记录中已存在识别信息
                         mediainfo: Optional[MediaInfo] = self.recognize_media(
-                            mtype=MediaType(download_history.type),
+                            mtype=task.mtype or MediaType(download_history.type),
                             tmdbid=download_history.tmdbid,
                             doubanid=download_history.doubanid,
                             bangumiid=download_history.bangumiid,
@@ -2045,6 +2046,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         recognize_kwargs = {"obtain_images": True}
                         if task.media_source:
                             recognize_kwargs["source"] = task.media_source
+                        if task.mtype:
+                            recognize_kwargs["mtype"] = task.mtype
                         mediainfo = MediaChain().recognize_by_meta(
                             task.meta, **recognize_kwargs
                         )
@@ -2055,9 +2058,16 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     recognize_kwargs = {"obtain_images": True}
                     if task.media_source:
                         recognize_kwargs["source"] = task.media_source
+                    if task.mtype:
+                        recognize_kwargs["mtype"] = task.mtype
                     mediainfo = MediaChain().recognize_by_meta(
                         task.meta, **recognize_kwargs
                     )
+
+                # 音乐必须先经过音乐元数据模块识别；远端不可用时再保留本地标签结果，
+                # 避免因离线兜底提前赋值而跳过音乐识别链。
+                if not mediainfo and isinstance(task.meta, MetaMusic):
+                    mediainfo = self._music_info_from_meta(task.meta)
 
                 # 按名称识别时已在识别链路补图，这里只补齐显式ID识别的场景。
                 if mediainfo and need_obtain_images:
@@ -3745,8 +3755,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     file_meta, task_mediainfo = self._match_music_album_context(
                         file_item, file_path, file_meta
                     )
-                    if not task_mediainfo:
-                        task_mediainfo = self._music_info_from_meta(file_meta)
                 if (
                         not manual
                         and self._is_movie_year_conflict(file_meta, task_mediainfo)
@@ -3759,6 +3767,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     meta=file_meta,
                     mediainfo=task_mediainfo,
                     media_source=media_source,
+                    mtype=mtype,
                     target_directory=target_directory,
                     target_storage=target_storage,
                     target_path=target_path,

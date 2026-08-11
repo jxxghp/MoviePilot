@@ -80,6 +80,33 @@ def test_media_search_routes_music_queries_with_query_kwarg():
     media_chain.return_value.async_search.assert_not_called()
 
 
+def test_media_search_forwards_explicit_music_source():
+    """统一音乐搜索应把显式选择的可扩展音乐源转发给 MusicChain。"""
+    chain = Mock()
+    chain.async_search = AsyncMock(return_value=[])
+
+    with (
+        patch("app.api.endpoints.media.MusicChain", return_value=chain),
+        patch.object(media_endpoints, "MediaChain"),
+    ):
+        result = asyncio.run(
+            media_endpoints.search(
+                title="Coldplay",
+                type="music",
+                count=20,
+                source="theaudiodb",
+                _=Mock(),
+            )
+        )
+
+    assert result == []
+    chain.async_search.assert_awaited_once_with(
+        query="Coldplay",
+        limit=20,
+        source="theaudiodb",
+    )
+
+
 def test_recognize_music_returns_detail():
     """音乐识别接口应按来源和 ID 经统一识别入口返回详情。"""
     from app.chain.media import MediaChain

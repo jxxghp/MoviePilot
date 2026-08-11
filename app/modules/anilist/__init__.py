@@ -229,6 +229,12 @@ class AniListModule(_ModuleBase):
         :param source: 请求级识别数据源
         :return: 统一媒体信息
         """
+        # AniList 只处理动画影视，不能在音乐模块未响应时接管音乐请求。
+        if (
+                kwargs.get("mtype") == MediaType.MUSIC
+                or getattr(meta, "type", None) == MediaType.MUSIC
+        ):
+            return None
         if not anilistid and (not meta or not self._source_enabled(source)):
             return None
         info = self.anilist_api.detail(anilistid) if anilistid else self._match_by_meta(meta)
@@ -258,6 +264,12 @@ class AniListModule(_ModuleBase):
         :param source: 请求级识别数据源
         :return: 统一媒体信息
         """
+        # 与同步入口保持同一类型边界，音乐请求不得进入 AniList。
+        if (
+                kwargs.get("mtype") == MediaType.MUSIC
+                or getattr(meta, "type", None) == MediaType.MUSIC
+        ):
+            return None
         if not anilistid and (not meta or not self._source_enabled(source)):
             return None
         info = (

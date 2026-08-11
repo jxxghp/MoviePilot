@@ -112,6 +112,49 @@ def test_read_audio_metadata_falls_back_to_filename(monkeypatch):
     assert meta.audio_format == "MP3"
 
 
+def test_read_audio_metadata_fallback_uses_dynamic_filename_parser(tmp_path, monkeypatch):
+    """标签不可读时应直接使用完整动态模式解析复杂音乐文件名。"""
+    audio_path = tmp_path / (
+        "S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv.flac"
+    )
+    audio_path.write_bytes(b"fake-flac")
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: None)
+
+    meta = AudioMetadataHelper.read(audio_path)
+
+    assert meta.artists == ["S.H.E"]
+    assert meta.title == "S.H.E十七音乐会"
+    assert meta.year == 2018
+    assert meta.audio_format == "FLAC"
+
+
+def test_read_audio_metadata_partial_tags_use_filename_for_missing_fields(
+        tmp_path,
+        monkeypatch,
+):
+    """真实标签优先，缺失的艺术家和年份由完整文件名解析补齐。"""
+    audio_path = tmp_path / "Daft Punk - Get Lucky 2013 FLAC.flac"
+    audio_path.write_bytes(b"fake-flac")
+    audio = SimpleNamespace(
+        tags={"title": ["Tagged Title"]},
+        info=SimpleNamespace(
+            length=369.4,
+            bitrate=1411200,
+            bits_per_sample=16,
+            sample_rate=44100,
+        ),
+    )
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    meta = AudioMetadataHelper.read(audio_path)
+
+    assert meta.title == "Tagged Title"
+    assert meta.artists == ["Daft Punk"]
+    assert meta.year == 2013
+    assert meta.duration == 369
+    assert meta.sample_rate == 44100
+
+
 def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     """音乐刮削应把标准歌曲、专辑和曲序字段写回音频标签。"""
     class FakeAudio:

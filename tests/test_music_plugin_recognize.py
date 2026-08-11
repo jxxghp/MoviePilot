@@ -292,7 +292,7 @@ def test_chain_recognize_media_music_plugin_supplement():
     )
     event = Event(ChainEventType.MusicMediaRecognize, {"mediainfo": plugin_music.to_dict()})
 
-    with patch.object(chain, "run_module", return_value=fallback), \
+    with patch("app.chain.music.MusicChain.recognize_best", return_value=fallback), \
             patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event), \
             patch("app.chain.MoviePilotServerHelper.report_recognize_share") as report_mock:

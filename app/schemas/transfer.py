@@ -9,6 +9,7 @@ from app.schemas.file import FileItem
 from app.schemas.history import DownloadHistory
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
+from app.schemas.types import MediaType
 
 
 class DownloaderTorrent(BaseModel):
@@ -63,6 +64,7 @@ class TransferTask(BaseModel):
     meta: Optional[Any] = None
     mediainfo: Optional[Any] = None
     media_source: Optional[str] = None
+    mtype: Optional[MediaType] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None

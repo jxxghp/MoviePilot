@@ -476,6 +476,9 @@ class TheMovieDbModule(_ModuleBase):
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
+        # TMDB 只处理影视；音乐识别模块异常时也不能把音乐请求回退成电视剧搜索。
+        if mtype == MediaType.MUSIC or getattr(meta, "type", None) == MediaType.MUSIC:
+            return None
         # 验证参数
         if not self._validate_recognize_params(meta, tmdbid, kwargs.get("source")):
             return None
@@ -562,6 +565,9 @@ class TheMovieDbModule(_ModuleBase):
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
+        # 与同步入口保持同一类型边界，音乐请求不得进入 TMDB。
+        if mtype == MediaType.MUSIC or getattr(meta, "type", None) == MediaType.MUSIC:
+            return None
         # 验证参数
         if not self._validate_recognize_params(meta, tmdbid, kwargs.get("source")):
             return None

@@ -1,10 +1,13 @@
+import asyncio
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
+from app.core.cache import async_fresh, fresh
 from app.core.config import settings
 from app.core.context import (
     MUSIC_ENTITY_ALBUM,
@@ -17,6 +20,13 @@ from app.core.context import (
 from app.core.meta import MetaMusic
 from app.helper.audio import AudioMetadataHelper
 from app.log import logger
+from app.schemas.types import MediaType
+from app.utils.media import (
+    MUSIC_MEDIA_SOURCE_ORDER,
+    is_music_media_source,
+    normalize_media_source,
+)
+from app.utils.zhconv import convert as zhconv_convert
 
 
 class MusicChain(ChainBase):
@@ -27,6 +37,9 @@ class MusicChain(ChainBase):
     _album_dir_cache_max = 128
     # 目录级匹配至少需要两个音频文件，单文件由单曲搜索链路处理
     _album_match_min_files = 2
+    # 自动识别会比较全部来源；该顺序仅用于同分时的确定性选择。
+    _recognize_source_order = MUSIC_MEDIA_SOURCE_ORDER
+    _recognize_min_score = 45.0
 
     @classmethod
     def parse_query(cls, query: str) -> MetaMusic:
@@ -110,16 +123,112 @@ class MusicChain(ChainBase):
                 break
         return results
 
-    def search(self, query: str, limit: int = 20) -> list[MusicInfo]:
-        """调用已启用的音乐元数据模块搜索候选。"""
+    def search(
+            self,
+            query: str,
+            limit: int = 20,
+            source: Optional[str] = None,
+    ) -> list[MusicInfo]:
+        """按请求来源调用音乐元数据模块搜索候选，未指定时默认使用 MusicBrainz。"""
         meta = self.parse_query(query)
-        candidates = self.run_module("search_music", meta=meta, limit=limit)
+        candidates = self.run_module(
+            "search_music",
+            meta=meta,
+            limit=limit,
+            source=source or "musicbrainz",
+        )
         return self.normalize_candidates(candidates, limit=limit)
 
-    async def async_search(self, query: str, limit: int = 20) -> list[MusicInfo]:
-        """异步调用已启用的音乐元数据模块搜索候选。"""
+    def recognize_best(
+            self,
+            meta: MetaMusic,
+            cache: bool = True,
+    ) -> Optional[MusicInfo]:
+        """依次查询全部内置音乐源，统一评分后返回最可信的自动识别结果。"""
+        candidates: list[MusicInfo] = []
+        offline_fallback: Optional[MusicInfo] = None
+        with fresh(not cache):
+            for source in self._recognize_source_order:
+                result = self._recognize_from_source(meta, source, cache)
+                candidate = self._normalize_recognize_result(result, source)
+                if candidate:
+                    candidates.append(candidate)
+                elif isinstance(result, MusicInfo) and not result.source:
+                    # MusicBrainz 会返回无远端身份的离线结果，全部来源失败时仍需保留。
+                    offline_fallback = offline_fallback or result
+        return self._select_best_recognize_candidate(meta, candidates) or offline_fallback
+
+    async def async_recognize_best(
+            self,
+            meta: MetaMusic,
+            cache: bool = True,
+    ) -> Optional[MusicInfo]:
+        """并发查询全部内置音乐源，统一评分后返回最可信的自动识别结果。"""
+        async with async_fresh(not cache):
+            results = await asyncio.gather(*(
+                self._async_recognize_from_source(meta, source, cache)
+                for source in self._recognize_source_order
+            ))
+        candidates: list[MusicInfo] = []
+        offline_fallback: Optional[MusicInfo] = None
+        for source, result in zip(self._recognize_source_order, results):
+            candidate = self._normalize_recognize_result(result, source)
+            if candidate:
+                candidates.append(candidate)
+            elif isinstance(result, MusicInfo) and not result.source:
+                offline_fallback = offline_fallback or result
+        return self._select_best_recognize_candidate(meta, candidates) or offline_fallback
+
+    def recognize_from_source(
+            self,
+            source: str,
+            meta: Optional[MetaMusic] = None,
+            mediaid: Optional[str] = None,
+            cache: bool = True,
+    ) -> Optional[MusicInfo]:
+        """只调用指定音乐数据源进行识别，拒绝影视或未知来源。"""
+        normalized_source = normalize_media_source(source)
+        if not is_music_media_source(normalized_source):
+            return None
+        return self._recognize_from_source(
+            meta=meta,
+            source=normalized_source,
+            cache=cache,
+            mediaid=mediaid,
+        )
+
+    async def async_recognize_from_source(
+            self,
+            source: str,
+            meta: Optional[MetaMusic] = None,
+            mediaid: Optional[str] = None,
+            cache: bool = True,
+    ) -> Optional[MusicInfo]:
+        """异步只调用指定音乐数据源进行识别，拒绝影视或未知来源。"""
+        normalized_source = normalize_media_source(source)
+        if not is_music_media_source(normalized_source):
+            return None
+        return await self._async_recognize_from_source(
+            meta=meta,
+            source=normalized_source,
+            cache=cache,
+            mediaid=mediaid,
+        )
+
+    async def async_search(
+            self,
+            query: str,
+            limit: int = 20,
+            source: Optional[str] = None,
+    ) -> list[MusicInfo]:
+        """异步按请求来源搜索音乐候选，未指定时默认使用 MusicBrainz。"""
         meta = self.parse_query(query)
-        candidates = await self.async_run_module("search_music", meta=meta, limit=limit)
+        candidates = await self.async_run_module(
+            "search_music",
+            meta=meta,
+            limit=limit,
+            source=source or "musicbrainz",
+        )
         return self.normalize_candidates(candidates, limit=limit)
 
     def chart(self, range_name: str, page: int = 1, count: int = 30) -> list[MusicInfo]:
@@ -305,6 +414,200 @@ class MusicChain(ChainBase):
         """移除大小写、空白和标点差异，生成站点标题匹配使用的紧凑文本。"""
         return MetaMusic.compact_text(value)
 
+    @staticmethod
+    def _normalize_recognize_result(
+            result: Any,
+            source: str,
+    ) -> Optional[MusicInfo]:
+        """标准化单个来源结果，并拒绝插件或模块返回的跨来源身份。"""
+        if isinstance(result, dict):
+            try:
+                result = MusicInfo.from_dict(result)
+            except (TypeError, ValueError):
+                return None
+        if not isinstance(result, MusicInfo):
+            return None
+        if not result.source or not result.media_id or result.source != source:
+            return None
+        if result.music_type != MUSIC_ENTITY_RECORDING:
+            return None
+        return result
+
+    def _recognize_from_source(
+            self,
+            meta: Optional[MetaMusic],
+            source: str,
+            cache: bool,
+            mediaid: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """调用声明了指定音乐来源的系统模块，隔离单个来源的查询失败。"""
+        module = self._music_recognize_module(source)
+        if not module:
+            return None
+        try:
+            return module.recognize_media(
+                meta=meta,
+                mtype=MediaType.MUSIC,
+                source=source,
+                mediaid=mediaid,
+                cache=cache,
+            )
+        except Exception as err:
+            logger.warning(f"{source} 音乐自动识别失败：{err}")
+            return None
+
+    async def _async_recognize_from_source(
+            self,
+            meta: Optional[MetaMusic],
+            source: str,
+            cache: bool,
+            mediaid: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """异步调用指定音乐来源模块，单个来源失败不影响其它候选。"""
+        module = self._music_recognize_module(source)
+        if not module:
+            return None
+        try:
+            async_method = getattr(module, "async_recognize_media", None)
+            if async_method:
+                return await async_method(
+                    meta=meta,
+                    mtype=MediaType.MUSIC,
+                    source=source,
+                    mediaid=mediaid,
+                    cache=cache,
+                )
+            return await run_in_threadpool(
+                module.recognize_media,
+                meta=meta,
+                mtype=MediaType.MUSIC,
+                source=source,
+                mediaid=mediaid,
+                cache=cache,
+            )
+        except Exception as err:
+            logger.warning(f"{source} 音乐自动识别失败：{err}")
+            return None
+
+    def _music_recognize_module(self, source: str) -> Optional[Any]:
+        """枚举运行中的系统模块并返回声明了指定音乐来源的实现。"""
+        for module in self.modulemanager.get_running_modules("recognize_media"):
+            get_music_source = getattr(module, "get_music_source", None)
+            if get_music_source and get_music_source() == source:
+                return module
+        return None
+
+    @classmethod
+    def _select_best_recognize_candidate(
+            cls,
+            meta: MetaMusic,
+            candidates: Iterable[MusicInfo],
+    ) -> Optional[MusicInfo]:
+        """按统一证据评分选择最佳音轨，同分时使用默认来源顺序。"""
+        source_order = {
+            source: index for index, source in enumerate(cls._recognize_source_order)
+        }
+        ranked: list[tuple[float, int, MusicInfo]] = []
+        for candidate in candidates:
+            score = cls._recognize_candidate_score(meta, candidate)
+            if score is None or score < cls._recognize_min_score:
+                continue
+            logger.debug(
+                f"音乐自动识别候选：{candidate.source} {candidate.title}，评分 {score:.1f}"
+            )
+            ranked.append((
+                score,
+                -source_order.get(candidate.source or "", len(source_order)),
+                candidate,
+            ))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        best_score, _, best = ranked[0]
+        logger.info(
+            f"音乐自动识别采用 {best.source}：{best.title}，匹配评分 {best_score:.1f}"
+        )
+        return best
+
+    @classmethod
+    def _recognize_candidate_score(
+            cls,
+            meta: MetaMusic,
+            candidate: MusicInfo,
+    ) -> Optional[float]:
+        """综合曲名、艺术家、专辑、ISRC、时长、曲序和年份计算匹配分。"""
+        if candidate.music_type != MUSIC_ENTITY_RECORDING:
+            return None
+        isrc_match = bool(
+            meta.isrc
+            and candidate.isrc
+            and cls._match_similarity(meta.isrc, candidate.isrc) == 1.0
+        )
+        if meta.isrc and candidate.isrc and not isrc_match:
+            return None
+
+        title_similarity = cls._match_similarity(meta.title, candidate.title)
+        if not isrc_match and (not meta.title or title_similarity < 0.7):
+            return None
+        score = title_similarity * 50
+
+        expected_artists = cls._unique_texts([
+            *(meta.artists or []),
+            meta.album_artist,
+        ])
+        candidate_artists = cls._unique_texts([
+            *(candidate.artists or []),
+            candidate.album_artist,
+        ])
+        if expected_artists:
+            artist_similarity = max(
+                (
+                    cls._match_similarity(expected, actual)
+                    for expected in expected_artists
+                    for actual in candidate_artists
+                ),
+                default=0.0,
+            )
+            if not isrc_match and artist_similarity < 0.6:
+                return None
+            score += artist_similarity * 25
+
+        if meta.album and candidate.album:
+            score += cls._match_similarity(meta.album, candidate.album) * 12
+        if meta.duration and candidate.duration:
+            duration_delta = abs(meta.duration - candidate.duration) / max(
+                meta.duration, candidate.duration
+            )
+            if duration_delta <= 0.02:
+                score += 8
+            elif duration_delta <= 0.05:
+                score += 6
+            elif duration_delta <= 0.1:
+                score += 3
+            elif duration_delta > 0.2:
+                score -= 8
+        if meta.track_number and candidate.track_number:
+            score += 3 if meta.track_number == candidate.track_number else -1
+        if meta.year and candidate.year:
+            year_delta = abs(int(meta.year) - int(candidate.year))
+            score += 2 if year_delta == 0 else 1 if year_delta == 1 else 0
+        if isrc_match:
+            score += 50
+        return score
+
+    @staticmethod
+    def _match_similarity(left: Optional[str], right: Optional[str]) -> float:
+        """忽略繁简、大小写和标点后计算两段音乐文本的相似度。"""
+        normalized_left = MetaMusic.compact_text(
+            zhconv_convert(str(left or ""), "zh-hans")
+        )
+        normalized_right = MetaMusic.compact_text(
+            zhconv_convert(str(right or ""), "zh-hans")
+        )
+        if not normalized_left or not normalized_right:
+            return 0.0
+        return SequenceMatcher(None, normalized_left, normalized_right).ratio()
+
     def recognize_album_directory(self, path: str | Path) -> dict[str, MusicInfo]:
         """按目录级线索批量识别整目录音频，返回 文件路径 到标准音乐信息的映射。
     
@@ -364,11 +667,10 @@ class MusicChain(ChainBase):
         """读取本地音频标签，标签缺失时用文件名和目录线索补齐。"""
         file_path = Path(path)
         if file_path.exists() and file_path.is_file():
-            meta = AudioMetadataHelper.read(file_path)
-        else:
-            meta = MetaMusic(
-                org_string=file_path.stem, title=file_path.stem, parse_title=True
-            )
+            return AudioMetadataHelper.read(file_path)
+        meta = MetaMusic(
+            org_string=file_path.stem, title=file_path.stem, parse_title=True
+        )
         # WAV 无标签、FLAC/MP3 标签不全时，依靠文件名和目录结构补充识别线索
         return meta.apply_path_context(file_path)
 

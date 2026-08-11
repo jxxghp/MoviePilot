@@ -18,7 +18,15 @@ from app.schemas.types import SystemConfigKey
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
-MediaSource = Literal["themoviedb", "douban", "bangumi", "anilist", "musicbrainz"]
+MediaSource = Literal[
+    "themoviedb",
+    "douban",
+    "bangumi",
+    "anilist",
+    "musicbrainz",
+    "theaudiodb",
+    "doubanmusic",
+]
 
 
 def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:

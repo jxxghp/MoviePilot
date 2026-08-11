@@ -1,8 +1,10 @@
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from jinja2 import Template
 
+from app.chain.media import MediaChain
 from app.chain.music import MusicChain
 from app.chain.transfer import JobManager, TransferChain
 from app.core.config import settings
@@ -10,7 +12,8 @@ from app.core.meta import MetaMusic
 from app.core.context import MusicInfo
 from app.helper.message import TemplateHelper
 from app.schemas.file import FileItem
-from app.schemas.transfer import TransferTask
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.transfer import TransferInfo, TransferTask, TransferTorrent
 from app.schemas.types import MediaType
 
 
@@ -277,6 +280,7 @@ def test_job_manager_serializes_music_queue_models():
         ),
         meta=meta,
         mediainfo=info,
+        mtype=MediaType.MUSIC,
     )
     manager = JobManager()
 
@@ -285,3 +289,154 @@ def test_job_manager_serializes_music_queue_models():
     assert job.media.type == "音乐"
     assert job.media.album == "Random Access Memories"
     assert job.tasks[0].meta.type == "音乐"
+    assert task.mtype == MediaType.MUSIC
+
+
+def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
+    """无下载身份的音频应先走音乐识别，远端失败后再使用本地标签兜底。"""
+    audio_path = tmp_path / "周杰伦 - 晴天.flac"
+    audio_path.write_bytes(b"fake-flac")
+    source_item = FileItem(
+        storage="local",
+        path=audio_path.as_posix(),
+        name=audio_path.name,
+        basename=audio_path.stem,
+        type="file",
+        extension="flac",
+        size=audio_path.stat().st_size,
+    )
+    target_item = FileItem(
+        storage="local",
+        path=(tmp_path / "library" / audio_path.name).as_posix(),
+        name=audio_path.name,
+        basename=audio_path.stem,
+        type="file",
+        extension="flac",
+    )
+    recognized = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+        album="叶惠美",
+        year=2003,
+    )
+    recognize = Mock(return_value=recognized)
+    chain = TransferChain()
+    monkeypatch.setattr(MediaChain, "recognize_by_meta", recognize)
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_trans_fileitems",
+        Mock(side_effect=lambda *args, **kwargs: [(source_item, False)]),
+    )
+    monkeypatch.setattr(chain, "_resolve_download_history", Mock(return_value=None))
+    monkeypatch.setattr(
+        chain,
+        "transfer",
+        Mock(
+            return_value=TransferInfo(
+                success=True,
+                fileitem=source_item,
+                target_item=target_item,
+            )
+        ),
+    )
+
+    state, preview = chain.do_transfer(
+        fileitem=source_item,
+        target_directory=TransferDirectoryConf(
+            library_path=(tmp_path / "library").as_posix(),
+            library_storage="local",
+        ),
+        mtype=MediaType.MUSIC,
+        force=True,
+        preview=True,
+    )
+
+    assert state is True
+    recognize.assert_called_once()
+    assert isinstance(recognize.call_args.args[0], MetaMusic)
+    assert recognize.call_args.kwargs["mtype"] == MediaType.MUSIC
+    assert preview["items"][0]["type"] == MediaType.MUSIC.value
+
+    recognize.reset_mock()
+    recognize.return_value = None
+    state, preview = chain.do_transfer(
+        fileitem=source_item,
+        target_directory=TransferDirectoryConf(
+            library_path=(tmp_path / "library").as_posix(),
+            library_storage="local",
+        ),
+        mtype=MediaType.MUSIC,
+        force=True,
+        preview=True,
+    )
+
+    assert state is True
+    recognize.assert_called_once()
+    assert isinstance(recognize.call_args.args[0], MetaMusic)
+    assert recognize.call_args.kwargs["mtype"] == MediaType.MUSIC
+    assert preview["items"][0]["type"] == MediaType.MUSIC.value
+
+
+def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
+    """下载器自动整理应把下载历史中的音乐类型传入文件规划，且不调用影视补图模块。"""
+    audio_path = tmp_path / "晴天.flac"
+    audio_path.write_bytes(b"fake-flac")
+    recognized = MusicInfo(
+        source="musicbrainz",
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+    history = SimpleNamespace(
+        type=MediaType.MUSIC.value,
+        tmdbid=None,
+        doubanid=None,
+        bangumiid=None,
+        anilistid=None,
+        media_source="musicbrainz",
+        media_id="recording-1",
+        episode_group=None,
+        media_category=None,
+    )
+    chain = TransferChain()
+    run_module = Mock()
+    monkeypatch.setattr(
+        "app.chain.transfer.DirectoryHelper.get_download_dirs",
+        lambda _: [
+            SimpleNamespace(
+                monitor_type="downloader",
+                storage="local",
+                download_path=tmp_path.as_posix(),
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.DownloadHistoryOper.get_by_hash",
+        lambda _, download_hash: history,
+    )
+    monkeypatch.setattr(
+        chain,
+        "list_torrents",
+        Mock(
+            return_value=[
+                TransferTorrent(
+                    downloader="qbittorrent",
+                    hash="hash-1",
+                    path=audio_path,
+                )
+            ]
+        ),
+    )
+    monkeypatch.setattr(chain, "recognize_media", Mock(return_value=recognized))
+    monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
+    monkeypatch.setattr(chain, "run_module", run_module)
+
+    state = chain.process()
+
+    assert state is True
+    assert chain.recognize_media.call_args.kwargs["mtype"] == MediaType.MUSIC
+    assert chain.do_transfer.call_args.kwargs["mtype"] == MediaType.MUSIC
+    assert chain.do_transfer.call_args.kwargs["mediainfo"] is recognized
+    run_module.assert_not_called()

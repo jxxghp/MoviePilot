@@ -15,6 +15,7 @@ from app.agent.tools.impl.query_library_exists import QueryLibraryExistsTool
 from app.agent.tools.impl.query_media_detail import QueryMediaDetailTool
 from app.agent.tools.impl.query_subscribe_shares import QuerySubscribeSharesTool
 from app.agent.tools.impl.query_subscribe_history import QuerySubscribeHistoryTool
+from app.agent.tools.impl.recognize_media import RecognizeMediaTool
 from app.agent.tools.impl.scrape_metadata import ScrapeMetadataTool
 from app.agent.tools.impl.search_media import SearchMediaTool
 from app.core.context import (
@@ -58,6 +59,33 @@ def _album() -> MusicInfo:
         year=2003,
         total_tracks=11,
     )
+
+
+def test_recognize_music_title_uses_media_chain_automatic_sources():
+    """Agent 音乐标题识别应进入 MediaChain 自动多源流程，不再固定 MusicBrainz。"""
+    expected = _recording()
+    recognize = AsyncMock(return_value=expected)
+    tool = RecognizeMediaTool(session_id="session-1", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.recognize_media.MediaChain.async_recognize_by_meta",
+        new=recognize,
+    ):
+        result = asyncio.run(
+            tool.run(
+                title="晴天",
+                media_type="music",
+                artist="周杰伦",
+                album="叶惠美",
+            )
+        )
+
+    payload = json.loads(result)
+    assert payload["media_info"]["media_source"] == "musicbrainz"
+    recognized_meta = recognize.await_args.args[0]
+    assert recognized_meta.artists == ["周杰伦"]
+    assert recognized_meta.album == "叶惠美"
+    assert "source" not in recognize.await_args.kwargs
 
 
 def test_search_media_filters_music_entities_and_returns_stable_identity():

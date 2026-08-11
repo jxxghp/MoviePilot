@@ -126,6 +126,7 @@
     "指定媒体ID时必须同时指定媒体数据源": "The media source must be specified together with the media ID",
     "媒体ID格式无效": "Invalid media ID format",
     "MusicBrainz 只能用于音乐刮削": "MusicBrainz can only be used for music scraping",
+    "音乐元数据源只能用于音乐刮削": "Music metadata sources can only be used for music scraping",
     "刮削失败，无法识别音乐信息": "Scraping failed: unable to recognize music information",
     "刮削失败，无法识别媒体信息": "Scraping failed: unable to recognize media information",
     "刮削路径不存在": "Scraping path does not exist",

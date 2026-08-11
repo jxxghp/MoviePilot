@@ -1,0 +1,514 @@
+from typing import Any, Optional, Tuple, Union
+
+from fastapi.concurrency import run_in_threadpool
+
+from app.core.cache import cached
+from app.core.config import settings
+from app.core.context import (
+    MusicAlbumInfo,
+    MusicArtistInfo,
+    MusicInfo,
+)
+from app.core.meta import MetaBase, MetaMusic
+from app.log import logger
+from app.modules import _ModuleBase
+from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
+from app.utils.http import RequestUtils
+from app.utils.media import is_media_source_selected
+
+
+class TheAudioDbModule(_ModuleBase):
+    """通过 TheAudioDB V1 API 提供音乐搜索、详情和手动识别能力。"""
+
+    _source = "theaudiodb"
+    _base_url = "https://www.theaudiodb.com/api/v1/json"
+    _detail_url = "https://www.theaudiodb.com"
+
+    def init_module(self) -> None:
+        """初始化无状态的 TheAudioDB 模块。"""
+
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
+        """TheAudioDB 使用环境配置中的 API Key，无独立启用开关。"""
+        return None
+
+    def stop(self) -> None:
+        """停止模块；当前实现没有需要释放的持久资源。"""
+
+    def test(self) -> Tuple[bool, str]:
+        """测试 TheAudioDB 艺术家搜索接口连通性。"""
+        result = self._request_json("search.php", {"s": "coldplay"})
+        return (True, "") if result is not None else (False, "TheAudioDB 网络连接失败")
+
+    @staticmethod
+    def get_name() -> str:
+        """返回模块展示名称。"""
+        return "TheAudioDB"
+
+    @staticmethod
+    def get_music_source() -> str:
+        """返回多源音乐识别使用的数据源标识。"""
+        return TheAudioDbModule._source
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """返回模块所属的媒体识别类型。"""
+        return ModuleType.MediaRecognize
+
+    @staticmethod
+    def get_subtype() -> MediaRecognizeType:
+        """返回 TheAudioDB 模块子类型。"""
+        return MediaRecognizeType.TheAudioDB
+
+    @staticmethod
+    def get_priority() -> int:
+        """返回音乐识别优先级，位于默认 MusicBrainz 之后。"""
+        return 1
+
+    def search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            source: Optional[str] = None,
+    ) -> Optional[list[MusicInfo]]:
+        """按请求来源搜索 TheAudioDB 单曲、专辑和艺术家。"""
+        if not is_media_source_selected(source, self._source):
+            return None
+        normalized_limit = max(1, min(limit, 100))
+        tracks = self._search_tracks(meta)
+        albums = self._search_albums(meta)
+        artists = self._search_artists(meta)
+        return self._interleave_results(
+            tracks,
+            albums,
+            artists,
+            limit=normalized_limit,
+        )
+
+    def recognize_media(
+            self,
+            meta: MetaBase = None,
+            mtype: MediaType = None,
+            source: Optional[str] = None,
+            mediaid: Optional[str] = None,
+            **kwargs,
+    ) -> Optional[MusicInfo]:
+        """仅响应显式 TheAudioDB 音乐请求，并返回带原生 ID 的标准音乐信息。"""
+        if source != self._source:
+            return None
+        if not isinstance(meta, MetaMusic):
+            if mtype == MediaType.MUSIC and mediaid:
+                return self.recognize_music(source, str(mediaid))
+            return None
+        resolved_media_id = mediaid or meta.media_id
+        if resolved_media_id:
+            return self.recognize_music(source, str(resolved_media_id))
+        matched = self._select_track(meta, self._search_tracks(meta))
+        if matched:
+            return matched
+        album = self._select_album(meta, self._search_albums(meta))
+        return album.to_music_info() if album else None
+
+    async def async_recognize_media(
+            self,
+            meta: MetaBase = None,
+            mtype: MediaType = None,
+            source: Optional[str] = None,
+            mediaid: Optional[str] = None,
+            **kwargs,
+    ) -> Optional[MusicInfo]:
+        """在线程池执行 TheAudioDB 同步识别，避免阻塞事件循环。"""
+        return await run_in_threadpool(
+            self.recognize_media,
+            meta,
+            mtype=mtype,
+            source=source,
+            mediaid=mediaid,
+            **kwargs,
+        )
+
+    def recognize_music(self, source: str, media_id: str) -> Optional[MusicInfo]:
+        """按 TheAudioDB 原生 ID 获取单曲详情，未命中时回退到专辑。"""
+        if source != self._source or not media_id:
+            return None
+        payload = self._request_json("track.php", {"h": media_id})
+        track = self._first_entity(payload, "track", "tracks")
+        if track:
+            return self._track_to_info(track)
+        album = self.music_album(source, media_id)
+        return album.to_music_info() if album else None
+
+    def music_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+        """按 TheAudioDB 专辑 ID 获取标准化专辑详情和曲目。"""
+        if source != self._source or not media_id:
+            return None
+        payload = self._request_json("album.php", {"m": media_id})
+        item = self._first_entity(payload, "album", "albums")
+        if not item:
+            return None
+        album = self._album_to_info(item)
+        tracks_payload = self._request_json("track.php", {"m": media_id})
+        album.tracks = [
+            info
+            for track in self._entities(tracks_payload, "track", "tracks")
+            if (info := self._track_to_info(track, album=album))
+        ]
+        return album
+
+    def music_artist(self, source: str, media_id: str) -> Optional[MusicArtistInfo]:
+        """按 TheAudioDB 艺术家 ID 获取标准化艺术家详情。"""
+        if source != self._source or not media_id:
+            return None
+        payload = self._request_json("artist.php", {"i": media_id})
+        item = self._first_entity(payload, "artists", "artist")
+        return self._artist_to_info(item) if item else None
+
+    def music_artist_albums(
+            self,
+            source: str,
+            media_id: str,
+            page: int = 1,
+            count: int = 30,
+            album_type: Optional[str] = None,
+    ) -> list[MusicInfo]:
+        """按 TheAudioDB 艺术家 ID 分页返回专辑列表。"""
+        if source != self._source or not media_id:
+            return []
+        payload = self._request_json("album.php", {"i": media_id})
+        albums = [self._album_to_info(item) for item in self._entities(payload, "album", "albums")]
+        if album_type:
+            normalized_type = album_type.casefold()
+            albums = [
+                album for album in albums
+                if (album.album_type or "").casefold() == normalized_type
+            ]
+        start = max(page - 1, 0) * max(1, count)
+        return [album.to_music_info() for album in albums[start:start + max(1, count)]]
+
+    def clear_cache(self) -> None:
+        """清除 TheAudioDB 请求缓存。"""
+        self._request_json.cache_clear()
+
+    def _search_tracks(self, meta: MetaMusic) -> list[MusicInfo]:
+        """使用曲名和艺术家搜索 TheAudioDB 单曲。"""
+        title = meta.title
+        if not title:
+            return []
+        params = {"t": title}
+        if meta.artists:
+            params["s"] = meta.artists[0]
+        payload = self._request_json("searchtrack.php", params)
+        return [
+            info
+            for item in self._entities(payload, "track", "tracks")
+            if (info := self._track_to_info(item))
+        ]
+
+    def _search_albums(self, meta: MetaMusic) -> list[MusicAlbumInfo]:
+        """使用专辑名和艺术家搜索 TheAudioDB 专辑。"""
+        album_name = meta.album or meta.title
+        if not album_name:
+            return []
+        params = {"a": album_name}
+        if meta.artists:
+            params["s"] = meta.artists[0]
+        payload = self._request_json("searchalbum.php", params)
+        return [self._album_to_info(item) for item in self._entities(payload, "album", "albums")]
+
+    def _search_artists(self, meta: MetaMusic) -> list[MusicArtistInfo]:
+        """使用艺术家线索搜索 TheAudioDB 艺术家。"""
+        name = meta.artists[0] if meta.artists else meta.title
+        if not name:
+            return []
+        payload = self._request_json("search.php", {"s": name})
+        return [
+            self._artist_to_info(item)
+            for item in self._entities(payload, "artists", "artist")
+        ]
+
+    @classmethod
+    def _select_track(
+            cls,
+            meta: MetaMusic,
+            candidates: list[MusicInfo],
+    ) -> Optional[MusicInfo]:
+        """按曲名和可用艺术家线索选择可信单曲候选。"""
+        for candidate in candidates:
+            if not cls._same_text(meta.title, candidate.title):
+                continue
+            if meta.artists and not any(
+                cls._same_text(expected, actual)
+                for expected in meta.artists
+                for actual in candidate.artists
+            ):
+                continue
+            return candidate
+        return None
+
+    @classmethod
+    def _select_album(
+            cls,
+            meta: MetaMusic,
+            candidates: list[MusicAlbumInfo],
+    ) -> Optional[MusicAlbumInfo]:
+        """按专辑名和可用艺术家线索选择可信专辑候选。"""
+        expected_title = meta.album or meta.title
+        for candidate in candidates:
+            if not cls._same_text(expected_title, candidate.title):
+                continue
+            if meta.artists and not any(
+                cls._same_text(expected, actual)
+                for expected in meta.artists
+                for actual in candidate.artists
+            ):
+                continue
+            return candidate
+        return None
+
+    @classmethod
+    def _track_to_info(
+            cls,
+            item: dict[str, Any],
+            album: Optional[MusicAlbumInfo] = None,
+    ) -> Optional[MusicInfo]:
+        """将 TheAudioDB 单曲响应转换为标准音乐信息。"""
+        media_id = cls._text(item.get("idTrack") or item.get("id"))
+        title = cls._text(item.get("strTrack") or item.get("name"))
+        if not media_id or not title:
+            return None
+        artist = cls._text(item.get("strArtist"))
+        artist_id = cls._text(item.get("idArtist"))
+        duration_ms = cls._optional_int(item.get("intDuration"))
+        genres = cls._unique_texts([item.get("strGenre"), item.get("strStyle")])
+        return MusicInfo(
+            source=cls._source,
+            media_id=media_id,
+            title=title,
+            artists=[artist] if artist else list(album.artists if album else []),
+            artist_ids=[artist_id] if artist_id else list(album.artist_ids if album else []),
+            album=cls._text(item.get("strAlbum")) or (album.title if album else None),
+            album_artist=artist or (album.artist if album else None),
+            album_id=cls._text(item.get("idAlbum")) or (album.media_id if album else None),
+            year=album.year if album else None,
+            release_date=album.release_date if album else None,
+            disc_number=cls._optional_int(item.get("intCD")),
+            track_number=cls._optional_int(item.get("intTrackNumber")),
+            duration=duration_ms // 1000 if duration_ms else None,
+            isrc=cls._text(item.get("strISRC")),
+            cover_url=cls._first_text(
+                item,
+                "strTrackThumb",
+                "strTrack3DCase",
+            ) or (album.cover_url if album else None),
+            lyrics=cls._text(item.get("strTrackLyrics")),
+            category=" / ".join(genres),
+            genres=genres,
+            names=cls._unique_texts([title, item.get("strTrackAlternate")]),
+            detail_link=f"{cls._detail_url}/track/{media_id}",
+            raw_data={
+                "musicbrainz_id": cls._text(item.get("strMusicBrainzID")),
+                "musicbrainz_album_id": cls._text(item.get("strMusicBrainzAlbumID")),
+            },
+        )
+
+    @classmethod
+    def _album_to_info(cls, item: dict[str, Any]) -> MusicAlbumInfo:
+        """将 TheAudioDB 专辑响应转换为标准专辑信息。"""
+        media_id = cls._text(item.get("idAlbum") or item.get("id"))
+        title = cls._text(item.get("strAlbum") or item.get("name"))
+        artist = cls._text(item.get("strArtist"))
+        artist_id = cls._text(item.get("idArtist"))
+        genres = cls._unique_texts([item.get("strGenre"), item.get("strStyle")])
+        release_date = cls._text(item.get("strReleaseDate"))
+        if not release_date:
+            release_date = cls._text(item.get("intYearReleased"))
+        return MusicAlbumInfo(
+            source=cls._source,
+            media_id=media_id,
+            title=title,
+            artists=[artist] if artist else [],
+            artist_ids=[artist_id] if artist_id else [],
+            album_type=cls._text(item.get("strReleaseFormat")),
+            release_date=release_date,
+            cover_url=cls._first_text(
+                item,
+                "strAlbumThumbHQ",
+                "strAlbumThumb",
+                "strAlbum3DCase",
+                "strAlbumCDart",
+            ),
+            genres=genres,
+            tags=cls._unique_texts([item.get("strMood"), item.get("strStyle")]),
+            rating=cls._optional_float(item.get("intScore")),
+            rating_votes=cls._optional_int(item.get("intScoreVotes")),
+            detail_link=f"{cls._detail_url}/album/{media_id}" if media_id else None,
+            raw_data={"description": cls._localized_text(item, "strDescription")},
+        )
+
+    @classmethod
+    def _artist_to_info(cls, item: dict[str, Any]) -> MusicArtistInfo:
+        """将 TheAudioDB 艺术家响应转换为标准艺术家信息。"""
+        media_id = cls._text(item.get("idArtist") or item.get("id"))
+        name = cls._text(item.get("strArtist") or item.get("name"))
+        links = {}
+        website = cls._text(item.get("strWebsite"))
+        if website:
+            links["official homepage"] = website
+        return MusicArtistInfo(
+            source=cls._source,
+            media_id=media_id,
+            name=name,
+            disambiguation=cls._text(item.get("strArtistAlternate")),
+            artist_type=cls._text(item.get("strStyle")),
+            gender=cls._text(item.get("strGender")),
+            country=cls._text(item.get("strCountry")),
+            begin_date=cls._text(item.get("intFormedYear") or item.get("intBornYear")),
+            end_date=cls._text(item.get("intDiedYear") or item.get("strDisbanded")),
+            ended=bool(item.get("intDiedYear") or item.get("strDisbanded")),
+            genres=cls._unique_texts([item.get("strGenre"), item.get("strStyle")]),
+            aliases=cls._split_text(item.get("strArtistAlternate")),
+            image_url=cls._first_text(
+                item,
+                "strArtistThumb",
+                "strArtistFanart",
+                "strArtistWideThumb",
+                "strArtistCutout",
+            ),
+            detail_link=f"{cls._detail_url}/artist/{media_id}" if media_id else None,
+            external_links=links,
+            raw_data={
+                "musicbrainz_id": cls._text(item.get("strMusicBrainzID")),
+                "biography": cls._localized_text(item, "strBiography"),
+            },
+        )
+
+    @staticmethod
+    def _interleave_results(
+            tracks: list[MusicInfo],
+            albums: list[MusicAlbumInfo],
+            artists: list[MusicArtistInfo],
+            limit: int,
+    ) -> list[MusicInfo]:
+        """交错合并三类搜索结果，避免单一实体占满候选列表。"""
+        groups = [tracks, [item.to_music_info() for item in albums], [item.to_music_info() for item in artists]]
+        results: list[MusicInfo] = []
+        for index in range(max((len(group) for group in groups), default=0)):
+            for group in groups:
+                if index < len(group):
+                    results.append(group[index])
+                    if len(results) >= limit:
+                        return results
+        return results
+
+    @classmethod
+    @cached(maxsize=settings.CONF.theaudiodb, ttl=settings.CONF.meta, skip_none=True)
+    def _request_json(
+            cls,
+            endpoint: str,
+            params: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        """请求 TheAudioDB V1 JSON 接口并统一处理错误响应。"""
+        api_key = str(settings.THEAUDIODB_API_KEY or "").strip()
+        if not api_key:
+            logger.warning("TheAudioDB API Key 未配置，跳过请求")
+            return None
+        response = RequestUtils(
+            ua=settings.USER_AGENT,
+            proxies=settings.PROXY,
+            timeout=30,
+        ).get_res(
+            url=f"{cls._base_url}/{api_key}/{endpoint}",
+            params=params or {},
+        )
+        if not response or response.status_code != 200:
+            return None
+        try:
+            payload = response.json()
+        except ValueError as err:
+            logger.error(f"TheAudioDB 响应解析失败：{str(err)}")
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    @staticmethod
+    def _entities(
+            payload: Optional[dict[str, Any]],
+            *keys: str,
+    ) -> list[dict[str, Any]]:
+        """从兼容 V1/V2 命名的响应字段中提取实体列表。"""
+        if not payload:
+            return []
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+            if isinstance(value, dict):
+                return [value]
+        return []
+
+    @classmethod
+    def _first_entity(
+            cls,
+            payload: Optional[dict[str, Any]],
+            *keys: str,
+    ) -> Optional[dict[str, Any]]:
+        """返回响应中的首个实体。"""
+        entities = cls._entities(payload, *keys)
+        return entities[0] if entities else None
+
+    @staticmethod
+    def _text(value: Any) -> Optional[str]:
+        """把外部响应值转换为去空白文本。"""
+        text = str(value).strip() if value is not None else ""
+        return text or None
+
+    @classmethod
+    def _first_text(cls, item: dict[str, Any], *keys: str) -> Optional[str]:
+        """按优先级返回外部响应中的首个非空文本。"""
+        return next((text for key in keys if (text := cls._text(item.get(key)))), None)
+
+    @classmethod
+    def _localized_text(cls, item: dict[str, Any], prefix: str) -> Optional[str]:
+        """优先返回中文说明，不存在时回退到英文说明。"""
+        return cls._first_text(item, f"{prefix}CN", f"{prefix}EN")
+
+    @staticmethod
+    def _optional_int(value: Any) -> Optional[int]:
+        """将外部响应值安全转换为整数。"""
+        try:
+            return int(value) if value not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _optional_float(value: Any) -> float:
+        """将外部评分安全转换为浮点数。"""
+        try:
+            return float(value) if value not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    @classmethod
+    def _split_text(cls, value: Any) -> list[str]:
+        """把分号或斜线分隔的外部文本转换为去重列表。"""
+        text = cls._text(value)
+        if not text:
+            return []
+        return cls._unique_texts(text.replace("/", ";").split(";"))
+
+    @classmethod
+    def _unique_texts(cls, values: list[Any]) -> list[str]:
+        """过滤空值并按大小写无关方式去重。"""
+        results = []
+        seen = set()
+        for value in values:
+            text = cls._text(value)
+            identity = text.casefold() if text else ""
+            if not text or identity in seen:
+                continue
+            seen.add(identity)
+            results.append(text)
+        return results
+
+    @staticmethod
+    def _same_text(left: Optional[str], right: Optional[str]) -> bool:
+        """使用音乐元数据紧凑文本规则比较标题和艺术家。"""
+        return bool(left and right and MetaMusic.compact_text(left) == MetaMusic.compact_text(right))

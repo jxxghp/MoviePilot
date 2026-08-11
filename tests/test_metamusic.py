@@ -1,9 +1,293 @@
-from app.core.meta import MetaMusic
+from typing import Optional
+
+import pytest
+
+from app.core.meta import (
+    MetaMusic,
+    MusicNameContext,
+    MusicNameParseResult,
+    MusicNameParser,
+    MusicNamePattern,
+    MusicNameRegistry,
+)
 
 
 def parse_title(title: str) -> MetaMusic:
     """构造种子/文件名标题解析结果，供识别断言复用。"""
     return MetaMusic(org_string=title, title=title, parse_title=True)
+
+
+def test_music_name_registry_supports_dynamic_pattern_and_parser():
+    """外部程序可独立注册命名模式和解析器，并在使用后完整注销。"""
+    pattern_name = "test_program"
+    parser_name = "test_program_parser"
+
+    def match_program(context: MusicNameContext):
+        """匹配测试程序的双冒号命名。"""
+        if not context.text.startswith("PROGRAM::"):
+            return None
+        parts = context.text.split("::")
+        return parts if len(parts) == 3 else None
+
+    def parse_program(context, matched):
+        """把测试程序命名解析为艺术家和标题。"""
+        _prefix, artist, title = matched.payload
+        return MusicNameParseResult(
+            title=title,
+            artists=[artist],
+            year=context.year,
+        )
+
+    MusicNameRegistry.register_pattern(
+        MusicNamePattern(pattern_name, match_program, priority=1000)
+    )
+    MusicNameRegistry.register_parser(
+        MusicNameParser(parser_name, (pattern_name,), parse_program, priority=1000)
+    )
+    try:
+        context = MusicNameContext(
+            raw="PROGRAM::周杰伦::晴天",
+            normalized="PROGRAM::周杰伦::晴天",
+            text="PROGRAM::周杰伦::晴天",
+            artists=(),
+        )
+        matched = MusicNameRegistry.match_pattern(context)
+        parser = MusicNameRegistry.match_parser(matched)
+
+        assert matched.pattern_name == pattern_name
+        assert parser.name == parser_name
+
+        # FLAC 由公共层剔除，扩展解析器只需处理自身命名结构。
+        meta = parse_title("PROGRAM::周杰伦::晴天 FLAC")
+        assert meta.artists == ["周杰伦"]
+        assert meta.title == "晴天"
+        assert meta.audio_format == "FLAC"
+    finally:
+        MusicNameRegistry.unregister_parser(parser_name)
+        MusicNameRegistry.unregister_pattern(pattern_name)
+
+    assert parser_name not in {parser.name for parser in MusicNameRegistry.get_parsers()}
+    assert pattern_name not in {pattern.name for pattern in MusicNameRegistry.get_patterns()}
+
+
+@pytest.mark.parametrize(
+    ("raw", "artists", "title", "year", "audio_format"),
+    [
+        (
+            "The Beatles - Vinyl Collection【2020】【CD】【FLAC分轨】",
+            ["The Beatles"],
+            "Vinyl Collection",
+            2020,
+            "FLAC",
+        ),
+        (
+            "Primeval - Forged In Earth【2026】【WEB】【FLAC分轨】(24/48bit)",
+            ["Primeval"],
+            "Forged In Earth",
+            2026,
+            "FLAC",
+        ),
+        (
+            "Professor Green - Alive Till I'm Dead 2010-FLAC 分轨-nbarock",
+            ["Professor Green"],
+            "Alive Till I'm Dead",
+            2010,
+            "FLAC",
+        ),
+        (
+            "Togenashi Togeari 5th One Man Live Moments of Sound 2025 "
+            "1080p BluRay x265 10bit FLAC 2.0-ADE",
+            [],
+            "Togenashi Togeari 5th One Man Live Moments of Sound",
+            2025,
+            "FLAC",
+        ),
+        (
+            "田震 - 田震 (1996) FLAC {HRS-004-2}",
+            ["田震"],
+            "田震",
+            1996,
+            "FLAC",
+        ),
+        (
+            "[2022.02.23] 中恵光城 - SELENiTE -Mitsuki Nakae Works Best Album- "
+            "[CD][FLAC+CUE+LOG+BK][KDSD-01049]",
+            ["中恵光城"],
+            "SELENiTE -Mitsuki Nakae Works Best Album",
+            None,
+            "FLAC",
+        ),
+        (
+            "[260123] 映画「超かぐや姫！」劇中曲「超かぐや姫！ 」 "
+            "[48kHz/24bit][FLAC]",
+            [],
+            "映画「超かぐや姫!」劇中曲「超かぐや姫! 」",
+            None,
+            "FLAC",
+        ),
+        (
+            "[Audio-4U] 茶太 — Chata 1.0 (flac)",
+            ["茶太"],
+            "Chata 1.0",
+            None,
+            "FLAC",
+        ),
+    ],
+)
+def test_apply_title_real_site_music_samples(
+        raw: str,
+        artists: list[str],
+        title: str,
+        year: Optional[int],
+        audio_format: str,
+):
+    """真实站点音乐种子标题应剔除公共干扰并保留有效命名字段。"""
+    meta = parse_title(raw)
+
+    assert meta.artists == artists
+    assert meta.title == title
+    assert meta.year == year
+    assert meta.audio_format == audio_format
+
+
+@pytest.mark.parametrize(
+    ("raw", "artists", "title", "year"),
+    [
+        (
+            "Aimer-Aimer Hall Tour 2022 ''Walpurgisnacht'' Live at "
+            "TOKYO GARDEN THEATER Blu-ray 1080p AVC LPCM 2.0",
+            [],
+            "Aimer-Aimer Hall Tour ''Walpurgisnacht'' Live at TOKYO GARDEN THEATER",
+            2022,
+        ),
+        (
+            "MANATSU NO ZENKOKU TOUR 2021 FINAL! IN TOKYO DOME "
+            "Blu-ray 1080p AVC LPCM 2.0",
+            [],
+            "MANATSU NO ZENKOKU TOUR FINAL! IN TOKYO DOME",
+            2021,
+        ),
+        (
+            "Rainie Yang - Ban Shu Xuan Yan 2008 DVD 480i MPEG-2 MPEG-2",
+            ["Rainie Yang"],
+            "Ban Shu Xuan Yan",
+            2008,
+        ),
+        (
+            "SARD UNDERGROUND LIVE TOUR 2025 FANTASY "
+            "Blu-ray 1080p AVC LPCM2.0",
+            [],
+            "SARD UNDERGROUND LIVE TOUR FANTASY",
+            2025,
+        ),
+        (
+            "Kylie: Tension Tour Live 2026 2160p NF WEB-DL "
+            "DDP 5.1 H.265-CHORTLE",
+            [],
+            "Kylie: Tension Tour Live",
+            2026,
+        ),
+        (
+            "Nogizaka46 2021 'Kimi ni Shikarareta' Type-A, B, C, D，"
+            "Blu-ray 1080p AVC",
+            [],
+            "Nogizaka46 'Kimi ni Shikarareta' Type-A, B, C, D",
+            2021,
+        ),
+        (
+            "SBS Korea Pop Music Festival in Summer 2026 "
+            "1080p AAC 2.0 x264@JJL",
+            [],
+            "SBS Korea Pop Music Festival in Summer",
+            2026,
+        ),
+        (
+            "RTHK31 China Philharmonic Orchestra Concert Series - "
+            "23rd Anniversary Concert 260704 1080i HDTV H264-NGBRTHK31",
+            ["RTHK31 China Philharmonic Orchestra Concert Series"],
+            "23rd Anniversary Concert",
+            2026,
+        ),
+    ],
+)
+def test_music_video_scene_pattern_uses_music_specific_token_parser(
+        raw: str,
+        artists: list[str],
+        title: str,
+        year: int,
+):
+    """影视式音乐资源应按音乐 token 语义清理，且保留年份后的演出名称。"""
+    context = MetaMusic._prepare_name_context(raw=raw, artists=[], year=None)
+    matched = MusicNameRegistry.match_pattern(context)
+    meta = parse_title(raw)
+
+    assert matched.pattern_name == "music_video_scene"
+    assert meta.artists == artists
+    assert meta.title == title
+    assert meta.year == year
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Daft Punk - Random Access Memories 2013 FLAC",
+        "[Audio-4U] 茶太 — Chata 1.0 (flac)",
+    ],
+)
+def test_music_video_scene_pattern_requires_combined_video_signature(raw: str):
+    """普通音频标题只有格式或版本数字时，不得误入音乐视频场景模式。"""
+    context = MetaMusic._prepare_name_context(raw=raw, artists=[], year=None)
+    matched = MusicNameRegistry.match_pattern(context)
+
+    assert matched.pattern_name != "music_video_scene"
+
+
+@pytest.mark.parametrize(
+    ("raw", "artists", "title", "year", "audio_format"),
+    [
+        (
+            "The Bug Club - On the Intricate Inner Workings of the System "
+            "2025-FLAC 分軌-Redacted",
+            ["The Bug Club"],
+            "On the Intricate Inner Workings of the System",
+            2025,
+            "FLAC",
+        ),
+        (
+            "李宇春 - 皇后与梦想 - 2006-FLAC分轨-OpenCD-九月萌",
+            ["李宇春"],
+            "皇后与梦想",
+            2006,
+            "FLAC",
+        ),
+        ("西班牙幻想曲SACD", [], "西班牙幻想曲", None, "DSD"),
+        ("無字天碟 Indefinable（WAV+CUE原抓）", [], "無字天碟 Indefinable", None, "WAV"),
+        ("刘星-无所事事（WAV+CUE原抓）", ["刘星"], "无所事事", None, "WAV"),
+        ("喜多郎-古事记SACD", ["喜多郎"], "古事记", None, "DSD"),
+        ("巫启贤太傻（黄金版）WAV分轨原抓", [], "巫启贤太傻(黄金版)", None, "WAV"),
+        (
+            "王若琳 - The Adult Storybook 2009 SACD",
+            ["王若琳"],
+            "The Adult Storybook",
+            2009,
+            "DSD",
+        ),
+    ],
+)
+def test_common_audio_release_noise_is_removed(
+        raw: str,
+        artists: list[str],
+        title: str,
+        year: Optional[int],
+        audio_format: str,
+):
+    """真实音频发布尾链只提供格式和年份，不应污染艺术家或标题。"""
+    meta = parse_title(raw)
+
+    assert meta.artists == artists
+    assert meta.title == title
+    assert meta.year == year
+    assert meta.audio_format == audio_format
 
 
 def test_strip_track_prefix_handles_dot_separator():
@@ -135,6 +419,48 @@ def test_apply_path_context_keeps_existing_tags(tmp_path):
     assert meta.year == 2004
 
 
+def test_apply_path_context_uses_full_dynamic_filename_parser(tmp_path):
+    """无标签文件名应进入完整动态模式，清理音乐视频场景规格。"""
+    audio_file = tmp_path / (
+        "S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv.flac"
+    )
+    audio_file.write_bytes(b"fake-flac")
+    meta = MetaMusic(
+        org_string=audio_file.name,
+        title=audio_file.stem,
+        audio_format="FLAC",
+    )
+
+    meta.apply_path_context(audio_file)
+
+    assert meta.artists == ["S.H.E"]
+    assert meta.title == "S.H.E十七音乐会"
+    assert meta.year == 2018
+    assert meta.audio_format == "FLAC"
+
+
+def test_apply_path_context_only_fills_missing_tag_fields(tmp_path):
+    """部分标签存在时保留标签值，只从完整文件名解析补充空字段。"""
+    audio_file = tmp_path / "周杰伦 - 文件名曲目 2018 FLAC.flac"
+    audio_file.write_bytes(b"fake-flac")
+    meta = MetaMusic(
+        org_string=audio_file.name,
+        title="标签曲名",
+        artists=[],
+        album="标签专辑",
+        year=2020,
+    )
+
+    meta.apply_path_context(audio_file)
+
+    assert meta.title == "标签曲名"
+    assert meta.artists == ["周杰伦"]
+    assert meta.album == "标签专辑"
+    assert meta.year == 2020
+    assert meta.audio_format == "FLAC"
+    assert meta.audio_lossless is True
+
+
 def test_apply_title_splits_artist_and_track():
     """标准「歌手 - 曲名」种子标题应拆分艺术家与曲名。"""
     meta = parse_title("周杰伦 - 晴天")
@@ -180,6 +506,10 @@ def test_apply_title_splits_latin_hyphen_artist_album():
     assert meta.year == 1971
     # 左侧单词（Heize-Undo）与右侧发布组标签不触发拆分
     assert parse_title("Heize-Undo.2022.FLAC").artists == []
+    # 全大写复合词属于艺术家名本身，不能从 KUNG-FU 中间拆开。
+    compound = parse_title("ASIAN KUNG-FU GENERATION Discography (2003-2026) [FLAC]")
+    assert compound.artists == []
+    assert compound.title == "ASIAN KUNG-FU GENERATION Discography (2003-2026)"
 
 
 def test_apply_title_splits_various_artists_prefix():
@@ -348,6 +678,19 @@ def test_apply_title_album_marker():
     assert meta.year == 2006
 
 
+def test_apply_title_bilingual_album_marker_prefix():
+    """双语原声命名应保留英文艺术家/标题，不把整段前缀当成艺术家。"""
+    meta = parse_title(
+        "Max Richter - Ad Astra Original Motion Picture Soundtrack "
+        "马克斯·里希特 - 《星际探索》电影原声带 2019 FLAC-SeedPool"
+    )
+
+    assert meta.artists == ["Max Richter"]
+    assert meta.title == "Ad Astra Original Motion Picture Soundtrack"
+    assert meta.album == "星际探索"
+    assert meta.year == 2019
+
+
 def test_apply_title_strips_cue_and_plus():
     """APE+CUE 类格式联合写法应剔除，残留加号不阻断标题提取。"""
     meta = parse_title("世界著名古典大师名版收藏（15）RCA发烧古典系列-2007-FLAC-APE+CUE")
@@ -363,6 +706,17 @@ def test_apply_title_cjk_hyphen_artist_suffix():
 
     assert meta.artists == ["毛阿敏"]
     assert meta.title == "因为有你"
+
+
+def test_apply_title_does_not_split_ascii_hyphen_inside_cjk_title():
+    """CJK 标题中的 A-on 等拉丁复合词不能生成虚假的艺术家。"""
+    meta = parse_title(
+        "[250226] 重戦機エルガイム A-on STORE 連動特典"
+        "「重戦機エルガイム(カセット版復刻CD)」 [FLAC+CUE]"
+    )
+
+    assert meta.artists == []
+    assert meta.title.startswith("重戦機エルガイム A-on STORE")
 
 
 def test_apply_title_double_em_dash_split():
@@ -455,3 +809,11 @@ def test_apply_title_collection_with_space_sample_rate():
     assert meta.title is None
     assert meta.year == 2022
     assert meta.audio_format == "FLAC"
+
+
+@pytest.mark.parametrize("title", ["孙楠 - 楠得精选 2001", "[合集] 缘之空音乐合集 [FLAC]"])
+def test_apply_title_keeps_collection_words_inside_work_name(title: str):
+    """合集/精选嵌在作品名中时是有效文字，只清理独立发行标签。"""
+    meta = parse_title(title)
+
+    assert "精选" in (meta.title or "") or "合集" in (meta.title or "")
