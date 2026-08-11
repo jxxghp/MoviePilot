@@ -661,6 +661,47 @@ def test_select_album_candidate_matches_lead_token_structure():
     assert matched.media_id == "album-1"
 
 
+def test_select_album_candidate_matches_performance_suffix():
+    """资源标题带演出后缀（S.H.E十七音乐会）时，条目本体一致应弱匹配命中。"""
+    meta = MetaMusic(title="S.H.E十七音乐会", artists=["S.H.E"], year=2018)
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-1",
+        title="十七",
+        artists=["S.H.E"],
+        year=2018,
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-1"
+
+
+def test_select_album_candidate_matches_contained_title():
+    """条目带额外前缀完整包含资源主体名（原声带类）时应弱匹配命中。"""
+    meta = MetaMusic(
+        title="Once Upon a Time in Hollywood Original Motion Picture Soundtrack",
+        artists=["Various Artists"],
+        year=2019,
+    )
+    album = MusicInfo(
+        source="musicbrainz",
+        music_type="album",
+        media_id="album-1",
+        title="Quentin Tarantino's Once Upon a Time in Hollywood: "
+              "Original Motion Picture Soundtrack",
+        artists=["Various Artists"],
+        year=2019,
+    )
+
+    matched = MusicBrainzModule._select_album_candidate(meta, [album])
+
+    assert matched is not None
+    assert matched.media_id == "album-1"
+
+
 def test_select_candidate_rejects_wrong_artist_same_title():
     """已知艺术家时，同名异曲的候选不能因标题相等被采信。"""
     meta = MetaMusic(title="因为有你", artists=["毛阿敏"])

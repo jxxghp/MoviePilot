@@ -192,6 +192,15 @@ class MusicBrainzModule(_ModuleBase):
         text = str(value or "").strip()
         return cls._normalize_text(text.split(" ", 1)[0]) if text else ""
 
+    # 演唱会资源的标题常带演出后缀（S.H.E十七音乐会），条目仅保留演出名本体
+    _PERFORMANCE_SUFFIX_RE = re.compile(
+        r"\s*(?:音乐会|音樂會|演唱会|演唱會|巡回|巡演|Live|Tour)$", re.IGNORECASE)
+
+    @classmethod
+    def _performance_title(cls, value: Optional[str]) -> str:
+        """剔除标题尾部的演出形态后缀，返回演出名本体。"""
+        return cls._normalize_text(cls._PERFORMANCE_SUFFIX_RE.sub("", str(value or "")))
+
     @classmethod
     def _strip_artist_prefix(cls, title: Optional[str], artists: Optional[list[str]]) -> str:
         """剥离曲名开头的艺术家署名前缀（「许茹芸的爱情电影主题曲」）。
@@ -635,6 +644,16 @@ class MusicBrainzModule(_ModuleBase):
                         len(cls._match_text(bare_title)) >= 3
                         and cls._same_text(bare_title, cls._lead_token(candidate.title))
                     )
+                    # 条目带额外前缀/后缀完整包含资源主体名（好莱坞原声带类），长文本包含视为弱匹配
+                    or (
+                        len(cls._match_text(bare_title)) >= 6
+                        and cls._match_text(bare_title) in cls._match_text(candidate.title)
+                    )
+                    # 资源标题带演出后缀（S.H.E十七音乐会），条目本体一致视为弱匹配
+                    or (
+                        cls._performance_title(bare_title)
+                        and cls._same_text(cls._performance_title(bare_title), candidate.title)
+                    )
                 )
             ):
                 score += 2
@@ -700,6 +719,16 @@ class MusicBrainzModule(_ModuleBase):
                     or (
                         len(cls._match_text(bare_title)) >= 3
                         and cls._same_text(bare_title, cls._lead_token(album_title))
+                    )
+                    # 条目带额外前缀/后缀完整包含资源主体名（好莱坞原声带类），长文本包含视为弱匹配
+                    or (
+                        len(cls._match_text(bare_title)) >= 6
+                        and cls._match_text(bare_title) in cls._match_text(album_title)
+                    )
+                    # 资源标题带演出后缀（S.H.E十七音乐会），条目本体一致视为弱匹配
+                    or (
+                        cls._performance_title(bare_title)
+                        and cls._same_text(cls._performance_title(bare_title), album_title)
                     )
                 )
             ):

@@ -208,14 +208,14 @@ _MUSIC_QUALITY_TOKEN_RE = re.compile(
 # 演唱会/音乐视频种子的视频编码标记：分辨率、编码、容器与声道描述，
 # 不是音乐文本信息，不剔除会污染曲名并阻断艺术家/曲名拆分
 _MUSIC_VIDEO_TOKEN_RE = re.compile(rf"\b(?:{_MUSIC_VIDEO_TOKEN_ALT})\b", re.IGNORECASE)
-# 尾部规格段判定：整段仅由格式词、视频标记、位深采样、无损声明词与发布组标签组成，
-# 曲名含任何自然语言文本时判定失败，保证「曲名 (注释) - WEB-DL」不被误剥
+# 尾部规格段判定：整段仅由格式词、视频标记、位深采样与无损声明词组成，
+# 曲名含任何自然语言文本时判定失败，保证「曲名 (注释) - WEB-DL」不被误剥；
+# 发布组标签（HHWEB/FHDMv）不是固定词表，由 _strip_spec_segments 的短词规则另行放行
 _MUSIC_SPEC_SEGMENT_RE = re.compile(
     rf"^(?:\b(?:{_MUSIC_FORMAT_TOKEN_ALT}|{_MUSIC_VIDEO_TOKEN_ALT}|single|ep|album)\b"
     r"|\d{1,3}\s*-?\s*bits?|\d{2,4}(?:(?:[.．]|\s)\d)?\s*k(?:hz|bps?)"
     r"|lossless|无损音质|无损|分轨|整轨|合集|精选"
-    r"|[\s\-–—−－/+]+(?![\s\-–—−－/+])"
-    r"|(?:(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{3,})"
+    r"|[\s\-–—−－/+]"
     r")+$",
     re.IGNORECASE,
 )
@@ -362,6 +362,18 @@ def _normalize_scene_dots(value: str) -> str:
     if len(_SCENE_DOT_RE.findall(value or "")) < 3:
         return value
     return _SCENE_DOT_RE.sub(" ", value)
+
+
+# 连续单字母空格序列是缩写点号被全角归一/场景点分压平的结果（Ｓ.Ｈ.Ｅ -> S H E），
+# 还原为点号缩写（S.H.E）才能与 MusicBrainz 条目署名比对
+_LETTER_RUN_RE = re.compile(r"(?<![A-Za-z])((?:[A-Za-z] ){2,}[A-Za-z])(?![A-Za-z])")
+
+
+def _restore_letter_abbrev(value: str) -> str:
+    """把连续单字母空格序列还原为点号缩写（S H E -> S.H.E）。"""
+    return _LETTER_RUN_RE.sub(
+        lambda m: ".".join(m.group(1).split(" ")), str(value or "")
+    )
 
 
 class MetaMusic(MetaBase):
@@ -598,6 +610,8 @@ class MetaMusic(MetaBase):
         text = _to_halfwidth(str(value or "")).replace("_", " ")
         # 场景命名用点号分隔单词（Shan.Ge.Liao.Zai.2023），归一为空格便于拆分检索
         text = _normalize_scene_dots(text)
+        # 缩写点号被全角归一/场景点分压平成单字母空格序列，在点分之后还原（S H E -> S.H.E）
+        text = _restore_letter_abbrev(text)
         return _MUSIC_SPACES_RE.sub(" ", text).strip()
 
     @classmethod
@@ -645,13 +659,28 @@ class MetaMusic(MetaBase):
             # 加号是 APE+CUE 类格式联合写法的分隔符，占位为空格后再判定
             probe = _MUSIC_VIDEO_TOKEN_RE.sub(" ", _MUSIC_QUALITY_TOKEN_RE.sub(" ", probe))
             residue = probe.replace("+", " ").strip()
-            if residue and not _MUSIC_SPEC_SEGMENT_RE.fullmatch(residue):
+            if residue and not cls._is_spec_residue(residue, bool(prefix)):
                 return text
             # 不含任何规格词的纯标签段，仅在紧跟格式词的无空格形态下才是发布组标签；
             # 「艺术家 - 单词曲名」的曲名段不含规格词，必须保留
             if not has_spec_token and not prefix:
                 return text
             text = text[: segment_match.start()].rstrip()
+
+    @classmethod
+    def _is_spec_residue(cls, residue: str, has_prefix: bool) -> bool:
+        """判定规格词替换后的残留是否为发布组标签而非自然语言曲名。
+
+        发布组标签只出现在格式词无空格连字符形态（FLAC-HHWEB、AAC-FHDMv），
+        此时短字母数字组合可放行；空白连字符分隔的段（艺术家 - 曲名 FLAC）
+        残留可能是自然语言曲名，仅严格规格词表可过。
+        """
+        if _MUSIC_SPEC_SEGMENT_RE.fullmatch(residue):
+            return True
+        tokens = residue.split()
+        return has_prefix and bool(tokens) and all(
+            len(token) <= 8 and re.fullmatch(r"[A-Za-z0-9]+", token) for token in tokens
+        )
 
     @classmethod
     def _strip_quality_tokens(cls, value: str) -> str:

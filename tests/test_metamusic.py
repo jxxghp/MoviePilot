@@ -164,10 +164,20 @@ def test_apply_title_strips_video_tokens():
     """演唱会视频种子的分辨率与编码标记不应进入曲名。"""
     meta = parse_title("S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv")
 
-    assert meta.artists == ["S H E"]
-    assert meta.title == "S H E十七音乐会"
+    # 连续单字母空格序列是缩写点号被压平的结果，还原为 S.H.E 才能与条目署名比对
+    assert meta.artists == ["S.H.E"]
+    assert meta.title == "S.H.E十七音乐会"
     # 尾部年份提取为发行年份线索
     assert meta.year == 2018
+
+
+def test_apply_title_restores_letter_abbrev():
+    """单字母点号缩写还原不误伤合法缩写与单词。"""
+    meta = parse_title("E.S.Posthumus - Ashielf Alpen FLAC")
+
+    # 点分少于 3 处的合法缩写不被场景点分/还原逻辑破坏
+    assert meta.artists == ["E.S.Posthumus"]
+    assert meta.title == "Ashielf Alpen"
 
 
 def test_apply_title_strips_release_group_tag():
