@@ -28,7 +28,7 @@ from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api import tmdb as tmdb_module
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError, TMDbException
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 class _FakeResponse:
@@ -281,20 +281,16 @@ class _FakeTmdbApi:
             return None
         return outcome
 
-    def _multi_outcome(self):
+    def match_multi(self, name: str):
         """
-        多类型匹配的结果。连接失败时真实实现同样会抛出，fake 必须忠实模拟：
-        若在此吞掉异常改为「未命中」，流程会继续走到写负缓存，
-        「网络故障不写缓存」这一被测行为就会被掩盖。
+        多类型名称匹配。真实实现（tmdbapi.match_multi）会吞掉所有异常并返回 None，
+        连接失败与「未找到」在这条路径上不可区分，fake 必须保持同样语义。
         """
-        for outcome in (self.tv_outcome, self.movie_outcome):
-            if isinstance(outcome, TMDbConnectionError):
-                raise outcome
         return None
 
-    def match_multi(self, name: str):
-        """v3 起识别流程会先做多类型匹配；本用例只验证 tmdbid 分支，故不命中。"""
-        return self._multi_outcome()
+    async def async_match_multi(self, name: str):
+        """异步版多类型匹配，语义同上。"""
+        return None
 
     async def async_match_multi(self, name: str):
         """异步版多类型匹配。"""
@@ -412,7 +408,8 @@ def test_recognize_media_reports_network_error_message_and_skips_cache_on_connec
     monkeypatch.setattr(themoviedb_module, "logger", mock_logger)
 
     meta = MetaInfo(title="测试标题")
-    result = module.recognize_media(meta=meta, tmdbid=98865, cache=True)
+    result = module.recognize_media(meta=meta, media_source=MediaSource.TMDB,
+                                   media_id="98865", cache=True)
 
     assert result is None
     # 网络故障场景不写入任何缓存条目（正缓存/负缓存皆不写）
@@ -436,7 +433,8 @@ def test_recognize_media_keeps_not_found_message_when_both_types_confirmed_absen
     monkeypatch.setattr(themoviedb_module, "logger", mock_logger)
 
     meta = MetaInfo(title="测试标题")
-    result = module.recognize_media(meta=meta, tmdbid=98865, cache=True)
+    result = module.recognize_media(meta=meta, media_source=MediaSource.TMDB,
+                                   media_id="98865", cache=True)
 
     assert result is None
     assert module.cache.update_calls == []
@@ -459,7 +457,8 @@ def test_async_recognize_media_reports_network_error_message_and_skips_cache_on_
 
     meta = MetaInfo(title="测试标题")
     result = asyncio.run(
-        module.async_recognize_media(meta=meta, tmdbid=98865, cache=True)
+        module.async_recognize_media(meta=meta, media_source=MediaSource.TMDB,
+                                   media_id="98865", cache=True)
     )
 
     assert result is None
