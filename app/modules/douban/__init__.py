@@ -136,6 +136,40 @@ class DoubanModule(_ModuleBase):
         info = self.doubanapi.music_detail(subject_id=str(media_id))
         return self._douban_music_to_album(info) if info else None
 
+    def music_discover(
+            self,
+            source: str,
+            page: int = 1,
+            count: int = 30,
+            entity: str = MUSIC_ENTITY_ALBUM,
+            country: str = "us",
+    ) -> Optional[List[MusicInfo]]:
+        """分页读取豆瓣音乐推荐合集，并保留豆瓣条目原生身份。"""
+        if source != self._music_source:
+            return None
+        del entity, country
+        result = self.doubanapi.music_single(
+            start=max(page - 1, 0) * max(1, count),
+            count=max(1, count),
+        )
+        return self._build_music_search_results(result)
+
+    def music_album_related(
+            self,
+            source: str,
+            media_id: str,
+            count: int = 24,
+    ) -> Optional[List[MusicInfo]]:
+        """按豆瓣音乐专辑 ID 返回相关推荐条目。"""
+        if source != self._music_source or not media_id:
+            return None
+        result = self.doubanapi.music_recommendations(
+            subject_id=str(media_id),
+            start=0,
+            count=max(1, count),
+        )
+        return self._build_music_search_results(result)
+
     def _recognize_music_media(
             self,
             meta: Optional[MetaMusic],
@@ -278,17 +312,39 @@ class DoubanModule(_ModuleBase):
         return candidates[0]
 
     @classmethod
-    def _build_music_search_results(cls, result: Optional[dict]) -> List[MusicInfo]:
+    def _build_music_search_results(
+            cls,
+            result: Optional[dict | list],
+    ) -> List[MusicInfo]:
         """把豆瓣音乐搜索响应转换为专辑候选列表。"""
-        items = (result or {}).get("items") or (result or {}).get("musics") or []
+        payload = result or {}
+        if isinstance(payload, list):
+            items = payload
+        else:
+            items = (
+                payload.get("subject_collection_items")
+                or payload.get("recommendations")
+                or payload.get("subjects")
+                or payload.get("items")
+                or payload.get("musics")
+                or []
+            )
         candidates = []
         for item in items:
             if not isinstance(item, dict):
                 continue
-            target_type = str(item.get("target_type") or item.get("type") or "").casefold()
-            target = item.get("target") if isinstance(item.get("target"), dict) else item
+            target_type = str(item.get("target_type") or "").casefold()
+            if isinstance(item.get("target"), dict):
+                target = item["target"]
+            elif isinstance(item.get("subject"), dict):
+                target = item["subject"]
+            else:
+                target = item
             type_name = str(target.get("type_name") or target.get("subtype") or "")
-            if target_type and target_type not in {"music", "音乐"}:
+            target_subject_type = str(target.get("type") or "").casefold()
+            if target_type and target_type not in {"music", "音乐", "subject"}:
+                continue
+            if target_subject_type and target_subject_type not in {"music", "音乐"}:
                 continue
             if type_name and type_name not in {"音乐", "music"}:
                 continue
@@ -473,6 +529,7 @@ class DoubanModule(_ModuleBase):
                     cover_img.get("url"),
                     cover.get("large"),
                     cover.get("normal"),
+                    cover.get("url"),
                     info.get("cover_url"),
                     info.get("image"),
                 ]

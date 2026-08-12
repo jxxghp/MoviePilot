@@ -314,6 +314,44 @@ class MusicChain(ChainBase):
         )
         return results[:count]
 
+    def discover(
+            self,
+            source: str,
+            page: int = 1,
+            count: int = 30,
+            entity: str = MUSIC_ENTITY_ALBUM,
+            country: str = "us",
+    ) -> list[MusicInfo]:
+        """按指定音乐源读取推荐榜单，并统一分页候选结构。"""
+        candidates = self.run_module(
+            "music_discover",
+            source=source,
+            page=page,
+            count=count,
+            entity=entity,
+            country=country,
+        )
+        return self.normalize_candidates(candidates, limit=count)
+
+    async def async_discover(
+            self,
+            source: str,
+            page: int = 1,
+            count: int = 30,
+            entity: str = MUSIC_ENTITY_ALBUM,
+            country: str = "us",
+    ) -> list[MusicInfo]:
+        """异步按指定音乐源读取推荐榜单，并统一分页候选结构。"""
+        candidates = await self.async_run_module(
+            "music_discover",
+            source=source,
+            page=page,
+            count=count,
+            entity=entity,
+            country=country,
+        )
+        return self.normalize_candidates(candidates, limit=count)
+
     async def async_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
         """异步按来源和专辑 ID 获取标准化专辑详情及曲目。"""
         result = await self.async_run_module(
@@ -339,6 +377,21 @@ class MusicChain(ChainBase):
         if isinstance(result, dict):
             return MusicAlbumInfo.from_dict(result)
         return None
+
+    async def async_album_related(
+            self,
+            source: str,
+            media_id: str,
+            count: int = 24,
+    ) -> list[MusicInfo]:
+        """异步读取指定来源的关联专辑，供专辑详情继续浏览。"""
+        candidates = await self.async_run_module(
+            "music_album_related",
+            source=source,
+            media_id=media_id,
+            count=count,
+        )
+        return self.normalize_candidates(candidates, limit=count)
 
     def lyrics(self, music: MetaMusic | MusicInfo) -> Optional[MusicLyrics]:
         """按单曲元数据调用已启用的歌词模块并返回标准歌词。"""

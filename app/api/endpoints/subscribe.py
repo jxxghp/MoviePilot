@@ -613,7 +613,7 @@ async def subscribe_history(
     current_user: User = Depends(get_current_active_user_async),
 ) -> Any:
     """
-    查询电影/电视剧订阅历史
+    查询电影、电视剧或音乐订阅历史
     """
     if current_user.is_superuser:
         histories = await SubscribeHistory.async_list_by_type(

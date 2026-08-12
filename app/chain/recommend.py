@@ -12,6 +12,7 @@ from app.core.config import settings, global_vars
 from app.helper.image import ImageHelper
 from app.log import logger
 from app.schemas import MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING
 from app.utils.common import log_execution_time
 from app.utils.singleton import Singleton
 
@@ -57,6 +58,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             self.douban_movie_hot,
             self.douban_tv_hot,
             self.music_weekly,
+            self.music_theaudiodb_albums,
+            self.music_theaudiodb_tracks,
+            self.music_douban,
         ]
 
         # 缓存并刷新所有推荐数据
@@ -184,6 +188,58 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             range_name="this_week",
             page=page or 1,
             count=count or 30,
+        )
+        return [media.to_dict() for media in medias]
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    def music_theaudiodb_albums(
+            self,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30,
+            country: str = "us",
+    ) -> List[dict]:
+        """返回 TheAudioDB 指定国家或地区的热门专辑。"""
+        medias = MusicChain().discover(
+            source="theaudiodb",
+            page=page or 1,
+            count=count or 30,
+            entity=MUSIC_ENTITY_ALBUM,
+            country=country,
+        )
+        return [media.to_dict() for media in medias]
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    def music_theaudiodb_tracks(
+            self,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30,
+            country: str = "us",
+    ) -> List[dict]:
+        """返回 TheAudioDB 指定国家或地区的热门单曲。"""
+        medias = MusicChain().discover(
+            source="theaudiodb",
+            page=page or 1,
+            count=count or 30,
+            entity=MUSIC_ENTITY_RECORDING,
+            country=country,
+        )
+        return [media.to_dict() for media in medias]
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    def music_douban(
+            self,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30,
+    ) -> List[dict]:
+        """返回豆瓣音乐推荐合集。"""
+        medias = MusicChain().discover(
+            source="doubanmusic",
+            page=page or 1,
+            count=count or 30,
+            entity=MUSIC_ENTITY_ALBUM,
         )
         return [media.to_dict() for media in medias]
 
@@ -413,6 +469,58 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             range_name="this_week",
             page=page or 1,
             count=count or 30,
+        )
+        return [media.to_dict() for media in medias]
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    async def async_music_theaudiodb_albums(
+            self,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30,
+            country: str = "us",
+    ) -> List[dict]:
+        """异步返回 TheAudioDB 指定国家或地区的热门专辑。"""
+        medias = await MusicChain().async_discover(
+            source="theaudiodb",
+            page=page or 1,
+            count=count or 30,
+            entity=MUSIC_ENTITY_ALBUM,
+            country=country,
+        )
+        return [media.to_dict() for media in medias]
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    async def async_music_theaudiodb_tracks(
+            self,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30,
+            country: str = "us",
+    ) -> List[dict]:
+        """异步返回 TheAudioDB 指定国家或地区的热门单曲。"""
+        medias = await MusicChain().async_discover(
+            source="theaudiodb",
+            page=page or 1,
+            count=count or 30,
+            entity=MUSIC_ENTITY_RECORDING,
+            country=country,
+        )
+        return [media.to_dict() for media in medias]
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
+    async def async_music_douban(
+            self,
+            page: Optional[int] = 1,
+            count: Optional[int] = 30,
+    ) -> List[dict]:
+        """异步返回豆瓣音乐推荐合集。"""
+        medias = await MusicChain().async_discover(
+            source="doubanmusic",
+            page=page or 1,
+            count=count or 30,
+            entity=MUSIC_ENTITY_ALBUM,
         )
         return [media.to_dict() for media in medias]
 

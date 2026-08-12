@@ -57,7 +57,19 @@ def test_resource_search_forwards_custom_plugin_source(monkeypatch) -> None:
     assert captured["mtype"] == MediaType.TV
 
 
-def test_resource_search_forwards_music_entity_namespace(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("source", "media_id"),
+    [
+        ("musicbrainz", "release-group-1"),
+        ("theaudiodb", "2109619"),
+        ("doubanmusic", "1401853"),
+    ],
+)
+def test_resource_search_forwards_music_entity_namespace(
+        monkeypatch,
+        source: str,
+        media_id: str,
+) -> None:
     """音乐资源搜索 API 应在识别前传递单曲或专辑实体类型。"""
     captured = {}
 
@@ -81,7 +93,7 @@ def test_resource_search_forwards_music_entity_namespace(monkeypatch) -> None:
 
     response = asyncio.run(
         search_endpoint.search_by_id(
-            mediaid="musicbrainz:release-group-1",
+            mediaid=f"{source}:{media_id}",
             mtype="music",
             music_type="album",
             _=None,
@@ -89,8 +101,8 @@ def test_resource_search_forwards_music_entity_namespace(monkeypatch) -> None:
     )
 
     assert response.success
-    assert captured["source"] == "musicbrainz"
-    assert captured["mediaid"] == "release-group-1"
+    assert captured["source"] == source
+    assert captured["mediaid"] == media_id
     assert captured["mtype"] == MediaType.MUSIC
     assert captured["music_type"] == "album"
 

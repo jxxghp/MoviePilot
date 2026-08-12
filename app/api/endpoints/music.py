@@ -133,6 +133,7 @@ async def clear_music_recognition_cache(
 async def explore_music(
         page: PageParam = 1,
         count: CountParam = 30,
+        source: MusicSourceParam = "musicbrainz",
         mode: MusicModeParam = "chart",
         entity: MusicEntityParam = "recording",
         range_name: MusicRangeParam = "this_month",
@@ -143,11 +144,20 @@ async def explore_music(
         future: bool = True,
         min_listen_count: Annotated[int, Query(ge=0)] = 0,
         with_cover: bool = False,
+        country: Annotated[str, Query(pattern="^[A-Za-z]{2}$")] = "us",
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
-    """按 ListenBrainz 官方热门榜单或新发行两种模式返回可订阅的音乐候选。"""
+    """按音乐来源返回可订阅的榜单或新发行候选。"""
     chain = MusicChain()
-    if mode == "fresh":
+    if source != "musicbrainz":
+        results = await chain.async_discover(
+            source=source,
+            page=page,
+            count=count,
+            entity=entity,
+            country=country,
+        )
+    elif mode == "fresh":
         results = await chain.async_fresh_releases(
             days=days,
             sort=sort,
@@ -167,6 +177,8 @@ async def explore_music(
             with_cover=with_cover,
             entity=entity,
         )
+    if source != "musicbrainz" and with_cover:
+        results = [info for info in results if info.cover_url or info.poster_path]
     return [_serialize_music(info) for info in results]
 
 
@@ -185,6 +197,26 @@ async def music_album(
     if not info:
         raise HTTPException(status_code=404, detail="未识别到专辑信息")
     return _serialize_album(info)
+
+
+@router.get(
+    "/album/{album_id}/related",
+    summary="查询关联音乐专辑",
+    response_model=list[schemas.MusicInfo],
+)
+async def music_album_related(
+        album_id: str,
+        count: CountParam = 24,
+        source: MusicSourceParam = "musicbrainz",
+        _: schemas.TokenPayload = Depends(verify_token),
+) -> list[schemas.MusicInfo]:
+    """按来源和专辑 ID 返回可继续浏览的关联专辑。"""
+    results = await MusicChain().async_album_related(
+        source=source,
+        media_id=album_id,
+        count=count,
+    )
+    return [_serialize_music(info) for info in results]
 
 
 @router.get(

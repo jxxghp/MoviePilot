@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+
 from app.chain.music import MusicChain
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
 from app.core.context import (
@@ -8,10 +10,10 @@ from app.core.context import (
     MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
     Context,
+    MusicInfo,
     TorrentInfo,
 )
 from app.core.meta import MetaMusic
-from app.core.context import MusicInfo
 from app.schemas.types import MediaType
 
 
@@ -733,6 +735,57 @@ def test_subscribe_add_music_uses_explicit_entity_recognize():
     assert routed_meta.media_id == "recording-1"
     assert media_chain.recognize_media.call_args.kwargs["source"] == "musicbrainz"
     assert media_chain.recognize_media.call_args.kwargs["music_type"] == MUSIC_ENTITY_RECORDING
+    media_chain.recognize_by_meta.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("source", "media_id", "title"),
+    [
+        ("theaudiodb", "2109619", "Parachutes"),
+        ("doubanmusic", "1401853", "范特西"),
+    ],
+)
+def test_subscribe_add_music_routes_new_album_sources(
+        source: str,
+        media_id: str,
+        title: str,
+):
+    """新增音乐源的专辑订阅应保留来源、原生 ID 与实体类型。"""
+    target = MusicInfo(
+        source=source,
+        media_id=media_id,
+        music_type=MUSIC_ENTITY_ALBUM,
+        title=title,
+        album=title,
+        total_tracks=10,
+    )
+    media_chain = Mock()
+    media_chain.recognize_media = Mock(return_value=target)
+    subscribe_oper = Mock()
+    subscribe_oper.add.return_value = (1, "")
+
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.MoviePilotServerHelper"), \
+            patch("app.chain.subscribe.eventmanager"):
+        sid, err_msg = SubscribeChain().add(
+            title=title,
+            year="2000",
+            mtype=MediaType.MUSIC,
+            media_source=source,
+            media_id=media_id,
+            music_type=MUSIC_ENTITY_ALBUM,
+            message=False,
+        )
+
+    assert sid == 1
+    assert err_msg == ""
+    media_chain.recognize_media.assert_called_once()
+    assert media_chain.recognize_media.call_args.kwargs["source"] == source
+    assert media_chain.recognize_media.call_args.kwargs["mediaid"] == media_id
+    assert media_chain.recognize_media.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+    assert subscribe_oper.add.call_args.kwargs["media_source"] == source
+    assert subscribe_oper.add.call_args.kwargs["media_id"] == media_id
     media_chain.recognize_by_meta.assert_not_called()
 
 

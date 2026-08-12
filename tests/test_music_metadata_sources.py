@@ -81,6 +81,64 @@ def test_theaudiodb_detail_respects_requested_entity(monkeypatch):
     request.assert_called_once_with("album.php", {"m": "2109619"})
 
 
+def test_theaudiodb_discover_maps_and_sorts_trending_albums(monkeypatch):
+    """TheAudioDB 探索应按榜位排序并保留趋势来源元数据。"""
+    module = TheAudioDbModule()
+    request = Mock(return_value={
+        "trending": [
+            {
+                "idAlbum": "album-2",
+                "strAlbum": "Second",
+                "strArtist": "Artist",
+                "intChartPlace": "2",
+                "strCountry": "GB",
+            },
+            {
+                "idAlbum": "album-1",
+                "strAlbum": "First",
+                "strArtist": "Artist",
+                "intChartPlace": "1",
+                "strCountry": "GB",
+            },
+        ]
+    })
+    monkeypatch.setattr(module, "_request_json", request)
+
+    results = module.music_discover(
+        source="theaudiodb",
+        entity=MUSIC_ENTITY_ALBUM,
+        country="GB",
+    )
+
+    assert results and [item.media_id for item in results] == ["album-1", "album-2"]
+    assert results[0].source == "theaudiodb"
+    assert results[0].raw_data["chart_position"] == 1
+    request.assert_called_once_with(
+        "trending.php",
+        {"country": "gb", "type": "itunes", "format": "albums"},
+    )
+
+
+def test_theaudiodb_album_related_excludes_current_album(monkeypatch):
+    """TheAudioDB 关联专辑应按当前专辑艺术家查询并排除自身。"""
+    module = TheAudioDbModule()
+    request = Mock(side_effect=[
+        {"album": [{"idAlbum": "album-1", "idArtist": "artist-1"}]},
+        {
+            "album": [
+                {"idAlbum": "album-1", "strAlbum": "Current"},
+                {"idAlbum": "album-2", "strAlbum": "Related"},
+            ]
+        },
+    ])
+    monkeypatch.setattr(module, "_request_json", request)
+
+    results = module.music_album_related("theaudiodb", "album-1", count=10)
+
+    assert results and [item.media_id for item in results] == ["album-2"]
+    assert request.call_args_list[1].args == ("album.php", {"i": "artist-1"})
+
+
 def test_douban_detail_rejects_album_id_as_recording(monkeypatch):
     """豆瓣单曲使用专辑加曲序复合 ID，纯专辑 ID 不能作为 Recording。"""
     module = DoubanModule()
@@ -151,6 +209,39 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
     assert album.tracks[0].title == "爱在西元前"
     assert album.tracks[0].duration == 221
     assert album.tracks[1].cover_url == "https://img.example/track.jpg"
+
+
+def test_douban_music_discover_and_related_accept_collection_wrappers(monkeypatch):
+    """豆瓣音乐合集与相关推荐应兼容 subject 包装并保留专辑身份。"""
+    module = DoubanModule()
+    module.doubanapi = Mock()
+    wrapped_item = {
+        "type": "subject_collection_item",
+        "subject": {
+            "id": "1401853",
+            "type": "music",
+            "title": "范特西",
+            "artists": [{"name": "周杰伦"}],
+            "cover": {"url": "https://img.example/fantasy.jpg"},
+        },
+    }
+    module.doubanapi.music_single.return_value = {
+        "subject_collection_items": [wrapped_item]
+    }
+    module.doubanapi.music_recommendations.return_value = [wrapped_item["subject"]]
+
+    discovered = module.music_discover("doubanmusic", page=2, count=10)
+    related = module.music_album_related("doubanmusic", "album-1", count=6)
+
+    assert discovered and discovered[0].media_id == "1401853"
+    assert discovered[0].cover_url == "https://img.example/fantasy.jpg"
+    assert related and related[0].source == "doubanmusic"
+    module.doubanapi.music_single.assert_called_once_with(start=10, count=10)
+    module.doubanapi.music_recommendations.assert_called_once_with(
+        subject_id="album-1",
+        start=0,
+        count=6,
+    )
 
 
 def test_douban_music_recognize_expands_album_to_matching_track(monkeypatch):

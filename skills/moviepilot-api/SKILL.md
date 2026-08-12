@@ -189,8 +189,9 @@ music on configured music-capable media servers; it does not manage playlists.
 |--------|------|-------------|
 | GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or `source=musicbrainz`. Params: `title`, `type`, `count` |
 | POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `source`, `media_id` |
-| GET | `/api/v1/music/explore` | Explore ListenBrainz charts or fresh albums. Params: `mode`, `entity`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
+| GET | `/api/v1/music/explore` | Explore music by `source`: MusicBrainz charts/fresh releases, TheAudioDB country trends, or Douban music recommendations. Params: `source`, `mode`, `entity`, `country`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
 | GET | `/api/v1/music/album/{album_id}` | Album detail with tracks and releases. Params: `source` |
+| GET | `/api/v1/music/album/{album_id}/related` | Related albums for the selected source. Params: `source`, `count` |
 | GET | `/api/v1/music/artist/{artist_id}` | Browse artist detail. Params: `source` |
 | GET | `/api/v1/music/artist/{artist_id}/albums` | Browse artist albums/EPs/singles. Params: `source`, `page`, `count`, `album_type` |
 | GET | `/api/v1/music/artist/{artist_id}/related` | Browse related artists. Params: `source`, `count` |
@@ -466,13 +467,16 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/discover/tmdb_movies` | Discover TMDB movies. Params: `sort_by`, `with_genres`, `with_original_language`, `page` |
 | GET | `/api/v1/discover/tmdb_tvs` | Discover TMDB TV. Params: same as movies |
 
-### Recommend (15 endpoints)
+### Recommend (18 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/recommend/source` | Recommendation data sources |
 | GET | `/api/v1/recommend/bangumi_calendar` | Bangumi daily schedule. Params: `page`, `count` |
 | GET | `/api/v1/recommend/music_weekly` | ListenBrainz weekly site-wide music chart. Params: `page`, `count` |
+| GET | `/api/v1/recommend/music_theaudiodb_albums` | TheAudioDB trending albums. Params: `country`, `page`, `count` |
+| GET | `/api/v1/recommend/music_theaudiodb_tracks` | TheAudioDB trending tracks. Params: `country`, `page`, `count` |
+| GET | `/api/v1/recommend/music_douban` | Douban music recommendations. Params: `page`, `count` |
 | GET | `/api/v1/recommend/douban_showing` | Douban now showing. Params: `page`, `count` |
 | GET | `/api/v1/recommend/douban_movies` | Douban movies. Params: `sort`, `tags`, `page`, `count` |
 | GET | `/api/v1/recommend/douban_tvs` | Douban TV. Params: `sort`, `tags`, `page`, `count` |

@@ -274,6 +274,70 @@ class TheAudioDbModule(_ModuleBase):
         start = max(page - 1, 0) * max(1, count)
         return [album.to_music_info() for album in albums[start:start + max(1, count)]]
 
+    def music_discover(
+            self,
+            source: str,
+            page: int = 1,
+            count: int = 30,
+            entity: str = MUSIC_ENTITY_ALBUM,
+            country: str = "us",
+    ) -> Optional[list[MusicInfo]]:
+        """读取 TheAudioDB iTunes 趋势榜并转换为可继续浏览的音乐实体。"""
+        if source != self._source:
+            return None
+        payload = self._request_json(
+            "trending.php",
+            {
+                "country": country.casefold(),
+                "type": "itunes",
+                "format": "singles" if entity == MUSIC_ENTITY_RECORDING else "albums",
+            },
+        )
+        items = self._entities(payload, "trending")
+        items.sort(
+            key=lambda item: self._optional_int(item.get("intChartPlace")) or 10_000
+        )
+        candidates = []
+        for item in items:
+            if entity == MUSIC_ENTITY_RECORDING:
+                info = self._track_to_info(item)
+            else:
+                info = self._album_to_info(item).to_music_info()
+            if not info.media_id or not info.title:
+                continue
+            info.category = self._text(item.get("strType")) or "iTunes"
+            info.raw_data.update(
+                {
+                    "chart_position": self._optional_int(item.get("intChartPlace")),
+                    "chart_country": self._text(item.get("strCountry")),
+                }
+            )
+            candidates.append(info)
+        start = max(page - 1, 0) * max(1, count)
+        return candidates[start:start + max(1, count)]
+
+    def music_album_related(
+            self,
+            source: str,
+            media_id: str,
+            count: int = 24,
+    ) -> Optional[list[MusicInfo]]:
+        """按专辑主艺术家返回 TheAudioDB 同艺人专辑，供详情页关联浏览。"""
+        if source != self._source or not media_id:
+            return None
+        payload = self._request_json("album.php", {"m": media_id})
+        album_item = self._first_entity(payload, "album", "albums")
+        artist_id = self._text((album_item or {}).get("idArtist"))
+        if not artist_id:
+            return []
+        albums_payload = self._request_json("album.php", {"i": artist_id})
+        albums = [
+            self._album_to_info(item).to_music_info()
+            for item in self._entities(albums_payload, "album", "albums")
+            if self._text(item.get("idAlbum") or item.get("id")) != str(media_id)
+        ]
+        return albums[:max(1, count)]
+
     def clear_cache(self) -> None:
         """清除 TheAudioDB 请求缓存。"""
         self._request_json.cache_clear()

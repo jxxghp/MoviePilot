@@ -623,6 +623,44 @@ class DoubanApi(metaclass=WeakSingleton):
         """异步获取豆瓣音乐详情。"""
         return await self.__async_invoke_search(self._urls["music_detail"] + subject_id)
 
+    def music_single(self, start: int = 0, count: int = 20) -> dict:
+        """分页获取豆瓣音乐推荐合集。"""
+        return self.__invoke_recommend(
+            self._urls["music_single"], start=start, count=count
+        )
+
+    async def async_music_single(self, start: int = 0, count: int = 20) -> dict:
+        """异步分页获取豆瓣音乐推荐合集。"""
+        return await self.__async_invoke_recommend(
+            self._urls["music_single"], start=start, count=count
+        )
+
+    def music_recommendations(
+            self,
+            subject_id: str,
+            start: int = 0,
+            count: int = 20,
+    ) -> dict:
+        """获取豆瓣音乐条目的相关推荐。"""
+        return self.__invoke_recommend(
+            self._urls["music_recommendations"] % subject_id,
+            start=start,
+            count=count,
+        )
+
+    async def async_music_recommendations(
+            self,
+            subject_id: str,
+            start: int = 0,
+            count: int = 20,
+    ) -> dict:
+        """异步获取豆瓣音乐条目的相关推荐。"""
+        return await self.__async_invoke_recommend(
+            self._urls["music_recommendations"] % subject_id,
+            start=start,
+            count=count,
+        )
+
     def movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
