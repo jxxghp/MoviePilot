@@ -141,7 +141,7 @@ class RemotePoller:
                 # 游标跟随成功路径前进，失败路径中时间落在新旧游标之间的变更会被
                 # 后续增量查询永久跳过，因此部分失败时把游标固定在旧值
                 pinned_time = last_snapshot_time if failed_paths else None
-                if not self._store.save(storage, merged_snapshot, file_count, last_snapshot_time,
+                if not self._store.save(storage, current_snapshot, file_count, last_snapshot_time,
                                         snapshot_time=pinned_time):
                     self._note_failure(storage, "保存快照基线失败")
                     return None
@@ -272,8 +272,8 @@ class RemotePoller:
                 logger.error(f"读取快照基线失败，已跳过落盘以避免覆盖其他监控路径: {storage}:{mon_path}")
                 return False
             old_snapshot = old_snapshot_data.get('snapshot', {}) if old_snapshot_data else {}
-            merged_snapshot = {**old_snapshot, **new_snapshot}
-            if not self._store.save(storage, merged_snapshot, len(merged_snapshot)):
+            current_snapshot = {**old_snapshot, **new_snapshot}
+            if not self._store.save(storage, current_snapshot, len(current_snapshot)):
                 logger.error(f"保存快照基线失败，全量扫描未完成: {storage}:{mon_path}")
                 return False
 

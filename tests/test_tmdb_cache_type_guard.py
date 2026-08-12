@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from app.core.config import settings
 from app.modules.themoviedb.tmdb_cache import TmdbCache
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 class _MemoryCacheStub:
@@ -49,8 +49,11 @@ def _build_cache(data: dict = None) -> TmdbCache:
 
 def _build_meta(mtype: MediaType, begin_season=1) -> SimpleNamespace:
     """构造识别缓存所需的最小元数据。"""
+    # v3 起缓存键改用 media_source/media_id 统一标识媒体来源，
+    # 非 TMDB 来源不参与 TMDB 缓存键构造
     return SimpleNamespace(type=mtype, tmdbid=329809, year="2022",
-                           begin_season=begin_season, name="死神")
+                           begin_season=begin_season, name="死神",
+                           media_source=MediaSource.TMDB, media_id="329809")
 
 
 def _key(type_name: str, begin_season=1) -> str:

@@ -281,6 +281,25 @@ class _FakeTmdbApi:
             return None
         return outcome
 
+    def _multi_outcome(self):
+        """
+        多类型匹配的结果。连接失败时真实实现同样会抛出，fake 必须忠实模拟：
+        若在此吞掉异常改为「未命中」，流程会继续走到写负缓存，
+        「网络故障不写缓存」这一被测行为就会被掩盖。
+        """
+        for outcome in (self.tv_outcome, self.movie_outcome):
+            if isinstance(outcome, TMDbConnectionError):
+                raise outcome
+        return None
+
+    def match_multi(self, name: str):
+        """v3 起识别流程会先做多类型匹配；本用例只验证 tmdbid 分支，故不命中。"""
+        return self._multi_outcome()
+
+    async def async_match_multi(self, name: str):
+        """异步版多类型匹配。"""
+        return self._multi_outcome()
+
     def get_info(self, mtype, tmdbid, raise_on_connection_error=False):
         """同步查询：按mtype返回预置结果，忠实模拟 raise_on_connection_error 语义。"""
         self.calls.append((mtype, raise_on_connection_error))
