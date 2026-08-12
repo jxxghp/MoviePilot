@@ -759,6 +759,77 @@ def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
     assert '"type": "done"' in body
 
 
+def test_web_agent_stop_finishes_stream_without_error():
+    """停止运行中的 Web Agent 后应正常结束 SSE，不能继续等待或报执行错误。"""
+    payload = schemas.AgentWebChatRequest(
+        text="执行长任务",
+        session_id="browser-stop",
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    session_id = "web-agent:stop"
+
+    class BlockingWebAgent:
+        """阻塞到会话 worker 被停止的 Web Agent 替身。"""
+
+        started = None
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def process(self, _message, **_kwargs):
+            """等待外层 worker 取消。"""
+            self.started.set()
+            await asyncio.Event().wait()
+
+        async def cleanup(self):
+            """模拟 Agent 资源清理。"""
+            return None
+
+    async def scenario():
+        BlockingWebAgent.started = asyncio.Event()
+        response = await web_agent_stream(payload, request, user)
+        iterator = response.body_iterator.__aiter__()
+        received = [await asyncio.wait_for(anext(iterator), timeout=1)]
+        await asyncio.wait_for(BlockingWebAgent.started.wait(), timeout=1)
+
+        assert await asyncio.wait_for(
+            agent_manager.stop_current_task(session_id), timeout=1
+        ) is True
+        while '"type": "done"' not in "".join(received):
+            received.append(await asyncio.wait_for(anext(iterator), timeout=1))
+        await iterator.aclose()
+        return "".join(received)
+
+    try:
+        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+            "app.api.endpoints.agent._is_web_agent_traditional_message",
+            return_value=False,
+        ), patch(
+            "app.api.endpoints.agent._has_web_agent_traditional_interaction",
+            return_value=False,
+        ), patch(
+            "app.api.endpoints.agent._build_web_agent_session_id",
+            return_value=session_id,
+        ), patch.object(
+            MessageChain,
+            "bind_user_session",
+        ), patch(
+            "app.api.endpoints.agent._WebAgentMoviePilotAgent",
+            BlockingWebAgent,
+        ), patch(
+            "app.api.endpoints.agent._save_web_agent_display_snapshot",
+        ):
+            body = asyncio.run(scenario())
+    finally:
+        agent_manager._session_queues.pop(session_id, None)
+        agent_manager._session_workers.pop(session_id, None)
+        agent_manager.active_agents.pop(session_id, None)
+
+    assert '"type": "done"' in body
+    assert '"type": "error"' not in body
+
+
 def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
     """传统消息等待期间应保活，且展示快照不能阻塞终态。"""
     payload = schemas.AgentWebChatRequest(text="/状态", session_id="traditional-heartbeat")

@@ -965,6 +965,10 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             result = await coro
             error = self.__get_result_error(result)
             success = error is None
+        except asyncio.CancelledError:
+            success = False
+            error = "任务已取消"
+            raise
         except Exception as err:
             success = False
             error = str(err)
