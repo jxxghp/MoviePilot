@@ -69,6 +69,10 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
     # ID
     id: int
+    # 源存储类型
+    src_storage: Optional[str] = None
+    # 目标存储类型
+    dest_storage: Optional[str] = None
     # 源目录
     src: Optional[str] = None
     # 目的目录

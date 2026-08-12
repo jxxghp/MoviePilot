@@ -1,7 +1,9 @@
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import schemas
+from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
 from app.core.context import MediaInfo as CoreMediaInfo
 from app.schemas.types import MediaSource, MediaType
@@ -79,3 +81,35 @@ def test_media_response_accepts_cross_source_credit_shapes() -> None:
     assert media["directors"][0] == "导演甲"
     assert media["directors"][1]["id"] == 3
     assert media["directors"][1]["name"] == "导演乙"
+
+
+@pytest.mark.asyncio
+async def test_media_exists_not_found_is_a_successful_query(monkeypatch) -> None:
+    """媒体库未命中是查询结果，不应被统一客户端识别为接口失败。"""
+
+    class EmptyMediaServerOper:
+        """返回未命中的媒体库查询桩。"""
+
+        async def async_exists(self, **_kwargs):
+            """模拟媒体库中不存在目标媒体。"""
+            return None
+
+    monkeypatch.setattr(
+        mediaserver_endpoint,
+        "MediaServerOper",
+        lambda _db: EmptyMediaServerOper(),
+    )
+
+    response = await mediaserver_endpoint.exists_local(
+        title="未入库电影",
+        year="2026",
+        mtype="电影",
+        media_source=None,
+        media_id=None,
+        season=None,
+        db=object(),
+        _=None,
+    )
+
+    assert response.success is True
+    assert response.data == {"item": {}}

@@ -312,7 +312,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 |--------|------|-------------|
 | GET | `/api/v1/history/download` | Download history, newest first. Params: `page`, `count`. `poster` is the poster image; legacy `image` is the backdrop image. |
 | DELETE | `/api/v1/history/download` | Delete download history. Body: DownloadHistory JSON |
-| GET | `/api/v1/history/transfer` | Transfer history. Params: `title`, `page`, `count`, `status` |
+| GET | `/api/v1/history/transfer` | Transfer history, including `src_storage` and `dest_storage` for path labels. Params: `title`, `page`, `count`, `status` |
 | DELETE | `/api/v1/history/transfer` | Delete transfer history. Params: `deletesrc`, `deletedest`. Body: TransferHistory |
 | GET | `/api/v1/history/empty/transfer` | Clear all transfer history |
 
@@ -321,7 +321,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/mediaserver/play/{itemid}` | Play media online |
-| GET | `/api/v1/mediaserver/exists` | Check if media exists in the local library database. Params: `media_source` + `media_id`, or `title` discovery; optional `year`, `mtype`, `season` |
+| GET | `/api/v1/mediaserver/exists` | Check if media exists in the local library database. A completed miss is `success=true` with an empty `data.item`. Params: `media_source` + `media_id`, or `title` discovery; optional `year`, `mtype`, `season` |
 | POST | `/api/v1/mediaserver/exists_remote` | Check existing episodes (remote). Body: MediaInfo JSON |
 | POST | `/api/v1/mediaserver/notexists` | Check missing episodes (remote). Body: MediaInfo JSON |
 | GET | `/api/v1/mediaserver/latest` | Latest library items. Params: `server` (required), `count` |

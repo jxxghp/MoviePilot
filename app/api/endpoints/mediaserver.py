@@ -107,7 +107,7 @@ async def exists_local(
     )
     if exist:
         ret_info = {"id": exist.item_id}
-    return schemas.Response(success=True if exist else False, data={"item": ret_info})
+    return schemas.Response(success=True, data={"item": ret_info})
 
 
 @router.post(
