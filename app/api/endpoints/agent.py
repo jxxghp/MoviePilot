@@ -2237,13 +2237,14 @@ async def web_agent_stream(
                 _apply_web_agent_display_event(done_event, assistant_display_message)
                 # 终态先进入 SSE 队列，避免展示快照落库延迟前端结束动画。
                 event_publisher.publish(done_event)
-                await run_in_threadpool(
-                    _save_web_agent_display_snapshot,
-                    session_id=session_id,
-                    current_user=current_user,
-                    messages=display_messages,
-                    client_session_id=payload.session_id or session_id,
-                )
+                if not is_secret_confirmation_control:
+                    await run_in_threadpool(
+                        _save_web_agent_display_snapshot,
+                        session_id=session_id,
+                        current_user=current_user,
+                        messages=display_messages,
+                        client_session_id=payload.session_id or session_id,
+                    )
 
         task = asyncio.create_task(run_agent())
         _WEB_AGENT_BACKGROUND_TASKS.add(task)

@@ -32,6 +32,7 @@ from app.api.endpoints.agent import (
 )
 from app.core.event import Event
 from app.db.agentchat_oper import AgentChatOper
+from app.db.models.agentchat import AgentChat
 from app.helper.agent import build_web_agent_message_update_event
 from app.helper.interaction import AgentInteractionOption, agent_interaction_manager, skills_interaction_manager
 from app.chain.message import MessageChain
@@ -766,6 +767,19 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
             return None
 
     session_id = _build_web_agent_session_id(user, payload.session_id)
+    existing_messages = [
+        {"role": "user", "content": "此前的问题", "status": "done"},
+        {"role": "assistant", "content": "此前的回答", "status": "done"},
+    ]
+    existing_chat = AgentChatOper().save_display_messages(
+        session_id=session_id,
+        user_id="1",
+        username="admin",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        messages=existing_messages,
+        client_session_id=payload.session_id,
+    )
     agent_manager.active_agents[session_id] = FakeProtectedAgent(
         session_id=session_id,
         user_id="1",
@@ -778,8 +792,6 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
     if worker:
         worker.cancel()
 
-    saved_snapshots = []
-
     async def scenario():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
@@ -790,19 +802,16 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
             FakeProtectedAgent,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
-            side_effect=lambda **kwargs: saved_snapshots.append(kwargs),
-        ):
+        ) as save_snapshot:
             body = asyncio.run(scenario())
 
         assert "event: interaction-protected\n" in body
         assert secret_marker in body
-        assert saved_snapshots
-        assert secret_marker not in json.dumps(
-            saved_snapshots[0]["messages"], ensure_ascii=False
-        )
-        assert "确认" not in json.dumps(
-            saved_snapshots[0]["messages"], ensure_ascii=False
-        )
+        save_snapshot.assert_not_called()
+        preserved_chat = AgentChatOper().get(session_id=session_id, user_id="1")
+        assert preserved_chat.display_messages == existing_messages
+        assert preserved_chat.message_count == 2
+        assert preserved_chat.preview == "此前的回答"
     finally:
         agent = agent_manager.active_agents.pop(session_id, None)
         if agent:
@@ -811,6 +820,62 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         worker = agent_manager._session_workers.pop(session_id, None)
         if worker:
             worker.cancel()
+        AgentChat.delete(rid=existing_chat.id)
+
+
+def test_web_agent_cancel_keeps_existing_display_history():
+    """取消敏感读取不得覆盖当前会话已有的普通展示历史。"""
+    payload = schemas.AgentWebChatRequest(
+        text="取消",
+        session_id="browser-secret-cancel",
+        echo_user=True,
+    )
+    request = SimpleNamespace(
+        headers={"X-MoviePilot-Agent-Interaction": "1"},
+        is_disconnected=AsyncMock(return_value=False),
+    )
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    session_id = _build_web_agent_session_id(user, payload.session_id)
+    existing_messages = [
+        {"role": "user", "content": "保留的问题", "status": "done"},
+        {"role": "assistant", "content": "保留的回答", "status": "done"},
+    ]
+    existing_chat = AgentChatOper().save_display_messages(
+        session_id=session_id,
+        user_id="1",
+        username="admin",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        messages=existing_messages,
+        client_session_id=payload.session_id,
+    )
+
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        return "".join(await _collect_streaming_response(response))
+
+    try:
+        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+            agent_manager,
+            "matches_secret_confirmation",
+            return_value=True,
+        ), patch.object(
+            agent_manager,
+            "process_message",
+            new=AsyncMock(return_value="已取消敏感设置读取。"),
+        ), patch(
+            "app.api.endpoints.agent._save_web_agent_display_snapshot",
+        ) as save_snapshot:
+            body = asyncio.run(scenario())
+
+        assert '"type": "done"' in body
+        save_snapshot.assert_not_called()
+        preserved_chat = AgentChatOper().get(session_id=session_id, user_id="1")
+        assert preserved_chat.display_messages == existing_messages
+        assert preserved_chat.message_count == 2
+        assert preserved_chat.preview == "保留的回答"
+    finally:
+        AgentChat.delete(rid=existing_chat.id)
 
 
 def test_web_agent_stream_rejects_confirmation_without_protected_capability():
@@ -879,8 +944,6 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
     agent_started = asyncio.Event()
     release_agent = asyncio.Event()
     agent_completed = asyncio.Event()
-    saved_snapshots = []
-
     async def disconnect_after_agent_starts():
         """等待确认进入处理流程后再模拟浏览器断线。"""
         await agent_started.wait()
@@ -891,6 +954,20 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         is_disconnected=AsyncMock(side_effect=disconnect_after_agent_starts),
     )
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    session_id = _build_web_agent_session_id(user, payload.session_id)
+    existing_messages = [
+        {"role": "user", "content": "断线前的问题", "status": "done"},
+        {"role": "assistant", "content": "断线前的回答", "status": "done"},
+    ]
+    existing_chat = AgentChatOper().save_display_messages(
+        session_id=session_id,
+        user_id="1",
+        username="admin",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        messages=existing_messages,
+        client_session_id=payload.session_id,
+    )
 
     async def finish_after_disconnect(**kwargs):
         """断线后继续完成只读任务，并尝试向已关闭发布器投递。"""
@@ -907,26 +984,29 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         await asyncio.sleep(0)
         return body
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
-        agent_manager,
-        "matches_secret_confirmation",
-        return_value=True,
-    ), patch.object(
-        agent_manager,
-        "process_message",
-        new=AsyncMock(side_effect=finish_after_disconnect),
-    ) as process, patch(
-        "app.api.endpoints.agent._save_web_agent_display_snapshot",
-        side_effect=lambda **kwargs: saved_snapshots.append(kwargs),
-    ):
-        body = asyncio.run(scenario())
+    try:
+        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+            agent_manager,
+            "matches_secret_confirmation",
+            return_value=True,
+        ), patch.object(
+            agent_manager,
+            "process_message",
+            new=AsyncMock(side_effect=finish_after_disconnect),
+        ) as process, patch(
+            "app.api.endpoints.agent._save_web_agent_display_snapshot",
+        ) as save_snapshot:
+            body = asyncio.run(scenario())
 
-    assert '"type": "start"' in body
-    assert "cancel_on_waiter_cancel" not in process.await_args.kwargs
-    assert saved_snapshots
-    assert "DISCONNECTED_SECRET_MARKER" not in json.dumps(
-        saved_snapshots[0]["messages"], ensure_ascii=False
-    )
+        assert '"type": "start"' in body
+        assert "cancel_on_waiter_cancel" not in process.await_args.kwargs
+        save_snapshot.assert_not_called()
+        preserved_chat = AgentChatOper().get(session_id=session_id, user_id="1")
+        assert preserved_chat.display_messages == existing_messages
+        assert preserved_chat.message_count == 2
+        assert preserved_chat.preview == "断线前的回答"
+    finally:
+        AgentChat.delete(rid=existing_chat.id)
 
 
 def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
