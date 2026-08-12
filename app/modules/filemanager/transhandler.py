@@ -545,6 +545,7 @@ class TransHandler:
                                     fail_list=[fileitem.path],
                                     transfer_type=transfer_type,
                                     need_notify=need_notify,
+                                    overwrite_skipped=True,
                                 )
                                 return result
                             elif overwrite_mode == "always":
@@ -571,6 +572,7 @@ class TransHandler:
                                         fail_list=[fileitem.path],
                                         transfer_type=transfer_type,
                                         need_notify=need_notify,
+                                        overwrite_skipped=True,
                                     )
                                     return result
                                 else:
@@ -614,6 +616,7 @@ class TransHandler:
                                     fail_list=[fileitem.path],
                                     transfer_type=transfer_type,
                                     need_notify=need_notify,
+                                    overwrite_skipped=True,
                                 )
                                 return result
                             elif overwrite_mode == "latest":

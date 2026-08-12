@@ -27,6 +27,7 @@ from app.db.user_oper import (
     get_current_active_superuser_async,
 )
 from app.helper.progress import ProgressHelper
+from app.helper.transferhistory import clear_transfer_failures
 from app.schemas.types import EventType
 from app.utils.jieba import cut as jieba_cut
 
@@ -254,6 +255,8 @@ def delete_transfer_history(
         )
     # 删除记录
     TransferHistory.delete(db, history_in.id)
+    # 删除记录是用户显式要求重来，失败重试计数一并清零，否则重整仍会受上一轮次数限制
+    clear_transfer_failures(history.src, history.src_storage)
     return schemas.Response(success=True)
 
 

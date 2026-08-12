@@ -3,6 +3,7 @@ import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.core.config import settings
 from app.log import logger
 from app.utils.system import SystemUtils
 
@@ -123,7 +124,10 @@ def decide_monitor_mode(directory: Path,
 
     # 检查网络文件系统
     if SystemUtils.is_network_filesystem(directory):
-        return True, "检测到网络文件系统，建议使用兼容模式", None, None
+        if not settings.MONITOR_NETWORK_FAST_MODE:
+            return True, "检测到网络文件系统，建议使用兼容模式", None, None
+        # 用户已确认该挂载支持 inotify，继续走快速模式的系统限制检查
+        logger.info(f"检测到网络文件系统，但已配置允许快速模式: {directory}")
 
     limits = check_system_limits()
     file_count, dir_count = count_directory_entries(directory)

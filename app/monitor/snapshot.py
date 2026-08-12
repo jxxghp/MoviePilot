@@ -21,20 +21,25 @@ class SnapshotStore:
         self._cache = cache if cache is not None else FileCache(base=settings.CACHE_PATH / "snapshots")
 
     def save(self, storage: str, snapshot: Dict, file_count: int = 0,
-             last_snapshot_time: Optional[float] = None) -> bool:
+             last_snapshot_time: Optional[float] = None,
+             snapshot_time: Optional[float] = None) -> bool:
         """
         保存快照到文件缓存。
         :param storage: 存储名称
         :param snapshot: 快照数据
         :param file_count: 文件数量，用于调整监控间隔
         :param last_snapshot_time: 上次快照时间戳
+        :param snapshot_time: 强制指定的增量游标，用于部分路径失败时固定游标不前进
         :return: 是否保存成功
         """
         try:
-            snapshot_time = max(
-                last_snapshot_time or 0,
-                max((item.get('modify_time', 0) for item in snapshot.values()), default=0)
-            )
+            if snapshot_time is None:
+                # 取「上次游标」与「本轮最大 mtime」的较大者：本轮全是旧文件时
+                # 游标不能回退，否则已处理过的变更会被重新判定为新增
+                snapshot_time = max(
+                    last_snapshot_time or 0,
+                    max((item.get('modify_time', 0) for item in snapshot.values()), default=0)
+                )
             if not snapshot_time:
                 snapshot_time = time.time()
             snapshot_data = {
@@ -131,7 +136,16 @@ class SnapshotStore:
             old_time = old_info.get('modify_time', 0) if isinstance(old_info, dict) else 0
             new_time = new_info.get('modify_time', 0) if isinstance(new_info, dict) else 0
 
-            if old_size != new_size or (old_time and new_time and old_time != new_time):
+            # 支持文件唯一标识的存储器可用它识别同大小且修改时间未变化的替换文件。
+            # 旧快照缺少 fileid 时保持保守，避免升级后首次补齐元数据触发全量重整。
+            old_fileid = old_info.get('fileid') if isinstance(old_info, dict) else None
+            new_fileid = new_info.get('fileid') if isinstance(new_info, dict) else None
+
+            if (
+                    old_size != new_size
+                    or (old_time and new_time and old_time != new_time)
+                    or (old_fileid and new_fileid and old_fileid != new_fileid)
+            ):
                 changes['modified'].append(file_path)
 
         return changes

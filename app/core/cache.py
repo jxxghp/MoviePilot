@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager, asynccontextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional, Generator, AsyncGenerator, Tuple, Literal, Union
+from typing import Any, Callable, Dict, Optional, Generator, AsyncGenerator, Tuple, Literal, Union
 
 import aiofiles
 import aioshutil
@@ -1123,7 +1123,8 @@ def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
 
 
 def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Optional[int] = None,
-           skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None):
+           skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None,
+           skip_if: Optional[Callable[[Any], bool]] = None):
     """
     自定义缓存装饰器，支持配置缓存区域的 maxsize 和每个 key 的 ttl
 
@@ -1133,6 +1134,9 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
     :param skip_none: 跳过 None 缓存，默认为 True
     :param skip_empty: 跳过空值缓存（如 None, [], {}, "", set()），默认为 False
     :param shared_key: 同步/异步函数共享缓存的键，默认使用函数名（异步函数名会标准化为同步格式，如移除 `async_` 前缀）
+    :param skip_if: 按返回值判断是否跳过缓存的谓词，返回真值时不缓存；用于
+        「结构合法但业务失败」的返回值（如 TMDB 的 success=false 响应），
+        这类值无法用 skip_none/skip_empty 表达
     :return: 装饰器函数
     """
 
@@ -1157,6 +1161,8 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 return False
             # if skip_empty and value in [None, [], {}, "", set()]:
             if skip_empty and not value:
+                return False
+            if skip_if and skip_if(value):
                 return False
             return True
 

@@ -1,3 +1,4 @@
+import errno
 import threading
 import time
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.core.config import settings, global_vars
 from app.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process
+from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.utils.singleton import WeakSingleton
 
@@ -378,6 +380,39 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             logger.debug(f"【SMB】获取文件项失败: {e}")
             return None
+
+    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
+        只有 ENOENT/ENOTDIR 才是「确认不存在」，连接中断、认证失败等都无法确认
+        目标状态，必须保守失败以免覆盖保护被绕过。
+        """
+        try:
+            self._check_connection()
+
+            # 处理根目录
+            if str(path) == "/":
+                return schemas.FileItem(
+                    storage=self.schema.value,
+                    type="dir",
+                    path="/",
+                    name="",
+                    basename="",
+                    modify_time=int(time.time()),
+                )
+
+            smb_path = self._normalize_path(str(path).rstrip("/"))
+            try:
+                stat_result = smbclient.stat(smb_path)
+            except OSError as err:
+                if err.errno in (errno.ENOENT, errno.ENOTDIR):
+                    return None
+                raise StorageQueryError(f"【SMB】查询文件项失败: {path} - {err}") from err
+            return self._create_fileitem(stat_result, smb_path, Path(path).name)
+        except StorageQueryError:
+            raise
+        except Exception as e:
+            raise StorageQueryError(f"【SMB】查询文件项失败: {path} - {e}") from e
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

@@ -3,6 +3,7 @@ import traceback
 from math import ceil
 from threading import RLock
 from time import time
+from typing import Any
 
 from app.core.cache import FileCache, TTLCache
 from app.core.config import settings
@@ -144,6 +145,30 @@ class TmdbCache(metaclass=WeakSingleton):
         media_id = meta.media_id if meta.media_source == MediaSource.TMDB else None
         return f"[{meta.type.value if meta.type else '未知'}][{settings.TMDB_LOCALE}]{media_id or meta.name}-{meta.year}-{meta.begin_season}"
 
+    @staticmethod
+    def __is_type_conflicted(meta: MetaBase, media_type: Any, tmdb_id: Any) -> bool:
+        """
+        判断媒体类型是否与元数据声明的类型冲突。
+
+        只有「元数据判定为电视剧、结果却是电影」才算冲突。反向不算：名称识别在
+        电影分支查不到时会回退到电视剧查询，识别缓存正是用来记住这个纠正结果，
+        一律要求 key 与 value 类型一致会让这类条目每次都被丢弃、反复回源。而电视
+        剧分支恒定写入电视剧类型，`[电视剧]` 键下出现电影只可能来自 tmdbid 消歧
+        或共享识别回填的脏写，会让整季剧集被当成电影反复整理失败。
+        :param meta: 元数据
+        :param media_type: 待校验的媒体类型
+        :param tmdb_id: 对应的 TMDB ID，为空表示负缓存，不带类型信息
+        :return: 是否冲突
+        """
+        if meta.type != MediaType.TV or not tmdb_id:
+            return False
+        if not isinstance(media_type, MediaType):
+            try:
+                media_type = MediaType(media_type)
+            except (TypeError, ValueError):
+                return False
+        return media_type == MediaType.MOVIE
+
     def get(self, meta: MetaBase):
         """
         根据KEY值获取缓存值
@@ -154,7 +179,17 @@ class TmdbCache(metaclass=WeakSingleton):
             cache_data = self._cache.get(key)
             if not cache_data and self._expires_at.pop(key, None) is not None:
                 self._dirty = True
-            return cache_data or {}
+            if not cache_data or not isinstance(cache_data, dict):
+                return {}
+            if self.__is_type_conflicted(meta, cache_data.get("type"), cache_data.get("id")):
+                # 脏条目不丢弃就会被无限期沿用，正确的识别逻辑永远没有执行机会
+                logger.warn(f"识别缓存类型与元数据冲突，已丢弃并重新识别：{key} -> "
+                            f"{cache_data.get('title')}({cache_data.get('type')})")
+                self._cache.delete(key)
+                self._expires_at.pop(key, None)
+                self._dirty = True
+                return {}
+            return cache_data
 
     def delete(self, key: str) -> dict:
         """
@@ -193,6 +228,11 @@ class TmdbCache(metaclass=WeakSingleton):
         """
         key = self.__get_key(meta)
         if info:
+            if self.__is_type_conflicted(meta, info.get("media_type"), info.get("id")):
+                # 拒绝写入而不是改写键：识别结果照常返回，只是不把矛盾条目留给下一次
+                logger.warn(f"识别结果类型与元数据冲突，不写入识别缓存：{key} -> "
+                            f"{info.get('title')}({info.get('media_type')})")
+                return
             # 缓存标题
             cache_title = info.get("title") \
                 if info.get("media_type") == MediaType.MOVIE else info.get("name")

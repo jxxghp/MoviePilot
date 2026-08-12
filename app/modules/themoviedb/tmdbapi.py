@@ -8,7 +8,7 @@ from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 from app.utils.zhconv import convert as zhconv_convert
 from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person, Collection
-from .tmdbv3api.exceptions import TMDbException
+from .tmdbv3api.exceptions import TMDbException, TMDbConnectionError
 
 
 class TmdbApi:
@@ -584,11 +584,14 @@ class TmdbApi:
 
     def get_info(self,
                  mtype: MediaType,
-                 tmdbid: int) -> dict:
+                 tmdbid: int,
+                 raise_on_connection_error: bool = False) -> dict:
         """
         给定TMDB号，查询一条媒体信息
         :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
         :param tmdbid: TMDB的ID，有tmdbid时优先使用tmdbid，否则使用年份和标题
+        :param raise_on_connection_error: 为True时，遇到TMDB连接失败（区别于404等业务错误）
+            将抛出TMDbConnectionError而不是吞掉返回None；默认False，与既有调用方行为完全一致
         """
 
         def __get_genre_ids(genres: list) -> list:
@@ -604,16 +607,16 @@ class TmdbApi:
 
         # 查询TMDB详情
         if mtype == MediaType.MOVIE:
-            tmdb_info = self.__get_movie_detail(tmdbid)
+            tmdb_info = self.__get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.MOVIE
         elif mtype == MediaType.TV:
-            tmdb_info = self.__get_tv_detail(tmdbid)
+            tmdb_info = self.__get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
         else:
-            tmdb_info_tv = self.__get_tv_detail(tmdbid)
-            tmdb_info_movie = self.__get_movie_detail(tmdbid)
+            tmdb_info_tv = self.__get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
+            tmdb_info_movie = self.__get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
             if tmdb_info_tv and tmdb_info_movie:
                 tmdb_info = None
                 logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
@@ -797,10 +800,13 @@ class TmdbApi:
                                                                "alternative_titles,"
                                                                "translations,"
                                                                "release_dates,"
-                                                               "external_ids") -> Optional[dict]:
+                                                               "external_ids",
+                           raise_on_connection_error: bool = False) -> Optional[dict]:
         """
         获取电影的详情
         :param tmdbid: TMDB ID
+        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
+            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
         :return: TMDB信息
         """
         """
@@ -899,6 +905,11 @@ class TmdbApi:
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('title')}")
             return tmdbinfo or {}
+        except TMDbConnectionError as err:
+            logger.error(str(err))
+            if raise_on_connection_error:
+                raise
+            return None
         except Exception as e:
             logger.error(str(e))
             return None
@@ -911,10 +922,13 @@ class TmdbApi:
                                                             "translations,"
                                                             "content_ratings,"
                                                             "external_ids,"
-                                                            "episode_groups") -> Optional[dict]:
+                                                            "episode_groups",
+                        raise_on_connection_error: bool = False) -> Optional[dict]:
         """
         获取电视剧的详情
         :param tmdbid: TMDB ID
+        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
+            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
         :return: TMDB信息
         """
         """
@@ -1084,6 +1098,11 @@ class TmdbApi:
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('name')}")
             return tmdbinfo or {}
+        except TMDbConnectionError as err:
+            logger.error(str(err))
+            if raise_on_connection_error:
+                raise
+            return None
         except Exception as e:
             logger.error(str(e))
             return None
@@ -1666,10 +1685,13 @@ class TmdbApi:
                                                                            "alternative_titles,"
                                                                            "translations,"
                                                                            "release_dates,"
-                                                                           "external_ids") -> Optional[dict]:
+                                                                           "external_ids",
+                                       raise_on_connection_error: bool = False) -> Optional[dict]:
         """
         获取电影的详情（异步版本）
         :param tmdbid: TMDB ID
+        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
+            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
         :return: TMDB信息
         """
         if not self.movie:
@@ -1680,6 +1702,11 @@ class TmdbApi:
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('title')}")
             return tmdbinfo or {}
+        except TMDbConnectionError as err:
+            logger.error(str(err))
+            if raise_on_connection_error:
+                raise
+            return None
         except Exception as e:
             logger.error(str(e))
             return None
@@ -1692,10 +1719,13 @@ class TmdbApi:
                                                                         "translations,"
                                                                         "content_ratings,"
                                                                         "external_ids,"
-                                                                        "episode_groups") -> Optional[dict]:
+                                                                        "episode_groups",
+                                    raise_on_connection_error: bool = False) -> Optional[dict]:
         """
         获取电视剧的详情（异步版本）
         :param tmdbid: TMDB ID
+        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
+            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
         :return: TMDB信息
         """
         if not self.tv:
@@ -1706,6 +1736,11 @@ class TmdbApi:
             if tmdbinfo:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('name')}")
             return tmdbinfo or {}
+        except TMDbConnectionError as err:
+            logger.error(str(err))
+            if raise_on_connection_error:
+                raise
+            return None
         except Exception as e:
             logger.error(str(e))
             return None
@@ -1922,11 +1957,14 @@ class TmdbApi:
 
     async def async_get_info(self,
                              mtype: MediaType,
-                             tmdbid: int) -> dict:
+                             tmdbid: int,
+                             raise_on_connection_error: bool = False) -> dict:
         """
         给定TMDB号，查询一条媒体信息（异步版本）
         :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
         :param tmdbid: TMDB的ID，有tmdbid时优先使用tmdbid，否则使用年份和标题
+        :param raise_on_connection_error: 为True时，遇到TMDB连接失败（区别于404等业务错误）
+            将抛出TMDbConnectionError而不是吞掉返回None；默认False，与既有调用方行为完全一致
         """
 
         def __get_genre_ids(genres: list) -> list:
@@ -1942,16 +1980,16 @@ class TmdbApi:
 
         # 查询TMDB详情
         if mtype == MediaType.MOVIE:
-            tmdb_info = await self.__async_get_movie_detail(tmdbid)
+            tmdb_info = await self.__async_get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.MOVIE
         elif mtype == MediaType.TV:
-            tmdb_info = await self.__async_get_tv_detail(tmdbid)
+            tmdb_info = await self.__async_get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
         else:
-            tmdb_info_tv = await self.__async_get_tv_detail(tmdbid)
-            tmdb_info_movie = await self.__async_get_movie_detail(tmdbid)
+            tmdb_info_tv = await self.__async_get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
+            tmdb_info_movie = await self.__async_get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
             if tmdb_info_tv and tmdb_info_movie:
                 tmdb_info = None
                 logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")

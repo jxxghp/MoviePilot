@@ -7,9 +7,19 @@ from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaVideo
 from app.chain.transfer import JobManager, TransferChain
+from app.helper.transferhistory import (
+    clear_transfer_failures,
+    failed_retry_count,
+    record_transfer_failure,
+)
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import EpisodeFormat, FileItem, TransferInfo, TransferTask
 from app.schemas.types import EventType, MediaType
+
+
+def _reset_failed_retries(src_path, storage=None):
+    """清空失败重试计数，隔离用例之间共享的模块级计数缓存。"""
+    clear_transfer_failures(src_path, storage)
 
 
 class FakeMeta:
@@ -597,12 +607,14 @@ class TransferJobManagerTest(unittest.TestCase):
 
         fileitem = make_task(1).fileitem
         history = SimpleNamespace(
+            id=1,
             status=True,
             download_hash="abc123",
             downloader="qbittorrent",
         )
         transfer_history_oper = SimpleNamespace(
-            get_by_src=lambda src, storage=None: history
+            get_by_src=lambda src, storage=None: history,
+            get_success_by_src=lambda src, storage=None: history,
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
@@ -625,7 +637,11 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
         self.assertEqual([("abc123", "qbittorrent")], completed)
 
-    def test_failed_history_skip_still_marks_downloader_hash_completed(self):
+    def test_failed_history_is_retried_within_retry_budget(self):
+        """
+        失败重试次数未达上限（默认计数为 0）时，失败记录不再跳过整理，
+        会放行重新送入整理链；由于种子还没有真正整理完成，也不能连带把种子标记为已整理。
+        """
         chain = make_transfer_chain()
         completed = []
 
@@ -638,35 +654,222 @@ class TransferJobManagerTest(unittest.TestCase):
             (fileitem, False)
         ]
 
+        planned = []
+
+        def fake_handle_transfer(task, callback=None):
+            """记录放行重试后实际进入整理执行阶段的文件。"""
+            planned.append(task.fileitem.path)
+            return True, ""
+
+        chain._TransferChain__handle_transfer = fake_handle_transfer
+
         fileitem = make_task(1).fileitem
         history = SimpleNamespace(
+            id=2,
             status=False,
             download_hash="abc123",
             downloader="qbittorrent",
+            src=fileitem.path,
+            src_storage=fileitem.storage,
         )
         transfer_history_oper = SimpleNamespace(
-            get_by_src=lambda src, storage=None: history
+            get_by_src=lambda src, storage=None: history,
+            get_success_by_src=lambda src, storage=None: None,
+        )
+        download_history_oper = SimpleNamespace(
+            get_by_hash=lambda download_hash: None,
+            get_file_by_fullpath=lambda fullpath: None,
+            get_files_by_savepath=lambda savepath: [],
+            get_by_path=lambda path: None,
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
-        with patch(
-            "app.chain.transfer.TransferHistoryOper",
-            return_value=transfer_history_oper,
-        ), patch(
-            "app.chain.transfer.SystemConfigOper",
-            return_value=system_config_oper,
-        ):
-            state, errmsg = TransferChain.do_transfer(
-                chain,
-                fileitem=fileitem,
-                downloader="qbittorrent",
-                download_hash="abc123",
-                background=False,
-            )
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+        try:
+            with patch(
+                "app.chain.transfer.TransferHistoryOper",
+                return_value=transfer_history_oper,
+            ), patch(
+                "app.chain.transfer.DownloadHistoryOper",
+                return_value=download_history_oper,
+            ), patch(
+                "app.chain.transfer.SystemConfigOper",
+                return_value=system_config_oper,
+            ):
+                state, errmsg = TransferChain.do_transfer(
+                    chain,
+                    fileitem=fileitem,
+                    downloader="qbittorrent",
+                    download_hash="abc123",
+                    background=False,
+                )
 
-        self.assertFalse(state)
-        self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
-        self.assertEqual([("abc123", "qbittorrent")], completed)
+            self.assertTrue(state)
+            self.assertEqual("", errmsg)
+            self.assertEqual([fileitem.path], planned)
+            self.assertEqual([], completed)
+        finally:
+            _reset_failed_retries(fileitem.path, fileitem.storage)
+
+    def test_failed_history_skip_marks_downloader_hash_when_retry_budget_exhausted(self):
+        """
+        失败重试次数已达上限时，失败记录仍会拦截整理；但拦截意味着不再重试，
+        此时仍要给种子打已整理标签，让种子退出下载器轮询，否则下载器每一轮都会
+        重新扫描到同一个失败记录，空转且刷屏。
+        """
+        chain = make_transfer_chain()
+        completed = []
+
+        def fake_transfer_completed(hashs, downloader):
+            completed.append((hashs, downloader))
+
+        chain.transfer_completed = fake_transfer_completed
+        chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100)]
+        chain._TransferChain__get_trans_fileitems = lambda fileitem, predicate: [
+            (fileitem, False)
+        ]
+
+        planned = []
+
+        def fake_handle_transfer(task, callback=None):
+            """达到重试上限时不应有文件进入实际整理执行阶段。"""
+            planned.append(task.fileitem.path)
+            return True, ""
+
+        chain._TransferChain__handle_transfer = fake_handle_transfer
+
+        fileitem = make_task(1).fileitem
+        history = SimpleNamespace(
+            id=3,
+            status=False,
+            download_hash="abc123",
+            downloader="qbittorrent",
+            src=fileitem.path,
+            src_storage=fileitem.storage,
+        )
+        transfer_history_oper = SimpleNamespace(
+            get_by_src=lambda src, storage=None: history,
+            get_success_by_src=lambda src, storage=None: None,
+        )
+        download_history_oper = SimpleNamespace(
+            get_by_hash=lambda download_hash: None,
+            get_file_by_fullpath=lambda fullpath: None,
+            get_files_by_savepath=lambda savepath: [],
+            get_by_path=lambda path: None,
+        )
+        system_config_oper = SimpleNamespace(get=lambda key: None)
+
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+        try:
+            with patch.object(
+                settings, "TRANSFER_MAX_FAILED_RETRIES", 1,
+            ):
+                record_transfer_failure(fileitem.path, fileitem.storage)
+                with patch(
+                    "app.chain.transfer.TransferHistoryOper",
+                    return_value=transfer_history_oper,
+                ), patch(
+                    "app.chain.transfer.DownloadHistoryOper",
+                    return_value=download_history_oper,
+                ), patch(
+                    "app.chain.transfer.SystemConfigOper",
+                    return_value=system_config_oper,
+                ):
+                    state, errmsg = TransferChain.do_transfer(
+                        chain,
+                        fileitem=fileitem,
+                        downloader="qbittorrent",
+                        download_hash="abc123",
+                        background=False,
+                    )
+
+            self.assertFalse(state)
+            self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
+            self.assertEqual([], planned)
+            self.assertEqual([("abc123", "qbittorrent")], completed)
+        finally:
+            _reset_failed_retries(fileitem.path, fileitem.storage)
+
+    def test_default_callback_failure_and_success_track_retry_counter(self):
+        """
+        __default_callback 应在整理失败时累计连续失败次数、整理成功时清零，
+        避免瞬时故障与长期失败混用同一份计数导致误判上限。
+        """
+        chain = make_transfer_chain()
+        chain.eventmanager = MagicMock()
+        chain.post_message = MagicMock()
+        chain.transfer_completed = lambda *args, **kwargs: None
+
+        task = make_task(1)
+        task.mediainfo = FakeMedia()
+        # __default_callback 失败通知路径需要读取海报图，FakeMedia 本身不提供该接口
+        task.mediainfo.get_message_image = lambda: "poster.jpg"
+        task.background = False
+        task.manual = True
+
+        src_path = task.fileitem.path
+        storage = task.fileitem.storage
+        _reset_failed_retries(src_path, storage)
+        try:
+            self.assertEqual(0, failed_retry_count(src_path, storage))
+
+            failed_transferinfo = TransferInfo(
+                success=False,
+                fileitem=task.fileitem,
+                message="整理失败测试",
+                transfer_type="copy",
+                need_notify=False,
+            )
+            failed_history_oper = SimpleNamespace(
+                add_fail=lambda **kwargs: SimpleNamespace(id=1),
+            )
+            with patch(
+                "app.chain.transfer.TransferHistoryOper",
+                return_value=failed_history_oper,
+            ), patch(
+                "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            ), patch(
+                "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            ):
+                state, _ = chain._TransferChain__default_callback(task, failed_transferinfo)
+
+            self.assertFalse(state)
+            self.assertEqual(1, failed_retry_count(src_path, storage))
+
+            self.assertTrue(chain._TransferChain__put_to_jobview(task))
+            success_transferinfo = TransferInfo(
+                success=True,
+                fileitem=task.fileitem,
+                target_item=FileItem(
+                    storage=storage,
+                    path="/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv",
+                    type="file",
+                    name="Test.Show.S01E01.mkv",
+                    extension="mkv",
+                ),
+                target_diritem=FileItem(
+                    storage=storage,
+                    path="/library/Test Show (2026)/Season 1/",
+                    type="dir",
+                    name="Season 1",
+                ),
+                file_list_new=[
+                    "/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv"
+                ],
+                transfer_type="copy",
+                need_scrape=False,
+                need_notify=False,
+            )
+            with patch(
+                "app.chain.transfer.TransferHistoryOper",
+                return_value=SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=2)),
+            ):
+                state, _ = chain._TransferChain__default_callback(task, success_transferinfo)
+
+            self.assertTrue(state)
+            self.assertEqual(0, failed_retry_count(src_path, storage))
+        finally:
+            _reset_failed_retries(src_path, storage)
 
     def test_unrecognized_task_marks_downloader_hash_completed(self):
         chain = make_transfer_chain()

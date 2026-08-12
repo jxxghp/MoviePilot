@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.storages.alipan import AliPan
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.storages.rclone import Rclone
@@ -87,13 +88,17 @@ def test_local_strict_raises_on_stat_error(tmp_path, monkeypatch):
     """
     target = tmp_path / "movie.mkv"
 
-    def raise_stat_error(self, *args, **kwargs):
+    def raise_stat_error(*_args, **_kwargs):
         """
         模拟 CloudDrive FUSE 挂载返回 ENOTRECOVERABLE。
         """
         raise OSError(131, "State not recoverable")
 
-    monkeypatch.setattr(Path, "stat", raise_stat_error)
+    # 文件系统边界已下移到代理子进程，patch Path.stat 影响不到那里，
+    # 必须在代理这一层注入故障
+    monkeypatch.setattr(
+        "app.modules.filemanager.storages.local.fsproxy.stat", raise_stat_error
+    )
 
     with pytest.raises(StorageQueryError):
         _local().get_item_strict(target)
@@ -229,12 +234,14 @@ def test_alipan_strict_returns_item(monkeypatch):
     assert storage.get_item_strict(Path("/movie.mkv")) == "ITEM"
 
 
-def test_storage_base_strict_defaults_to_get_item():
+def test_storage_base_strict_fails_conservatively_without_override():
     """
-    未覆写的存储沿用 get_item 判定，行为不变。
+    未覆写严格查询的存储必须保守失败：沿用 get_item 会把「查询失败」当成
+    「目标不存在」，让 overwrite_mode=size 的覆盖保护被绕过。
     """
     storage = object.__new__(Rclone)
     storage.get_item = MagicMock(return_value=None)
 
-    assert storage.get_item_strict(Path("/movie.mkv")) is None
-    storage.get_item.assert_called_once()
+    with pytest.raises(StorageQueryError):
+        StorageBase.get_item_strict(storage, Path("/movie.mkv"))
+    storage.get_item.assert_not_called()

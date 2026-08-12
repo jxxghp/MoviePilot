@@ -5,13 +5,25 @@ from app.api.endpoints.transfer import (
     query_manual_transfer_history,
 )
 from app.chain.transfer import TransferChain
+from app.core.config import settings
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.transferhistory import (
+    clear_transfer_failures,
+    failed_retry_count,
+    max_failed_retries,
+    record_transfer_failure,
+)
 from app.schemas import FileItem, ManualTransferItem
 from tests.test_transfer_sync_extra_files import (
     FakeMeta,
     make_fileitem,
     make_transfer_chain,
 )
+
+
+def _reset_failed_retries(src_path, storage=None):
+    """清空失败重试计数，隔离用例之间共享的模块级计数缓存。"""
+    clear_transfer_failures(src_path, storage)
 
 
 def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, deleted):
@@ -42,6 +54,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
 
     history_oper = SimpleNamespace(
         get_by_src=lambda src, storage=None: history,
+        get_success_by_src=lambda src, storage=None: history if history and history.status else None,
         get_by_dest=lambda dest, storage=None: None,
         delete=lambda history_id: deleted.append(("history", history_id)),
     )
@@ -286,6 +299,8 @@ def test_manual_transfer_removes_failed_history_before_retry(monkeypatch):
         dest_fileitem=old_dest.model_dump(),
         download_hash=None,
         downloader=None,
+        src=None,
+        src_storage=None,
     )
     planned = []
     deleted = []
@@ -314,8 +329,8 @@ def test_manual_transfer_removes_failed_history_before_retry(monkeypatch):
     assert planned == [fileitem.path]
 
 
-def test_automatic_transfer_keeps_failed_history(monkeypatch):
-    """自动整理仍应保留失败历史并跳过，避免失败任务自动循环。"""
+def test_automatic_transfer_retries_failed_history_within_retry_budget(monkeypatch):
+    """失败重试次数未达上限（默认计数为 0）时，自动整理遇到失败记录应放行重试，避免一次瞬时故障永久锁死文件。"""
     chain = make_transfer_chain()
     fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
     history = SimpleNamespace(
@@ -327,6 +342,8 @@ def test_automatic_transfer_keeps_failed_history(monkeypatch):
         ).model_dump(),
         download_hash=None,
         downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
     )
     planned = []
     deleted = []
@@ -339,17 +356,177 @@ def test_automatic_transfer_keeps_failed_history(monkeypatch):
         deleted,
     )
 
-    state, message = TransferChain.do_transfer(
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            background=False,
+            manual=False,
+        )
+
+        assert state is True
+        assert message == ""
+        assert deleted == []
+        assert planned == [fileitem.path]
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_automatic_transfer_skips_failed_history_when_retry_budget_exhausted(monkeypatch):
+    """失败重试次数已达上限时，自动整理遇到失败记录仍应被拦截、不进入整理链，避免失败任务自动循环。"""
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=13,
+        status=False,
+        mode="copy",
+        dest_fileitem=make_fileitem(
+            "/library/Test Show/Test.Show.S01E01.mkv"
+        ).model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
         chain,
-        fileitem=fileitem,
-        background=False,
-        manual=False,
+        fileitem,
+        history,
+        planned,
+        deleted,
     )
 
-    assert state is False
-    assert message == f"{fileitem.name} 已整理过"
-    assert deleted == []
-    assert planned == []
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        record_transfer_failure(fileitem.path, fileitem.storage)
+
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            background=False,
+            manual=False,
+        )
+
+        assert state is False
+        assert message == f"{fileitem.name} 已整理过"
+        assert deleted == []
+        assert planned == []
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_automatic_transfer_new_version_bypasses_exhausted_retry_budget(monkeypatch):
+    """失败预算耗尽后同路径新版本必须进入整理，且不能给下载任务补打已整理标签。"""
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    fileitem.size = 200
+    history = SimpleNamespace(
+        id=15,
+        status=False,
+        mode="copy",
+        dest_fileitem=None,
+        download_hash="abc123",
+        downloader="qbittorrent",
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+        src_fileitem={"size": 100},
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+    completed = []
+    chain.transfer_completed = lambda download_hash, downloader: completed.append(
+        (download_hash, downloader)
+    )
+
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        record_transfer_failure(fileitem.path, fileitem.storage, file_size=100)
+
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            downloader="qbittorrent",
+            download_hash="abc123",
+            background=False,
+            manual=False,
+        )
+
+        assert state is True
+        assert message == ""
+        assert deleted == []
+        assert planned == [fileitem.path]
+        assert completed == []
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_manual_transfer_bypasses_retry_budget_when_exhausted(monkeypatch):
+    """
+    手动整理不受重试次数上限限制：manual=True 时查重闸根本不参与判定
+    （do_transfer 中 `if transferd and not manual` 已把 manual 路径排除在外），
+    即使失败计数已达上限（自动路径会因此拦截），仍应清理失败记录、重置计数并放行重试。
+    """
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    old_dest = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=14,
+        status=False,
+        mode="copy",
+        dest_fileitem=old_dest.model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        record_transfer_failure(fileitem.path, fileitem.storage)
+        assert failed_retry_count(fileitem.path, fileitem.storage) >= max_failed_retries()
+
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            background=False,
+            manual=True,
+        )
+
+        assert state is True
+        assert message == ""
+        assert deleted == [
+            ("target", old_dest.path),
+            ("history", history.id),
+        ]
+        assert planned == [fileitem.path]
+        assert failed_retry_count(fileitem.path, fileitem.storage) == 0
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
 
 
 def test_manual_transfer_keeps_success_history_without_confirmation(monkeypatch):
@@ -402,6 +579,8 @@ def test_manual_reorganize_removes_success_history_and_old_target(monkeypatch):
         dest_fileitem=old_dest.model_dump(),
         download_hash=None,
         downloader=None,
+        src=None,
+        src_storage=None,
     )
     planned = []
     deleted = []
@@ -442,6 +621,8 @@ def test_manual_reorganize_keeps_successful_move_target_as_source(monkeypatch):
         dest_fileitem=fileitem.model_dump(),
         download_hash=None,
         downloader=None,
+        src=None,
+        src_storage=None,
     )
     planned = []
     deleted = []
@@ -480,6 +661,8 @@ def test_forced_manual_reorganize_still_removes_history(monkeypatch):
         dest_fileitem=old_dest.model_dump(),
         download_hash=None,
         downloader=None,
+        src=None,
+        src_storage=None,
     )
     planned = []
     deleted = []
