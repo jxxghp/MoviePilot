@@ -231,6 +231,8 @@ class ConfigModel(BaseModel):
     # ==================== 音乐配置 ====================
     # 音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）
     MUSIC_COVER_PROXY: str = ""
+    # AcoustID 应用 API Key，用于查询本地音频的 Chromaprint 指纹
+    ACOUSTID_API_KEY: str = "b1auxfOzAg"
     # TheAudioDB API Key，默认使用官方公开的免费 V1 Key，可通过环境变量覆盖
     THEAUDIODB_API_KEY: str = "123"
 

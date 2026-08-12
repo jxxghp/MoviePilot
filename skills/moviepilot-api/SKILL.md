@@ -111,7 +111,7 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 
 ### Media Search (13 endpoints)
 
-When a video recognition request omits `source`, MoviePilot validates TMDB first and only then queries `douban`, `bangumi`, and `anilist` concurrently to score a fallback. Providing `source` or a source-native ID keeps recognition strict to that source. Music recognition without `source` compares all built-in music sources concurrently.
+When recognition omits `source`, MoviePilot uses TMDB exclusively for video and MusicBrainz exclusively for music. A miss does not trigger another metadata source. Providing `source` or a source-native ID keeps recognition strict to that manually selected source.
 
 | Method | Path | Description |
 |--------|------|-------------|

@@ -14,6 +14,9 @@ from app.core.meta.metamusic import (
 from app.helper.audio import AudioMetadataHelper
 
 
+RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
+
+
 def test_read_audio_metadata_maps_easy_tags(monkeypatch):
     """音频标签和技术参数应映射为 MetaMusic。"""
     audio = SimpleNamespace(
@@ -26,6 +29,7 @@ def test_read_audio_metadata_maps_easy_tags(monkeypatch):
             "tracknumber": ["8/13"],
             "discnumber": ["1/1"],
             "isrc": ["USQX91300105"],
+            "musicbrainz_trackid": [RECORDING_ID],
         },
         info=SimpleNamespace(
             length=369.4,
@@ -49,6 +53,8 @@ def test_read_audio_metadata_maps_easy_tags(monkeypatch):
     assert meta.audio_lossless is True
     assert meta.audio_quality == "lossless"
     assert meta.audio_specs == "FLAC · 16-bit · 44.1 kHz · 1,411 kbps"
+    assert meta.media_source == "musicbrainz"
+    assert meta.media_id == RECORDING_ID
 
 
 def test_parse_declared_hires_audio_quality_from_resource_title():
@@ -142,6 +148,38 @@ def test_read_audio_metadata_falls_back_to_filename(monkeypatch):
 
     assert meta.title == "Unknown Track"
     assert meta.audio_format == "MP3"
+
+
+def test_read_audio_tags_does_not_fill_from_filename(monkeypatch):
+    """标签识别层应只使用标签证据，避免把文件名线索提前混入。"""
+    audio = SimpleNamespace(
+        tags={"title": ["Tagged Title"]},
+        info=SimpleNamespace(length=180),
+    )
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    meta = AudioMetadataHelper.read_tags(Path("/music/Daft Punk - Get Lucky 2013.flac"))
+
+    assert meta.title == "Tagged Title"
+    assert meta.artists == []
+    assert meta.year is None
+
+
+def test_read_audio_tags_ignores_invalid_musicbrainz_id(monkeypatch):
+    """异常 MusicBrainz 标签不得进入 ID 详情路径。"""
+    audio = SimpleNamespace(
+        tags={
+            "title": ["Tagged Title"],
+            "musicbrainz_trackid": ["../../unexpected"],
+        },
+        info=SimpleNamespace(length=180),
+    )
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    meta = AudioMetadataHelper.read_tags(Path("/music/track.flac"))
+
+    assert meta.media_source is None
+    assert meta.media_id is None
 
 
 def test_remote_path_meta_parses_track_prefix_once(tmp_path):
@@ -245,6 +283,8 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     success = AudioMetadataHelper.write(
         Path("/music/08 - Get Lucky.flac"),
         MusicInfo(
+            source="musicbrainz",
+            media_id=RECORDING_ID,
             title="Get Lucky",
             artists=["Daft Punk", "Pharrell Williams"],
             album="Random Access Memories",
@@ -261,6 +301,7 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     assert audio.tags["title"] == ["Get Lucky"]
     assert audio.tags["artist"] == ["Daft Punk", "Pharrell Williams"]
     assert audio.tags["tracknumber"] == ["8/13"]
+    assert audio.tags["musicbrainz_trackid"] == [RECORDING_ID]
 
 
 def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch):

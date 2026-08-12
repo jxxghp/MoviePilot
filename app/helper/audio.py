@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any, Optional, Union
+from uuid import UUID
 
 from mutagen import File as MutagenFile
 from mutagen.flac import FLAC, Picture
@@ -9,6 +10,7 @@ from mutagen.mp4 import MP4, MP4Cover
 from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
 from app.log import logger
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 
 class AudioMetadataHelper:
@@ -17,29 +19,36 @@ class AudioMetadataHelper:
     @classmethod
     def read(cls, path: Path) -> MetaMusic:
         """读取本地音频标签，并以完整文件名模式和目录线索补充缺失字段。"""
-        def filename_fallback() -> MetaMusic:
-            """构造无标签结果，完整文件名解析只在确有需要时执行。"""
-            return MetaMusic(
-                org_string=path.name,
-                title=path.stem,
-                audio_format=path.suffix.lstrip(".").upper() or None,
-            ).apply_path_context(path)
+        tag_meta = cls.read_tags(path)
+        if tag_meta:
+            return tag_meta.apply_path_context(path)
+        return cls.read_filename(path)
 
+    @classmethod
+    def read_tags(cls, path: Path) -> Optional[MetaMusic]:
+        """只读取本地音频标签和流参数，不使用文件名或目录补齐。"""
         try:
             audio = MutagenFile(path, easy=True)
         except Exception as err:
             logger.warning(f"读取音频标签失败：{path} - {err}")
-            return filename_fallback()
+            return None
         if not audio:
-            return filename_fallback()
+            return None
 
         tags = audio.tags or {}
         track_number, total_tracks = cls._number_pair(cls._first(tags, "tracknumber"))
         disc_number, total_discs = cls._number_pair(cls._first(tags, "discnumber"))
+        musicbrainz_id = cls._normalize_musicbrainz_id(
+            cls._first_of(
+                tags,
+                "musicbrainz_trackid",
+                "musicbrainz_recordingid",
+            )
+        )
         info = getattr(audio, "info", None)
         return MetaMusic(
             org_string=path.name,
-            title=cls._first(tags, "title") or path.stem,
+            title=cls._first(tags, "title"),
             artists=cls._values(tags, "artist"),
             album=cls._first(tags, "album"),
             album_artist=cls._first(tags, "albumartist"),
@@ -55,6 +64,17 @@ class AudioMetadataHelper:
             bitrate=cls._optional_int(getattr(info, "bitrate", None)),
             duration=round(info.length) if info and getattr(info, "length", None) else None,
             isrc=cls._first(tags, "isrc"),
+            media_source="musicbrainz" if musicbrainz_id else None,
+            media_id=musicbrainz_id,
+        )
+
+    @staticmethod
+    def read_filename(path: Path) -> MetaMusic:
+        """只从文件名和目录结构解析音乐元数据。"""
+        return MetaMusic(
+            org_string=path.name,
+            title=path.stem,
+            audio_format=path.suffix.lstrip(".").upper() or None,
         ).apply_path_context(path)
 
     @classmethod
@@ -123,7 +143,25 @@ class AudioMetadataHelper:
             "tracknumber": track_number,
             "discnumber": disc_number,
             "isrc": getattr(music, "isrc", None),
+            "musicbrainz_trackid": cls._musicbrainz_recording_id(music),
         }
+
+    @staticmethod
+    def _musicbrainz_recording_id(
+            music: Union[MetaMusic, MusicInfo],
+    ) -> Optional[str]:
+        """仅将 MusicBrainz 单曲身份写入 recording 标签，避免误写专辑 ID。"""
+        if getattr(music, "media_source", None) == "musicbrainz":
+            media_id = getattr(music, "media_id", None)
+            return str(media_id) if media_id else None
+        if (
+                getattr(music, "source", None) == "musicbrainz"
+                and getattr(music, "music_type", MUSIC_ENTITY_RECORDING)
+                == MUSIC_ENTITY_RECORDING
+        ):
+            media_id = getattr(music, "media_id", None)
+            return str(media_id) if media_id else None
+        return None
 
     @staticmethod
     def _number_text(current: Optional[int], total: Optional[int]) -> Optional[str]:
@@ -199,6 +237,22 @@ class AudioMetadataHelper:
         """返回指定音频标签的第一个非空值。"""
         values = cls._values(tags, key)
         return values[0] if values else None
+
+    @classmethod
+    def _first_of(cls, tags: Any, *keys: str) -> Optional[str]:
+        """按顺序返回多个音频标签中的第一个非空值。"""
+        for key in keys:
+            if value := cls._first(tags, key):
+                return value
+        return None
+
+    @staticmethod
+    def _normalize_musicbrainz_id(value: Optional[str]) -> Optional[str]:
+        """校验并规范化音频标签中的 MusicBrainz UUID。"""
+        try:
+            return str(UUID(str(value)))
+        except (AttributeError, TypeError, ValueError):
+            return None
 
     @staticmethod
     def _number_pair(value: Optional[str]) -> tuple[Optional[int], Optional[int]]:

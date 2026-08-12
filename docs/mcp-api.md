@@ -132,7 +132,7 @@ FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶�
 
 #### 媒体识别 / 整理
 
-媒体识别、搜索和手动整理内置支持 `themoviedb`、`douban`、`bangumi`、`anilist` 四种数据源，也允许插件处理自定义来源。影视自动识别在未指定来源时优先使用 TMDB；TMDB 未可靠命中后才并发查询其它内置来源，并按标题、类型、年份和季信息选择最佳兜底结果。音乐自动识别会并发比较全部内置音乐来源。手动操作可通过请求级 `source` 或 `media_source` + `media_id` 严格指定单一来源，不修改系统默认值，也不会跨来源兜底。
+媒体识别、搜索和手动整理内置支持 `themoviedb`、`douban`、`bangumi`、`anilist` 四种影视数据源，也允许插件处理自定义来源。影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，标签和文件名标题识别也只使用 MusicBrainz。其它元数据源仅在手动操作通过请求级 `source` 或 `media_source` + `media_id` 明确指定时使用，不修改系统默认值，也不会跨来源兜底。
 
 涉及媒体身份的请求统一以 `media_source` + `media_id` 表示本次选定的主身份，同时保留 `tmdbid`、`doubanid`、`bangumiid`、`anilistid` 作为跨数据源映射和旧客户端兼容字段。两者并非两套独立数据流：显式通用主身份优先，专用 ID 用于补全映射和兼容回退。
 
@@ -190,7 +190,7 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 音乐元数据使用 `MusicMeta` / `MusicInfo` 独立模型。`music_type=recording` 表示单曲，`album` 表示包含多首曲目的完整专辑，`artist` 仅用于浏览；稳定身份分别使用对应的 `musicbrainz:<mbid>`。单曲和专辑可进入搜索、订阅、下载、整理、刮削和已配置音乐媒体服务器的入库检查，艺术家不能作为订阅或下载目标。
 
-音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
+音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，并使用 Chromaprint 的 `fpcalc` 在本地生成指纹后查询 AcoustID；音频文件本身不会上传。站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |

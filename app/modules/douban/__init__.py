@@ -63,7 +63,7 @@ class DoubanModule(_ModuleBase):
 
     @staticmethod
     def get_music_source() -> str:
-        """返回多源音乐识别使用的数据源标识。"""
+        """返回音乐识别使用的数据源标识。"""
         return DoubanModule._music_source
 
     @staticmethod

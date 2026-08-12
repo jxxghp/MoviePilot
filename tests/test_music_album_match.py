@@ -1,3 +1,6 @@
+import asyncio
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
 from app.chain.media import MediaChain
@@ -164,6 +167,60 @@ def test_recognize_album_directory_maps_files(tmp_path, music_chain, monkeypatch
     assert calls["count"] == 1
 
 
+def test_async_recognize_album_directory_calls_async_module(
+        tmp_path,
+        music_chain,
+        monkeypatch,
+):
+    """异步目录识别应直接调用模块异步接口，并兼容单个专辑返回值。"""
+    album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
+    album_dir.mkdir()
+    files = []
+    for index, (name, _length) in enumerate(ALBUM_TRACKS):
+        file = album_dir / f"{index + 1:02d}.{name}.wav"
+        file.write_bytes(b"RIFF")
+        files.append(file)
+
+    album = MusicAlbumInfo(
+        source="musicbrainz",
+        media_id="rg-1",
+        title="七里香",
+        artists=["周杰伦"],
+        tracks=[
+            MusicInfo(
+                source="musicbrainz",
+                media_id=f"rec-{index + 1}",
+                title=name,
+                artists=["周杰伦"],
+                album="七里香",
+                track_number=index + 1,
+                duration=length,
+            )
+            for index, (name, length) in enumerate(ALBUM_TRACKS)
+        ],
+    )
+    async_run_module = AsyncMock(return_value=album)
+    run_module = Mock(side_effect=AssertionError("异步目录识别不应调用同步模块接口"))
+    monkeypatch.setattr(music_chain, "async_run_module", async_run_module)
+    monkeypatch.setattr(music_chain, "run_module", run_module)
+    monkeypatch.setattr(
+        music_chain,
+        "_read_album_path_metas",
+        lambda _files: _local_tracks(),
+    )
+
+    matched = asyncio.run(music_chain.async_recognize_album_directory(album_dir))
+
+    assert [matched[str(file.resolve())].media_id for file in files] == [
+        "rec-1",
+        "rec-2",
+        "rec-3",
+    ]
+    async_run_module.assert_awaited_once()
+    assert async_run_module.await_args.args == ("async_match_music_album",)
+    run_module.assert_not_called()
+
+
 def test_recognize_album_directory_skips_single_file(tmp_path, music_chain, monkeypatch):
     """单文件目录不走专辑匹配，交给单曲识别链路。"""
     album_dir = tmp_path / "单曲"
@@ -240,3 +297,32 @@ def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch
     assert info.album == "七里香"
     # 本地音频参数应保留在识别结果中
     assert meta.audio_format == "WAV"
+
+
+def test_async_music_album_fallback_calls_async_directory_match(tmp_path, monkeypatch):
+    """异步路径回退应等待目录异步识别，不得调用同步目录识别。"""
+    album_dir = tmp_path / "七里香"
+    album_dir.mkdir()
+    file = album_dir / "01.我的地盘.wav"
+    file.write_bytes(b"RIFF")
+    matched_info = MusicInfo(
+        source="musicbrainz",
+        media_id="rec-1",
+        title="我的地盘",
+    )
+    async_recognize = AsyncMock(
+        return_value={str(file.resolve()): matched_info}
+    )
+    sync_recognize = Mock(side_effect=AssertionError("异步回退不应调用同步目录识别"))
+    monkeypatch.setattr(
+        MusicChain,
+        "async_recognize_album_directory",
+        async_recognize,
+    )
+    monkeypatch.setattr(MusicChain, "recognize_album_directory", sync_recognize)
+
+    result = asyncio.run(MediaChain._async_music_album_dir_fallback(file))
+
+    assert result is matched_info
+    async_recognize.assert_awaited_once_with(album_dir)
+    sync_recognize.assert_not_called()

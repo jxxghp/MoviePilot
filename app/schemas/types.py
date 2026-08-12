@@ -498,6 +498,8 @@ class OtherModulesType(Enum):
     ListenBrainz = "ListenBrainz"
     # LRCLIB 歌词
     Lrclib = "LRCLIB"
+    # AcoustID 音频指纹
+    AcoustId = "AcoustID"
 
 
 class NameValueEnum(Enum):

@@ -87,8 +87,8 @@ def _album() -> MusicInfo:
     )
 
 
-def test_recognize_music_title_uses_media_chain_automatic_sources():
-    """Agent 音乐标题识别应进入 MediaChain 自动多源流程，不再固定 MusicBrainz。"""
+def test_recognize_music_title_uses_media_chain_primary_source():
+    """Agent 音乐标题识别应由 MediaChain 自动选择 MusicBrainz 主数据源。"""
     expected = _recording()
     recognize = AsyncMock(return_value=expected)
     tool = RecognizeMediaTool(session_id="session-1", user_id="10001")

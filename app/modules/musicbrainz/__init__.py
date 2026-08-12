@@ -1,10 +1,10 @@
+import asyncio
 import re
 import threading
 import time
 from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, Union
 
-from fastapi.concurrency import run_in_threadpool
 from requests import Session
 
 from app.core.cache import cached
@@ -26,7 +26,7 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.utils.http import RequestUtils
+from app.utils.http import AsyncRequestUtils, RequestUtils
 from app.utils.media import is_media_source_selected
 from app.utils.zhconv import convert as zhconv_convert
 
@@ -123,7 +123,7 @@ class MusicBrainzModule(_ModuleBase):
 
     @staticmethod
     def get_music_source() -> str:
-        """返回多源音乐识别使用的数据源标识。"""
+        """返回音乐识别使用的数据源标识。"""
         return MusicBrainzModule._source
 
     @staticmethod
@@ -167,6 +167,30 @@ class MusicBrainzModule(_ModuleBase):
             payload = self._request_json(
                 "/recording",
                 params={"query": query, "limit": max(1, min(limit, 100)), "fmt": "json"},
+            )
+            results = [
+                info
+                for item in (payload or {}).get("recordings") or []
+                if (info := self._recording_to_info(item))
+            ]
+            if results:
+                return results
+        return []
+
+    async def _async_search_recordings(
+            self,
+            meta: MetaMusic,
+            limit: int,
+    ) -> list[MusicInfo]:
+        """异步按音频标签条件搜索 Recording 候选。"""
+        for query in self._recording_queries(meta):
+            payload = await self._async_request_json(
+                "/recording",
+                params={
+                    "query": query,
+                    "limit": max(1, min(limit, 100)),
+                    "fmt": "json",
+                },
             )
             results = [
                 info
@@ -312,6 +336,30 @@ class MusicBrainzModule(_ModuleBase):
                 return results
         return []
 
+    async def _async_search_albums(
+            self,
+            meta: MetaMusic,
+            limit: int,
+    ) -> list[MusicInfo]:
+        """异步按标题和可选艺术家搜索 Release Group 专辑候选。"""
+        for query in self._album_queries(meta):
+            payload = await self._async_request_json(
+                "/release-group",
+                params={
+                    "query": query,
+                    "limit": max(1, min(limit, 100)),
+                    "fmt": "json",
+                },
+            )
+            results = [
+                album.to_music_info()
+                for item in (payload or {}).get("release-groups") or []
+                if (album := self._release_group_to_album(item))
+            ]
+            if results:
+                return results
+        return []
+
     @classmethod
     def _album_queries(cls, meta: MetaMusic) -> list[str]:
         """构造专辑检索式阶梯：专辑名+艺术家 → 仅专辑名 → 去括号/卷号变体。"""
@@ -413,6 +461,41 @@ class MusicBrainzModule(_ModuleBase):
             return None
         return best_album
 
+    async def async_match_music_album(
+            self,
+            meta: MetaMusic,
+            tracks: list[MetaMusic],
+            limit: int = 5,
+    ) -> Optional[MusicAlbumInfo]:
+        """异步按目录线索和曲目特征匹配 MusicBrainz 发行版本。"""
+        if not tracks:
+            return None
+        best_album: Optional[MusicAlbumInfo] = None
+        best_score = 0.0
+        releases = await self._async_search_release_candidates(
+            meta,
+            tracks,
+            limit=limit,
+        )
+        for release in releases:
+            release_id = release.get("id")
+            if not release_id:
+                continue
+            detail = await self._async_request_json(
+                f"/release/{release_id}",
+                params={"inc": "recordings+media+artist-credits", "fmt": "json"},
+            )
+            if not detail:
+                continue
+            summary = self._release_track_summary(detail)
+            score = self._score_release(meta, tracks, detail, summary)
+            if score > best_score:
+                best_score = score
+                best_album = self._release_to_album(detail)
+        if best_score < self._album_match_threshold:
+            return None
+        return best_album
+
     _album_match_threshold = 60.0
 
     def _search_release_candidates(
@@ -428,6 +511,33 @@ class MusicBrainzModule(_ModuleBase):
             payload = self._request_json(
                 "/release",
                 params={"query": query, "limit": max(1, min(limit, 25)), "fmt": "json"},
+            )
+            for item in (payload or {}).get("releases") or []:
+                release_id = item.get("id")
+                if release_id and release_id not in seen:
+                    seen.add(release_id)
+                    releases.append(item)
+            if len(releases) >= limit:
+                break
+        return releases[:limit]
+
+    async def _async_search_release_candidates(
+            self,
+            meta: MetaMusic,
+            tracks: list[MetaMusic],
+            limit: int,
+    ) -> list[dict[str, Any]]:
+        """异步按专辑名和曲名线索搜索并去重候选发行版本。"""
+        releases: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for query in self._release_queries(meta, tracks):
+            payload = await self._async_request_json(
+                "/release",
+                params={
+                    "query": query,
+                    "limit": max(1, min(limit, 25)),
+                    "fmt": "json",
+                },
             )
             for item in (payload or {}).get("releases") or []:
                 release_id = item.get("id")
@@ -739,15 +849,56 @@ class MusicBrainzModule(_ModuleBase):
             mediaid: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
-        """同步分发到音乐识别的异步版本，避免阻塞共享事件循环。"""
-        return await run_in_threadpool(
-            self.recognize_media,
+        """异步识别 MusicBrainz 音乐详情或按元数据匹配单曲。"""
+        music_type = kwargs.get("music_type")
+        if source and source != self._source:
+            return None
+        if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and source != self._source:
+            return None
+        if not isinstance(meta, MetaMusic):
+            if source == self._source and mediaid:
+                return await self.async_recognize_music(
+                    source,
+                    str(mediaid),
+                    music_type=music_type,
+                )
+            return None
+        resolved_source = source or meta.media_source
+        resolved_media_id = mediaid or meta.media_id
+        if resolved_source and resolved_media_id:
+            info = await self.async_recognize_music(
+                resolved_source,
+                str(resolved_media_id),
+                music_type=music_type,
+            )
+            if info:
+                self._update_recognize_cache(meta, info)
+            return info
+        if music_type == MUSIC_ENTITY_ALBUM:
+            albums = await self._async_search_albums(meta, limit=10)
+            return self._select_album_candidate(meta, albums)
+        cache_enabled = bool(kwargs.get("cache", True))
+        if cache_enabled and self.cache:
+            cached_info = self.cache.get(meta)
+            if cached_info:
+                if cached_info.media_id:
+                    logger.info(f"{meta.title} 使用音乐识别缓存：{cached_info.title}")
+                else:
+                    logger.info(f"{meta.title} 使用音乐识别缓存：无法识别")
+                cached_info.recognize_cache_hit = True
+                return cached_info
+        candidates = await self._async_search_recordings(meta, limit=10)
+        matched = self._select_candidate(
             meta,
-            mtype=mtype,
-            source=source,
-            mediaid=mediaid,
-            **kwargs,
+            candidates,
+            source=resolved_source or self._source,
         )
+        if not matched and meta.artists and music_type != MUSIC_ENTITY_RECORDING:
+            albums = await self._async_search_albums(meta, limit=10)
+            matched = self._select_album_candidate(meta, albums)
+        result = matched or self._info_from_meta(meta)
+        self._update_recognize_cache(meta, result)
+        return result
 
     @classmethod
     def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], source: str) -> Optional[MusicInfo]:
@@ -1014,6 +1165,57 @@ class MusicBrainzModule(_ModuleBase):
         # MusicBrainz 各实体共用 UUID 形式，统一详情入口在 Recording 未命中后继续探测专辑。
         album = self.music_album(source, media_id)
         return album.to_music_info() if album else None
+
+    async def async_recognize_music(
+            self,
+            source: str,
+            media_id: str,
+            music_type: Optional[str] = None,
+    ) -> Optional[MusicInfo]:
+        """异步按 MusicBrainz 标准 ID 和实体类型获取详情。"""
+        if source != self._source or not media_id:
+            return None
+        if music_type != MUSIC_ENTITY_ALBUM:
+            payload = await self._async_request_json(
+                f"/recording/{media_id}",
+                params={
+                    "inc": "artists+releases+release-groups+isrcs+genres",
+                    "fmt": "json",
+                },
+            )
+            if payload:
+                return self._recording_to_info(payload)
+            if music_type == MUSIC_ENTITY_RECORDING:
+                return None
+        album = await self._async_music_album(source, media_id)
+        return album.to_music_info() if album else None
+
+    async def _async_music_album(
+            self,
+            source: str,
+            media_id: str,
+    ) -> Optional[MusicAlbumInfo]:
+        """异步按 MusicBrainz Release Group ID 获取专辑详情及曲目。"""
+        if source != self._source or not media_id:
+            return None
+        payload = await self._async_request_json(
+            f"/release-group/{media_id}",
+            params={
+                "inc": "artists+releases+media+genres+tags+ratings",
+                "fmt": "json",
+            },
+        )
+        if not payload:
+            return None
+        album = self._release_group_to_album(payload)
+        if not album:
+            return None
+        album.releases = self._release_variants(payload.get("releases") or [])
+        album.tracks = await self._async_album_tracks(
+            album,
+            payload.get("releases") or [],
+        )
+        return album
 
     def music_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
         """按 MusicBrainz Release Group ID 获取标准化专辑详情及曲目。"""
@@ -1309,6 +1511,28 @@ class MusicBrainzModule(_ModuleBase):
         return tracks
 
     @classmethod
+    async def _async_album_tracks(
+            cls,
+            album: MusicAlbumInfo,
+            releases: list[dict[str, Any]],
+    ) -> list[MusicInfo]:
+        """异步读取专辑代表性发行版本的曲目。"""
+        release = cls._select_track_release(releases)
+        if not release.get("id"):
+            return []
+        payload = await cls._async_request_json(
+            f"/release/{release['id']}",
+            params={"inc": "recordings+artist-credits", "fmt": "json"},
+        )
+        tracks: list[MusicInfo] = []
+        for medium in (payload or {}).get("media") or []:
+            for track in medium.get("tracks") or []:
+                info = cls._track_to_info(album, medium, track)
+                if info:
+                    tracks.append(info)
+        return tracks
+
+    @classmethod
     def _track_to_info(
             cls,
             album: MusicAlbumInfo,
@@ -1513,14 +1737,25 @@ class MusicBrainzModule(_ModuleBase):
         return cls._session
 
     @classmethod
-    def _wait_for_rate_limit(cls) -> None:
-        """串行控制 MusicBrainz 公共接口的最小请求间隔。"""
+    def _reserve_request_delay(cls) -> float:
+        """为同步和异步 MusicBrainz 请求统一预留发送时间。"""
         with cls._request_lock:
             now = time.monotonic()
-            remaining = cls._request_interval - (now - cls._last_request_at)
-            if remaining > 0:
-                time.sleep(remaining)
-            cls._last_request_at = time.monotonic()
+            request_at = max(now, cls._last_request_at + cls._request_interval)
+            cls._last_request_at = request_at
+            return max(0.0, request_at - now)
+
+    @classmethod
+    def _wait_for_rate_limit(cls) -> None:
+        """同步等待 MusicBrainz 公共接口的已预留请求时间。"""
+        if delay := cls._reserve_request_delay():
+            time.sleep(delay)
+
+    @classmethod
+    async def _async_wait_for_rate_limit(cls) -> None:
+        """异步等待 MusicBrainz 公共接口的已预留请求时间。"""
+        if delay := cls._reserve_request_delay():
+            await asyncio.sleep(delay)
 
     @classmethod
     @cached(maxsize=settings.CONF.musicbrainz, ttl=settings.CONF.meta, skip_none=True)
@@ -1574,4 +1809,57 @@ class MusicBrainzModule(_ModuleBase):
                 return None
             finally:
                 response.close()
+        return None
+
+    @classmethod
+    @cached(
+        maxsize=settings.CONF.musicbrainz,
+        ttl=settings.CONF.meta,
+        skip_none=True,
+        shared_key="_request_json",
+    )
+    async def _async_request_json(
+            cls,
+            path: str,
+            params: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        """异步请求 MusicBrainz JSON 接口并统一处理限流与响应错误。"""
+        attempts = cls._busy_retries + 1
+        for attempt in range(attempts):
+            await cls._async_wait_for_rate_limit()
+            response = await AsyncRequestUtils(
+                headers={
+                    "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
+                    "Accept": "application/json",
+                },
+                proxies=settings.PROXY,
+                timeout=20,
+            ).get_res(f"{cls._base_url}{path}", params=params)
+            if response is None:
+                return None
+            status_code = response.status_code
+            try:
+                if status_code == 404:
+                    logger.debug(f"MusicBrainz 资源不存在：{path}")
+                    return {}
+                if status_code == 429 or status_code >= 500:
+                    logger.warning(
+                        f"MusicBrainz 服务繁忙：{status_code} {response.text[:200]}"
+                    )
+                    if attempt < attempts - 1:
+                        await asyncio.sleep(cls._busy_backoff * (2 ** attempt))
+                        continue
+                    return None
+                if status_code != 200:
+                    logger.warning(
+                        f"MusicBrainz 请求失败：{status_code} {response.text[:200]}"
+                    )
+                    return None
+                payload = response.json()
+                return payload if isinstance(payload, dict) else None
+            except (TypeError, ValueError) as err:
+                logger.warning(f"MusicBrainz 响应解析失败：{err}")
+                return None
+            finally:
+                await response.aclose()
         return None

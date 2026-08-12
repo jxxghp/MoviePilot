@@ -45,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsof \
     nano \
     unar \
+    libchromaprint-tools \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
     && curl https://rclone.org/install.sh | bash \
