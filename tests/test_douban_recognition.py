@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 from app.core.meta import MetaBase
 from app.modules.douban import DoubanModule
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_douban_recognize_does_not_keep_dedicated_mapping_cache():
@@ -24,13 +24,13 @@ def test_douban_recognize_does_not_keep_dedicated_mapping_cache():
 
     first_result = module._recognize_media_core(
         meta=meta,
-        source="douban",
+        media_source=MediaSource.Douban,
         match_doubaninfo_func=match_doubaninfo,
         douban_info_func=douban_info,
     )
     second_result = module._recognize_media_core(
         meta=meta,
-        source="douban",
+        media_source=MediaSource.Douban,
         match_doubaninfo_func=match_doubaninfo,
         douban_info_func=douban_info,
     )
@@ -60,13 +60,13 @@ def test_async_douban_recognize_does_not_keep_dedicated_mapping_cache():
         """连续执行两次异步豆瓣识别。"""
         first_result = await module._async_recognize_media_core(
             meta=meta,
-            source="douban",
+            media_source=MediaSource.Douban,
             async_match_doubaninfo_func=match_doubaninfo,
             async_douban_info_func=douban_info,
         )
         second_result = await module._async_recognize_media_core(
             meta=meta,
-            source="douban",
+            media_source=MediaSource.Douban,
             async_match_doubaninfo_func=match_doubaninfo,
             async_douban_info_func=douban_info,
         )

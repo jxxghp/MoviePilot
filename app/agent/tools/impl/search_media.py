@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
 from app.utils.media import resolve_media_identity
@@ -93,7 +92,7 @@ class SearchMediaTool(MoviePilotTool):
                             f"错误：无效的音乐实体类型 '{music_type}'，"
                             "支持的类型：'recording', 'album', 'artist'"
                         )
-                results = await MusicChain().async_search(query=title, limit=100)
+                results = await MediaChain().async_search_music(query=title, limit=100)
                 filtered_music = [
                     item
                     for item in results or []

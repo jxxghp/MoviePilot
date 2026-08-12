@@ -4,7 +4,7 @@ from app.chain.search import SearchChain
 from app.core.meta import MetaMusic
 from app.core.context import MusicInfo
 from app.schemas.context import TorrentInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_music_context_builder_keeps_only_music_category():
@@ -118,7 +118,7 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
     ):
         result = chain.search_by_id(
             media_source="musicbrainz",
-            mediaid="recording-1",
+            media_id="recording-1",
             mtype=MediaType.MUSIC,
             music_type="recording",
             sites=[1],
@@ -126,12 +126,8 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
 
     assert result == expected
     media_chain.recognize_media.assert_called_once_with(
-        media_source="musicbrainz",
-        mediaid="recording-1",
-        tmdbid=None,
-        doubanid=None,
-        bangumiid=None,
-        anilistid=None,
+        media_source=MediaSource.MusicBrainz,
+        media_id="recording-1",
         mtype=MediaType.MUSIC,
         music_type="recording",
     )

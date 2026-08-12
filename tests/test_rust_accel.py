@@ -314,6 +314,68 @@ def test_metainfo_public_entry_uses_rust(monkeypatch):
     assert meta.apply_words == ["旧名 => 新名 && 第 <> 集 >> EP+1"]
 
 
+def test_rust_metamusic_wrapper_calls_extension(monkeypatch):
+    """MetaMusic wrapper 应把标题和已有证据透传给 Rust 扩展。"""
+    calls = []
+    expected = {"title": "晴天", "artists": ["周杰伦"], "year": 2003}
+
+    def parse_metamusic_fast(title, artists, year):
+        """记录 Rust 扩展入口参数并返回测试结果。"""
+        calls.append((title, artists, year))
+        return expected
+
+    fake_extension = SimpleNamespace(
+        is_available=lambda: True,
+        parse_metamusic_fast=parse_metamusic_fast,
+    )
+    monkeypatch.setattr(settings, "RUST_ACCEL", True)
+    monkeypatch.setattr(rust_accel, "_moviepilot_rust", fake_extension)
+
+    result = rust_accel.parse_metamusic("周杰伦 - 晴天", ["周杰伦"], 2003)
+
+    assert result == expected
+    assert calls == [("周杰伦 - 晴天", ["周杰伦"], 2003)]
+
+
+def test_rust_metamusic_wrapper_respects_runtime_switch(monkeypatch):
+    """Rust 总开关关闭时 MetaMusic wrapper 不应调用扩展。"""
+    fake_extension = SimpleNamespace(
+        is_available=lambda: True,
+        parse_metamusic_fast=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("总开关关闭时不应调用 Rust")
+        ),
+    )
+    monkeypatch.setattr(settings, "RUST_ACCEL", False)
+    monkeypatch.setattr(rust_accel, "_moviepilot_rust", fake_extension)
+
+    assert rust_accel.parse_metamusic("周杰伦 - 晴天") is None
+
+
+def test_rust_metamusic_wrapper_supports_legacy_extension(monkeypatch):
+    """旧版 Rust 扩展缺少 MetaMusic 入口时应安静回退。"""
+    fake_extension = SimpleNamespace(is_available=lambda: True)
+    monkeypatch.setattr(settings, "RUST_ACCEL", True)
+    monkeypatch.setattr(rust_accel, "_moviepilot_rust", fake_extension)
+
+    assert rust_accel.parse_metamusic("周杰伦 - 晴天") is None
+
+
+def test_rust_metamusic_wrapper_falls_back_on_extension_error(monkeypatch):
+    """Rust MetaMusic 入口异常时 wrapper 应返回 None 触发 Python 兜底。"""
+    def parse_metamusic_fast(*_args):
+        """模拟 Rust 扩展在音乐解析期间报错。"""
+        raise RuntimeError("parse failed")
+
+    fake_extension = SimpleNamespace(
+        is_available=lambda: True,
+        parse_metamusic_fast=parse_metamusic_fast,
+    )
+    monkeypatch.setattr(settings, "RUST_ACCEL", True)
+    monkeypatch.setattr(rust_accel, "_moviepilot_rust", fake_extension)
+
+    assert rust_accel.parse_metamusic("周杰伦 - 晴天") is None
+
+
 def test_rust_indexer_parser_handles_jinja_pyquery_filters_and_links():
     """
     Rust indexer 解析应覆盖普通站点配置的 Jinja、PyQuery selector 和过滤器。

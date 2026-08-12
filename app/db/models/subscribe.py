@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query, async_db_update
-from app.schemas.types import MUSIC_ENTITY_RECORDING
+from app.db.models.media_identity import media_identity_constraint
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 
 class Subscribe(Base):
@@ -112,6 +113,7 @@ class Subscribe(Base):
     episode_group = Column(String)
 
     __table_args__ = (
+        media_identity_constraint("subscribe"),
         Index('ix_subscribe_type_date', 'type', 'date'),
         Index('ix_subscribe_media_identity', 'media_source', 'media_id'),
     )
@@ -119,7 +121,7 @@ class Subscribe(Base):
     @classmethod
     def _identity_condition(
             cls,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
@@ -139,7 +141,7 @@ class Subscribe(Base):
     @classmethod
     @db_query
     def exists(
-            cls, db: Session, media_source: str, media_id: str,
+            cls, db: Session, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
@@ -159,7 +161,7 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_exists(
-            cls, db: AsyncSession, media_source: str, media_id: str,
+            cls, db: AsyncSession, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
@@ -180,7 +182,7 @@ class Subscribe(Base):
     @classmethod
     @db_query
     def exists_by_username(
-            cls, db: Session, username: str, media_source: str, media_id: str,
+            cls, db: Session, username: str, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
@@ -204,7 +206,7 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_exists_by_username(
-            cls, db: AsyncSession, username: str, media_source: str,
+            cls, db: AsyncSession, username: str, media_source: MediaSource,
             media_id: str, season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
@@ -289,7 +291,7 @@ class Subscribe(Base):
     @classmethod
     @db_query
     def list_by_media_identity(
-            cls, db: Session, media_source: str, media_id: str,
+            cls, db: Session, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
     ):
         """同步按统一媒体身份查询候选订阅列表。"""
@@ -305,7 +307,7 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_list_by_media_identity(
-            cls, db: AsyncSession, media_source: str, media_id: str,
+            cls, db: AsyncSession, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
     ):
         """异步按统一媒体身份查询候选订阅列表。"""
@@ -322,7 +324,7 @@ class Subscribe(Base):
     @classmethod
     @db_query
     def get_by(
-            cls, db: Session, type: str, media_source: str, media_id: str,
+            cls, db: Session, type: str, media_source: MediaSource, media_id: str,
             season: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
@@ -342,7 +344,7 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_get_by(
-            cls, db: AsyncSession, type: str, media_source: str, media_id: str,
+            cls, db: AsyncSession, type: str, media_source: MediaSource, media_id: str,
             season: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
@@ -362,7 +364,7 @@ class Subscribe(Base):
 
     @db_update
     def delete_by_media_identity(
-            self, db: Session, media_source: str, media_id: str,
+            self, db: Session, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
     ) -> bool:
         """按规范媒体身份删除订阅。"""
@@ -377,7 +379,7 @@ class Subscribe(Base):
 
     @async_db_update
     async def async_delete_by_media_identity(
-            self, db: AsyncSession, media_source: str, media_id: str,
+            self, db: AsyncSession, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
     ) -> bool:
         """异步按规范媒体身份删除订阅。"""

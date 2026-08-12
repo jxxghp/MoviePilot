@@ -1,6 +1,6 @@
 ---
 name: generate-identifiers
-version: 2
+version: 3
 description: >-
   Use this skill when a user provides a torrent name or file name and wants to fix recognition issues,
   or asks to add/manage custom identifiers (自定义识别词).
@@ -12,7 +12,7 @@ description: >-
   1) A torrent or file name is incorrectly recognized (wrong title, season, episode, etc.);
   2) The user wants to block unwanted keywords from torrent names;
   3) The user needs episode offset rules for series with non-standard numbering;
-  4) The user wants to force recognition of a specific media by TMDB/Douban ID;
+  4) The user wants to force recognition of a specific media by source-native ID;
   5) The user wants TV recognition to use a specific TMDB episode group.
 allowed-tools: query_custom_identifiers update_custom_identifiers recognize_media
 ---
@@ -52,13 +52,15 @@ Regex substitution. The left side is a regex pattern, the right side is the repl
 
 **Special replacement for direct ID specification:**
 ```
-被替换词 => {[tmdbid=xxx;type=movie/tv;s=xxx;e=xxx]}
-被替换词 => {[doubanid=xxx;type=movie/tv;s=xxx;e=xxx]}
+被替换词 => {[media_source=themoviedb;media_id=xxx;type=movie/tv;s=xxx;e=xxx]}
+被替换词 => {[media_source=douban;media_id=xxx;type=movie/tv;s=xxx;e=xxx]}
 ```
-Where `s` (season) and `e` (episode) are optional. For TMDB TV recognition, add `g=xxx` to specify an episode group:
+`media_source` must use a `MediaSource` enum value and `media_id` must be that
+source's native ID. Where `s` (season) and `e` (episode) are optional. For TMDB
+TV recognition, add `g=xxx` to specify an episode group:
 
 ```
-被替换词 => {[tmdbid=xxx;type=tv;g=xxx;s=xxx;e=xxx]}
+被替换词 => {[media_source=themoviedb;media_id=xxx;type=tv;g=xxx;s=xxx;e=xxx]}
 ```
 
 ### 3. Episode Offset (集偏移)
@@ -105,7 +107,7 @@ When generating a new rule, default to **the narrowest regex that still fixes th
 - Avoid generic global rules such as bare `1080p`, `WEB-DL`, `中字`, `国配`, `REPACK`, `S01E01`, or pure numbers unless the user explicitly wants a global cleanup rule.
 - If the rule only needs to fix one specific naming pattern, prefer a **contextual replacement** with capture groups/backreferences over a bare block word.
 - For episode offset rules, the `前定位词` and `后定位词` should use sample-specific context so the offset only runs on the intended naming pattern.
-- For direct TMDB/Douban binding, the left side should match the user's specific wrong alias or naming pattern, not a broad season/episode pattern that could hit other media.
+- For direct media binding, the left side should match the user's specific wrong alias or naming pattern, not a broad season/episode pattern that could hit other media.
 
 ### Narrow vs Broad Examples
 
@@ -113,13 +115,13 @@ Bad (too broad for a global rule):
 ```
 REPACK
 1080p
-S01E01 => {[tmdbid=12345;type=tv;s=1;e=1]}
+S01E01 => {[media_source=themoviedb;media_id=12345;type=tv;s=1;e=1]}
 ```
 
 Better (scoped to the user's sample pattern):
 ```
 (\[SubGroup\].*?My\.Show.*?2024.*?)REPACK => \1
-Some\.Weird\.Name(?:\.2024)?(?:\.S01E\d+)? => {[tmdbid=12345;type=tv;s=1]}
+Some\.Weird\.Name(?:\.2024)?(?:\.S01E\d+)? => {[media_source=themoviedb;media_id=12345;type=tv;s=1]}
 \[Baha\] <> \[1080P\] >> EP-12
 ```
 
@@ -226,7 +228,7 @@ Tell the user:
 **Solution**: Direct ID specification with a sample-specific alias pattern:
 ```
 # 仅在 Some.Weird.Name 这一命名模式下强制绑定 TMDB ID 12345
-Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[tmdbid=12345;type=tv;s=1]}
+Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[media_source=themoviedb;media_id=12345;type=tv;s=1]}
 ```
 
 ### Force TMDB Episode Group Recognition
@@ -236,7 +238,7 @@ Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[tmdbid=12345;type=tv;s=1]}
 **Solution**: Direct TMDB ID specification with `g=...`:
 ```
 # 仅在 Some.Weird.Name 命名模式下绑定 TMDB ID 12345 并指定剧集组
-Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[tmdbid=12345;type=tv;g=5ad0ec240e0a26303f00d84d;s=1]}
+Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[media_source=themoviedb;media_id=12345;type=tv;g=5ad0ec240e0a26303f00d84d;s=1]}
 ```
 
 ### Combined Fix

@@ -6,7 +6,8 @@ from app.core.meta import MetaBase, MetaMusic
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import TransferInfo, FileItem
-from app.schemas.types import MUSIC_ENTITY_RECORDING
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+from app.utils.media import normalize_media_identity_payload, resolve_media_identity
 
 
 class TransferHistoryOper(DbOper):
@@ -153,6 +154,7 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史
         """
+        kwargs = normalize_media_identity_payload(kwargs)
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
@@ -166,7 +168,7 @@ class TransferHistoryOper(DbOper):
 
     def get_by(self, title: Optional[str] = None, year: Optional[str] = None, mtype: Optional[str] = None,
                season: Optional[str] = None, episode: Optional[str] = None,
-               media_source: Optional[str] = None, media_id: Optional[str] = None,
+               media_source: Optional[MediaSource] = None, media_id: Optional[str] = None,
                dest: Optional[str] = None) -> List[TransferHistory]:
         """
         按类型、标题、年份、季集查询转移记录
@@ -182,7 +184,7 @@ class TransferHistoryOper(DbOper):
                                        media_id=media_id)
 
     def get_by_media_identity(
-            self, media_source: str, media_id: str,
+            self, media_source: MediaSource, media_id: str,
             mtype: Optional[str] = None,
     ) -> TransferHistory:
         """按规范媒体身份和类型查询整理记录。"""
@@ -215,6 +217,7 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史，相同源目录的记录会被删除
         """
+        kwargs = normalize_media_identity_payload(kwargs)
         if kwargs.get("src"):
             transferhistory = TransferHistory.get_by_src(self._db, kwargs.get("src"))
             if transferhistory:
@@ -248,6 +251,7 @@ class TransferHistoryOper(DbOper):
         """
         新增转移成功历史记录
         """
+        media_source, media_id = resolve_media_identity(media=mediainfo)
         return self.add_force(
             src=fileitem.path,
             src_storage=fileitem.storage,
@@ -260,8 +264,8 @@ class TransferHistoryOper(DbOper):
             category=mediainfo.category,
             title=self._history_title(meta, mediainfo),
             year=mediainfo.year,
-            media_source=str(mediainfo.media_source),
-            media_id=mediainfo.media_id,
+            media_source=media_source,
+            media_id=media_id,
             music_type=getattr(mediainfo, "music_type", None),
             total_tracks=getattr(mediainfo, "total_tracks", None),
             audio_format=getattr(meta, "audio_format", None),
@@ -284,6 +288,7 @@ class TransferHistoryOper(DbOper):
         新增转移失败历史记录
         """
         if mediainfo and transferinfo:
+            media_source, media_id = resolve_media_identity(media=mediainfo)
             his = self.add_force(
                 src=fileitem.path,
                 src_storage=fileitem.storage,
@@ -296,8 +301,8 @@ class TransferHistoryOper(DbOper):
                 category=mediainfo.category,
                 title=self._history_title(meta, mediainfo),
                 year=mediainfo.year or meta.year,
-                media_source=str(mediainfo.media_source),
-                media_id=mediainfo.media_id,
+                media_source=media_source,
+                media_id=media_id,
                 music_type=getattr(mediainfo, "music_type", None),
                 total_tracks=getattr(mediainfo, "total_tracks", None),
                 audio_format=getattr(meta, "audio_format", None),
@@ -316,12 +321,13 @@ class TransferHistoryOper(DbOper):
                 files=transferinfo.file_list
             )
         else:
+            media_source, media_id = resolve_media_identity(media=meta)
             his = self.add_force(
                 type=meta.type.value if meta.type else None,
                 title=self._history_title(meta),
                 year=meta.year,
-                media_source=str(meta.media_source) if meta.media_source else None,
-                media_id=meta.media_id,
+                media_source=media_source,
+                media_id=media_id,
                 music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
                 audio_format=getattr(meta, "audio_format", None),
                 audio_lossless=getattr(meta, "audio_lossless", None),

@@ -201,6 +201,32 @@ def parse_metainfo_path(path: str, options: Optional[dict] = None) -> Optional[d
         return None
 
 
+def parse_metamusic(
+        title: str,
+        artists: Optional[List[str]] = None,
+        year: Optional[int] = None,
+) -> Optional[dict]:
+    """使用 Rust 解析音乐资源标题，旧扩展不支持时返回 None。
+
+    :param title: 音乐资源标题或文件主干名
+    :param artists: 调用方已有的高可信艺术家列表
+    :param year: 调用方已有的高可信发行年份
+    :return: Rust 解析字段，不可用、不支持或异常时返回 None
+    """
+    if not is_enabled():
+        return None
+    parser = getattr(_moviepilot_rust, "parse_metamusic_fast", None)
+    if not callable(parser):
+        return None
+    try:
+        result = parser(title, artists, year)
+    except BaseException as err:
+        _raise_non_rust_panic(err)
+        logger.debug(f"Rust MetaMusic解析失败，使用 Python 解析兜底：{err}")
+        return None
+    return result if isinstance(result, dict) and result else None
+
+
 def find_metainfo(title: str) -> Optional[dict]:
     """
     使用 Rust 提取标题中的显式媒体标签，不可用或异常时返回 None。
@@ -235,6 +261,27 @@ def supports_extended_media_ids() -> bool:
         metainfo
         and metainfo.get("media_source") == "anilist"
         and metainfo.get("media_id") == "1"
+    )
+
+
+@lru_cache(maxsize=1)
+def supports_unified_media_identity() -> bool:
+    """判断当前 Rust 扩展是否支持固定来源的通用媒体身份标签。"""
+    if not is_enabled():
+        return False
+    try:
+        result = _moviepilot_rust.find_metainfo_fast(
+            "test {[media_source=musicbrainz;media_id=recording-1]}"
+        )
+    except BaseException as err:
+        _raise_non_rust_panic(err)
+        logger.debug(f"检测 Rust 通用媒体身份能力失败：{err}")
+        return False
+    metainfo = result.get("metainfo") if isinstance(result, dict) else None
+    return bool(
+        metainfo
+        and metainfo.get("media_source") == "musicbrainz"
+        and metainfo.get("media_id") == "recording-1"
     )
 
 

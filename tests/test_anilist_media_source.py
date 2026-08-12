@@ -9,7 +9,7 @@ from app.core.meta import MetaBase
 from app.helper.scraper import MediaScraperHelper
 from app.modules.anilist import AniListModule
 from app.modules.anilist.anilist import AniListApi
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 @pytest.fixture
@@ -77,10 +77,13 @@ def test_anilist_id_recognition_normalizes_media_info(anilist_info: dict) -> Non
     module.anilist_api = Mock()
     module.anilist_api.detail.return_value = anilist_info
 
-    media = module.recognize_media(anilistid=154587)
+    media = module.recognize_media(
+        media_source=MediaSource.AniList, media_id="154587"
+    )
 
     assert media is not None
-    assert media.source == "anilist"
+    assert media.media_source == MediaSource.AniList
+    assert media.media_id == "154587"
     assert media.anilist_id == 154587
     assert media.title == "葬送的芙莉莲"
     assert media.anidb_id == 17617
@@ -108,8 +111,8 @@ def test_anilist_title_recognition_respects_request_source(anilist_info: dict) -
     meta.type = MediaType.TV
     meta.year = "2023"
 
-    media = module.recognize_media(meta=meta, source="anilist")
-    skipped = module.recognize_media(meta=meta, source="douban")
+    media = module.recognize_media(meta=meta, media_source=MediaSource.AniList)
+    skipped = module.recognize_media(meta=meta, media_source=MediaSource.Douban)
 
     assert media is not None
     assert media.anilist_id == 154587
@@ -127,7 +130,7 @@ def test_async_anilist_title_recognition(anilist_info: dict) -> None:
     meta.type = MediaType.TV
 
     media = asyncio.run(
-        module.async_recognize_media(meta=meta, source="anilist")
+        module.async_recognize_media(meta=meta, media_source=MediaSource.AniList)
     )
 
     assert media is not None

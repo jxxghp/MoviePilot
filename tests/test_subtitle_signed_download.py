@@ -124,7 +124,11 @@ def test_subtitle_media_search_response_signs_enclosure(monkeypatch):
         fake_build_subtitle_search_source,
     )
 
-    response = _run(search_endpoint.search_subtitle_by_id(mediaid="tmdb:1", _=None))
+    response = _run(search_endpoint.search_subtitle_by_id(
+        media_source="themoviedb",
+        media_id="1",
+        _=None,
+    ))
 
     assert response.success
     signed_url = response.data[0]["enclosure"]
@@ -189,6 +193,8 @@ def test_download_subtitle_rejects_unsigned_enclosure(monkeypatch):
 
     response = download_endpoint.download_subtitle(
         subtitle_in=_subtitle_payload(),
+        media_source="themoviedb",
+        media_id="1",
         current_user=SimpleNamespace(name="tester"),
     )
 
@@ -210,6 +216,8 @@ def test_download_subtitle_rejects_other_purpose_signature(monkeypatch):
 
     response = download_endpoint.download_subtitle(
         subtitle_in=_subtitle_payload(enclosure=signed_url),
+        media_source="themoviedb",
+        media_id="1",
         current_user=SimpleNamespace(name="tester"),
     )
 
@@ -239,6 +247,8 @@ def test_download_subtitle_cleans_url_and_uses_server_site_request_fields(monkey
 
     response = download_endpoint.download_subtitle(
         subtitle_in=_subtitle_payload(enclosure=signed_url),
+        media_source="themoviedb",
+        media_id="1",
         current_user=SimpleNamespace(name="tester"),
     )
 

@@ -2,7 +2,6 @@ from unittest.mock import Mock, patch
 
 from app.api.endpoints.download import add, download
 from app.chain.download import DownloadChain
-from app.chain.music import MusicChain
 from app.core.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
 from app.core.meta import MetaMusic
 from app.schemas import ExistMediaInfo
@@ -38,13 +37,14 @@ def _album_info(total_tracks: int | None = 3) -> MusicInfo:
     )
 
 
-def test_music_info_exposes_download_chain_compatibility_fields():
-    """音乐信息应安全兼容下载链现有的视频身份字段访问。"""
+def test_music_info_exposes_download_chain_unified_identity():
+    """音乐下载上下文仅使用统一身份，并保留无季集的领域约束。"""
     info = _music_info()
-    meta = MusicChain.to_meta(info)
+    meta = MetaMusic.from_music_info(info)
 
     assert info.type == MediaType.MUSIC
-    assert info.tmdb_id is None
+    assert info.media_source.value == "musicbrainz"
+    assert info.media_id == "recording-1"
     assert info.episode_group is None
     assert meta.episode_list == []
     assert meta.season_episode == ""
@@ -53,7 +53,7 @@ def test_music_info_exposes_download_chain_compatibility_fields():
 def test_download_note_keeps_versioned_music_context():
     """音乐下载历史备注应保存可恢复且不含上游原始大对象的上下文。"""
     info = _music_info()
-    meta = MusicChain.to_meta(info)
+    meta = MetaMusic.from_music_info(info)
 
     note = DownloadChain._build_download_note("Manual", info, meta)
 
@@ -114,7 +114,7 @@ def test_download_single_stops_before_client_when_album_pack_is_incomplete():
     """下载入口应在添加任务前拒绝不完整专辑，并记录可供后续候选继续尝试的失败原因。"""
     context = Context(
         media_info=_album_info(total_tracks=3),
-        meta_info=MusicChain.to_meta(_album_info(total_tracks=3)),
+        meta_info=MetaMusic.from_music_info(_album_info(total_tracks=3)),
         torrent_info=TorrentInfo(
             title="周杰伦 - 叶惠美 FLAC",
             category=MediaType.MUSIC.value,
@@ -219,7 +219,7 @@ def test_music_library_exists_uses_atomic_album_lookup():
 
     with patch("app.chain.download.MediaServerOper", return_value=mediaserver):
         exists, no_exists = chain.get_no_exists_info(
-            meta=MusicChain.to_meta(album),
+            meta=MetaMusic.from_music_info(album),
             mediainfo=album,
         )
 

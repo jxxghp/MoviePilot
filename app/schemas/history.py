@@ -2,10 +2,11 @@ from typing import Optional, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource
 
 
-class DownloadHistory(BaseModel):
+class DownloadHistory(OptionalMediaIdentityMixin, BaseModel):
     """
     下载历史记录
     """
@@ -60,7 +61,7 @@ class DownloadHistory(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TransferHistory(BaseModel):
+class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     """
     文件整理历史记录
     """

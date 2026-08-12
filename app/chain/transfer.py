@@ -1103,15 +1103,14 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     ) -> tuple[MetaMusic, Optional[MusicInfo]]:
         """为缺少远端身份的本地音频尝试目录级专辑匹配，命中后回填文件元数据。
 
-        WAV 等无标签文件只能依靠目录结构和曲目特征识别；匹配结果在 MusicChain
-        内按目录缓存，同一专辑目录内的后续文件不会重复请求远端。
+        WAV 等无标签文件只能依靠目录结构和曲目特征识别；匹配结果由 MediaChain
+        按目录缓存，同一专辑目录内的后续文件不会重复请求远端。
         """
         # 目录级匹配需要读取本地音频时长，远端存储文件无法参与
         if file_meta.media_id or getattr(file_item, "storage", "local") != "local":
             return file_meta, None
         try:
-            from app.chain.music import MusicChain
-            matched = MusicChain().recognize_album_directory(file_path.parent)
+            matched = MediaChain().recognize_music_album_directory(file_path.parent)
         except Exception as err:
             logger.debug(f"音乐专辑目录匹配失败：{file_path} - {err}")
             return file_meta, None
@@ -2122,7 +2121,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             )
                         recognize_kwargs = {"obtain_images": True}
                         if task.media_source:
-                            recognize_kwargs["source"] = task.media_source
+                            recognize_kwargs["media_source"] = task.media_source
                         if task.mtype:
                             recognize_kwargs["mtype"] = task.mtype
                         mediainfo = MediaChain().recognize_by_meta(
@@ -2134,7 +2133,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     # 识别媒体信息
                     recognize_kwargs = {"obtain_images": True}
                     if task.media_source:
-                        recognize_kwargs["source"] = task.media_source
+                        recognize_kwargs["media_source"] = task.media_source
                     if task.mtype:
                         recognize_kwargs["mtype"] = task.mtype
                     mediainfo = MediaChain().recognize_by_meta(
@@ -3237,7 +3236,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase = None,
             mediainfo: MediaInfo = None,
             mtype: Optional[MediaType] = None,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             target_directory: TransferDirectoryConf = None,
             target_storage: Optional[str] = None,
@@ -3290,6 +3289,34 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param continue_callback: 继续处理回调
         返回：成功标识，错误信息
         """
+        explicit_identity = media_source is not None or media_id is not None
+        normalized_source, normalized_media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if explicit_identity and (
+                not normalized_source or not normalized_media_id
+        ):
+            return False, "整理任务需要同时提供有效的 media_source 和 media_id"
+        if not explicit_identity and mediainfo:
+            normalized_source, normalized_media_id = resolve_media_identity(
+                media=mediainfo
+            )
+        media_source = normalized_source
+        media_id = normalized_media_id
+        if explicit_identity and not mediainfo:
+            mediainfo = MediaChain().recognize_media(
+                mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=getattr(meta, "music_type", None),
+            )
+            if not mediainfo:
+                return False, (
+                    "未识别到媒体信息，"
+                    f"media_source：{media_source}，media_id：{media_id}"
+                )
+
         # 是否全部成功
         all_success = True
         transfer_batch_id = str(uuid.uuid4())

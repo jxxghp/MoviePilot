@@ -2,6 +2,7 @@ from typing import Dict, List, Optional
 
 from app.db import DbOper
 from app.db.models.downloadfailure import DownloadFailure
+from app.utils.media import normalize_media_identity_payload
 
 
 class DownloadFailureOper(DbOper):
@@ -38,6 +39,7 @@ class DownloadFailureOper(DbOper):
         """
         新增或更新资源失败记录。
         """
+        kwargs = normalize_media_identity_payload(kwargs)
         return DownloadFailure.record_failure(
             self._db,
             fingerprint=fingerprint,

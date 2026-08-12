@@ -11,7 +11,8 @@ def test_popular_subscribe_title_distinguishes_special_season_zero(monkeypatch):
             "type": "tv",
             "name": "Demo Show",
             "season": 0,
-            "tmdbid": 1,
+            "media_source": "themoviedb",
+            "media_id": "1",
             "count": 5,
         }]
 
@@ -27,6 +28,10 @@ def test_popular_subscribe_title_distinguishes_special_season_zero(monkeypatch):
 
     assert payload[0]["title"] == "Demo Show 第零季"
     assert payload[0]["season"] == 0
+    assert payload[0]["media_source"] == "themoviedb"
+    assert payload[0]["media_id"] == "1"
+    assert "tmdb_id" not in payload[0]
+    assert "tmdbid" not in payload[0]
 
 
 def test_popular_music_subscribes_can_filter_complete_albums(monkeypatch):

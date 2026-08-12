@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base, get_id_column, async_db_query
-from app.schemas.types import MUSIC_ENTITY_RECORDING
+from app.db.models.media_identity import media_identity_constraint
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 
 class SubscribeHistory(Base):
@@ -99,6 +100,7 @@ class SubscribeHistory(Base):
     episode_group = Column(String)
 
     __table_args__ = (
+        media_identity_constraint("subscribehistory"),
         Index('ix_subscribehistory_type_date', 'type', 'date'),
         Index('ix_subscribehistory_media_identity', 'media_source', 'media_id'),
     )
@@ -152,7 +154,7 @@ class SubscribeHistory(Base):
     @classmethod
     def _identity_condition(
             cls,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
@@ -172,7 +174,7 @@ class SubscribeHistory(Base):
     @classmethod
     @db_query
     def exists(
-            cls, db: Session, media_source: str, media_id: str,
+            cls, db: Session, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
@@ -192,7 +194,7 @@ class SubscribeHistory(Base):
     @classmethod
     @async_db_query
     async def async_exists(
-            cls, db: AsyncSession, media_source: str, media_id: str,
+            cls, db: AsyncSession, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,

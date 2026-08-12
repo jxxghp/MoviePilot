@@ -170,23 +170,17 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                     # 跳过无法识别类型的数据，避免单条脏数据导致整批失败
                     logger.warning(f"跳过未知媒体类型: {sub.get('type')}")
                     continue
-                media.tmdb_id = sub.get("tmdbid")
                 # 处理标题
                 title = sub.get("name")
                 season = sub.get("season")
-                if season not in (None, "") and int(season) != 1 and media.tmdb_id:
+                if season not in (None, "") and int(season) != 1:
                     # 小写数据转大写
                     season_str = cn2an.an2cn(season, "low")
                     title = f"{title} 第{season_str}季"
                 media.title = title
                 media.year = sub.get("year")
-                media.douban_id = sub.get("doubanid")
-                media.bangumi_id = sub.get("bangumiid")
-                media.anilist_id = sub.get("anilistid")
                 media.media_source = sub.get("media_source")
                 media.media_id = sub.get("media_id")
-                media.tvdb_id = sub.get("tvdbid")
-                media.imdb_id = sub.get("imdbid")
                 media.season = sub.get("season")
                 media.vote_average = sub.get("vote")
                 media.poster_path = sub.get("poster")
@@ -208,14 +202,8 @@ class QueryPopularSubscribesTool(MoviePilotTool):
                     "type": media_type_to_agent(media_dict.get("type")),
                     "title": media_dict.get("title"),
                     "year": media_dict.get("year"),
-                    "tmdb_id": media_dict.get("tmdb_id"),
-                    "douban_id": media_dict.get("douban_id"),
-                    "bangumi_id": media_dict.get("bangumi_id"),
-                    "anilist_id": media_dict.get("anilist_id"),
-                    "media_source": media_dict.get("source"),
+                    "media_source": media_dict.get("media_source"),
                     "media_id": media_dict.get("media_id"),
-                    "tvdb_id": media_dict.get("tvdb_id"),
-                    "imdb_id": media_dict.get("imdb_id"),
                     "season": media_dict.get("season"),
                     "vote_average": media_dict.get("vote_average"),
                     "poster_path": media_dict.get("poster_path"),

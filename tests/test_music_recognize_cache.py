@@ -117,7 +117,7 @@ def _build_initialized_music_cache(monkeypatch, file_cache: _FileCacheStub,
 def _music_info(**kwargs) -> MusicInfo:
     """构造标准音乐识别结果，默认携带远端身份。"""
     defaults = {
-        "source": "musicbrainz",
+        "media_source": "musicbrainz",
         "media_id": "rec-1",
         "title": "晴天",
         "artists": ["周杰伦"],
@@ -144,7 +144,12 @@ def test_music_cache_endpoints_require_superuser():
 def test_music_cache_key_prefers_media_id():
     """携带数据源原生 ID 的元数据应以 ID 作为缓存键主身份。"""
     cache = _build_music_cache({})
-    meta = MetaMusic(title="晴天", artists=["周杰伦"], media_id="rec-1")
+    meta = MetaMusic(
+        title="晴天",
+        artists=["周杰伦"],
+        media_source="musicbrainz",
+        media_id="rec-1",
+    )
 
     cache.update(meta, _music_info())
 
@@ -431,6 +436,6 @@ def test_module_update_recognize_cache_only_for_musicbrainz_music():
     assert module.update_recognize_cache(meta=meta, mediainfo=_music_info()) is True
     assert cache.get(meta) is not None
 
-    other_source = _music_info(source="other", media_id="x-1")
+    other_source = _music_info(media_source="theaudiodb", media_id="x-1")
     assert module.update_recognize_cache(meta=meta, mediainfo=other_source) is None
     assert module.update_recognize_cache(meta=None, mediainfo=_music_info()) is None

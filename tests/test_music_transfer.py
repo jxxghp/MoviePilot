@@ -5,7 +5,6 @@ from unittest.mock import Mock
 from jinja2 import Template
 
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.chain.transfer import JobManager, TransferChain
 from app.core.config import settings
 from app.core.meta import MetaMusic
@@ -31,7 +30,7 @@ def _music_context() -> tuple[MetaMusic, MusicInfo]:
         total_tracks=13,
         category="Album",
     )
-    return MusicChain.to_meta(info), info
+    return MetaMusic.from_music_info(info), info
 
 
 def _music_task(path: str, info: MusicInfo) -> TransferTask:
@@ -46,7 +45,7 @@ def _music_task(path: str, info: MusicInfo) -> TransferTask:
             type="file",
             extension=file_path.suffix.lstrip("."),
         ),
-        meta=MusicChain.to_meta(info),
+        meta=MetaMusic.from_music_info(info),
         mediainfo=info,
         mtype=MediaType.MUSIC,
     )
@@ -237,7 +236,7 @@ def test_restore_music_context_from_download_history():
     assert restored_meta is not None
     assert restored_info is not None
     assert restored_meta.org_string == "08 - Get Lucky.flac"
-    assert restored_info.source == "musicbrainz"
+    assert restored_info.media_source.value == "musicbrainz"
     assert restored_info.media_id == "recording-1"
     assert restored_info.album == "Random Access Memories"
 
@@ -270,7 +269,7 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
         year=2003,
         total_tracks=11,
     )
-    meta = MusicChain.to_meta(album)
+    meta = MetaMusic.from_music_info(album)
     history = SimpleNamespace(note={
         "music": {
             "version": 1,

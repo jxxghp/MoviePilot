@@ -22,12 +22,13 @@ def _frontmatter_value(content: str, key: str) -> str:
 def test_modified_builtin_skills_have_incremented_versions() -> None:
     """本次修改过的内置技能必须递增版本，确保用户端同步更新。"""
     expected_versions = {
-        "database-operation": "3",
-        "moviepilot-api": "11",
-        "moviepilot-cli": "6",
+        "database-operation": "4",
+        "moviepilot-api": "12",
+        "moviepilot-cli": "7",
         "moviepilot-update": "3",
-        "organize-files": "2",
-        "transfer-failed-retry": "3",
+        "organize-files": "3",
+        "transfer-failed-retry": "4",
+        "generate-identifiers": "3",
         "create-moviepilot-plugin": "3",
     }
 

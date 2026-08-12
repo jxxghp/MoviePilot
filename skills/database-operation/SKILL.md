@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 3
+version: 4
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -100,7 +100,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 ## Core Tables
 
 ### downloadhistory
-Key columns: `id`, `path`, `type`, `title`, `year`, `tmdbid`, `imdbid`, `doubanid`, `seasons`, `episodes`, `downloader`, `download_hash`, `torrent_name`, `torrent_site`, `userid`, `username`, `date`, `media_category`
+Key columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `downloader`, `download_hash`, `torrent_name`, `torrent_site`, `userid`, `username`, `date`, `media_category`
 
 ### downloadfiles
 Key columns: `id`, `downloader`, `download_hash`, `fullpath`, `savepath`, `filepath`, `torrentname`, `state`
@@ -108,17 +108,21 @@ Key columns: `id`, `downloader`, `download_hash`, `fullpath`, `savepath`, `filep
 ### transferhistory
 
 Music rows persist actual `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, and `bitrate` values read during organization. Bitrate uses bps and sample rate uses Hz.
-Key columns: `id`, `src`, `dest`, `mode`, `type`, `category`, `title`, `year`, `tmdbid`, `seasons`, `episodes`, `download_hash`, `status`, `errmsg`, `date`
+Key columns: `id`, `src`, `dest`, `mode`, `type`, `category`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `download_hash`, `status`, `errmsg`, `date`
+
+### downloadfailure
+
+Key columns: `id`, `fingerprint`, `type`, `title`, `year`, `media_source`, `media_id`, `seasons`, `episodes`, `site`, `torrent_id`, `downloader`, `error_message`, `retry_count`, `next_retry_at`
 
 ### subscribe
 
 Music filters use `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, and `min_sample_rate`. Quality upgrades reuse `current_priority` and persist the current exact values in `current_audio_format`, `current_bitrate`, `current_bit_depth`, and `current_sample_rate`.
-Key columns: `id`, `name`, `year`, `type`, `tmdbid`, `doubanid`, `season`, `total_episode`, `start_episode`, `lack_episode`, `state`, `filter`, `include`, `exclude`, `quality`, `resolution`, `sites`, `best_version`, `best_version_full`, `date`, `username`
+Key columns: `id`, `name`, `year`, `type`, `media_source`, `media_id`, `music_type`, `season`, `total_episode`, `start_episode`, `lack_episode`, `state`, `filter`, `include`, `exclude`, `quality`, `resolution`, `sites`, `best_version`, `best_version_full`, `date`, `username`
 
 ### subscribehistory
 
 Completed music subscriptions retain both audio filters and the final current-quality snapshot for auditing.
-Key columns: `id`, `name`, `year`, `type`, `tmdbid`, `doubanid`, `season`, `total_episode`, `start_episode`, `date`, `username`
+Key columns: `id`, `name`, `year`, `type`, `media_source`, `media_id`, `music_type`, `season`, `total_episode`, `start_episode`, `date`, `username`
 
 ### user
 Key columns: `id`, `name`, `email`, `is_active`, `is_superuser`, `permissions`, `settings`
@@ -133,7 +137,12 @@ Key columns: `id`, `domain`, `name`, `username`, `user_level`, `bonus`, `upload`
 Key columns: `id`, `domain`, `success`, `fail`, `seconds`, `lst_state`, `lst_mod_date`
 
 ### mediaserveritem
-Key columns: `id`, `server`, `library`, `item_id`, `item_type`, `title`, `original_title`, `year`, `tmdbid`, `imdbid`, `tvdbid`, `path`
+Key columns: `id`, `server`, `library`, `item_id`, `item_type`, `title`, `original_title`, `year`, `media_source`, `media_id`, `path`
+
+The media-bearing tables above store one primary identity only. Treat
+`media_source` and `media_id` as an atomic pair: both are null for an unknown
+identity, or both contain a valid source enum value and its native ID. Do not
+write source-specific identity columns back into these tables.
 
 ### systemconfig
 Key columns: `id`, `key`, `value`

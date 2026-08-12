@@ -9,7 +9,7 @@ from app.core.meta import MetaVideo
 from app.chain.transfer import JobManager, TransferChain
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import EpisodeFormat, FileItem, TransferInfo, TransferTask
-from app.schemas.types import EventType, MediaType
+from app.schemas.types import EventType, MediaSource, MediaType
 
 
 class FakeMeta:
@@ -61,7 +61,8 @@ class FakeMedia:
         self.douban_id = None
         self.bangumi_id = None
         self.anilist_id = None
-        self.source = "themoviedb"
+        self.media_source = MediaSource.TMDB
+        self.media_id = str(tmdb_id)
         self.type = MediaType.TV
         self.title_year = "Test Show (2026)"
 
@@ -76,6 +77,8 @@ class FakeMedia:
             "title": "Test Show",
             "year": "2026",
             "title_year": "Test Show (2026)",
+            "media_source": self.media_source,
+            "media_id": self.media_id,
             "tmdb_id": self.tmdb_id,
             "douban_id": self.douban_id,
             "bangumi_id": self.bangumi_id,

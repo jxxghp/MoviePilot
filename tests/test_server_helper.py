@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from app.helper.server import MoviePilotServerHelper
+from app.schemas.types import MediaSource
 
 
 class MoviePilotServerHelperTests(unittest.TestCase):
@@ -150,3 +151,58 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         with patch.object(MoviePilotServerHelper, "get_github_user", return_value="user"), \
                 patch.object(MoviePilotServerHelper, "user_permissions", return_value=response):
             self.assertFalse(MoviePilotServerHelper.is_admin_user())
+
+    def test_subscribe_statistic_payload_only_keeps_server_contract(self):
+        """订阅统计载荷应删除本地运行列和所有旧专用媒体 ID。"""
+        payload = MoviePilotServerHelper._build_subscribe_statistic_payload({
+            "id": 1,
+            "name": "Test",
+            "type": "电影",
+            "media_source": MediaSource.Douban,
+            "media_id": 42,
+            "tmdbid": 99,
+            "state": "N",
+            "username": "tester",
+        })
+
+        self.assertEqual(payload, {
+            "name": "Test",
+            "type": "电影",
+            "media_source": MediaSource.Douban.value,
+            "media_id": "42",
+        })
+
+    def test_subscribe_share_payload_only_keeps_server_contract(self):
+        """订阅分享载荷应保留分享配置并剔除本地下载状态。"""
+        payload = MoviePilotServerHelper._build_subscribe_share_payload({
+            "share_title": "Share",
+            "share_user": "tester",
+            "name": "Test",
+            "type": "电视剧",
+            "media_source": "bangumi",
+            "media_id": "7",
+            "include": "WEB-DL",
+            "audio_quality": "lossless",
+            "downloader": "default",
+            "bangumiid": 7,
+        })
+
+        self.assertEqual(payload, {
+            "share_title": "Share",
+            "share_user": "tester",
+            "name": "Test",
+            "type": "电视剧",
+            "media_source": MediaSource.Bangumi.value,
+            "media_id": "7",
+            "include": "WEB-DL",
+        })
+
+    def test_subscribe_payload_rejects_incomplete_unified_identity(self):
+        """中心服务载荷不得再从旧专用 ID 推导主身份。"""
+        self.assertIsNone(
+            MoviePilotServerHelper._build_subscribe_statistic_payload({
+                "name": "Legacy",
+                "type": "电影",
+                "tmdbid": 99,
+            })
+        )

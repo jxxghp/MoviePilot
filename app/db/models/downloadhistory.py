@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query
+from app.db.models.media_identity import media_identity_constraint
+from app.schemas.types import MediaSource
 
 
 def _title_like(column, title: str):
@@ -67,6 +69,7 @@ class DownloadHistory(Base):
     custom_words = Column(String)
 
     __table_args__ = (
+        media_identity_constraint("downloadhistory"),
         Index('ix_downloadhistory_download_hash_date', 'download_hash', 'date'),
         Index('ix_downloadhistory_date_id', 'date', 'id'),
         Index('ix_downloadhistory_media_identity', 'media_source', 'media_id'),
@@ -119,7 +122,7 @@ class DownloadHistory(Base):
     @classmethod
     @db_query
     def get_by_media_identity(
-            cls, db: Session, media_source: str, media_id: str,
+            cls, db: Session, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
     ):
         """按规范媒体身份查询下载历史。"""
@@ -205,7 +208,7 @@ class DownloadHistory(Base):
         year: Optional[str] = None,
         season: Optional[str] = None,
         episode: Optional[str] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
     ):
         """
@@ -321,7 +324,7 @@ class DownloadHistory(Base):
         db: Session,
         date: str,
         type: str,
-        media_source: str,
+        media_source: MediaSource,
         media_id: str,
         seasons: Optional[str] = None,
     ):

@@ -3,6 +3,9 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from pydantic import ValidationError
+
 from app.api.endpoints.subscribe import create_subscribe
 from app.schemas.subscribe import Subscribe
 from app.schemas.types import EventType, MediaSource, MediaType
@@ -219,6 +222,90 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(event_type, EventType.SubscribeModified)
         self.assertNotIn("username", payload["fields"])
         self.assertEqual(payload["subscribe_info"]["username"], "alice")
+
+    def test_update_subscribe_preserves_existing_media_identity_when_omitted(self):
+        """普通字段更新未提交身份时，不得把已有媒体身份清空。"""
+        from app.api.endpoints.subscribe import update_subscribe
+
+        subscribe = _EndpointSubscribe(
+            id=24,
+            username="alice",
+            name="旧标题",
+            media_source=MediaSource.TMDB,
+            media_id="12345",
+            total_episode=8,
+            lack_episode=2,
+            sites=[],
+            search_imdbid=0,
+            filter_groups=[],
+            start_episode=0,
+        )
+
+        with patch(
+            "app.api.endpoints.subscribe.Subscribe.async_get",
+            new=AsyncMock(side_effect=[subscribe, subscribe]),
+        ), patch(
+            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ):
+            response = asyncio.run(
+                update_subscribe(
+                    subscribe_in=Subscribe(id=24, name="新标题"),
+                    db=object(),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        self.assertTrue(response.success)
+        self.assertEqual(subscribe.media_source, MediaSource.TMDB)
+        self.assertEqual(subscribe.media_id, "12345")
+
+    def test_update_subscribe_clears_existing_media_identity_with_empty_pair(self):
+        """更新同时显式提交两个空身份字段时，应清空存量身份。"""
+        from app.api.endpoints.subscribe import update_subscribe
+
+        subscribe = _EndpointSubscribe(
+            id=26,
+            username="alice",
+            name="旧标题",
+            media_source=MediaSource.TMDB,
+            media_id="12345",
+            total_episode=8,
+            lack_episode=2,
+            sites=[],
+            search_imdbid=0,
+            filter_groups=[],
+            start_episode=0,
+        )
+
+        with patch(
+            "app.api.endpoints.subscribe.Subscribe.async_get",
+            new=AsyncMock(side_effect=[subscribe, subscribe]),
+        ), patch(
+            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ):
+            response = asyncio.run(
+                update_subscribe(
+                    subscribe_in=Subscribe(
+                        id=26,
+                        name="新标题",
+                        media_source="",
+                        media_id="",
+                    ),
+                    db=object(),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        self.assertTrue(response.success)
+        self.assertIsNone(subscribe.media_source)
+        self.assertIsNone(subscribe.media_id)
+
+    def test_update_subscribe_rejects_partial_media_identity(self):
+        """更新媒体身份时只提交来源或 ID 之一应在 Schema 边界直接拒绝。"""
+        with self.assertRaises(ValidationError):
+            Subscribe(id=25, media_source=MediaSource.Douban)
 
     def test_update_subscribe_preserves_recognized_music_entity(self):
         """普通编辑不得把专辑改为单曲或覆盖整专完成判定所需的曲目总数。"""
@@ -1262,6 +1349,41 @@ def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
     assert subscribe.start_episode == 0
     assert subscribe.search_imdbid == 0
     assert subscribe.vote == 0.0
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {"media_source": MediaSource.TMDB},
+        {"media_id": "123"},
+        {"media_source": ""},
+        {"media_id": ""},
+        {"media_source": "unknown", "media_id": "123"},
+        {"media_source": MediaSource.TMDB, "media_id": "0"},
+        {"media_source": MediaSource.TMDB, "media_id": "   "},
+    ],
+)
+def test_subscribe_schema_rejects_incomplete_or_invalid_media_identity(identity):
+    """订阅 Schema 自身必须拒绝半对、零值和空白 ID，不能只依赖端点兜底。"""
+    with pytest.raises(ValidationError):
+        Subscribe(name="测试订阅", **identity)
+
+
+def test_subscribe_schema_distinguishes_omitted_and_explicit_empty_identity():
+    """省略和显式空对都合法，但必须保留字段是否由请求提交的信息。"""
+    omitted = Subscribe(name="省略身份")
+    explicit_empty = Subscribe(
+        name="清空身份",
+        media_source="",
+        media_id="",
+    )
+
+    assert omitted.media_source is None
+    assert omitted.media_id is None
+    assert not {"media_source", "media_id"}.intersection(omitted.model_fields_set)
+    assert explicit_empty.media_source is None
+    assert explicit_empty.media_id is None
+    assert {"media_source", "media_id"}.issubset(explicit_empty.model_fields_set)
 
 
 def test_create_subscribe_accepts_music_payload_with_empty_strings():

@@ -42,7 +42,7 @@ task_types:
       - "Delete the failed history record using `delete_transfer_history` with history_id={history_id}."
       - "Re-identify the media using `recognize_media` with the source file path. For audio files, set media_type='music' and preserve artist/title/album context."
       - "If recognition fails, try `search_media` with keywords from the filename. For music, distinguish recording, album, and browse-only artist results."
-      - "Re-transfer using `transfer_file` with the source path and exact identity fields. Reuse media_source + media_id + media_type + music_type for music, or the applicable video IDs."
+      - "Re-transfer using `transfer_file` with the source path and exact identity fields. Reuse media_source + media_id for every media type, plus media_type + music_type for music."
       - "Report the final result."
   batch_transfer_failed_retry:
     header: "[System Task - Batch Transfer Failed Retry]"
@@ -92,7 +92,7 @@ task_types:
       - "Only continue when you have high confidence in the target media."
       - "Before re-organizing, delete the old transfer history record with `delete_transfer_history` so the system will not skip the source file."
       - "Then use `transfer_file` to organize the source path directly."
-      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, media_type, and music_type. For an album, retry the album directory once with the album identity when the records share that directory."
+      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, media_source, media_id, media_type, and music_type. For an album, retry the album directory once with the album identity when the records share that directory."
       - "If this record is already correct and no re-organize is needed, do not perform destructive actions; simply report that no change is necessary."
     task_rules:
       - "Do NOT rely on previous chat context. Work only from the record above."
@@ -118,7 +118,7 @@ task_types:
       - "If a source file no longer exists or cannot be safely processed, skip that record and note the reason."
       - "Before re-organizing a record, delete the old transfer history record with `delete_transfer_history` so the system will not skip the source file."
       - "Then use `transfer_file` to organize the source path directly."
-      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, all known media IDs, media_source, media_id, media_type, and music_type. Prefer one directory transfer for a verified complete album instead of treating each track as an unrelated media item."
+      - "When calling `transfer_file`, reuse known context when appropriate: source storage, target path, target storage, transfer mode, season, media_source, media_id, media_type, and music_type. Prefer one directory transfer for a verified complete album instead of treating each track as an unrelated media item."
       - "If a record is already correct and no re-organize is needed, do not perform destructive actions; simply mark it as skipped."
       - "Report only the aggregate outcome, including how many records succeeded, skipped, and failed."
     task_rules:

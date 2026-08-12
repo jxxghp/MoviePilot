@@ -18,11 +18,16 @@ from app.schemas.types import (
     MediaImageType,
     MediaRecognizeType,
     MediaSource,
+    MediaSourceSelection,
     MediaType,
     ModuleType,
 )
 from app.utils.http import RequestUtils
-from app.utils.media import is_media_source_enabled, is_media_source_selected
+from app.utils.media import (
+    is_media_source_enabled,
+    is_media_source_selected,
+    normalize_media_source,
+)
 from app.utils.zhconv import convert as zhconv_convert
 
 
@@ -102,7 +107,7 @@ class TheMovieDbModule(_ModuleBase):
     def _validate_recognize_params(
         meta: MetaBase,
         tmdbid: Optional[int],
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
     ) -> bool:
         """
         验证识别参数
@@ -115,7 +120,8 @@ class TheMovieDbModule(_ModuleBase):
         if not tmdbid and not meta:
             return False
 
-        if meta and not tmdbid and (media_source or settings.RECOGNIZE_SOURCE) != "themoviedb":
+        selected_source = normalize_media_source(media_source or settings.RECOGNIZE_SOURCE)
+        if meta and not tmdbid and selected_source != MediaSource.TMDB:
             return False
 
         if meta and not meta.name and not tmdbid:
@@ -769,7 +775,7 @@ class TheMovieDbModule(_ModuleBase):
         }
 
     def search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
@@ -777,7 +783,7 @@ class TheMovieDbModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息列表
         """
-        if not is_media_source_enabled(media_source, "themoviedb"):
+        if not is_media_source_enabled(media_source, MediaSource.TMDB):
             return None
         if not meta.name:
             return []
@@ -801,7 +807,7 @@ class TheMovieDbModule(_ModuleBase):
         return self._build_search_medias_result(meta, results)
 
     def search_persons(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[schemas.MediaPerson]]:
         """
         搜索人物信息
@@ -809,7 +815,7 @@ class TheMovieDbModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if not is_media_source_enabled(media_source, "themoviedb"):
+        if not is_media_source_enabled(media_source, MediaSource.TMDB):
             return None
         if not name:
             return []
@@ -819,7 +825,7 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     async def async_search_persons(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[schemas.MediaPerson]]:
         """
         异步搜索人物信息
@@ -827,7 +833,7 @@ class TheMovieDbModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if not is_media_source_enabled(media_source, "themoviedb"):
+        if not is_media_source_enabled(media_source, MediaSource.TMDB):
             return None
         if not name:
             return []
@@ -837,7 +843,7 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     def search_collections(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索集合信息
@@ -845,7 +851,7 @@ class TheMovieDbModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 合集信息列表
         """
-        if media_source and not is_media_source_selected(media_source, "themoviedb"):
+        if media_source and not is_media_source_selected(media_source, MediaSource.TMDB):
             return None
         if not name:
             return []
@@ -855,7 +861,7 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     async def async_search_collections(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         异步搜索集合信息
@@ -863,7 +869,7 @@ class TheMovieDbModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 合集信息列表
         """
-        if media_source and not is_media_source_selected(media_source, "themoviedb"):
+        if media_source and not is_media_source_selected(media_source, MediaSource.TMDB):
             return None
         if not name:
             return []
@@ -1251,7 +1257,7 @@ class TheMovieDbModule(_ModuleBase):
 
     # 异步方法
     async def async_search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
@@ -1259,7 +1265,7 @@ class TheMovieDbModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息列表
         """
-        if not is_media_source_enabled(media_source, "themoviedb"):
+        if not is_media_source_enabled(media_source, MediaSource.TMDB):
             return None
         if not meta.name:
             return []

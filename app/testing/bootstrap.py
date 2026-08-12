@@ -182,6 +182,18 @@ def prepare_v2_backend(plugins_repo: Path) -> None:
     _prepend_sys_path(Path(plugins_repo) / "plugins.v2")
 
 
+def prepare_v3_backend(plugins_repo: Path) -> None:
+    """v3 插件单测引导：``prepare_backend`` + 把 ``<repo>/plugins.v3`` 注入 ``sys.path``。
+
+    v3 插件与旧代插件可能存在同名包，必须在独立 pytest 会话中加载，避免 Python 模块
+    缓存把其它代际实现复用到当前测试进程。
+
+    :param plugins_repo: 插件仓根目录（由调用方 shim 传入）
+    """
+    prepare_backend()
+    _prepend_sys_path(Path(plugins_repo) / "plugins.v3")
+
+
 def prepare_v1_backend(plugins_repo: Path) -> None:
     """v1 插件单测引导：``prepare_backend`` + 把 ``<repo>/plugins`` 注入 ``sys.path``（与 v2 互斥）。
 
@@ -192,10 +204,10 @@ def prepare_v1_backend(plugins_repo: Path) -> None:
 
 
 def mark_plugin_generation(items, pytest_module) -> None:
-    """按用例所在目录自动给其打 ``v1`` / ``v2`` marker，供按代筛选与分会话运行。
+    """按用例所在目录自动给其打 ``v1`` / ``v2`` / ``v3`` marker，供按代筛选与分会话运行。
 
     优先读取 pytest 7+ 的 ``item.path``，旧版 pytest 缺失该属性时回退到 ``item.fspath``。用
-    「不带前导斜杠」的子串匹配（``tests/v2/`` / ``tests/v1/``），兼容相对路径与绝对路径两种
+    「不带前导斜杠」的子串匹配，兼容相对路径与绝对路径两种
     运行方式：以 ``pytest tests/v2`` 等相对路径运行时收集路径可能不含前导斜杠。
     ``pytest`` 模块由各仓 conftest 传入，避免本模块在非测试态强依赖 pytest。
 
@@ -205,7 +217,9 @@ def mark_plugin_generation(items, pytest_module) -> None:
     for item in items:
         item_path = getattr(item, "path", None)
         path = str(item_path if item_path is not None else item.fspath).replace("\\", "/")
-        if "tests/v2/" in path:
+        if "tests/v3/" in path:
+            item.add_marker(pytest_module.mark.v3)
+        elif "tests/v2/" in path:
             item.add_marker(pytest_module.mark.v2)
         elif "tests/v1/" in path:
             item.add_marker(pytest_module.mark.v1)

@@ -12,7 +12,6 @@ from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
-from app.chain.music import MusicChain
 from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
@@ -24,8 +23,7 @@ from app.core.context import (
     TorrentInfo,
 )
 from app.core.event import eventmanager, Event
-from app.core.meta import MetaBase
-from app.core.meta import MetaMusic
+from app.core.meta import MetaBase, MetaMusic
 from app.core.meta.words import WordsMatcher
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
@@ -877,7 +875,7 @@ class SubscribeChain(ChainBase):
 
         mediainfo = None
         requested_music_type = kwargs.get("music_type")
-        metainfo = MusicChain.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
+        metainfo = MetaMusic.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
         if year:
             metainfo.year = year
         if mtype:
@@ -1081,7 +1079,7 @@ class SubscribeChain(ChainBase):
 
         mediainfo = None
         requested_music_type = kwargs.get("music_type")
-        metainfo = MusicChain.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
+        metainfo = MetaMusic.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
         if year:
             metainfo.year = year
         if mtype:
@@ -1462,7 +1460,7 @@ class SubscribeChain(ChainBase):
             logger.warning(f"音乐订阅 {subscribe.name} 无法继续：{validation_error}")
             return None
         self._sync_music_subscribe_target(subscribe, mediainfo)
-        meta = MusicChain.to_meta(mediainfo)
+        meta = MetaMusic.from_music_info(mediainfo)
         exists, _ = self.check_and_handle_existing_media(
             subscribe=subscribe,
             meta=meta,
@@ -1494,7 +1492,7 @@ class SubscribeChain(ChainBase):
             torrent = copy.copy(source_torrent)
             if sites and torrent.site not in sites:
                 continue
-            if not MusicChain.matches_site_resource(
+            if not SearchChain.matches_music_resource(
                     mediainfo,
                     torrent.title,
                     torrent.description,
@@ -1514,7 +1512,7 @@ class SubscribeChain(ChainBase):
 
             context = copy.copy(source_context)
             context.torrent_info = torrent
-            meta = MusicChain.to_meta(mediainfo)
+            meta = MetaMusic.from_music_info(mediainfo)
             meta.org_string = torrent.title
             meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}", overwrite=True)
             if subscribe.best_version:
@@ -1582,7 +1580,7 @@ class SubscribeChain(ChainBase):
         if current_subscribe:
             self.finish_subscribe_or_not(
                 subscribe=current_subscribe,
-                meta=MusicChain.to_meta(mediainfo),
+                meta=MetaMusic.from_music_info(mediainfo),
                 mediainfo=mediainfo,
                 downloads=downloads,
             )
@@ -1598,7 +1596,7 @@ class SubscribeChain(ChainBase):
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
             if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
         rule_groups = subscribe.filter_groups or SystemConfigOper().get(default_rule_key) or []
-        keywords = [subscribe.keyword] if subscribe.keyword else MusicChain.build_site_keywords(mediainfo)
+        keywords = [subscribe.keyword] if subscribe.keyword else SearchChain.music_site_keywords(mediainfo)
         if not keywords:
             keywords = [subscribe.name]
 

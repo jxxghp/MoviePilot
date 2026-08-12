@@ -2,6 +2,7 @@ from typing import Optional, List, Dict, Any, ClassVar
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
+from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -43,7 +44,9 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
     return min(max(start_episode - 1, 0), total_episode) + priority_completed
 
 
-class Subscribe(BaseModel):
+class Subscribe(OptionalMediaIdentityMixin, BaseModel):
+    """订阅输入与响应模型，媒体身份必须为空对或完整有效对。"""
+
     # 公共创建和更新接口不得接收系统字段和运行事实；其余字段默认作为订阅输入透传。
     PUBLIC_WRITE_EXCLUDED_FIELDS: ClassVar[frozenset[str]] = frozenset({
         "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode",
@@ -155,17 +158,22 @@ class Subscribe(BaseModel):
     @classmethod
     def _normalize_empty_strings(cls, data: Any) -> Any:
         """
-        将前端清空输入框后残留的空字符串视为未提供，移除该键由字段默认值兜底。
+        将前端清空输入框后残留的空字符串视为空值。
 
         音乐等媒体类型的 season、total_episode、episode_priority 等数值或容器字段
         在表单中常以空字符串提交，而 Pydantic 不会把空字符串自动转为 None，会直接抛出
         校验异常导致接口返回 422。这里把空字符串键移除，等价于该字段未提供，从而复用字段
-        默认值（如 ``total_episode`` 回退为 0、``sites`` 回退为空列表）。
+        默认值（如 ``total_episode`` 回退为 0、``sites`` 回退为空列表）。媒体身份键保留为
+        None，以便更新接口区分“未提交”与“显式清空完整身份对”。
         """
         if isinstance(data, dict):
+            data = dict(data)
             for key, value in list(data.items()):
                 if isinstance(value, str) and value == "":
-                    data.pop(key)
+                    if key in {"media_source", "media_id"}:
+                        data[key] = None
+                    else:
+                        data.pop(key)
         return data
 
     @model_validator(mode="after")
@@ -180,12 +188,15 @@ class Subscribe(BaseModel):
         self.completed_episode = compute_subscribe_completed_episode(self)
         return self
 
-    def to_public_write_payload(self) -> Dict[str, Any]:
-        """裁剪公共订阅写入字段，避免请求体覆盖下载事实和运行状态。"""
-        return self.model_dump(exclude=self.PUBLIC_WRITE_EXCLUDED_FIELDS)
+    def to_public_write_payload(self, *, exclude_unset: bool = False) -> Dict[str, Any]:
+        """裁剪公共订阅写入字段，可仅保留更新请求显式提交的字段。"""
+        return self.model_dump(
+            exclude=self.PUBLIC_WRITE_EXCLUDED_FIELDS,
+            exclude_unset=exclude_unset,
+        )
 
 
-class SubscribeShare(BaseModel):
+class SubscribeShare(OptionalMediaIdentityMixin, BaseModel):
     # 分享ID
     id: Optional[int] = None
     # 订阅ID

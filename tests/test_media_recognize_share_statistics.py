@@ -6,7 +6,7 @@ from app.chain import ChainBase
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.helper.server import MoviePilotServerHelper
-from app.schemas.types import MediaType, SystemConfigKey
+from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 
 def _build_meta(name: str) -> MetaBase:
@@ -21,12 +21,8 @@ def _shared_params(tmdb_id: int) -> dict:
     """构造共享识别结果转换后的模块参数。"""
     return {
         "mtype": MediaType.MOVIE,
-        "source": "themoviedb",
-        "mediaid": str(tmdb_id),
-        "tmdbid": tmdb_id,
-        "doubanid": None,
-        "bangumiid": None,
-        "anilistid": None,
+        "media_source": MediaSource.TMDB,
+        "media_id": str(tmdb_id),
     }
 
 
@@ -52,6 +48,8 @@ def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
     chain = _bare_chain()
     meta = _build_meta("共享识别电影")
     media = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="101",
         title="共享识别电影",
         year="2026",
         tmdb_id=101,
@@ -64,7 +62,11 @@ def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
     monkeypatch.setattr(
         MoviePilotServerHelper,
         "query_recognize_share",
-        Mock(return_value={"type": "movie", "tmdbid": 101}),
+        Mock(return_value={
+            "type": "movie",
+            "media_source": "themoviedb",
+            "media_id": "101",
+        }),
     )
     monkeypatch.setattr(
         MoviePilotServerHelper,
@@ -88,7 +90,11 @@ def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
     monkeypatch.setattr(
         MoviePilotServerHelper,
         "query_recognize_share",
-        Mock(return_value={"type": "movie", "tmdbid": 102}),
+        Mock(return_value={
+            "type": "movie",
+            "media_source": "themoviedb",
+            "media_id": "102",
+        }),
     )
     monkeypatch.setattr(
         MoviePilotServerHelper,
@@ -107,6 +113,8 @@ def test_async_shared_recognize_success_increments_persisted_count(monkeypatch):
     chain = _bare_chain()
     meta = _build_meta("异步共享识别电影")
     media = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="103",
         title="异步共享识别电影",
         year="2026",
         tmdb_id=103,
@@ -127,7 +135,11 @@ def test_async_shared_recognize_success_increments_persisted_count(monkeypatch):
     monkeypatch.setattr(
         MoviePilotServerHelper,
         "async_query_recognize_share",
-        AsyncMock(return_value={"type": "movie", "tmdbid": 103}),
+        AsyncMock(return_value={
+            "type": "movie",
+            "media_source": "themoviedb",
+            "media_id": "103",
+        }),
     )
     monkeypatch.setattr(
         MoviePilotServerHelper,

@@ -1,10 +1,14 @@
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+
+from app.api.endpoints import media as media_endpoint
 from app.api.endpoints.media import recognize_file, scrape
 from app.core.context import Context, MediaInfo
 from app.core.meta import MetaBase, MetaMusic
 from app.core.context import MusicInfo
 from app.schemas import FileItem, MediaType
+from app.schemas.types import MediaSource
 
 
 def test_scrape_uses_explicit_media_source_and_id() -> None:
@@ -14,13 +18,15 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
     chain = Mock()
     chain.recognize_media.return_value = media_info
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain:
+    scraping_chain = Mock()
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain, \
+            patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
         mock_chain.is_audio_path.return_value = False
         result = scrape(
             fileitem=fileitem,
             storage="alist",
-            media_source="douban",
+            media_source=MediaSource.Douban,
             media_id="123456",
             type_name=MediaType.MOVIE,
             _=Mock(),
@@ -29,12 +35,12 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
     assert result.success is True
     chain.recognize_by_path.assert_not_called()
     recognize_kwargs = chain.recognize_media.call_args.kwargs
-    assert recognize_kwargs["source"] == "douban"
-    assert recognize_kwargs["mediaid"] == "123456"
+    assert recognize_kwargs["media_source"] == MediaSource.Douban
+    assert recognize_kwargs["media_id"] == "123456"
     assert recognize_kwargs["mtype"] == MediaType.MOVIE
     chain.obtain_images.assert_called_once_with(mediainfo=media_info)
-    assert media_info.scrape_source == "douban"
-    scrape_kwargs = chain.scrape_metadata.call_args.kwargs
+    assert media_info.scrape_source == MediaSource.Douban
+    scrape_kwargs = scraping_chain.scrape_metadata.call_args.kwargs
     assert scrape_kwargs["fileitem"] is fileitem
     assert scrape_kwargs["mediainfo"] is media_info
     assert scrape_kwargs["overwrite"] is True
@@ -48,25 +54,27 @@ def test_scrape_keeps_automatic_recognition_compatible() -> None:
     chain = Mock()
     chain.recognize_by_path.return_value = Context(meta_info=meta_info, media_info=media_info)
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain:
+    scraping_chain = Mock()
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain, \
+            patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
         mock_chain.is_audio_path.return_value = False
         result = scrape(
             fileitem=fileitem,
             storage="alist",
-            media_source="bangumi",
+            media_source=MediaSource.Bangumi,
             _=Mock(),
         )
 
     assert result.success is True
     chain.recognize_by_path.assert_called_once_with(
         fileitem.path,
-        source="bangumi",
+        media_source=MediaSource.Bangumi,
         obtain_images=True,
     )
     chain.recognize_media.assert_not_called()
-    assert media_info.scrape_source == "bangumi"
-    chain.scrape_metadata.assert_called_once_with(
+    assert media_info.scrape_source == MediaSource.Bangumi
+    scraping_chain.scrape_metadata.assert_called_once_with(
         fileitem=fileitem,
         meta=meta_info,
         mediainfo=media_info,
@@ -85,6 +93,37 @@ def test_scrape_rejects_media_id_without_source() -> None:
 
     assert result.success is False
     assert result.message == "指定媒体ID时必须同时指定媒体数据源"
+
+
+def test_scrape_rejects_zero_media_id_before_recognition() -> None:
+    """刮削入口收到零值身份时不得进入识别或刮削链。"""
+    fileitem = FileItem(storage="local", path="/tmp/test.mkv", type="file")
+    media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
+    scraping_chain = Mock(side_effect=AssertionError("零值身份不应创建刮削链"))
+
+    with patch("app.api.endpoints.media.MediaChain", media_chain), patch(
+        "app.api.endpoints.media.ScrapingChain", scraping_chain
+    ):
+        result = scrape(
+            fileitem=fileitem,
+            media_source=MediaSource.TMDB,
+            media_id="0",
+            type_name=MediaType.MOVIE,
+            _=Mock(),
+        )
+
+    assert result.success is False
+    assert result.message == "媒体ID格式无效"
+    media_chain.assert_not_called()
+    scraping_chain.assert_not_called()
+
+
+@pytest.mark.parametrize("media_source", list(MediaSource))
+def test_source_media_id_validator_rejects_zero_for_every_source(
+        media_source: MediaSource,
+) -> None:
+    """全部固定媒体来源都应把零值原生 ID 视为无效身份。"""
+    assert not media_endpoint._is_valid_source_media_id(media_source, "0")
 
 
 def test_recognize_file_routes_audio_to_music_chain() -> None:
@@ -110,7 +149,7 @@ def test_recognize_file_routes_audio_to_music_chain() -> None:
     assert result["meta_info"]["type"] == "音乐"
     assert result["media_info"]["title"] == "晴天"
     chain.async_recognize_by_path.assert_awaited_once_with(
-        "/music/晴天.flac", source=None
+        "/music/晴天.flac", media_source=None
     )
 
 
@@ -124,9 +163,11 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
     )
     media_chain = Mock()
     media_chain.recognize_media.return_value = info
-    media_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
+    scraping_chain = Mock()
+    scraping_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain), \
+            patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         result = scrape(
             fileitem=fileitem,
             storage="local",
@@ -140,11 +181,11 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
     assert result.success is True
     media_chain.recognize_media.assert_called_once_with(
         media_source="musicbrainz",
-        mediaid="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
         mtype=MediaType.MUSIC,
         music_type="recording",
     )
-    media_chain.scrape_music_metadata.assert_called_once_with(
+    scraping_chain.scrape_music_metadata.assert_called_once_with(
         fileitem=fileitem,
         mediainfo=info,
         overwrite=True,
@@ -156,9 +197,11 @@ def test_scrape_music_without_source_keeps_automatic_recognition() -> None:
     """未选择音乐源时刮削入口应传递空来源，让底层比较全部识别源。"""
     fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
     media_chain = Mock()
-    media_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
+    scraping_chain = Mock()
+    scraping_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain), \
+            patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         result = scrape(
             fileitem=fileitem,
             storage="local",
@@ -167,11 +210,11 @@ def test_scrape_music_without_source_keeps_automatic_recognition() -> None:
         )
 
     assert result.success is True
-    media_chain.scrape_music_metadata.assert_called_once_with(
+    scraping_chain.scrape_music_metadata.assert_called_once_with(
         fileitem=fileitem,
         mediainfo=None,
         overwrite=True,
-        source=None,
+        media_source=None,
     )
 
 
@@ -186,9 +229,11 @@ def test_scrape_music_album_forwards_album_namespace() -> None:
     )
     media_chain = Mock()
     media_chain.recognize_media.return_value = info
-    media_chain.scrape_music_metadata.return_value = (True, "已刮削专辑")
+    scraping_chain = Mock()
+    scraping_chain.scrape_music_metadata.return_value = (True, "已刮削专辑")
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain), \
+            patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         result = scrape(
             fileitem=fileitem,
             storage="local",
@@ -214,9 +259,11 @@ def test_scrape_music_accepts_douban_recording_composite_id() -> None:
     )
     media_chain = Mock()
     media_chain.recognize_media.return_value = info
-    media_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
+    scraping_chain = Mock()
+    scraping_chain.scrape_music_metadata.return_value = (True, "已刮削 1 个音频文件")
 
-    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=media_chain), \
+            patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         result = scrape(
             fileitem=fileitem,
             storage="local",
@@ -228,4 +275,4 @@ def test_scrape_music_accepts_douban_recording_composite_id() -> None:
         )
 
     assert result.success is True
-    assert media_chain.recognize_media.call_args.kwargs["mediaid"] == "1401853:3"
+    assert media_chain.recognize_media.call_args.kwargs["media_id"] == "1401853:3"

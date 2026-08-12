@@ -5,15 +5,21 @@ import pillow_avif  # noqa 用于自动注册AVIF支持
 from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
-from app.chain.music import MusicChain
+from app.chain.listenbrainz import ListenBrainzChain
 from app.chain.tmdb import TmdbChain
 from app.core.cache import cached, fresh
 from app.core.config import settings, global_vars
+from app.core.context import MusicInfo
 from app.helper.image import ImageHelper
 from app.log import logger
 from app.schemas import MediaType
-from app.schemas.types import MUSIC_ENTITY_ALBUM
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaSource,
+)
 from app.utils.common import log_execution_time
+from app.utils.media import normalize_media_source
 from app.utils.singleton import Singleton
 
 
@@ -28,6 +34,146 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     cache_max_pages = 5
     # 推荐缓存区域
     recommend_cache_region = "recommend"
+
+    def music_chart(
+            self,
+            range_name: str,
+            page: int = 1,
+            count: int = 30,
+            sort_by: str = "listen_count.desc",
+            min_listen_count: int = 0,
+            with_cover: bool = False,
+            entity: str = MUSIC_ENTITY_RECORDING,
+    ) -> list[MusicInfo]:
+        """读取 ListenBrainz 音乐榜单并应用推荐筛选与排序。"""
+        results = ListenBrainzChain().music_chart(
+            range_name=range_name,
+            page=page,
+            count=count,
+            entity=entity,
+        )
+        return self._filter_music_candidates(
+            results,
+            count=count,
+            sort_by=sort_by,
+            min_listen_count=min_listen_count,
+            with_cover=with_cover,
+        )
+
+    async def async_music_chart(
+            self,
+            range_name: str,
+            page: int = 1,
+            count: int = 30,
+            sort_by: str = "listen_count.desc",
+            min_listen_count: int = 0,
+            with_cover: bool = False,
+            entity: str = MUSIC_ENTITY_RECORDING,
+    ) -> list[MusicInfo]:
+        """异步读取 ListenBrainz 音乐榜单并应用推荐筛选与排序。"""
+        results = await ListenBrainzChain().async_music_chart(
+            range_name=range_name,
+            page=page,
+            count=count,
+            entity=entity,
+        )
+        return self._filter_music_candidates(
+            results,
+            count=count,
+            sort_by=sort_by,
+            min_listen_count=min_listen_count,
+            with_cover=with_cover,
+        )
+
+    async def async_music_fresh_releases(
+            self,
+            days: int = 14,
+            sort: str = "release_date",
+            past: bool = True,
+            future: bool = True,
+            page: int = 1,
+            count: int = 30,
+            with_cover: bool = False,
+    ) -> list[MusicInfo]:
+        """异步读取 ListenBrainz 新发行专辑并应用封面筛选。"""
+        results = await ListenBrainzChain().async_music_fresh_releases(
+            days=days,
+            sort=sort,
+            past=past,
+            future=future,
+            page=page,
+            count=count,
+        )
+        return self._filter_music_candidates(
+            results,
+            count=count,
+            with_cover=with_cover,
+        )
+
+    def music_discover(
+            self,
+            media_source: MediaSource,
+            page: int = 1,
+            count: int = 30,
+            entity: str = MUSIC_ENTITY_ALBUM,
+            mode: str = "chart",
+            tags: str = "",
+            sort: str = "U",
+    ) -> list[MusicInfo]:
+        """按固定音乐来源读取发现内容，当前支持豆瓣音乐。"""
+        if normalize_media_source(media_source) != MediaSource.DoubanMusic:
+            return []
+        return DoubanChain().music_discover(
+            page=page,
+            count=count,
+            entity=entity,
+            mode=mode,
+            tags=tags,
+            sort=sort,
+        )
+
+    async def async_music_discover(
+            self,
+            media_source: MediaSource,
+            page: int = 1,
+            count: int = 30,
+            entity: str = MUSIC_ENTITY_ALBUM,
+            mode: str = "chart",
+            tags: str = "",
+            sort: str = "U",
+    ) -> list[MusicInfo]:
+        """异步按固定音乐来源读取发现内容，当前支持豆瓣音乐。"""
+        if normalize_media_source(media_source) != MediaSource.DoubanMusic:
+            return []
+        return await DoubanChain().async_music_discover(
+            page=page,
+            count=count,
+            entity=entity,
+            mode=mode,
+            tags=tags,
+            sort=sort,
+        )
+
+    @staticmethod
+    def _filter_music_candidates(
+            candidates: list[MusicInfo],
+            count: int,
+            sort_by: Optional[str] = None,
+            min_listen_count: int = 0,
+            with_cover: bool = False,
+    ) -> list[MusicInfo]:
+        """按热度和封面条件筛选音乐推荐，并限制返回数量。"""
+        results = [
+            info for info in candidates
+            if (info.listen_count or 0) >= max(0, min_listen_count)
+            and (not with_cover or bool(info.cover_url))
+        ]
+        if sort_by:
+            results.sort(
+                key=lambda info: info.listen_count or 0,
+                reverse=sort_by != "listen_count.asc",
+            )
+        return results[:max(1, count)]
 
     def refresh_recommend(
             self,
@@ -182,7 +328,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
     def music_weekly(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """返回 ListenBrainz 本周全站热门音乐。"""
-        medias = MusicChain().chart(
+        medias = self.music_chart(
             range_name="this_week",
             page=page or 1,
             count=count or 30,
@@ -197,8 +343,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             count: Optional[int] = 30,
     ) -> List[dict]:
         """返回豆瓣音乐官方新碟榜。"""
-        medias = MusicChain().discover(
-            media_source="doubanmusic",
+        medias = self.music_discover(
+            media_source=MediaSource.DoubanMusic,
             page=page or 1,
             count=count or 30,
             entity=MUSIC_ENTITY_ALBUM,
@@ -427,7 +573,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     @cached(ttl=recommend_ttl, region=recommend_cache_region, skip_empty=True)
     async def async_music_weekly(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict]:
         """异步返回 ListenBrainz 本周全站热门音乐。"""
-        medias = await MusicChain().async_chart(
+        medias = await self.async_music_chart(
             range_name="this_week",
             page=page or 1,
             count=count or 30,
@@ -442,8 +588,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             count: Optional[int] = 30,
     ) -> List[dict]:
         """异步返回豆瓣音乐官方新碟榜。"""
-        medias = await MusicChain().async_discover(
-            media_source="doubanmusic",
+        medias = await self.async_music_discover(
+            media_source=MediaSource.DoubanMusic,
             page=page or 1,
             count=count or 30,
             entity=MUSIC_ENTITY_ALBUM,

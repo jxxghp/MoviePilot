@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, Mock, call
 import pytest
 
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
+from app.chain.scraping import ScrapingChain
 from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.core.meta import MetaMusic
 from app.modules.douban import DoubanModule
 from app.modules.theaudiodb import TheAudioDbModule
-from app.schemas.types import MediaRecognizeType, MediaType
+from app.schemas.types import MediaRecognizeType, MediaSource, MediaType
 
 
 def test_theaudiodb_module_maps_track_and_album(monkeypatch):
@@ -37,7 +37,7 @@ def test_theaudiodb_module_maps_track_and_album(monkeypatch):
 
     results = module.search_music(
         MetaMusic(title="Yellow", artists=["Coldplay"]),
-        media_source="theaudiodb",
+        media_source=MediaSource.TheAudioDB,
     )
 
     assert results and len(results) == 1
@@ -54,7 +54,9 @@ def test_theaudiodb_module_ignores_other_sources(monkeypatch):
     request = Mock()
     monkeypatch.setattr(module, "_request_json", request)
 
-    searched = module.search_music(MetaMusic(title="Yellow"), media_source="musicbrainz")
+    searched = module.search_music(
+        MetaMusic(title="Yellow"), media_source=MediaSource.MusicBrainz
+    )
     recognized = module.recognize_media(
         meta=MetaMusic(title="Yellow"),
         media_source="doubanmusic",
@@ -63,6 +65,83 @@ def test_theaudiodb_module_ignores_other_sources(monkeypatch):
     assert searched is None
     assert recognized is None
     request.assert_not_called()
+
+
+def test_theaudiodb_title_only_search_skips_incomplete_track_and_album_requests(monkeypatch):
+    """缺少艺术家时只搜索艺术家，避免请求会返回空正文的曲目和专辑接口。"""
+    module = TheAudioDbModule()
+    request = Mock(return_value={"artists": []})
+    monkeypatch.setattr(module, "_request_json", request)
+
+    results = module.search_music(
+        MetaMusic(title="Yellow"),
+        media_source=MediaSource.TheAudioDB,
+    )
+
+    assert results == []
+    request.assert_called_once_with("search.php", {"s": "Yellow"})
+
+
+def test_theaudiodb_search_uses_album_artist_for_required_artist_parameter(monkeypatch):
+    """音轨没有独立艺术家时应使用专辑艺术家补齐 TheAudioDB 必填参数。"""
+    module = TheAudioDbModule()
+    request = Mock(side_effect=[{"track": []}, {"album": []}])
+    monkeypatch.setattr(module, "_request_json", request)
+    meta = MetaMusic(
+        title="Yellow",
+        album="Parachutes",
+        album_artist="Coldplay",
+    )
+
+    assert module._search_tracks(meta) == []
+    assert module._search_albums(meta) == []
+    assert request.call_args_list == [
+        call("searchtrack.php", {"t": "Yellow", "s": "Coldplay"}),
+        call("searchalbum.php", {"a": "Parachutes", "s": "Coldplay"}),
+    ]
+
+
+def test_theaudiodb_empty_response_is_soft_failure_and_closes_response(monkeypatch):
+    """TheAudioDB 返回 HTTP 200 空正文时应软失败并及时关闭同步连接。"""
+    response = Mock(
+        status_code=200,
+        content=b"",
+        text="",
+        headers={"Content-Type": "text/html; charset=UTF-8"},
+    )
+    get_res = Mock(return_value=response)
+    monkeypatch.setattr("app.modules.theaudiodb.RequestUtils.get_res", get_res)
+    TheAudioDbModule._request_json.cache_clear()
+
+    result = TheAudioDbModule._request_json("searchtrack.php", {"t": "Yellow"})
+
+    assert result is None
+    response.json.assert_not_called()
+    response.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_theaudiodb_async_empty_response_is_soft_failure_and_closes_response(monkeypatch):
+    """TheAudioDB 返回 HTTP 200 空正文时应软失败并及时关闭异步连接。"""
+    response = Mock(
+        status_code=200,
+        content=b"",
+        text="",
+        headers={"Content-Type": "text/html; charset=UTF-8"},
+    )
+    response.aclose = AsyncMock()
+    get_res = AsyncMock(return_value=response)
+    monkeypatch.setattr("app.modules.theaudiodb.AsyncRequestUtils.get_res", get_res)
+    await TheAudioDbModule._async_request_json.cache_clear()
+
+    result = await TheAudioDbModule._async_request_json(
+        "searchalbum.php",
+        {"a": "Parachutes"},
+    )
+
+    assert result is None
+    response.json.assert_not_called()
+    response.aclose.assert_awaited_once_with()
 
 
 def test_theaudiodb_detail_respects_requested_entity(monkeypatch):
@@ -126,8 +205,8 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
             "target": {
                 "id": "1401853",
                 "title": "范特西",
-                "artists": [{"name": "周杰伦"}],
-                "year": "2001",
+                # 豆瓣真实搜索响应只在卡片副标题提供艺术家和年份。
+                "card_subtitle": "周杰伦 / 2001",
             },
         }]
     }
@@ -157,12 +236,15 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
 
     results = module.search_music(
         MetaMusic(title="范特西", artists=["周杰伦"]),
-        media_source="doubanmusic",
+        media_source=MediaSource.DoubanMusic,
     )
     album = module.music_album("doubanmusic", "1401853")
 
     assert results and results[0].media_source == "doubanmusic"
     assert results[0].music_type == MUSIC_ENTITY_ALBUM
+    assert results[0].artists == ["周杰伦"]
+    assert results[0].artist == "周杰伦"
+    assert results[0].album_artist == "周杰伦"
     assert album and album.media_source == "doubanmusic"
     assert album.year == 2001
     assert album.artists == ["周杰伦"]
@@ -171,6 +253,28 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
     assert album.tracks[0].title == "爱在西元前"
     assert album.tracks[0].duration == 221
     assert album.tracks[1].cover_url == "https://img.example/track.jpg"
+
+
+@pytest.mark.parametrize(
+    ("subtitle", "expected"),
+    [
+        ("Mr Hudson Vic Mensa / 2017", ["Mr Hudson Vic Mensa"]),
+        ("周杰伦 / 2001 / CD / 阿尔发音乐", ["周杰伦"]),
+        ("周杰伦", ["周杰伦"]),
+        ("2007", []),
+    ],
+)
+def test_douban_music_card_subtitle_artist_fallback(subtitle, expected):
+    """搜索副标题回退应保留完整署名，且不能把纯年份误判为艺术家。"""
+    assert DoubanModule._douban_music_search_artists({"card_subtitle": subtitle}) == expected
+
+
+def test_douban_music_search_prefers_structured_artists_over_card_subtitle():
+    """搜索响应已有结构化艺术家时不能被卡片副标题覆盖。"""
+    assert DoubanModule._douban_music_search_artists({
+        "artists": [{"name": "结构化艺术家"}],
+        "card_subtitle": "回退艺术家 / 2024",
+    }) == ["结构化艺术家"]
 
 
 def test_douban_music_discover_and_related_accept_collection_wrappers(monkeypatch):
@@ -356,19 +460,82 @@ async def test_douban_recognize_media_routes_only_douban_music(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_music_chain_defaults_to_musicbrainz_and_forwards_explicit_source(monkeypatch):
+async def test_media_chain_defaults_to_musicbrainz_and_forwards_explicit_source(monkeypatch):
     """音乐搜索默认 MusicBrainz，手动选择时原样转发其它音乐源。"""
-    chain = MusicChain()
-    run_module = Mock(return_value=[])
-    async_run_module = AsyncMock(return_value=[])
-    monkeypatch.setattr(chain, "run_module", run_module)
-    monkeypatch.setattr(chain, "async_run_module", async_run_module)
+    chain = MediaChain()
+    musicbrainz = Mock()
+    musicbrainz.search_music.return_value = []
+    douban = Mock()
+    douban.async_search_music = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        chain,
+        "_music_source_chain",
+        Mock(side_effect=[musicbrainz, douban]),
+    )
 
-    chain.search("Yellow")
-    await chain.async_search("范特西", media_source="doubanmusic")
+    chain.search_music("Yellow")
+    await chain.async_search_music(
+        "范特西", media_source=MediaSource.DoubanMusic
+    )
 
-    assert run_module.call_args.kwargs["media_source"] == "musicbrainz"
-    assert async_run_module.await_args.kwargs["media_source"] == "doubanmusic"
+    assert chain._music_source_chain.call_args_list[0].args[0] == "musicbrainz"
+    assert chain._music_source_chain.call_args_list[1].args[0] == "doubanmusic"
+    assert musicbrainz.search_music.call_args.args[0].title == "Yellow"
+    assert douban.async_search_music.await_args.args[0].title == "范特西"
+
+
+@pytest.mark.asyncio
+async def test_media_chain_aggregates_music_sources_and_isolates_source_failure(monkeypatch):
+    """多音乐来源应按选择顺序聚合，单一来源失败不能清空其它来源结果。"""
+    chain = MediaChain()
+    musicbrainz = Mock()
+    musicbrainz.async_search_music = AsyncMock(return_value=[
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="recording-1",
+            title="Yellow",
+        )
+    ])
+    theaudiodb = Mock()
+    theaudiodb.async_search_music = AsyncMock(side_effect=ValueError("empty response"))
+    douban = Mock()
+    douban.async_search_music = AsyncMock(return_value=[
+        MusicInfo(
+            media_source="doubanmusic",
+            media_id="album-1",
+            music_type="album",
+            title="Yellow",
+        )
+    ])
+    source_chains = {
+        "musicbrainz": musicbrainz,
+        "theaudiodb": theaudiodb,
+        "doubanmusic": douban,
+    }
+    select_chain = Mock(side_effect=lambda source: source_chains[str(source)])
+    monkeypatch.setattr(chain, "_music_source_chain", select_chain)
+
+    results = await chain.async_search_music(
+        "Yellow",
+        limit=30,
+        media_source=(
+            MediaSource.MusicBrainz,
+            MediaSource.TheAudioDB,
+            MediaSource.DoubanMusic,
+            MediaSource.MusicBrainz,
+        ),
+    )
+
+    assert [(str(item.media_source), item.media_id) for item in results] == [
+        ("musicbrainz", "recording-1"),
+        ("doubanmusic", "album-1"),
+    ]
+    assert [str(item.args[0]) for item in select_chain.call_args_list] == [
+        "musicbrainz",
+        "theaudiodb",
+        "doubanmusic",
+    ]
+    theaudiodb.async_search_music.assert_awaited_once()
 
 
 def test_music_scrape_resolves_with_selected_source(tmp_path, monkeypatch):
@@ -377,13 +544,17 @@ def test_music_scrape_resolves_with_selected_source(tmp_path, monkeypatch):
     path.write_bytes(b"audio")
     expected = MusicInfo(media_source="theaudiodb", media_id="32793500", title="Yellow")
     recognize = Mock(return_value=(MetaMusic(title="Yellow"), expected))
-    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize)
+    media_chain = Mock()
+    media_chain.recognize_music_by_path = recognize
+    monkeypatch.setattr("app.chain.scraping.MediaChain", Mock(return_value=media_chain))
 
-    result = MediaChain._resolve_music_scrape_info(
+    result = ScrapingChain._resolve_music_scrape_info(
         path,
         mediainfo=None,
-        media_source="theaudiodb",
+        media_source=MediaSource.TheAudioDB,
     )
 
     assert result is expected
-    recognize.assert_called_once_with(path, media_source="theaudiodb")
+    recognize.assert_called_once_with(
+        path, media_source=MediaSource.TheAudioDB
+    )

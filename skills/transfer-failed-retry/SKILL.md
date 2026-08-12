@@ -1,6 +1,6 @@
 ---
 name: transfer-failed-retry
-version: 3
+version: 4
 description: Use this skill when you need to retry failed video or music transfers/organizations. Given failed transfer history IDs, query the exact records, group by trustworthy movie/series/recording/album identity, delete only the old records being retried, then re-identify and re-organize through MoviePilot. This skill is automatically triggered when transfer failures occur and AI retry is enabled.
 allowed-tools: query_transfer_history delete_transfer_history recognize_media transfer_file search_media
 ---
@@ -36,11 +36,10 @@ From each record, extract the following key information:
 - **title**: The recognized title (may be incorrect)
 - **errmsg**: The error message explaining why the transfer failed
 - **type**: Media type (movie/tv/music)
-- **tmdbid**: TMDB ID (if available)
+- **media_source/media_id**: Exact source-native identity; preserve the pair together for every retry
 - **seasons/episodes**: Season/episode info (if TV show)
 - **downloader**: Which downloader was used
 - **download_hash**: The torrent hash
-- **media_source/media_id**: Exact source-native identity; required to preserve selected music entities
 
 ### Step 2: Analyze the Failure Reason
 
@@ -48,7 +47,7 @@ Common failure reasons and how to handle them:
 
 | Error Message | Cause | Solution |
 |---------------|-------|----------|
-| 未识别到媒体信息 | File name or audio tags could not be matched | Use `search_media` to find the exact video ID or music recording/album identity, then transfer with explicit IDs |
+| 未识别到媒体信息 | File name or audio tags could not be matched | Use `search_media` to find the exact `media_source` + `media_id`, then transfer with that pair |
 | 源目录不存在 | Source file was moved or deleted | Cannot retry - skip this record |
 | 目标路径不存在 | Target directory issue | Retry transfer - the directory config may have been fixed |
 | 文件已存在 | Target file already exists | May need to use `force` mode or skip |
@@ -83,7 +82,7 @@ Based on the failure analysis in Step 2:
 
 3. Once you have the exact identity, re-transfer with explicit identification:
    ```
-   transfer_file(file_path="<source_path>", tmdbid=<tmdb_id>, media_type="movie" or "tv")
+   transfer_file(file_path="<source_path>", media_source="<source>", media_id="<native_id>", media_type="movie" or "tv")
    # or for music
    transfer_file(file_path="<source_path>", media_type="music", music_type="recording" or "album", media_source="musicbrainz", media_id="<recording_or_album_id>")
    ```
@@ -101,7 +100,7 @@ For TV shows where episode info couldn't be determined:
 1. Use `recognize_media` to get better metadata
 2. Re-transfer with explicit season info:
    ```
-   transfer_file(file_path="<source_path>", tmdbid=<tmdb_id>, media_type="tv", season=<season_number>)
+   transfer_file(file_path="<source_path>", media_source="<source>", media_id="<native_id>", media_type="tv", season=<season_number>)
    ```
 
 #### Case D: Music Recording Or Album
@@ -145,20 +144,20 @@ query_transfer_history(status="failed")
 
 # 2. Identify media ONCE using the first file
 recognize_media(path="/downloads/Show.Name.S01E01.1080p.mkv")
-# Found: tmdb_id=789, media_type="tv"
+# Found: media_source="themoviedb", media_id="789", media_type="tv"
 
 # 3. For each record: delete history, then re-transfer
 delete_transfer_history(history_id=42)
-transfer_file(file_path="/downloads/Show.Name.S01E01.1080p.mkv", tmdbid=789, media_type="tv")
+transfer_file(file_path="/downloads/Show.Name.S01E01.1080p.mkv", media_source="themoviedb", media_id="789", media_type="tv")
 
 delete_transfer_history(history_id=43)
-transfer_file(file_path="/downloads/Show.Name.S01E02.1080p.mkv", tmdbid=789, media_type="tv")
+transfer_file(file_path="/downloads/Show.Name.S01E02.1080p.mkv", media_source="themoviedb", media_id="789", media_type="tv")
 
 delete_transfer_history(history_id=44)
-transfer_file(file_path="/downloads/Show.Name.S01E03.1080p.mkv", tmdbid=789, media_type="tv")
+transfer_file(file_path="/downloads/Show.Name.S01E03.1080p.mkv", media_source="themoviedb", media_id="789", media_type="tv")
 
 delete_transfer_history(history_id=45)
-transfer_file(file_path="/downloads/Show.Name.S01E04.1080p.mkv", tmdbid=789, media_type="tv")
+transfer_file(file_path="/downloads/Show.Name.S01E04.1080p.mkv", media_source="themoviedb", media_id="789", media_type="tv")
 
 # 4. Report summary: "重试完成：4/4 成功"
 ```
@@ -187,12 +186,12 @@ recognize_media(path="/downloads/Movie.Name.2024.1080p.mkv")
 
 # 3. Search TMDB
 search_media(title="Movie Name", year="2024", media_type="movie")
-# Found: tmdb_id=123456
+# Found: media_source="themoviedb", media_id="123456"
 
 # 4. Delete old history record
 delete_transfer_history(history_id=42)
 
 # 5. Re-transfer with correct identification
-transfer_file(file_path="/downloads/Movie.Name.2024.1080p.mkv", tmdbid=123456, media_type="movie")
+transfer_file(file_path="/downloads/Movie.Name.2024.1080p.mkv", media_source="themoviedb", media_id="123456", media_type="movie")
 # Success!
 ```

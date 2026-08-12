@@ -1150,7 +1150,9 @@ class Emby:
                 eventItem.item_id = message.get('Item', {}).get('Id')
 
             eventItem.item_path = message.get('Item', {}).get('Path')
-            eventItem.tmdb_id = message.get('Item', {}).get('ProviderIds', {}).get('Tmdb')
+            eventItem.media_source, eventItem.media_id = MediaServerIdentityHelper.from_provider_ids(
+                message.get('Item', {}).get('ProviderIds')
+            )
             if message.get('Item', {}).get('Overview') and len(message.get('Item', {}).get('Overview')) > 100:
                 eventItem.overview = str(message.get('Item', {}).get('Overview'))[:100] + "..."
             else:
@@ -1171,7 +1173,9 @@ class Emby:
             eventItem.item_type = message.get("item_type")
             eventItem.item_name = message.get("item_name")
             eventItem.item_path = message.get("item_path")
-            eventItem.tmdb_id = message.get("tmdb_id")
+            eventItem.media_source, eventItem.media_id = MediaServerIdentityHelper.from_provider_ids({
+                "tmdb_id": message.get("tmdb_id"),
+            })
             eventItem.season_id = message.get("season_id")
             eventItem.episode_id = message.get("episode_id")
 

@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Optional, Dict, Union, List, Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
+from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -99,7 +100,7 @@ class MediaServerItemUserState(BaseModel):
     percentage: Optional[float] = None
 
 
-class MediaServerItem(BaseModel):
+class MediaServerItem(OptionalMediaIdentityMixin, BaseModel):
     """
     媒体服务器媒体信息
     """
@@ -158,7 +159,8 @@ class WebhookEventInfo(BaseModel):
     item_path: Optional[str] = None
     season_id: Optional[str] = None
     episode_id: Optional[str] = None
-    tmdb_id: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
     overview: Optional[str] = None
     percentage: Optional[float] = None
     ip: Optional[str] = None
@@ -171,6 +173,54 @@ class WebhookEventInfo(BaseModel):
     item_isvirtual: Optional[bool] = None
     media_type: Optional[str] = None
     json_object: Optional[dict] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_tmdb_identity(cls, data: Any) -> Any:
+        """在旧事件输入边界把 tmdb_id 迁移为统一媒体身份。"""
+        if not isinstance(data, dict):
+            return data
+        if data.get("media_source") is not None or data.get("media_id") is not None:
+            migrated = dict(data)
+            migrated.pop("tmdb_id", None)
+            return migrated
+        legacy_tmdb_id = data.get("tmdb_id")
+        if legacy_tmdb_id in (None, ""):
+            return data
+        migrated = dict(data)
+        migrated["media_source"] = MediaSource.TMDB
+        migrated["media_id"] = str(legacy_tmdb_id)
+        migrated.pop("tmdb_id", None)
+        return migrated
+
+    @model_validator(mode="after")
+    def _validate_media_identity(self) -> "WebhookEventInfo":
+        """确保 webhook 媒体身份始终完整成对且不接受零值。"""
+        normalized_id = str(self.media_id).strip() if self.media_id is not None else None
+        if bool(self.media_source) != bool(normalized_id):
+            raise ValueError("media_source 和 media_id 必须同时提供")
+        if normalized_id == "0":
+            raise ValueError("media_id 不能为 0")
+        self.media_id = normalized_id
+        return self
+
+    @property
+    def tmdb_id(self) -> Optional[str]:
+        """兼容旧插件读取 TMDB 身份；新事件输出不再包含该字段。"""
+        if self.media_source == MediaSource.TMDB:
+            return self.media_id
+        return None
+
+    @tmdb_id.setter
+    def tmdb_id(self, value: Optional[Union[str, int]]) -> None:
+        """兼容旧插件写入 TMDB 身份，并同步为统一字段。"""
+        if value in (None, ""):
+            if self.media_source == MediaSource.TMDB:
+                self.media_source = None
+                self.media_id = None
+            return
+        self.media_source = MediaSource.TMDB
+        self.media_id = str(value)
 
 
 class MediaServerPlayItem(BaseModel):

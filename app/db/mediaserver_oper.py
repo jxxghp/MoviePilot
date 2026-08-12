@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db import DbOper
 from app.db.models.mediaserver import MediaServerItem
+from app.utils.media import normalize_media_identity_payload
 
 
 class MediaServerOper(DbOper):
@@ -19,10 +20,11 @@ class MediaServerOper(DbOper):
         """
         过滤数据库模型不存在或不应由远端覆盖的字段
         """
-        return {
+        payload = {
             k: v for k, v in kwargs.items()
             if hasattr(MediaServerItem, k) and k != "id"
         }
+        return normalize_media_identity_payload(payload)
 
     def add(self, **kwargs) -> bool:
         """

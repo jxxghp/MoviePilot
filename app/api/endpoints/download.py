@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, Body
 from app import schemas
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.core.meta import MetaMusic
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
@@ -75,7 +75,7 @@ def download(
     """
     if isinstance(media_in, schemas.MusicInfo):
         mediainfo = MusicInfo.from_dict(media_in.model_dump())
-        metainfo = MusicChain.to_meta(mediainfo)
+        metainfo = MetaMusic.from_music_info(mediainfo)
         metainfo.org_string = torrent_in.title
     else:
         metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
@@ -142,7 +142,7 @@ def add(
         normalized_music_type = MUSIC_ENTITY_RECORDING
     # 元数据
     metainfo = (
-        MusicChain.parse_query(torrent_in.title)
+        MetaMusic.parse_query(torrent_in.title)
         if is_music
         else MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
     )

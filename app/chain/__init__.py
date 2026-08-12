@@ -47,6 +47,7 @@ from app.schemas.category import CategoryConfig
 from app.schemas.types import (
     TorrentStatus,
     MediaType,
+    MediaSourceSelection,
     MediaImageType,
     EventType,
     ChainEventType,
@@ -637,7 +638,7 @@ class ChainBase(metaclass=ABCMeta):
             return None
         if not episode_group and hasattr(meta, "episode_group"):
             episode_group = meta.episode_group
-        if not mtype and meta and meta.type in [
+        if not mtype and not (media_source and media_id) and meta and meta.type in [
             MediaType.TV, MediaType.MOVIE, MediaType.MUSIC
         ]:
             mtype = meta.type
@@ -747,7 +748,7 @@ class ChainBase(metaclass=ABCMeta):
             return None
         if not episode_group and hasattr(meta, "episode_group"):
             episode_group = meta.episode_group
-        if not mtype and meta and meta.type in [
+        if not mtype and not (media_source and media_id) and meta and meta.type in [
             MediaType.TV, MediaType.MOVIE, MediaType.MUSIC
         ]:
             mtype = meta.type
@@ -1263,7 +1264,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("webhook_parser", body=body, form=form, args=args)
 
     def search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
@@ -1276,7 +1277,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     async def async_search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
@@ -1289,7 +1290,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     def search_persons(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息
@@ -1302,7 +1303,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     async def async_search_persons(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息（异步版本）
@@ -1315,7 +1316,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     def search_collections(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索集合信息
@@ -1328,7 +1329,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     async def async_search_collections(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索集合信息（异步版本）

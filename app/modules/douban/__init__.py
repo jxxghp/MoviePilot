@@ -21,6 +21,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaSource,
+    MediaSourceSelection,
     MediaType,
     ModuleType,
     MediaRecognizeType,
@@ -63,7 +64,7 @@ class DoubanModule(_ModuleBase):
         return "豆瓣"
 
     @staticmethod
-    def get_music_source() -> str:
+    def get_music_source() -> MediaSource:
         """返回音乐识别使用的数据源标识。"""
         return DoubanModule._music_source
 
@@ -92,7 +93,7 @@ class DoubanModule(_ModuleBase):
             self,
             meta: MetaMusic,
             limit: int = 20,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSourceSelection] = None,
     ) -> Optional[List[MusicInfo]]:
         """按请求来源搜索豆瓣音乐专辑，并转换为统一音乐候选。"""
         if not is_media_source_selected(media_source, self._music_source):
@@ -105,7 +106,7 @@ class DoubanModule(_ModuleBase):
 
     def recognize_music(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
@@ -130,7 +131,11 @@ class DoubanModule(_ModuleBase):
             )
         return album.to_music_info()
 
-    def music_album(self, media_source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+    def music_album(
+            self,
+            media_source: MediaSource,
+            media_id: str,
+    ) -> Optional[MusicAlbumInfo]:
         """按豆瓣音乐专辑 ID 获取标准化专辑详情和曲目。"""
         if media_source != self._music_source or not media_id:
             return None
@@ -139,7 +144,7 @@ class DoubanModule(_ModuleBase):
 
     def music_discover(
             self,
-            media_source: str,
+            media_source: MediaSource,
             page: int = 1,
             count: int = 30,
             entity: str = MUSIC_ENTITY_ALBUM,
@@ -187,7 +192,7 @@ class DoubanModule(_ModuleBase):
 
     def music_album_related(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
             count: int = 24,
     ) -> Optional[List[MusicInfo]]:
@@ -204,7 +209,7 @@ class DoubanModule(_ModuleBase):
     def _recognize_music_media(
             self,
             meta: Optional[MetaMusic],
-            media_source: Optional[str],
+            media_source: Optional[MediaSource],
             media_id: Optional[str],
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
@@ -248,7 +253,7 @@ class DoubanModule(_ModuleBase):
     async def _async_recognize_music_media(
             self,
             meta: Optional[MetaMusic],
-            media_source: Optional[str],
+            media_source: Optional[MediaSource],
             media_id: Optional[str],
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
@@ -385,7 +390,7 @@ class DoubanModule(_ModuleBase):
             title = cls._douban_music_text(target.get("title") or target.get("name"))
             if not media_id or not title:
                 continue
-            artists = cls._douban_music_artists(target)
+            artists = cls._douban_music_search_artists(target)
             release_date = cls._douban_music_date(target)
             cover_url = cls._douban_music_cover(target)
             candidate = MusicInfo(
@@ -550,6 +555,20 @@ class DoubanModule(_ModuleBase):
             seen.add(identity)
             artists.append(text)
         return artists
+
+    @classmethod
+    def _douban_music_search_artists(cls, info: dict[str, Any]) -> List[str]:
+        """提取搜索候选艺术家，缺少结构化字段时回退到卡片副标题首段。"""
+        artists = cls._douban_music_artists(info)
+        if artists:
+            return artists
+        subtitle = cls._douban_music_text(info.get("card_subtitle"))
+        if not subtitle:
+            return []
+        artist = re.split(r"\s+/\s+", subtitle, maxsplit=1)[0].strip()
+        if not artist or re.fullmatch(r"\d{4}(?:-\d{1,2}(?:-\d{1,2})?)?", artist):
+            return []
+        return [artist]
 
     @classmethod
     def _douban_music_cover(cls, info: dict[str, Any]) -> Optional[str]:
@@ -1425,7 +1444,7 @@ class DoubanModule(_ModuleBase):
         return []
 
     def search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
@@ -1433,7 +1452,7 @@ class DoubanModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(media_source, "douban"):
+        if not is_media_source_enabled(media_source, MediaSource.Douban):
             return None
         if not meta.name:
             return []
@@ -1444,7 +1463,7 @@ class DoubanModule(_ModuleBase):
         return self._build_search_medias_result(meta, result.get("items"))
 
     async def async_search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
@@ -1452,7 +1471,7 @@ class DoubanModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(media_source, "douban"):
+        if not is_media_source_enabled(media_source, MediaSource.Douban):
             return None
         if not meta.name:
             return []
@@ -1463,7 +1482,7 @@ class DoubanModule(_ModuleBase):
         return self._build_search_medias_result(meta, result.get("items"))
 
     def search_persons(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息
@@ -1471,7 +1490,7 @@ class DoubanModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if not is_media_source_enabled(media_source, "douban"):
+        if not is_media_source_enabled(media_source, MediaSource.Douban):
             return None
         if not name:
             return []
@@ -1488,7 +1507,7 @@ class DoubanModule(_ModuleBase):
         return []
 
     async def async_search_persons(
-        self, name: str, media_source: Optional[MediaSource] = None
+        self, name: str, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息（异步版本）
@@ -1496,7 +1515,7 @@ class DoubanModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if not is_media_source_enabled(media_source, "douban"):
+        if not is_media_source_enabled(media_source, MediaSource.Douban):
             return None
         if not name:
             return []

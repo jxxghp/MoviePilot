@@ -3,6 +3,7 @@ from typing import Any, Callable, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MusicTargetEntityType
 
 from app.schemas.context import MetaInfo, MediaInfo
@@ -58,7 +59,7 @@ class DownloadingTorrent(DownloaderTorrent):
     """
 
 
-class TransferTask(BaseModel):
+class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     """
     文件整理任务
     """
@@ -199,7 +200,7 @@ class EpisodeFormatRecommendItem(BaseModel):
     fileitems: Optional[List[FileItem]] = None
 
 
-class ManualTransferItem(BaseModel):
+class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     """手动整理请求，媒体身份只接受来源枚举与原生 ID。"""
 
     # 文件项

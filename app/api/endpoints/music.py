@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import schemas
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
-from app.schemas.types import MediaType
+from app.chain.recommend import RecommendChain
+from app.schemas.types import MediaSource, MediaType
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.security import verify_token
 from app.db.models.user import User
@@ -22,12 +22,12 @@ router = APIRouter()
 CountParam = Annotated[int, Query(ge=1, le=100)]
 PageParam = Annotated[int, Query(ge=1)]
 MusicSourceParam = Annotated[
-    str,
-    Query(pattern="^(musicbrainz|theaudiodb|doubanmusic)$"),
+    MediaSource,
+    Query(),
 ]
 MusicExploreSourceParam = Annotated[
-    str,
-    Query(pattern="^(musicbrainz|doubanmusic)$"),
+    MediaSource,
+    Query(),
 ]
 MusicModeParam = Annotated[str, Query(pattern="^(chart|fresh)$")]
 MusicEntityParam = Annotated[str, Query(pattern="^(recording|album)$")]
@@ -41,6 +41,29 @@ MusicAlbumTypeParam = Annotated[
     Optional[str],
     Query(pattern="^(album|single|ep|broadcast|other|compilation|soundtrack|live|remix)$"),
 ]
+_MUSIC_DETAIL_SOURCES = frozenset({
+    MediaSource.MusicBrainz,
+    MediaSource.TheAudioDB,
+    MediaSource.DoubanMusic,
+})
+_MUSIC_EXPLORE_SOURCES = frozenset({
+    MediaSource.MusicBrainz,
+    MediaSource.DoubanMusic,
+})
+
+
+def _validate_music_source(
+        media_source: MediaSource,
+        allowed_sources: frozenset[MediaSource],
+) -> MediaSource:
+    """将 HTTP 或直接调用参数规范为音乐来源枚举，并拒绝不支持的来源。"""
+    try:
+        normalized_source = MediaSource(media_source)
+    except (TypeError, ValueError) as err:
+        raise HTTPException(status_code=422, detail="无效的媒体来源") from err
+    if normalized_source not in allowed_sources:
+        raise HTTPException(status_code=422, detail="该媒体来源不支持此音乐接口")
+    return normalized_source
 
 
 def _serialize_music(info: MusicInfo) -> schemas.MusicInfo:
@@ -138,7 +161,7 @@ async def clear_music_recognition_cache(
 async def explore_music(
         page: PageParam = 1,
         count: CountParam = 30,
-        media_source: MusicExploreSourceParam = "musicbrainz",
+        media_source: MusicExploreSourceParam = MediaSource.MusicBrainz,
         mode: MusicModeParam = "chart",
         entity: MusicEntityParam = "recording",
         range_name: MusicRangeParam = "this_month",
@@ -154,9 +177,10 @@ async def explore_music(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
     """MusicBrainz 返回榜单或新发行，豆瓣音乐固定按官方标签分类浏览。"""
-    chain = MusicChain()
-    if media_source != "musicbrainz":
-        results = await chain.async_discover(
+    media_source = _validate_music_source(media_source, _MUSIC_EXPLORE_SOURCES)
+    chain = RecommendChain()
+    if media_source != MediaSource.MusicBrainz:
+        results = await chain.async_music_discover(
             media_source=media_source,
             page=page,
             count=count,
@@ -166,7 +190,7 @@ async def explore_music(
             sort=douban_sort,
         )
     elif mode == "fresh":
-        results = await chain.async_fresh_releases(
+        results = await chain.async_music_fresh_releases(
             days=days,
             sort=sort,
             past=past,
@@ -176,7 +200,7 @@ async def explore_music(
             with_cover=with_cover,
         )
     else:
-        results = await chain.async_chart(
+        results = await chain.async_music_chart(
             range_name=range_name,
             page=page,
             count=count,
@@ -185,7 +209,7 @@ async def explore_music(
             with_cover=with_cover,
             entity=entity,
         )
-    if media_source != "musicbrainz" and with_cover:
+    if media_source != MediaSource.MusicBrainz and with_cover:
         results = [info for info in results if info.cover_url or info.poster_path]
     return [_serialize_music(info) for info in results]
 
@@ -197,11 +221,14 @@ async def explore_music(
 )
 async def music_album(
         album_id: str,
-        media_source: MusicSourceParam = "musicbrainz",
+        media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> schemas.MusicAlbumInfo:
     """按专辑标准 ID 返回专辑详情、曲目列表和发行版本。"""
-    info = await MusicChain().async_album(media_source=media_source, media_id=album_id)
+    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    info = await MediaChain().async_get_music_album(
+        media_source=media_source, media_id=album_id
+    )
     if not info:
         raise HTTPException(status_code=404, detail="未识别到专辑信息")
     return _serialize_album(info)
@@ -215,11 +242,12 @@ async def music_album(
 async def music_album_related(
         album_id: str,
         count: CountParam = 24,
-        media_source: MusicSourceParam = "musicbrainz",
+        media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
     """按来源和专辑 ID 返回可继续浏览的关联专辑。"""
-    results = await MusicChain().async_album_related(
+    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    results = await MediaChain().async_get_music_album_related(
         media_source=media_source,
         media_id=album_id,
         count=count,
@@ -237,11 +265,12 @@ async def music_artist_albums(
         page: PageParam = 1,
         count: CountParam = 30,
         album_type: MusicAlbumTypeParam = None,
-        media_source: MusicSourceParam = "musicbrainz",
+        media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
     """按艺术家标准 ID 分页返回其专辑、EP 和单曲。"""
-    results = await MusicChain().async_artist_albums(
+    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    results = await MediaChain().async_get_music_artist_albums(
         media_source=media_source,
         media_id=artist_id,
         page=page,
@@ -259,11 +288,12 @@ async def music_artist_albums(
 async def music_artist_related(
         artist_id: str,
         count: CountParam = 24,
-        media_source: MusicSourceParam = "musicbrainz",
+        media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicArtistInfo]:
     """按艺术家关系返回可继续浏览的关联艺术家。"""
-    results = await MusicChain().async_artist_related(
+    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    results = await MediaChain().async_get_music_artist_related(
         media_source=media_source,
         media_id=artist_id,
         count=count,
@@ -278,11 +308,14 @@ async def music_artist_related(
 )
 async def music_artist(
         artist_id: str,
-        media_source: MusicSourceParam = "musicbrainz",
+        media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> schemas.MusicArtistInfo:
     """按艺术家标准 ID 返回艺术家详情。"""
-    info = await MusicChain().async_artist(media_source=media_source, media_id=artist_id)
+    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    info = await MediaChain().async_get_music_artist(
+        media_source=media_source, media_id=artist_id
+    )
     if not info:
         raise HTTPException(status_code=404, detail="未识别到艺术家信息")
     return _serialize_artist(info)

@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 11
+version: 12
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -16,6 +16,14 @@ description: >-
 > All script paths are relative to this skill file.
 
 Use `scripts/mp-api.py` to call any MoviePilot REST API endpoint directly.
+
+Generic media requests use one stable identity contract: `media_source` is a
+`MediaSource` enum value and `media_id` is that source's native ID. Supply the
+pair together and keep it unchanged across detail, search, subscription,
+download, transfer, scraping, and library checks. Source-specific IDs exposed
+by `MediaInfo` are mapping metadata, not alternate generic request parameters.
+Native IDs remain valid on explicitly source-owned endpoints under `/tmdb`,
+`/douban`, `/bangumi`, and `/anilist`.
 
 ## Scope And Boundaries
 
@@ -88,10 +96,10 @@ changing its method, parameters, request body, or authentication.
 
 ```bash
 # GET with query params
-python scripts/mp-api.py GET /api/v1/media/search title="Avatar" type="movie"
+python scripts/mp-api.py GET /api/v1/media/search title="Avatar" type="media"
 
 # POST with JSON body
-python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_url":"abc1234:1"}'
+python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_in":{"title":"Avatar.2009","enclosure":"abc1234:1"},"media_source":"themoviedb","media_id":"19995"}'
 
 # DELETE
 python scripts/mp-api.py DELETE /api/v1/subscribe/123
@@ -111,23 +119,23 @@ All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `
 
 ### Media Search (13 endpoints)
 
-When recognition omits `source`, MoviePilot uses TMDB exclusively for video and MusicBrainz exclusively for music. A miss does not trigger another metadata source. Providing `source` or a source-native ID keeps recognition strict to that manually selected source.
+When recognition omits `media_source`, MoviePilot uses TMDB exclusively for video and MusicBrainz exclusively for music. A miss does not trigger another metadata source. Providing `media_source`, or the complete `media_source` + `media_id` pair, keeps recognition strict to that manually selected source.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/media/search` | Search media, collections, or people by title. Params: `title` (required), `type`, `page`, `count`, optional `source`. Supported sources: `media` = `themoviedb`, `douban`, `bangumi`, `anilist`; `collection` = `themoviedb`; `person` = `themoviedb`, `douban` |
-| GET | `/api/v1/media/recognize` | Recognize media from a torrent title or a media file path. Params: `title` (required), `subtitle`, `custom_words`, optional `source`; media file paths also use parent-directory metadata such as title and year |
-| GET | `/api/v1/media/recognize2` | Recognize media from a torrent title or media file path (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `source`; media file paths also use parent-directory metadata |
-| GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `source` |
-| GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path`, optional `source` |
-| POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON. Optional params: `media_source`, `media_id`, `type_name` (`电影`/`电视剧`) |
+| GET | `/api/v1/media/search` | Search by title. Params: `title` (required), `type=media|music|collection|person`, `page`, `count`, optional repeated `media_source`; each type accepts only its supported `MediaSource` values. Comma-separated input is legacy compatibility only |
+| GET | `/api/v1/media/recognize` | Recognize media from a torrent title or a media file path. Params: `title` (required), `subtitle`, `custom_words`, optional `media_source`; media file paths also use parent-directory metadata such as title and year |
+| GET | `/api/v1/media/recognize2` | Recognize media from a torrent title or media file path (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `media_source`; media file paths also use parent-directory metadata |
+| GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `media_source` |
+| GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path`, optional `media_source` |
+| POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON. Optional params: paired `media_source` + `media_id`, `type_name` (`电影`/`电视剧`/`音乐`), `music_type` |
 | GET | `/api/v1/media/category/config` | Get category strategy config |
 | POST | `/api/v1/media/category/config` | Save category strategy config. Body: CategoryConfig |
 | GET | `/api/v1/media/category` | Get auto-categorization config |
-| GET | `/api/v1/media/group/seasons/{episode_group}` | Get episode group seasons |
-| GET | `/api/v1/media/groups/{tmdbid}` | Get media episode groups |
-| GET | `/api/v1/media/seasons` | Get media season info. Params: `mediaid`, `title`, `year`, `season` |
-| GET | `/api/v1/media/{mediaid}` | Get media detail. `mediaid` supports `tmdb:`, `douban:`, `bangumi:`, `anilist:`, and plugin-defined source prefixes. Params: `type_name` (required: movie/tv), `title`, `year` |
+| GET | `/api/v1/media/group/seasons/{episode_group}` | Get episode group seasons. TMDB-only endpoint |
+| GET | `/api/v1/media/groups/{tmdbid}` | Get media episode groups. TMDB-only endpoint, so the native ID parameter is intentional |
+| GET | `/api/v1/media/seasons` | Get media season info. Use `media_source` + `media_id`, or title discovery with `title` and optional `year`; optional `season` narrows the result |
+| GET | `/api/v1/media/{media_id}` | Get media detail by native ID. Required params: `media_source`, `type_name` (`电影`/`电视剧`) |
 
 ### TMDB (8 endpoints)
 
@@ -187,7 +195,7 @@ music on configured music-capable media servers; it does not manage playlists.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or a music `media_source`. Params: `title`, `type`, `count`, `media_source` |
+| GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or a music `media_source`. Params: `title`, `type`, `count`, repeated enum `media_source` |
 | POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `media_source`, `media_id` |
 | GET | `/api/v1/music/explore` | Explore by `media_source`: MusicBrainz supports `mode=chart|fresh`; Douban Music always uses official tag categories with `tags` and `douban_sort=U|S|R|O`. Other params: `entity`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
 | GET | `/api/v1/music/album/{album_id}` | Album detail with tracks and releases. Params: `media_source` |
@@ -208,14 +216,14 @@ Music acquisition rules:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/search/media/{mediaid}` | Search torrents by media ID (video prefixes, `musicbrainz:<recording_mbid>`, or a plugin-defined source prefix). Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
-| GET | `/api/v1/search/media/{mediaid}/stream` | Stream torrent search by media ID with SSE. Params: `mtype`, `area`, `title`, `year`, `season`, `sites` |
+| GET | `/api/v1/search/media/{media_id}` | Search torrents by native ID. Required param: `media_source`; other params: `mtype`, `area`, `season`, `sites`, `music_type` |
+| GET | `/api/v1/search/media/{media_id}/stream` | Stream torrent search by native ID with SSE. Required param: `media_source`; other params match the non-streaming endpoint |
 | GET | `/api/v1/search/title` | Fuzzy search torrents by keyword. Params: `keyword`, `page`, `sites`, optional `mtype=音乐` |
 | GET | `/api/v1/search/title/stream` | Stream fuzzy torrent search with SSE. Params: `keyword`, `page`, `sites`, optional `mtype=音乐` |
 | GET | `/api/v1/search/subtitle/title` | Fuzzy search site subtitles by keyword. Params: `keyword`, `page`, `sites` |
 | GET | `/api/v1/search/subtitle/title/stream` | Stream fuzzy site subtitle search with SSE. Params: `keyword`, `page`, `sites` |
-| GET | `/api/v1/search/subtitle/media/{mediaid}` | Exact subtitle search by media ID (four built-in prefixes or a plugin-defined source prefix). Params: `mtype`, `title`, `year`, `season`, `episode`, `sites` |
-| GET | `/api/v1/search/subtitle/media/{mediaid}/stream` | Stream exact subtitle search by media ID with SSE. Params: `mtype`, `title`, `year`, `season`, `episode`, `sites` |
+| GET | `/api/v1/search/subtitle/media/{media_id}` | Exact subtitle search by native ID. Required param: `media_source`; other params: `mtype`, `season`, `episode`, `sites` |
+| GET | `/api/v1/search/subtitle/media/{media_id}/stream` | Stream exact subtitle search by native ID with SSE. Required param: `media_source`; other params match the non-streaming endpoint |
 | GET | `/api/v1/search/last` | Get latest search results |
 | GET | `/api/v1/search/last/context` | Get latest search results with replayable params. `params.result_type` is `torrent` or `subtitle` |
 | POST | `/api/v1/search/recommend` | AI recommended resources. Body: `filtered_indices`, `check_only`, `force` |
@@ -228,8 +236,8 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 |--------|------|-------------|
 | GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name); linked history adds media type and source `site_name` |
 | POST | `/api/v1/download/` | Add download (with media info). Body: JSON |
-| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional `media_source` + `media_id` (all four dedicated IDs remain supported), `downloader`, `save_path` |
-| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, optional `media_source` + `media_id` (all four dedicated IDs remain supported), `save_path` |
+| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional paired `media_source` + `media_id`, `music_type`, `downloader`, `save_path` |
+| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, required `media_source` + `media_id`, optional `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | Resume download task |
 | GET | `/api/v1/download/stop/{hashString}` | Pause download task |
 | GET | `/api/v1/download/clients` | List available download clients |
@@ -240,14 +248,14 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/subscribe/` | List all subscriptions |
-| POST | `/api/v1/subscribe/` | Add subscription. Music requires `type=music`, `music_type=recording|album`, and exact `media_source` + `media_id`; video also accepts compatible dedicated IDs |
+| POST | `/api/v1/subscribe/` | Add subscription. An explicit identity is always `media_source` + `media_id`; music also requires `type=音乐` and `music_type=recording|album` |
 | PUT | `/api/v1/subscribe/` | Update subscription. Body: Subscribe JSON |
 | GET | `/api/v1/subscribe/list` | List subscriptions (API_TOKEN auth, use `--token-param`) |
 | GET | `/api/v1/subscribe/{subscribe_id}` | Subscription detail |
 | DELETE | `/api/v1/subscribe/{subscribe_id}` | Delete subscription |
 | PUT | `/api/v1/subscribe/status/{subid}` | Update subscription status. Params: `state` (required) |
-| GET | `/api/v1/subscribe/media/{mediaid}` | Query subscription by a built-in or plugin-prefixed media ID. Params: `season`, `title` |
-| DELETE | `/api/v1/subscribe/media/{mediaid}` | Delete subscription by a built-in or plugin-prefixed media ID. Params: `season` |
+| GET | `/api/v1/subscribe/media/{media_id}` | Query subscription by native ID. Required param: `media_source`; optional params: `season`, `title`, `music_type` |
+| DELETE | `/api/v1/subscribe/media/{media_id}` | Delete subscription by native ID. Required param: `media_source`; optional params: `season`, `music_type` |
 | GET | `/api/v1/subscribe/refresh` | Refresh all subscriptions |
 | GET | `/api/v1/subscribe/reset/{subid}` | Reset subscription |
 | GET | `/api/v1/subscribe/check` | Refresh subscription TMDB info |
@@ -314,7 +322,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/mediaserver/play/{itemid}` | Play media online |
-| GET | `/api/v1/mediaserver/exists` | Check if media exists in library. Params: `title`, `year`, `mtype`, `tmdbid`, `season` |
+| GET | `/api/v1/mediaserver/exists` | Check if media exists in the local library database. Params: `media_source` + `media_id`, or `title` discovery; optional `year`, `mtype`, `season` |
 | POST | `/api/v1/mediaserver/exists_remote` | Check existing episodes (remote). Body: MediaInfo JSON |
 | POST | `/api/v1/mediaserver/notexists` | Check missing episodes (remote). Body: MediaInfo JSON |
 | GET | `/api/v1/mediaserver/latest` | Latest library items. Params: `server` (required), `count` |
@@ -347,7 +355,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/transfer/name` | Preview transfer name. Params: `path` (required), `filetype` (required) |
 | GET | `/api/v1/transfer/queue` | Transfer queue |
 | DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
-| POST | `/api/v1/transfer/manual/target-path` | Match manual transfer target path. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select the recognition source |
+| POST | `/api/v1/transfer/manual/target-path` | Match the manual transfer target from source path and directory configuration. Body: ManualTransferItem JSON; this endpoint does not recognize media |
 | POST | `/api/v1/transfer/manual/history` | Query successful transfer-history summary for selected files or directories. Body: ManualTransferItem JSON |
 | POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
 | GET | `/api/v1/transfer/now` | Run immediate transfer |
@@ -496,7 +504,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | DELETE | `/api/v1/torrent/cache` | Clear torrent cache |
 | DELETE | `/api/v1/torrent/cache/{domain}/{torrent_hash}` | Delete specific torrent cache |
 | POST | `/api/v1/torrent/cache/refresh` | Refresh torrent cache |
-| POST | `/api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}` | Re-identify torrent. Params: `tmdbid`, `doubanid` |
+| POST | `/api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}` | Re-identify torrent. Optional paired params: `media_source`, `media_id`; music may also pass `music_type` |
 
 ### Recognition Cache (3 endpoints)
 
@@ -617,19 +625,19 @@ Radarr/Sonarr compatible API for integration with external tools.
 
 ```bash
 # 1. Search TMDB for the movie
-python scripts/mp-api.py GET /api/v1/media/search title="Inception" type="movie"
+python scripts/mp-api.py GET /api/v1/media/search title="Inception" type="media"
 
-# 2. Get media detail (replace {tmdbid} with actual ID)
-python scripts/mp-api.py GET /api/v1/media/27205 type_name="movie"
+# 2. Get media detail with the exact identity returned by search
+python scripts/mp-api.py GET /api/v1/media/27205 media_source="themoviedb" type_name="电影"
 
 # 3. Search torrents
-python scripts/mp-api.py GET /api/v1/search/media/tmdb:27205 mtype="movie"
+python scripts/mp-api.py GET /api/v1/search/media/27205 media_source="themoviedb" mtype="movie"
 
 # 4. Get latest search results
 python scripts/mp-api.py GET /api/v1/search/last
 
 # 5. Add download
-python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_url":"<url_from_search>"}'
+python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_in":{"title":"<title_from_search>","enclosure":"<url_from_search>"},"media_source":"themoviedb","media_id":"27205"}'
 ```
 
 ### Search and subscribe to one recording or complete album
@@ -639,10 +647,10 @@ python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_url":"<url_
 python scripts/mp-api.py GET /api/v1/media/search title="Artist - Title" type="music" count=20
 
 # 2a. For an album, inspect its complete track list before subscribing
-python scripts/mp-api.py GET /api/v1/music/album/<album_mbid> source="musicbrainz"
+python scripts/mp-api.py GET /api/v1/music/album/<album_mbid> media_source="musicbrainz"
 
 # 2b. Check the exact entity subscription separately; music_type prevents recording/album ambiguity
-python scripts/mp-api.py GET /api/v1/subscribe/media/musicbrainz:<mbid> music_type="album"
+python scripts/mp-api.py GET /api/v1/subscribe/media/<mbid> media_source="musicbrainz" music_type="album"
 
 # 3. Add one exact album subscription. REST enum values use the localized MediaType value.
 python scripts/mp-api.py POST /api/v1/subscribe/ --json '{"name":"Album Title","type":"音乐","music_type":"album","media_source":"musicbrainz","media_id":"<album_mbid>"}'
@@ -662,23 +670,23 @@ python scripts/mp-api.py GET /api/v1/search/subtitle/title keyword="Inception" s
 python scripts/mp-api.py GET /api/v1/search/last/context
 
 # 3. Download a subtitle result to the recognized media directory
-python scripts/mp-api.py POST /api/v1/download/subtitle --json '{"subtitle_in":{"title":"Inception.2010.1080p.chs","enclosure":"https://example.com/downloadsubs.php?torrentid=1&subid=2","site_name":"Example"},"tmdbid":27205}'
+python scripts/mp-api.py POST /api/v1/download/subtitle --json '{"subtitle_in":{"title":"Inception.2010.1080p.chs","enclosure":"https://example.com/downloadsubs.php?torrentid=1&subid=2","site_name":"Example"},"media_source":"themoviedb","media_id":"27205"}'
 ```
 
 ### Add a subscription
 
 ```bash
 # 1. Search for the show
-python scripts/mp-api.py GET /api/v1/media/search title="Breaking Bad" type="tv"
+python scripts/mp-api.py GET /api/v1/media/search title="Breaking Bad" type="media"
 
 # 2. Check if already subscribed
-python scripts/mp-api.py GET /api/v1/subscribe/media/tmdb:1396
+python scripts/mp-api.py GET /api/v1/subscribe/media/1396 media_source="themoviedb"
 
 # 3. Check if already in library
-python scripts/mp-api.py GET /api/v1/mediaserver/exists tmdbid=1396 mtype="tv"
+python scripts/mp-api.py GET /api/v1/mediaserver/exists media_source="themoviedb" media_id=1396 mtype="tv"
 
 # 4. Add subscription
-python scripts/mp-api.py POST /api/v1/subscribe/ --json '{"name":"Breaking Bad","year":"2008","type":"tv","tmdbid":1396}'
+python scripts/mp-api.py POST /api/v1/subscribe/ --json '{"name":"Breaking Bad","year":"2008","type":"电视剧","media_source":"themoviedb","media_id":"1396"}'
 ```
 
 ### System monitoring

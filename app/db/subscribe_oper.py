@@ -5,8 +5,8 @@ from app.core.context import MediaInfo, MusicInfo
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
-from app.utils.media import resolve_media_identity
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
+from app.utils.media import normalize_media_identity_payload, resolve_media_identity
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
 
@@ -164,7 +164,7 @@ class SubscribeOper(DbOper):
             return subscribe.id, "订阅已存在"
 
     def exists(
-            self, media_source: str, media_id: str,
+            self, media_source: MediaSource, media_id: str,
             season: Optional[int] = None, episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> bool:
@@ -193,7 +193,7 @@ class SubscribeOper(DbOper):
         return await Subscribe.async_get(self._db, rid=sid)
 
     def get_by(
-            self, type: str, media_source: str, media_id: str,
+            self, type: str, media_source: MediaSource, media_id: str,
             season: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
@@ -205,7 +205,7 @@ class SubscribeOper(DbOper):
         )
 
     async def async_get_by(
-            self, type: str, media_source: str, media_id: str,
+            self, type: str, media_source: MediaSource, media_id: str,
             season: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
@@ -289,6 +289,7 @@ class SubscribeOper(DbOper):
         """
         # 去除kwargs中 SubscribeHistory 没有的字段
         kwargs = {k: v for k, v in kwargs.items() if hasattr(SubscribeHistory, k)}
+        kwargs = normalize_media_identity_payload(kwargs)
         kwargs = _normalize_integer_flags(kwargs)
         # 更新完成订阅时间
         kwargs.update({"date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())})
@@ -299,7 +300,7 @@ class SubscribeOper(DbOper):
         subscribe.create(self._db)
 
     def exist_history(
-            self, media_source: str, media_id: str,
+            self, media_source: MediaSource, media_id: str,
             season: Optional[int] = None, episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> bool:

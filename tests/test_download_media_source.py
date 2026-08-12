@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from app import schemas
 from app.api.endpoints import download as download_endpoint
 from app.core.context import MediaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_download_add_passes_generic_media_source(monkeypatch) -> None:
@@ -44,44 +44,21 @@ def test_download_add_passes_generic_media_source(monkeypatch) -> None:
     )
 
     assert response.success is True
-    assert captured["recognize"]["source"] == "anilist"
-    assert captured["recognize"]["mediaid"] == "154587"
+    assert captured["recognize"]["media_source"] == MediaSource.AniList
+    assert captured["recognize"]["media_id"] == "154587"
     assert captured["download"]["context"].media_info is media
 
 
-def test_download_add_uses_selected_source_for_title_recognition(monkeypatch) -> None:
-    """只选择来源而未填写ID时应在该来源内按标题识别。"""
-    captured = {}
-    media = MediaInfo(title="测试动画", type=MediaType.TV, bangumi_id=1)
-
-    class FakeMediaChain:
-        """记录按标题识别的请求级来源。"""
-
-        def recognize_by_meta(self, metainfo, **kwargs):
-            """返回固定媒体信息并保存来源。"""
-            captured["metainfo"] = metainfo
-            captured["kwargs"] = kwargs
-            return media
-
-    class FakeDownloadChain:
-        """模拟下载任务提交。"""
-
-        @staticmethod
-        def download_single(**kwargs):
-            """返回固定下载任务ID。"""
-            return "download-2"
-
-    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
-    monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
-
+def test_download_add_rejects_source_without_media_id() -> None:
+    """显式媒体来源必须和原生 ID 成对提供，不能退回标题猜测。"""
     response = download_endpoint.add(
         torrent_in=schemas.TorrentInfo(title="测试动画 S01E01"),
         media_source="bangumi",
         current_user=SimpleNamespace(name="tester"),
     )
 
-    assert response.success is True
-    assert captured["kwargs"]["source"] == "bangumi"
+    assert response.success is False
+    assert response.message == "媒体来源和媒体 ID 必须同时提供"
 
 
 def test_subtitle_download_passes_generic_media_source(monkeypatch) -> None:

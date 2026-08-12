@@ -17,7 +17,7 @@ from app.api.endpoints.music import (
 )
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
 from app.schemas.music import MusicRecognizeRequest
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_music_routes_are_registered():
@@ -55,11 +55,10 @@ def test_music_routes_are_registered():
 
 
 def test_media_search_routes_music_queries_with_query_kwarg():
-    """统一媒体搜索的音乐分支应以 AsyncSearch 的关键字参数调用 MusicChain。"""
-    from app.chain.music import MusicChain
+    """统一媒体搜索的音乐分支应以关键字参数调用 MediaChain。"""
 
     chain = Mock()
-    chain.async_search = AsyncMock(
+    chain.async_search_music = AsyncMock(
         return_value=[
             MusicInfo(
                 media_source="musicbrainz",
@@ -74,8 +73,7 @@ def test_media_search_routes_music_queries_with_query_kwarg():
     )
 
     with (
-        patch("app.api.endpoints.media.MusicChain", return_value=chain) as music_chain,
-        patch.object(media_endpoints, "MediaChain") as media_chain,
+        patch.object(media_endpoints, "MediaChain", return_value=chain) as media_chain,
     ):
         result = asyncio.run(
             media_endpoints.search(
@@ -90,19 +88,16 @@ def test_media_search_routes_music_queries_with_query_kwarg():
     assert result[0]["media_id"] == "recording-1"
     assert result[0]["music_type"] == "recording"
     assert result[0]["title"] == "晴天"
-    chain.async_search.assert_awaited_once_with(query="晴天", limit=30)
-    media_chain.return_value.async_search.assert_not_called()
+    chain.async_search_music.assert_awaited_once_with(query="晴天", limit=30)
+    media_chain.assert_called_once()
 
 
 def test_media_search_forwards_explicit_music_source():
-    """统一音乐搜索应把显式选择的可扩展音乐源转发给 MusicChain。"""
+    """统一音乐搜索应把显式选择的可扩展音乐源转发给 MediaChain。"""
     chain = Mock()
-    chain.async_search = AsyncMock(return_value=[])
+    chain.async_search_music = AsyncMock(return_value=[])
 
-    with (
-        patch("app.api.endpoints.media.MusicChain", return_value=chain),
-        patch.object(media_endpoints, "MediaChain"),
-    ):
+    with patch.object(media_endpoints, "MediaChain", return_value=chain):
         result = asyncio.run(
             media_endpoints.search(
                 title="Coldplay",
@@ -114,10 +109,10 @@ def test_media_search_forwards_explicit_music_source():
         )
 
     assert result == []
-    chain.async_search.assert_awaited_once_with(
+    chain.async_search_music.assert_awaited_once_with(
         query="Coldplay",
         limit=20,
-        media_source="theaudiodb",
+        media_source=(MediaSource.TheAudioDB,),
     )
 
 
@@ -179,7 +174,7 @@ def test_recognize_music_returns_404_for_unknown_item():
 def test_explore_music_forwards_filters_and_serializes_chart():
     """音乐探索接口应传递实体、周期、排序、热度和封面筛选条件。"""
     chain = Mock()
-    chain.async_chart = AsyncMock(
+    chain.async_music_chart = AsyncMock(
         return_value=[
             MusicInfo(
                 media_source="musicbrainz",
@@ -191,7 +186,7 @@ def test_explore_music_forwards_filters_and_serializes_chart():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.RecommendChain", return_value=chain):
         result = asyncio.run(
             explore_music(
                 page=2,
@@ -205,7 +200,7 @@ def test_explore_music_forwards_filters_and_serializes_chart():
         )
 
     assert result[0].listen_count == 123
-    chain.async_chart.assert_awaited_once_with(
+    chain.async_music_chart.assert_awaited_once_with(
         range_name="this_week",
         page=2,
         count=20,
@@ -219,7 +214,7 @@ def test_explore_music_forwards_filters_and_serializes_chart():
 def test_explore_music_supports_official_fresh_release_mode():
     """新发行模式应按 ListenBrainz 官方排序和时间窗口请求探索数据。"""
     chain = Mock()
-    chain.async_fresh_releases = AsyncMock(
+    chain.async_music_fresh_releases = AsyncMock(
         return_value=[
             MusicInfo(
                 media_source="musicbrainz",
@@ -231,7 +226,7 @@ def test_explore_music_supports_official_fresh_release_mode():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.RecommendChain", return_value=chain):
         result = asyncio.run(
             explore_music(
                 page=1,
@@ -247,7 +242,7 @@ def test_explore_music_supports_official_fresh_release_mode():
         )
 
     assert result[0].music_type == "album"
-    chain.async_fresh_releases.assert_awaited_once_with(
+    chain.async_music_fresh_releases.assert_awaited_once_with(
         days=30,
         sort="artist_credit_name",
         past=True,
@@ -261,7 +256,7 @@ def test_explore_music_supports_official_fresh_release_mode():
 def test_explore_music_forces_douban_music_to_tag_browsing():
     """豆瓣音乐探索即使收到榜单模式也应固定分类浏览，不与推荐页重复。"""
     chain = Mock()
-    chain.async_discover = AsyncMock(
+    chain.async_music_discover = AsyncMock(
         return_value=[
             MusicInfo(
                 media_source="doubanmusic",
@@ -272,7 +267,7 @@ def test_explore_music_forces_douban_music_to_tag_browsing():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.RecommendChain", return_value=chain):
         result = asyncio.run(
             explore_music(
                 media_source="doubanmusic",
@@ -287,8 +282,8 @@ def test_explore_music_forces_douban_music_to_tag_browsing():
         )
 
     assert result[0].media_source == "doubanmusic"
-    chain.async_discover.assert_awaited_once_with(
-        media_source="doubanmusic",
+    chain.async_music_discover.assert_awaited_once_with(
+        media_source=MediaSource.DoubanMusic,
         page=2,
         count=20,
         entity="album",
@@ -301,7 +296,7 @@ def test_explore_music_forces_douban_music_to_tag_browsing():
 def test_explore_music_filters_missing_covers_for_external_sources():
     """外部音乐源选择仅有封面时应在统一响应层过滤无图条目。"""
     chain = Mock()
-    chain.async_discover = AsyncMock(
+    chain.async_music_discover = AsyncMock(
         return_value=[
             MusicInfo(media_source="doubanmusic", media_id="album-1", title="No Cover"),
             MusicInfo(
@@ -313,7 +308,7 @@ def test_explore_music_filters_missing_covers_for_external_sources():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.RecommendChain", return_value=chain):
         result = asyncio.run(
             explore_music(
                 media_source="doubanmusic",
@@ -328,7 +323,7 @@ def test_explore_music_filters_missing_covers_for_external_sources():
 def test_music_album_returns_tracks_and_releases():
     """专辑接口应返回专辑详情、曲目和发行版本。"""
     chain = Mock()
-    chain.async_album = AsyncMock(
+    chain.async_get_music_album = AsyncMock(
         return_value=MusicAlbumInfo(
             media_source="musicbrainz",
             media_id="release-group-1",
@@ -342,7 +337,7 @@ def test_music_album_returns_tracks_and_releases():
         )
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(music_album(album_id="release-group-1", _=Mock()))
 
     assert result.music_type == "album"
@@ -350,16 +345,18 @@ def test_music_album_returns_tracks_and_releases():
     assert result.total_tracks == 1
     assert result.tracks[0].media_id == "recording-1"
     assert result.releases[0].media_id == "release-1"
-    chain.async_album.assert_awaited_once_with(media_source="musicbrainz", media_id="release-group-1")
+    chain.async_get_music_album.assert_awaited_once_with(
+        media_source=MediaSource.MusicBrainz, media_id="release-group-1"
+    )
 
 
 def test_music_album_returns_404_for_unknown_album():
     """专辑不存在时接口应返回 404。"""
     chain = Mock()
-    chain.async_album = AsyncMock(return_value=None)
+    chain.async_get_music_album = AsyncMock(return_value=None)
 
     with (
-        patch("app.api.endpoints.music.MusicChain", return_value=chain),
+        patch("app.api.endpoints.music.MediaChain", return_value=chain),
         pytest.raises(HTTPException) as error,
     ):
         asyncio.run(music_album(album_id="missing", _=Mock()))
@@ -370,7 +367,7 @@ def test_music_album_returns_404_for_unknown_album():
 def test_music_album_related_returns_source_results():
     """专辑关联浏览接口应传递来源和数量并序列化结果。"""
     chain = Mock()
-    chain.async_album_related = AsyncMock(
+    chain.async_get_music_album_related = AsyncMock(
         return_value=[
             MusicInfo(
                 media_source="doubanmusic",
@@ -381,7 +378,7 @@ def test_music_album_related_returns_source_results():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(
             music_album_related(
                 album_id="album-1",
@@ -392,8 +389,8 @@ def test_music_album_related_returns_source_results():
         )
 
     assert result[0].media_id == "album-2"
-    chain.async_album_related.assert_awaited_once_with(
-        media_source="doubanmusic",
+    chain.async_get_music_album_related.assert_awaited_once_with(
+        media_source=MediaSource.DoubanMusic,
         media_id="album-1",
         count=12,
     )
@@ -402,7 +399,7 @@ def test_music_album_related_returns_source_results():
 def test_music_artist_returns_detail():
     """艺术家接口应返回名称、类型和活跃时间。"""
     chain = Mock()
-    chain.async_artist = AsyncMock(
+    chain.async_get_music_artist = AsyncMock(
         return_value=MusicArtistInfo(
             media_source="musicbrainz",
             media_id="artist-1",
@@ -412,19 +409,21 @@ def test_music_artist_returns_detail():
         )
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(music_artist(artist_id="artist-1", _=Mock()))
 
     assert result.name == "Queen"
     assert result.title == "Queen"
     assert result.music_type == "artist"
-    chain.async_artist.assert_awaited_once_with(media_source="musicbrainz", media_id="artist-1")
+    chain.async_get_music_artist.assert_awaited_once_with(
+        media_source=MediaSource.MusicBrainz, media_id="artist-1"
+    )
 
 
 def test_music_artist_albums_forwards_pagination_and_type():
     """艺术家专辑接口应传递分页和专辑类型筛选。"""
     chain = Mock()
-    chain.async_artist_albums = AsyncMock(
+    chain.async_get_music_artist_albums = AsyncMock(
         return_value=[
             MusicInfo(
                 media_source="musicbrainz",
@@ -435,14 +434,14 @@ def test_music_artist_albums_forwards_pagination_and_type():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(
             music_artist_albums(artist_id="artist-1", page=2, count=10, album_type="ep", _=Mock())
         )
 
     assert result[0].media_id == "release-group-1"
-    chain.async_artist_albums.assert_awaited_once_with(
-        media_source="musicbrainz",
+    chain.async_get_music_artist_albums.assert_awaited_once_with(
+        media_source=MediaSource.MusicBrainz,
         media_id="artist-1",
         page=2,
         count=10,
@@ -453,7 +452,7 @@ def test_music_artist_albums_forwards_pagination_and_type():
 def test_music_artist_related_returns_relationship_text():
     """关联艺术家接口应返回关系说明，供详情页展示。"""
     chain = Mock()
-    chain.async_artist_related = AsyncMock(
+    chain.async_get_music_artist_related = AsyncMock(
         return_value=[
             MusicArtistInfo(
                 media_source="musicbrainz",
@@ -464,12 +463,12 @@ def test_music_artist_related_returns_relationship_text():
         ]
     )
 
-    with patch("app.api.endpoints.music.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.music.MediaChain", return_value=chain):
         result = asyncio.run(music_artist_related(artist_id="artist-1", count=5, _=Mock()))
 
     assert result[0].relation == "member of band"
-    chain.async_artist_related.assert_awaited_once_with(
-        media_source="musicbrainz",
+    chain.async_get_music_artist_related.assert_awaited_once_with(
+        media_source=MediaSource.MusicBrainz,
         media_id="artist-1",
         count=5,
     )

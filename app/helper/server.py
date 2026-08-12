@@ -50,6 +50,19 @@ class MoviePilotServerHelper:
     _RECOGNIZE_SHARE_PATH = "/recognize/share"
     _USER_PERMISSIONS_PATH = "/user/permissions"
     _LOCAL_REPO_PREFIX = "local://"
+    _SUBSCRIBE_STATISTIC_FIELDS = frozenset({
+        "name", "year", "type", "media_source", "media_id", "music_type",
+        "total_tracks", "genre_ids", "season", "poster", "backdrop", "vote",
+        "description",
+    })
+    _SUBSCRIBE_SHARE_FIELDS = frozenset({
+        "share_title", "share_comment", "share_user", "share_uid", "name",
+        "year", "type", "keyword", "media_source", "media_id", "music_type",
+        "total_tracks", "season", "poster", "backdrop", "vote", "description",
+        "genre_ids", "include", "exclude", "quality", "resolution", "effect",
+        "total_episode", "custom_words", "media_category", "episode_group",
+        "date",
+    })
     _user_uid: Optional[str] = None
     _github_user: Optional[str] = None
 
@@ -821,7 +834,10 @@ class MoviePilotServerHelper:
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = cls.subscribe_add(sub)
+        payload = cls._build_subscribe_statistic_payload(sub)
+        if not payload:
+            return False
+        res = cls.subscribe_add(payload)
         return bool(res is not None and res.status_code == 200)
 
     @classmethod
@@ -831,7 +847,10 @@ class MoviePilotServerHelper:
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = await cls.async_subscribe_add(sub)
+        payload = cls._build_subscribe_statistic_payload(sub)
+        if not payload:
+            return False
+        res = await cls.async_subscribe_add(payload)
         return bool(res is not None and res.status_code == 200)
 
     @classmethod
@@ -841,7 +860,10 @@ class MoviePilotServerHelper:
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = cls.subscribe_done(sub)
+        payload = cls._build_subscribe_statistic_payload(sub)
+        if not payload:
+            return False
+        res = cls.subscribe_done(payload)
         return bool(res is not None and res.status_code == 200)
 
     @classmethod
@@ -870,7 +892,14 @@ class MoviePilotServerHelper:
         subscribes = SubscribeOper().list()
         if not subscribes:
             return True
-        res = cls.subscribe_report([sub.to_dict() for sub in subscribes])
+        payloads = [
+            payload
+            for sub in subscribes
+            if (payload := cls._build_subscribe_statistic_payload(sub.to_dict()))
+        ]
+        if not payloads:
+            return True
+        res = cls.subscribe_report(payloads)
         return bool(res is not None and res.status_code == 200)
 
     @classmethod
@@ -889,15 +918,15 @@ class MoviePilotServerHelper:
         subscribe = SubscribeOper().get(subscribe_id)
         if not subscribe:
             return False, "订阅不存在"
-        subscribe_dict = subscribe.to_dict()
-        subscribe_dict.pop("id", None)
-        payload = {
+        payload = cls._build_subscribe_share_payload({
             "share_title": share_title,
             "share_comment": share_comment,
             "share_user": share_user,
             "share_uid": cls.get_user_uuid(),
-            **subscribe_dict,
-        }
+            **subscribe.to_dict(),
+        })
+        if not payload:
+            return False, "订阅媒体身份不完整"
         return cls._handle_response(cls.subscribe_share(payload), cls._clear_subscribe_share_cache)
 
     @classmethod
@@ -916,19 +945,57 @@ class MoviePilotServerHelper:
         subscribe = await SubscribeOper().async_get(subscribe_id)
         if not subscribe:
             return False, "订阅不存在"
-        subscribe_dict = subscribe.to_dict()
-        subscribe_dict.pop("id", None)
-        payload = {
+        payload = cls._build_subscribe_share_payload({
             "share_title": share_title,
             "share_comment": share_comment,
             "share_user": share_user,
             "share_uid": cls.get_user_uuid(),
-            **subscribe_dict,
-        }
+            **subscribe.to_dict(),
+        })
+        if not payload:
+            return False, "订阅媒体身份不完整"
         return cls._handle_response(
             await cls.async_subscribe_share(payload),
             cls._clear_subscribe_share_cache,
         )
+
+    @classmethod
+    def _build_subscribe_statistic_payload(
+            cls, item: Optional[dict]
+    ) -> Optional[dict]:
+        """构造中心服务订阅统计载荷，只保留统一身份和公开统计字段。"""
+        if not isinstance(item, dict):
+            return None
+        media_source, media_id = resolve_media_identity(media=item)
+        if not media_source or not media_id:
+            return None
+        payload = {
+            key: value
+            for key, value in item.items()
+            if key in cls._SUBSCRIBE_STATISTIC_FIELDS
+        }
+        payload["media_source"] = str(media_source)
+        payload["media_id"] = media_id
+        return payload
+
+    @classmethod
+    def _build_subscribe_share_payload(
+            cls, item: Optional[dict]
+    ) -> Optional[dict]:
+        """构造中心服务订阅分享载荷，隔离本地运行字段和旧专用 ID。"""
+        if not isinstance(item, dict):
+            return None
+        media_source, media_id = resolve_media_identity(media=item)
+        if not media_source or not media_id:
+            return None
+        payload = {
+            key: value
+            for key, value in item.items()
+            if key in cls._SUBSCRIBE_SHARE_FIELDS
+        }
+        payload["media_source"] = str(media_source)
+        payload["media_id"] = media_id
+        return payload
 
     @classmethod
     def share_delete(cls, share_id: int) -> Tuple[bool, str]:

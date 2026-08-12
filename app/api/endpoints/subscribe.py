@@ -30,7 +30,7 @@ from app.schemas.types import (
     EventType,
     SystemConfigKey,
 )
-from app.utils.media import normalize_media_source
+from app.utils.media import normalize_media_source, resolve_media_identity
 
 router = APIRouter()
 
@@ -211,6 +211,26 @@ async def create_subscribe(
     else:
         title = None
     subscribe_dict = subscribe_in.to_public_write_payload()
+    identity_fields = {"media_source", "media_id"}.intersection(
+        subscribe_in.model_fields_set
+    )
+    if identity_fields:
+        media_source, media_id = resolve_media_identity(
+            media_source=subscribe_in.media_source,
+            media_id=subscribe_in.media_id,
+        )
+        if media_source and media_id:
+            subscribe_dict["media_source"] = media_source
+            subscribe_dict["media_id"] = media_id
+        elif subscribe_in.media_source is None and subscribe_in.media_id is None:
+            # 完整空对表示订阅暂无可用身份，与只提交其中一个字段语义不同。
+            subscribe_dict["media_source"] = None
+            subscribe_dict["media_id"] = None
+        else:
+            return schemas.Response(
+                success=False,
+                message="新增订阅时必须同时提供有效的 media_source 和 media_id",
+            )
     subscribe_dict["username"] = current_user.name
     sid, message = await SubscribeChain().async_add(
         mtype=mtype,
@@ -236,7 +256,27 @@ async def update_subscribe(
     if not subscribe:
         return schemas.Response(success=False, message="订阅不存在")
     old_subscribe_dict = subscribe.to_dict()
-    subscribe_dict = subscribe_in.to_public_write_payload()
+    subscribe_dict = subscribe_in.to_public_write_payload(exclude_unset=True)
+    identity_fields = {"media_source", "media_id"}.intersection(
+        subscribe_in.model_fields_set
+    )
+    if identity_fields:
+        media_source, media_id = resolve_media_identity(
+            media_source=subscribe_in.media_source,
+            media_id=subscribe_in.media_id,
+        )
+        if media_source and media_id:
+            subscribe_dict["media_source"] = media_source
+            subscribe_dict["media_id"] = media_id
+        elif subscribe_in.media_source is None and subscribe_in.media_id is None:
+            # 只有两个身份键都显式为空时才清空；全部省略则保留存量身份。
+            subscribe_dict["media_source"] = None
+            subscribe_dict["media_id"] = None
+        else:
+            return schemas.Response(
+                success=False,
+                message="更新媒体身份时必须同时提供有效的 media_source 和 media_id",
+            )
     subscribe_dict["username"] = subscribe.username
     if getattr(subscribe, "type", None) == MediaType.MUSIC.value:
         # 音乐实体与曲目总数来自识别链，编辑接口不得把专辑改成单曲而提前完成订阅。
@@ -244,13 +284,18 @@ async def update_subscribe(
         subscribe_dict["music_type"] = subscribe.music_type
         subscribe_dict["total_tracks"] = subscribe.total_tracks \
             if subscribe.music_type == MUSIC_ENTITY_ALBUM else None
-    if subscribe_in.total_episode and subscribe_in.total_episode > (subscribe.total_episode or 0):
+    total_episode_updated = "total_episode" in subscribe_in.model_fields_set
+    if (
+            total_episode_updated
+            and subscribe_in.total_episode
+            and subscribe_in.total_episode > (subscribe.total_episode or 0)
+    ):
         # 扩大目标范围时，新增加的集数尚无下载事实，应同步计入缺失集数。
         subscribe_dict["lack_episode"] = (subscribe.lack_episode or 0) + (
             subscribe_in.total_episode - (subscribe.total_episode or 0)
         )
     # 是否手动修改过总集数
-    if subscribe_in.total_episode != subscribe.total_episode:
+    if total_episode_updated and subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
     # 更新到数据库
     await subscribe.async_update(db, subscribe_dict)

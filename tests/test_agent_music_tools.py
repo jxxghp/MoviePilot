@@ -3,7 +3,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -126,7 +126,7 @@ def test_search_media_filters_music_entities_and_returns_stable_identity():
     tool = SearchMediaTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.search_media.MusicChain.async_search",
+        "app.agent.tools.impl.search_media.MediaChain.async_search_music",
         new=async_search,
     ):
         result = asyncio.run(
@@ -215,7 +215,7 @@ def test_query_album_detail_exposes_complete_track_contract():
     tool = QueryMediaDetailTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.query_media_detail.MusicChain.async_album",
+        "app.agent.tools.impl.query_media_detail.MediaChain.async_get_music_album",
         new=async_album,
     ):
         result = asyncio.run(
@@ -237,11 +237,13 @@ def test_query_album_detail_exposes_complete_track_contract():
 def test_query_recording_detail_forwards_recording_namespace():
     """Agent 查询单曲详情时必须把 Recording 实体传给统一识别入口。"""
     async_recognize = AsyncMock(return_value=_recording())
+    media_chain = Mock()
+    media_chain.async_recognize_media = async_recognize
     tool = QueryMediaDetailTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.query_media_detail.MediaChain.async_recognize_media",
-        new=async_recognize,
+        "app.agent.tools.impl.query_media_detail.MediaChain",
+        return_value=media_chain,
     ):
         result = asyncio.run(tool.run(
             media_type="music",
@@ -256,18 +258,22 @@ def test_query_recording_detail_forwards_recording_namespace():
 
 
 def test_scrape_album_uses_unified_entity_recognition(tmp_path):
-    """Agent 专辑刮削应通过 MediaChain 识别，不再单独编排 MusicChain 专辑查询。"""
+    """Agent 专辑刮削应通过 MediaChain 识别，再交给 ScrapingChain 执行。"""
     album_dir = tmp_path / "叶惠美"
     album_dir.mkdir()
     async_recognize = AsyncMock(return_value=_album())
+    media_chain = Mock()
+    media_chain.async_recognize_media = async_recognize
+    scraping_chain = Mock()
+    scraping_chain.scrape_music_metadata.return_value = (True, "已刮削专辑")
     tool = ScrapeMetadataTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.scrape_metadata.MediaChain.async_recognize_media",
-        new=async_recognize,
+        "app.agent.tools.impl.scrape_metadata.MediaChain",
+        return_value=media_chain,
     ), patch(
-        "app.agent.tools.impl.scrape_metadata.MediaChain.scrape_music_metadata",
-        return_value=(True, "已刮削专辑"),
+        "app.agent.tools.impl.scrape_metadata.ScrapingChain",
+        return_value=scraping_chain,
     ):
         result = asyncio.run(tool.run(
             path=str(album_dir),
@@ -278,7 +284,29 @@ def test_scrape_album_uses_unified_entity_recognition(tmp_path):
         ))
 
     assert json.loads(result)["success"] is True
+    assert async_recognize.await_args.kwargs["media_source"] == MediaSource.MusicBrainz
+    assert async_recognize.await_args.kwargs["media_id"] == "release-group-1"
+    assert "source" not in async_recognize.await_args.kwargs
+    assert "mediaid" not in async_recognize.await_args.kwargs
     assert async_recognize.await_args.kwargs["music_type"] == "album"
+
+
+def test_scrape_metadata_rejects_unknown_media_source_before_file_access(tmp_path):
+    """Agent 直接调用工具时也必须拒绝固定枚举之外的媒体来源。"""
+    audio_file = tmp_path / "unknown-source.flac"
+    audio_file.write_bytes(b"audio")
+    tool = ScrapeMetadataTool(session_id="session-1", user_id="10001")
+
+    result = asyncio.run(tool.run(
+        path=str(audio_file),
+        media_type="music",
+        media_source="plugin-source",
+        media_id="recording-1",
+    ))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert "media_source" in payload["message"]
 
 
 def test_query_artist_detail_marks_entity_as_non_subscribable():
@@ -293,7 +321,7 @@ def test_query_artist_detail_marks_entity_as_non_subscribable():
     tool = QueryMediaDetailTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.query_media_detail.MusicChain.async_artist",
+        "app.agent.tools.impl.query_media_detail.MediaChain.async_get_music_artist",
         new=async_artist,
     ):
         result = asyncio.run(
@@ -479,7 +507,7 @@ def test_music_scrape_routes_audio_to_tag_cover_and_lyrics_pipeline(tmp_path):
     tool = ScrapeMetadataTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.scrape_metadata.MediaChain.scrape_music_metadata",
+        "app.agent.tools.impl.scrape_metadata.ScrapingChain.scrape_music_metadata",
         return_value=(True, "音乐刮削完成，歌词新增 1 首"),
     ) as scrape_music:
         result = asyncio.run(
@@ -543,12 +571,12 @@ def test_agent_identity_schemas_only_expose_media_source_and_media_id():
 
 
 def test_listenbrainz_album_chart_preserves_entity_and_bounded_page_size():
-    """音乐榜单应把专辑实体与有界分页参数传递给缓存后的 MusicChain。"""
+    """音乐榜单应把专辑实体与有界分页参数传递给推荐链。"""
     async_chart = AsyncMock(return_value=[_album()])
     tool = GetRecommendationsTool(session_id="session-1", user_id="10001")
 
     with patch(
-        "app.agent.tools.impl.get_recommendations.MusicChain.async_chart",
+        "app.agent.tools.impl.get_recommendations.RecommendChain.async_music_chart",
         new=async_chart,
     ):
         result = asyncio.run(
@@ -562,6 +590,8 @@ def test_listenbrainz_album_chart_preserves_entity_and_bounded_page_size():
 
     payload = json.loads(result)
     assert payload[0]["music_type"] == "album"
+    assert payload[0]["media_source"] == "musicbrainz"
+    assert payload[0]["media_id"] == "release-group-1"
     assert async_chart.await_args.kwargs["entity"] == "album"
     assert async_chart.await_args.kwargs["page"] == 2
     assert async_chart.await_args.kwargs["count"] == 20
@@ -589,3 +619,30 @@ def test_subscribe_shares_normalize_legacy_music_type():
     payload = json.loads(result.split("\n\n", 1)[1])
     assert payload[0]["type"] == "music"
     assert payload[0]["music_type"] == "recording"
+
+
+def test_subscribe_shares_hide_server_legacy_identity_fields():
+    """V3 Agent 只输出统一身份，中心服务为旧客户端合成的字段不得继续传播。"""
+    async_shares = AsyncMock(return_value=[{
+        "id": 2,
+        "name": "测试电影",
+        "type": MediaType.MOVIE.value,
+        "media_source": "themoviedb",
+        "media_id": "123",
+        "tmdbid": 123,
+        "doubanid": "legacy-douban",
+    }])
+    tool = QuerySubscribeSharesTool(session_id="session-1", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.query_subscribe_shares."
+        "MoviePilotServerHelper.async_get_subscribe_shares",
+        new=async_shares,
+    ):
+        result = asyncio.run(tool.run())
+
+    payload = json.loads(result.split("\n\n", 1)[1])
+    assert payload[0]["media_source"] == "themoviedb"
+    assert payload[0]["media_id"] == "123"
+    assert "tmdbid" not in payload[0]
+    assert "doubanid" not in payload[0]

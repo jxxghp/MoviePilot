@@ -3,10 +3,11 @@ from typing import Optional, Dict, List, Union, Any
 from pydantic import BaseModel, Field
 
 from app.schemas.music import MusicInfo, MusicMeta
+from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource
 
 
-class MetaInfo(BaseModel):
+class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
     """
     识别元数据
     """
@@ -67,17 +68,17 @@ class MetaInfo(BaseModel):
     # 剧集组
     episode_group: Optional[str] = None
     # 显式媒体数据源
-    media_source: Optional[Union[MediaSource, str]] = None
+    media_source: Optional[MediaSource] = None
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
 
 
-class MediaInfo(BaseModel):
+class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     """
     识别媒体信息
     """
     # 媒体主身份来源
-    media_source: Optional[Union[MediaSource, str]] = None
+    media_source: Optional[MediaSource] = None
     # 请求级刮削来源
     scrape_source: Optional[str] = None
     # 类型 电影、电视剧、合集
@@ -188,7 +189,7 @@ class MediaInfo(BaseModel):
     episode_group: Optional[str] = None
 
 
-class TorrentInfo(BaseModel):
+class TorrentInfo(OptionalMediaIdentityMixin, BaseModel):
     """
     搜索种子信息
     """

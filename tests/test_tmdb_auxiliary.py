@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from app.chain.media import MediaChain
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 class _FakeTmdbModule:
@@ -30,10 +30,10 @@ def _make_chain(tmdb_media: MediaInfo) -> MediaChain:
     return chain
 
 
-def test_supplement_tmdb_keeps_custom_source_identity() -> None:
-    """自定义识别源补充 TMDB 后，主身份和展示字段必须保持不变。"""
+def test_supplement_tmdb_keeps_primary_source_identity() -> None:
+    """非 TMDB 主来源补充 TMDB 后，主身份和展示字段必须保持不变。"""
     primary = MediaInfo(
-        source="plugin-anime",
+        media_source=MediaSource.AniList,
         media_id="subject-42",
         type=MediaType.TV,
         title="原识别标题",
@@ -56,7 +56,7 @@ def test_supplement_tmdb_keeps_custom_source_identity() -> None:
     )
 
     assert result is primary
-    assert result.source == "plugin-anime"
+    assert result.media_source == MediaSource.AniList
     assert result.media_id == "subject-42"
     assert result.title == "原识别标题"
     assert result.tmdb_id == 12345
@@ -67,7 +67,7 @@ def test_supplement_tmdb_keeps_custom_source_identity() -> None:
 def test_supplement_tmdb_does_not_override_custom_category() -> None:
     """下载历史或目录指定的自定义分类优先于 TMDB 自动分类。"""
     primary = MediaInfo(
-        source="douban",
+        media_source=MediaSource.Douban,
         media_id="35593344",
         douban_id="35593344",
         type=MediaType.MOVIE,
@@ -86,7 +86,7 @@ def test_supplement_tmdb_does_not_override_custom_category() -> None:
 
     result = _make_chain(tmdb_media).supplement_tmdb_info(primary)
 
-    assert result.source == "douban"
+    assert result.media_source == MediaSource.Douban
     assert result.media_id == "35593344"
     assert result.category == "纪录片"
     assert result.tmdb_id == 9876
@@ -95,7 +95,7 @@ def test_supplement_tmdb_does_not_override_custom_category() -> None:
 def test_tmdb_supplement_uses_current_season_year_and_keeps_season_zero() -> None:
     """电视剧优先使用当前季年份，并且特别季季号不能退化为空。"""
     media = MediaInfo(
-        source="bangumi",
+        media_source=MediaSource.Bangumi,
         media_id="42",
         type=MediaType.TV,
         title="测试动画",

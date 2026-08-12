@@ -425,7 +425,8 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 ),
         ):
             chain.search_by_id(
-                tmdbid=123,
+                media_source="themoviedb",
+                media_id="123",
                 mtype=MediaType.MOVIE,
                 area="title",
                 season=2,
@@ -437,7 +438,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             (
                 "__search_params__",
                 {
-                    "keyword": "tmdb:123",
+                    "keyword": "",
+                    "media_source": "themoviedb",
+                    "media_id": "123",
                     "type": "电影",
                     "area": "title",
                     "title": "",

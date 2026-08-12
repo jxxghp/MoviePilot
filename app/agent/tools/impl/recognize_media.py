@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.music import MusicChain
 from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import Context
+from app.core.meta import MetaMusic
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
@@ -108,7 +108,6 @@ class RecognizeMediaTool(MoviePilotTool):
                 media_type_enum is None and is_audio_path
             )
             if recognize_music:
-                music_chain = MusicChain()
                 if path:
                     if not is_audio_path:
                         return json.dumps({
@@ -129,7 +128,7 @@ class RecognizeMediaTool(MoviePilotTool):
                         "path": path,
                     }, ensure_ascii=False)
                 if title:
-                    metainfo = music_chain.parse_query(title)
+                    metainfo = MetaMusic.parse_query(title)
                     if artist:
                         metainfo.artists = [artist]
                     if album:

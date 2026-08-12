@@ -3,45 +3,49 @@ from unittest.mock import Mock, patch
 from app.chain import ChainBase
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
+from app.utils.media import resolve_media_identity
 
 
 def _chain_without_init() -> ChainBase:
     """构造不加载真实模块和外部服务的识别链实例。"""
-    return object.__new__(ChainBase)
+    chain = object.__new__(ChainBase)
+    chain.eventmanager = Mock(check=Mock(return_value=False))
+    return chain
 
 
-def test_generic_source_id_wins_over_legacy_ids() -> None:
-    """显式source与media_id应优先于同一请求残留的兼容ID字段。"""
-    resolved = ChainBase._resolve_media_source_params(
-        source="anilist",
-        mediaid="154587",
-        tmdbid=999,
-        doubanid="888",
-    )
-
-    assert resolved == ("anilist", None, None, None, 154587)
+def test_generic_source_id_resolves_as_fixed_enum() -> None:
+    """规范来源和原生 ID 应组成唯一媒体身份。"""
+    assert resolve_media_identity(
+        media_source="anilist",
+        media_id="154587",
+    ) == (MediaSource.AniList, "154587")
 
 
-def test_custom_plugin_source_is_not_discarded() -> None:
-    """插件自定义来源应保留来源名，并通过通用原生 ID 交给插件。"""
-    resolved = ChainBase._resolve_media_source_params(
-        source="plugin_source",
-        mediaid="custom-1",
-    )
-
-    assert resolved == ("plugin_source", None, None, None, None)
+def test_unknown_plugin_source_is_rejected() -> None:
+    """固定枚举以外的来源不能进入通用识别链。"""
+    assert resolve_media_identity(
+        media_source="plugin_source",
+        media_id="custom-1",
+    ) == (None, None)
 
 
-def test_explicit_source_recognition_reaches_plugins_with_all_ids() -> None:
-    """显式选择数据源时应保留通用参数并进入完整模块调度。"""
+def test_zero_media_id_is_rejected() -> None:
+    """零值 ID 是旧表占位符，不得重新进入统一媒体身份链路。"""
+    assert resolve_media_identity(
+        media_source=MediaSource.TMDB,
+        media_id="0",
+    ) == (None, None)
+
+
+def test_explicit_source_recognition_reaches_modules_with_unified_identity() -> None:
+    """显式身份应只以 media_source 和 media_id 进入模块调度。"""
     chain = _chain_without_init()
     media = MediaInfo(
-        anilist_info={
-            "id": 154587,
-            "title": {"english": "Frieren"},
-            "format": "TV",
-        }
+        media_source=MediaSource.AniList,
+        media_id="154587",
+        type=MediaType.TV,
+        title="Frieren",
     )
     chain.run_module = Mock(return_value=media)
 
@@ -50,24 +54,30 @@ def test_explicit_source_recognition_reaches_plugins_with_all_ids() -> None:
         return_value=False,
     ):
         result = chain.recognize_media(
-            source="anilist",
-            mediaid="154587",
-            tmdbid=999,
+            media_source=MediaSource.AniList,
+            media_id="154587",
             mtype=MediaType.TV,
         )
 
     assert result is media
     call = chain.run_module.call_args
-    assert call.kwargs["source"] == "anilist"
-    assert call.kwargs["mediaid"] == "154587"
-    assert call.kwargs["anilistid"] == 154587
-    assert call.kwargs["tmdbid"] is None
+    assert call.kwargs["media_source"] == MediaSource.AniList
+    assert call.kwargs["media_id"] == "154587"
+    assert not {
+        "source", "mediaid", "tmdbid", "doubanid", "bangumiid", "anilistid"
+    }.intersection(call.kwargs)
 
 
 def test_default_recognition_passes_empty_generic_identity() -> None:
-    """默认识别也应向插件传递完整但为空的通用媒体身份参数。"""
+    """默认识别也只向模块传递为空的统一媒体身份。"""
     chain = _chain_without_init()
-    media = MediaInfo(title="测试电影", type=MediaType.MOVIE, tmdb_id=1)
+    media = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="1",
+        title="测试电影",
+        type=MediaType.MOVIE,
+        tmdb_id=1,
+    )
     chain.run_module = Mock(return_value=media)
     meta = MetaBase("测试电影")
     meta.cn_name = "测试电影"
@@ -81,9 +91,8 @@ def test_default_recognition_passes_empty_generic_identity() -> None:
 
     assert result is media
     call = chain.run_module.call_args
-    assert call.kwargs["source"] is None
-    assert call.kwargs["mediaid"] is None
-    assert call.kwargs["anilistid"] is None
+    assert call.kwargs["media_source"] is None
+    assert call.kwargs["media_id"] is None
 
 
 def test_module_dispatch_always_reaches_plugins() -> None:
@@ -100,16 +109,16 @@ def test_module_dispatch_always_reaches_plugins() -> None:
 
 
 def test_explicit_search_source_reaches_plugins() -> None:
-    """请求级搜索来源应进入包含插件的完整模块调度。"""
+    """请求级搜索来源应以统一字段进入完整模块调度。"""
     chain = _chain_without_init()
     chain.run_module = Mock(return_value=[])
     meta = MetaBase("Frieren")
 
-    result = chain.search_medias(meta, source="anilist")
+    result = chain.search_medias(meta, media_source=MediaSource.AniList)
 
     assert result == []
     chain.run_module.assert_called_once_with(
         "search_medias",
         meta=meta,
-        source="anilist",
+        media_source=MediaSource.AniList,
     )

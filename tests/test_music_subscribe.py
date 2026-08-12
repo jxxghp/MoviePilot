@@ -3,7 +3,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.chain.music import MusicChain
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
 from app.core.context import (
     MUSIC_ENTITY_ALBUM,
@@ -14,7 +13,7 @@ from app.core.context import (
     TorrentInfo,
 )
 from app.core.meta import MetaMusic
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _music_info() -> MusicInfo:
@@ -115,7 +114,7 @@ def test_music_subscribe_recovers_completion_from_persisted_download_note():
 
 def test_music_subscribe_reuses_search_download_and_finish_flow():
     """音乐订阅应复用站点搜索、批量下载和订阅完成主流程。"""
-    subscribe = _subscribe()
+    subscribe = _subscribe(keyword="周杰伦 晴天")
     target = _music_info()
     context = Context(
         torrent_info=TorrentInfo(
@@ -124,7 +123,7 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
         )
     )
     search_chain = Mock()
-    search_chain.search_by_title.return_value = [context]
+    search_chain.search_by_title.side_effect = [[context], []]
     download_chain = Mock()
     download_chain.batch_download.return_value = ([context], None)
     chain = SubscribeChain()
@@ -139,11 +138,8 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
         subscribe_oper.return_value.get.return_value = subscribe
         chain._search_music_subscribe(subscribe)
 
-    search_chain.search_by_title.assert_called_once_with(
-        title="周杰伦 晴天",
-        sites=[],
-        mtype=MediaType.MUSIC,
-        rule_groups=[],
+    search_chain.search_by_title.assert_any_call(
+        title="周杰伦 晴天", sites=[], mtype=MediaType.MUSIC, rule_groups=[]
     )
     download_chain.batch_download.assert_called_once()
     matched_context = download_chain.batch_download.call_args.kwargs["contexts"][0]
@@ -329,7 +325,7 @@ def test_album_best_version_requires_confirmed_full_coverage():
         artists=["周杰伦"],
         total_tracks=11,
     )
-    meta = MusicChain.to_meta(album)
+    meta = MetaMusic.from_music_info(album)
     downloaded = Context(
         torrent_info=TorrentInfo(
             title="周杰伦 - 叶惠美 FLAC",
@@ -473,15 +469,13 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.MusicChain.search") as search:
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored.music_type == MUSIC_ENTITY_ALBUM
     assert restored.album == "叶惠美"
     assert restored.artists == ["周杰伦"]
     assert restored.total_tracks == 11
-    search.assert_not_called()
 
 
 def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
@@ -490,12 +484,10 @@ def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.MusicChain.search") as search:
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is None
-    search.assert_not_called()
 
 
 def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
@@ -527,12 +519,10 @@ def test_legacy_music_without_identity_uses_recording_recognition_boundary():
     media_chain = Mock()
     media_chain.recognize_media.return_value = recording
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.MusicChain.search") as mixed_search:
+    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is recording
-    mixed_search.assert_not_called()
     media_chain.recognize_media.assert_called_once()
     call = media_chain.recognize_media.call_args
     assert isinstance(call.kwargs["meta"], MetaMusic)
@@ -733,26 +723,26 @@ def test_subscribe_add_music_uses_explicit_entity_recognize():
     routed_meta = media_chain.recognize_media.call_args.kwargs["meta"]
     assert isinstance(routed_meta, MetaMusic)
     assert routed_meta.media_id == "recording-1"
-    assert media_chain.recognize_media.call_args.kwargs["source"] == "musicbrainz"
+    assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource.MusicBrainz
     assert media_chain.recognize_media.call_args.kwargs["music_type"] == MUSIC_ENTITY_RECORDING
     media_chain.recognize_by_meta.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    ("source", "media_id", "title"),
+    ("media_source", "media_id", "title"),
     [
         ("theaudiodb", "2109619", "Parachutes"),
         ("doubanmusic", "1401853", "范特西"),
     ],
 )
 def test_subscribe_add_music_routes_new_album_sources(
-        source: str,
+        media_source: str,
         media_id: str,
         title: str,
 ):
     """新增音乐源的专辑订阅应保留来源、原生 ID 与实体类型。"""
     target = MusicInfo(
-        source=source,
+        media_source=media_source,
         media_id=media_id,
         music_type=MUSIC_ENTITY_ALBUM,
         title=title,
@@ -772,7 +762,7 @@ def test_subscribe_add_music_routes_new_album_sources(
             title=title,
             year="2000",
             mtype=MediaType.MUSIC,
-            media_source=source,
+            media_source=media_source,
             media_id=media_id,
             music_type=MUSIC_ENTITY_ALBUM,
             message=False,
@@ -781,10 +771,10 @@ def test_subscribe_add_music_routes_new_album_sources(
     assert sid == 1
     assert err_msg == ""
     media_chain.recognize_media.assert_called_once()
-    assert media_chain.recognize_media.call_args.kwargs["source"] == source
-    assert media_chain.recognize_media.call_args.kwargs["mediaid"] == media_id
+    assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource(media_source)
+    assert media_chain.recognize_media.call_args.kwargs["media_id"] == media_id
     assert media_chain.recognize_media.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
-    assert subscribe_oper.add.call_args.kwargs["media_source"] == source
+    assert subscribe_oper.add.call_args.kwargs["media_source"] == MediaSource(media_source)
     assert subscribe_oper.add.call_args.kwargs["media_id"] == media_id
     media_chain.recognize_by_meta.assert_not_called()
 

@@ -1,13 +1,14 @@
 from app.core.context import MediaInfo
 from app.helper.message import TemplateContextBuilder
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
-def test_message_context_contains_all_media_identity_fields() -> None:
-    """消息模板上下文应向插件暴露全部媒体源 ID 和当前主身份。"""
+def test_message_context_contains_primary_and_auxiliary_media_fields() -> None:
+    """消息上下文应区分规范主身份与仅供展示的辅助来源 ID。"""
     context = {}
     media = MediaInfo(
-        source="anilist",
+        media_source=MediaSource.AniList,
+        media_id="170942",
         type=MediaType.TV,
         title="测试动画",
         tmdb_id=24680,
@@ -24,18 +25,18 @@ def test_message_context_contains_all_media_identity_fields() -> None:
     assert context["anilistid"] == 170942
     assert context["media_source"] == "anilist"
     assert context["media_id"] == "170942"
-    assert media.to_dict()["mediaid_prefix"] == "anilist"
+    assert "mediaid_prefix" not in media.to_dict()
     assert media.to_dict()["media_id"] == "170942"
 
 
-def test_media_info_preserves_plugin_source_identity() -> None:
-    """核心媒体对象应原样保留插件自定义数据源的原生 ID。"""
+def test_media_info_rejects_unknown_plugin_source_identity() -> None:
+    """核心媒体对象应丢弃枚举以外的插件自定义来源。"""
     media = MediaInfo(
-        source="plugin_source",
+        media_source="plugin_source",
         media_id="custom-100",
         type=MediaType.MOVIE,
         title="插件电影",
     )
 
-    assert media.media_id == "custom-100"
-    assert media.to_dict()["media_id"] == "custom-100"
+    assert media.media_source is None
+    assert media.media_id is None

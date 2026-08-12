@@ -166,19 +166,16 @@ class DownloadChain(ChainBase):
 
     @staticmethod
     def _media_identity_keys(media: Optional[MediaInfo]) -> Set[str]:
-        """返回媒体的统一身份键及全部兼容 ID，用于临时缺失集映射匹配。"""
+        """返回媒体的统一身份键，用于临时缺失集映射匹配。"""
         if not media:
             return set()
         source, media_id = resolve_media_identity(media=media)
-        values = {
-            media.tmdb_id, media.douban_id, media.bangumi_id, media.anilist_id,
-            build_media_key(source, media_id),
-        }
-        return {str(value) for value in values if value is not None and str(value)}
+        media_key = build_media_key(source, media_id)
+        return {media_key} if media_key else set()
 
     @classmethod
     def _matches_media_identity(cls, media: Optional[MediaInfo], media_key: object) -> bool:
-        """判断媒体是否命中统一身份键或任一兼容 ID。"""
+        """判断媒体是否命中来源与原生 ID 组成的统一身份键。"""
         return media_key is not None and str(media_key) in cls._media_identity_keys(media)
 
     @staticmethod
@@ -603,12 +600,8 @@ class DownloadChain(ChainBase):
 
         media_type = getattr(getattr(media, "type", None), "value", getattr(media, "type", None))
         media_source, media_id = resolve_media_identity(media=media)
-        media_key = (
-            f"{media_source}:{media_id}"
-            if media_source and media_id
-            else getattr(media, "imdb_id", None)
-            or getattr(media, "tvdb_id", None)
-            or f"{getattr(media, 'title', '')}:{getattr(media, 'year', '')}"
+        media_key = build_media_key(media_source, media_id) or (
+            f"{getattr(media, 'title', '')}:{getattr(media, 'year', '')}"
         )
         meta = getattr(context, "meta_info", None)
         site = getattr(torrent, "site", None) or getattr(torrent, "site_name", None)
@@ -1126,7 +1119,7 @@ class DownloadChain(ChainBase):
 
     def batch_download(self,
                        contexts: List[Context],
-                       no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]] = None,
+                       no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
                        save_path: Optional[str] = None,
                        channel: MessageChannel = None,
                        source: Optional[str] = None,
@@ -1134,7 +1127,7 @@ class DownloadChain(ChainBase):
                        username: Optional[str] = None,
                        downloader: Optional[str] = None,
                        custom_words: Optional[str] = None
-                       ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
+                       ) -> Tuple[List[Context], Dict[str, Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
         :param contexts:  资源上下文列表
@@ -1146,16 +1139,16 @@ class DownloadChain(ChainBase):
         :param username: 调用下载的用户名/插件名
         :param downloader: 下载器
         :param custom_words: 下载来源（如订阅）的完整自定义识别词文本，随下载记录存档，供整理时原样复现识别
-        :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id/douban_id] = {season: NotExistMediaInfo}
+        :return: 已下载资源列表及剩余缺集，键格式为 no_exists[source:id]
         """
         # 已下载的项目
         downloaded_list: List[Context] = []
         custom_word_list = custom_words.splitlines() if custom_words else None
 
-        def __update_seasons(_mid: Union[int, str], _need: list, _current: list) -> list:
+        def __update_seasons(_mid: str, _need: list, _current: list) -> list:
             """
             更新need_tvs季数，返回剩余季数
-            :param _mid: TMDBID
+            :param _mid: 统一媒体身份键
             :param _need: 需要下载的季数
             :param _current: 已经下载的季数
             """
@@ -1172,10 +1165,10 @@ class DownloadChain(ChainBase):
                         break
             return need
 
-        def __update_episodes(_mid: Union[int, str], _sea: int, _need: list, _current: set) -> list:
+        def __update_episodes(_mid: str, _sea: int, _need: list, _current: set) -> list:
             """
             更新need_tvs集数，返回剩余集数
-            :param _mid: TMDBID
+            :param _mid: 统一媒体身份键
             :param _sea: 季数
             :param _need: 需要下载的集数
             :param _current: 已经下载的集数
@@ -1197,7 +1190,7 @@ class DownloadChain(ChainBase):
                     no_exists.pop(_mid)
             return need
 
-        def __get_season_episodes(_mid: Union[int, str], season: int) -> int:
+        def __get_season_episodes(_mid: str, season: int) -> int:
             """
             获取需要的季的集数
             """
@@ -1208,7 +1201,7 @@ class DownloadChain(ChainBase):
                 return 9999
             return no_exist[season].total_episode
 
-        def __get_no_exist_media(_mid: Union[int, str], season: int) -> Optional[NotExistMediaInfo]:
+        def __get_no_exist_media(_mid: str, season: int) -> Optional[NotExistMediaInfo]:
             """
             获取指定媒体和季的缺失信息。
             """
@@ -1216,7 +1209,7 @@ class DownloadChain(ChainBase):
                 return None
             return no_exists.get(_mid).get(season)
 
-        def __get_required_episodes(_mid: Union[int, str], season: int) -> Set[int]:
+        def __get_required_episodes(_mid: str, season: int) -> Set[int]:
             """
             获取整季候选必须覆盖的目标集范围。
             """
@@ -1349,8 +1342,8 @@ class DownloadChain(ChainBase):
         # 电视剧整季匹配
         if no_exists:
             logger.info(f"开始匹配电视剧整季：{no_exists}")
-            # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {tmdbid: [seasons]}
-            need_seasons: Dict[int, list] = {}
+            # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {source:id: [seasons]}
+            need_seasons: Dict[str, list] = {}
             for need_mid, need_tv in no_exists.items():
                 for tv in need_tv.values():
                     if not tv:
@@ -1691,9 +1684,9 @@ class DownloadChain(ChainBase):
 
     def get_no_exists_info(self, meta: MetaBase,
                            mediainfo: MediaInfo | MusicInfo,
-                           no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
+                           no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
                            totals: Dict[int, int] = None
-                           ) -> Tuple[bool, Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
+                           ) -> Tuple[bool, Dict[str, Dict[int, NotExistMediaInfo]]]:
         """
         检查媒体库，查询电影或音乐是否存在；对于剧集同时返回不存在的季集信息
         :param meta: 元数据
@@ -1703,11 +1696,14 @@ class DownloadChain(ChainBase):
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
         """
         media_source, media_id = resolve_media_identity(media=mediainfo)
+        if mediainfo.type == MediaType.TV and not build_media_key(media_source, media_id):
+            logger.error("电视剧缺集检查需要有效的 media_source 和 media_id")
+            return False, no_exists or {}
 
         def __append_no_exists(_season: int, _episodes: list, _total: int, _start: int):
             """
             添加不存在的季集信息
-            {tmdbid: [
+            {source:id: [
                 "season": int,
                 "episodes": list,
                 "total_episode": int,

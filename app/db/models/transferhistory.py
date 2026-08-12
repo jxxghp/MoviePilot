@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
+from app.db.models.media_identity import media_identity_constraint
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
 
 def _text_like(column, pattern: str, wildcard: bool = False):
@@ -84,6 +85,7 @@ class TransferHistory(Base):
     episode_group = Column(String)
 
     __table_args__ = (
+        media_identity_constraint("transferhistory"),
         Index('ix_transferhistory_status_date', 'status', 'date'),
         Index('ix_transferhistory_date_id', 'date', 'id'),
         Index('ix_transferhistory_media_identity', 'media_source', 'media_id'),
@@ -476,7 +478,7 @@ class TransferHistory(Base):
     def list_by(cls, db: Session, mtype: Optional[str] = None, title: Optional[str] = None, year: Optional[str] = None,
                 season: Optional[str] = None,
                 episode: Optional[str] = None,
-                media_source: Optional[str] = None,
+                media_source: Optional[MediaSource] = None,
                 media_id: Optional[str] = None,
                 dest: Optional[str] = None):
         """
@@ -544,7 +546,7 @@ class TransferHistory(Base):
     @classmethod
     @db_query
     def get_by_media_identity(
-            cls, db: Session, media_source: str, media_id: str,
+            cls, db: Session, media_source: MediaSource, media_id: str,
             mtype: Optional[str] = None,
     ):
         """按规范媒体身份和类型查询整理记录。"""

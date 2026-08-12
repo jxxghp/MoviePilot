@@ -24,6 +24,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaRecognizeType,
     MediaSource,
+    MediaSourceSelection,
     MediaType,
     ModuleType,
 )
@@ -123,7 +124,7 @@ class MusicBrainzModule(_ModuleBase):
         return "MusicBrainz"
 
     @staticmethod
-    def get_music_source() -> str:
+    def get_music_source() -> MediaSource:
         """返回音乐识别使用的数据源标识。"""
         return MusicBrainzModule._source
 
@@ -146,7 +147,7 @@ class MusicBrainzModule(_ModuleBase):
             self,
             meta: MetaMusic,
             limit: int = 20,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSourceSelection] = None,
     ) -> Optional[list[MusicInfo]]:
         """搜索单曲、专辑和艺术家，并交错返回可浏览的 MusicBrainz 候选。"""
         if not is_media_source_selected(media_source, self._source):
@@ -747,7 +748,7 @@ class MusicBrainzModule(_ModuleBase):
             self,
             meta: MetaBase = None,
             mtype: MediaType = None,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
@@ -846,7 +847,7 @@ class MusicBrainzModule(_ModuleBase):
             self,
             meta: MetaBase = None,
             mtype: MediaType = None,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
@@ -902,7 +903,12 @@ class MusicBrainzModule(_ModuleBase):
         return result
 
     @classmethod
-    def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], media_source: str) -> Optional[MusicInfo]:
+    def _select_candidate(
+            cls,
+            meta: MetaMusic,
+            candidates: Iterable[MusicInfo],
+            media_source: MediaSource,
+    ) -> Optional[MusicInfo]:
         """按标题、艺术家和专辑匹配度选择最可信的搜索候选。"""
         normalized_source = cls._normalize_text(media_source).casefold()
         # 资源标题携带的音质标记先剥离，再与候选曲名比对；
@@ -1144,7 +1150,7 @@ class MusicBrainzModule(_ModuleBase):
 
     def recognize_music(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
@@ -1169,7 +1175,7 @@ class MusicBrainzModule(_ModuleBase):
 
     async def async_recognize_music(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
@@ -1193,7 +1199,7 @@ class MusicBrainzModule(_ModuleBase):
 
     async def _async_music_album(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
     ) -> Optional[MusicAlbumInfo]:
         """异步按 MusicBrainz Release Group ID 获取专辑详情及曲目。"""
@@ -1218,7 +1224,11 @@ class MusicBrainzModule(_ModuleBase):
         )
         return album
 
-    def music_album(self, media_source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+    def music_album(
+            self,
+            media_source: MediaSource,
+            media_id: str,
+    ) -> Optional[MusicAlbumInfo]:
         """按 MusicBrainz Release Group ID 获取标准化专辑详情及曲目。"""
         if media_source != self._source or not media_id:
             return None
@@ -1238,7 +1248,11 @@ class MusicBrainzModule(_ModuleBase):
         album.tracks = self._album_tracks(album, payload.get("releases") or [])
         return album
 
-    def music_artist(self, media_source: str, media_id: str) -> Optional[MusicArtistInfo]:
+    def music_artist(
+            self,
+            media_source: MediaSource,
+            media_id: str,
+    ) -> Optional[MusicArtistInfo]:
         """按 MusicBrainz Artist ID 获取标准化艺术家详情。"""
         if media_source != self._source or not media_id:
             return None
@@ -1250,7 +1264,7 @@ class MusicBrainzModule(_ModuleBase):
 
     def music_artist_albums(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
             page: int = 1,
             count: int = 30,
@@ -1281,7 +1295,7 @@ class MusicBrainzModule(_ModuleBase):
 
     def music_artist_related(
             self,
-            media_source: str,
+            media_source: MediaSource,
             media_id: str,
             count: int = 24,
     ) -> list[MusicArtistInfo]:

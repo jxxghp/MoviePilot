@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 import pytest
@@ -10,6 +11,7 @@ from app.core.meta import (
     MusicNamePattern,
     MusicNameRegistry,
 )
+from app.core.metainfo import MetaInfo, MetaInfoPath
 
 
 def parse_title(title: str) -> MetaMusic:
@@ -17,7 +19,7 @@ def parse_title(title: str) -> MetaMusic:
     return MetaMusic(org_string=title, title=title, parse_title=True)
 
 
-def test_music_name_registry_supports_dynamic_pattern_and_parser():
+def test_music_name_registry_supports_dynamic_pattern_and_parser(monkeypatch):
     """外部程序可独立注册命名模式和解析器，并在使用后完整注销。"""
     pattern_name = "test_program"
     parser_name = "test_program_parser"
@@ -45,6 +47,12 @@ def test_music_name_registry_supports_dynamic_pattern_and_parser():
         MusicNameParser(parser_name, (pattern_name,), parse_program, priority=1000)
     )
     try:
+        monkeypatch.setattr(
+            "app.core.meta.metamusic.rust_accel.parse_metamusic",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("自定义注册表不应调用 Rust")
+            ),
+        )
         context = MusicNameContext(
             raw="PROGRAM::周杰伦::晴天",
             normalized="PROGRAM::周杰伦::晴天",
@@ -68,6 +76,209 @@ def test_music_name_registry_supports_dynamic_pattern_and_parser():
 
     assert parser_name not in {parser.name for parser in MusicNameRegistry.get_parsers()}
     assert pattern_name not in {pattern.name for pattern in MusicNameRegistry.get_patterns()}
+
+
+def test_music_name_registry_same_name_replacement_falls_back_to_python(monkeypatch):
+    """同名替换内置解析器时应保留 Python 动态扩展语义。"""
+    original = next(
+        parser for parser in MusicNameRegistry.get_parsers()
+        if parser.name == "fallback"
+    )
+
+    def parse_replacement(context, _matched):
+        """为同名替换用例返回固定解析结果。"""
+        return MusicNameParseResult(
+            title=f"Python:{context.text}",
+            artists=["扩展解析器"],
+        )
+
+    replacement = MusicNameParser(
+        "fallback",
+        ("fallback",),
+        parse_replacement,
+    )
+    MusicNameRegistry.register_parser(replacement, replace=True)
+    try:
+        monkeypatch.setattr(
+            "app.core.meta.metamusic.rust_accel.parse_metamusic",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("同名替换解析器时不应调用 Rust")
+            ),
+        )
+
+        meta = parse_title("自定义曲名")
+
+        assert meta.title == "Python:自定义曲名"
+        assert meta.artists == ["扩展解析器"]
+    finally:
+        MusicNameRegistry.register_parser(original, replace=True)
+
+    assert MusicNameRegistry._uses_default_components()
+
+
+def test_parse_query_uses_rust_and_maps_music_fields(monkeypatch):
+    """MetaMusic 公共查询入口应使用 Rust 并回填完整核心字段。"""
+    calls = []
+    parsed = {
+        "title": "晴天",
+        "artists": ["周杰伦"],
+        "album": "叶惠美",
+        "year": 2003,
+        "disc_number": 1,
+        "track_number": 3,
+        "audio_format": "FLAC",
+        "audio_lossless": True,
+        "bit_depth": 24,
+        "sample_rate": 96000,
+        "bitrate": 2304000,
+    }
+
+    def parse_metamusic(title, artists=None, year=None):
+        """记录 Rust wrapper 调用并返回完整音乐字段。"""
+        calls.append((title, artists, year))
+        return parsed
+
+    monkeypatch.setattr(
+        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        parse_metamusic,
+    )
+
+    meta = MetaMusic.parse_query("周杰伦 - 晴天 FLAC 24bit 96kHz")
+
+    assert calls == [("周杰伦 - 晴天 FLAC 24bit 96kHz", None, None)]
+    assert {
+        key: getattr(meta, key)
+        for key in parsed
+    } == parsed
+
+
+def test_apply_title_preserves_existing_fields_from_rust(monkeypatch):
+    """Rust 解析只应补充空字段，不覆盖标签或文件后缀证据。"""
+    monkeypatch.setattr(
+        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        lambda *_args, **_kwargs: {
+            "title": "Rust 曲名",
+            "artists": ["Rust 歌手"],
+            "album": "Rust 专辑",
+            "year": 2026,
+            "disc_number": 2,
+            "track_number": 8,
+            "audio_format": "AAC",
+            "audio_lossless": False,
+            "bit_depth": 16,
+            "sample_rate": 48000,
+            "bitrate": 320000,
+        },
+    )
+
+    meta = MetaMusic(
+        org_string="source.flac",
+        title="source",
+        artists=["标签歌手"],
+        album="标签专辑",
+        year=2003,
+        disc_number=1,
+        track_number=3,
+        audio_format="FLAC",
+        bit_depth=24,
+        sample_rate=96000,
+        bitrate=2304000,
+        parse_title=True,
+    )
+
+    assert meta.title == "Rust 曲名"
+    assert meta.artists == ["标签歌手"]
+    assert meta.album == "标签专辑"
+    assert meta.year == 2003
+    assert meta.disc_number == 1
+    assert meta.track_number == 3
+    assert meta.audio_format == "FLAC"
+    assert meta.audio_lossless is True
+    assert meta.bit_depth == 24
+    assert meta.sample_rate == 96000
+    assert meta.bitrate == 2304000
+
+
+def test_apply_title_falls_back_when_rust_returns_none(monkeypatch):
+    """Rust wrapper 不可用时应完整执行现有 Python 命名解析。"""
+    monkeypatch.setattr(
+        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        lambda *_args, **_kwargs: None,
+    )
+
+    meta = MetaMusic.parse_query("周杰伦 - 晴天 FLAC 24bit 96kHz")
+
+    assert meta.title == "晴天"
+    assert meta.artists == ["周杰伦"]
+    assert meta.audio_format == "FLAC"
+    assert meta.bit_depth == 24
+    assert meta.sample_rate == 96000
+
+
+def test_metainfo_audio_suffix_remains_authoritative_with_rust(monkeypatch):
+    """音频文件后缀应优先于标题中的演唱会音频编码标记。"""
+    calls = []
+
+    def parse_metamusic(title, artists=None, year=None):
+        """模拟 Rust 从标题规格中识别出 AAC。"""
+        calls.append((title, artists, year))
+        return {
+            "title": "S.H.E十七音乐会",
+            "artists": ["S.H.E"],
+            "year": 2018,
+            "audio_format": "AAC",
+            "audio_lossless": False,
+        }
+
+    monkeypatch.setattr(
+        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        parse_metamusic,
+    )
+    filename = "S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv.flac"
+
+    meta = MetaInfo(filename)
+
+    assert calls == [(filename.removesuffix(".flac"), None, None)]
+    assert meta.title == "S.H.E十七音乐会"
+    assert meta.artists == ["S.H.E"]
+    assert meta.audio_format == "FLAC"
+    assert meta.audio_lossless is True
+
+
+def test_metainfo_path_uses_rust_once_and_keeps_python_directory_context(
+        monkeypatch,
+):
+    """音频路径只应用 Rust 解析一次文件名，目录线索仍由 Python 补齐。"""
+    calls = []
+
+    def parse_metamusic(title, artists=None, year=None):
+        """记录路径中的 Rust 文件名解析并返回曲目字段。"""
+        calls.append((title, artists, year))
+        return {
+            "title": "我的地盘",
+            "artists": [],
+            "track_number": 1,
+            "audio_format": "AAC",
+            "audio_lossless": False,
+        }
+
+    monkeypatch.setattr(
+        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        parse_metamusic,
+    )
+    path = MetaInfoPath(
+        Path("/music/周杰伦 - 七里香 (2004) [FLAC]/01.我的地盘.flac")
+    )
+
+    assert calls == [("我的地盘", None, None)]
+    assert path.title == "我的地盘"
+    assert path.track_number == 1
+    assert path.album == "七里香"
+    assert path.artists == ["周杰伦"]
+    assert path.album_artist == "周杰伦"
+    assert path.year == 2004
+    assert path.audio_format == "FLAC"
+    assert path.audio_lossless is True
 
 
 @pytest.mark.parametrize(

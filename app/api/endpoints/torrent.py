@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings
 from app.core.context import MediaInfo, MusicInfo
@@ -266,7 +265,7 @@ async def reidentify_cache(
             meta = (
                 target_context.meta_info
                 if isinstance(target_context.meta_info, MetaMusic)
-                else MusicChain.parse_query(target_context.torrent_info.title)
+                else MetaMusic.parse_query(target_context.torrent_info.title)
             )
         else:
             meta = MetaInfo(

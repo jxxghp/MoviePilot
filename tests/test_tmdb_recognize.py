@@ -12,7 +12,7 @@ from app.chain import ChainBase
 from app.helper.server import MoviePilotServerHelper
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 # 离线 TMDB 响应回放：识别测试断言的是 tmdbid 优先/电影电视消歧/类型推断等逻辑，
 # 这些逻辑需要真实结构的 TMDB 响应才有意义，但直连 api.themoviedb.org 属于不可接受的
@@ -99,8 +99,7 @@ def tearDownModule():
 class TmdbRecognizeModuleTest(TestCase):
     """
     TMDB模块层识别测试
-    模块层的 async_recognize_media 不会自动从 meta.tmdbid 提取 tmdbid，
-    该提取在 ChainBase 层完成，因此测试中需显式传入 tmdbid 参数。
+    模块层使用统一媒体身份；历史 tmdbid 文件名标签只在元数据解析边界转换。
     """
 
     @classmethod
@@ -121,12 +120,16 @@ class TmdbRecognizeModuleTest(TestCase):
         而非回退到标题搜索
         """
         meta = MetaInfo(title="空之境界 {tmdbid=938416}")
-        self.assertEqual(meta.tmdbid, 938416)
+        self.assertEqual(meta.media_source, MediaSource.TMDB)
+        self.assertEqual(meta.media_id, "938416")
         self.assertEqual(meta.cn_name, "空之境界")
 
         result = self._run(
             self.module.async_recognize_media(
-                meta=meta, tmdbid=meta.tmdbid, cache=False
+                meta=meta,
+                media_source=meta.media_source,
+                media_id=meta.media_id,
+                cache=False,
             )
         )
         self.assertIsNotNone(result, "应能识别到媒体信息")
@@ -139,11 +142,15 @@ class TmdbRecognizeModuleTest(TestCase):
         标题包含"空之境界"应消歧为电影
         """
         meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
-        self.assertEqual(meta.tmdbid, 23155)
+        self.assertEqual(meta.media_source, MediaSource.TMDB)
+        self.assertEqual(meta.media_id, "23155")
 
         result = self._run(
             self.module.async_recognize_media(
-                meta=meta, tmdbid=meta.tmdbid, cache=False
+                meta=meta,
+                media_source=meta.media_source,
+                media_id=meta.media_id,
+                cache=False,
             )
         )
         self.assertIsNotNone(result, "同ID存在电影和电视剧时应能通过元数据消歧")
@@ -158,7 +165,11 @@ class TmdbRecognizeModuleTest(TestCase):
 
         result = self._run(
             self.module.async_recognize_media(
-                meta=meta, tmdbid=meta.tmdbid, mtype=MediaType.TV, cache=False
+                meta=meta,
+                media_source=meta.media_source,
+                media_id=meta.media_id,
+                mtype=MediaType.TV,
+                cache=False,
             )
         )
         self.assertIsNotNone(result)
@@ -171,11 +182,15 @@ class TmdbRecognizeModuleTest(TestCase):
         tmdbid=496891 仅存在电影"少女与战车 最终章 ～第2话～"
         """
         meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
-        self.assertEqual(meta.tmdbid, 496891)
+        self.assertEqual(meta.media_source, MediaSource.TMDB)
+        self.assertEqual(meta.media_id, "496891")
 
         result = self._run(
             self.module.async_recognize_media(
-                meta=meta, tmdbid=meta.tmdbid, cache=False
+                meta=meta,
+                media_source=meta.media_source,
+                media_id=meta.media_id,
+                cache=False,
             )
         )
         self.assertIsNotNone(result, "仅存在电影时应正确识别")
@@ -186,7 +201,7 @@ class TmdbRecognizeModuleTest(TestCase):
 class TmdbRecognizeChainTest(TestCase):
     """
     ChainBase层识别测试（端到端）
-    验证从 meta.tmdbid 提取到模块识别的完整流程
+    验证旧文件名标签转换为统一媒体身份后的完整识别流程
     """
 
     @classmethod
@@ -215,7 +230,8 @@ class TmdbRecognizeChainTest(TestCase):
         """
         meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
         self.assertEqual(meta.type, MediaType.TV, "meta.type应被推断为TV")
-        self.assertEqual(meta.tmdbid, 496891)
+        self.assertEqual(meta.media_source, MediaSource.TMDB)
+        self.assertEqual(meta.media_id, "496891")
 
         result = self._run(
             self.chain.async_recognize_media(meta=meta, cache=False)

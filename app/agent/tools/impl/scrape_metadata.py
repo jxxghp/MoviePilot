@@ -9,10 +9,17 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
+from app.chain.scraping import ScrapingChain
 from app.core.config import settings
 from app.log import logger
 from app.schemas import FileItem
-from app.schemas.types import MUSIC_ENTITY_ARTIST, MediaType, media_type_to_agent
+from app.schemas.types import (
+    MUSIC_ENTITY_ARTIST,
+    MediaSource,
+    MediaType,
+    media_type_to_agent,
+)
+from app.utils.media import normalize_media_source
 from ._music_utils import normalize_music_type, simplify_music_info
 
 
@@ -39,7 +46,7 @@ class ScrapeMetadataInput(BaseModel):
         None,
         description="For an explicit music ID: recording for one file or album for a complete album directory",
     )
-    media_source: Optional[str] = Field(
+    media_source: Optional[MediaSource] = Field(
         None,
         description=(
             "Music metadata source: musicbrainz, theaudiodb, or doubanmusic. "
@@ -97,7 +104,7 @@ class ScrapeMetadataTool(MoviePilotTool):
         overwrite: Optional[bool] = False,
         media_type: Optional[str] = None,
         music_type: Optional[str] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         **kwargs,
     ) -> str:
@@ -127,11 +134,18 @@ class ScrapeMetadataTool(MoviePilotTool):
                             "支持的类型：'movie', 'tv', 'music'"
                         ),
                     }, ensure_ascii=False)
-            if bool(media_source) != bool(media_id):
+            explicit_identity = media_source is not None or media_id is not None
+            normalized_source = normalize_media_source(media_source)
+            normalized_media_id = str(media_id).strip() if media_id is not None else ""
+            if explicit_identity and (
+                    not normalized_source or not normalized_media_id
+            ):
                 return json.dumps({
                     "success": False,
-                    "message": "media_source 和 media_id 必须同时提供",
+                    "message": "必须同时提供有效的 media_source 和 media_id",
                 }, ensure_ascii=False)
+            media_source = normalized_source
+            media_id = normalized_media_id or None
 
             local_path = Path(path)
             is_local_directory = (storage or "local") == "local" and local_path.is_dir()
@@ -151,6 +165,7 @@ class ScrapeMetadataTool(MoviePilotTool):
                     )
 
             media_chain = MediaChain()
+            scraping_chain = ScrapingChain()
             is_audio_file = (
                 fileitem.type == "file"
                 and Path(path).suffix.lower() in settings.RMT_AUDIOEXT
@@ -179,8 +194,8 @@ class ScrapeMetadataTool(MoviePilotTool):
                 mediainfo = None
                 if media_source and media_id:
                     recognize_kwargs = {
-                        "source": media_source,
-                        "mediaid": media_id,
+                        "media_source": media_source,
+                        "media_id": media_id,
                         "mtype": MediaType.MUSIC,
                     }
                     if normalized_music_type:
@@ -205,11 +220,11 @@ class ScrapeMetadataTool(MoviePilotTool):
 
                 success, message = await self.run_blocking(
                     "storage",
-                    media_chain.scrape_music_metadata,
+                    scraping_chain.scrape_music_metadata,
                     fileitem=fileitem,
                     mediainfo=mediainfo,
                     overwrite=bool(overwrite),
-                    source=media_source,
+                    media_source=media_source,
                 )
                 result = {
                     "success": success,
@@ -246,7 +261,7 @@ class ScrapeMetadataTool(MoviePilotTool):
             # 刮削会包含磁盘写入和外部图片/元数据访问，统一放到 storage 线程池。
             await self.run_blocking(
                 "storage",
-                media_chain.scrape_metadata,
+                scraping_chain.scrape_metadata,
                 fileitem=fileitem,
                 meta=context.meta_info,
                 mediainfo=context.media_info,
@@ -262,7 +277,8 @@ class ScrapeMetadataTool(MoviePilotTool):
                         "title": context.media_info.title,
                         "year": context.media_info.year,
                         "type": media_type_to_agent(context.media_info.type),
-                        "tmdb_id": context.media_info.tmdb_id,
+                        "media_source": context.media_info.media_source,
+                        "media_id": context.media_info.media_id,
                         "season": context.media_info.season,
                     },
                 },

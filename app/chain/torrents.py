@@ -7,10 +7,10 @@ from app.helper.sites import SitesHelper  # noqa
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.context import MusicInfo
+from app.core.meta import MetaMusic
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -670,7 +670,7 @@ class TorrentsChain(ChainBase):
                             continue
                         logger.info(f'处理资源：{torrent.title} ...')
                         if torrent.category == MediaType.MUSIC.value:
-                            meta = MusicChain.parse_query(torrent.title)
+                            meta = MetaMusic.parse_query(torrent.title)
                             mediainfo = MusicInfo(
                                 title=meta.title,
                                 artists=list(meta.artists),

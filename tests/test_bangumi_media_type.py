@@ -5,7 +5,7 @@ import pytest
 
 from app.chain.media import MediaChain
 from app.core.context import MediaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 @pytest.mark.parametrize(
@@ -78,13 +78,43 @@ def test_bangumi_movie_conversion_uses_movie_type() -> None:
     """Bangumi剧场版转TMDB和豆瓣时均应按电影匹配。"""
     chain = _SyncBangumiMediaChain()
 
-    tmdb_info = MediaChain.get_tmdbinfo_by_bangumiid(chain, 1)
-    douban_info = MediaChain.get_doubaninfo_by_bangumiid(chain, 1)
+    tmdb_info = MediaChain.convert_media_identity(
+        chain,
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.Bangumi,
+        media_id="1",
+    )
+    douban_info = MediaChain.convert_media_identity(
+        chain,
+        target_source=MediaSource.Douban,
+        media_source=MediaSource.Bangumi,
+        media_id="1",
+    )
 
     assert tmdb_info == {"id": 100}
     assert douban_info == {"id": "200"}
     assert chain.tmdb_mtype == MediaType.MOVIE
     assert chain.douban_mtype == MediaType.MOVIE
+
+
+def test_media_identity_conversion_rejects_invalid_or_unsupported_pairs() -> None:
+    """跨源转换只接受完整非零 pair 和受支持的来源组合。"""
+    chain = _SyncBangumiMediaChain()
+
+    assert MediaChain.convert_media_identity(
+        chain,
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.Bangumi,
+        media_id="0",
+    ) is None
+    assert MediaChain.convert_media_identity(
+        chain,
+        target_source=MediaSource.TheAudioDB,
+        media_source=MediaSource.Bangumi,
+        media_id="1",
+    ) is None
+    assert chain.tmdb_mtype is None
+    assert chain.douban_mtype is None
 
 
 class _AsyncBangumiMediaChain:
@@ -125,8 +155,22 @@ def test_async_bangumi_movie_conversion_uses_movie_type() -> None:
     """异步Bangumi电影转换应向TMDB和豆瓣传递电影类型。"""
     chain = _AsyncBangumiMediaChain()
 
-    tmdb_info = asyncio.run(MediaChain.async_get_tmdbinfo_by_bangumiid(chain, 1))
-    douban_info = asyncio.run(MediaChain.async_get_doubaninfo_by_bangumiid(chain, 1))
+    tmdb_info = asyncio.run(
+        MediaChain.async_convert_media_identity(
+            chain,
+            target_source=MediaSource.TMDB,
+            media_source=MediaSource.Bangumi,
+            media_id="1",
+        )
+    )
+    douban_info = asyncio.run(
+        MediaChain.async_convert_media_identity(
+            chain,
+            target_source=MediaSource.Douban,
+            media_source=MediaSource.Bangumi,
+            media_id="1",
+        )
+    )
 
     assert tmdb_info == {"id": 100}
     assert douban_info == {"id": "200"}

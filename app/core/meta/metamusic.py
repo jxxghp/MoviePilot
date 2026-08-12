@@ -5,7 +5,9 @@ from threading import RLock
 from typing import Any, Callable, Optional
 
 from app.core.meta.metabase import MetaBase
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
+from app.utils import rust_accel
+from app.utils.media import resolve_media_identity
 
 
 _AUDIO_FORMAT_PATTERN = re.compile(
@@ -539,6 +541,8 @@ class MusicNameRegistry:
 
     _patterns: dict[str, MusicNamePattern] = {}
     _parsers: dict[str, MusicNameParser] = {}
+    _default_patterns: dict[str, MusicNamePattern] = {}
+    _default_parsers: dict[str, MusicNameParser] = {}
     _lock = RLock()
 
     @classmethod
@@ -613,6 +617,32 @@ class MusicNameRegistry:
             return None
         return parser.handler(context, matched)
 
+    @classmethod
+    def _capture_default_components(cls) -> None:
+        """保存内置命名组件的对象快照，供 Rust 快路判断兼容性。"""
+        with cls._lock:
+            cls._default_patterns = dict(cls._patterns)
+            cls._default_parsers = dict(cls._parsers)
+
+    @classmethod
+    def _uses_default_components(cls) -> bool:
+        """判断当前注册表是否仍为未替换的内置命名组件。"""
+        with cls._lock:
+            if not cls._default_patterns or not cls._default_parsers:
+                return False
+            if (
+                    cls._patterns.keys() != cls._default_patterns.keys()
+                    or cls._parsers.keys() != cls._default_parsers.keys()
+            ):
+                return False
+            return all(
+                component is cls._default_patterns[name]
+                for name, component in cls._patterns.items()
+            ) and all(
+                component is cls._default_parsers[name]
+                for name, component in cls._parsers.items()
+            )
+
 
 class MetaMusic(MetaBase):
     """音乐文件名及音频标签解析结果，作为 MetaBase 的音乐分支实现。"""
@@ -637,7 +667,7 @@ class MetaMusic(MetaBase):
         bitrate: Optional[int] = None,
         duration: Optional[int] = None,
         isrc: Optional[str] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         parse_title: bool = False,
     ):
@@ -662,11 +692,74 @@ class MetaMusic(MetaBase):
         self.bitrate = bitrate
         self.duration = duration
         self.isrc = isrc
-        self.media_source = media_source
-        self.media_id = media_id
+        self.media_source, self.media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
         if parse_title:
             # 种子/文件名字符串场景：解析艺术家、曲名、年份并补充音质参数
             self.apply_title(self.title or org_string or "")
+
+    @classmethod
+    def parse_query(cls, query: str) -> "MetaMusic":
+        """把用户输入或资源标题解析为音乐元数据。"""
+        return cls(org_string=query, title=query, parse_title=True)
+
+    @classmethod
+    def from_music_info(cls, info: Any) -> "MetaMusic":
+        """把标准音乐信息转换为下载、整理和站点搜索使用的元数据。"""
+        return cls(
+            title=info.title,
+            artists=list(info.artists),
+            album=info.album,
+            album_artist=info.album_artist,
+            year=info.year,
+            disc_number=info.disc_number,
+            track_number=info.track_number,
+            total_discs=getattr(info, "total_discs", None),
+            total_tracks=info.total_tracks,
+            version=info.version,
+            audio_format=info.audio_format,
+            audio_lossless=info.audio_lossless,
+            bit_depth=info.bit_depth,
+            sample_rate=info.sample_rate,
+            bitrate=info.bitrate,
+            duration=info.duration,
+            isrc=info.isrc,
+            media_source=info.media_source,
+            media_id=info.media_id,
+        )
+
+    @classmethod
+    def from_album_context(
+            cls,
+            directory_name: str,
+            tracks: list["MetaMusic"],
+    ) -> "MetaMusic":
+        """按目录名和多数音轨标签汇总专辑识别条件。"""
+        directory = cls.parse_album_dir(directory_name)
+        album_votes: dict[str, int] = {}
+        artist_votes: dict[str, int] = {}
+        for track in tracks:
+            if track.album:
+                album_votes[track.album] = album_votes.get(track.album, 0) + 1
+            artist = track.album_artist or (track.artists[0] if track.artists else None)
+            if artist:
+                artist_votes[artist] = artist_votes.get(artist, 0) + 1
+        majority_album = max(album_votes, key=album_votes.get) if album_votes else None
+        majority_artist = max(artist_votes, key=artist_votes.get) if artist_votes else None
+        threshold = max(2, len(tracks) // 2)
+        album = majority_album if majority_album and album_votes[majority_album] >= threshold else None
+        artist = majority_artist if majority_artist and artist_votes[majority_artist] >= threshold else None
+        return cls(
+            org_string=directory_name,
+            title=album or directory.get("album") or directory_name,
+            album=album or directory.get("album"),
+            artists=[artist or directory.get("artist")]
+            if artist or directory.get("artist") else [],
+            album_artist=artist or directory.get("artist"),
+            year=directory.get("year"),
+        )
 
     @property
     def name(self) -> str:
@@ -725,6 +818,14 @@ class MetaMusic(MetaBase):
         命名模式和对应解析器，最后统一回填结构化字段并提取曲序前缀。
         """
         raw = str(value or "")
+        if MusicNameRegistry._uses_default_components():
+            rust_result = rust_accel.parse_metamusic(
+                raw,
+                artists=list(self.artists) or None,
+                year=self.year,
+            )
+            if rust_result and self._apply_rust_title_result(rust_result):
+                return
         self.apply_audio_quality(raw)
         context = self._prepare_name_context(
             raw=raw,
@@ -742,6 +843,30 @@ class MetaMusic(MetaBase):
             return
         self._apply_name_result(context, parsed)
         self._apply_track_prefix()
+
+    def _apply_rust_title_result(self, parsed: dict[str, Any]) -> bool:
+        """回填 Rust 音乐解析结果，并保留调用方已有的高可信字段。"""
+        if "title" not in parsed:
+            return False
+        parsed_meta = type(self).from_dict(parsed)
+        self.title = parsed_meta.title
+        for field_name in (
+                "artists",
+                "album",
+                "year",
+                "disc_number",
+                "track_number",
+                "audio_format",
+                "audio_lossless",
+                "bit_depth",
+                "sample_rate",
+                "bitrate",
+        ):
+            current_value = getattr(self, field_name, None)
+            parsed_value = getattr(parsed_meta, field_name, None)
+            if current_value in (None, "", []) and parsed_value not in (None, "", []):
+                setattr(self, field_name, parsed_value)
+        return True
 
     @classmethod
     def _prepare_name_context(
@@ -1778,6 +1903,7 @@ def _register_default_name_components() -> None:
         MusicNameRegistry.register_pattern(pattern)
     for parser in parsers:
         MusicNameRegistry.register_parser(parser)
+    MusicNameRegistry._capture_default_components()
 
 
 _register_default_name_components()

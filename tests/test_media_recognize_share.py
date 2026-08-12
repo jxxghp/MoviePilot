@@ -12,7 +12,7 @@ from app.core.context import MediaInfo, MusicInfo
 from app.core.meta import MetaBase, MetaMusic
 from app.core.metainfo import MetaInfo
 from app.helper.server import MoviePilotServerHelper
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _build_meta(name: str, media_type: MediaType = MediaType.UNKNOWN) -> MetaBase:
@@ -23,11 +23,28 @@ def _build_meta(name: str, media_type: MediaType = MediaType.UNKNOWN) -> MetaBas
     return meta
 
 
+def _tmdb_media(
+        title: str,
+        media_id: int,
+        media_type: MediaType,
+        **kwargs,
+) -> MediaInfo:
+    """构造同时带规范主身份和 TMDB 辅助元数据的测试媒体。"""
+    return MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id=str(media_id),
+        tmdb_id=media_id,
+        title=title,
+        type=media_type,
+        **kwargs,
+    )
+
+
 def test_report_shared_result_after_local_recognize_success():
     """本地识别成功后应上报共享识别结果。"""
     chain = ChainBase()
     meta = _build_meta("测试电影", MediaType.MOVIE)
-    mediainfo = MediaInfo(title="测试电影", year="2024", tmdb_id=100, type=MediaType.MOVIE)
+    mediainfo = _tmdb_media("测试电影", 100, MediaType.MOVIE, year="2024")
 
     with patch.object(chain, "run_module", return_value=mediainfo) as run_module, patch(
         "app.chain.MoviePilotServerHelper.report_recognize_share",
@@ -47,7 +64,7 @@ def test_query_shared_result_when_local_recognize_failed():
     """本地识别失败后应回查共享识别结果，并按共享ID再次识别。"""
     chain = ChainBase()
     meta = _build_meta("测试剧集")
-    shared_media = MediaInfo(title="测试剧集", year="2024", tmdb_id=200, type=MediaType.TV)
+    shared_media = _tmdb_media("测试剧集", 200, MediaType.TV, year="2024")
 
     with patch.object(
         chain,
@@ -55,14 +72,18 @@ def test_query_shared_result_when_local_recognize_failed():
         side_effect=[None, shared_media],
     ) as run_module, patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
-        return_value={"type": "tv", "tmdbid": 200, "season": 1},
+        return_value={
+            "type": "tv",
+            "media_source": "themoviedb",
+            "media_id": "200",
+            "season": 1,
+        },
     ) as query_mock, patch(
         "app.chain.MoviePilotServerHelper.to_recognize_params",
         return_value={
             "mtype": MediaType.TV,
-            "tmdbid": 200,
-            "doubanid": None,
-            "bangumiid": None,
+            "media_source": MediaSource.TMDB,
+            "media_id": "200",
             "season": 1,
         },
     ), patch(
@@ -78,7 +99,8 @@ def test_query_shared_result_when_local_recognize_failed():
     assert run_module.call_count == 2
     query_mock.assert_called_once_with(meta=meta, mtype=None, keyword_meta=meta)
     second_call = run_module.call_args_list[1]
-    assert second_call.kwargs["tmdbid"] == 200
+    assert second_call.kwargs["media_source"] == MediaSource.TMDB
+    assert second_call.kwargs["media_id"] == "200"
     assert second_call.kwargs["mtype"] == MediaType.TV
     assert meta.begin_season is None
 
@@ -87,7 +109,7 @@ def test_async_query_shared_result_when_local_recognize_failed():
     """异步识别失败后也应回查共享识别结果。"""
     chain = ChainBase()
     meta = _build_meta("测试异步剧集")
-    shared_media = MediaInfo(title="测试异步剧集", year="2025", tmdb_id=300, type=MediaType.TV)
+    shared_media = _tmdb_media("测试异步剧集", 300, MediaType.TV, year="2025")
     async_run_module = AsyncMock(side_effect=[None, shared_media])
 
     async def runner():
@@ -97,14 +119,18 @@ def test_async_query_shared_result_when_local_recognize_failed():
             async_run_module,
         ), patch(
             "app.chain.MoviePilotServerHelper.async_query_recognize_share",
-            AsyncMock(return_value={"type": "tv", "tmdbid": 300, "season": 2}),
+            AsyncMock(return_value={
+                "type": "tv",
+                "media_source": "themoviedb",
+                "media_id": "300",
+                "season": 2,
+            }),
         ) as query_mock, patch(
             "app.chain.MoviePilotServerHelper.to_recognize_params",
             return_value={
                 "mtype": MediaType.TV,
-                "tmdbid": 300,
-                "doubanid": None,
-                "bangumiid": None,
+                "media_source": MediaSource.TMDB,
+                "media_id": "300",
                 "season": 2,
             },
         ), patch(
@@ -132,11 +158,12 @@ def test_backfill_local_cache_after_shared_recognize_success():
     chain = ChainBase()
     meta = _build_meta("测试缓存回填", MediaType.MOVIE)
     shared_media = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="700",
         title="测试缓存回填",
         year="2024",
         tmdb_id=700,
         type=MediaType.MOVIE,
-        source="themoviedb",
         tmdb_info={"id": 700, "media_type": MediaType.MOVIE, "title": "测试缓存回填"},
     )
 
@@ -146,14 +173,17 @@ def test_backfill_local_cache_after_shared_recognize_success():
         side_effect=[None, shared_media, None],
     ) as run_module_mock, patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
-        return_value={"type": "movie", "tmdbid": 700},
+        return_value={
+            "type": "movie",
+            "media_source": "themoviedb",
+            "media_id": "700",
+        },
     ), patch(
         "app.chain.MoviePilotServerHelper.to_recognize_params",
         return_value={
             "mtype": MediaType.MOVIE,
-            "tmdbid": 700,
-            "doubanid": None,
-            "bangumiid": None,
+            "media_source": MediaSource.TMDB,
+            "media_id": "700",
             "season": None,
         },
     ), patch(
@@ -178,12 +208,8 @@ def test_query_and_report_prefer_original_name_keyword():
     meta.original_name = "未应用识别词的名称"
     meta.year = "2024"
     meta.begin_season = 1
-    mediainfo = MediaInfo(
-        title="测试剧集",
-        year="2024",
-        tmdb_id=400,
-        type=MediaType.TV,
-        season=1,
+    mediainfo = _tmdb_media(
+        "测试剧集", 400, MediaType.TV, year="2024", season=1
     )
 
     query_params = MoviePilotServerHelper._build_recognize_query_params(meta=meta)
@@ -202,12 +228,8 @@ def test_query_and_report_can_use_distinct_keyword_meta():
     keyword_meta = _build_meta("辅助识别前的名称", MediaType.UNKNOWN)
     keyword_meta.original_name = "辅助识别前的名称"
 
-    mediainfo = MediaInfo(
-        title="测试剧集",
-        year="2024",
-        tmdb_id=401,
-        type=MediaType.TV,
-        season=2,
+    mediainfo = _tmdb_media(
+        "测试剧集", 401, MediaType.TV, year="2024", season=2
     )
 
     query_params = MoviePilotServerHelper._build_recognize_query_params(
@@ -233,7 +255,7 @@ def test_query_and_report_preserve_special_season_zero():
     """共享识别查询和上报都必须保留显式特别季。"""
     meta = _build_meta("测试剧特别篇", MediaType.TV)
     meta.begin_season = 0
-    mediainfo = MediaInfo(title="测试剧", tmdb_id=402, type=MediaType.TV, season=0)
+    mediainfo = _tmdb_media("测试剧", 402, MediaType.TV, season=0)
 
     query_params = MoviePilotServerHelper._build_recognize_query_params(meta=meta)
     report_payload = MoviePilotServerHelper._build_recognize_report_payload(
@@ -262,7 +284,7 @@ def test_report_shared_result_with_distinct_keyword_meta():
     meta.begin_season = 1
     share_meta = _build_meta("辅助识别前的名称", MediaType.UNKNOWN)
     share_meta.original_name = "辅助识别前的名称"
-    mediainfo = MediaInfo(title="测试剧集", year="2024", tmdb_id=402, type=MediaType.TV)
+    mediainfo = _tmdb_media("测试剧集", 402, MediaType.TV, year="2024")
 
     with patch.object(chain, "run_module", return_value=mediainfo), patch(
         "app.chain.MoviePilotServerHelper.report_recognize_share",
@@ -285,7 +307,7 @@ def test_query_shared_result_with_distinct_keyword_meta():
     meta.year = "2024"
     share_meta = _build_meta("辅助识别前的名称", MediaType.UNKNOWN)
     share_meta.original_name = "辅助识别前的名称"
-    shared_media = MediaInfo(title="测试剧集", year="2024", tmdb_id=403, type=MediaType.TV)
+    shared_media = _tmdb_media("测试剧集", 403, MediaType.TV, year="2024")
 
     with patch.object(
         chain,
@@ -293,14 +315,18 @@ def test_query_shared_result_with_distinct_keyword_meta():
         side_effect=[None, shared_media],
     ), patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
-        return_value={"type": "tv", "tmdbid": 403, "season": 1},
+        return_value={
+            "type": "tv",
+            "media_source": "themoviedb",
+            "media_id": "403",
+            "season": 1,
+        },
     ) as query_mock, patch(
         "app.chain.MoviePilotServerHelper.to_recognize_params",
         return_value={
             "mtype": MediaType.TV,
-            "tmdbid": 403,
-            "doubanid": None,
-            "bangumiid": None,
+            "media_source": MediaSource.TMDB,
+            "media_id": "403",
             "season": 1,
         },
     ), patch(
@@ -328,7 +354,7 @@ def test_skip_report_when_local_recognize_hits_cache():
     """本地识别命中缓存时不应上报共享识别。"""
     chain = ChainBase()
     meta = _build_meta("缓存电影", MediaType.MOVIE)
-    mediainfo = MediaInfo(title="缓存电影", year="2024", tmdb_id=500, type=MediaType.MOVIE)
+    mediainfo = _tmdb_media("缓存电影", 500, MediaType.MOVIE, year="2024")
     mediainfo.recognize_cache_hit = True
 
     with patch.object(chain, "run_module", return_value=mediainfo) as run_module, patch(
@@ -349,7 +375,7 @@ def test_async_skip_report_when_local_recognize_hits_cache():
     """异步本地识别命中缓存时不应上报共享识别。"""
     chain = ChainBase()
     meta = _build_meta("缓存剧集", MediaType.TV)
-    mediainfo = MediaInfo(title="缓存剧集", year="2025", tmdb_id=600, type=MediaType.TV)
+    mediainfo = _tmdb_media("缓存剧集", 600, MediaType.TV, year="2025")
     mediainfo.recognize_cache_hit = True
 
     async def runner():
@@ -379,7 +405,7 @@ def test_recognize_by_meta_can_skip_obtain_images():
     """标题识别可显式关闭图片拉取。"""
     media_chain = MediaChain()
     meta = MetaInfo("测试电影")
-    mediainfo = MediaInfo(title="测试电影", year="2024", tmdb_id=404, type=MediaType.MOVIE)
+    mediainfo = _tmdb_media("测试电影", 404, MediaType.MOVIE, year="2024")
 
     with patch.object(
         media_chain,
@@ -400,7 +426,7 @@ def test_recognize_by_meta_reports_with_original_keyword_after_plugin_help():
     """辅助识别后应继续使用辅助前关键字进行共享上报。"""
     media_chain = MediaChain()
     meta = MetaInfo("辅助前名称")
-    plugin_media = MediaInfo(title="辅助后名称", year="2024", tmdb_id=405, type=MediaType.TV)
+    plugin_media = _tmdb_media("辅助后名称", 405, MediaType.TV, year="2024")
 
     with patch.object(
         media_chain,
@@ -424,7 +450,7 @@ def test_async_recognize_by_meta_can_skip_obtain_images():
     """异步标题识别可显式关闭图片拉取。"""
     media_chain = MediaChain()
     meta = MetaInfo("测试异步电影")
-    mediainfo = MediaInfo(title="测试异步电影", year="2025", tmdb_id=406, type=MediaType.MOVIE)
+    mediainfo = _tmdb_media("测试异步电影", 406, MediaType.MOVIE, year="2025")
 
     async def runner():
         with patch.object(
@@ -462,7 +488,7 @@ def _music_info() -> MusicInfo:
 
 
 def test_music_report_payload_includes_source_and_media_id():
-    """音乐上报载荷应携带 music 类型与数据源原生身份，其余媒体 ID 恒为 None。"""
+    """音乐上报载荷应只携带统一来源、原生身份和音乐实体类型。"""
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美", year=2003)
     payload = MoviePilotServerHelper._build_recognize_report_payload(
         meta=meta,
@@ -474,8 +500,8 @@ def test_music_report_payload_includes_source_and_media_id():
     assert payload["title"] == "晴天"
     assert payload["year"] == "2003"
     assert payload["season"] is None
-    assert payload["tmdbid"] is None
-    assert payload["doubanid"] is None
+    assert "tmdbid" not in payload
+    assert "doubanid" not in payload
     assert payload["media_source"] == "musicbrainz"
     assert payload["media_id"] == "recording-1"
     assert payload["music_type"] == "recording"
@@ -529,8 +555,8 @@ def test_music_shared_identity_keeps_entity_type():
     })
 
     assert params["mtype"] == MediaType.MUSIC
-    assert params["source"] == "musicbrainz"
-    assert params["mediaid"] == "release-group-1"
+    assert params["media_source"] == MediaSource.MusicBrainz
+    assert params["media_id"] == "release-group-1"
     assert params["music_type"] == "album"
 
 
@@ -551,7 +577,7 @@ def test_chain_recognize_media_reports_music_share_result():
     meta = MetaMusic(title="晴天", artists=["周杰伦"], year=2003)
     music = _music_info()
 
-    with patch("app.chain.music.MusicChain.recognize_best", return_value=music), patch(
+    with patch.object(chain, "recognize_music_from_source", return_value=music), patch(
         "app.chain.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
     ) as report_mock, patch(
@@ -570,12 +596,10 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     music = _music_info()
 
-    with patch(
-        "app.chain.music.MusicChain.recognize_best",
-        return_value=None,
-    ) as recognize_best, patch(
-        "app.chain.music.MusicChain.recognize_from_source",
-        return_value=music,
+    with patch.object(
+        chain,
+        "recognize_music_from_source",
+        side_effect=[None, music],
     ) as recognize_source, patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
         return_value={
@@ -588,13 +612,9 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
         "app.chain.MoviePilotServerHelper.to_recognize_params",
         return_value={
             "mtype": MediaType.MUSIC,
-            "source": "musicbrainz",
-            "mediaid": "recording-1",
+            "media_source": MediaSource.MusicBrainz,
+            "media_id": "recording-1",
             "music_type": "recording",
-            "tmdbid": None,
-            "doubanid": None,
-            "bangumiid": None,
-            "anilistid": None,
             "season": None,
         },
     ), patch(
@@ -607,11 +627,11 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is music
-    recognize_best.assert_called_once_with(meta=meta, cache=False)
-    recognize_source.assert_called_once_with(
+    assert recognize_source.call_count == 2
+    recognize_source.assert_called_with(
         media_source="musicbrainz",
         meta=meta,
-        mediaid="recording-1",
+        media_id="recording-1",
         cache=False,
         music_type="recording",
     )
@@ -624,12 +644,10 @@ def test_chain_recognize_media_queries_music_share_after_local_fallback():
     fallback = MusicInfo(title="晴天", artists=["周杰伦"])
     music = _music_info()
 
-    with patch(
-        "app.chain.music.MusicChain.recognize_best",
-        return_value=fallback,
-    ), patch(
-        "app.chain.music.MusicChain.recognize_from_source",
-        return_value=music,
+    with patch.object(
+        chain,
+        "recognize_music_from_source",
+        side_effect=[fallback, music],
     ) as recognize_source, patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
         return_value={
@@ -642,13 +660,9 @@ def test_chain_recognize_media_queries_music_share_after_local_fallback():
         "app.chain.MoviePilotServerHelper.to_recognize_params",
         return_value={
             "mtype": MediaType.MUSIC,
-            "source": "musicbrainz",
-            "mediaid": "recording-1",
+            "media_source": MediaSource.MusicBrainz,
+            "media_id": "recording-1",
             "music_type": "recording",
-            "tmdbid": None,
-            "doubanid": None,
-            "bangumiid": None,
-            "anilistid": None,
             "season": None,
         },
     ), patch.object(
@@ -666,7 +680,7 @@ def test_chain_recognize_media_queries_music_share_after_local_fallback():
         mtype=MediaType.MUSIC,
         keyword_meta=meta,
     )
-    recognize_source.assert_called_once()
+    assert recognize_source.call_count == 2
 
 
 def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
@@ -677,12 +691,10 @@ def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
     music = _music_info()
 
     async def runner():
-        with patch(
-            "app.chain.music.MusicChain.async_recognize_best",
-            new=AsyncMock(return_value=fallback),
-        ), patch(
-            "app.chain.music.MusicChain.async_recognize_from_source",
-            new=AsyncMock(return_value=music),
+        with patch.object(
+            chain,
+            "async_recognize_music_from_source",
+            new=AsyncMock(side_effect=[fallback, music]),
         ) as recognize_source, patch(
             "app.chain.MoviePilotServerHelper.async_query_recognize_share",
             new=AsyncMock(return_value={
@@ -695,13 +707,9 @@ def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
             "app.chain.MoviePilotServerHelper.to_recognize_params",
             return_value={
                 "mtype": MediaType.MUSIC,
-                "source": "musicbrainz",
-                "mediaid": "recording-1",
+                "media_source": MediaSource.MusicBrainz,
+                "media_id": "recording-1",
                 "music_type": "recording",
-                "tmdbid": None,
-                "doubanid": None,
-                "bangumiid": None,
-                "anilistid": None,
                 "season": None,
             },
         ), patch.object(
@@ -723,10 +731,11 @@ def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
         mtype=MediaType.MUSIC,
         keyword_meta=meta,
     )
-    recognize_source.assert_awaited_once_with(
+    assert recognize_source.await_count == 2
+    recognize_source.assert_awaited_with(
         media_source="musicbrainz",
         meta=meta,
-        mediaid="recording-1",
+        media_id="recording-1",
         cache=False,
         music_type="recording",
     )
@@ -738,7 +747,7 @@ def test_chain_recognize_media_skips_music_report_for_fallback_result():
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
     fallback = MusicInfo(title="未知曲目", artists=["未知艺术家"])
 
-    with patch("app.chain.music.MusicChain.recognize_best", return_value=fallback), patch(
+    with patch.object(chain, "recognize_music_from_source", return_value=fallback), patch(
         "app.chain.MoviePilotServerHelper.query_recognize_share",
         return_value=None,
     ) as query_mock, patch(

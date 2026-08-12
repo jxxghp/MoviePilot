@@ -15,7 +15,7 @@ from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.helper.directory import validate_download_save_path
 from app.schemas import DownloaderTorrent, TransferDirectoryConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 @pytest.fixture(autouse=True)
@@ -547,6 +547,8 @@ def test_download_subtitle_returns_specific_error_for_bad_save_path(monkeypatch)
 
     success, message, saved_files = chain.download_subtitle(
         subtitle=subtitle,
+        media_source=MediaSource.TMDB,
+        media_id="1",
         save_path="/etc",
     )
 

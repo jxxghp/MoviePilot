@@ -4,8 +4,8 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.api.endpoints.torrent import reidentify_cache, torrents_cache
-from app.chain.music import MusicChain
 from app.core.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo, TorrentInfo
+from app.core.meta import MetaMusic
 from app.schemas.types import MediaType
 from app.utils.crypto import HashUtils
 
@@ -20,7 +20,7 @@ def _album_context() -> Context:
         artists=["周杰伦"],
     )
     return Context(
-        meta_info=MusicChain.to_meta(album),
+        meta_info=MetaMusic.from_music_info(album),
         media_info=album,
         torrent_info=TorrentInfo(
             title="周杰伦 - 叶惠美 FLAC",
@@ -87,7 +87,7 @@ def test_torrent_cache_exact_reidentify_forwards_album_namespace():
     recognize_kwargs = media_chain.async_recognize_media.await_args.kwargs
     assert recognize_kwargs["mtype"] == MediaType.MUSIC
     assert recognize_kwargs["music_type"] == MUSIC_ENTITY_ALBUM
-    assert recognize_kwargs["mediaid"] == "release-group-1"
+    assert recognize_kwargs["media_id"] == "release-group-1"
 
 
 def test_torrent_cache_auto_reidentify_keeps_music_meta_and_entity():

@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, get_id_column, async_db_query, Base
+from app.db.models.media_identity import media_identity_constraint
+from app.schemas.types import MediaSource
 
 
 class MediaServerItem(Base):
@@ -41,6 +43,7 @@ class MediaServerItem(Base):
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     __table_args__ = (
+        media_identity_constraint("mediaserveritem"),
         Index('ux_mediaserveritem_server_item_id', 'server', 'item_id', unique=True),
         Index(
             'ix_mediaserveritem_media_identity_type',
@@ -85,7 +88,7 @@ class MediaServerItem(Base):
     @classmethod
     @db_query
     def exist_by_media_identity(
-            cls, db: Session, media_source: str, media_id: str, mtype: str,
+            cls, db: Session, media_source: MediaSource, media_id: str, mtype: str,
     ):
         """按规范媒体身份和类型查询媒体服务器条目。"""
         return db.query(cls).filter(
@@ -118,7 +121,7 @@ class MediaServerItem(Base):
     @classmethod
     @async_db_query
     async def async_exist_by_media_identity(
-            cls, db: AsyncSession, media_source: str, media_id: str, mtype: str,
+            cls, db: AsyncSession, media_source: MediaSource, media_id: str, mtype: str,
     ):
         """异步按规范媒体身份和类型查询媒体服务器条目。"""
         result = await db.execute(select(cls).filter(

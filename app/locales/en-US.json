@@ -97,8 +97,12 @@
     }
   },
   "messages": {
+    "无效的媒体来源": "Invalid media source",
+    "该媒体来源不支持此音乐接口": "This media source is not supported by this music endpoint",
     "媒体来源和媒体 ID 必须同时提供": "Media source and media ID must be provided together",
     "media_source 和 media_id 必须同时提供": "media_source and media_id must be provided together",
+    "新增订阅时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when creating a subscription",
+    "更新媒体身份时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when updating media identity",
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",
