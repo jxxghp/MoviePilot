@@ -9,6 +9,7 @@ from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 
 from app.agent.policy.contracts import (
+    ConfirmationMode,
     ExecutionOutcome,
     ExecutionReceipt,
     MigrationState,
@@ -100,6 +101,14 @@ class AgentToolPolicyOrchestrator:
                 confirmation_required=False,
                 shadow=True,
                 reason_code="legacy_shadow_allow",
+            )
+        elif policy.confirmation is ConfirmationMode.REQUIRED:
+            # 严格运行时接管前保持既有调用能力，但不得把敏感动作记为安全读取。
+            decision = PolicyDecision(
+                allowed=True,
+                confirmation_required=False,
+                shadow=True,
+                reason_code="strict_runtime_pending",
             )
         else:
             decision = PolicyDecision(
