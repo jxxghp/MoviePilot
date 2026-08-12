@@ -6,6 +6,7 @@ import sys
 import uuid
 
 import psycopg2
+from psycopg2 import sql
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
@@ -364,7 +365,9 @@ def test_current_schema_reaches_current_alembic_head_on_postgresql(
     ) as connection:
         connection.autocommit = True
         with connection.cursor() as cursor:
-            cursor.execute(f'CREATE SCHEMA "{schema}"')
+            cursor.execute(
+                sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema))
+            )
 
     repository = Path(__file__).resolve().parents[1]
     environment = os.environ.copy()
@@ -380,4 +383,20 @@ def test_current_schema_reaches_current_alembic_head_on_postgresql(
         "SUPERUSER": "migration-test-admin",
         "SUPERUSER_PASSWORD": "MigrationTestPassword123",
     })
-    _run_current_schema_chain(repository, environment)
+    try:
+        _run_current_schema_chain(repository, environment)
+    finally:
+        with psycopg2.connect(
+            host=host,
+            port=port,
+            dbname=database,
+            user=username,
+            password=password,
+        ) as connection:
+            connection.autocommit = True
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                        sql.Identifier(schema)
+                    )
+                )

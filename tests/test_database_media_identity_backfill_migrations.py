@@ -3,6 +3,7 @@ import os
 import uuid
 
 import psycopg2
+from psycopg2 import sql
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
@@ -645,20 +646,38 @@ def test_e6_f7_round_trip_on_postgresql(monkeypatch) -> None:
         assert connection.server_version // 10000 == 15, connection.server_version
         connection.autocommit = True
         with connection.cursor() as cursor:
-            cursor.execute(f'CREATE SCHEMA "{schema}"')
+            cursor.execute(
+                sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema))
+            )
 
-    engine = sa.create_engine(
-        sa.URL.create(
-            "postgresql+psycopg2",
-            username=username,
-            password=password,
-            host=host,
-            port=int(port),
-            database=database,
-        ),
-        connect_args={"options": f"-csearch_path={schema}"},
-    )
+    engine = None
     try:
+        engine = sa.create_engine(
+            sa.URL.create(
+                "postgresql+psycopg2",
+                username=username,
+                password=password,
+                host=host,
+                port=int(port),
+                database=database,
+            ),
+            connect_args={"options": f"-csearch_path={schema}"},
+        )
         _exercise_e6_f7_round_trip(monkeypatch, engine)
     finally:
-        engine.dispose()
+        if engine is not None:
+            engine.dispose()
+        with psycopg2.connect(
+            host=host,
+            port=port,
+            dbname=database,
+            user=username,
+            password=password,
+        ) as connection:
+            connection.autocommit = True
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                        sql.Identifier(schema)
+                    )
+                )
