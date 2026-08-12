@@ -361,7 +361,8 @@ def test_media_chain_default_recognition_only_queries_musicbrainz(monkeypatch):
     recognize_source = Mock(return_value=expected)
     monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
-    result = chain.recognize_media(meta=meta)
+    with patch("app.chain.MoviePilotServerHelper.report_recognize_share"):
+        result = chain.recognize_media(meta=meta)
 
     assert result is expected
     recognize_source.assert_called_once_with(
@@ -408,7 +409,11 @@ def test_default_recognition_does_not_fallback_after_musicbrainz_miss(monkeypatc
     recognize_source = Mock(return_value=None)
     monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
-    assert chain.recognize_media(meta=meta) is None
+    with patch(
+        "app.chain.MoviePilotServerHelper.query_recognize_share",
+        return_value=None,
+    ):
+        assert chain.recognize_media(meta=meta) is None
     recognize_source.assert_called_once()
     assert recognize_source.call_args.kwargs["media_source"] == MediaSource.MusicBrainz
 

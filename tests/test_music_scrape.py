@@ -80,14 +80,27 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     )
     album = _album_info()
 
-    success, message = chain.scrape_music_metadata(
-        FileItem(storage="local", path="/music/叶惠美", type="dir", name="叶惠美"),
-        mediainfo=album,
-    )
+    with patch(
+        "app.chain.scraping.MediaChain.get_music_album",
+        return_value=None,
+    ) as get_music_album:
+        success, message = chain.scrape_music_metadata(
+            FileItem(
+                storage="local",
+                path="/music/叶惠美",
+                type="dir",
+                name="叶惠美",
+            ),
+            mediainfo=album,
+        )
 
     assert success is True
     assert message == "已刮削 2 个音频文件"
     chain._download_music_cover.assert_called_once_with(album.cover_url)
+    get_music_album.assert_called_once_with(
+        media_source=album.media_source,
+        media_id=album.media_id,
+    )
     assert chain._scrape_music_file.call_count == 2
     assert all(
         call.args[1] is album and call.kwargs["cover"] == (b"cover", "image/jpeg")
