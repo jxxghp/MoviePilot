@@ -577,10 +577,14 @@ def test_custom_identifier_uses_source_specific_id_and_returns_unified_identity(
 
 
 def test_generic_media_identity_is_not_custom_identifier_syntax():
-    """通用身份字段不得被自定义识别词解析器接收。"""
-    _, metainfo = find_metainfo(
-        "Movie {[media_source=themoviedb;media_id=550;type=movies]}"
-    )
+    """通用身份字段不得因 Rust 扩展版本差异被自定义识别词解析器接收。"""
+    with patch(
+        "app.core.metainfo.rust_accel.find_metainfo",
+        side_effect=AssertionError("通用身份标签必须绕过 Rust 解析器"),
+    ):
+        _, metainfo = find_metainfo(
+            "Movie {[media_source=themoviedb;media_id=550;type=movies]}"
+        )
 
     assert metainfo["media_source"] is None
     assert metainfo["media_id"] is None

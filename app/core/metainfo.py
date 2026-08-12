@@ -62,6 +62,7 @@ _EXTENDED_MEDIA_ID_TAG_RE = re.compile(
     r'(?:bangumi(?:id)?|anilist(?:id)?)[=\-]\d+',
     re.IGNORECASE,
 )
+_GENERIC_MEDIA_ID_TAG_RE = re.compile(r'(?:^|[;\[])media_(?:source|id)=', re.IGNORECASE)
 _RUST_PARSE_OPTIONS_CACHE_KEY = "_cache_key"
 
 _LEGACY_BRACED_ID_PATTERNS = (
@@ -418,13 +419,15 @@ def _requires_python_metainfo(
     custom_words: Optional[List[str]] = None,
 ) -> bool:
     """
-    判断标题或临时识别词是否包含当前 Rust 扩展尚未支持的数据源专用 ID 标签。
+    判断标题或临时识别词是否必须由 Python 解析器处理媒体身份标签。
 
     :param title: 原始标题
     :param custom_words: 临时识别词
     :return: 是否必须使用Python解析器
     """
     candidates = [title or "", *(custom_words or [])]
+    if any(_GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates):
+        return True
     contains_extended_id = any(
         _EXTENDED_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
     )
