@@ -145,6 +145,13 @@ DOWNGRADE_RESTORE_INDEXES = {
 
 def _load_schema_state(inspector: sa.Inspector):
     tables = set(inspector.get_table_names())
+    table_columns = {
+        table_name: {
+            column["name"]
+            for column in inspector.get_columns(table_name)
+        }
+        for table_name in tables
+    }
     table_indexes = {
         table_name: {
             index["name"]: {
@@ -155,7 +162,7 @@ def _load_schema_state(inspector: sa.Inspector):
         }
         for table_name in tables
     }
-    return tables, table_indexes
+    return tables, table_columns, table_indexes
 
 
 def _drop_index(
@@ -215,9 +222,12 @@ def _create_index(
     index_name: str,
     columns: list[str],
     tables: set[str],
+    table_columns: dict[str, set[str]],
     table_indexes: dict[str, dict[str, dict[str, object]]],
 ) -> None:
     if table_name not in tables:
+        return
+    if not set(columns).issubset(table_columns[table_name]):
         return
     if index_name in table_indexes[table_name]:
         return
@@ -231,8 +241,9 @@ def _create_index(
 
 
 def upgrade() -> None:
+    """以字段签名幂等替换 2.2.4 高频查询索引。"""
     inspector = sa.inspect(op.get_bind())
-    tables, table_indexes = _load_schema_state(inspector)
+    tables, table_columns, table_indexes = _load_schema_state(inspector)
 
     for table_name, index_specs in REDUNDANT_ID_INDEXES.items():
         for index_name, columns in index_specs:
@@ -258,12 +269,20 @@ def upgrade() -> None:
 
     for table_name, index_specs in CREATE_INDEXES.items():
         for index_name, columns in index_specs:
-            _create_index(table_name, index_name, columns, tables, table_indexes)
+            _create_index(
+                table_name,
+                index_name,
+                columns,
+                tables,
+                table_columns,
+                table_indexes,
+            )
 
 
 def downgrade() -> None:
+    """移除组合索引并恢复适用于当前表结构的旧索引。"""
     inspector = sa.inspect(op.get_bind())
-    tables, table_indexes = _load_schema_state(inspector)
+    tables, table_columns, table_indexes = _load_schema_state(inspector)
 
     for table_name, index_specs in CREATE_INDEXES.items():
         for index_name, _ in index_specs:
@@ -271,8 +290,22 @@ def downgrade() -> None:
 
     for table_name, index_specs in DOWNGRADE_RESTORE_INDEXES.items():
         for index_name, columns in index_specs:
-            _create_index(table_name, index_name, columns, tables, table_indexes)
+            _create_index(
+                table_name,
+                index_name,
+                columns,
+                tables,
+                table_columns,
+                table_indexes,
+            )
 
     for table_name, index_specs in REDUNDANT_ID_INDEXES.items():
         for index_name, columns in index_specs:
-            _create_index(table_name, index_name, columns, tables, table_indexes)
+            _create_index(
+                table_name,
+                index_name,
+                columns,
+                tables,
+                table_columns,
+                table_indexes,
+            )

@@ -46,6 +46,17 @@ def _has_index(
     )
 
 
+def _column_names(table_name: str) -> set[str]:
+    """读取数据表当前全部字段名。"""
+    inspector = sa.inspect(op.get_bind())
+    if table_name not in inspector.get_table_names():
+        return set()
+    return {
+        column["name"]
+        for column in inspector.get_columns(table_name)
+    }
+
+
 def _add_columns(table_name: str, columns: Iterable[sa.Column]) -> None:
     """为指定表补充尚不存在的字段。"""
     for column in columns:
@@ -61,22 +72,29 @@ def _create_index(table_name: str, index_name: str, columns: list[str]) -> None:
         op.create_index(index_name, table_name, columns)
 
 
-def _backfill_media_identity(table_name: str, has_mediaid: bool = False) -> None:
-    """使用兼容 ID 幂等回填统一媒体身份。"""
+def _backfill_media_identity(table_name: str) -> None:
+    """使用表中实际存在的兼容 ID 幂等回填统一媒体身份。"""
+    existing_columns = _column_names(table_name)
     columns = [
-        sa.column("tmdbid", sa.Integer()),
-        sa.column("doubanid", sa.String()),
-        sa.column("bangumiid", sa.Integer()),
-        sa.column("anilistid", sa.Integer()),
         sa.column("media_source", sa.String()),
         sa.column("media_id", sa.String()),
     ]
-    if has_mediaid:
-        columns.append(sa.column("mediaid", sa.String()))
+    identity_columns = {
+        "mediaid": sa.String,
+        "tmdbid": sa.Integer,
+        "doubanid": sa.String,
+        "bangumiid": sa.Integer,
+        "anilistid": sa.Integer,
+    }
+    columns.extend(
+        sa.column(column_name, column_type())
+        for column_name, column_type in identity_columns.items()
+        if column_name in existing_columns
+    )
     table = sa.table(table_name, *columns)
     connection = op.get_bind()
 
-    if has_mediaid:
+    if "mediaid" in existing_columns:
         for prefix, source in (
                 ("tmdb", "themoviedb"),
                 ("themoviedb", "themoviedb"),
@@ -100,6 +118,8 @@ def _backfill_media_identity(table_name: str, has_mediaid: bool = False) -> None
             ("bangumi", "bangumiid"),
             ("anilist", "anilistid"),
     ):
+        if field not in existing_columns:
+            continue
         identity_column = table.c[field]
         connection.execute(
             table.update()
@@ -162,8 +182,8 @@ def upgrade() -> None:
         ["type", "media_source", "media_id", "site"],
     )
 
-    _backfill_media_identity("subscribe", has_mediaid=True)
-    _backfill_media_identity("subscribehistory", has_mediaid=True)
+    _backfill_media_identity("subscribe")
+    _backfill_media_identity("subscribehistory")
     _backfill_media_identity("downloadhistory")
     _backfill_media_identity("transferhistory")
     _backfill_media_identity("downloadfailure")
