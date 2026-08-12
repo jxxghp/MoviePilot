@@ -2,11 +2,12 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 import app.agent.middleware.subagents as subagent_module
+from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.subagents import (
     MoviePilotSubAgentMiddleware,
     SUBAGENT_CONTROL_TOOL_NAME,
@@ -14,6 +15,7 @@ from app.agent.middleware.subagents import (
     SubAgentTaskControlMiddleware,
     create_subagent_middlewares,
 )
+from app.agent.policy import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
 from app.agent.tools.tags import ToolTag
 
 
@@ -75,6 +77,40 @@ def test_subagent_tools_are_selected_by_tags():
         middleware._get_agent("media-researcher")
 
     assert [tool.name for tool in captured["tools"]] == ["custom_media_lookup"]
+
+
+def test_subagent_graph_registers_policy_middleware_as_outermost():
+    """懒加载的子代理图必须继承宿主上下文并先经过 policy middleware。"""
+    model = FakeListChatModel(responses=["ok"])
+    context = ToolPolicyContext(
+        session_id="subagent-session",
+        user_id="user-1",
+        origin=ToolOrigin.SUBAGENT,
+        principal_type=PrincipalType.SUBAGENT,
+        auth_source=AuthSource.INTERNAL,
+        agent_context={"is_admin": True},
+        channel="Telegram",
+        source="telegram",
+    )
+    captured = {}
+
+    def _fake_create_agent(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    middleware = MoviePilotSubAgentMiddleware(
+        model=model,
+        profiles=subagent_module._builtin_subagent_profiles(),
+        tools=[],
+        policy_context=context,
+    )
+
+    with patch.object(subagent_module, "create_agent", side_effect=_fake_create_agent):
+        middleware._get_agent("general-purpose")
+
+    assert isinstance(captured["middleware"][0], AgentPolicyMiddleware)
+    assert captured["middleware"][0].context is context
+    assert captured["middleware"][0].context.origin is ToolOrigin.SUBAGENT
 
 
 def test_moviepilot_explorer_selects_code_and_settings_tools():
@@ -185,6 +221,51 @@ def test_task_tool_call_records_streaming_summary():
             },
         }
     ]
+
+
+def test_task_middleware_sanitizes_its_own_logs():
+    """子代理中间件读取任务参数和异常写日志时必须脱敏。"""
+
+    async def _run_test():
+        secret_marker = "subagent-secret-marker-7316"
+        stream_handler = SimpleNamespace(
+            is_streaming=True,
+            record_tool_call=MagicMock(),
+        )
+        middleware = MoviePilotSubAgentMiddleware(
+            model=FakeListChatModel(responses=["ok"]),
+            profiles=subagent_module._builtin_subagent_profiles(),
+            tools=[],
+            stream_handler=stream_handler,
+        )
+        request = SimpleNamespace(
+            tool=SimpleNamespace(name=SUBAGENT_TASK_TOOL_NAME),
+            tool_call={
+                "args": {
+                    "description": f"password={secret_marker}",
+                    "subagent_type": "media-researcher",
+                }
+            },
+        )
+        mock_logger = MagicMock()
+
+        async def _failing_handler(_request):
+            raise RuntimeError(f"Authorization: Bearer {secret_marker}")
+
+        with patch.object(subagent_module, "logger", mock_logger):
+            try:
+                await middleware.awrap_tool_call(request, _failing_handler)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("middleware should re-raise handler errors")
+
+        return secret_marker, mock_logger
+
+    secret_marker, mock_logger = asyncio.run(_run_test())
+
+    assert secret_marker not in str(mock_logger.method_calls)
+    assert "***" in str(mock_logger.method_calls)
 
 
 def test_control_tool_call_records_streaming_summary():
@@ -392,11 +473,14 @@ def test_control_tool_pipeline_stops_after_failed_step():
             tools=[],
         )
         calls = []
+        secret_marker = "subagent-runtime-secret-9042"
 
         async def _fake_run_task(self, *, description, subagent_type, task_id=None):
             calls.append(subagent_type)
             if subagent_type == "download-diagnostician":
-                raise RuntimeError("下载器不可用")
+                raise RuntimeError(
+                    f"下载器不可用 DATABASE_PASSWORD={secret_marker}"
+                )
             return f"{subagent_type}:ok"
 
         with patch.object(
@@ -433,6 +517,10 @@ def test_control_tool_pipeline_stops_after_failed_step():
             "failed",
         ]
         assert "下载器不可用" in payload["tasks"][1]["error"]
+        assert secret_marker not in payload["error"]
+        assert secret_marker not in payload["tasks"][1]["error"]
+        assert "***" in payload["error"]
+        assert "***" in payload["tasks"][1]["error"]
 
     asyncio.run(_run_test())
 

@@ -24,6 +24,7 @@ from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
 
 from app.agent.middleware.utils import append_to_system_message
+from app.agent.policy import sanitize_for_host, summarize_error
 from app.agent.tools.tags import ToolTag
 from app.log import logger
 
@@ -124,7 +125,7 @@ def _parse_skill_metadata(  # noqa: C901
     try:
         frontmatter_data = yaml.safe_load(frontmatter_str)
     except yaml.YAMLError as e:
-        logger.warning("Invalid YAML in %s: %s", skill_path, e)
+        logger.warning("Invalid YAML in %s: %s", skill_path, summarize_error(e))
         return None
 
     if not isinstance(frontmatter_data, dict):
@@ -339,7 +340,7 @@ def _extract_version(skill_md: Path) -> int:
     try:
         content = skill_md.read_text(encoding="utf-8", errors="replace")
     except Exception as err:
-        logger.debug(f"读取技能版本失败: {err}")
+        logger.debug(f"读取技能版本失败: {summarize_error(err)}")
         return 0
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
     if not match:
@@ -397,7 +398,11 @@ def _sync_bundled_skills(bundled_dir: Path, target_dir: Path) -> None:
                     "已自动复制内置技能 '%s' -> '%s'", skill_src.name, skill_dst
                 )
             except Exception as e:
-                logger.warning("复制内置技能 '%s' 失败: %s", skill_src.name, e)
+                logger.warning(
+                    "复制内置技能 '%s' 失败: %s",
+                    sanitize_for_host(skill_src.name),
+                    summarize_error(e),
+                )
             continue
 
         # 目标已存在，比较版本号
@@ -424,7 +429,11 @@ def _sync_bundled_skills(bundled_dir: Path, target_dir: Path) -> None:
                 bundled_version,
             )
         except Exception as e:
-            logger.warning("更新内置技能 '%s' 失败: %s", skill_src.name, e)
+            logger.warning(
+                "更新内置技能 '%s' 失败: %s",
+                sanitize_for_host(skill_src.name),
+                summarize_error(e),
+            )
 
 
 class _SkillToolProvider:
@@ -519,7 +528,7 @@ class _SkillToolProvider:
 
     async def load_skill(self, name: str) -> str:
         """加载指定 Skill 的完整说明并返回 JSON 字符串。"""
-        logger.info(f"加载 Skill: name={name}")
+        logger.info(f"加载 Skill: name={sanitize_for_host(name)}")
         try:
             skill = await self._find_skill(name)
             if not skill:
@@ -547,11 +556,12 @@ class _SkillToolProvider:
                 }
             )
         except Exception as err:
-            logger.error(f"加载 Skill 失败: {err}", exc_info=True)
+            error_summary = summarize_error(err)
+            logger.error(f"加载 Skill 失败: {error_summary}")
             return json.dumps(
                 {
                     "success": False,
-                    "message": f"加载 Skill 时发生错误: {str(err)}",
+                    "message": f"加载 Skill 时发生错误: {error_summary}",
                 },
                 ensure_ascii=False,
             )
@@ -623,7 +633,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         try:
             _sync_bundled_skills(bundled, target)
         except Exception as e:
-            logger.warning("同步内置技能失败: %s", e)
+            logger.warning(f"同步内置技能失败: {summarize_error(e)}")
 
     def _load_skills_metadata(self) -> list[SkillMetadata]:
         """同步加载当前配置目录中的 Skill 元数据。"""
@@ -728,8 +738,11 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         tool_args = tool_call.get("args") or {}
         if not isinstance(tool_args, dict):
             tool_args = {}
+        logged_args = sanitize_for_host(tool_args)
+        if not isinstance(logged_args, dict):
+            logged_args = {}
         logger.info(
-            f"开始执行 Skill 工具: name={tool_args.get('name') or '-'}"
+            f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}"
         )
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
             self.stream_handler.record_tool_call(
@@ -740,7 +753,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         try:
             result = await handler(request)
         except Exception as err:
-            logger.error(f"Skill 工具执行失败: error={err}")
+            logger.error(f"Skill 工具执行失败: error={summarize_error(err)}")
             raise
         logger.info("Skill 工具执行完成")
         return result
