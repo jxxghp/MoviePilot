@@ -375,7 +375,6 @@ def _load_subscribe_chain_class():
     chain_dependencies = {
         "app.chain.download": "DownloadChain",
         "app.chain.mediaserver": "MediaServerChain",
-        "app.chain.music": "MusicChain",
         "app.chain.search": "SearchChain",
         "app.chain.tmdb": "TmdbChain",
         "app.chain.torrents": "TorrentsChain",

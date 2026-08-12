@@ -8,7 +8,13 @@ from app.helper.scraper import MediaScraperHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
-from app.schemas.types import MediaRecognizeType, MediaSource, MediaType, ModuleType
+from app.schemas.types import (
+    MediaRecognizeType,
+    MediaSource,
+    MediaSourceSelection,
+    MediaType,
+    ModuleType,
+)
 from app.utils.http import RequestUtils
 from app.utils.media import is_media_source_enabled
 
@@ -221,7 +227,7 @@ class BangumiModule(_ModuleBase):
         return None
 
     def search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
@@ -229,7 +235,7 @@ class BangumiModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(media_source, "bangumi"):
+        if not is_media_source_enabled(media_source, MediaSource.Bangumi):
             return None
         if not meta.name:
             return []
@@ -241,7 +247,7 @@ class BangumiModule(_ModuleBase):
         return []
 
     async def async_search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
@@ -249,7 +255,7 @@ class BangumiModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(media_source, "bangumi"):
+        if not is_media_source_enabled(media_source, MediaSource.Bangumi):
             return None
         if not meta.name:
             return []

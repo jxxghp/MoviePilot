@@ -73,7 +73,7 @@ def test_recognize_musicbrainz_source_parses_music_meta() -> None:
     assert isinstance(metainfo, MetaMusic)
     assert metainfo.title == "晴天"
     assert metainfo.artists == ["周杰伦"]
-    assert chain.async_recognize_by_meta.await_args.kwargs.get("source") == "musicbrainz"
+    assert chain.async_recognize_by_meta.await_args.kwargs.get("media_source") == "musicbrainz"
 
 
 def test_recognize_audio_file_title_uses_music_meta_without_source() -> None:

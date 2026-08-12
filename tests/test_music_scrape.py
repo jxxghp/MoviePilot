@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.chain.media import MediaChain, ScrapingConfig, _MusicScrapeFileResult
+from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
 from app.core.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
 from app.core.event import Event
 from app.core.meta import MetaMusic
@@ -9,9 +9,9 @@ from app.schemas import FileItem
 from app.schemas.types import EventType, ScrapingPolicy
 
 
-def _media_chain() -> MediaChain:
+def _media_chain() -> ScrapingChain:
     """构造不注册全局单例的音乐刮削链测试实例。"""
-    return object.__new__(MediaChain)
+    return object.__new__(ScrapingChain)
 
 
 def _album_info() -> MusicInfo:
@@ -42,7 +42,7 @@ def test_album_scrape_merge_preserves_track_fields_and_applies_album_identity() 
         total_tracks=99,
     )
 
-    merged = MediaChain._merge_music_album_metadata(local, _album_info())
+    merged = ScrapingChain._merge_music_album_metadata(local, _album_info())
 
     assert merged.title == "晴天"
     assert merged.artists == ["周杰伦"]
@@ -80,14 +80,27 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     )
     album = _album_info()
 
-    success, message = chain.scrape_music_metadata(
-        FileItem(storage="local", path="/music/叶惠美", type="dir", name="叶惠美"),
-        mediainfo=album,
-    )
+    with patch(
+        "app.chain.scraping.MediaChain.get_music_album",
+        return_value=None,
+    ) as get_music_album:
+        success, message = chain.scrape_music_metadata(
+            FileItem(
+                storage="local",
+                path="/music/叶惠美",
+                type="dir",
+                name="叶惠美",
+            ),
+            mediainfo=album,
+        )
 
     assert success is True
     assert message == "已刮削 2 个音频文件"
     chain._download_music_cover.assert_called_once_with(album.cover_url)
+    get_music_album.assert_called_once_with(
+        media_source=album.media_source,
+        media_id=album.media_id,
+    )
     assert chain._scrape_music_file.call_count == 2
     assert all(
         call.args[1] is album and call.kwargs["cover"] == (b"cover", "image/jpeg")
@@ -105,16 +118,16 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
     )
     request = Mock()
     request.get_res.return_value = response
-    MediaChain._request_music_cover.cache_clear()
+    ScrapingChain._request_music_cover.cache_clear()
 
-    with patch("app.chain.media.RequestUtils", return_value=request):
-        first = MediaChain._download_music_cover("https://example.com/album.webp")
-        second = MediaChain._download_music_cover("https://example.com/album.webp")
+    with patch("app.chain.scraping.RequestUtils", return_value=request):
+        first = ScrapingChain._download_music_cover("https://example.com/album.webp")
+        second = ScrapingChain._download_music_cover("https://example.com/album.webp")
 
     assert first == second == (b"cover", "image/webp")
     request.get_res.assert_called_once_with("https://example.com/album.webp")
     response.close.assert_called_once()
-    MediaChain._request_music_cover.cache_clear()
+    ScrapingChain._request_music_cover.cache_clear()
 
 
 def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
@@ -180,16 +193,18 @@ def test_album_track_match_uses_disc_track_title_and_duration() -> None:
         media_id="album-1",
         title="叶惠美",
         tracks=[
-            MusicInfo(
-                media_id="recording-1",
+                MusicInfo(
+                    media_source="musicbrainz",
+                    media_id="recording-1",
                 title="以父之名",
                 artists=["周杰伦"],
                 disc_number=1,
                 track_number=1,
                 duration=342,
             ),
-            MusicInfo(
-                media_id="recording-3",
+                MusicInfo(
+                    media_source="musicbrainz",
+                    media_id="recording-3",
                 title="晴天",
                 artists=["周杰伦"],
                 disc_number=1,
@@ -199,7 +214,7 @@ def test_album_track_match_uses_disc_track_title_and_duration() -> None:
         ],
     )
 
-    matched = MediaChain._match_music_album_track(
+    matched = ScrapingChain._match_music_album_track(
         MetaMusic(
             title="03 - 晴天",
             artists=["周杰伦"],
@@ -237,7 +252,7 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
     )
     music_chain = Mock()
 
-    with patch("app.chain.media.MusicChain", return_value=music_chain):
+    with patch("app.chain.scraping.LrclibChain", return_value=music_chain):
         success, message = chain.scrape_music_metadata(
             FileItem(
                 storage="local",
@@ -254,7 +269,7 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
     call = chain._scrape_music_file.call_args
     assert call.kwargs["write_tags"] is False
     assert call.kwargs["with_cover"] is False
-    assert call.kwargs["music_chain"] is music_chain
+    assert call.kwargs["lyrics_chain"] is music_chain
 
 
 def test_write_music_lyrics_sidecar_creates_same_name_lrc(tmp_path) -> None:
@@ -300,7 +315,7 @@ def test_missing_only_lyrics_skips_existing_sidecar(tmp_path) -> None:
         scrape_info=MetaMusic(title="晴天", artists=["周杰伦"]),
         lyrics_option=lyrics_option,
         overwrite=False,
-        music_chain=music_chain,
+        lyrics_chain=music_chain,
         album_info=None,
     )
 
@@ -471,7 +486,7 @@ def test_music_download_failure_is_attributed_only_to_enabled_outputs() -> None:
         tag_overwrite=False,
         with_cover=False,
         lyrics_option=lyrics_option,
-        music_chain=Mock(),
+        lyrics_chain=Mock(),
     )
     metadata_only = chain._scrape_music_file(
         fileitem=fileitem,
@@ -480,7 +495,7 @@ def test_music_download_failure_is_attributed_only_to_enabled_outputs() -> None:
         tag_overwrite=False,
         with_cover=False,
         lyrics_option=SimpleNamespace(is_skip=True),
-        music_chain=None,
+        lyrics_chain=None,
     )
 
     assert lyrics_only.metadata_success is True

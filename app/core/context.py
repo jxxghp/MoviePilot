@@ -20,7 +20,7 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
-from app.utils.media import normalize_media_source
+from app.utils.media import normalize_media_source, resolve_media_identity
 from app.utils.string import StringUtils
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
@@ -168,8 +168,8 @@ class MusicInfo:
     raw_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """将构造参数中的数据源规范化为统一枚举。"""
-        self.media_source = normalize_media_source(self.media_source)
+        """将构造参数中的媒体身份规范化为统一成对字段。"""
+        self.media_source, self.media_id = resolve_media_identity(media=self)
 
     @property
     def artist(self) -> str:
@@ -394,8 +394,8 @@ class MusicAlbumInfo:
     raw_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """将构造参数中的数据源规范化为统一枚举。"""
-        self.media_source = normalize_media_source(self.media_source)
+        """将构造参数中的媒体身份规范化为统一成对字段。"""
+        self.media_source, self.media_id = resolve_media_identity(media=self)
 
     @property
     def artist(self) -> str:
@@ -558,8 +558,8 @@ class MusicArtistInfo:
     raw_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """将构造参数中的数据源规范化为统一枚举。"""
-        self.media_source = normalize_media_source(self.media_source)
+        """将构造参数中的媒体身份规范化为统一成对字段。"""
+        self.media_source, self.media_id = resolve_media_identity(media=self)
 
     @property
     def title(self) -> str | None:
@@ -703,6 +703,10 @@ class TorrentInfo:
     # 种子分类 电影/电视剧/音乐
     category: str = None
 
+    def __post_init__(self) -> None:
+        """将种子声明的媒体身份规范化为统一成对字段。"""
+        self.media_source, self.media_id = resolve_media_identity(media=self)
+
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
 
@@ -726,9 +730,7 @@ class TorrentInfo:
             if key in properties:
                 continue
             setattr(self, key, value)
-        self.media_source = normalize_media_source(self.media_source)
-        if self.media_id is not None:
-            self.media_id = str(self.media_id)
+        self.media_source, self.media_id = resolve_media_identity(media=self)
 
     @staticmethod
     def get_free_string(upload_volume_factor: float, download_volume_factor: float) -> str:
@@ -1022,7 +1024,7 @@ class MediaInfo:
 
     def __post_init__(self):
         """规范化媒体来源，并从各来源原始数据初始化统一字段。"""
-        self.media_source = normalize_media_source(self.media_source)
+        self.media_source, self.media_id = resolve_media_identity(media=self)
         # 设置媒体信息
         if self.tmdb_info:
             self.set_tmdb_info(self.tmdb_info)
@@ -1032,7 +1034,7 @@ class MediaInfo:
             self.set_bangumi_info(self.bangumi_info)
         if self.anilist_info:
             self.set_anilist_info(self.anilist_info)
-        self.media_source = normalize_media_source(self.media_source)
+        self.media_source, self.media_id = resolve_media_identity(media=self)
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
@@ -1057,7 +1059,7 @@ class MediaInfo:
             if key in properties:
                 continue
             setattr(self, key, value)
-        self.media_source = normalize_media_source(self.media_source)
+        self.media_source, self.media_id = resolve_media_identity(media=self)
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 

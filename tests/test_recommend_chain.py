@@ -99,26 +99,27 @@ def test_async_recommend_methods_do_not_cache_empty_result(
 def test_music_weekly_uses_music_chart():
     """同步推荐缓存应从本周音乐榜单生成通用媒体字典。"""
     chain = RecommendChain()
-    with patch("app.chain.recommend.MusicChain") as music_chain:
-        music_chain.return_value.chart.return_value = [
+    with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
+        source_chain.return_value.music_chart.return_value = [
             MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天")
         ]
 
         result = chain.music_weekly(page=2, count=10)
 
     assert result[0]["media_id"] == "recording-1"
-    music_chain.return_value.chart.assert_called_once_with(
+    source_chain.return_value.music_chart.assert_called_once_with(
         range_name="this_week",
         page=2,
         count=10,
+        entity="recording",
     )
 
 
 def test_async_music_weekly_uses_music_chart():
     """异步推荐接口应从本周音乐榜单返回统一媒体字典。"""
     chain = RecommendChain()
-    with patch("app.chain.recommend.MusicChain") as music_chain:
-        music_chain.return_value.async_chart = AsyncMock(
+    with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
+        source_chain.return_value.async_music_chart = AsyncMock(
             return_value=[
                 MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天")
             ]
@@ -127,18 +128,19 @@ def test_async_music_weekly_uses_music_chart():
         result = asyncio.run(chain.async_music_weekly(page=1, count=30))
 
     assert result[0]["type"] == "音乐"
-    music_chain.return_value.async_chart.assert_awaited_once_with(
+    source_chain.return_value.async_music_chart.assert_awaited_once_with(
         range_name="this_week",
         page=1,
         count=30,
+        entity="recording",
     )
 
 
 def test_music_douban_recommendations_use_discover():
     """豆瓣音乐推荐入口应保留来源与实体，并输出统一媒体字典。"""
     chain = RecommendChain()
-    with patch("app.chain.recommend.MusicChain") as music_chain:
-        music_chain.return_value.discover.return_value = [
+    with patch("app.chain.recommend.DoubanChain") as source_chain:
+        source_chain.return_value.music_discover.return_value = [
             MusicInfo(
                 media_source="doubanmusic",
                 media_id="music-1",
@@ -150,19 +152,21 @@ def test_music_douban_recommendations_use_discover():
         result = chain.music_douban(page=2, count=10)
 
     assert result[0]["media_source"] == "doubanmusic"
-    music_chain.return_value.discover.assert_called_once_with(
-        media_source="doubanmusic",
+    source_chain.return_value.music_discover.assert_called_once_with(
         page=2,
         count=10,
         entity=MUSIC_ENTITY_ALBUM,
+        mode="chart",
+        tags="",
+        sort="U",
     )
 
 
 def test_async_music_douban_recommendations_use_discover():
     """异步豆瓣音乐推荐入口应调用统一发现链并保留来源。"""
     chain = RecommendChain()
-    with patch("app.chain.recommend.MusicChain") as music_chain:
-        music_chain.return_value.async_discover = AsyncMock(
+    with patch("app.chain.recommend.DoubanChain") as source_chain:
+        source_chain.return_value.async_music_discover = AsyncMock(
             return_value=[
                 MusicInfo(media_source="doubanmusic", media_id="music-1", title="Music")
             ]
@@ -171,9 +175,79 @@ def test_async_music_douban_recommendations_use_discover():
         result = asyncio.run(chain.async_music_douban(page=1, count=30))
 
     assert result[0]["media_source"] == "doubanmusic"
-    music_chain.return_value.async_discover.assert_awaited_once_with(
-        media_source="doubanmusic",
+    source_chain.return_value.async_music_discover.assert_awaited_once_with(
         page=1,
         count=30,
         entity=MUSIC_ENTITY_ALBUM,
+        mode="chart",
+        tags="",
+        sort="U",
+    )
+
+
+def test_music_chart_applies_filter_and_sort() -> None:
+    """音乐榜单应在 RecommendChain 统一执行热度、封面和排序约束。"""
+    chain = RecommendChain()
+    candidates = [
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="low",
+            title="Low",
+            listen_count=10,
+            cover_url="cover-low",
+        ),
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="high",
+            title="High",
+            listen_count=30,
+            cover_url="cover-high",
+        ),
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="no-cover",
+            title="No Cover",
+            listen_count=40,
+        ),
+    ]
+    with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
+        source_chain.return_value.music_chart.return_value = candidates
+
+        result = chain.music_chart(
+            range_name="this_month",
+            page=1,
+            count=10,
+            sort_by="listen_count.desc",
+            min_listen_count=20,
+            with_cover=True,
+        )
+
+    assert [item.media_id for item in result] == ["high"]
+
+
+def test_async_music_fresh_releases_uses_listenbrainz_source() -> None:
+    """新发行推荐应委派 ListenBrainz 来源链并保留分页参数。"""
+    chain = RecommendChain()
+    with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
+        source_chain.return_value.async_music_fresh_releases = AsyncMock(
+            return_value=[
+                MusicInfo(
+                    media_source="musicbrainz",
+                    media_id="album-1",
+                    music_type=MUSIC_ENTITY_ALBUM,
+                    title="Album",
+                )
+            ]
+        )
+
+        result = asyncio.run(chain.async_music_fresh_releases(page=2, count=12))
+
+    assert result[0].media_id == "album-1"
+    source_chain.return_value.async_music_fresh_releases.assert_awaited_once_with(
+        days=14,
+        sort="release_date",
+        past=True,
+        future=True,
+        page=2,
+        count=12,
     )

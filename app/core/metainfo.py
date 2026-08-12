@@ -110,8 +110,9 @@ def _normalize_metainfo_identity(metainfo: dict) -> dict:
     if not media_source:
         for source, key in _LEGACY_ID_KEYS:
             value = normalized.get(key)
-            if value is not None and str(value).strip():
-                media_source, media_id = source, str(value).strip()
+            normalized_id = str(value).strip() if value is not None else ""
+            if normalized_id and normalized_id != "0":
+                media_source, media_id = source, normalized_id
                 break
     for _, key in _LEGACY_ID_KEYS:
         normalized.pop(key, None)
@@ -177,9 +178,11 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
             legacy_matches = []
             for source, pattern in _LEGACY_BRACED_ID_PATTERNS:
                 legacy_match = pattern.search(result)
-                if legacy_match and legacy_match.group(0).isdigit():
-                    legacy_identities[source] = legacy_match.group(0)
+                if legacy_match:
                     legacy_matches.append(legacy_match)
+                    normalized_id = legacy_match.group(0)
+                    if normalized_id.isdigit() and normalized_id != "0":
+                        legacy_identities[source] = normalized_id
             # 查找媒体类型
             mtype = _BRACED_TYPE_RE.search(result)
             if mtype:
@@ -223,14 +226,16 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
     # 支持Emby格式的ID标签；第一个 [tmdbid] 历史上始终优先处理，用于覆盖前面 {[...]} 中的旧标签。
     tmdb_match = _EMBY_TMDB_RE_LIST[0].search(title)
     if tmdb_match:
-        legacy_identities[MediaSource.TMDB] = tmdb_match.group(1)
+        if tmdb_match.group(1) != "0":
+            legacy_identities[MediaSource.TMDB] = tmdb_match.group(1)
         title = _EMBY_TMDB_RE_LIST[0].sub('', title).strip()
     elif MediaSource.TMDB not in legacy_identities:
         # 保持原有优先级：[tmdbid] > [tmdb] > {tmdbid} > {tmdb}
         for tmdb_re in _EMBY_TMDB_RE_LIST[1:]:
             tmdb_match = tmdb_re.search(title)
             if tmdb_match:
-                legacy_identities[MediaSource.TMDB] = tmdb_match.group(1)
+                if tmdb_match.group(1) != "0":
+                    legacy_identities[MediaSource.TMDB] = tmdb_match.group(1)
                 title = tmdb_re.sub('', title).strip()
                 break
 
@@ -242,7 +247,8 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
             media_id_match = media_id_re.search(title)
             if not media_id_match:
                 continue
-            legacy_identities[source] = media_id_match.group(1)
+            if media_id_match.group(1) != "0":
+                legacy_identities[source] = media_id_match.group(1)
             title = media_id_re.sub('', title).strip()
             break
 
@@ -426,14 +432,17 @@ def _requires_python_metainfo(
     custom_words: Optional[List[str]] = None,
 ) -> bool:
     """
-    判断标题或临时识别词是否包含当前Rust扩展尚未支持的数据源ID标签。
+    判断标题或临时识别词是否包含当前 Rust 扩展尚未支持的媒体身份标签。
 
     :param title: 原始标题
     :param custom_words: 临时识别词
     :return: 是否必须使用Python解析器
     """
     candidates = [title or "", *(custom_words or [])]
-    if any(_GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates):
+    contains_generic_id = any(
+        _GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
+    )
+    if contains_generic_id and not rust_accel.supports_unified_media_identity():
         return True
     contains_extended_id = any(
         _EXTENDED_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
@@ -486,14 +495,11 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool =
     # 音频文件直接构造音乐元数据，不参与父目录季集合并，影视附加音轨强制走视频解析
     audio_suffix = path.suffix.lower()
     if not force_video and audio_suffix in settings.RMT_AUDIOEXT:
-        music_meta = MetaMusic(
+        return MetaMusic(
             org_string=path.name,
             title=path.stem,
             audio_format=audio_suffix.lstrip(".").upper() or None,
-            parse_title=True,
-        )
-        # 无标签音频只能依靠文件名和目录结构，补充曲序、碟号、歌手和专辑线索
-        return music_meta.apply_path_context(path)
+        ).apply_path_context(path)
     path_context = " ".join(
         [path.name, path.parent.name, path.parent.parent.name]
     )

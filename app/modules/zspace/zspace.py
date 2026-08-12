@@ -1026,7 +1026,9 @@ class ZSpace:
                 event_item.item_id = message.get('Item', {}).get('Id')
 
             event_item.item_path = message.get('Item', {}).get('Path')
-            event_item.tmdb_id = message.get('Item', {}).get('ProviderIds', {}).get('Tmdb')
+            event_item.media_source, event_item.media_id = MediaServerIdentityHelper.from_provider_ids(
+                message.get('Item', {}).get('ProviderIds')
+            )
             if message.get('Item', {}).get('Overview') and len(message.get('Item', {}).get('Overview')) > 100:
                 event_item.overview = str(message.get('Item', {}).get('Overview'))[:100] + "..."
             else:
@@ -1047,7 +1049,9 @@ class ZSpace:
             event_item.item_type = message.get("item_type")
             event_item.item_name = message.get("item_name")
             event_item.item_path = message.get("item_path")
-            event_item.tmdb_id = message.get("tmdb_id")
+            event_item.media_source, event_item.media_id = MediaServerIdentityHelper.from_provider_ids({
+                "tmdb_id": message.get("tmdb_id"),
+            })
             event_item.season_id = message.get("season_id")
             event_item.episode_id = message.get("episode_id")
 

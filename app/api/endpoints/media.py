@@ -2,11 +2,12 @@ from pathlib import Path
 from typing import Annotated, Any, List, Optional, Union
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from pydantic import BeforeValidator
 
 from app import schemas
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
+from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import Context, MusicInfo
@@ -20,28 +21,64 @@ from app.schemas.category import CategoryConfig
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 from app.utils.media import (
     is_music_media_source,
+    normalize_media_source,
     normalize_music_type,
+    parse_media_source_selection,
+    resolve_media_identity,
 )
 
 router = APIRouter()
+
+
+def _split_media_source_query(value: object) -> tuple[str, ...]:
+    """展开重复或逗号分隔的来源参数，并在枚举校验前规范历史别名。"""
+    if value in (None, ""):
+        return ()
+    values = value if isinstance(value, (list, tuple)) else (value,)
+    sources = tuple(
+        source.strip()
+        for item in values
+        for source in str(item).split(",")
+        if source.strip()
+    )
+    return tuple(
+        normalized.value if (normalized := normalize_media_source(source)) else source
+        for source in sources
+    )
+
+
+MediaSourceQuery = Annotated[
+    tuple[MediaSource, ...],
+    BeforeValidator(_split_media_source_query),
+    Query(),
+]
 
 
 def _is_valid_source_media_id(
         media_source: Optional[MediaSource], media_id: str,
 ) -> bool:
     """按媒体数据源校验原生 ID，并兼容豆瓣音乐的曲目复合 ID。"""
-    if media_source == MediaSource.MusicBrainz:
+    normalized_source, normalized_media_id = resolve_media_identity(
+        media_source=media_source,
+        media_id=media_id,
+    )
+    if not normalized_source or not normalized_media_id:
+        return False
+    if normalized_source == MediaSource.MusicBrainz:
         try:
-            UUID(media_id)
+            UUID(normalized_media_id)
             return True
         except (TypeError, ValueError):
             return False
-    if media_source == MediaSource.DoubanMusic and ":" in media_id:
-        album_id, track_number = media_id.split(":", 1)
+    if normalized_source == MediaSource.DoubanMusic and ":" in normalized_media_id:
+        album_id, track_number = normalized_media_id.split(":", 1)
         return album_id.isdigit() and track_number.isdigit()
-    if media_source == MediaSource.IMDb:
-        return media_id.startswith("tt") and media_id[2:].isdigit()
-    return bool(media_id.strip())
+    if normalized_source == MediaSource.IMDb:
+        return (
+            normalized_media_id.startswith("tt")
+            and normalized_media_id[2:].isdigit()
+        )
+    return True
 
 
 def _build_recognize_metainfo(
@@ -132,7 +169,7 @@ async def recognize(
     metainfo = _build_recognize_metainfo(title, subtitle, custom_words)
     # 显式音乐来源需要按音乐元数据解析，避免名称测试误入影视识别。
     if is_music_media_source(media_source) and not isinstance(metainfo, MetaMusic):
-        metainfo = MusicChain.parse_query(title)
+        metainfo = MetaMusic.parse_query(title)
     mediainfo = await MediaChain().async_recognize_by_meta(
         metainfo,
         media_source=media_source,
@@ -204,7 +241,7 @@ async def search(
     type: Optional[str] = "media",
     page: int = 1,
     count: int = 8,
-    media_source: Optional[str] = None,
+    media_source: MediaSourceQuery = (),
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -214,7 +251,7 @@ async def search(
     :param type: 搜索类型，支持 media、music、collection、person
     :param page: 页码
     :param count: 每页数量
-    :param media_source: 请求级搜索数据源，支持逗号分隔
+    :param media_source: 请求级搜索数据源枚举；可重复传入，逗号格式仅用于兼容旧客户端
     :param _: Token校验
     :return: 搜索结果列表
     """
@@ -227,33 +264,43 @@ async def search(
             return obj.get("media_source")
         return obj.media_source
 
+    # 直接函数调用也可能绕过 FastAPI/Pydantic，仅在该测试与内部兼容边界补一次规范化。
+    selected_sources = (
+        media_source
+        if isinstance(media_source, tuple)
+        and all(isinstance(source, MediaSource) for source in media_source)
+        else parse_media_source_selection(",".join(_split_media_source_query(media_source)))
+    )
+    selected_sources = tuple(dict.fromkeys(selected_sources))
+    source_selection = selected_sources or None
+
     media_chain = MediaChain()
-    if type == "music" or is_music_media_source(media_source):
+    if type == "music" or any(is_music_media_source(source) for source in selected_sources):
         # 音乐搜索统一入口，与影视搜索共用 /media/search
         music_search_params = {"query": title, "limit": count}
-        # 未指定来源时保留既有调用契约，由 MusicChain 选择默认音乐源。
-        if media_source:
-            music_search_params["media_source"] = media_source
-        music_infos = await MusicChain().async_search(**music_search_params)
+        # 未指定来源时由 MediaChain 使用默认 MusicBrainz 来源。
+        if source_selection:
+            music_search_params["media_source"] = source_selection
+        music_infos = await media_chain.async_search_music(**music_search_params)
         return [
             info.to_dict()
             for info in music_infos
         ] if music_infos else []
     if type == "media":
         _, medias = await media_chain.async_search(
-            title=title, media_source=media_source
+            title=title, media_source=source_selection
         )
         result = [media.to_dict() for media in medias] if medias else []
     elif type == "collection":
         collections = await media_chain.async_search_collections(
-            name=title, media_source=media_source
+            name=title, media_source=source_selection
         )
         result = (
             [collection.to_dict() for collection in collections] if collections else []
         )
     else:  # person
         persons = await media_chain.async_search_persons(
-            name=title, media_source=media_source
+            name=title, media_source=source_selection
         )
         result = [person.model_dump() for person in persons] if persons else []
 
@@ -293,7 +340,10 @@ def scrape(
     """
     if not fileitem or not fileitem.path:
         return schemas.Response(success=False, message="刮削路径无效")
-    normalized_media_id = media_id.strip() if media_id else None
+    has_explicit_media_id = media_id is not None
+    normalized_media_id = str(media_id).strip() if has_explicit_media_id else None
+    if has_explicit_media_id and not normalized_media_id:
+        return schemas.Response(success=False, message="媒体ID格式无效")
     if normalized_media_id and not media_source:
         return schemas.Response(
             success=False, message="指定媒体ID时必须同时指定媒体数据源"
@@ -329,7 +379,7 @@ def scrape(
             )
             if not music_info:
                 return schemas.Response(success=False, message="刮削失败，无法识别音乐信息")
-        success, message = MediaChain().scrape_music_metadata(
+        success, message = ScrapingChain().scrape_music_metadata(
             fileitem=fileitem,
             mediainfo=music_info,
             overwrite=True,
@@ -366,7 +416,7 @@ def scrape(
         if not Path(fileitem.path).exists():
             return schemas.Response(success=False, message="刮削路径不存在")
     # 手动刮削 (暂时使用同步版本，可以后续优化为异步)
-    chain.scrape_metadata(
+    ScrapingChain().scrape_metadata(
         fileitem=fileitem,
         meta=meta_info,
         mediainfo=media_info,
@@ -420,7 +470,13 @@ async def group_seasons(
     """
     查询剧集组季信息（themoviedb）
     """
-    return await TmdbChain().async_tmdb_group_seasons(group_id=episode_group)
+    _, normalized_group_id = resolve_media_identity(
+        media_source=MediaSource.TMDB,
+        media_id=episode_group,
+    )
+    if not normalized_group_id:
+        return []
+    return await TmdbChain().async_tmdb_group_seasons(group_id=normalized_group_id)
 
 
 @router.get("/groups/{tmdbid}", summary="查询媒体剧集组", response_model=List[dict])
@@ -428,9 +484,15 @@ async def groups(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -
     """
     查询媒体剧集组列表（themoviedb）
     """
-    mediainfo = await MediaChain().async_recognize_media(
+    media_source, media_id = resolve_media_identity(
         media_source=MediaSource.TMDB,
-        media_id=str(tmdbid),
+        media_id=tmdbid,
+    )
+    if not media_source or not media_id:
+        return []
+    mediainfo = await MediaChain().async_recognize_media(
+        media_source=media_source,
+        media_id=media_id,
         mtype=MediaType.TV,
     )
     if not mediainfo:
@@ -452,11 +514,15 @@ async def seasons(
     """
     查询媒体季信息
     """
-    if media_source or media_id:
-        if not media_source or not media_id:
+    if media_source is not None or media_id is not None:
+        normalized_source, normalized_media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if not normalized_source or not normalized_media_id:
             return []
-        if media_source == MediaSource.TMDB and media_id.isdigit():
-            tmdbid = int(media_id)
+        if normalized_source == MediaSource.TMDB and normalized_media_id.isdigit():
+            tmdbid = int(normalized_media_id)
             seasons_info = await TmdbChain().async_tmdb_seasons(tmdbid=tmdbid)
             if seasons_info:
                 if season is not None:
@@ -464,8 +530,8 @@ async def seasons(
                 return seasons_info
         else:
             mediainfo = await MediaChain().async_recognize_media(
-                media_source=media_source,
-                media_id=media_id,
+                media_source=normalized_source,
+                media_id=normalized_media_id,
                 mtype=MediaType.TV,
                 cache=False,
             )
@@ -483,13 +549,16 @@ async def seasons(
             obtain_images=False,
         )
         if mediainfo:
+            recognized_source, recognized_media_id = resolve_media_identity(
+                media=mediainfo
+            )
             if (
-                mediainfo.media_source == MediaSource.TMDB
-                and mediainfo.media_id
-                and mediainfo.media_id.isdigit()
+                recognized_source == MediaSource.TMDB
+                and recognized_media_id
+                and recognized_media_id.isdigit()
             ):
                 seasons_info = await TmdbChain().async_tmdb_seasons(
-                    tmdbid=int(mediainfo.media_id)
+                    tmdbid=int(recognized_media_id)
                 )
                 if seasons_info:
                     if season is not None:
@@ -512,10 +581,16 @@ async def detail(
     根据媒体来源和原生 ID 查询媒体信息，type_name: 电影/电视剧
     """
     mtype = MediaType(type_name)
-    mediachain = MediaChain()
-    mediainfo = await mediachain.async_recognize_media(
+    normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
+    )
+    if not normalized_source or not normalized_media_id:
+        return schemas.MediaInfo()
+    mediachain = MediaChain()
+    mediainfo = await mediachain.async_recognize_media(
+        media_source=normalized_source,
+        media_id=normalized_media_id,
         mtype=mtype,
     )
     # 识别

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.message import MessageChannel
 from app.schemas.file import FileItem
+from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource
 
 
@@ -532,7 +533,7 @@ class RecommendSourceEventData(ChainEventData):
     )
 
 
-class MediaRecognizeConvertEventData(ChainEventData):
+class MediaRecognizeConvertEventData(RequiredMediaIdentityMixin, ChainEventData):
     """
     MediaRecognizeConvert 事件的数据模型
 
@@ -576,7 +577,7 @@ class StorageOperSelectionEventData(ChainEventData):
     storage_oper: Optional[Callable] = Field(default=None, description="存储操作对象")
 
 
-class SubscribeEpisodesRefreshEventData(ChainEventData):
+class SubscribeEpisodesRefreshEventData(OptionalMediaIdentityMixin, ChainEventData):
     """
     SubscribeEpisodesRefresh 事件的数据模型
 

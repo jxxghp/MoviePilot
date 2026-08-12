@@ -29,7 +29,7 @@ def _audio_file(name: str, extension: str = "flac") -> FileItem:
 def _recording(**overrides) -> MusicInfo:
     """构造本地媒体库查重使用的单曲身份。"""
     values = {
-        "source": "musicbrainz",
+        "media_source": "musicbrainz",
         "media_id": "recording-1",
         "title": "Get Lucky",
         "artists": ["Daft Punk"],

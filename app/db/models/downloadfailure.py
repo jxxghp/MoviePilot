@@ -4,6 +4,7 @@ from sqlalchemy import Column, Float, Index, Integer, String
 from sqlalchemy.orm import Session
 
 from app.db import Base, db_query, db_update, get_id_column
+from app.db.models.media_identity import media_identity_constraint
 
 
 class DownloadFailure(Base):
@@ -53,6 +54,7 @@ class DownloadFailure(Base):
     next_retry_at = Column(String)
 
     __table_args__ = (
+        media_identity_constraint("downloadfailure"),
         Index("ux_downloadfailure_fingerprint", "fingerprint", unique=True),
         Index("ix_downloadfailure_next_retry_at", "next_retry_at"),
         Index("ix_downloadfailure_media_identity_site", "type", "media_source", "media_id", "site"),

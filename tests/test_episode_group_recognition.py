@@ -11,7 +11,7 @@ sys.modules.setdefault("psutil", ModuleType("psutil"))
 from app.chain import ChainBase
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_recognize_media_uses_meta_episode_group():
@@ -24,7 +24,14 @@ def test_recognize_media_uses_meta_episode_group():
     meta.name = "测试剧集"
     meta.type = MediaType.TV
     meta.episode_group = group_id
-    mediainfo = MediaInfo(title="测试剧集", year="2024", tmdb_id=100, type=MediaType.TV)
+    mediainfo = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="100",
+        title="测试剧集",
+        year="2024",
+        tmdb_id=100,
+        type=MediaType.TV,
+    )
 
     with patch.object(chain, "run_module", return_value=mediainfo) as run_module, patch(
         "app.chain.MoviePilotServerHelper.report_recognize_share",

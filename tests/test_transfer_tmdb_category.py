@@ -4,7 +4,70 @@ from app.chain.transfer import TransferChain
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.schemas import FileItem, TransferDirectoryConf, TransferTask
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
+
+
+def test_transfer_rejects_partial_or_unknown_explicit_identity() -> None:
+    """整理公共入口不得把半套身份或未知来源传入后台任务。"""
+    chain = object.__new__(TransferChain)
+    fileitem = FileItem(
+        storage="local",
+        path="/downloads/Test.Movie.2024.mkv",
+        type="file",
+    )
+
+    partial_state, partial_message = chain.do_transfer(
+        fileitem=fileitem,
+        media_source=MediaSource.TMDB,
+    )
+    unknown_state, unknown_message = chain.do_transfer(
+        fileitem=fileitem,
+        media_source="plugin-source",
+        media_id="1234",
+    )
+
+    assert not partial_state
+    assert "media_source" in partial_message
+    assert not unknown_state
+    assert "media_source" in unknown_message
+
+
+def test_transfer_resolves_complete_identity_before_building_tasks(monkeypatch) -> None:
+    """整理入口收到完整身份时应精确识别，失败后不得退化为标题识别。"""
+    chain = object.__new__(TransferChain)
+    fileitem = FileItem(
+        storage="local",
+        path="/downloads/Test.Movie.2024.mkv",
+        type="file",
+    )
+    recognize = monkeypatch.setattr
+    calls = []
+
+    class FakeMediaChain:
+        """记录精确识别参数并返回空结果。"""
+
+        def recognize_media(self, **kwargs):
+            """模拟显式身份识别失败。"""
+            calls.append(kwargs)
+            return None
+
+    recognize("app.chain.transfer.MediaChain", FakeMediaChain)
+
+    state, message = chain.do_transfer(
+        fileitem=fileitem,
+        media_source="tmdb",
+        media_id="1234",
+        mtype=MediaType.MOVIE,
+    )
+
+    assert not state
+    assert "未识别到媒体信息" in message
+    assert calls == [{
+        "mtype": MediaType.MOVIE,
+        "media_source": MediaSource.TMDB,
+        "media_id": "1234",
+        "music_type": None,
+    }]
 
 
 def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) -> None:
@@ -32,7 +95,7 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
         ),
         meta=MetaInfo("Test Movie 2024"),
         mediainfo=MediaInfo(
-            source="anilist",
+            media_source=MediaSource.AniList,
             media_id="1234",
             anilist_id=1234,
             type=MediaType.MOVIE,
@@ -52,5 +115,5 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
 
     assert not state
     assert message == "未识别到 TMDB 辅助信息，无法按媒体类别整理"
-    assert task.mediainfo.source == "anilist"
+    assert task.mediainfo.media_source == MediaSource.AniList
     assert task.mediainfo.media_id == "1234"

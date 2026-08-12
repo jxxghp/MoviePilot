@@ -75,16 +75,23 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 ```python
 import pytest
 
+from app.schemas.types import MediaSource
+
 @pytest.fixture
 def sample_meta():
     """构造一条可复用的识别元数据。"""
     return MetaInfo(title="示例 (2020)")
 
-def test_recognize_prefers_explicit_id(sample_meta, monkeypatch):
-    """显式 tmdbid 时应优先按 ID 识别，而非回退标题搜索。"""
+def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
+    """显式媒体来源与原生 ID 时应优先精确识别，而非回退标题搜索。"""
     monkeypatch.setattr(SomeClient, "fetch", lambda *a, **k: FAKE_MOVIE)
-    result = recognize(sample_meta, tmdbid=123)
-    assert result.tmdb_id == 123
+    result = recognize(
+        sample_meta,
+        media_source=MediaSource.TMDB,
+        media_id="123",
+    )
+    assert result.media_source == MediaSource.TMDB
+    assert result.media_id == "123"
 ```
 
 ## `unittest → pytest` 演进路线：改到即转

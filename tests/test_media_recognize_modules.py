@@ -8,7 +8,7 @@ from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdbapi import TmdbApi
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 class MediaRecognizeModulesTest(TestCase):
@@ -29,7 +29,12 @@ class MediaRecognizeModulesTest(TestCase):
         module.category = Mock()
         module.category.get_movie_category.return_value = None
 
-        result = module.recognize_media(meta=meta, tmdbid=100, cache=False)
+        result = module.recognize_media(
+            meta=meta,
+            media_source=MediaSource.TMDB,
+            media_id="100",
+            cache=False,
+        )
 
         self.assertIsInstance(result, MediaInfo)
         self.assertEqual(result.tmdb_id, 100)
@@ -57,7 +62,12 @@ class MediaRecognizeModulesTest(TestCase):
         module.category = Mock()
         module.category.get_movie_category.return_value = None
 
-        result = asyncio.run(module.async_recognize_media(meta=meta, tmdbid=101, cache=False))
+        result = asyncio.run(module.async_recognize_media(
+            meta=meta,
+            media_source=MediaSource.TMDB,
+            media_id="101",
+            cache=False,
+        ))
 
         self.assertIsInstance(result, MediaInfo)
         self.assertEqual(result.tmdb_id, 101)

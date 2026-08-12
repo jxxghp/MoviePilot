@@ -8,7 +8,13 @@ from app.helper.scraper import MediaScraperHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
-from app.schemas.types import MediaRecognizeType, MediaSource, MediaType, ModuleType
+from app.schemas.types import (
+    MediaRecognizeType,
+    MediaSource,
+    MediaSourceSelection,
+    MediaType,
+    ModuleType,
+)
 from app.utils.media import is_media_source_enabled
 
 
@@ -327,7 +333,7 @@ class AniListModule(_ModuleBase):
         return None
 
     def search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索 AniList 动画媒体信息。
@@ -336,7 +342,7 @@ class AniListModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 统一媒体信息列表
         """
-        if not is_media_source_enabled(media_source, "anilist"):
+        if not is_media_source_enabled(media_source, MediaSource.AniList):
             return None
         if not meta or not meta.name:
             return []
@@ -347,7 +353,7 @@ class AniListModule(_ModuleBase):
         ]
 
     async def async_search_medias(
-        self, meta: MetaBase, media_source: Optional[MediaSource] = None
+        self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
         异步搜索 AniList 动画媒体信息。
@@ -356,7 +362,7 @@ class AniListModule(_ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 统一媒体信息列表
         """
-        if not is_media_source_enabled(media_source, "anilist"):
+        if not is_media_source_enabled(media_source, MediaSource.AniList):
             return None
         if not meta or not meta.name:
             return []

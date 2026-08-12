@@ -11,18 +11,18 @@ from app.chain import ChainBase
 from app.core.security import verify_token
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 @pytest.mark.parametrize(
     ("search_type", "method_name", "source"),
     [
-        ("collection", "async_search_collections", "themoviedb"),
-        ("person", "async_search_persons", "douban"),
+        ("collection", "async_search_collections", MediaSource.TMDB),
+        ("person", "async_search_persons", MediaSource.Douban),
     ],
 )
 def test_media_search_endpoint_forwards_source(
-    search_type: str, method_name: str, source: str
+    search_type: str, method_name: str, source: MediaSource
 ) -> None:
     """媒体搜索接口应将合集和人物的数据源下传到处理链。"""
     chain = Mock()
@@ -34,17 +34,19 @@ def test_media_search_endpoint_forwards_source(
             search(
                 title="测试",
                 type=search_type,
-                media_source=source,
+                media_source=source.value,
                 _=Mock(),
             )
         )
 
     assert result == []
-    search_method.assert_awaited_once_with(name="测试", media_source=source)
+    search_method.assert_awaited_once_with(
+        name="测试", media_source=(source,)
+    )
 
 
 def test_media_search_endpoint_forwards_multi_source() -> None:
-    """媒体搜索接口应将逗号分隔的多数据源原样下传到处理链。"""
+    """媒体搜索接口应将逗号分隔来源解析为固定枚举元组。"""
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
 
@@ -60,20 +62,21 @@ def test_media_search_endpoint_forwards_multi_source() -> None:
 
     assert result == []
     chain.async_search.assert_awaited_once_with(
-        title="测试", media_source="themoviedb,douban"
+        title="测试",
+        media_source=(MediaSource.TMDB, MediaSource.Douban),
     )
 
 
 @pytest.mark.anyio
 async def test_media_search_route_accepts_comma_separated_music_sources() -> None:
-    """真实 FastAPI 路由应接受逗号分隔的数据源，而不能在参数校验阶段返回 422。"""
+    """真实路由在旧逗号格式兼容边界后应把每项转换为固定枚举。"""
     chain = Mock()
-    chain.async_search = AsyncMock(return_value=[])
+    chain.async_search_music = AsyncMock(return_value=[])
     app = FastAPI()
     app.include_router(media_endpoints.router, prefix="/api/v1/media")
     app.dependency_overrides[verify_token] = lambda: Mock()
 
-    with patch("app.api.endpoints.media.MusicChain", return_value=chain):
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://testserver",
@@ -90,11 +93,102 @@ async def test_media_search_route_accepts_comma_separated_music_sources() -> Non
 
     assert response.status_code == 200
     assert response.json() == []
-    chain.async_search.assert_awaited_once_with(
+    chain.async_search_music.assert_awaited_once_with(
         query="周杰伦",
         limit=30,
-        media_source="musicbrainz,theaudiodb,doubanmusic",
+        media_source=(
+            MediaSource.MusicBrainz,
+            MediaSource.TheAudioDB,
+            MediaSource.DoubanMusic,
+        ),
     )
+
+
+@pytest.mark.anyio
+async def test_media_search_route_accepts_repeated_enum_sources() -> None:
+    """新客户端可用重复查询参数传入多个媒体来源枚举。"""
+    chain = Mock()
+    chain.async_search = AsyncMock(return_value=(Mock(), []))
+    app = FastAPI()
+    app.include_router(media_endpoints.router, prefix="/api/v1/media")
+    app.dependency_overrides[verify_token] = lambda: Mock()
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get(
+                "/api/v1/media/search",
+                params=[
+                    ("title", "测试"),
+                    ("media_source", MediaSource.TMDB.value),
+                    ("media_source", MediaSource.Douban.value),
+                ],
+            )
+
+    assert response.status_code == 200
+    chain.async_search.assert_awaited_once_with(
+        title="测试",
+        media_source=(MediaSource.TMDB, MediaSource.Douban),
+    )
+
+
+@pytest.mark.anyio
+async def test_media_search_route_deduplicates_repeated_sources() -> None:
+    """重复来源参数应按首次出现顺序去重，避免同一模块重复搜索。"""
+    chain = Mock()
+    chain.async_search = AsyncMock(return_value=(Mock(), []))
+    app = FastAPI()
+    app.include_router(media_endpoints.router, prefix="/api/v1/media")
+    app.dependency_overrides[verify_token] = lambda: Mock()
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get(
+                "/api/v1/media/search",
+                params=[
+                    ("title", "测试"),
+                    ("media_source", MediaSource.Douban.value),
+                    ("media_source", MediaSource.TMDB.value),
+                    ("media_source", MediaSource.Douban.value),
+                ],
+            )
+
+    assert response.status_code == 200
+    chain.async_search.assert_awaited_once_with(
+        title="测试",
+        media_source=(MediaSource.Douban, MediaSource.TMDB),
+    )
+
+
+@pytest.mark.anyio
+async def test_media_search_route_rejects_unknown_source() -> None:
+    """真实搜索路由应在进入处理链前拒绝固定枚举之外的数据源。"""
+    chain = Mock()
+    chain.async_search = AsyncMock(return_value=(Mock(), []))
+    app = FastAPI()
+    app.include_router(media_endpoints.router, prefix="/api/v1/media")
+    app.dependency_overrides[verify_token] = lambda: Mock()
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get(
+                "/api/v1/media/search",
+                params={"title": "测试", "media_source": "plugin-source"},
+            )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"][0]
+    assert detail["type"] == "enum"
+    assert detail["input"] == "plugin-source"
+    chain.async_search.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -115,7 +209,7 @@ def test_chain_forwards_source_to_modules(
         getattr(ChainBase, method_name)(
             chain,
             name="测试",
-            media_source="themoviedb",
+            media_source=MediaSource.TMDB,
         )
     )
 
@@ -123,7 +217,7 @@ def test_chain_forwards_source_to_modules(
     chain.async_run_module.assert_awaited_once_with(
         module_method_name,
         name="测试",
-        media_source="themoviedb",
+        media_source=MediaSource.TMDB,
     )
 
 
@@ -135,10 +229,10 @@ def test_tmdb_person_search_respects_explicit_source(monkeypatch) -> None:
     module.tmdb.async_search_persons = AsyncMock(return_value=[])
 
     skipped = asyncio.run(
-        module.async_search_persons(name="测试", media_source="douban")
+        module.async_search_persons(name="测试", media_source=MediaSource.Douban)
     )
     result = asyncio.run(
-        module.async_search_persons(name="测试", media_source="themoviedb")
+        module.async_search_persons(name="测试", media_source=MediaSource.TMDB)
     )
 
     assert skipped is None
@@ -156,10 +250,10 @@ def test_douban_person_search_respects_explicit_source(monkeypatch) -> None:
     module.doubanapi.async_person_search = AsyncMock(return_value={})
 
     skipped = asyncio.run(
-        module.async_search_persons(name="测试", media_source="themoviedb")
+        module.async_search_persons(name="测试", media_source=MediaSource.TMDB)
     )
     result = asyncio.run(
-        module.async_search_persons(name="测试", media_source="douban")
+        module.async_search_persons(name="测试", media_source=MediaSource.Douban)
     )
 
     assert skipped is None
@@ -174,7 +268,7 @@ def test_tmdb_collection_search_rejects_unsupported_source() -> None:
     module.tmdb.async_search_collections = AsyncMock(return_value=[])
 
     result = asyncio.run(
-        module.async_search_collections(name="测试", media_source="douban")
+        module.async_search_collections(name="测试", media_source=MediaSource.Douban)
     )
 
     assert result is None
@@ -182,14 +276,15 @@ def test_tmdb_collection_search_rejects_unsupported_source() -> None:
 
 
 def test_tmdb_collection_search_supports_multi_source_request() -> None:
-    """TMDB合集搜索应支持请求级逗号分隔多数据源。"""
+    """TMDB合集搜索应支持请求级多数据源枚举元组。"""
     module = TheMovieDbModule()
     module.tmdb = Mock()
     module.tmdb.async_search_collections = AsyncMock(return_value=[])
 
     result = asyncio.run(
         module.async_search_collections(
-            name="测试", media_source="themoviedb,douban"
+            name="测试",
+            media_source=(MediaSource.TMDB, MediaSource.Douban),
         )
     )
 
@@ -198,7 +293,7 @@ def test_tmdb_collection_search_supports_multi_source_request() -> None:
 
 
 def test_tmdb_media_search_supports_multi_source_request(monkeypatch) -> None:
-    """TMDB媒体搜索应支持请求级逗号分隔多数据源，不被其他来源请求阻断。"""
+    """TMDB媒体搜索应支持请求级多数据源枚举元组。"""
     monkeypatch.setattr("app.modules.themoviedb.settings.SEARCH_SOURCE", "douban")
     module = TheMovieDbModule()
     module.tmdb = Mock()
@@ -208,8 +303,11 @@ def test_tmdb_media_search_supports_multi_source_request(monkeypatch) -> None:
     meta.type = MediaType.UNKNOWN
     meta.year = None
 
-    skipped = module.search_medias(meta=meta, media_source="douban")
-    result = module.search_medias(meta=meta, media_source="themoviedb,douban")
+    skipped = module.search_medias(meta=meta, media_source=MediaSource.Douban)
+    result = module.search_medias(
+        meta=meta,
+        media_source=(MediaSource.TMDB, MediaSource.Douban),
+    )
 
     assert skipped is None
     assert result == []
@@ -217,7 +315,7 @@ def test_tmdb_media_search_supports_multi_source_request(monkeypatch) -> None:
 
 
 def test_douban_media_search_supports_multi_source_request(monkeypatch) -> None:
-    """豆瓣媒体搜索应支持请求级逗号分隔多数据源，并跟随全局配置参与搜索。"""
+    """豆瓣媒体搜索应支持请求级多数据源枚举元组。"""
     monkeypatch.setattr("app.modules.douban.settings.SEARCH_SOURCE", "themoviedb")
     module = DoubanModule()
     module.doubanapi = Mock()
@@ -226,7 +324,10 @@ def test_douban_media_search_supports_multi_source_request(monkeypatch) -> None:
     meta.name = "测试"
 
     result = asyncio.run(
-        module.async_search_medias(meta=meta, media_source="themoviedb,douban")
+        module.async_search_medias(
+            meta=meta,
+            media_source=(MediaSource.TMDB, MediaSource.Douban),
+        )
     )
 
     assert result == []
@@ -243,7 +344,7 @@ def test_multi_source_request_keeps_missing_module_skipped(monkeypatch) -> None:
     meta.name = "测试"
 
     skipped = asyncio.run(
-        module.async_search_medias(meta=meta, media_source="themoviedb")
+        module.async_search_medias(meta=meta, media_source=MediaSource.TMDB)
     )
 
     assert skipped is None

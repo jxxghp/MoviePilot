@@ -5,7 +5,7 @@ from app.schemas.context import Context as ContextSchema
 from app.schemas.context import MediaInfo as MediaInfoSchema
 from app.schemas.music import MusicInfo as MusicInfoSchema
 from app.schemas.music import MusicMeta as MusicMetaSchema
-from app.schemas.types import MediaType, media_type_to_agent
+from app.schemas.types import MediaSource, MediaType, media_type_to_agent
 
 
 def test_media_type_supports_music_agent_conversion():
@@ -59,7 +59,7 @@ def test_music_info_serializes_shared_media_display_fields():
     assert payload["artist"] == "周杰伦"
     assert payload["title_year"] == "七里香 (2004)"
     assert payload["poster_path"] == "https://example.invalid/cover.jpg"
-    assert payload["mediaid_prefix"] == "musicbrainz"
+    assert payload["media_source"] == "musicbrainz"
     assert payload["media_id"] == "release-1"
 
 
@@ -94,7 +94,7 @@ def test_schema_context_uses_music_models_for_music_payload():
             },
             "media_info": {
                 "type": "音乐",
-                "source": "musicbrainz",
+                "media_source": "musicbrainz",
                 "media_id": "release-1",
                 "title": "七里香",
                 "artists": ["周杰伦"],
@@ -115,7 +115,8 @@ def test_schema_context_keeps_video_payload_on_existing_model():
         {
             "media_info": {
                 "type": "电影",
-                "source": "themoviedb",
+                "media_source": "themoviedb",
+                "media_id": "157336",
                 "title": "Interstellar",
                 "tmdb_id": 157336,
             }
@@ -130,7 +131,8 @@ def test_core_video_context_remains_compatible():
     """新增音乐模型后现有电影 Context 序列化应保持兼容。"""
     context = Context(
         media_info=MediaInfo(
-            source="themoviedb",
+            media_source=MediaSource.TMDB,
+            media_id="157336",
             type=MediaType.MOVIE,
             title="Interstellar",
             year="2014",

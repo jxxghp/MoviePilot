@@ -1,4 +1,4 @@
-"""3.0.1
+"""3.0.0
 统一通用媒体表的来源与原生 ID
 
 Revision ID: 8a4c7e1d2f90
@@ -61,7 +61,24 @@ SOURCE_ALIASES = {
     "audio_db": "theaudiodb",
     "doubanmusic": "doubanmusic",
     "douban_music": "doubanmusic",
+    "bilibili": "bilibili",
+    "mangguodiscover": "mangguodiscover",
+    "mango_tv": "mangguodiscover",
+    "migu": "migu",
+    "migu_video": "migu",
+    "tencentvideodiscover": "tencentvideodiscover",
+    "tencent_video": "tencentvideodiscover",
 }
+MEDIA_SOURCE_VALUES = frozenset(SOURCE_ALIASES.values())
+MEDIA_SOURCE_SQL_VALUES = ", ".join(
+    f"'{source}'" for source in sorted(MEDIA_SOURCE_VALUES)
+)
+MEDIA_IDENTITY_CHECK_SQL = (
+    "(media_source IS NULL AND media_id IS NULL) OR "
+    "(media_source IS NOT NULL AND "
+    f"media_source IN ({MEDIA_SOURCE_SQL_VALUES}) AND "
+    "media_id IS NOT NULL AND trim(media_id) <> '' AND trim(media_id) <> '0')"
+)
 
 
 def _inspector() -> sa.Inspector:
@@ -108,13 +125,45 @@ def _normalize_existing_sources(table_name: str) -> None:
     )
     connection = op.get_bind()
     for alias, source in SOURCE_ALIASES.items():
-        if alias == source:
-            continue
         connection.execute(
             table.update()
-            .where(sa.func.lower(table.c.media_source) == alias)
+            .where(sa.func.lower(sa.func.trim(table.c.media_source)) == alias)
             .values(media_source=source)
         )
+    connection.execute(
+        table.update()
+        .where(table.c.media_source.is_not(None))
+        .values(media_source=sa.func.trim(table.c.media_source))
+    )
+
+
+def _clear_invalid_or_partial_identity(table_name: str) -> None:
+    """清空无效或仅有一半的身份，允许后续从旧字段重新回填。"""
+    table = sa.table(
+        table_name,
+        sa.column("media_source", sa.String()),
+        sa.column("media_id", sa.String()),
+    )
+    invalid_identity = sa.or_(
+        table.c.media_source.is_(None),
+        sa.func.trim(table.c.media_source) == "",
+        sa.func.lower(sa.func.trim(table.c.media_source)).not_in(
+            MEDIA_SOURCE_VALUES
+        ),
+        table.c.media_id.is_(None),
+        sa.func.trim(table.c.media_id) == "",
+        sa.func.trim(table.c.media_id) == "0",
+    )
+    op.get_bind().execute(
+        table.update()
+        .where(invalid_identity)
+        .values(media_source=None, media_id=None)
+    )
+    op.get_bind().execute(
+        table.update()
+        .where(table.c.media_id.is_not(None))
+        .values(media_id=sa.func.trim(table.c.media_id))
+    )
 
 
 def _backfill_prefixed_media_id(table_name: str, columns: set[str]) -> None:
@@ -127,22 +176,32 @@ def _backfill_prefixed_media_id(table_name: str, columns: set[str]) -> None:
         sa.column("media_source", sa.String()),
         sa.column("media_id", sa.String()),
     )
-    for prefix, source in (
-        ("tmdb", "themoviedb"),
-        ("themoviedb", "themoviedb"),
-        ("douban", "douban"),
-        ("bangumi", "bangumi"),
-        ("anilist", "anilist"),
-        ("imdb", "imdb"),
-        ("tvdb", "tvdb"),
-    ):
+    for prefix, source in SOURCE_ALIASES.items():
         op.get_bind().execute(
             table.update()
             .where(_identity_missing(table))
-            .where(table.c.mediaid.like(f"{prefix}:%"))
+            .where(
+                sa.func.lower(
+                    sa.func.substr(
+                        sa.func.trim(table.c.mediaid), 1, len(prefix) + 1
+                    )
+                ) == f"{prefix}:"
+            )
+            .where(
+                sa.func.trim(
+                    sa.func.substr(table.c.mediaid, len(prefix) + 2)
+                ) != ""
+            )
+            .where(
+                sa.func.trim(
+                    sa.func.substr(table.c.mediaid, len(prefix) + 2)
+                ) != "0"
+            )
             .values(
                 media_source=source,
-                media_id=sa.func.substr(table.c.mediaid, len(prefix) + 2),
+                media_id=sa.func.trim(
+                    sa.func.substr(table.c.mediaid, len(prefix) + 2)
+                ),
             )
         )
 
@@ -166,10 +225,11 @@ def _backfill_source_columns(table_name: str, columns: set[str]) -> None:
             table.update()
             .where(_identity_missing(table))
             .where(identity_column.is_not(None))
-            .where(sa.cast(identity_column, sa.String()) != "")
+            .where(sa.func.trim(sa.cast(identity_column, sa.String())) != "")
+            .where(sa.func.trim(sa.cast(identity_column, sa.String())) != "0")
             .values(
                 media_source=source,
-                media_id=sa.cast(identity_column, sa.String()),
+                media_id=sa.func.trim(sa.cast(identity_column, sa.String())),
             )
         )
 
@@ -241,6 +301,41 @@ def _ensure_identity_indexes() -> None:
             )
 
 
+def _ensure_identity_constraints() -> None:
+    """为六张通用媒体表建立来源枚举与身份成对数据库约束。"""
+    for table_name in LEGACY_COLUMNS:
+        if not _has_table(table_name):
+            continue
+        constraint_name = f"ck_{table_name}_media_identity"
+        existing = {
+            constraint.get("name")
+            for constraint in _inspector().get_check_constraints(table_name)
+        }
+        if constraint_name in existing:
+            continue
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.create_check_constraint(
+                constraint_name,
+                MEDIA_IDENTITY_CHECK_SQL,
+            )
+
+
+def _drop_identity_constraints() -> None:
+    """降级时移除本次迁移新增的媒体身份数据库约束。"""
+    for table_name in LEGACY_COLUMNS:
+        if not _has_table(table_name):
+            continue
+        constraint_name = f"ck_{table_name}_media_identity"
+        existing = {
+            constraint.get("name")
+            for constraint in _inspector().get_check_constraints(table_name)
+        }
+        if constraint_name not in existing:
+            continue
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.drop_constraint(constraint_name, type_="check")
+
+
 def upgrade() -> None:
     """回填规范媒体身份，并删除通用表中的全部来源专用 ID 字段。"""
     for table_name, legacy_columns in LEGACY_COLUMNS.items():
@@ -248,11 +343,13 @@ def upgrade() -> None:
             continue
         _ensure_identity_columns(table_name)
         _normalize_existing_sources(table_name)
+        _clear_invalid_or_partial_identity(table_name)
         columns = _column_names(table_name)
         _backfill_prefixed_media_id(table_name, columns)
         _backfill_source_columns(table_name, columns)
         _drop_legacy_columns(table_name, legacy_columns)
     _ensure_identity_indexes()
+    _ensure_identity_constraints()
 
 
 def _restore_legacy_columns(table_name: str, columns: Iterable[str]) -> None:
@@ -291,6 +388,7 @@ def _restore_legacy_columns(table_name: str, columns: Iterable[str]) -> None:
 
 def downgrade() -> None:
     """恢复旧列；已被规范身份舍弃的辅助来源 ID 无法无损恢复。"""
+    _drop_identity_constraints()
     for table_name, legacy_columns in LEGACY_COLUMNS.items():
         _restore_legacy_columns(table_name, legacy_columns)
     if _has_table("mediaserveritem"):

@@ -10,6 +10,7 @@ from app.modules.plex.plex import Plex
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.modules.ugreen.ugreen import Ugreen
 from app.modules.zspace.zspace import ZSpace
+from app.schemas.types import MediaSource
 
 
 class _FakeResponse:
@@ -56,7 +57,8 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
             title="测试剧集",
             original_title="Test Show",
             year="2026",
-            tmdb_id=12345,
+            media_source=MediaSource.TMDB,
+            media_id="12345",
             season=1,
         )
 
@@ -95,7 +97,8 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
         item_id, episodes = plex.get_tv_episodes(
             item_id="107797",
             title="测试剧集",
-            tmdb_id=12345,
+            media_source=MediaSource.TMDB,
+            media_id="12345",
         )
 
         self.assertEqual(item_id, "/library/metadata/107797")
@@ -109,7 +112,10 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
         client._host = "http://emby.local/"
         client._apikey = "api-key"
         client.user = "user-id"
-        client.get_iteminfo = Mock(side_effect=[None, SimpleNamespace(tmdbid=12345)])
+        client.get_iteminfo = Mock(side_effect=[
+            None,
+            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
+        ])
         client._Emby__get_emby_series_id_by_name = Mock(return_value="new-series-id")
 
         with patch("app.modules.emby.emby.RequestUtils") as request_utils_cls:
@@ -121,7 +127,8 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
                 item_id="old-series-id",
                 title="测试剧集",
                 year="2026",
-                tmdb_id=12345,
+                media_source=MediaSource.TMDB,
+                media_id="12345",
             )
 
         self.assertEqual(item_id, "new-series-id")
@@ -134,7 +141,10 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
         client._host = "http://jellyfin.local/"
         client._apikey = "api-key"
         client.user = "user-id"
-        client.get_iteminfo = Mock(side_effect=[None, SimpleNamespace(tmdbid=12345)])
+        client.get_iteminfo = Mock(side_effect=[
+            None,
+            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
+        ])
         client._Jellyfin__get_jellyfin_series_id_by_name = Mock(return_value="new-series-id")
 
         with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request_utils_cls:
@@ -146,7 +156,8 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
                 item_id="old-series-id",
                 title="测试剧集",
                 year="2026",
-                tmdb_id=12345,
+                media_source=MediaSource.TMDB,
+                media_id="12345",
             )
 
         self.assertEqual(item_id, "new-series-id")
@@ -159,7 +170,10 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
         client._host = "http://zspace.local/"
         client._apikey = "api-key"
         client.user = "user-id"
-        client.get_iteminfo = Mock(side_effect=[None, SimpleNamespace(tmdbid=12345)])
+        client.get_iteminfo = Mock(side_effect=[
+            None,
+            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
+        ])
         client._ZSpace__get_series_id_by_name = Mock(return_value="new-series-id")
 
         with patch("app.modules.zspace.zspace.RequestUtils") as request_utils_cls:
@@ -171,7 +185,8 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
                 item_id="old-series-id",
                 title="测试剧集",
                 year="2026",
-                tmdb_id=12345,
+                media_source=MediaSource.TMDB,
+                media_id="12345",
             )
 
         self.assertEqual(item_id, "new-series-id")
@@ -183,7 +198,10 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
         client = Ugreen.__new__(Ugreen)
         client._api = Mock()
         client.is_authenticated = Mock(return_value=True)
-        client.get_iteminfo = Mock(side_effect=[None, SimpleNamespace(tmdbid=12345)])
+        client.get_iteminfo = Mock(side_effect=[
+            None,
+            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
+        ])
         client._Ugreen__search_tv_item = Mock(return_value={"ug_video_info_id": "new-series-id"})
         client._api.get_tv.return_value = {
             "season_info": [{"category_id": "season-1", "season_num": 1}],
@@ -194,19 +212,25 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
             item_id="old-series-id",
             title="测试剧集",
             year="2026",
-            tmdb_id=12345,
+            media_source=MediaSource.TMDB,
+            media_id="12345",
         )
 
         self.assertEqual(item_id, "new-series-id")
         self.assertEqual(episodes, {1: [1]})
-        client._Ugreen__search_tv_item.assert_called_once_with("测试剧集", "2026", 12345)
+        client._Ugreen__search_tv_item.assert_called_once_with(
+            "测试剧集", "2026", MediaSource.TMDB, "12345"
+        )
 
     def test_trime_media_tv_episodes_fallback_when_cached_item_id_missing(self):
         """飞牛影视缓存ID失效时，应重新搜索剧集ID后再查询集信息。"""
         client = TrimeMedia.__new__(TrimeMedia)
         client._api = Mock()
         client.is_authenticated = Mock(return_value=True)
-        client.get_iteminfo = Mock(side_effect=[None, SimpleNamespace(tmdbid=12345)])
+        client.get_iteminfo = Mock(side_effect=[
+            None,
+            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
+        ])
         client._TrimeMedia__get_series_id_by_name = Mock(return_value="new-series-id")
         client._api.season_list.return_value = [SimpleNamespace(season_number=1, guid="season-1")]
         client._api.episode_list.return_value = [
@@ -217,7 +241,8 @@ class MediaServerTvStaleItemIdTest(unittest.TestCase):
             item_id="old-series-id",
             title="测试剧集",
             year="2026",
-            tmdb_id=12345,
+            media_source=MediaSource.TMDB,
+            media_id="12345",
         )
 
         self.assertEqual(item_id, "new-series-id")

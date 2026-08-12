@@ -4,7 +4,7 @@ from xml.dom import minidom
 from app.core.meta import MetaBase
 from app.helper.scraper import MediaScraperHelper
 from app.modules.bangumi import BangumiModule
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _bangumi_info() -> dict:
@@ -43,10 +43,11 @@ def test_bangumi_title_recognition_loads_detail_and_people() -> None:
     meta.type = MediaType.TV
     meta.year = "2023"
 
-    media = module.recognize_media(meta=meta, source="bangumi")
+    media = module.recognize_media(meta=meta, media_source=MediaSource.Bangumi)
 
     assert media is not None
-    assert media.source == "bangumi"
+    assert media.media_source == MediaSource.Bangumi
+    assert media.media_id == "400602"
     assert media.bangumi_id == 400602
     assert media.number_of_episodes == 28
     assert media.genres == [
@@ -65,7 +66,9 @@ def test_bangumi_scraper_generates_source_nfo() -> None:
     module.scraper = MediaScraperHelper()
     module.bangumiapi.detail.return_value = _bangumi_info()
     module.bangumiapi.credits.return_value = []
-    media = module.recognize_media(bangumiid=400602)
+    media = module.recognize_media(
+        media_source=MediaSource.Bangumi, media_id="400602"
+    )
     media.scrape_source = "bangumi"
 
     nfo = module.metadata_nfo(media)

@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.log import logger
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -125,9 +124,11 @@ class QueryMediaDetailTool(MoviePilotTool):
                         "message": "查询音乐详情必须同时提供 media_source 和 media_id",
                     }, ensure_ascii=False)
 
-                music_chain = MusicChain()
+                media_chain = MediaChain()
                 if normalized_music_type == MUSIC_ENTITY_ALBUM:
-                    album_info = await music_chain.async_album(media_source, media_id)
+                    album_info = await media_chain.async_get_music_album(
+                        media_source, media_id
+                    )
                     if not album_info:
                         return json.dumps({
                             "success": False,
@@ -140,7 +141,9 @@ class QueryMediaDetailTool(MoviePilotTool):
                     )
 
                 if normalized_music_type == MUSIC_ENTITY_ARTIST:
-                    artist_info = await music_chain.async_artist(media_source, media_id)
+                    artist_info = await media_chain.async_get_music_artist(
+                        media_source, media_id
+                    )
                     if not artist_info:
                         return json.dumps({
                             "success": False,
@@ -153,7 +156,7 @@ class QueryMediaDetailTool(MoviePilotTool):
                     if include_artist_albums:
                         pending.append((
                             "albums",
-                            music_chain.async_artist_albums(
+                            media_chain.async_get_music_artist_albums(
                                 media_source=media_source,
                                 media_id=media_id,
                                 page=normalized_page,
@@ -164,7 +167,7 @@ class QueryMediaDetailTool(MoviePilotTool):
                     if include_related_artists:
                         pending.append((
                             "related_artists",
-                            music_chain.async_artist_related(
+                            media_chain.async_get_music_artist_related(
                                 media_source=media_source,
                                 media_id=media_id,
                                 count=normalized_count,
@@ -181,7 +184,6 @@ class QueryMediaDetailTool(MoviePilotTool):
                             ]
                     return json.dumps(result, ensure_ascii=False, indent=2)
 
-                media_chain = MediaChain()
                 mediainfo = await media_chain.async_recognize_media(
                     media_source=media_source,
                     media_id=media_id,

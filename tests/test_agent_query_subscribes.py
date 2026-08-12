@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from app.agent.tools.impl.query_subscribes import QuerySubscribesTool
 from app.db.models.subscribe import Subscribe
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_agent_query_subscribes_returns_manual_total_episode():
@@ -13,7 +13,8 @@ def test_agent_query_subscribes_returns_manual_total_episode():
         id=160,
         name="测试剧集",
         type=MediaType.TV.value,
-        tmdbid=224839,
+        media_source=MediaSource.TMDB.value,
+        media_id="224839",
         season=1,
         total_episode=175,
         manual_total_episode=1,

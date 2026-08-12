@@ -1,17 +1,22 @@
+import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
+from app.chain.acoustid import AcoustIdChain
+from app.chain.listenbrainz import ListenBrainzChain
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
+from app.chain.musicbrainz import MusicBrainzChain
+from app.chain.recommend import RecommendChain
+from app.chain.search import SearchChain
 from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.core.meta import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_parse_query_supports_artist_title_format():
     """艺术家与标题格式应拆分为结构化搜索条件。"""
-    meta = MusicChain.parse_query("  周杰伦  -  晴天  ")
+    meta = MetaMusic.parse_query("  周杰伦  -  晴天  ")
 
     assert meta.artists == ["周杰伦"]
     assert meta.title == "晴天"
@@ -20,7 +25,7 @@ def test_parse_query_supports_artist_title_format():
 
 def test_parse_query_keeps_plain_title():
     """普通文本应保留为歌曲或专辑标题。"""
-    meta = MusicChain.parse_query("  Random   Access Memories ")
+    meta = MetaMusic.parse_query("  Random   Access Memories ")
 
     assert meta.artists == []
     assert meta.title == "Random Access Memories"
@@ -28,7 +33,7 @@ def test_parse_query_keeps_plain_title():
 
 def test_parse_query_strips_quality_tokens_before_artist_split():
     """音质规格不应参与艺术家/曲名拆分，年份括号与格式后缀需剔除。"""
-    meta = MusicChain.parse_query("毛阿敏 - 永遠是朋友(2000) - ALAC [16B-44.1kHz]")
+    meta = MetaMusic.parse_query("毛阿敏 - 永遠是朋友(2000) - ALAC [16B-44.1kHz]")
 
     assert meta.artists == ["毛阿敏"]
     assert meta.title == "永遠是朋友"
@@ -37,7 +42,7 @@ def test_parse_query_strips_quality_tokens_before_artist_split():
 
 def test_parse_query_does_not_misplit_quality_only_tail():
     """无艺术家时格式规格段不能被误拆成曲名，曲名不能丢字。"""
-    meta = MusicChain.parse_query("永遠是朋友(2000) - ALAC [16B-44.1kHz]")
+    meta = MetaMusic.parse_query("永遠是朋友(2000) - ALAC [16B-44.1kHz]")
 
     assert meta.artists == []
     assert meta.title == "永遠是朋友"
@@ -45,13 +50,13 @@ def test_parse_query_does_not_misplit_quality_only_tail():
 
 def test_parse_query_strips_trailing_artist_suffix():
     """曲名尾部重复的艺术家署名应被剥离，不作为曲名参与检索。"""
-    meta = MusicChain.parse_query("毛阿敏 - 名人名曲-毛阿敏(2000)")
+    meta = MetaMusic.parse_query("毛阿敏 - 名人名曲-毛阿敏(2000)")
 
     assert meta.artists == ["毛阿敏"]
     assert meta.title == "名人名曲"
     assert meta.year == 2000
 
-    meta = MusicChain.parse_query("许茹芸 - 争奇斗艳演唱会实况 2 - 许茹芸 (1996)")
+    meta = MetaMusic.parse_query("许茹芸 - 争奇斗艳演唱会实况 2 - 许茹芸 (1996)")
 
     assert meta.artists == ["许茹芸"]
     assert meta.title == "争奇斗艳演唱会实况 2"
@@ -59,7 +64,7 @@ def test_parse_query_strips_trailing_artist_suffix():
 
 def test_parse_query_keeps_non_artist_suffix():
     """曲名尾段与艺术家不一致时不应被误剥离。"""
-    meta = MusicChain.parse_query("毛阿敏 - 思念 - 现场版")
+    meta = MetaMusic.parse_query("毛阿敏 - 思念 - 现场版")
 
     assert meta.artists == ["毛阿敏"]
     assert meta.title == "思念 - 现场版"
@@ -74,7 +79,7 @@ def test_build_site_keywords_prefers_artist_album():
         album="Random Access Memories",
     )
 
-    assert MusicChain.build_site_keywords(info) == [
+    assert SearchChain.music_site_keywords(info) == [
         "Daft Punk Random Access Memories",
         "Random Access Memories",
     ]
@@ -89,7 +94,7 @@ def test_build_site_keywords_keeps_recording_out_of_album_search():
         album="Random Access Memories",
     )
 
-    assert MusicChain.build_site_keywords(info) == [
+    assert SearchChain.music_site_keywords(info) == [
         "Daft Punk Get Lucky",
         "Get Lucky",
     ]
@@ -104,11 +109,11 @@ def test_album_resource_match_requires_selected_album_title():
         names=["Random-Access Memories"],
     )
 
-    assert MusicChain.matches_site_resource(
+    assert SearchChain.matches_music_resource(
         album,
         "Daft.Punk-Random.Access.Memories-2013-FLAC",
     ) is True
-    assert MusicChain.matches_site_resource(album, "Daft Punk - Discovery - FLAC") is False
+    assert SearchChain.matches_music_resource(album, "Daft Punk - Discovery - FLAC") is False
 
 
 def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
@@ -120,8 +125,8 @@ def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
         names=["Get Lucky", "Random Access Memories"],
     )
 
-    assert MusicChain.matches_site_resource(recording, "Daft Punk - Get Lucky FLAC") is True
-    assert MusicChain.matches_site_resource(
+    assert SearchChain.matches_music_resource(recording, "Daft Punk - Get Lucky FLAC") is True
+    assert SearchChain.matches_music_resource(
         recording,
         "Daft Punk - Random Access Memories FLAC",
     ) is False
@@ -135,19 +140,19 @@ def test_resource_match_requires_artist_when_target_artist_is_known():
         artists=["周杰伦"],
     )
 
-    assert MusicChain.matches_site_resource(recording, "周杰伦 - 晴天 FLAC") is True
-    assert MusicChain.matches_site_resource(recording, "其他艺人 - 晴天 FLAC") is False
-    assert MusicChain.matches_site_resource(recording, "晴天 FLAC") is False
+    assert SearchChain.matches_music_resource(recording, "周杰伦 - 晴天 FLAC") is True
+    assert SearchChain.matches_music_resource(recording, "其他艺人 - 晴天 FLAC") is False
+    assert SearchChain.matches_music_resource(recording, "晴天 FLAC") is False
 
 
 def test_normalize_candidates_deduplicates_source_identity():
     """同一来源和媒体 ID 的音乐候选应只保留一次。"""
-    results = MusicChain.normalize_candidates(
+    results = MediaChain.normalize_music_candidates(
         [
             MusicInfo(media_source="musicbrainz", media_id="recording-1", title="A"),
             {
                 "type": "音乐",
-                "source": "musicbrainz",
+                "media_source": "musicbrainz",
                 "media_id": "recording-1",
                 "title": "A duplicate",
             },
@@ -160,7 +165,7 @@ def test_normalize_candidates_deduplicates_source_identity():
 
 def test_normalize_candidates_keeps_different_entities_with_same_source_id():
     """同一来源 ID 在不同音乐实体命名空间下不能互相去重。"""
-    results = MusicChain.normalize_candidates(
+    results = MediaChain.normalize_music_candidates(
         [
             MusicInfo(media_source="musicbrainz", media_id="shared-id", music_type="recording", title="Song"),
             MusicInfo(media_source="musicbrainz", media_id="shared-id", music_type="album", title="Album"),
@@ -172,7 +177,7 @@ def test_normalize_candidates_keeps_different_entities_with_same_source_id():
 
 def test_normalize_candidates_deduplicates_metadata_without_id():
     """缺少来源 ID 时应按标题、艺术家和专辑去重。"""
-    results = MusicChain.normalize_candidates(
+    results = MediaChain.normalize_music_candidates(
         [
             MusicInfo(title="One More Time", artists=["Daft Punk"], album="Discovery"),
             MusicInfo(title=" one  more time ", artists=["daft punk"], album="DISCOVERY"),
@@ -194,7 +199,7 @@ def test_to_meta_preserves_selected_identity():
         track_number=3,
     )
 
-    meta = MusicChain.to_meta(info)
+    meta = MetaMusic.from_music_info(info)
 
     assert meta.media_source == "musicbrainz"
     assert meta.media_id == "recording-1"
@@ -205,7 +210,7 @@ def test_to_meta_preserves_selected_identity():
 
 def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
     """音乐榜单处理链应将页码转换为模块需要的偏移量。"""
-    chain = MusicChain()
+    chain = ListenBrainzChain()
     requested = {}
 
     def fake_run_module(method, **kwargs):
@@ -218,24 +223,24 @@ def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
 
     monkeypatch.setattr(chain, "run_module", fake_run_module)
 
-    results = chain.chart(range_name="this_week", page=2, count=30)
+    results = chain.music_chart(range_name="this_week", page=2, count=30)
 
     assert requested == {
         "method": "music_chart",
         "range_name": "this_week",
         "offset": 30,
         "count": 30,
+        "entity": "recording",
     }
-    assert len(results) == 1
+    assert len(results) == 2
 
 
 def test_async_chart_applies_music_explore_filters(monkeypatch):
     """音乐探索应按收听次数、封面条件和升序设置筛选榜单。"""
-    chain = MusicChain()
+    chain = RecommendChain()
 
-    async def fake_async_run_module(method, **kwargs):
+    async def fake_music_chart(**kwargs):
         """返回包含不同热度和封面状态的榜单候选。"""
-        assert method == "music_chart"
         return [
             MusicInfo(media_id="1", media_source="musicbrainz", title="A", listen_count=300),
             MusicInfo(
@@ -254,12 +259,12 @@ def test_async_chart_applies_music_explore_filters(monkeypatch):
             ),
         ]
 
-    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
-
-    import asyncio
+    source_chain = Mock()
+    source_chain.async_music_chart = AsyncMock(side_effect=fake_music_chart)
+    monkeypatch.setattr("app.chain.recommend.ListenBrainzChain", Mock(return_value=source_chain))
 
     results = asyncio.run(
-        chain.async_chart(
+        chain.async_music_chart(
             range_name="this_month",
             count=30,
             sort_by="listen_count.asc",
@@ -313,18 +318,15 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
     recognize = AsyncMock(return_value=info)
     filename_meta = MetaMusic(title="02. 眼泪成诗")
     monkeypatch.setattr(
-        MusicChain,
-        "read_path_evidence",
+        "app.chain.media.AudioMetadataHelper.read_evidence",
         Mock(return_value=(meta, meta, filename_meta)),
     )
     monkeypatch.setattr(
-        MusicChain,
-        "async_identify_by_fingerprint",
+        AcoustIdChain,
+        "async_identify_music_by_fingerprint",
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(chain, "async_recognize_media", recognize)
-
-    import asyncio
 
     recognized_meta, recognized_info = asyncio.run(
         chain.async_recognize_music_by_path(audio_path)
@@ -334,14 +336,14 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
     assert recognized_info is info
     recognize.assert_awaited_once_with(
         meta=meta,
-        source=None,
+        media_source=None,
         music_type="recording",
     )
 
 
-def test_recognize_best_only_queries_musicbrainz(monkeypatch):
+def test_media_chain_default_recognition_only_queries_musicbrainz(monkeypatch):
     """自动音乐识别只应调用 MusicBrainz 主数据源。"""
-    chain = MusicChain()
+    chain = MediaChain()
     meta = MetaMusic(
         title="晴天",
         artists=["周杰伦"],
@@ -357,22 +359,23 @@ def test_recognize_best_only_queries_musicbrainz(monkeypatch):
         year=2003,
     )
     recognize_source = Mock(return_value=expected)
-    monkeypatch.setattr(chain, "recognize_from_source", recognize_source)
+    monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
-    result = chain.recognize_best(meta)
+    with patch("app.chain.MoviePilotServerHelper.report_recognize_share"):
+        result = chain.recognize_media(meta=meta)
 
     assert result is expected
     recognize_source.assert_called_once_with(
-        media_source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         meta=meta,
         cache=True,
         music_type="recording",
     )
 
 
-def test_recognize_from_source_selects_only_declared_music_module(monkeypatch):
+def test_recognize_from_source_selects_only_declared_music_source_chain(monkeypatch):
     """单源识别只允许调用声明该音乐来源的模块，忽略同接口影视模块。"""
-    chain = MusicChain()
+    chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -380,50 +383,44 @@ def test_recognize_from_source_selects_only_declared_music_module(monkeypatch):
         title="晴天",
         artists=["周杰伦"],
     )
-    video_module = Mock(spec=["recognize_media"])
-    music_module = Mock(spec=["get_music_source", "recognize_media"])
-    music_module.get_music_source.return_value = "musicbrainz"
-    music_module.recognize_media.return_value = expected
-    monkeypatch.setattr(
-        chain.modulemanager,
-        "get_running_modules",
-        Mock(return_value=[video_module, music_module]),
-    )
+    source_chain = Mock()
+    source_chain.recognize_music.return_value = expected
+    monkeypatch.setattr(chain, "_music_source_chain", Mock(return_value=source_chain))
 
-    result = chain.recognize_from_source(
+    result = chain.recognize_music_from_source(
         media_source="musicbrainz",
         meta=meta,
         cache=True,
     )
 
     assert result is expected
-    video_module.recognize_media.assert_not_called()
-    music_module.recognize_media.assert_called_once_with(
+    source_chain.recognize_music.assert_called_once_with(
         meta=meta,
-        mtype=MediaType.MUSIC,
-        media_source="musicbrainz",
-        mediaid=None,
+        media_id=None,
         cache=True,
+        music_type=None,
     )
 
 
-def test_recognize_best_does_not_fallback_after_musicbrainz_miss(monkeypatch):
+def test_default_recognition_does_not_fallback_after_musicbrainz_miss(monkeypatch):
     """MusicBrainz 未命中时自动识别不得继续请求其它音乐来源。"""
-    chain = MusicChain()
+    chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     recognize_source = Mock(return_value=None)
-    monkeypatch.setattr(chain, "recognize_from_source", recognize_source)
+    monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
-    assert chain.recognize_best(meta) is None
+    with patch(
+        "app.chain.MoviePilotServerHelper.query_recognize_share",
+        return_value=None,
+    ):
+        assert chain.recognize_media(meta=meta) is None
     recognize_source.assert_called_once()
-    assert recognize_source.call_args.kwargs["source"] == "musicbrainz"
+    assert recognize_source.call_args.kwargs["media_source"] == MediaSource.MusicBrainz
 
 
-def test_async_recognize_best_only_queries_musicbrainz(monkeypatch):
+def test_async_default_recognition_only_queries_musicbrainz(monkeypatch):
     """异步自动音乐识别也只应调用 MusicBrainz 主数据源。"""
-    import asyncio
-
-    chain = MusicChain()
+    chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -432,60 +429,52 @@ def test_async_recognize_best_only_queries_musicbrainz(monkeypatch):
         artists=["周杰伦"],
     )
     recognize_source = AsyncMock(return_value=expected)
-    monkeypatch.setattr(chain, "async_recognize_from_source", recognize_source)
+    monkeypatch.setattr(chain, "async_recognize_music_from_source", recognize_source)
 
-    result = asyncio.run(chain.async_recognize_best(meta))
+    with patch(
+        "app.chain.MoviePilotServerHelper.async_report_recognize_share",
+        new=AsyncMock(),
+    ):
+        result = asyncio.run(chain.async_recognize_media(meta=meta))
 
     assert result is expected
     recognize_source.assert_awaited_once_with(
-        media_source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         meta=meta,
         cache=True,
         music_type="recording",
     )
 
 
-def test_async_recognize_from_source_calls_module_async_method(monkeypatch):
+def test_musicbrainz_source_chain_calls_module_async_method(monkeypatch):
     """单源异步识别必须直接等待模块异步入口。"""
-    chain = MusicChain()
+    chain = MusicBrainzChain()
     expected = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
     )
-    module = Mock()
-    module.async_recognize_media = AsyncMock(return_value=expected)
-    module.recognize_media = Mock(
-        side_effect=AssertionError("异步识别不应调用同步模块方法")
-    )
-    monkeypatch.setattr(
-        chain,
-        "_music_recognize_module",
-        Mock(return_value=module),
-    )
+    async_run_module = AsyncMock(return_value=expected)
+    run_module = Mock(side_effect=AssertionError("异步识别不应调用同步模块方法"))
+    monkeypatch.setattr(chain, "async_run_module", async_run_module)
+    monkeypatch.setattr(chain, "run_module", run_module)
 
-    import asyncio
-
-    result = asyncio.run(chain._async_recognize_from_source(
-        MetaMusic(title="晴天"),
-        "musicbrainz",
-        True,
+    result = asyncio.run(chain.async_recognize_music(
+        meta=MetaMusic(title="晴天"), cache=True
     ))
 
     assert result is expected
-    module.async_recognize_media.assert_awaited_once()
-    module.recognize_media.assert_not_called()
+    async_run_module.assert_awaited_once()
+    run_module.assert_not_called()
 
 
 def test_async_identify_by_fingerprint_uses_async_module_contract(monkeypatch):
     """指纹异步链路应请求模块的异步方法名。"""
-    chain = MusicChain()
+    chain = AcoustIdChain()
     async_run_module = AsyncMock(return_value="recording-1")
     monkeypatch.setattr(chain, "async_run_module", async_run_module)
 
-    import asyncio
-
-    result = asyncio.run(chain.async_identify_by_fingerprint("/music/track.flac"))
+    result = asyncio.run(chain.async_identify_music_by_fingerprint("/music/track.flac"))
 
     assert result == "recording-1"
     async_run_module.assert_awaited_once_with(
@@ -496,7 +485,7 @@ def test_async_identify_by_fingerprint_uses_async_module_contract(monkeypatch):
 
 def test_async_chart_forwards_album_entity(monkeypatch):
     """热门专辑探索应把实体类型透传给 ListenBrainz 榜单模块。"""
-    chain = MusicChain()
+    chain = ListenBrainzChain()
     requested = {}
 
     async def fake_async_run_module(method, **kwargs):
@@ -514,9 +503,7 @@ def test_async_chart_forwards_album_entity(monkeypatch):
 
     monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
 
-    import asyncio
-
-    results = asyncio.run(chain.async_chart(range_name="week", page=3, count=20, entity="album"))
+    results = asyncio.run(chain.async_music_chart(range_name="week", page=3, count=20, entity="album"))
 
     assert requested["method"] == "music_chart"
     assert requested["entity"] == "album"
@@ -526,12 +513,12 @@ def test_async_chart_forwards_album_entity(monkeypatch):
 
 def test_async_fresh_releases_keeps_official_order(monkeypatch):
     """新发行探索应保留官方排序，只按封面条件过滤。"""
-    chain = MusicChain()
+    chain = RecommendChain()
     requested = {}
 
-    async def fake_async_run_module(method, **kwargs):
+    async def fake_fresh_releases(**kwargs):
         """记录新发行请求参数并返回带封面与不带封面的候选。"""
-        requested.update(method=method, **kwargs)
+        requested.update(**kwargs)
         return [
             MusicInfo(media_id="b", media_source="musicbrainz", music_type="album", title="B"),
             MusicInfo(
@@ -543,23 +530,24 @@ def test_async_fresh_releases_keeps_official_order(monkeypatch):
             ),
         ]
 
-    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
-
-    import asyncio
+    source_chain = Mock()
+    source_chain.async_music_fresh_releases = AsyncMock(side_effect=fake_fresh_releases)
+    monkeypatch.setattr("app.chain.recommend.ListenBrainzChain", Mock(return_value=source_chain))
 
     results = asyncio.run(
-        chain.async_fresh_releases(days=30, sort="release_name", page=2, count=10, with_cover=True)
+        chain.async_music_fresh_releases(
+            days=30, sort="release_name", page=2, count=10, with_cover=True
+        )
     )
 
-    assert requested["method"] == "music_fresh_releases"
-    assert requested["offset"] == 10
+    assert requested["page"] == 2
     assert requested["sort"] == "release_name"
     assert [item.title for item in results] == ["A"]
 
 
-def test_async_artist_related_deduplicates_artists(monkeypatch):
-    """关联艺术家应按标准 ID 去重，避免同一成员重复出现。"""
-    chain = MusicChain()
+def test_async_artist_related_preserves_source_results(monkeypatch):
+    """关联艺术家来源链应保留来源返回顺序和实体。"""
+    chain = MusicBrainzChain()
 
     async def fake_async_run_module(method, **kwargs):
         """返回重复的关联艺术家候选。"""
@@ -572,33 +560,33 @@ def test_async_artist_related_deduplicates_artists(monkeypatch):
 
     monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
 
-    import asyncio
+    results = asyncio.run(chain.async_get_music_artist_related(media_id="artist-0"))
 
-    results = asyncio.run(chain.async_artist_related(media_source="musicbrainz", media_id="artist-0"))
-
-    assert [item.media_id for item in results] == ["artist-1", "artist-2"]
+    assert [item.media_id for item in results] == ["artist-1", "artist-1", "artist-2"]
 
 
-def test_async_album_restores_dataclass_from_plugin_dict(monkeypatch):
-    """插件返回字典时专辑链应恢复为标准专辑对象。"""
-    chain = MusicChain()
+def test_async_album_returns_source_chain_result(monkeypatch):
+    """媒体链应按来源和 ID 返回来源链提供的标准专辑对象。"""
+    chain = MediaChain()
 
-    async def fake_async_run_module(method, **kwargs):
+    async def fake_get_album(media_id):
         """模拟插件模块以字典形式返回专辑详情。"""
-        assert method == "music_album"
+        assert media_id == "release-group-1"
         return MusicAlbumInfo(
             media_source="musicbrainz",
             media_id="release-group-1",
             title="A Night at the Opera",
             artists=["Queen"],
             release_date="1975-11-21",
-        ).to_dict()
+        )
 
-    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+    source_chain = Mock()
+    source_chain.async_get_music_album = AsyncMock(side_effect=fake_get_album)
+    monkeypatch.setattr(chain, "_music_source_chain", Mock(return_value=source_chain))
 
-    import asyncio
-
-    album = asyncio.run(chain.async_album(media_source="musicbrainz", media_id="release-group-1"))
+    album = asyncio.run(chain.async_get_music_album(
+        media_source="musicbrainz", media_id="release-group-1"
+    ))
 
     assert album is not None
     assert album.year == 1975

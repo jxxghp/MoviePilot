@@ -1,6 +1,6 @@
 from app.db import SessionFactory
 from app.db.models.transferhistory import TransferHistory
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.utils import system as system_module
 from app.utils.system import SystemUtils
 
@@ -70,13 +70,13 @@ def test_monthly_media_statistics_counts_successful_unique_media():
     """本月新增统计应只计算成功记录，并按媒体去重。"""
     month = system_module.time.strftime("%Y-%m-", system_module.time.localtime())
     histories = [
-        TransferHistory(status=True, date=f"{month}01 10:00:00", type=MediaType.MOVIE.value, tmdbid=1, title="电影"),
-        TransferHistory(status=True, date=f"{month}02 10:00:00", type=MediaType.MOVIE.value, tmdbid=1, title="电影"),
-        TransferHistory(status=True, date=f"{month}03 10:00:00", type=MediaType.TV.value, tmdbid=2, title="剧集", episodes="E01-E03"),
-        TransferHistory(status=False, date=f"{month}04 10:00:00", type=MediaType.TV.value, tmdbid=3, title="失败剧集"),
+        TransferHistory(status=True, date=f"{month}01 10:00:00", type=MediaType.MOVIE.value, media_source=MediaSource.TMDB.value, media_id="1", title="电影"),
+        TransferHistory(status=True, date=f"{month}02 10:00:00", type=MediaType.MOVIE.value, media_source=MediaSource.TMDB.value, media_id="1", title="电影"),
+        TransferHistory(status=True, date=f"{month}03 10:00:00", type=MediaType.TV.value, media_source=MediaSource.TMDB.value, media_id="2", title="剧集", episodes="E01-E03"),
+        TransferHistory(status=False, date=f"{month}04 10:00:00", type=MediaType.TV.value, media_source=MediaSource.TMDB.value, media_id="3", title="失败剧集"),
         # 同一首歌多次整理只计一首，无媒体 ID 的曲目按记录计数
-        TransferHistory(status=True, date=f"{month}05 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_id="musicbrainz:r1"),
-        TransferHistory(status=True, date=f"{month}06 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_id="musicbrainz:r1"),
+        TransferHistory(status=True, date=f"{month}05 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_source=MediaSource.MusicBrainz.value, media_id="r1"),
+        TransferHistory(status=True, date=f"{month}06 10:00:00", type=MediaType.MUSIC.value, title="晴天", media_source=MediaSource.MusicBrainz.value, media_id="r1"),
         TransferHistory(status=True, date=f"{month}07 10:00:00", type=MediaType.MUSIC.value, title="未知曲目"),
         TransferHistory(status=False, date=f"{month}08 10:00:00", type=MediaType.MUSIC.value, title="失败曲目"),
         # 整专内不同目标曲目共享专辑 ID，但应分别计入音乐数量

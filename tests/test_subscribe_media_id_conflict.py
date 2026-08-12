@@ -2,12 +2,16 @@ from types import SimpleNamespace
 
 from app.chain.subscribe import SubscribeChain
 from app.core.context import Context, MediaInfo, TorrentInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _target_media(tmdb_id=106449, douban_id=None) -> MediaInfo:
     """构造订阅目标媒体。"""
+    media_source = MediaSource.TMDB if tmdb_id is not None else MediaSource.Douban
+    media_id = str(tmdb_id) if tmdb_id is not None else douban_id
     return MediaInfo(
+        media_source=media_source if media_id is not None else None,
+        media_id=media_id,
         title="凡人修仙传",
         original_title="凡人修仙传",
         names=["A Record Of A Mortals Journey To Immortality"],
@@ -21,7 +25,11 @@ def _target_media(tmdb_id=106449, douban_id=None) -> MediaInfo:
 
 def _candidate_media(tmdb_id=285479, douban_id=None) -> MediaInfo:
     """构造由 RSS 标题推断出的候选媒体。"""
+    media_source = MediaSource.TMDB if tmdb_id is not None else MediaSource.Douban
+    media_id = str(tmdb_id) if tmdb_id is not None else douban_id
     return MediaInfo(
+        media_source=media_source if media_id is not None else None,
+        media_id=media_id,
         title="凡人修仙传",
         type=MediaType.TV,
         year="2020",
@@ -33,11 +41,7 @@ def _candidate_media(tmdb_id=285479, douban_id=None) -> MediaInfo:
 def _torrent_meta(*, en_name="A Record Of A Mortals Journey To Immortality", tmdbid=None):
     """构造不触发外部识别的标题解析结果。"""
     return SimpleNamespace(
-        tmdbid=tmdbid,
-        doubanid=None,
-        bangumiid=None,
-        anilistid=None,
-        media_source="themoviedb" if tmdbid else None,
+        media_source=MediaSource.TMDB if tmdbid else None,
         media_id=str(tmdbid) if tmdbid else None,
         cn_name="",
         en_name=en_name,

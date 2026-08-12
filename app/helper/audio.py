@@ -10,7 +10,7 @@ from mutagen.mp4 import MP4, MP4Cover
 from app.core.context import MusicInfo
 from app.core.meta import MetaMusic
 from app.log import logger
-from app.schemas.types import MUSIC_ENTITY_RECORDING
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 
 class AudioMetadataHelper:
@@ -23,6 +23,24 @@ class AudioMetadataHelper:
         if tag_meta:
             return tag_meta.apply_path_context(path)
         return cls.read_filename(path)
+
+    @classmethod
+    def read_evidence(
+            cls,
+            path: Path,
+    ) -> tuple[MetaMusic, Optional[MetaMusic], MetaMusic]:
+        """分别返回合并元数据、纯标签元数据和纯文件名元数据。"""
+        filename_meta = cls.read_filename(path)
+        tag_meta = cls.read_tags(path) if path.exists() and path.is_file() else None
+        if not tag_meta:
+            return filename_meta, None, filename_meta
+        merged_meta = MetaMusic.from_dict(tag_meta.to_dict()).apply_path_context(path)
+        return merged_meta, tag_meta, filename_meta
+
+    @classmethod
+    def read_many(cls, paths: list[Path]) -> list[MetaMusic]:
+        """批量读取一组音频路径的标签与文件名元数据。"""
+        return [cls.read(path) for path in paths]
 
     @classmethod
     def read_tags(cls, path: Path) -> Optional[MetaMusic]:
@@ -64,7 +82,7 @@ class AudioMetadataHelper:
             bitrate=cls._optional_int(getattr(info, "bitrate", None)),
             duration=round(info.length) if info and getattr(info, "length", None) else None,
             isrc=cls._first(tags, "isrc"),
-            media_source="musicbrainz" if musicbrainz_id else None,
+            media_source=MediaSource.MusicBrainz if musicbrainz_id else None,
             media_id=musicbrainz_id,
         )
 
@@ -151,11 +169,8 @@ class AudioMetadataHelper:
             music: Union[MetaMusic, MusicInfo],
     ) -> Optional[str]:
         """仅将 MusicBrainz 单曲身份写入 recording 标签，避免误写专辑 ID。"""
-        if getattr(music, "media_source", None) == "musicbrainz":
-            media_id = getattr(music, "media_id", None)
-            return str(media_id) if media_id else None
         if (
-                getattr(music, "media_source", None) == "musicbrainz"
+                getattr(music, "media_source", None) == MediaSource.MusicBrainz
                 and getattr(music, "music_type", MUSIC_ENTITY_RECORDING)
                 == MUSIC_ENTITY_RECORDING
         ):

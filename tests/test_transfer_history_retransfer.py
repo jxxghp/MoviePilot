@@ -148,8 +148,8 @@ def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatc
     assert resp.success is True
     assert captured["downloader"] is None
     assert captured["download_hash"] is None
-    assert captured["tmdbid"] is None
-    assert captured["doubanid"] is None
+    assert captured["media_source"] is None
+    assert captured["media_id"] is None
     assert captured["episode_group"] is None
 
 

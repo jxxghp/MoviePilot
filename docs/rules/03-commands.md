@@ -219,7 +219,7 @@ moviepilot tool show search_torrents
 
 # Run a tool directly
 moviepilot tool run query_schedulers
-moviepilot tool run search_torrents media_type=movie tmdb_id=12345
+moviepilot tool run search_torrents media_type=movie media_source=themoviedb media_id=12345
 
 # List scheduled tasks
 moviepilot scheduler list
@@ -227,6 +227,11 @@ moviepilot scheduler list
 # Immediately run a scheduled task
 moviepilot scheduler run subscribe_refresh
 ```
+
+**Media identity rule:** Generic media tools use the complete `media_source` +
+`media_id` pair returned by media search. `media_source` must be a `MediaSource`
+enum value. A source-owned tool such as `query_episode_schedule` may retain its
+native ID parameter because its schema and implementation are single-source.
 
 ---
 

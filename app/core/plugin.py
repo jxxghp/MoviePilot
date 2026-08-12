@@ -1336,7 +1336,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not settings.PLUGIN_MARKET:
             return []
 
-        # 当前版本及向后兼容的低版本标识，按优先级降序，均作为高版本来源拉取
+        # 拉取当前索引及可扫描的旧索引；旧条目可用当前版本 false 显式排除。
         compatible_flags = (
             [settings.VERSION_FLAG] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, [])
             if settings.VERSION_FLAG else []
@@ -1348,10 +1348,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             # future -> (market_index, is_higher, flag_priority)
             futures_meta: Dict[concurrent.futures.Future, Tuple[int, bool, int]] = {}
             for market_index, m in enumerate(markets):
-                # 提交任务获取 v1 版本插件
+                # 默认索引只展示声明 V2 或当前版本兼容的共享实现。
                 base_future = executor.submit(self.get_plugins_from_market, m, None, force)
                 futures_meta[base_future] = (market_index, False, 0)
-                # 提交任务获取高版本插件（如 v3）及向后兼容版本（如 v2）
+                # 提交当前专用索引（如 v3）及可扫描的旧索引（如 v2）。
                 for flag_priority, flag in enumerate(compatible_flags):
                     higher_future = executor.submit(self.get_plugins_from_market, m, flag, force)
                     futures_meta[higher_future] = (market_index, True, flag_priority)
@@ -1628,8 +1628,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return None
 
         plugin_info = PluginHelper.annotate_plugin_system_version(plugin_info.copy())
-        # 如 package_version 为空（package.json 来源），则需要判断插件是否兼容当前版本或任一向后兼容版本
-        if not package_version and not PluginHelper.is_plugin_info_compatible(plugin_info):
+        if not PluginHelper.is_package_plugin_compatible(
+                plugin_info, package_version or ""
+        ):
             # 插件当前版本不兼容
             return None
 
@@ -1762,7 +1763,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         base_version_plugins = []
         tasks = []
 
-        # 当前版本及向后兼容的低版本标识，按优先级降序，均作为高版本来源拉取
+        # 拉取当前索引及可扫描的旧索引；旧条目可用当前版本 false 显式排除。
         compatible_flags = (
             [settings.VERSION_FLAG] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, [])
             if settings.VERSION_FLAG else []

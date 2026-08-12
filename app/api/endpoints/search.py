@@ -13,7 +13,7 @@ from app.core.security import verify_resource_token, verify_token
 from app.helper.locale import LocaleHelper
 from app.log import logger
 from app.schemas.types import MediaSource, MediaType
-from app.utils.media import normalize_music_type
+from app.utils.media import normalize_music_type, resolve_media_identity
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
@@ -59,9 +59,12 @@ async def _resolve_media_search_params(
         music_type: Optional[str] = None,
 ) -> tuple[Optional[dict], str]:
     """校验统一媒体身份并构造 SearchChain 精确搜索参数。"""
-    normalized_media_id = str(media_id or "").strip()
-    if not normalized_media_id:
-        return None, "媒体 ID 不能为空"
+    normalized_source, normalized_media_id = resolve_media_identity(
+        media_source=media_source,
+        media_id=media_id,
+    )
+    if not normalized_source or not normalized_media_id:
+        return None, "媒体ID格式无效"
     normalized_music_type = None
     if music_type:
         normalized_music_type = normalize_music_type(music_type, allow_artist=False)
@@ -71,7 +74,7 @@ async def _resolve_media_search_params(
             return None, "music_type 仅能用于音乐资源搜索"
 
     params = {
-        "media_source": media_source,
+        "media_source": normalized_source,
         "media_id": normalized_media_id,
     }
     if normalized_music_type:
@@ -368,7 +371,6 @@ async def search_by_id_stream(
     media_type = _parse_media_type(mtype)
     media_season = int(season) if season else None
     site_list = _parse_site_list(sites)
-    search_chain = SearchChain()
 
     async def event_source():
         """解析媒体身份并输出精确搜索流事件。"""
@@ -381,7 +383,7 @@ async def search_by_id_stream(
         if not search_params:
             yield {"type": "error", "success": False, "message": message}
             return
-        torrents = search_chain.async_search_by_id_stream(
+        torrents = SearchChain().async_search_by_id_stream(
             **search_params,
             mtype=media_type,
             area=area,
@@ -551,7 +553,6 @@ async def _build_subtitle_search_source(
     media_season = int(season) if season else None
     media_episode = int(episode) if episode else None
     site_list = _parse_site_list(sites)
-    search_chain = SearchChain()
 
     def call_search(**kwargs):
         """
@@ -576,6 +577,7 @@ async def _build_subtitle_search_source(
     )
     if not search_params:
         return None, message
+    search_chain = SearchChain()
     return call_search(**search_params), ""
 
 

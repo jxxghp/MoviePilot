@@ -481,7 +481,7 @@ moviepilot tool show search_torrents
 
 ```shell
 moviepilot tool run query_schedulers
-moviepilot tool run search_torrents media_type=movie tmdb_id=12345
+moviepilot tool run search_torrents media_type=movie media_source=themoviedb media_id=12345
 ```
 
 说明：
@@ -489,6 +489,7 @@ moviepilot tool run search_torrents media_type=movie tmdb_id=12345
 - `tool list` 用于动态发现当前服务可调用的工具
 - `tool show` 会输出参数名、类型和描述
 - `tool run` 参数格式固定为 `key=value`
+- 涉及精确媒体身份的通用工具统一使用 `media_source` + `media_id`；`media_source` 必须是工具 Schema 列出的 `MediaSource` 枚举值，两个字段必须成对传递并复用搜索结果。TMDB 等单数据源专属工具按各自 Schema 保留原生 ID 参数
 - `read_file`、`write_file`、`edit_file` 和 `execute_command`
   属于内置 Agent 的本地敏感能力，不通过 MCP/`moviepilot tool` 暴露；插件开发时
   由 Agent 按当前用户权限直接调用这些工具。

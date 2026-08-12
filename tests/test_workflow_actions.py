@@ -89,16 +89,20 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
             return True
 
     class FakeMediaChain:
-        """模拟媒体识别和刮削链。"""
+        """模拟媒体识别链。"""
 
         def recognize_by_path(self, path, obtain_images=False):
             return SimpleNamespace(meta_info="meta", media_info="media")
+
+    class FakeScrapingChain:
+        """模拟独立刮削链。"""
 
         def scrape_metadata(self, fileitem, meta=None, mediainfo=None):
             scraped.append((fileitem.path, meta, mediainfo))
 
     monkeypatch.setattr(scrape_file_module, "StorageChain", FakeStorageChain)
     monkeypatch.setattr(scrape_file_module, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(scrape_file_module, "ScrapingChain", FakeScrapingChain)
     monkeypatch.setattr(scrape_file_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
     monkeypatch.setattr(ScrapeFileAction, "check_cache", lambda self, workflow_id, key: False)
     monkeypatch.setattr(ScrapeFileAction, "save_cache", lambda self, workflow_id, data: None)
@@ -131,16 +135,20 @@ def test_scrape_file_does_not_cache_failed_music_scrape(monkeypatch):
             return True
 
     class FakeMediaChain:
-        """模拟识别成功但音乐产物写入失败。"""
+        """模拟媒体识别成功。"""
 
         def recognize_by_path(self, path, obtain_images=False):
             return SimpleNamespace(meta_info="music-meta", media_info="music")
+
+    class FakeScrapingChain:
+        """模拟音乐产物写入失败。"""
 
         def scrape_metadata(self, fileitem, meta=None, mediainfo=None):
             return False, "歌词保存失败"
 
     monkeypatch.setattr(scrape_file_module, "StorageChain", FakeStorageChain)
     monkeypatch.setattr(scrape_file_module, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(scrape_file_module, "ScrapingChain", FakeScrapingChain)
     monkeypatch.setattr(
         scrape_file_module.global_vars,
         "is_workflow_stopped",

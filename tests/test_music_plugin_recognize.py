@@ -11,7 +11,7 @@ from app.chain.media import MediaChain
 from app.core.context import MediaInfo, MusicInfo
 from app.core.event import Event
 from app.core.meta import MetaBase, MetaMusic
-from app.schemas.types import ChainEventType, MediaType
+from app.schemas.types import ChainEventType, MediaSource, MediaType
 
 
 def _fallback_music(title: str = "晴天", **kwargs) -> MusicInfo:
@@ -51,7 +51,7 @@ def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
     remote = _remote_music()
     recognize_calls = []
 
-    def fake_recognize_media(meta=None, source=None, **kwargs):
+    def fake_recognize_media(meta=None, media_source=None, **kwargs):
         recognize_calls.append(meta)
         # 首次返回无身份兜底，辅助识别修正要素后二次识别命中远端
         return remote if len(recognize_calls) > 1 else _fallback_music(title=meta.title)
@@ -157,7 +157,7 @@ def test_async_music_recognize_help(monkeypatch):
     remote = _remote_music()
     recognize_calls = []
 
-    async def fake_async_recognize_media(meta=None, source=None, **kwargs):
+    async def fake_async_recognize_media(meta=None, media_source=None, **kwargs):
         recognize_calls.append(meta)
         return remote if len(recognize_calls) > 1 else _fallback_music(title=meta.title)
 
@@ -208,7 +208,7 @@ def test_chain_supplement_music_recognize_uses_plugin_result():
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     plugin_data = {
         "mediainfo": {
-            "source": "qqmusic",
+            "media_source": "theaudiodb",
             "media_id": "song-123",
             "title": "晴天",
             "artists": ["周杰伦"],
@@ -222,14 +222,14 @@ def test_chain_supplement_music_recognize_uses_plugin_result():
         result = chain._supplement_media_recognize(
             meta=meta,
             mtype=None,
-            source=None,
-            mediaid=None,
+            media_source=None,
+            media_id=None,
             mediainfo=None,
             music_type="recording",
         )
 
     assert isinstance(result, MusicInfo)
-    assert result.source == "qqmusic"
+    assert result.media_source == MediaSource.TheAudioDB
     assert result.media_id == "song-123"
     # 音乐请求使用音乐媒体识别事件，载荷携带已知要素
     assert sender.call_args.args[0] == ChainEventType.MusicMediaRecognize
@@ -246,7 +246,7 @@ def test_chain_supplement_music_rejects_cross_entity_plugin_result():
     fallback = _fallback_music(title="叶惠美")
     event = Event(ChainEventType.MusicMediaRecognize, {
         "mediainfo": {
-            "source": "qqmusic",
+            "media_source": "theaudiodb",
             "media_id": "song-123",
             "music_type": "recording",
             "title": "叶惠美",
@@ -258,8 +258,8 @@ def test_chain_supplement_music_rejects_cross_entity_plugin_result():
         result = chain._supplement_media_recognize(
             meta=MetaMusic(title="叶惠美"),
             mtype=MediaType.MUSIC,
-            source="qqmusic",
-            mediaid="album-123",
+            media_source=MediaSource.TheAudioDB,
+            media_id="album-123",
             mediainfo=fallback,
             music_type="album",
         )
@@ -274,7 +274,8 @@ def test_chain_supplement_video_recognize_uses_plugin_result():
     meta.type = MediaType.MOVIE
     plugin_data = {
         "mediainfo": {
-            "source": "themoviedb",
+            "media_source": "themoviedb",
+            "media_id": "603",
             "tmdb_id": 603,
             "title": "黑客帝国",
             "year": "1999",
@@ -284,7 +285,11 @@ def test_chain_supplement_video_recognize_uses_plugin_result():
     with patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event) as sender:
         result = chain._supplement_media_recognize(
-            meta=meta, mtype=MediaType.MOVIE, source=None, mediaid=None, mediainfo=None
+            meta=meta,
+            mtype=MediaType.MOVIE,
+            media_source=None,
+            media_id=None,
+            mediainfo=None,
         )
 
     assert isinstance(result, MediaInfo)
@@ -301,12 +306,16 @@ def test_chain_supplement_media_recognize_requires_identity():
     meta = MetaMusic(title="晴天")
     fallback = _fallback_music(title="晴天")
     event = Event(ChainEventType.MusicMediaRecognize, {
-        "mediainfo": {"source": "qqmusic", "title": "晴天"},
+        "mediainfo": {"media_source": "theaudiodb", "title": "晴天"},
     })
     with patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event):
         result = chain._supplement_media_recognize(
-            meta=meta, mtype=None, source=None, mediaid=None, mediainfo=fallback
+            meta=meta,
+            mtype=None,
+            media_source=None,
+            media_id=None,
+            mediainfo=fallback,
         )
     assert result is fallback
 
@@ -314,13 +323,13 @@ def test_chain_supplement_media_recognize_requires_identity():
     meta_video = MetaBase("Some.Movie")
     meta_video.type = MediaType.MOVIE
     event_video = Event(ChainEventType.MediaRecognize, {
-        "mediainfo": {"source": "themoviedb", "title": "某部电影"},
+        "mediainfo": {"media_source": "themoviedb", "title": "某部电影"},
     })
     with patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event_video):
         result = chain._supplement_media_recognize(
             meta=meta_video, mtype=MediaType.MOVIE,
-            source=None, mediaid=None, mediainfo=None,
+            media_source=None, media_id=None, mediainfo=None,
         )
     assert result is None
 
@@ -332,7 +341,11 @@ def test_chain_supplement_media_recognize_skips_identified_result():
     remote = _remote_music()
     with patch.object(chain.eventmanager, "check") as checker:
         result = chain._supplement_media_recognize(
-            meta=meta, mtype=None, source=None, mediaid=None, mediainfo=remote
+            meta=meta,
+            mtype=None,
+            media_source=None,
+            media_id=None,
+            mediainfo=remote,
         )
 
     assert result is remote
@@ -345,21 +358,21 @@ def test_chain_recognize_media_music_plugin_supplement():
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     fallback = _fallback_music(title="晴天")
     plugin_music = MusicInfo(
-        source="qqmusic",
+        media_source=MediaSource.TheAudioDB,
         media_id="song-123",
         title="晴天",
         artists=["周杰伦"],
     )
     event = Event(ChainEventType.MusicMediaRecognize, {"mediainfo": plugin_music.to_dict()})
 
-    with patch("app.chain.music.MusicChain.recognize_best", return_value=fallback), \
+    with patch.object(chain, "recognize_music_from_source", return_value=fallback), \
             patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event), \
             patch("app.chain.MoviePilotServerHelper.report_recognize_share") as report_mock:
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is not fallback
-    assert result.source == "qqmusic"
+    assert result.media_source == MediaSource.TheAudioDB
     report_mock.assert_called_once()
     assert report_mock.call_args.kwargs["mediainfo"] is result
 
@@ -369,16 +382,51 @@ def test_chain_async_supplement_media_recognize():
     chain = ChainBase()
     meta = MetaMusic(title="晴天")
     event = Event(ChainEventType.MusicMediaRecognize, {
-        "mediainfo": {"source": "qqmusic", "media_id": "song-1", "title": "晴天"},
+        "mediainfo": {
+            "media_source": "theaudiodb",
+            "media_id": "song-1",
+            "title": "晴天",
+        },
     })
     with patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "async_send_event", AsyncMock(return_value=event)):
         result = asyncio.run(
             chain._async_supplement_media_recognize(
-                meta=meta, mtype=None, source=None, mediaid=None, mediainfo=None
+                meta=meta,
+                mtype=None,
+                media_source=None,
+                media_id=None,
+                mediainfo=None,
             )
         )
 
     assert isinstance(result, MusicInfo)
-    assert result.source == "qqmusic"
+    assert result.media_source == MediaSource.TheAudioDB
     assert result.media_id == "song-1"
+
+
+def test_chain_supplement_rejects_unknown_media_source():
+    """插件返回非固定枚举来源时不得进入统一识别链。"""
+    chain = ChainBase()
+    event = Event(
+        ChainEventType.MusicMediaRecognize,
+        {
+            "mediainfo": {
+                "media_source": "qqmusic",
+                "media_id": "song-1",
+                "title": "晴天",
+            }
+        },
+    )
+    with patch.object(chain.eventmanager, "check", return_value=True), patch.object(
+        chain.eventmanager, "send_event", return_value=event
+    ):
+        result = chain._supplement_media_recognize(
+            meta=MetaMusic(title="晴天"),
+            mtype=MediaType.MUSIC,
+            media_source=None,
+            media_id=None,
+            mediainfo=None,
+        )
+
+    assert result is None

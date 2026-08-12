@@ -1,6 +1,6 @@
 ---
 name: organize-files
-version: 2
+version: 3
 description: >-
   Use this skill when the user asks the MoviePilot agent to identify and organize downloaded/local video or music files that automatic transfer cannot handle. Typical triggers include manually organizing a file or folder, a TV season pack, one music recording, or a complete album directory. If the user gives failed transfer history IDs, prefer transfer-failed-retry instead.
 allowed-tools: list_directory query_directory_settings query_download_tasks query_transfer_history delete_transfer_history recognize_media search_media query_media_detail query_library_exists transfer_file scrape_metadata ask_user_choice send_message
@@ -59,8 +59,8 @@ If recognition fails or looks wrong:
 
 1. Extract likely title, year, media type, season/episode range, or music artist/track/album from filenames and audio tags.
 2. For video, call `search_media(title="...", year="...", media_type="movie|tv")`. For music, call `search_media(title="<artist> - <title>", media_type="music", music_type="recording|album")`.
-3. If several results are plausible, use `ask_user_choice` when available, or ask the user directly to choose the correct title/TMDB ID.
-4. For TV season confusion, use `query_media_detail(tmdb_id=<id>, media_type="tv")` before deciding the season number. For an album, use `query_media_detail(media_type="music", music_type="album", media_source="musicbrainz", media_id="<album_id>")` and verify `total_tracks` before treating the directory as complete.
+3. If several results are plausible, use `ask_user_choice` when available, or ask the user directly to choose the correct title and `media_source` + `media_id` pair.
+4. For TV season confusion, use `query_media_detail(media_source="themoviedb", media_id="<id>", media_type="tv")` before deciding the season number. For an album, use `query_media_detail(media_type="music", music_type="album", media_source="musicbrainz", media_id="<album_id>")` and verify `total_tracks` before treating the directory as complete.
 
 Never invent an ID. Preserve the exact source-native entity returned by search: a recording is one track, an album is a multi-track collection, and an artist is browse-only and cannot be organized.
 
@@ -83,7 +83,8 @@ transfer_file(
   file_path="<source path>",
   storage="local",
   media_type="movie|tv",
-  tmdbid=<tmdb_id>,
+  media_source="<source>",
+  media_id="<native_id>",
   season=<season_number_if_tv>
 )
 ```
@@ -107,7 +108,7 @@ Rules:
 - Set `target_path` or `transfer_type` only when the user explicitly asks or the default directory configuration cannot handle the file.
 - For a single movie or a single TV season folder, transfer the folder once with the shared identity.
 - For mixed folders, split by media and transfer each file/subfolder separately.
-- For episode packs, identify the media once, then reuse `tmdbid`, `media_type="tv"`, and the confirmed `season` for each item.
+- For episode packs, identify the media once, then reuse the exact `media_source` + `media_id`, `media_type="tv"`, and the confirmed `season` for each item.
 - For one recording, transfer only that audio file with the recording ID.
 - For one album, verify the directory belongs to the selected album, then transfer the directory once with the album ID. Do not submit every track as an unrelated recording.
 - Never transfer an artist search result. Select a recording or album first.
@@ -118,7 +119,7 @@ Rules:
 After each transfer batch, report:
 
 - source path(s) processed;
-- recognized media title, type, TMDB/Douban ID, season/episode range when relevant;
+- recognized media title, type, `media_source` + `media_id`, season/episode range when relevant;
 - success/failure count;
 - any failed message exactly enough for the user to act, such as missing media library directory, unsupported storage, existing history, or no media recognized.
 
@@ -130,14 +131,14 @@ If the result creates failed history records, tell the user they can retry with 
 
 1. `recognize_media(path=...)`
 2. If needed, `search_media(...)` and confirm the result.
-3. `transfer_file(file_path=..., media_type=..., tmdbid=..., season=...)`
+3. `transfer_file(file_path=..., media_type=..., media_source=..., media_id=..., season=...)`
 
 ### User Gives A Season Folder
 
 1. `list_directory(path=...)`
 2. Pick a representative episode and run `recognize_media(path=...)`.
-3. Confirm `tmdbid`, `media_type="tv"`, and season.
-4. `transfer_file(file_path="<folder>/", media_type="tv", tmdbid=<id>, season=<season>)`
+3. Confirm `media_source`, `media_id`, `media_type="tv"`, and season.
+4. `transfer_file(file_path="<folder>/", media_type="tv", media_source="<source>", media_id="<native_id>", season=<season>)`
 
 ### User Gives One Music Track
 

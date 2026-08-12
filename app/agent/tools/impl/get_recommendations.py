@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.music import MusicChain
 from app.chain.recommend import RecommendChain
 from app.log import logger
 from app.modules.listenbrainz import (
@@ -168,13 +167,13 @@ class GetRecommendationsTool(MoviePilotTool):
                             f"错误：无效的音乐实体类型 '{music_type}'，"
                             "支持的类型：'recording', 'album'"
                         )
-                music_chain = MusicChain()
+                recommend_chain = RecommendChain()
                 if source == "listenbrainz_chart":
                     if range_name not in LISTENBRAINZ_CHART_RANGES:
                         return f"错误：无效的榜单周期 '{range_name}'"
                     if sort_by not in {"listen_count.desc", "listen_count.asc"}:
                         return f"错误：无效的榜单排序 '{sort_by}'"
-                    results = await music_chain.async_chart(
+                    results = await recommend_chain.async_music_chart(
                         range_name=range_name,
                         page=page,
                         count=page_size,
@@ -191,7 +190,7 @@ class GetRecommendationsTool(MoviePilotTool):
                     if not past and not future:
                         return "错误：past 和 future 不能同时为 false"
                     normalized_days = max(1, min(days or 14, LISTENBRAINZ_FRESH_MAX_DAYS))
-                    results = await music_chain.async_fresh_releases(
+                    results = await recommend_chain.async_music_fresh_releases(
                         days=normalized_days,
                         sort=fresh_sort,
                         past=bool(past),
@@ -324,7 +323,7 @@ class GetRecommendationsTool(MoviePilotTool):
                         "douban_id": r.get("douban_id"),
                         "bangumi_id": r.get("bangumi_id"),
                         "anilist_id": r.get("anilist_id"),
-                        "media_source": r.get("source"),
+                        "media_source": r.get("media_source"),
                         "media_id": r.get("media_id"),
                         "vote_average": r.get("vote_average"),
                         "poster_path": r.get("poster_path"),

@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.schemas import DownloaderTorrent, FileItem, NotExistMediaInfo, TransferDirectoryConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 @pytest.fixture(autouse=True)
@@ -216,7 +216,7 @@ def test_download_single_supplements_category_before_download_event(monkeypatch)
     monkeypatch.setattr(download_module, "MediaChain", _FakeMediaChain)
     monkeypatch.setattr(download_module.eventmanager, "send_event", cancel_download)
     media = MediaInfo(
-        source="bangumi",
+        media_source=MediaSource.Bangumi,
         media_id="40000",
         bangumi_id=40000,
         type=MediaType.TV,
@@ -236,7 +236,7 @@ def test_download_single_supplements_category_before_download_event(monkeypatch)
 
     assert result == (None, "下载被事件取消")
     assert captured["event_data"].options["media_category"] == "日本动画"
-    assert context.media_info.source == "bangumi"
+    assert context.media_info.media_source == MediaSource.Bangumi
     assert context.media_info.media_id == "40000"
     assert context.media_info.tmdb_id == 12345
 
@@ -467,6 +467,8 @@ def _build_tv_context(episode_list=None):
         media_info=SimpleNamespace(
             type=MediaType.TV,
             title_year="Test Show (2026)",
+            media_source=MediaSource.TMDB,
+            media_id="1",
             tmdb_id=1,
             douban_id=None,
             bangumi_id=None,
@@ -486,6 +488,55 @@ def _build_tv_context(episode_list=None):
     )
 
 
+def _tv_no_exists(season: int, info: NotExistMediaInfo) -> dict:
+    """以统一媒体身份键构造单季缺集测试数据。"""
+    return {"tmdb:1": {season: info}}
+
+
+def test_download_identity_matching_uses_only_media_source_and_media_id():
+    """通用下载匹配不得再把来源特定辅助 ID 当作主身份键。"""
+    media = SimpleNamespace(
+        media_source=MediaSource.Douban,
+        media_id="douban-1",
+        tmdb_id=1,
+        douban_id="douban-1",
+        bangumi_id=2,
+        anilist_id=3,
+    )
+
+    assert DownloadChain._media_identity_keys(media) == {"douban:douban-1"}
+    assert DownloadChain._matches_media_identity(media, "douban:douban-1") is True
+    assert DownloadChain._matches_media_identity(media, 1) is False
+
+
+def test_download_failure_fingerprint_ignores_auxiliary_provider_ids():
+    """缺少主身份时失败指纹应按标题年份降级，不得依赖 IMDb 或 TVDB 辅助 ID。"""
+    torrent = SimpleNamespace(site=1, torrent_id="torrent-1")
+
+    def build_context(imdb_id: str, tvdb_id: int):
+        """构造只有辅助 Provider ID 的失败上下文。"""
+        return SimpleNamespace(
+            media_info=SimpleNamespace(
+                type=MediaType.MOVIE,
+                media_source=None,
+                media_id=None,
+                title="Demo Movie",
+                year="2026",
+                imdb_id=imdb_id,
+                tvdb_id=tvdb_id,
+                season=None,
+            ),
+            meta_info=SimpleNamespace(season=None, episode=None, episode_list=[]),
+            torrent_info=torrent,
+        )
+
+    assert DownloadChain._build_download_failure_fingerprint(
+        build_context("tt0000001", 1)
+    ) == DownloadChain._build_download_failure_fingerprint(
+        build_context("tt9999999", 999)
+    )
+
+
 def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target(monkeypatch):
     """
     完整覆盖要求不能让 1-13 这种局部包冒充 1-143 的目标范围。
@@ -499,17 +550,16 @@ def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context()
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=143,
                 start_episode=1,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -534,17 +584,16 @@ def test_batch_download_preserves_special_season_zero(monkeypatch):
     context.meta_info.season_episode = "S00"
     context.meta_info.org_string = "Test Show S00 2160p"
     context.torrent_info.title = "Test Show S00 2160p"
-    no_exists = {
-        1: {
-            0: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        0,
+        NotExistMediaInfo(
                 season=0,
                 episodes=[],
                 total_episode=6,
                 start_episode=1,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -566,17 +615,16 @@ def test_batch_download_rejects_complete_coverage_when_only_missing_episodes_mat
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context()
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[4, 5],
                 total_episode=5,
                 start_episode=1,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -601,16 +649,15 @@ def test_batch_download_tries_next_episode_candidate_when_first_download_fails(m
     first_context.torrent_info.title = "Test Show S01E01 First"
     second_context = _build_tv_context(episode_list=[1])
     second_context.torrent_info.title = "Test Show S01E01 Second"
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[1],
                 total_episode=1,
                 start_episode=1,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(
         contexts=[first_context, second_context],
@@ -691,16 +738,15 @@ def test_batch_download_applies_custom_words_to_torrent_file_episodes(monkeypatc
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context()
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[170],
                 total_episode=200,
                 start_episode=155,
-            )
-        }
-    }
+        ),
+    )
     custom_words = (
         "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
         "&& S01 <> 2160p >> EP+165"
@@ -899,17 +945,16 @@ def test_batch_download_accepts_complete_coverage_when_files_cover_target_range(
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context()
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=143,
                 start_episode=100,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -932,17 +977,16 @@ def test_batch_download_rejects_complete_coverage_when_files_have_same_count_but
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context()
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=143,
                 start_episode=100,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -965,17 +1009,16 @@ def test_batch_download_accepts_complete_coverage_when_title_episodes_cover_targ
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context(episode_list=list(range(1, 144)))
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=143,
                 start_episode=1,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -999,17 +1042,16 @@ def test_batch_download_rejects_complete_coverage_when_title_episodes_are_partia
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context(episode_list=list(range(1, 14)))
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=143,
                 start_episode=1,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -1034,17 +1076,16 @@ def test_batch_download_complete_coverage_ignores_allowed_episode_narrowing(monk
 
     context = _build_tv_context(episode_list=[1, 2])
     context.allowed_episodes = {1, 2}
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=12,
                 start_episode=1,
                 require_complete_coverage=True,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -1068,16 +1109,15 @@ def test_batch_download_keeps_count_check_without_complete_coverage(monkeypatch)
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context()
-    no_exists = {
-        1: {
-            1: NotExistMediaInfo(
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
                 season=1,
                 episodes=[],
                 total_episode=143,
                 start_episode=1,
-            )
-        }
-    }
+        ),
+    )
 
     downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
 
@@ -1098,7 +1138,8 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
         poster="https://images.example.com/poster.jpg",
         seasons="S01",
         title="示例剧集",
-        tmdbid=1001,
+        media_source=MediaSource.TMDB.value,
+        media_id="1001",
         torrent_site="示例站点",
         type="电视剧",
         userid="user-1",

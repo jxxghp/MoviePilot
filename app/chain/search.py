@@ -6,14 +6,13 @@ import re
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
-from typing import AsyncIterator, Any, Dict, Tuple
+from typing import AsyncIterator, Any, Dict, Iterable, Tuple
 from typing import List, Optional
 
 from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.core.config import global_vars, settings
 from app.core.context import Context
 from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo
@@ -28,13 +27,18 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
     EventType,
     MediaSource,
     MediaType,
     ProgressKey,
     SystemConfigKey,
 )
-from app.utils.media import build_media_key, resolve_media_identity
+from app.utils.media import (
+    build_media_key,
+    parse_media_key,
+    resolve_media_identity,
+)
 from app.utils.string import StringUtils
 
 
@@ -53,6 +57,73 @@ class SearchChain(ChainBase):
     _current_recommend_request_hash: Optional[str] = None
     _ai_recommend_result: Optional[List[int]] = None
     _ai_recommend_error: Optional[str] = None
+
+    @classmethod
+    def music_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
+        """按单曲或专辑实体生成站点关键词，避免单曲优先命中所属整专。"""
+        artists = music.artists or []
+        artist = artists[0] if artists else music.album_artist
+        values: list[Optional[str]] = []
+        if getattr(music, "music_type", None) == MUSIC_ENTITY_ALBUM:
+            album = music.album or music.title
+            values.extend([f"{artist} {album}" if artist and album else None, album])
+        else:
+            values.extend([
+                f"{artist} {music.title}" if artist and music.title else None,
+                music.title,
+            ])
+        return cls._unique_music_texts(values)
+
+    @classmethod
+    def matches_music_resource(
+            cls,
+            music: MusicInfo,
+            resource_title: str,
+            resource_description: Optional[str] = None,
+    ) -> bool:
+        """校验站点资源标题同时包含目标音乐名称和已知艺术家。"""
+        normalized_resource = MetaMusic.compact_text(
+            f"{resource_title or ''} {resource_description or ''}"
+        )
+        if not normalized_resource:
+            return False
+        if music.music_type == MUSIC_ENTITY_ALBUM:
+            candidates = cls._unique_music_texts([
+                music.album or music.title,
+                *(music.names or []),
+            ])
+        else:
+            candidates = cls._unique_music_texts([music.title])
+        if not any(
+                MetaMusic.compact_text(candidate) in normalized_resource
+                for candidate in candidates
+                if MetaMusic.compact_text(candidate)
+        ):
+            return False
+        artists = cls._unique_music_texts([
+            music.artist,
+            music.album_artist,
+            *(music.artists or []),
+        ])
+        return not artists or any(
+            MetaMusic.compact_text(artist) in normalized_resource
+            for artist in artists
+            if MetaMusic.compact_text(artist)
+        )
+
+    @staticmethod
+    def _unique_music_texts(values: Iterable[Optional[str]]) -> list[str]:
+        """按清理后的文本去重，并保留站点搜索词原始顺序。"""
+        results: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+            identity = normalized.casefold()
+            if not normalized or identity in seen:
+                continue
+            seen.add(identity)
+            results.append(normalized)
+        return results
 
     @staticmethod
     def _get_search_resource_pages() -> int:
@@ -207,13 +278,26 @@ class SearchChain(ChainBase):
     @staticmethod
     def _normalize_search_params(params: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
         """
-        规范化上次搜索参数，供前端结果页重新搜索使用。
+        规范化上次搜索参数，供前端结果页重新搜索使用；旧复合关键字仅在
+        缓存读取边界转换为独立的媒体来源和原生 ID。
         """
         if not isinstance(params, dict):
             return None
 
+        media_source, media_id = resolve_media_identity(
+            media_source=params.get("media_source"),
+            media_id=params.get("media_id"),
+        )
+        keyword = str(params.get("keyword") or "")
+        if not media_source and keyword:
+            media_source, media_id = parse_media_key(keyword)
+            if media_source and media_id:
+                keyword = ""
+
         normalized = {
-            "keyword": str(params.get("keyword") or ""),
+            "keyword": keyword,
+            "media_source": str(media_source) if media_source else "",
+            "media_id": media_id or "",
             "type": str(params.get("type") or ""),
             "area": str(params.get("area") or ""),
             "title": str(params.get("title") or ""),
@@ -225,12 +309,14 @@ class SearchChain(ChainBase):
         }
         if params.get("music_type"):
             normalized["music_type"] = str(params["music_type"])
-        return normalized if normalized["keyword"] else None
+        return normalized if normalized["keyword"] or media_id else None
 
     def save_last_search_params(
             self,
             *,
-            keyword: Optional[str],
+            keyword: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
             mtype: Optional[MediaType] = None,
             area: Optional[str] = "title",
             title: Optional[str] = None,
@@ -242,11 +328,13 @@ class SearchChain(ChainBase):
             result_type: Optional[str] = "torrent",
     ) -> None:
         """
-        保存最后一次资源搜索参数。
+        保存最后一次资源搜索参数，标题搜索与精确身份搜索使用互斥字段。
         """
         params = self._normalize_search_params(
             {
                 "keyword": keyword,
+                "media_source": media_source,
+                "media_id": media_id,
                 "type": mtype.value if isinstance(mtype, MediaType) else mtype,
                 "area": area,
                 "title": title,
@@ -264,7 +352,9 @@ class SearchChain(ChainBase):
     async def async_save_last_search_params(
             self,
             *,
-            keyword: Optional[str],
+            keyword: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
             mtype: Optional[MediaType] = None,
             area: Optional[str] = "title",
             title: Optional[str] = None,
@@ -276,11 +366,13 @@ class SearchChain(ChainBase):
             result_type: Optional[str] = "torrent",
     ) -> None:
         """
-        异步保存最后一次资源搜索参数。
+        异步保存最后一次资源搜索参数，标题搜索与精确身份搜索使用互斥字段。
         """
         params = self._normalize_search_params(
             {
                 "keyword": keyword,
+                "media_source": media_source,
+                "media_id": media_id,
                 "type": mtype.value if isinstance(mtype, MediaType) else mtype,
                 "area": area,
                 "title": title,
@@ -530,16 +622,15 @@ class SearchChain(ChainBase):
         if cache_local:
             self.cancel_ai_recommend()
             self.save_last_search_params(
-                keyword=self._build_search_keyword(
-                    media_source, media_id
-                ),
+                media_source=media_source,
+                media_id=media_id,
                 mtype=mtype,
                 area=area,
                 season=season,
                 sites=sites,
                 music_type=music_type,
             )
-        # 音乐统一在 recognize_media 内路由到 MusicChain
+        # 音乐统一在 MediaChain.recognize_media 内按固定来源路由
         mediainfo = MediaChain().recognize_media(
             media_source=media_source, media_id=media_id, mtype=mtype,
             music_type=music_type,
@@ -724,9 +815,8 @@ class SearchChain(ChainBase):
         if cache_local:
             self.cancel_ai_recommend()
             await self.async_save_last_search_params(
-                keyword=self._build_search_keyword(
-                    media_source, media_id
-                ),
+                media_source=media_source,
+                media_id=media_id,
                 mtype=mtype,
                 area="title",
                 season=season,
@@ -771,9 +861,8 @@ class SearchChain(ChainBase):
         if cache_local:
             self.cancel_ai_recommend()
             await self.async_save_last_search_params(
-                keyword=self._build_search_keyword(
-                    media_source, media_id
-                ),
+                media_source=media_source,
+                media_id=media_id,
                 mtype=mtype,
                 area="title",
                 season=season,
@@ -837,16 +926,15 @@ class SearchChain(ChainBase):
         if cache_local:
             self.cancel_ai_recommend()
             await self.async_save_last_search_params(
-                keyword=self._build_search_keyword(
-                    media_source, media_id
-                ),
+                media_source=media_source,
+                media_id=media_id,
                 mtype=mtype,
                 area=area,
                 season=season,
                 sites=sites,
                 music_type=music_type,
             )
-        # 音乐统一在 async_recognize_media 内路由到 MusicChain
+        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
         mediainfo = await MediaChain().async_recognize_media(
             media_source=media_source, media_id=media_id, mtype=mtype,
             music_type=music_type,
@@ -1041,16 +1129,15 @@ class SearchChain(ChainBase):
         if cache_local:
             self.cancel_ai_recommend()
             await self.async_save_last_search_params(
-                keyword=self._build_search_keyword(
-                    media_source, media_id
-                ),
+                media_source=media_source,
+                media_id=media_id,
                 mtype=mtype,
                 area=area,
                 season=season,
                 sites=sites,
                 music_type=music_type,
             )
-        # 音乐统一在 async_recognize_media 内路由到 MusicChain
+        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
         mediainfo = await MediaChain().async_recognize_media(
             media_source=media_source, media_id=media_id, mtype=mtype,
             music_type=music_type,
@@ -1361,7 +1448,7 @@ class SearchChain(ChainBase):
 
         contexts = []
         for torrent in torrents:
-            meta = MusicChain.to_meta(mediainfo)
+            meta = MetaMusic.from_music_info(mediainfo)
             meta.org_string = torrent.title
             meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}", overwrite=True)
             contexts.append(
@@ -1387,7 +1474,7 @@ class SearchChain(ChainBase):
             torrent
             for torrent in torrents or []
             if torrent.category in (MediaType.MUSIC, MediaType.MUSIC.value)
-            and MusicChain.matches_site_resource(
+            and SearchChain.matches_music_resource(
                 mediainfo,
                 torrent.title,
                 torrent.description,
@@ -1403,7 +1490,7 @@ class SearchChain(ChainBase):
             filter_params: Optional[Dict[str, str]] = None,
     ) -> List[Context]:
         """按音乐元数据生成站点关键词并执行同步资源搜索。"""
-        keywords = [keyword] if keyword else MusicChain.build_site_keywords(mediainfo)
+        keywords = [keyword] if keyword else SearchChain.music_site_keywords(mediainfo)
         torrents: List[TorrentInfo] = []
         for index, search_word in enumerate(keywords or [mediainfo.title]):
             if index:
@@ -1436,7 +1523,7 @@ class SearchChain(ChainBase):
             filter_params: Optional[Dict[str, str]] = None,
     ) -> List[Context]:
         """按音乐元数据生成站点关键词并执行异步资源搜索。"""
-        keywords = [keyword] if keyword else MusicChain.build_site_keywords(mediainfo)
+        keywords = [keyword] if keyword else SearchChain.music_site_keywords(mediainfo)
         torrents: List[TorrentInfo] = []
         for index, search_word in enumerate(keywords or [mediainfo.title]):
             if index:

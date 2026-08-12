@@ -1,4 +1,5 @@
 from configparser import ConfigParser as _ConfigParser
+import traceback
 
 from alembic.command import upgrade
 from alembic.config import Config
@@ -38,5 +39,8 @@ def update_db():
             
         alembic_cfg.set_main_option('sqlalchemy.url', db_url)
         upgrade(alembic_cfg, 'head')
-    except Exception as e:
-        logger.error(f'数据库更新失败：{str(e)}')
+    except Exception as error:
+        logger.error(
+            f'数据库更新失败：{str(error)} - {traceback.format_exc()}'
+        )
+        raise

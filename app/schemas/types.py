@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple, Union
 
 
 # 音乐实体命名空间由公共类型模块统一持有，避免模型、接口和工具层重复定义。
@@ -66,6 +66,10 @@ class MediaSource(str, Enum):
     def __str__(self) -> str:
         """返回可直接用于 API 和数据库的规范值。"""
         return self.value
+
+
+# 搜索可以选择一个或多个来源，但集合中的每一项都必须是固定枚举。
+MediaSourceSelection = Union[MediaSource, Tuple[MediaSource, ...]]
 
 
 def media_type_to_agent(value) -> Optional[str]:

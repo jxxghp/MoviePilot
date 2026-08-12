@@ -86,7 +86,7 @@ def test_recording_to_info_maps_musicbrainz_payload():
     )
 
     assert info is not None
-    assert info.source == "musicbrainz"
+    assert info.media_source.value == "musicbrainz"
     assert info.media_id == "recording-1"
     assert info.artists == ["Daft Punk", "Pharrell Williams"]
     assert info.album == "Random Access Memories"

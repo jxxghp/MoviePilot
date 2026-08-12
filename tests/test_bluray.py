@@ -6,7 +6,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app import schemas
-from app.chain.media import MediaChain
+from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.core.context import MediaInfo
@@ -143,7 +143,7 @@ class BluRayTest(TestCase):
             # 测试手动刮削
             logger.debug(f"测试手动刮削 {path}")
             mock_metadata_nfo.call_count = 0
-            MediaChain().scrape_metadata(
+            ScrapingChain().scrape_metadata(
                 fileitem=fileitem, meta=meta, mediainfo=mediainfo, overwrite=True
             )
             # 确保调用了指定次数的metadata_nfo
@@ -152,7 +152,7 @@ class BluRayTest(TestCase):
             # 测试自动刮削
             logger.debug(f"测试自动刮削 {path}")
             mock_metadata_nfo.call_count = 0
-            MediaChain().scrape_metadata_event(
+            ScrapingChain().scrape_metadata_event(
                 Event(
                     event_type=EventType.MetadataScrape,
                     event_data={
@@ -174,7 +174,7 @@ class BluRayTest(TestCase):
         # 刮削电影目录
         __test_scrape_metadata("/FOLDER", excepted_nfo_count=2)
 
-    @patch("app.chain.media.MediaChain.metadata_img", return_value=None)  # 避免获取图片
+    @patch("app.chain.scraping.ScrapingChain.metadata_img", return_value=None)  # 避免获取图片
     @patch("app.chain.ChainBase.__init__", return_value=None)  # 避免不必要的模块初始化
     @patch("app.db.transferhistory_oper.TransferHistoryOper.get_by_src")
     @patch("app.chain.storage.StorageChain.list_files")
@@ -222,6 +222,6 @@ class BluRayTest(TestCase):
         self._test_do_transfer()
 
         with patch(
-            "app.chain.media.MediaChain.metadata_nfo", return_value=None
+            "app.chain.scraping.ScrapingChain.metadata_nfo", return_value=None
         ) as mock:
             self._test_scrape_metadata(mock_metadata_nfo=mock)

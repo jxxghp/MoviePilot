@@ -2,10 +2,11 @@ from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource, MusicEntityType, MusicTargetEntityType
 
 
-class MusicMeta(BaseModel):
+class MusicMeta(OptionalMediaIdentityMixin, BaseModel):
     """音乐名称及音频文件解析结果。"""
 
     type: Literal["音乐"] = "音乐"
@@ -31,17 +32,17 @@ class MusicMeta(BaseModel):
     bitrate: Optional[int] = None
     duration: Optional[int] = None
     isrc: Optional[str] = None
-    media_source: Optional[Union[MediaSource, str]] = None
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
 
 
-class MusicInfo(BaseModel):
+class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     """标准化音乐元数据信息。"""
 
     type: Literal["音乐"] = "音乐"
     # 音乐实体类型：recording 单曲、album 专辑、artist 艺术家
     music_type: MusicEntityType = "recording"
-    media_source: Optional[Union[MediaSource, str]] = None
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
@@ -97,7 +98,7 @@ class MusicRelease(BaseModel):
     cover_url: Optional[str] = None
 
 
-class MusicAlbumInfo(BaseModel):
+class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     """标准化音乐专辑信息。"""
 
     type: Literal["音乐"] = "音乐"
@@ -132,7 +133,7 @@ class MusicAlbumInfo(BaseModel):
     vote_average: float = 0.0
 
 
-class MusicArtistInfo(BaseModel):
+class MusicArtistInfo(OptionalMediaIdentityMixin, BaseModel):
     """标准化音乐艺术家信息。"""
 
     type: Literal["音乐"] = "音乐"
@@ -164,7 +165,7 @@ class MusicArtistInfo(BaseModel):
     overview: Optional[str] = None
 
 
-class MusicRecognizeRequest(BaseModel):
+class MusicRecognizeRequest(RequiredMediaIdentityMixin, BaseModel):
     """音乐元数据详情识别请求。"""
 
     media_source: MediaSource

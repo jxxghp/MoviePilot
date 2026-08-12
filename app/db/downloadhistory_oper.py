@@ -2,6 +2,8 @@ from typing import Dict, List, Optional
 
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
+from app.schemas.types import MediaSource
+from app.utils.media import normalize_media_identity_payload
 
 
 class DownloadHistoryOper(DbOper):
@@ -35,7 +37,7 @@ class DownloadHistoryOper(DbOper):
         }
 
     def get_by_media_identity(
-            self, media_source: str, media_id: str,
+            self, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
     ) -> List[DownloadHistory]:
         """
@@ -55,6 +57,7 @@ class DownloadHistoryOper(DbOper):
         """
         新增下载历史
         """
+        kwargs = normalize_media_identity_payload(kwargs)
         DownloadHistory(**kwargs).create(self._db)
 
     def add_files(self, file_items: List[dict]):
@@ -137,7 +140,7 @@ class DownloadHistoryOper(DbOper):
 
     def get_last_by(self, mtype=None, title: Optional[str] = None, year: Optional[str] = None,
                     season: Optional[str] = None, episode: Optional[str] = None,
-                    media_source: Optional[str] = None,
+                    media_source: Optional[MediaSource] = None,
                     media_id: Optional[str] = None) -> List[DownloadHistory]:
         """
         按类型、标题、年份、季集查询下载记录
@@ -161,7 +164,7 @@ class DownloadHistoryOper(DbOper):
                                                  username=username)
 
     def list_by_date(
-            self, date: str, type: str, media_source: str, media_id: str,
+            self, date: str, type: str, media_source: MediaSource, media_id: str,
             seasons: Optional[str] = None,
     ) -> List[DownloadHistory]:
         """

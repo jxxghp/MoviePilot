@@ -9,7 +9,7 @@ from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.helper.interaction import media_interaction_manager, plugin_input_interaction_manager
 from app.schemas import CommingMessage, TransferDirectoryConf
-from app.schemas.types import EventType, MediaType, MessageChannel
+from app.schemas.types import EventType, MediaSource, MediaType, MessageChannel
 
 
 @pytest.fixture(autouse=True)
@@ -143,6 +143,8 @@ def test_rebuild_download_scope_keeps_special_season_zero():
     meta = _build_meta("测试剧")
     meta.begin_season = 0
     mediainfo = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="1",
         type=MediaType.TV,
         title="测试剧",
         year="2026",

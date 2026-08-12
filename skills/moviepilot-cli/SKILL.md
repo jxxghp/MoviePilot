@@ -1,6 +1,6 @@
 ---
 name: moviepilot-cli
-version: 6
+version: 7
 description: >-
   Use this skill when the user asks to operate MoviePilot through the local
   `moviepilot tool` MCP CLI for normal product workflows: media search, torrent
@@ -77,16 +77,18 @@ If the user specifies a TV season, run Season Validation step first — the seas
 
 #### 2. Search torrents
 
-Prefer `tmdb_id`; use `douban_id` only when `tmdb_id` is unavailable.
+Reuse the exact `media_source` and `media_id` returned by `search_media`. Do not
+replace the selected primary identity with an auxiliary TMDB, Douban, Bangumi,
+or AniList mapping ID.
 
 Omitting `sites=` uses the user's default sites. If the user specifies sites, first retrieve site IDs:
 `moviepilot tool run query_sites`
 
 Search torrents using default sites:
-`moviepilot tool run search_torrents tmdb_id=791373 media_type="movie"`
+`moviepilot tool run search_torrents media_source="themoviedb" media_id=791373 media_type="movie"`
 
 Search torrents using user-specified sites (pass site IDs from `query_sites`):
-`moviepilot tool run search_torrents tmdb_id=791373 media_type="movie" sites='1,3'`
+`moviepilot tool run search_torrents media_source="themoviedb" media_id=791373 media_type="movie" sites='1,3'`
 
 When `search_torrents` returns:
 1. **Stop** — do not call `get_search_results` yet.
@@ -137,25 +139,25 @@ Download one or more torrents (`torrent_url` comes from `get_search_results` out
 
 | Step | Action |
 |---|---|
-| `search_media` empty | Retry with alternative title (English/original), inform user. Still empty → ask for title or TMDB ID. |
+| `search_media` empty | Retry with an alternative title (English/original), then ask for the title or exact `media_source` + `media_id`. |
 | `search_torrents` empty | Inform user, ask whether to retry with different sites. |
 | `get_search_results` empty | Do not silently broaden filters. Suggest which filter to relax, ask before retrying. |
 | `add_download_tasks` fails | Run `query_downloaders` + `query_download_tasks` to diagnose, then report to user. |
 
 ### Add Subscription
 
-1. Search for the media to get `tmdb_id`: Run `search_media`.
+1. Run `search_media` and keep the returned `media_source` + `media_id` pair.
 2. Run **Check Library and Subscriptions** step, if media already exists or is subscribed, **stop** and report to user.
 3. If the user specifies a TV season, run Season Validation step first.
 
 Subscribe to a movie or TV show:
-`moviepilot tool run add_subscribe title="..." year="2011" media_type="tv" tmdb_id=42009`
+`moviepilot tool run add_subscribe title="..." year="2011" media_type="tv" media_source="themoviedb" media_id=42009`
 
 Subscribe to a specific season:
-`moviepilot tool run add_subscribe title="..." year="2011" media_type="tv" tmdb_id=42009 season=4`
+`moviepilot tool run add_subscribe title="..." year="2011" media_type="tv" media_source="themoviedb" media_id=42009 season=4`
 
 Subscribe starting from a specific episode:
-`moviepilot tool run add_subscribe title="..." year="2024" media_type="tv" tmdb_id=12345 season=1 start_episode=13`
+`moviepilot tool run add_subscribe title="..." year="2024" media_type="tv" media_source="themoviedb" media_id=12345 season=1 start_episode=13`
 
 Subscribe to a complete lossless album and keep upgrading its audio quality:
 `moviepilot tool run add_subscribe title="..." media_type="music" music_type="album" media_source="musicbrainz" media_id="<release-group-id>" audio_quality="hires|lossless" audio_format="DSD|FLAC|ALAC" min_bit_depth=24 best_version=1`
@@ -244,10 +246,10 @@ Delete a task only after confirming permanent removal with the user:
 Run before any download or subscription to avoid duplicates.
 
 Check if the media already exists in the library:
-`moviepilot tool run query_library_exists tmdb_id=123456 media_type="movie"`
+`moviepilot tool run query_library_exists media_source="themoviedb" media_id=123456 media_type="movie"`
 
 Check if the media is already subscribed:
-`moviepilot tool run query_subscribes tmdb_id=123456`
+`moviepilot tool run query_subscribes media_source="themoviedb" media_id=123456`
 
 ### Season Validation
 
@@ -256,7 +258,7 @@ Mandatory when user specifies a season. Productions sometimes release a show in 
 #### 1. Verify season exists
 
 Fetch media detail to check available seasons:
-`moviepilot tool run query_media_detail tmdb_id=<id> media_type="tv"`
+`moviepilot tool run query_media_detail media_source="themoviedb" media_id=<id> media_type="tv"`
 
 Compare `season_info` with the user's requested season:
 1. If the season exists in `season_info` → use that season number directly and return to the calling workflow.
@@ -264,7 +266,8 @@ Compare `season_info` with the user's requested season:
 
 #### 2. Identify the correct episode range
 
-Fetch episode schedule for the latest season from `season_info`:
+Fetch the episode schedule for the latest season from `season_info`. This is a
+TMDB-only tool, so its native `tmdb_id` parameter is intentional:
 `moviepilot tool run query_episode_schedule tmdb_id=<id> season=<latest_season_number>`
 
 Use `air_date` to find a block of recently-aired episodes that likely corresponds to what the user calls the missing season. Look for a gap in `air_date` between episodes — the gap indicates a part break, and the episodes after the gap are what the user likely refers to as the next "season". For example, if TMDB Season 1 has episodes 1–24 and there is a multi-month gap between episode 12 and 13, then episodes 13–24 correspond to the user's "Season 2". If no such gap exists, tell user content is unavailable. Otherwise confirm the episode range with user.

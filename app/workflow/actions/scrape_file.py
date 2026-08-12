@@ -1,4 +1,5 @@
 from app.chain.media import MediaChain
+from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
 from app.core.config import global_vars
 from app.log import logger
@@ -74,7 +75,7 @@ class ScrapeFileAction(BaseAction):
                 _failed_count += 1
                 logger.info(f"{fileitem.path} 未识别到媒体信息，无法刮削")
                 continue
-            scrape_result = mediachain.scrape_metadata(
+            scrape_result = ScrapingChain().scrape_metadata(
                 fileitem=fileitem,
                 meta=media_context.meta_info,
                 mediainfo=media_context.media_info

@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -33,6 +34,38 @@ def test_resolve_anilist_search_params_preserves_identity() -> None:
         "media_source": MediaSource.AniList,
         "media_id": "154587",
     }
+
+
+@pytest.mark.parametrize(
+    ("media_source", "media_id"),
+    [
+        (None, "154587"),
+        (MediaSource.TMDB, ""),
+        (MediaSource.TMDB, "   "),
+        (MediaSource.TMDB, "0"),
+    ],
+)
+def test_resource_search_rejects_invalid_identity_before_chain(
+        monkeypatch,
+        media_source: Optional[MediaSource],
+        media_id: str,
+) -> None:
+    """半身份、空白或零值 ID 应在进入搜索链及其本地缓存前被拒绝。"""
+    search_chain = Mock(side_effect=AssertionError("无效身份不应创建搜索链"))
+    monkeypatch.setattr(search_endpoint, "SearchChain", search_chain)
+
+    response = asyncio.run(
+        search_endpoint.search_by_id(
+            media_id=media_id,
+            media_source=media_source,
+            mtype=MediaType.MOVIE.value,
+            _=None,
+        )
+    )
+
+    assert not response.success
+    assert response.message == "媒体ID格式无效"
+    search_chain.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -164,6 +197,70 @@ def test_media_detail_does_not_fallback_for_explicit_identity(monkeypatch) -> No
 
     assert isinstance(result, media_endpoint.schemas.MediaInfo)
     media_chain.async_recognize_by_meta.assert_not_awaited()
+
+
+def test_media_detail_rejects_zero_identity_before_chain(monkeypatch) -> None:
+    """媒体详情的零值原生 ID 不得进入识别链。"""
+    media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
+    monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
+
+    result = asyncio.run(
+        media_endpoint.detail(
+            media_id="0",
+            media_source=MediaSource.TMDB,
+            type_name=MediaType.MOVIE.value,
+            _=None,
+        )
+    )
+
+    assert isinstance(result, media_endpoint.schemas.MediaInfo)
+    media_chain.assert_not_called()
+
+
+def test_media_seasons_rejects_zero_identity_before_external_chain(monkeypatch) -> None:
+    """季信息接口收到零值身份时不得调用 TMDB 或通用识别链。"""
+    tmdb_chain = Mock(side_effect=AssertionError("零值身份不应创建 TMDB 链"))
+    media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
+    monkeypatch.setattr(media_endpoint, "TmdbChain", tmdb_chain)
+    monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
+
+    result = asyncio.run(
+        media_endpoint.seasons(
+            media_source=MediaSource.TMDB,
+            media_id="0",
+            title="不应回退标题",
+            _=None,
+        )
+    )
+
+    assert result == []
+    tmdb_chain.assert_not_called()
+    media_chain.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "kwargs"),
+    [
+        (media_endpoint.groups, {"tmdbid": 0}),
+        (media_endpoint.group_seasons, {"episode_group": "0"}),
+    ],
+)
+def test_explicit_tmdb_endpoints_reject_zero_before_external_chain(
+        monkeypatch,
+        endpoint,
+        kwargs: dict,
+) -> None:
+    """本文件内的明确 TMDB 辅助入口不得把零值 ID 传给外部链。"""
+    tmdb_chain = Mock(side_effect=AssertionError("零值身份不应创建 TMDB 链"))
+    media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
+    monkeypatch.setattr(media_endpoint, "TmdbChain", tmdb_chain)
+    monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
+
+    result = asyncio.run(endpoint(**kwargs, _=None))
+
+    assert result == []
+    tmdb_chain.assert_not_called()
+    media_chain.assert_not_called()
 
 
 @pytest.mark.parametrize(

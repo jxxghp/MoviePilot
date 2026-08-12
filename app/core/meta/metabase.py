@@ -7,6 +7,7 @@ import regex as re
 
 from app.log import logger
 from app.schemas.types import MediaSource, MediaType
+from app.utils.media import resolve_media_identity
 from app.utils.string import StringUtils
 
 
@@ -678,12 +679,11 @@ class MetaBase(object):
         if not self.part:
             self.part = meta.part
         # 媒体身份必须原子合并，不能将不同目录层级的来源和ID拼成一对
-        if not (self.media_source and self.media_id) and meta.media_source and meta.media_id:
-            try:
-                self.media_source = MediaSource(meta.media_source)
-                self.media_id = str(meta.media_id)
-            except ValueError:
-                pass
+        current_source, current_id = resolve_media_identity(media=self)
+        if current_source and current_id:
+            self.media_source, self.media_id = current_source, current_id
+        else:
+            self.media_source, self.media_id = resolve_media_identity(media=meta)
         # 剧集组
         if not self.episode_group and meta.episode_group:
             self.episode_group = meta.episode_group

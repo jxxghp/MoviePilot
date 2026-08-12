@@ -148,11 +148,11 @@ def fetch_titles(site_keys: list[str], max_pages: int) -> list[tuple[str, str]]:
 
 def recognize_one(module, title: str) -> dict:
     """对单条标题执行与识别测试页相同的解析+识别链路，并给出失败归因。"""
-    from app.chain.music import MusicChain
+    from app.core.meta import MetaMusic
 
     row = {"title": title}
     try:
-        meta = MusicChain.parse_query(title)
+        meta = MetaMusic.parse_query(title)
         row.update({
             "parsed_title": meta.title,
             "parsed_artists": " / ".join(meta.artists or []),

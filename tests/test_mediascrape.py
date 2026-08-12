@@ -13,26 +13,27 @@ with stub_modules({
     'app.db.systemconfig_oper': _systemconfig_stub,
 }):
     from app import schemas
-    from app.chain.media import MediaChain, ScrapingConfig, ScrapingOption
+    from app.chain.media import MediaChain
+    from app.chain.scraping import ScrapingChain, ScrapingConfig, ScrapingOption
     from app.core.context import MediaInfo
     from app.core.event import Event
     from app.core.metainfo import MetaInfo
     from app.schemas.types import EventType, MediaType, ScrapingTarget, ScrapingMetadata, ScrapingPolicy
 
 
-def reset_media_chain_singleton():
-    """清理 MediaChain 单例，避免测试间复用被 mock 的实例。"""
-    MediaChain._instances.pop((MediaChain, (), frozenset()), None)
+def reset_scraping_chain_singleton():
+    """清理 ScrapingChain 单例，避免测试间复用被 mock 的实例。"""
+    ScrapingChain._instances.pop((ScrapingChain, (), frozenset()), None)
 
 
 class TestMediaScrapingPaths(unittest.TestCase):
     def setUp(self):
-        reset_media_chain_singleton()
-        self.media_chain = MediaChain()
+        reset_scraping_chain_singleton()
+        self.media_chain = ScrapingChain()
         self.media_chain.storagechain = MagicMock()
 
     def tearDown(self):
-        reset_media_chain_singleton()
+        reset_scraping_chain_singleton()
 
     def test_movie_file_nfo_path(self):
         fileitem = schemas.FileItem(path="/movies/avatar.mkv", name="avatar.mkv", type="file", storage="local")
@@ -162,8 +163,8 @@ class TestMediaScrapingPaths(unittest.TestCase):
 
 class TestMediaScrapingNFO(unittest.TestCase):
     def setUp(self):
-        reset_media_chain_singleton()
-        self.media_chain = MediaChain()
+        reset_scraping_chain_singleton()
+        self.media_chain = ScrapingChain()
         self.media_chain.storagechain = MagicMock()
         self.media_chain.metadata_nfo = MagicMock(return_value="<nfo></nfo>")
         self.media_chain._save_file = MagicMock()
@@ -174,7 +175,7 @@ class TestMediaScrapingNFO(unittest.TestCase):
         self.mediainfo = MediaInfo()
 
     def tearDown(self):
-        reset_media_chain_singleton()
+        reset_scraping_chain_singleton()
 
     def test_scrape_nfo_off(self):
         self.media_chain.scraping_policies.option.return_value = ScrapingOption("movie", "nfo", ScrapingPolicy.SKIP)
@@ -212,8 +213,8 @@ class TestMediaScrapingNFO(unittest.TestCase):
 
 class TestMediaScrapingImages(unittest.TestCase):
     def setUp(self):
-        reset_media_chain_singleton()
-        self.media_chain = MediaChain()
+        reset_scraping_chain_singleton()
+        self.media_chain = ScrapingChain()
         self.original_download = self.media_chain._download_and_save_image
         self.media_chain.storagechain = MagicMock()
         self.media_chain.metadata_img = MagicMock()
@@ -222,7 +223,7 @@ class TestMediaScrapingImages(unittest.TestCase):
 
     def tearDown(self):
         self.media_chain._download_and_save_image = self.original_download
-        reset_media_chain_singleton()
+        reset_scraping_chain_singleton()
 
     def test_scrape_images_mapping(self):
         fileitem = schemas.FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
@@ -410,13 +411,13 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(target_item, fileitem)
         self.assertEqual(target_path, Path("/tv/Show/Season 1/backdrop.jpg"))
 
-    @patch("app.chain.media.RequestUtils")
-    @patch("app.chain.media.NamedTemporaryFile")
-    @patch("app.chain.media.Path.chmod")
-    @patch("app.chain.media.settings")
+    @patch("app.chain.scraping.RequestUtils")
+    @patch("app.chain.scraping.NamedTemporaryFile")
+    @patch("app.chain.scraping.Path.chmod")
+    @patch("app.chain.scraping.settings")
     def test_download_and_save_image(self, mock_settings, mock_chmod, mock_temp_file, mock_request_utils):
         # We need to test _download_and_save_image directly so we remove mock
-        self.media_chain = MediaChain()
+        self.media_chain = ScrapingChain()
         self.media_chain._download_and_save_image = self.original_download
         self.media_chain.storagechain = MagicMock()
 
@@ -452,11 +453,11 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(call_args["fileitem"], fileitem)
         self.assertEqual(call_args["new_name"], "poster.jpg")
 
-    @patch("app.chain.media.NamedTemporaryFile")
+    @patch("app.chain.scraping.NamedTemporaryFile")
     @patch("app.chain.media.Path.chmod")
     def test_save_file_uses_python310_compatible_tempfile(self, mock_chmod, mock_temp_file):
         """保存刮削文件时不应使用 Python 3.12 才支持的 delete_on_close 参数。"""
-        self.media_chain = MediaChain()
+        self.media_chain = ScrapingChain()
         self.media_chain.storagechain = MagicMock()
         self.media_chain._cleanup_temp_file = MagicMock()
 
@@ -479,14 +480,14 @@ class TestMediaScrapingImages(unittest.TestCase):
 
 class TestMediaScrapingTVDirectory(unittest.TestCase):
     def setUp(self):
-        reset_media_chain_singleton()
-        self.media_chain = MediaChain()
+        reset_scraping_chain_singleton()
+        self.media_chain = ScrapingChain()
         self.media_chain.storagechain = MagicMock()
         self.media_chain._scrape_nfo_generic = MagicMock()
         self.media_chain._scrape_images_generic = MagicMock()
 
     def tearDown(self):
-        reset_media_chain_singleton()
+        reset_scraping_chain_singleton()
 
     @patch("app.chain.media.settings")
     def test_initialize_tv_directory_specials(self, mock_settings):
@@ -554,14 +555,14 @@ class TestMediaScrapingTVDirectory(unittest.TestCase):
 
 class TestMediaScrapeEvents(unittest.TestCase):
     def setUp(self):
-        reset_media_chain_singleton()
-        self.media_chain = MediaChain()
+        reset_scraping_chain_singleton()
+        self.media_chain = ScrapingChain()
         self.media_chain.storagechain = MagicMock()
 
     def tearDown(self):
-        reset_media_chain_singleton()
+        reset_scraping_chain_singleton()
 
-    @patch("app.chain.media.MediaChain.scrape_metadata")
+    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_file(
         self, mock_scrape_metadata
     ):
@@ -591,7 +592,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             overwrite=True
         )
 
-    @patch("app.chain.media.MediaChain.scrape_metadata")
+    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_bluray(
         self, mock_scrape_metadata
     ):
@@ -621,7 +622,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             overwrite=False
         )
 
-    @patch("app.chain.media.MediaChain.scrape_metadata")
+    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_with_filelist(
         self, mock_scrape_metadata
     ):
@@ -657,7 +658,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertIn("/tv/show/Season 1", paths)
         self.assertIn("/tv/show/Season 1/S01E01.mp4", paths)
 
-    @patch("app.chain.media.MediaChain.scrape_metadata")
+    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_full(
         self, mock_scrape_metadata
     ):
@@ -687,7 +688,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             overwrite=True
         )
 
-    @patch("app.chain.media.MediaChain._handle_movie_scraping")
+    @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")
     @patch("app.chain.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_movie(
         self, mock_recognize, mock_handle_movie
@@ -716,7 +717,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             recursive=True
         )
 
-    @patch("app.chain.media.MediaChain._handle_tv_scraping")
+    @patch("app.chain.scraping.ScrapingChain._handle_tv_scraping")
     @patch("app.chain.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_tv(
         self, mock_recognize, mock_handle_tv
@@ -744,7 +745,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             recursive=True
         )
 
-    @patch("app.chain.media.MediaChain._handle_movie_scraping")
+    @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")
     @patch("app.chain.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_recognize_fallback(
         self, mock_recognize, mock_handle_movie
@@ -766,8 +767,8 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertEqual(kwargs['mediainfo'], mediainfo)
         self.assertEqual(kwargs['meta'].name, "Movie")
 
-    @patch("app.chain.media.MediaChain._handle_movie_scraping")
-    @patch("app.chain.media.MediaChain._handle_tv_scraping")
+    @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")
+    @patch("app.chain.scraping.ScrapingChain._handle_tv_scraping")
     def test_scrape_metadata_invalid_extension(
         self, mock_handle_tv, mock_handle_movie
     ):
@@ -780,7 +781,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         mock_handle_movie.assert_not_called()
         mock_handle_tv.assert_not_called()
 
-    @patch("app.chain.media.MediaChain.scrape_metadata")
+    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_with_multiple_files(
         self, mock_scrape_metadata
     ):
@@ -822,7 +823,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertIn("/movies/collection/movie2.mkv", paths)
         self.assertIn("/movies/collection/movie3.avi", paths)
 
-    @patch("app.chain.media.MediaChain.scrape_metadata")
+    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_with_tv_multi_seasons_episodes(
         self, mock_scrape_metadata
     ):

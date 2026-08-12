@@ -679,10 +679,23 @@ class TestPluginHelper:
 
         base_plugins = {
             "V2FlagPlugin": {"name": "V2Flag", "version": "1.0.0", "v2": True, "level": 1},
+            "RejectedSharedPlugin": {
+                "name": "Rejected shared",
+                "version": "1.0.0",
+                "v2": True,
+                "v3": False,
+                "level": 1,
+            },
             "LegacyPlugin": {"name": "Legacy", "version": "1.0.0", "level": 1},
         }
         v2_native_plugins = {
             "V2NativePlugin": {"name": "V2Native", "version": "1.0.0", "level": 1},
+            "RejectedV2Plugin": {
+                "name": "Rejected V2",
+                "version": "1.0.0",
+                "v3": False,
+                "level": 1,
+            },
         }
 
         def fake_get_plugins(_self, _repo_url, package_version=None):
@@ -710,6 +723,8 @@ class TestPluginHelper:
 
         assert "V2FlagPlugin" in plugin_ids
         assert "V2NativePlugin" in plugin_ids
+        assert "RejectedSharedPlugin" not in plugin_ids
+        assert "RejectedV2Plugin" not in plugin_ids
         assert "LegacyPlugin" not in plugin_ids
 
     def test_get_plugin_package_version_resolves_backward_compatible_v2_sources(self, monkeypatch) -> None:
@@ -723,10 +738,21 @@ class TestPluginHelper:
 
         base_plugins = {
             "V2FlagPlugin": {"name": "V2Flag", "version": "1.0.0", "v2": True},
+            "RejectedSharedPlugin": {
+                "name": "Rejected shared",
+                "version": "1.0.0",
+                "v2": True,
+                "v3": False,
+            },
             "LegacyPlugin": {"name": "Legacy", "version": "1.0.0"},
         }
         v2_native_plugins = {
             "V2NativePlugin": {"name": "V2Native", "version": "1.0.0"},
+            "RejectedV2Plugin": {
+                "name": "Rejected V2",
+                "version": "1.0.0",
+                "v3": False,
+            },
         }
 
         def fake_get_plugins(_self, _repo_url, package_version=None):
@@ -742,7 +768,96 @@ class TestPluginHelper:
 
         assert helper.get_plugin_package_version("V2NativePlugin", REPO_URL) == "v2"
         assert helper.get_plugin_package_version("V2FlagPlugin", REPO_URL) == ""
+        assert helper.get_plugin_package_version("RejectedV2Plugin", REPO_URL) is None
+        assert helper.get_plugin_package_version("RejectedSharedPlugin", REPO_URL) is None
         assert helper.get_plugin_package_version("LegacyPlugin", REPO_URL) is None
+
+    def test_explicit_v2_resolution_still_respects_v3_false(self, monkeypatch) -> None:
+        """V3 显式解析 V2 索引时也不得绕过专用副本的排除标志。"""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        monkeypatch.setattr(
+            "app.helper.plugin.settings",
+            SimpleNamespace(VERSION_FLAG="v3"),
+        )
+        helper = PluginHelper.__new__(PluginHelper)
+        monkeypatch.setattr(
+            PluginHelper,
+            "get_plugins",
+            lambda _self, _repo, package_version=None: {
+                "DefaultV2": {"version": "1.0.0"},
+                "V3Copied": {"version": "1.0.0", "v3": False},
+            } if package_version == "v2" else {},
+        )
+
+        assert helper.get_plugin_package_version(
+            "DefaultV2", REPO_URL, package_version="v2"
+        ) == "v2"
+        assert helper.get_plugin_package_version(
+            "V3Copied", REPO_URL, package_version="v2"
+        ) is None
+
+    def test_async_resolution_matches_v2_default_compatibility(self, monkeypatch) -> None:
+        """异步安装解析应默认接纳 V2，并排除显式 v3:false 的旧实现。"""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        monkeypatch.setattr(
+            "app.helper.plugin.settings",
+            SimpleNamespace(VERSION_FLAG="v3"),
+        )
+        helper = PluginHelper.__new__(PluginHelper)
+
+        async def fake_get_plugins(_repo, package_version=None):
+            """按索引版本返回异步解析测试数据。"""
+            if package_version == "v3":
+                return {}
+            if package_version == "v2":
+                return {
+                    "DefaultV2": {"version": "1.0.0"},
+                    "V3Copied": {"version": "1.0.0", "v3": False},
+                }
+            return {"SharedV2": {"version": "1.0.0", "v2": True}}
+
+        monkeypatch.setattr(helper, "async_get_plugins", fake_get_plugins)
+
+        assert asyncio.run(helper.async_get_plugin_package_version(
+            "DefaultV2", REPO_URL
+        )) == "v2"
+        assert asyncio.run(helper.async_get_plugin_package_version(
+            "SharedV2", REPO_URL
+        )) == ""
+        assert asyncio.run(helper.async_get_plugin_package_version(
+            "V3Copied", REPO_URL
+        )) is None
+
+    def test_v3_package_compatibility_defaults_v2_to_allowed(self, monkeypatch) -> None:
+        """V3 临时兼容 V2，显式 false 优先拒绝且纯 V1 不被带入。"""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        monkeypatch.setattr(
+            "app.helper.plugin.settings",
+            SimpleNamespace(VERSION_FLAG="v3"),
+        )
+
+        assert PluginHelper.is_package_plugin_compatible({}, "v3")
+        assert PluginHelper.is_package_plugin_compatible({}, "v2")
+        assert not PluginHelper.is_package_plugin_compatible(
+            {"v3": False}, "v2"
+        )
+        assert PluginHelper.is_package_plugin_compatible({"v2": True}, "")
+        assert not PluginHelper.is_package_plugin_compatible(
+            {"v2": True, "v3": False}, ""
+        )
+        assert not PluginHelper.is_package_plugin_compatible({}, "")
 
     def test_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """

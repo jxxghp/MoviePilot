@@ -825,7 +825,11 @@ class Jellyfin:
             channel="jellyfin"
         )
         eventItem.item_id = message.get('ItemId')
-        eventItem.tmdb_id = message.get('Provider_tmdb')
+        eventItem.media_source, eventItem.media_id = MediaServerIdentityHelper.from_provider_ids({
+            key.removeprefix("Provider_"): value
+            for key, value in message.items()
+            if key.startswith("Provider_")
+        })
         eventItem.overview = message.get('Overview')
         eventItem.item_favorite = message.get('Favorite')
         eventItem.save_reason = message.get('SaveReason')

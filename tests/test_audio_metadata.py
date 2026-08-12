@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app.chain.media import MediaChain
-from app.chain.music import MusicChain
 from app.core.context import MusicInfo
 from app.core.meta.metamusic import (
     audio_quality_score,
@@ -12,6 +11,7 @@ from app.core.meta.metamusic import (
     parse_audio_quality,
 )
 from app.helper.audio import AudioMetadataHelper
+from app.schemas.types import MUSIC_ENTITY_ALBUM
 
 
 RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
@@ -186,15 +186,13 @@ def test_remote_path_meta_parses_track_prefix_once(tmp_path):
     """远程或尚未落盘的音频路径应先剥离曲序，不能把 08 误识别成艺术家。"""
     audio_path = tmp_path / "Daft Punk - Random Access Memories (2013)" / "08 - Get Lucky.flac"
 
-    music_meta = MusicChain.read_path_meta(audio_path)
-    media_meta = MediaChain.read_path_meta(audio_path)
+    music_meta = MediaChain.read_path_meta(audio_path)
 
     assert music_meta.title == "Get Lucky"
     assert music_meta.artists == ["Daft Punk"]
     assert music_meta.album == "Random Access Memories"
     assert music_meta.track_number == 8
     assert music_meta.audio_format == "FLAC"
-    assert media_meta.to_dict() == music_meta.to_dict()
 
 
 def test_read_audio_metadata_fallback_uses_dynamic_filename_parser(tmp_path, monkeypatch):
@@ -302,6 +300,39 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     assert audio.tags["artist"] == ["Daft Punk", "Pharrell Williams"]
     assert audio.tags["tracknumber"] == ["8/13"]
     assert audio.tags["musicbrainz_trackid"] == [RECORDING_ID]
+
+
+def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypatch):
+    """MusicBrainz 专辑身份不得写入只接受 recording ID 的曲目标签。"""
+    class FakeAudio:
+        """记录专辑元数据写入结果。"""
+
+        def __init__(self):
+            """初始化空标签容器。"""
+            self.tags = {}
+
+        def __setitem__(self, key, value):
+            """记录 Easy 标签赋值。"""
+            self.tags[key] = value
+
+        def save(self):
+            """模拟 Mutagen 保存。"""
+
+    audio = FakeAudio()
+    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    success = AudioMetadataHelper.write(
+        Path("/music/Random Access Memories.flac"),
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="release-group-1",
+            music_type=MUSIC_ENTITY_ALBUM,
+            title="Random Access Memories",
+        ),
+    )
+
+    assert success is True
+    assert "musicbrainz_trackid" not in audio.tags
 
 
 def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch):
