@@ -139,5 +139,5 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 ## CI 与 PR
 
 - **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，用 `python tests/run.py` 跑全量单测。
-- **PR**：`python tests/run.py` 确认全绿、且 socket 探针零真实出站，避免把红的改动推上去空耗门禁。
+- **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `python tests/run.py`，确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
 - 复现 CI 用仅安装 `requirements-dev.in` 的干净环境；`requirements.in` 只承载运行时依赖，pytest 与覆盖率插件由开发依赖入口提供。

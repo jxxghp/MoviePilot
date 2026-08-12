@@ -6,7 +6,7 @@ This file is the primary instruction set for all AI agents and LLMs working in t
 
 ## Task-to-Documentation Mapping
 
-Before executing any task, identify the domain and load the corresponding document.
+For work that changes or reviews repository behavior, identify the domains actually touched and load only the applicable documents. Simple factual checks and unrelated domains do not require preloading rule files.
 
 ### Architectural Decisions
 * **Primary Reference:** `docs/rules/05-architecture.md`
@@ -26,8 +26,7 @@ Before executing any task, identify the domain and load the corresponding docume
 
 ### Comments and Documentation
 * **Primary Reference:** `docs/rules/08-comment-styles.md`
-* **Required Constraints:** All public classes and methods require Chinese docstrings. Comments must explain the *why*, not restate the code.
-* **⚠️ MANDATORY GATE:** Code that is missing proper Chinese docstrings on public interfaces is **REJECTED** at review. No exceptions.
+* **Required Constraints:** Public or cross-module contracts and non-obvious business behavior require concise Chinese docstrings. Small self-evident private helpers and test scaffolding may omit them. Comments must explain the *why*, not restate the code.
 
 ### External Communication and Interfaces
 * **Primary Reference:** `docs/rules/09-external-response.md`
@@ -43,11 +42,11 @@ Before executing any task, identify the domain and load the corresponding docume
 
 ### Testing
 * **Primary Reference:** `docs/testing.md`
-* **Required Constraints:** pytest is the only runner; `tests/conftest.py` isolates each run to a temporary `CONFIG_DIR`. Tests must not touch the real database, network, or external services (TMDB, LLM catalogs, downloaders, media servers, MP server) — mock at the boundary or replay recorded responses; the bar is zero real outbound traffic. Tests must restore any process-level state they stub (`sys.modules`, singletons, caches, settings). New tests must be pytest-native (function + `assert` + fixtures); do not add new `unittest.TestCase`. Convert existing `TestCase` files to pytest-native opportunistically when you modify them. Before opening a PR to `v2`, run the full suite locally (`python tests/run.py`) and confirm it is green with zero real network calls; the `.github/workflows/test.yml` gate runs the same suite on every PR/push to `v2`.
+* **Required Constraints:** pytest is the only runner; `tests/conftest.py` isolates each run to a temporary `CONFIG_DIR`. Tests must not touch the real database, network, or external services (TMDB, LLM catalogs, downloaders, media servers, MP server) — mock at the boundary or replay recorded responses; the bar is zero real outbound traffic. Tests must restore any process-level state they stub (`sys.modules`, singletons, caches, settings). New tests must be pytest-native (function + `assert` + fixtures); do not add new `unittest.TestCase`. Convert existing `TestCase` files to pytest-native opportunistically when you modify them. Before opening a PR to `v3` that changes product code, test infrastructure, dependencies, or runtime behavior, run the full suite locally (`python tests/run.py`) with zero real network calls. The changed path must pass; any unrelated failure must be reported and reproduced against the current `upstream/v3` baseline instead of silently expanding the PR. Documentation-only changes use applicable text and structure checks; the `.github/workflows/test.yml` gate still runs the full suite on every PR/push to `v3`.
 
 ### Commands and Development Workflow
 * **Primary Reference:** `docs/rules/03-commands.md`
-* **Required Constraints:** Only suggest or execute commands documented in that file. Do not assume tool defaults or global flags.
+* **Required Constraints:** Use that file as the project command reference. Other standard inspection, Git, GitHub, and focused verification commands are allowed when they are necessary, scoped, and consistent with current authorization.
 
 ---
 
@@ -55,31 +54,22 @@ Before executing any task, identify the domain and load the corresponding docume
 
 ### Pre-Flight Check
 
-Before generating any code or proposing changes, you must:
+Before generating code or proposing changes, identify the domains the task actually touches and load only the corresponding documents from `docs/rules/`. Apply those constraints while designing, implementing, and reviewing the change; do not produce a formal checklist for unrelated domains.
 
-1. Identify the task domain (architecture / business logic / coding style / naming / comments / external interfaces / data / quality).
-2. Load the corresponding document from `docs/rules/`.
-3. Explicitly verify that your proposed solution does not violate the following three mandatory constraints:
-   - **Naming Conventions (07):** Are all files, classes, functions, and constants named correctly?
-   - **Architecture Boundaries (05):** Is the code placed in the correct layer? Are all call directions valid?
-   - **Comment Standards (08):** Do all new public classes and methods include Chinese docstrings?
+Architecture, persistence, security, external protocols, cross-module lifecycle, and public-contract changes require an explicit boundary check before implementation. Local documentation, mechanical maintenance, and narrowly scoped changes use only the rules that materially affect their correctness and reviewability.
 
 ### Implementation Guidelines
 
 * **Pattern Adherence:** Avoid generic boilerplate. If `04-design-patterns.md` defines a project-level pattern for a scenario, you are required to use it.
 * **Documentation Standards:** Docstring style for any new function or module must match `08-comment-styles.md`.
-* **⚠️ MANDATORY GATE:** Public classes, methods, and functions without proper Chinese docstrings are **REJECTED**. No exceptions.
-* **Command Reliance:** Only suggest commands listed in `03-commands.md`. Do not rely on inferred tool defaults.
+* **Documentation Gate:** Public or cross-module contracts and non-obvious business behavior without useful Chinese documentation are rejected. Do not require comments that merely restate self-evident syntax.
+* **Command Reliance:** Prefer commands documented in `03-commands.md`; use other necessary standard commands with explicit, scoped arguments.
 * **Minimal Change Principle:** Prefer the smallest correct change. Do not perform unrelated refactors, mass renames, or formatting-only cleanup.
 * **Output Language:** Summaries, validation results, and risk notes default to Chinese unless the user requests otherwise.
 
 ### Conflict Resolution
 
-If existing code appears to contradict the documentation:
-
-1. Stop implementation immediately.
-2. Identify the specific file and line of the contradiction.
-3. Prompt the user: "The documentation in `[File]` requires Pattern A, but the current implementation uses Pattern B. Which is the current standard?"
+If existing code appears to contradict the documentation, identify the exact contradiction and decide which current-task gate it affects. Stop and ask only when it blocks acceptance, creates a security or data-safety ambiguity, or cannot be resolved from current source and maintained documentation. Otherwise preserve the evidence, continue unaffected work, and report the discrepancy without silently expanding scope.
 
 ---
 
