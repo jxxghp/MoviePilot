@@ -479,11 +479,16 @@ class TransferOverwriteCheckEventData(ChainEventData):
 
 class DiscoverMediaSource(BaseModel):
     """
-    探索媒体数据源的基类
+    探索媒体数据源的基类。
+
+    ``mediaid_prefix`` 是既有插件与前端标签使用的稳定标识；
+    ``media_source`` 是新的规范媒体来源。模型同时输出两者，并在输入时互相补齐，
+    以兼容尚未升级的已安装插件。
     """
 
     name: str = Field(..., description="数据源名称")
     media_source: MediaSource = Field(..., description="媒体来源枚举")
+    mediaid_prefix: str = Field(..., description="兼容插件使用的媒体ID前缀")
     api_path: str = Field(..., description="媒体数据源API地址")
     filter_params: Optional[Dict[str, JsonData]] = Field(
         default=None, description="过滤参数"
@@ -492,6 +497,34 @@ class DiscoverMediaSource(BaseModel):
     depends: Optional[Dict[str, list[str]]] = Field(
         default=None, description="UI依赖关系字典"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_media_identity(cls, value: Any) -> Any:
+        """在旧前缀与规范媒体来源之间双向补齐发现源身份。"""
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        media_source = normalized.get("media_source")
+        mediaid_prefix = normalized.get("mediaid_prefix")
+        if media_source and not mediaid_prefix:
+            normalized["mediaid_prefix"] = str(media_source)
+        elif mediaid_prefix and not media_source:
+            normalized["media_source"] = cls._media_source_from_prefix(
+                str(mediaid_prefix)
+            )
+        return normalized
+
+    @staticmethod
+    def _media_source_from_prefix(mediaid_prefix: str) -> MediaSource:
+        """将旧插件使用的历史前缀映射为规范媒体来源枚举。"""
+        aliases = {
+            "mangguo": MediaSource.MangoTV,
+            "tencentvideo": MediaSource.TencentVideo,
+        }
+        if mediaid_prefix in aliases:
+            return aliases[mediaid_prefix]
+        return MediaSource(mediaid_prefix)
 
 
 class DiscoverSourceEventData(ChainEventData):

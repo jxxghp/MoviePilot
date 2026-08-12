@@ -544,7 +544,7 @@ class EventManager(metaclass=Singleton):
             try:
                 method(event)
             except Exception as e:
-                self.__handle_event_error(event=event, module_name=plugin.name,
+                self.__handle_event_error(event=event, module_name=plugin.get_name(),
                                           class_name=class_name, method_name=method_name, e=e)
         elif class_name in module_manager.get_module_ids():
             # 模块处理器
@@ -640,7 +640,7 @@ class EventManager(metaclass=Singleton):
                 # 插件同步函数在异步环境中运行，避免阻塞
                 await run_in_threadpool(method, event)
         except Exception as e:
-            self.__handle_event_error(event=event, module_name=plugin.name,
+            self.__handle_event_error(event=event, module_name=plugin.get_name(),
                                       class_name=class_name, method_name=method_name, e=e)
 
     async def __invoke_module_method_async(self, handler: Any, class_name: str, method_name: str, event: Event):

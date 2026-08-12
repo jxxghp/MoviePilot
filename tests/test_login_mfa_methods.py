@@ -6,7 +6,9 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app import schemas
 from app.api.endpoints import login as login_endpoint
+from app.api.endpoints import mfa as mfa_endpoint
 from app.chain.user import MfaRequired, UserChain
 
 
@@ -116,3 +118,57 @@ def test_wallpaper_returns_url_in_data(monkeypatch):
     assert response.data == "https://images.example/wallpaper.jpg"
     assert response.message == ""
     assert not hasattr(response, "message_i18n")
+
+
+def test_passkey_authentication_start_returns_object_options(monkeypatch):
+    """Passkey 认证选项应作为对象返回，避免统一响应模型校验失败。"""
+    monkeypatch.setattr(
+        mfa_endpoint.PassKeyHelper,
+        "generate_authentication_options",
+        staticmethod(
+            lambda **_: ('{"challenge":"auth-challenge","timeout":60000}', "challenge")
+        ),
+    )
+    monkeypatch.setattr(
+        mfa_endpoint.PasskeyChallengeStore,
+        "issue",
+        staticmethod(lambda **_: "authentication-transaction"),
+    )
+
+    response = mfa_endpoint.passkey_authenticate_start(
+        mfa_endpoint.PassKeyAuthenticationStart()
+    )
+    payload = schemas.PasskeyStartData.model_validate(response.data)
+
+    assert response.success is True
+    assert payload.options.root["challenge"] == "auth-challenge"
+    assert payload.transaction_token == "authentication-transaction"
+
+
+def test_passkey_registration_start_returns_object_options(monkeypatch):
+    """Passkey 注册选项应作为对象返回，避免统一响应模型校验失败。"""
+    monkeypatch.setattr(
+        mfa_endpoint.PassKey,
+        "get_by_user_id",
+        staticmethod(lambda **_: []),
+    )
+    monkeypatch.setattr(
+        mfa_endpoint.PassKeyHelper,
+        "generate_registration_options",
+        staticmethod(
+            lambda **_: ('{"challenge":"register-challenge"}', "challenge")
+        ),
+    )
+    monkeypatch.setattr(
+        mfa_endpoint.PasskeyChallengeStore,
+        "issue",
+        staticmethod(lambda **_: "registration-transaction"),
+    )
+    user = SimpleNamespace(id=1, name="user", settings={})
+
+    response = mfa_endpoint.passkey_register_start(current_user=user)
+    payload = schemas.PasskeyStartData.model_validate(response.data)
+
+    assert response.success is True
+    assert payload.options.root["challenge"] == "register-challenge"
+    assert payload.transaction_token == "registration-transaction"

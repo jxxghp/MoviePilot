@@ -276,9 +276,9 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     # 别名和译名
     names: Optional[list[str]] = Field(default_factory=list)
     # 演员
-    actors: Optional[list[MediaCredit]] = Field(default_factory=list)
+    actors: Optional[list[Union[MediaCredit, str]]] = Field(default_factory=list)
     # 导演
-    directors: Optional[list[MediaCredit]] = Field(default_factory=list)
+    directors: Optional[list[Union[MediaCredit, str]]] = Field(default_factory=list)
     # 详情链接
     detail_link: Optional[str] = None
     # 其它TMDB属性

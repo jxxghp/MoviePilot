@@ -48,3 +48,34 @@ def test_media_search_response_preserves_core_collection_fields() -> None:
     assert "douban_info" in result
     assert "bangumi_info" in result
     assert "anilist_info" in result
+
+
+def test_media_response_accepts_cross_source_credit_shapes() -> None:
+    """媒体响应应同时保留豆瓣姓名字符串和 TMDB 演职员对象。"""
+    router = ResponseAPIRouter()
+
+    @router.get("/recommend", response_model=list[schemas.MediaInfo])
+    def recommend_media() -> list[dict]:
+        """返回跨来源的演职员字段形态。"""
+        return [
+            {
+                "media_source": MediaSource.Douban,
+                "media_id": "1292052",
+                "title": "示例电影",
+                "actors": ["演员甲", {"id": 2, "name": "演员乙"}],
+                "directors": ["导演甲", {"id": 3, "name": "导演乙"}],
+            }
+        ]
+
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).get("/recommend")
+
+    assert response.status_code == 200
+    media = response.json()["data"][0]
+    assert media["actors"][0] == "演员甲"
+    assert media["actors"][1]["id"] == 2
+    assert media["actors"][1]["name"] == "演员乙"
+    assert media["directors"][0] == "导演甲"
+    assert media["directors"][1]["id"] == 3
+    assert media["directors"][1]["name"] == "导演乙"

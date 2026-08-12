@@ -1,5 +1,6 @@
 """API 响应中稳定集合与动态 JSON 字段的模型契约测试。"""
 
+from app.schemas.event import DiscoverMediaSource
 from app.schemas.file import FileItem, StorageTransType
 from app.schemas.mediaserver import MediaServerLibrary, MediaServerPlayItem, NotExistMediaInfo
 from app.schemas.plugin import Plugin, PluginDashboard
@@ -7,6 +8,7 @@ from app.schemas.site import SiteStatistic, SiteUserData
 from app.schemas.subscribe import Subscribe
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.token import Token
+from app.schemas.types import MediaSource
 from app.schemas.user import User
 
 
@@ -122,3 +124,27 @@ def test_collection_json_schemas_define_items_or_tuple_members():
         for branch in messages_schema["items"]["anyOf"]
     )
     assert crew_schema["items"]["$ref"].endswith("/TmdbEpisodeCrew")
+
+
+def test_discover_media_source_keeps_legacy_prefix_compatible():
+    """发现源应兼容旧插件前缀，并同时输出规范媒体来源。"""
+    legacy = DiscoverMediaSource(
+        name="哔哩哔哩",
+        mediaid_prefix="bilibili",
+        api_path="plugin/BilibiliDiscover/discover",
+    )
+    current = DiscoverMediaSource(
+        name="腾讯视频",
+        media_source=MediaSource.TencentVideo,
+        api_path="plugin/TencentVideoDiscover/discover",
+    )
+    historical_alias = DiscoverMediaSource(
+        name="芒果 TV",
+        mediaid_prefix="mangguo",
+        api_path="plugin/MangoTVDiscover/discover",
+    )
+
+    assert legacy.media_source is MediaSource.Bilibili
+    assert legacy.model_dump(mode="json")["mediaid_prefix"] == "bilibili"
+    assert current.mediaid_prefix == MediaSource.TencentVideo.value
+    assert historical_alias.media_source is MediaSource.MangoTV

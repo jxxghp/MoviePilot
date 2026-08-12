@@ -3,6 +3,7 @@ MFA (Multi-Factor Authentication) API 端点
 包含 OTP 和 PassKey 相关功能
 """
 
+import json
 from datetime import timedelta
 from typing import Any, Annotated, Optional
 
@@ -246,7 +247,10 @@ def passkey_register_start(
         )
         return schemas.Response(
             success=True,
-            data={"options": options_json, "transaction_token": transaction_token},
+            data={
+                "options": json.loads(options_json),
+                "transaction_token": transaction_token,
+            },
         )
     except Exception as e:
         logger.error(f"生成PassKey注册选项失败: {e}")
@@ -358,7 +362,10 @@ def passkey_authenticate_start(
         )
         return schemas.Response(
             success=True,
-            data={"options": options_json, "transaction_token": transaction_token},
+            data={
+                "options": json.loads(options_json),
+                "transaction_token": transaction_token,
+            },
         )
     except Exception as e:
         logger.error(f"生成PassKey认证选项失败: {e}")
