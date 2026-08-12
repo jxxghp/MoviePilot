@@ -4,6 +4,7 @@ from typing import Any, Optional, Tuple
 
 from fastapi.concurrency import run_in_threadpool
 
+from app.agent.policy import sanitize_for_host
 from app.chain import ChainBase
 from app.log import logger
 from app.schemas import Notification
@@ -256,10 +257,14 @@ class StreamingHandler:
         """
         记录一次工具调用，供非啰嗦模式下延迟汇总输出。
         """
+        recorded_message = sanitize_for_host(tool_message) if tool_message else tool_message
+        recorded_args = sanitize_for_host(tool_kwargs or {})
+        if not isinstance(recorded_args, dict):
+            recorded_args = {}
         category, target = self._classify_tool_call(
             tool_name=tool_name,
-            tool_message=tool_message,
-            tool_kwargs=tool_kwargs or {},
+            tool_message=recorded_message,
+            tool_kwargs=recorded_args,
         )
         target_values = []
         if isinstance(target, (list, tuple, set)):

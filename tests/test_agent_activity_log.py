@@ -2,7 +2,7 @@ import asyncio
 import json
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -416,6 +416,67 @@ def test_activity_log_tool_call_records_streaming_summary(tmp_path):
             },
         }
     ]
+
+
+def test_activity_log_middleware_sanitizes_its_own_logs(tmp_path):
+    """活动日志中间件读取参数和异常写日志时必须脱敏。"""
+
+    async def _run_test():
+        secret_marker = "activity-secret-marker-6825"
+        stream_handler = SimpleNamespace(
+            is_streaming=True,
+            record_tool_call=MagicMock(),
+        )
+        middleware = ActivityLogMiddleware(
+            activity_dir=str(tmp_path),
+            stream_handler=stream_handler,
+        )
+        request = SimpleNamespace(
+            tool=SimpleNamespace(name=QUERY_ACTIVITY_LOG_TOOL_NAME),
+            tool_call={"args": {"keyword": f"token={secret_marker}"}},
+        )
+        mock_logger = MagicMock()
+
+        async def _failing_handler(_request):
+            raise RuntimeError(f"Authorization: Bearer {secret_marker}")
+
+        with patch("app.agent.middleware.activity_log.logger", mock_logger):
+            try:
+                await middleware.awrap_tool_call(request, _failing_handler)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("middleware should re-raise handler errors")
+
+        return secret_marker, mock_logger
+
+    secret_marker, mock_logger = asyncio.run(_run_test())
+
+    assert secret_marker not in str(mock_logger.method_calls)
+    assert "***" in str(mock_logger.method_calls)
+
+
+def test_activity_log_provider_error_does_not_echo_secret(tmp_path):
+    """活动日志 provider 内部异常不能进入日志或模型错误结果。"""
+    secret_marker = "activity-provider-secret-3584"
+    middleware = ActivityLogMiddleware(activity_dir=str(tmp_path))
+    mock_logger = MagicMock()
+
+    with (
+        patch(
+            "app.agent.middleware.activity_log.query_activity_logs",
+            side_effect=RuntimeError(f"OPENAI_API_KEY={secret_marker}"),
+        ),
+        patch("app.agent.middleware.activity_log.logger", mock_logger),
+    ):
+        result = asyncio.run(
+            middleware._tool_provider.query_activity_log(keyword="visible")
+        )
+
+    assert secret_marker not in result
+    assert secret_marker not in str(mock_logger.method_calls)
+    assert "***" in result
+    assert "***" in str(mock_logger.method_calls)
 
 
 def test_factory_does_not_register_activity_log_tool():

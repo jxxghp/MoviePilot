@@ -39,6 +39,7 @@ from app.agent.middleware.jobs import (
 )
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME, SkillsMiddleware
 from app.agent.middleware.subagents import (
@@ -50,6 +51,12 @@ from app.agent.middleware.subagents import (
 from app.agent.middleware.tool_selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
 from app.agent.prompt import prompt_manager
+from app.agent.policy import (
+    AuthSource,
+    PrincipalType,
+    ToolOrigin,
+    ToolPolicyContext,
+)
 from app.agent.runtime import agent_runtime_manager
 from app.agent.mcp import agent_mcp_manager
 from app.agent.tools.factory import MoviePilotToolFactory
@@ -727,6 +734,40 @@ class MoviePilotAgent:
             "original_chat_id": None if self.is_background else self.original_chat_id,
         }
 
+    def _build_policy_context(self) -> ToolPolicyContext:
+        """根据宿主入口建立模型参数无法伪造的策略上下文。"""
+        if not self.has_message_context:
+            origin = ToolOrigin.BACKGROUND
+            principal_type = PrincipalType.BACKGROUND
+            auth_source = AuthSource.INTERNAL
+        elif self.channel == MessageChannel.Web.value and self.source in {
+            "openai",
+            "openai.responses",
+            "anthropic",
+        }:
+            origin = ToolOrigin.AGENT_API
+            principal_type = PrincipalType.SYSTEM_ADMIN_INTEGRATION
+            auth_source = AuthSource.API_TOKEN
+        else:
+            origin = ToolOrigin.AGENT_INTERACTIVE
+            principal_type = PrincipalType.HUMAN
+            auth_source = (
+                AuthSource.WEB_SESSION
+                if self.channel
+                in {MessageChannel.Web.value, MessageChannel.WebAgent.value}
+                else AuthSource.CHANNEL
+            )
+        return ToolPolicyContext(
+            session_id=self.session_id,
+            user_id=str(self.user_id or self.username or principal_type.value),
+            origin=origin,
+            principal_type=principal_type,
+            auth_source=auth_source,
+            agent_context=self._tool_context,
+            channel=self.channel,
+            source=self.source,
+        )
+
     def _should_stream(self) -> bool:
         """
         判断是否应启用流式输出：
@@ -1255,6 +1296,7 @@ class MoviePilotAgent:
             # LLM 模型（用于 agent 执行）
             agent_model = await self._initialize_llm(streaming=streaming)
             self._sync_model_profile(agent_model)
+            # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
             server_tools = LLMHelper.get_server_tools(agent_model)
             use_local_web_search = LLMHelper.should_use_local_web_search(agent_model)
 
@@ -1292,11 +1334,13 @@ class MoviePilotAgent:
                 enabled=use_local_web_search,
             )
             subagent_tools.extend(await self._initialize_subagent_mcp_tools())
+            policy_context = self._build_policy_context()
             subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
                 model=non_streaming_model,
                 tools=subagent_tools,
                 server_tools=server_tools,
                 stream_handler=self.stream_handler,
+                policy_context=policy_context.for_subagent(),
             )
             max_tools = settings.LLM_MAX_TOOLS
             always_include_tools = (
@@ -1324,6 +1368,8 @@ class MoviePilotAgent:
 
             # 中间件
             middlewares = [
+                # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
+                AgentPolicyMiddleware(context=policy_context),
                 # Skills
                 skills_middleware,
                 # Jobs 任务管理
@@ -1334,6 +1380,8 @@ class MoviePilotAgent:
                 RuntimeConfigMiddleware(),
                 # 记忆管理
                 MemoryMiddleware(memory_dir=str(agent_runtime_manager.memory_dir)),
+                # 活动日志依赖记忆上下文，并应在摘要压缩前完成读取与记录。
+                *([activity_log_middleware] if activity_log_middleware else []),
                 # 上下文压缩
                 SummarizationMiddleware(
                     model=non_streaming_model, trigger=("fraction", 0.85)
@@ -1345,12 +1393,6 @@ class MoviePilotAgent:
                 # 用量统计
                 UsageMiddleware(on_usage=self._record_usage),
             ]
-
-            if self.has_message_context:
-                middlewares.insert(
-                    4,
-                    activity_log_middleware,
-                )
 
             # 工具选择
             if max_tools > 0:

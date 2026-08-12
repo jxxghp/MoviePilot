@@ -431,6 +431,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [
+                "AgentPolicyMiddleware",
                 "skills",
                 "jobs",
                 "runtime",
@@ -546,6 +547,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [
+                "AgentPolicyMiddleware",
                 "skills",
                 "jobs",
                 "runtime",
@@ -749,6 +751,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [
+                "AgentPolicyMiddleware",
                 "skills",
                 "jobs",
                 "runtime",

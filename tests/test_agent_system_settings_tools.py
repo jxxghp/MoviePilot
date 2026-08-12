@@ -3,6 +3,8 @@ import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.agent.tools.impl._system_setting_utils import list_setting_specs
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
@@ -295,3 +297,44 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         payload = json.loads(result)
         self.assertIn("error", payload)
         self.assertIn("系统管理员", payload["error"])
+
+
+@pytest.mark.parametrize(
+    ("setting_key", "should_redact"),
+    [
+        ("API_TOKEN", True),
+        ("LLM_API_KEY", True),
+        ("COOKIECLOUD_KEY", True),
+        ("COOKIECLOUD_AUTH_HEADER", True),
+        ("SUPERUSER_PASSWORD", True),
+        ("DB_POSTGRESQL_PASSWORD", True),
+        ("GITHUB_TOKEN", True),
+        ("FEISHU_VERIFICATION_TOKEN", True),
+        ("SECRET_KEY", True),
+        ("RESOURCE_SECRET_KEY", True),
+        ("PROJECT_NAME", False),
+        ("ACCESS_TOKEN_EXPIRE_MINUTES", False),
+        ("LLM_MAX_CONTEXT_TOKENS", False),
+        ("COOKIECLOUD_INTERVAL", False),
+    ],
+)
+def test_query_system_settings_uses_precise_secret_identity_matrix(
+    setting_key: str,
+    should_redact: bool,
+) -> None:
+    """设置查询应隐藏真实凭据，同时保留仅名称相似的普通设置。"""
+    marker = "credential-marker" if should_redact else "visible-marker"
+    tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
+
+    with patch.object(
+        QuerySystemSettingsTool,
+        "_load_setting_value",
+        return_value=marker,
+    ):
+        payload = json.loads(asyncio.run(tool.run(setting_key=setting_key)))
+
+    item = payload["settings"][0]
+    assert item["redacted"] is should_redact
+    assert item["value"] == ("***" if should_redact else marker)
+    if should_redact:
+        assert marker not in json.dumps(payload)

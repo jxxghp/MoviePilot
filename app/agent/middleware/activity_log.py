@@ -33,6 +33,7 @@ from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
 
 from app.agent.middleware.utils import append_to_system_message
+from app.agent.policy import sanitize_for_host, summarize_error, summarize_result
 from app.agent.tools.tags import ToolTag
 from app.log import logger
 
@@ -181,7 +182,9 @@ def load_activity_log_index(activity_dir: str, days: int = PROMPT_LOAD_DAYS) -> 
         try:
             content = log_path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
-            logger.warning(f"读取活动日志索引失败 {log_path}: {e}")
+            logger.warning(
+                f"读取活动日志索引失败 {log_path}: {summarize_error(e)}"
+            )
             continue
         entry_count = len(_parse_activity_entries(date_str, content))
         if entry_count:
@@ -245,7 +248,7 @@ def query_activity_logs(
         try:
             content = log_path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
-            logger.warning(f"读取活动日志失败 {log_path}: {e}")
+            logger.warning(f"读取活动日志失败 {log_path}: {summarize_error(e)}")
             continue
         for entry in _parse_activity_entries(date_str, content):
             if normalized_keyword and not _activity_summary_matches_keyword(
@@ -287,14 +290,16 @@ class _ActivityLogToolProvider:
         limit: Optional[int] = DEFAULT_QUERY_LIMIT,
     ) -> str:
         """查询活动日志并返回 JSON 字符串。"""
-        logger.info(
-            "查询活动日志: keyword=%s, use_regex=%s, date=%s, days=%s, limit=%s",
-            keyword,
-            use_regex,
-            date,
-            days,
-            limit,
+        logged_args = sanitize_for_host(
+            {
+                "keyword": keyword,
+                "use_regex": use_regex,
+                "date": date,
+                "days": days,
+                "limit": limit,
+            }
         )
+        logger.info(f"查询活动日志: args={logged_args}")
         try:
             payload = query_activity_logs(
                 self._activity_dir,
@@ -306,11 +311,12 @@ class _ActivityLogToolProvider:
             )
             return json.dumps(payload, ensure_ascii=False, indent=2)
         except Exception as err:
-            logger.error(f"查询活动日志失败: {err}", exc_info=True)
+            error_summary = summarize_error(err)
+            logger.error(f"查询活动日志失败: {error_summary}")
             return json.dumps(
                 {
                     "success": False,
-                    "message": f"查询活动日志时发生错误: {str(err)}",
+                    "message": f"查询活动日志时发生错误: {error_summary}",
                 },
                 ensure_ascii=False,
             )
@@ -454,7 +460,7 @@ async def _summarize_with_llm(conversation_text: str) -> Optional[str]:
             return None
         return summary if summary else None
     except Exception as e:
-        logger.debug(f"LLM 活动摘要生成失败: {e}")
+        logger.debug(f"LLM 活动摘要生成失败: {summarize_error(e)}")
         return None
 
 
@@ -571,9 +577,9 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
                 else:
                     with os.fdopen(fd, "w", encoding="utf-8") as stream:
                         stream.write(header + entry)
-            logger.debug(f"Activity logged: {summary[:80]}")
+            logger.debug(f"Activity logged: {summarize_result(summary, max_chars=80)}")
         except Exception as e:
-            logger.warning(f"Failed to append activity log: {e}")
+            logger.warning(f"Failed to append activity log: {summarize_error(e)}")
 
     async def _cleanup_old_logs(self) -> None:
         """清理超过保留天数的旧日志文件。"""
@@ -599,7 +605,9 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
                 except ValueError:
                     continue
         except Exception as e:
-            logger.warning(f"Failed to cleanup old activity logs: {e}")
+            logger.warning(
+                f"Failed to cleanup old activity logs: {summarize_error(e)}"
+            )
 
     def _schedule_activity_recording(self, messages: list) -> None:
         """提交后台活动记录任务，不阻塞当前 Agent 会话结束。"""
@@ -615,7 +623,7 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         except asyncio.CancelledError:
             logger.debug("活动日志后台记录任务已取消")
         except Exception as err:
-            logger.warning(f"活动日志后台记录任务失败: {err}")
+            logger.warning(f"活动日志后台记录任务失败: {summarize_error(err)}")
 
     async def _record_activity(self, messages: list) -> None:
         """在后台生成本轮活动摘要并写入活动日志。"""
@@ -637,7 +645,7 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
             if summary:
                 await self._append_activity(summary)
         except Exception as e:
-            logger.warning(f"Failed to record activity: {e}")
+            logger.warning(f"Failed to record activity: {summarize_error(e)}")
 
     async def abefore_agent(
         self, state: ActivityLogState, runtime: Runtime
@@ -686,9 +694,12 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         tool_args = tool_call.get("args") or {}
         if not isinstance(tool_args, dict):
             tool_args = {}
+        logged_args = sanitize_for_host(tool_args)
+        if not isinstance(logged_args, dict):
+            logged_args = {}
         logger.info(
-            f"开始执行活动日志查询工具: keyword={tool_args.get('keyword') or '-'}, "
-            f"date={tool_args.get('date') or '-'}"
+            f"开始执行活动日志查询工具: keyword={logged_args.get('keyword') or '-'}, "
+            f"date={logged_args.get('date') or '-'}"
         )
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
             self.stream_handler.record_tool_call(
@@ -699,7 +710,9 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         try:
             result = await handler(request)
         except Exception as err:
-            logger.error(f"活动日志查询工具执行失败: error={err}")
+            logger.error(
+                f"活动日志查询工具执行失败: error={summarize_error(err)}"
+            )
             raise
         logger.info("活动日志查询工具执行完成")
         return result
@@ -714,7 +727,7 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
                 return None
             self._schedule_activity_recording(list(messages))
         except Exception as e:
-            logger.warning(f"Failed to record activity: {e}")
+            logger.warning(f"Failed to record activity: {summarize_error(e)}")
 
         return None
 
