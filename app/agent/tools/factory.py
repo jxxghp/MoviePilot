@@ -1,3 +1,5 @@
+import hashlib
+
 from typing import Callable, List, Optional, Type
 
 from app.agent.tools.impl.add_download_tasks import AddDownloadTasksTool
@@ -90,6 +92,7 @@ from app.log import logger
 from app.schemas.message import ChannelCapabilityManager
 from app.schemas.types import MessageChannel
 from .base import MoviePilotTool
+from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
 
 class MoviePilotToolFactory:
@@ -195,6 +198,17 @@ class MoviePilotToolFactory:
         "query_agent_tasks",
     )
 
+    CATALOG_BUILD_MAX_ATTEMPTS = 3
+
+    @classmethod
+    def catalog_factory_revision(cls) -> str:
+        """返回当前内置工具工厂定义的稳定摘要。"""
+        identities = (
+            f"{tool_class.__module__}.{tool_class.__qualname__}"
+            for tool_class in cls.BUILTIN_TOOL_CLASSES
+        )
+        return hashlib.sha256("\n".join(identities).encode("utf-8")).hexdigest()
+
     @staticmethod
     def _should_enable_choice_tool(channel: Optional[str] = None) -> bool:
         if not channel:
@@ -266,6 +280,7 @@ class MoviePilotToolFactory:
             tool.set_message_attr(channel=channel, source=source, username=username)
             tool.set_stream_handler(stream_handler=stream_handler)
             tool.set_agent_context(agent_context=agent_context)
+            object.__setattr__(tool, "_agent_tool_source", "builtin")
             tools.append(tool)
 
         # 加载插件提供的工具
@@ -292,6 +307,11 @@ class MoviePilotToolFactory:
                     )
                     tool.set_stream_handler(stream_handler=stream_handler)
                     tool.set_agent_context(agent_context=agent_context)
+                    object.__setattr__(
+                        tool,
+                        "_agent_tool_source",
+                        f"plugin:{plugin_id or 'unknown'}",
+                    )
                     tools.append(tool)
                     plugin_tools_count += 1
                     logger.debug(
@@ -310,3 +330,19 @@ class MoviePilotToolFactory:
         else:
             logger.debug(f"成功创建 {len(tools)} 个MoviePilot工具")
         return tools
+
+    @classmethod
+    def create_catalog(cls, **tool_kwargs) -> ToolCatalogSnapshot:
+        """在插件目录稳定窗口内构造一份完整本地工具快照。"""
+        plugin_manager = PluginManager()
+        for _attempt in range(cls.CATALOG_BUILD_MAX_ATTEMPTS):
+            before_revision = plugin_manager.get_plugin_agent_tools_revision()
+            tools = cls.create_tools(**tool_kwargs)
+            after_revision = plugin_manager.get_plugin_agent_tools_revision()
+            if before_revision == after_revision:
+                return ToolCatalogSnapshot.from_tools(
+                    tools,
+                    plugin_revision=after_revision,
+                    factory_revision=cls.catalog_factory_revision(),
+                )
+        raise ToolCatalogError("插件工具目录持续变化，无法建立当前快照")

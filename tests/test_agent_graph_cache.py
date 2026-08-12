@@ -1,6 +1,7 @@
 """Agent 图缓存行为测试。"""
 
-from datetime import datetime
+from contextlib import ExitStack
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -8,7 +9,15 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent import MoviePilotAgent, ReplyMode, _CompiledAgentBundle
+from app.agent.mcp import AgentMcpToolSpec
+from app.agent.middleware.policy import AgentPolicyMiddleware
+from app.agent.tools.catalog import (
+    ToolCatalogSnapshot,
+    ToolIdentityAmbiguousError,
+)
+from app.agent.tools.impl.mcp import create_external_mcp_tools
 from app.core.config import settings
+from app.schemas.agent import AgentMcpServerConfig
 
 
 @pytest.fixture
@@ -45,24 +54,162 @@ class _CapturingAgent:
 async def test_create_agent_reuses_cached_graph_when_signature_matches():
     """构造签名一致时应直接复用已编译 Agent 图。"""
     cached_graph = object()
+    catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=0, factory_revision="factory-v1"
+    )
     agent = MoviePilotAgent(session_id="cache-hit", user_id="user-1")
     agent._compiled_agent_bundle = _CompiledAgentBundle(
         signature=("sig",),
         agent=cached_graph,
         streaming=False,
         created_at=datetime.now(),
+        tool_catalog=catalog,
+        subagent_catalog=catalog,
+        plugin_revision=0,
+        mcp_config_signature="mcp-config",
+        catalog_checked_at=datetime.now(),
     )
 
     with patch.object(
         agent,
         "_agent_bundle_signature",
         new=AsyncMock(return_value=("sig",)),
+    ), patch(
+        "app.agent.PluginManager.get_plugin_agent_tools_revision",
+        return_value=0,
+    ), patch(
+        "app.agent.agent_mcp_manager.config_signature",
+        return_value="mcp-config",
     ), patch("app.agent.create_agent") as create_agent:
         graph = await agent._create_agent(streaming=False)
 
     assert graph is cached_graph
     assert agent._last_agent_cache_hit is True
     create_agent.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
+    """目录仍在 freshness 窗口内时，缓存命中不得重建工具或访问 MCP。"""
+    cached_graph = object()
+    catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=0, factory_revision="factory-v1"
+    )
+    agent = MoviePilotAgent(session_id="catalog-cache-hit", user_id="user-1")
+    agent._compiled_agent_bundle = _CompiledAgentBundle(
+        signature=("sig",),
+        agent=cached_graph,
+        streaming=False,
+        created_at=datetime.now(),
+        tool_catalog=catalog,
+        subagent_catalog=catalog,
+        plugin_revision=0,
+        mcp_config_signature="mcp-config",
+        catalog_checked_at=datetime.now(),
+    )
+
+    with patch.object(
+        agent,
+        "_agent_bundle_signature",
+        new=AsyncMock(return_value=("sig",)),
+    ), patch.object(
+        agent,
+        "_initialize_local_tool_catalogs",
+        side_effect=AssertionError("tool catalog rebuilt"),
+    ), patch(
+        "app.agent.PluginManager.get_plugin_agent_tools_revision",
+        return_value=0,
+    ), patch(
+        "app.agent.agent_mcp_manager.config_signature",
+        return_value="mcp-config",
+    ), patch(
+        "app.agent.agent_mcp_manager.list_enabled_tool_specs",
+        new=AsyncMock(side_effect=AssertionError("MCP discovery called")),
+    ):
+        graph = await agent._create_agent(streaming=False)
+
+    assert graph is cached_graph
+    assert agent._last_agent_cache_hit is True
+
+
+@pytest.mark.anyio
+async def test_expired_unchanged_catalog_renews_freshness() -> None:
+    """过期目录复核后若签名未变，应续期缓存而不是每轮重复 discovery。"""
+    cached_graph = object()
+    catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=0, factory_revision="factory-v1"
+    )
+    expired_at = datetime.now() - timedelta(minutes=5)
+    agent = MoviePilotAgent(session_id="catalog-refresh", user_id="user-1")
+    agent._compiled_agent_bundle = _CompiledAgentBundle(
+        signature=("sig",),
+        agent=cached_graph,
+        streaming=False,
+        created_at=datetime.now(),
+        tool_catalog=catalog,
+        subagent_catalog=catalog,
+        plugin_revision=0,
+        mcp_config_signature="mcp-config",
+        catalog_checked_at=expired_at,
+    )
+    fake_llm = SimpleNamespace(
+        _llm_type="openai-chat",
+        model="fake",
+        profile={"max_input_tokens": 64000},
+    )
+
+    with patch.object(
+        agent,
+        "_agent_bundle_signature",
+        new=AsyncMock(return_value=("sig",)),
+    ), patch.object(
+        agent,
+        "_initialize_local_tool_catalogs",
+        return_value=(catalog, catalog),
+    ), patch.object(
+        agent,
+        "_initialize_mcp_tools",
+        new=AsyncMock(return_value=[]),
+    ), patch.object(
+        agent,
+        "_initialize_subagent_mcp_tools",
+        new=AsyncMock(return_value=[]),
+    ), patch.object(
+        agent,
+        "_initialize_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ), patch.object(
+        agent,
+        "_sync_model_profile",
+    ), patch(
+        "app.agent.ServerToolRegistry.resolve_web_search",
+        return_value=SimpleNamespace(use_local_web_search=True),
+    ), patch(
+        "app.agent.LLMHelper.get_server_tools",
+        return_value=[],
+    ), patch(
+        "app.agent.prompt_manager.get_agent_prompt",
+        return_value="prompt",
+    ), patch(
+        "app.agent.SkillsMiddleware",
+        return_value=SimpleNamespace(name="skills", tools=[]),
+    ), patch(
+        "app.agent.create_subagent_middlewares",
+        return_value=([], []),
+    ), patch(
+        "app.agent.PluginManager.get_plugin_agent_tools_revision",
+        return_value=0,
+    ), patch(
+        "app.agent.agent_mcp_manager.config_signature",
+        return_value="mcp-config",
+    ), patch(
+        "app.agent.agent_mcp_manager.list_enabled_tool_specs",
+        new=AsyncMock(return_value=[]),
+    ):
+        graph = await agent._create_agent(streaming=False)
+
+    assert graph is cached_graph
+    assert agent._compiled_agent_bundle.catalog_checked_at > expired_at
 
 
 @pytest.mark.anyio
@@ -92,6 +239,256 @@ async def test_agent_bundle_signature_changes_with_temperature(monkeypatch) -> N
         updated_signature = await agent._agent_bundle_signature(streaming=False)
 
     assert updated_signature != initial_signature
+
+
+@pytest.mark.anyio
+async def test_agent_bundle_signature_changes_with_tool_catalog() -> None:
+    """工具目录 revision 必须参与会话内 Agent 图缓存签名。"""
+    agent = MoviePilotAgent(session_id="tool-revision", user_id="user-1")
+    runtime_config = {"provider": "openai", "model": "gpt-test"}
+    first_catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=1, factory_revision="factory-v1"
+    )
+    second_catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=2, factory_revision="factory-v1"
+    )
+
+    with patch.object(
+        agent,
+        "_resolve_llm_runtime_config",
+        new=AsyncMock(return_value=runtime_config),
+    ):
+        first_signature = await agent._agent_bundle_signature(
+            streaming=False,
+            tool_catalog=first_catalog,
+            subagent_catalog=first_catalog,
+        )
+        second_signature = await agent._agent_bundle_signature(
+            streaming=False,
+            tool_catalog=second_catalog,
+            subagent_catalog=second_catalog,
+        )
+
+    assert second_signature != first_signature
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("max_tools", [0, 5])
+async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
+    max_tools: int,
+) -> None:
+    """主图与子图保持 MCP first-wins，严格目录覆盖全部客户端工具。"""
+    servers = [
+        AgentMcpServerConfig(
+            id=server_id,
+            name="Shared Name",
+            transport="stdio",
+            command=server_id,
+        )
+        for server_id in ("one", "two")
+    ]
+    specs = [
+        AgentMcpToolSpec(
+            server=server,
+            name="echo",
+            agent_tool_name="shared_echo",
+            description="echo",
+            input_schema={"type": "object", "properties": {}},
+        )
+        for server in servers
+    ]
+    main_tools = await create_external_mcp_tools(
+        session_id="session",
+        user_id="user",
+        specs=specs,
+    )
+    subagent_tools = await create_external_mcp_tools(
+        session_id="session",
+        user_id="user",
+        specs=specs,
+    )
+    empty_catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=0, factory_revision="factory-v1"
+    )
+    fake_llm = SimpleNamespace(
+        _llm_type="openai-chat",
+        model="fake",
+        profile={"max_input_tokens": 64000},
+    )
+    skill_tool = SimpleNamespace(
+        name="shared_echo",
+        description="skill collision",
+        args_schema={"type": "object", "properties": {}},
+        _agent_tool_source="middleware:skills",
+    )
+    activity_tool = SimpleNamespace(
+        name="query_activity_log",
+        description="activity log",
+        args_schema={"type": "object", "properties": {}},
+        _agent_tool_source="middleware:activity_log",
+    )
+    subagent_task_tool = SimpleNamespace(
+        name="task",
+        description="subagent task",
+        args_schema={"type": "object", "properties": {}},
+        _agent_tool_source="middleware:subagents",
+    )
+    captured = {}
+    agent = MoviePilotAgent(
+        session_id="mcp-collision",
+        user_id="user",
+        channel="web",
+        source="test",
+    )
+
+    def _capture_subagents(**kwargs):
+        captured["subagent_tools"] = kwargs["tools"]
+        captured["subagent_catalog"] = kwargs["catalog"]
+        return [], [subagent_task_tool]
+
+    def _capture_selector(**kwargs):
+        captured["selection_tools"] = kwargs["selection_tools"]
+        return SimpleNamespace(name="selector")
+
+    def _capture_agent(**kwargs):
+        captured["agent_tools"] = kwargs["tools"]
+        captured["middlewares"] = kwargs["middleware"]
+        return object()
+
+    patchers = [
+        patch.object(
+            agent,
+            "_resolve_llm_runtime_config",
+            new=AsyncMock(return_value={"provider": "openai", "model": "fake"}),
+        ),
+        patch.object(
+            agent,
+            "_initialize_local_tool_catalogs",
+            return_value=(empty_catalog, empty_catalog),
+        ),
+        patch.object(
+            agent,
+            "_initialize_mcp_tools",
+            new=AsyncMock(return_value=main_tools),
+        ),
+        patch.object(
+            agent,
+            "_initialize_subagent_mcp_tools",
+            new=AsyncMock(return_value=subagent_tools),
+        ),
+        patch.object(
+            agent,
+            "_agent_bundle_signature",
+            new=AsyncMock(return_value=("mcp-collision", max_tools)),
+        ),
+        patch.object(
+            agent,
+            "_initialize_llm",
+            new=AsyncMock(return_value=fake_llm),
+        ),
+        patch.object(agent, "_sync_model_profile"),
+        patch(
+            "app.agent.PluginManager.get_plugin_agent_tools_revision",
+            return_value=0,
+        ),
+        patch(
+            "app.agent.agent_mcp_manager.config_signature",
+            return_value="mcp-config",
+        ),
+        patch(
+            "app.agent.agent_mcp_manager.list_enabled_tool_specs",
+            new=AsyncMock(return_value=specs),
+        ),
+        patch(
+            "app.agent.ServerToolRegistry.resolve_web_search",
+            return_value=SimpleNamespace(use_local_web_search=True),
+        ),
+        patch("app.agent.LLMHelper.get_server_tools", return_value=[]),
+        patch("app.agent.prompt_manager.get_agent_prompt", return_value="prompt"),
+        patch(
+            "app.agent.create_subagent_middlewares",
+            side_effect=_capture_subagents,
+        ),
+        patch(
+            "app.agent.MoviePilotToolFactory.get_tool_selector_always_include_names",
+            return_value=[],
+        ),
+        patch(
+            "app.agent.SkillsMiddleware",
+            return_value=SimpleNamespace(name="skills", tools=[skill_tool]),
+        ),
+        patch(
+            "app.agent.ActivityLogMiddleware",
+            return_value=SimpleNamespace(name="activity", tools=[activity_tool]),
+        ),
+        patch(
+            "app.agent.JobsMiddleware",
+            return_value=SimpleNamespace(name="jobs"),
+        ),
+        patch(
+            "app.agent.RuntimeConfigMiddleware",
+            return_value=SimpleNamespace(name="runtime"),
+        ),
+        patch(
+            "app.agent.MemoryMiddleware",
+            return_value=SimpleNamespace(name="memory"),
+        ),
+        patch(
+            "app.agent.SummarizationMiddleware",
+            return_value=SimpleNamespace(name="summary"),
+        ),
+        patch(
+            "app.agent.PatchToolCallsMiddleware",
+            return_value=SimpleNamespace(name="patch"),
+        ),
+        patch(
+            "app.agent.UsageMiddleware",
+            return_value=SimpleNamespace(name="usage"),
+        ),
+        patch(
+            "app.agent.ToolSelectorMiddleware",
+            side_effect=_capture_selector,
+        ),
+        patch("app.agent.InMemorySaver", return_value=object()),
+        patch("app.agent.create_agent", side_effect=_capture_agent),
+        patch.object(settings, "LLM_MAX_TOOLS", max_tools),
+    ]
+    with ExitStack() as stack:
+        for patcher in patchers:
+            stack.enter_context(patcher)
+        await agent._create_agent(streaming=False)
+
+    assert captured["agent_tools"] == [main_tools[0], skill_tool, activity_tool]
+    assert captured["subagent_tools"] == [subagent_tools[0]]
+    if max_tools:
+        assert captured["selection_tools"] == [
+            main_tools[0],
+            skill_tool,
+            activity_tool,
+            subagent_task_tool,
+        ]
+    else:
+        assert "selection_tools" not in captured
+    policy_middleware = next(
+        middleware
+        for middleware in captured["middlewares"]
+        if isinstance(middleware, AgentPolicyMiddleware)
+    )
+    assert [
+        entry.source
+        for entry in policy_middleware.catalog.collisions["shared_echo"]
+    ] == ["mcp:one", "mcp:two", "middleware:skills"]
+    assert (
+        policy_middleware.catalog.resolve_unique("query_activity_log").tool
+        is activity_tool
+    )
+    assert policy_middleware.catalog.resolve_unique("task").tool is subagent_task_tool
+    with pytest.raises(ToolIdentityAmbiguousError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        policy_middleware.catalog.resolve_unique("shared_echo")
+    assert [
+        entry.source
+        for entry in captured["subagent_catalog"].collisions["shared_echo"]
+    ] == ["mcp:one", "mcp:two"]
 
 
 @pytest.mark.anyio

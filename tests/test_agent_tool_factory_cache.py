@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from typing import Iterator, Optional, Type
+from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel
@@ -147,6 +148,24 @@ def test_plugin_agent_tools_cache_can_be_cleared(
     assert len(calls) == 2
 
 
+def test_plugin_agent_tools_revision_churn_is_bounded(
+    plugin_manager: PluginManager,
+) -> None:
+    """插件状态持续变化时注册表构造必须有界失败，不能卡住调用线程。"""
+    def _changing_tools() -> list[type[MoviePilotTool]]:
+        plugin_manager.clear_plugin_agent_tools_cache()
+        return [DemoAgentTool]
+
+    plugin_manager.running_plugins["DemoPlugin"] = SimpleNamespace(
+        plugin_name="Demo Plugin",
+        get_state=lambda: True,
+        get_agent_tools=_changing_tools,
+    )
+
+    with pytest.raises(RuntimeError, match="持续变化"):
+        plugin_manager.get_plugin_agent_tools()
+
+
 def test_factory_reuses_plugin_registry_but_creates_new_tool_instances(
     plugin_manager: PluginManager,
 ) -> None:
@@ -191,3 +210,25 @@ def test_factory_suppresses_plugin_message_tools_for_subagents(
 
     assert "demo_agent_tool" in tool_names
     assert "demo_message_agent_tool" not in tool_names
+
+
+def test_factory_catalog_records_two_plugin_duplicate_names(
+    plugin_manager: PluginManager,
+) -> None:
+    """两个插件声明同名工具时，目录必须保留两个插件身份。"""
+    plugin_manager.running_plugins["PluginOne"] = _build_plugin([DemoAgentTool])
+    plugin_manager.running_plugins["PluginTwo"] = _build_plugin([DemoAgentTool])
+
+    with patch.object(
+        MoviePilotToolFactory,
+        "_get_builtin_tool_classes",
+        return_value=[],
+    ):
+        catalog = MoviePilotToolFactory.create_catalog(
+            session_id="session-1",
+            user_id="10001",
+        )
+
+    assert [
+        entry.source for entry in catalog.collisions["demo_agent_tool"]
+    ] == ["plugin:PluginOne", "plugin:PluginTwo"]

@@ -11,6 +11,7 @@ from app.agent.policy import (
     ToolPolicyContext,
     call_policy_hook,
 )
+from app.agent.tools.catalog import ToolCatalogSnapshot
 
 
 class AgentPolicyMiddleware(AgentMiddleware):
@@ -25,10 +26,12 @@ class AgentPolicyMiddleware(AgentMiddleware):
         *,
         context: ToolPolicyContext,
         orchestrator: AgentToolPolicyOrchestrator = DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+        catalog: ToolCatalogSnapshot | None = None,
     ) -> None:
         """绑定宿主可信上下文和共享策略编排器。"""
         self.context = context
         self.orchestrator = orchestrator
+        self.catalog = catalog
 
     async def awrap_tool_call(
         self,

@@ -41,6 +41,7 @@ from app.utils.system import SystemUtils
 class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     """插件管理器"""
     CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_REPO_PATHS"}
+    AGENT_TOOLS_BUILD_MAX_ATTEMPTS = 3
 
     def __init__(self):
         # 插件列表
@@ -1011,7 +1012,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         }]
         """
         cache_key = pid or "__all__"
-        while True:
+        for _attempt in range(self.AGENT_TOOLS_BUILD_MAX_ATTEMPTS):
             with self._plugin_agent_tools_cache_lock:
                 cache_revision = self._plugin_agent_tools_revision
                 cached_tools = self._plugin_agent_tools_cache.get(cache_key)
@@ -1047,6 +1048,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     ret_tools
                 )
                 return ret_tools
+        raise RuntimeError("插件工具注册表持续变化，无法建立当前快照")
 
     @staticmethod
     def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:

@@ -9,6 +9,7 @@ import pytest
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.api.endpoints import mcp
 from app.core.plugin import PluginManager
 from app.utils.singleton import Singleton
@@ -96,3 +97,23 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
         )
         missing_payload = json.loads(missing_result["content"][0]["text"])
         assert "未找到" in missing_payload["error"]
+
+
+def test_direct_manager_preserves_legacy_lookup_and_exposes_strict_resolution() -> None:
+    """普通 direct 调用保留 first-wins，严格调用可拒绝同名身份。"""
+    first = DemoPluginTool(session_id="session", user_id="user")
+    second = DemoPluginTool(session_id="session", user_id="user")
+    manager = MoviePilotToolsManager(session_id="session", user_id="user")
+    manager.tools = [first, second]
+    manager.catalog = ToolCatalogSnapshot.from_tools(
+        manager.tools,
+        plugin_revision=manager._plugin_agent_tools_revision,
+        factory_revision=MoviePilotToolFactory.catalog_factory_revision(),
+    )
+
+    assert manager.get_tool("demo_plugin_tool") is first
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        manager.get_strict_tool("demo_plugin_tool")
+
+    result = asyncio.run(manager.call_tool("demo_plugin_tool", {}))
+    assert result == "plugin-ok"

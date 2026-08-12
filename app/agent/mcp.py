@@ -541,19 +541,14 @@ class AgentMcpManager:
         return tool_specs
 
     async def list_enabled_tool_specs(self) -> list[AgentMcpToolSpec]:
-        """读取所有启用 MCP 服务器暴露的工具定义。"""
+        """读取所有启用 MCP 服务器暴露的工具定义并保留同名冲突。"""
         tool_specs: list[AgentMcpToolSpec] = []
-        seen_names: set[str] = set()
         for server in self.get_servers():
             if not server.enabled:
                 continue
             try:
                 for spec in await self.list_server_tools(server):
-                    if spec.agent_tool_name in seen_names:
-                        logger.warning(f"跳过重复的 MCP Agent 工具名: {spec.agent_tool_name}")
-                        continue
                     tool_specs.append(spec)
-                    seen_names.add(spec.agent_tool_name)
             except Exception as err:
                 logger.warning(f"读取 MCP 服务器 {server.name} 工具失败: {err}")
         return tool_specs
