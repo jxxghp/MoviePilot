@@ -140,10 +140,25 @@ class ToolPolicyRegistry:
         requires_admin: bool,
     ) -> ActionPolicy:
         """根据工具名和宿主权限声明解析当前迁移策略。"""
-        del arguments  # 参数级迁移由后续领域 Goal 逐项加入。
         required_role = (
             PrincipalRole.SYSTEM_ADMIN if requires_admin else PrincipalRole.USER
         )
+        if (
+            tool_name == "query_system_settings"
+            and arguments.get("show_secrets") is True
+        ):
+            return ActionPolicy(
+                effect=ActionEffect.SENSITIVE_READ,
+                required_role=PrincipalRole.SYSTEM_ADMIN,
+                confirmation=ConfirmationMode.REQUIRED,
+                recovery=RecoveryMode.NONE,
+                result_sensitivity=ResultSensitivity.SECRET,
+                migration_state=MigrationState.ENFORCED,
+                policy_version="p1-g2a2-v1",
+                machine_allowed=True,
+                background_allowed=False,
+                subagent_allowed=False,
+            )
         if tool_name in self._safe_read_tool_names:
             return ActionPolicy(
                 effect=ActionEffect.SAFE_READ,

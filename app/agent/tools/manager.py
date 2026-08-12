@@ -15,6 +15,7 @@ from app.agent.policy import (
 )
 from app.agent.tools.base import ToolExecutionTimeoutError, format_tool_result_for_agent
 from app.agent.tools.factory import MoviePilotToolFactory
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.core.plugin import PluginManager
 from app.log import logger
 
@@ -66,6 +67,7 @@ class MoviePilotToolsManager:
             agent_context={"is_admin": is_admin},
         )
         self.tools: List[Any] = []
+        self.catalog: Optional[ToolCatalogSnapshot] = None
         self._tools_lock = threading.Lock()
         self._plugin_agent_tools_revision = -1
         self._load_tools()
@@ -75,31 +77,23 @@ class MoviePilotToolsManager:
         加载所有MoviePilot工具
         """
         try:
-            plugin_manager = PluginManager()
-            while True:
-                plugin_tools_revision = (
-                    plugin_manager.get_plugin_agent_tools_revision()
-                )
-                tools = MoviePilotToolFactory.create_tools(
-                    session_id=self.session_id,
-                    user_id=self.user_id,
-                    channel=None,
-                    source="api",
-                    username="API Client",
-                    stream_handler=None,
-                    agent_context={"is_admin": self.is_admin},
-                )
-                if (
-                    plugin_tools_revision
-                    == plugin_manager.get_plugin_agent_tools_revision()
-                ):
-                    break
-            self.tools = tools
-            self._plugin_agent_tools_revision = plugin_tools_revision
+            catalog = MoviePilotToolFactory.create_catalog(
+                session_id=self.session_id,
+                user_id=self.user_id,
+                channel=None,
+                source="api",
+                username="API Client",
+                stream_handler=None,
+                agent_context={"is_admin": self.is_admin},
+            )
+            self.catalog = catalog
+            self.tools = catalog.tools
+            self._plugin_agent_tools_revision = catalog.plugin_revision
             logger.info(f"成功加载 {len(self.tools)} 个工具")
         except Exception as e:
             logger.error(f"加载工具失败: {summarize_error(e)}")
             self.tools = []
+            self.catalog = None
             self._plugin_agent_tools_revision = -1
 
     def _ensure_tools_current(self) -> None:
@@ -162,10 +156,26 @@ class MoviePilotToolsManager:
             工具实例，如果未找到返回None
         """
         self._ensure_tools_current()
-        for tool in self.tools:
-            if tool.name == tool_name:
-                return tool
-        return None
+        return next(
+            (tool for tool in self.tools if tool.name == tool_name),
+            None,
+        )
+
+    def get_strict_tool(self, tool_name: str) -> Optional[Any]:
+        """按当前目录唯一身份解析严格调用，重名时稳定失败。"""
+        self._ensure_tools_current()
+        if self.catalog is None or [
+            id(tool) for tool in self.catalog.tools
+        ] != [id(tool) for tool in self.tools]:
+            self.catalog = ToolCatalogSnapshot.from_tools(
+                self.tools,
+                plugin_revision=self._plugin_agent_tools_revision,
+                factory_revision=MoviePilotToolFactory.catalog_factory_revision(),
+            )
+        if self.catalog is None:
+            return None
+        entry = self.catalog.resolve_unique(tool_name)
+        return entry.tool if entry else None
 
     @staticmethod
     def _resolve_field_schema(field_info: Dict[str, Any]) -> Dict[str, Any]:

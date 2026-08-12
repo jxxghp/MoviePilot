@@ -2,7 +2,21 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Mapping, MutableMapping, Optional
+
+
+def _freeze_contract_value(value: Any) -> Any:
+    """递归冻结确认边界中的容器，避免等待期间被调用方修改。"""
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _freeze_contract_value(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_contract_value(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(_freeze_contract_value(item) for item in value)
+    return value
 
 
 class ToolOrigin(str, Enum):
@@ -33,6 +47,24 @@ class AuthSource(str, Enum):
     API_TOKEN = "api_token"
     INTERNAL = "internal"
     AGENT_TOKEN = "agent_token"
+
+
+class InboundProvenance(str, Enum):
+    """入站事实经宿主验证后的可信等级。"""
+
+    WEB_SESSION = "web_session"
+    VERIFIED_ADAPTER = "verified_adapter"
+    ADMIN_INTEGRATION = "admin_integration"
+    UNTRUSTED = "untrusted"
+
+
+class ConversationKind(str, Enum):
+    """目标会话的隐私边界。"""
+
+    WEB = "web"
+    PRIVATE = "private"
+    GROUP = "group"
+    UNKNOWN = "unknown"
 
 
 class PrincipalRole(str, Enum):
@@ -99,6 +131,79 @@ class ExecutionOutcome(str, Enum):
     FAILED = "failed"
 
 
+class ReceiptState(str, Enum):
+    """严格执行回执的单向生命周期状态。"""
+
+    WAITING_CONFIRMATION = "waiting_confirmation"
+    VALIDATING = "validating"
+    EXECUTING = "executing"
+    DELIVERING = "delivering"
+    SUCCEEDED = "succeeded"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    EXPIRED_RESTART = "expired_restart"
+    EXPIRED_ORPHANED = "expired_orphaned"
+    PREPARATION_FAILED = "preparation_failed"
+    PROMPT_DELIVERY_FAILED = "prompt_delivery_failed"
+    VALIDATION_FAILED = "validation_failed"
+    VALIDATION_RECORD_FAILED = "validation_record_failed"
+    EXECUTION_FAILED = "execution_failed"
+    DELIVERY_FAILED = "delivery_failed"
+    UNKNOWN_AFTER_RESTART = "unknown_after_restart"
+    UNKNOWN_ORPHANED = "unknown_orphaned"
+
+
+TERMINAL_RECEIPT_STATES = frozenset({
+    ReceiptState.SUCCEEDED,
+    ReceiptState.CANCELLED,
+    ReceiptState.EXPIRED,
+    ReceiptState.EXPIRED_RESTART,
+    ReceiptState.EXPIRED_ORPHANED,
+    ReceiptState.PREPARATION_FAILED,
+    ReceiptState.PROMPT_DELIVERY_FAILED,
+    ReceiptState.VALIDATION_FAILED,
+    ReceiptState.VALIDATION_RECORD_FAILED,
+    ReceiptState.EXECUTION_FAILED,
+    ReceiptState.DELIVERY_FAILED,
+    ReceiptState.UNKNOWN_AFTER_RESTART,
+    ReceiptState.UNKNOWN_ORPHANED,
+})
+
+
+RECEIPT_STATE_TRANSITIONS = {
+    ReceiptState.WAITING_CONFIRMATION: frozenset({
+        ReceiptState.VALIDATING,
+        ReceiptState.CANCELLED,
+        ReceiptState.EXPIRED,
+        ReceiptState.EXPIRED_RESTART,
+        ReceiptState.EXPIRED_ORPHANED,
+        ReceiptState.PREPARATION_FAILED,
+        ReceiptState.PROMPT_DELIVERY_FAILED,
+    }),
+    ReceiptState.VALIDATING: frozenset({
+        ReceiptState.EXECUTING,
+        ReceiptState.CANCELLED,
+        ReceiptState.EXPIRED,
+        ReceiptState.EXPIRED_RESTART,
+        ReceiptState.EXPIRED_ORPHANED,
+        ReceiptState.VALIDATION_FAILED,
+        ReceiptState.VALIDATION_RECORD_FAILED,
+    }),
+    ReceiptState.EXECUTING: frozenset({
+        ReceiptState.DELIVERING,
+        ReceiptState.EXECUTION_FAILED,
+        ReceiptState.UNKNOWN_AFTER_RESTART,
+        ReceiptState.UNKNOWN_ORPHANED,
+    }),
+    ReceiptState.DELIVERING: frozenset({
+        ReceiptState.SUCCEEDED,
+        ReceiptState.DELIVERY_FAILED,
+        ReceiptState.UNKNOWN_AFTER_RESTART,
+        ReceiptState.UNKNOWN_ORPHANED,
+    }),
+}
+
+
 @dataclass(frozen=True)
 class PolicyPrincipal:
     """由可信入口建立、不可由工具参数覆盖的调用主体。"""
@@ -122,6 +227,62 @@ class ToolInvocation:
     origin: ToolOrigin
     channel: Optional[str] = None
     source: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DeliveryTarget:
+    """受保护结果的精确宿主路由，actor 与 recipient 不得互相替代。"""
+
+    channel: str
+    source_instance_id: str
+    tenant_or_account_id: str
+    conversation_kind: ConversationKind
+    conversation_id: str
+    recipient_id: str
+    actor_id: str
+    server_session_id: str
+
+
+@dataclass(frozen=True)
+class InboundEnvelope:
+    """由可信宿主入口创建的不可变入站事实。"""
+
+    provenance: InboundProvenance
+    target: DeliveryTarget
+    inbound_event_id: str
+    raw_text: str = field(repr=False)
+    normalized_text: str = field(repr=False)
+    has_images: bool = False
+    has_audio: bool = False
+    has_files: bool = False
+    is_callback: bool = False
+
+
+@dataclass(frozen=True)
+class ToolRevision:
+    """严格调用绑定的工具实现、工厂和插件目录版本。"""
+
+    implementation: str
+    factory: str
+    plugin: str
+
+
+@dataclass(frozen=True)
+class CanonicalInvocation:
+    """经当前工具 schema 校验、可绑定确认与版本前提的调用。"""
+
+    tool_name: str
+    arguments: Mapping[str, Any] = field(repr=False)
+    canonical_json: str = field(repr=False)
+    digest: str
+    policy_version: str
+    tool_revision: ToolRevision
+    schema_digest: str
+    preconditions: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        """阻止调用方在确认等待期间修改规范化参数。"""
+        object.__setattr__(self, "arguments", _freeze_contract_value(self.arguments))
 
 
 @dataclass(frozen=True)
@@ -230,9 +391,14 @@ __all__ = [
     "ActionEffect",
     "ActionPolicy",
     "AuthSource",
+    "CanonicalInvocation",
     "ConfirmationMode",
+    "ConversationKind",
+    "DeliveryTarget",
     "ExecutionOutcome",
     "ExecutionReceipt",
+    "InboundEnvelope",
+    "InboundProvenance",
     "MigrationState",
     "PolicyDecision",
     "PolicyObservation",
@@ -240,8 +406,12 @@ __all__ = [
     "PrincipalRole",
     "PrincipalType",
     "RecoveryMode",
+    "RECEIPT_STATE_TRANSITIONS",
+    "ReceiptState",
     "ResultSensitivity",
+    "TERMINAL_RECEIPT_STATES",
     "ToolInvocation",
     "ToolOrigin",
     "ToolPolicyContext",
+    "ToolRevision",
 ]

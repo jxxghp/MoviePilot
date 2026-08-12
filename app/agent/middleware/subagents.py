@@ -36,6 +36,7 @@ from app.agent.policy import (
 )
 from app.agent.runtime import SubAgentDefinition, agent_runtime_manager
 from app.agent.tools.tags import ToolTag
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.log import logger
 
 
@@ -418,6 +419,7 @@ class _SubAgentAgentProvider:
         tools: list[BaseTool],
         server_tools: Optional[list[dict[str, Any]]] = None,
         policy_context: Optional[ToolPolicyContext] = None,
+        catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> None:
         """初始化子代理执行器。"""
         self._model = model
@@ -425,6 +427,7 @@ class _SubAgentAgentProvider:
         self._tools = tools
         self._server_tools = server_tools or []
         self._policy_context = policy_context or _default_subagent_policy_context(tools)
+        self._catalog = catalog
         self._agents = {}
         self._default_agent_name = "general-purpose"
 
@@ -442,6 +445,9 @@ class _SubAgentAgentProvider:
             return profile.name, cached_agent
 
         subagent_tools = _select_tools(self._tools, profile)
+        subagent_catalog = (
+            self._catalog.select(subagent_tools) if self._catalog is not None else None
+        )
         logger.info(
             f"创建子代理图: subagent_type={profile.name}, tools={len(subagent_tools)}"
         )
@@ -450,7 +456,12 @@ class _SubAgentAgentProvider:
             tools=[*subagent_tools, *self._server_tools],
             system_prompt=profile.prompt,
             name=profile.name,
-            middleware=[AgentPolicyMiddleware(context=self._policy_context)],
+            middleware=[
+                AgentPolicyMiddleware(
+                    context=self._policy_context,
+                    catalog=subagent_catalog,
+                )
+            ],
         )
         self._agents[profile.name] = agent
         return profile.name, agent
@@ -511,6 +522,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         task_description: str = SUBAGENT_TASK_DESCRIPTION,
         stream_handler: Any = None,
         policy_context: Optional[ToolPolicyContext] = None,
+        catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> None:
         """初始化同步子代理中间件。"""
         self.system_prompt = system_prompt
@@ -521,6 +533,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
             tools=tools,
             server_tools=server_tools,
             policy_context=policy_context,
+            catalog=catalog,
         )
         self.tools = [
             StructuredTool.from_function(
@@ -608,6 +621,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         task_description: str = SUBAGENT_CONTROL_DESCRIPTION,
         stream_handler: Any = None,
         policy_context: Optional[ToolPolicyContext] = None,
+        catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> None:
         """初始化异步子代理调度中间件。"""
         self.stream_handler = stream_handler
@@ -617,6 +631,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             tools=tools,
             server_tools=server_tools,
             policy_context=policy_context,
+            catalog=catalog,
         )
         self._semaphore = asyncio.Semaphore(SUBAGENT_MAX_CONCURRENT_TASKS)
         self._tasks: dict[str, _SubAgentRuntimeTask] = {}
@@ -1193,6 +1208,7 @@ def create_subagent_middlewares(
     server_tools: Optional[list[dict[str, Any]]] = None,
     stream_handler: Any = None,
     policy_context: Optional[ToolPolicyContext] = None,
+    catalog: Optional[ToolCatalogSnapshot] = None,
 ) -> tuple[list[AgentMiddleware], list[BaseTool]]:
     """创建子代理中间件列表和任务工具列表。"""
     runtime_signature = agent_runtime_manager.current_signature()
@@ -1204,6 +1220,7 @@ def create_subagent_middlewares(
         server_tools=server_tools or [],
         stream_handler=stream_handler,
         policy_context=policy_context,
+        catalog=catalog,
     )
     control_middleware = SubAgentTaskControlMiddleware(
         model=model,
@@ -1212,6 +1229,7 @@ def create_subagent_middlewares(
         server_tools=server_tools or [],
         stream_handler=stream_handler,
         policy_context=policy_context,
+        catalog=catalog,
     )
 
     task_tools = [

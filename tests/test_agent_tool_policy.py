@@ -171,6 +171,38 @@ def test_registry_separates_safe_read_from_legacy_shadow() -> None:
     assert dynamic_policy.result_sensitivity is ResultSensitivity.UNKNOWN
 
 
+@pytest.mark.parametrize("show_secrets", [None, False])
+def test_system_settings_without_secret_values_stays_legacy_shadow(
+    show_secrets,
+) -> None:
+    """普通设置读取维持既有兼容路径，不增加确认。"""
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="query_system_settings",
+        arguments={"show_secrets": show_secrets},
+        requires_admin=True,
+    )
+
+    assert policy.migration_state is MigrationState.LEGACY_SHADOW
+    assert policy.effect is ActionEffect.UNKNOWN
+
+
+def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
+    """显式读取密钥只能进入宿主强制确认策略。"""
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="query_system_settings",
+        arguments={"show_secrets": True},
+        requires_admin=True,
+    )
+
+    assert policy.migration_state is MigrationState.ENFORCED
+    assert policy.effect is ActionEffect.SENSITIVE_READ
+    assert policy.required_role is PrincipalRole.SYSTEM_ADMIN
+    assert policy.confirmation.value == "required"
+    assert policy.result_sensitivity is ResultSensitivity.SECRET
+    assert policy.background_allowed is False
+    assert policy.subagent_allowed is False
+
+
 def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
     """G1 的 shadow 决策只能观测，不能拒绝或要求确认。"""
     context = _interactive_context()
@@ -185,6 +217,24 @@ def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
     assert observation.decision.allowed is True
     assert observation.decision.shadow is True
     assert observation.decision.reason_code == "legacy_shadow_allow"
+
+
+def test_sensitive_policy_does_not_claim_safe_read_before_strict_runtime() -> None:
+    """严格运行时接管前，敏感读取只能以明确的兼容 shadow 语义通过。"""
+    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
+    tool.set_agent_context({"is_admin": True})
+
+    observation = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start(
+        context=_interactive_context(),
+        tool=tool,
+        arguments={"setting_key": "COOKIECLOUD_KEY", "show_secrets": True},
+    )
+
+    assert observation.policy.migration_state is MigrationState.ENFORCED
+    assert observation.decision.allowed is True
+    assert observation.decision.shadow is True
+    assert observation.decision.confirmation_required is False
+    assert observation.decision.reason_code == "strict_runtime_pending"
 
 
 def test_policy_context_reads_mutable_admin_state_without_model_fields() -> None:

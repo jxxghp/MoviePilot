@@ -27,6 +27,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.llm import LLMHelper
+from app.agent.llm.server_tools import ServerToolRegistry
 from app.agent.memory import memory_manager
 from app.agent.middleware.activity_log import (
     ActivityLogMiddleware,
@@ -60,10 +61,15 @@ from app.agent.policy import (
 from app.agent.runtime import agent_runtime_manager
 from app.agent.mcp import agent_mcp_manager
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.tools.impl.mcp import create_external_mcp_tools
+from app.agent.tools.catalog import ToolCatalogSnapshot
+from app.agent.tools.impl.mcp import (
+    create_external_mcp_tools,
+    select_legacy_mcp_tools,
+)
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.event import eventmanager
+from app.core.plugin import PluginManager
 from app.db.agentchat_oper import AgentChatOper
 from app.db.agenttask_oper import AgentTaskOper
 from app.db.user_oper import UserOper
@@ -192,6 +198,11 @@ class _CompiledAgentBundle:
     agent: Any
     streaming: bool
     created_at: datetime
+    tool_catalog: Optional[ToolCatalogSnapshot] = None
+    subagent_catalog: Optional[ToolCatalogSnapshot] = None
+    plugin_revision: int = -1
+    mcp_config_signature: str = ""
+    catalog_checked_at: Optional[datetime] = None
 
 
 class _ThinkTagStripper:
@@ -296,6 +307,8 @@ class MoviePilotAgent:
     """
     MoviePilot AI智能体（基于 LangChain v1 + LangGraph）
     """
+
+    TOOL_CATALOG_REFRESH_SECONDS = 30
 
     def __init__(
             self,
@@ -1116,7 +1129,7 @@ class MoviePilotAgent:
 
     def _initialize_tools(self) -> List:
         """
-        初始化工具列表
+        初始化主 Agent 本地工具实例。
         """
         return MoviePilotToolFactory.create_tools(
             session_id=self.session_id,
@@ -1128,6 +1141,36 @@ class MoviePilotAgent:
             agent_context=self._tool_context,
             allow_message_tools=self.allow_message_tools,
         )
+
+    def _initialize_local_tool_catalogs(
+        self,
+    ) -> tuple[ToolCatalogSnapshot, ToolCatalogSnapshot]:
+        """在同一插件 revision 窗口内建立主图和子图工具目录。"""
+        plugin_manager = PluginManager()
+        for _attempt in range(MoviePilotToolFactory.CATALOG_BUILD_MAX_ATTEMPTS):
+            before_revision = plugin_manager.get_plugin_agent_tools_revision()
+            tools = self._initialize_tools()
+            subagent_tools = self._initialize_subagent_tools()
+            after_revision = plugin_manager.get_plugin_agent_tools_revision()
+            if before_revision == after_revision:
+                factory_revision = MoviePilotToolFactory.catalog_factory_revision()
+                return (
+                    ToolCatalogSnapshot.from_tools(
+                        tools,
+                        plugin_revision=after_revision,
+                        factory_revision=factory_revision,
+                    ),
+                    ToolCatalogSnapshot.from_tools(
+                        subagent_tools,
+                        plugin_revision=after_revision,
+                        factory_revision=factory_revision,
+                    ),
+                )
+        raise RuntimeError("插件工具目录持续变化，无法建立当前快照")
+
+    def _initialize_tool_catalog(self) -> ToolCatalogSnapshot:
+        """兼容只需要主 Agent 工具目录的内部调用与测试。"""
+        return self._initialize_local_tool_catalogs()[0]
 
     @staticmethod
     def _filter_local_web_search_tools(tools: List, enabled: bool) -> List:
@@ -1168,7 +1211,12 @@ class MoviePilotAgent:
             runtime_config.get("web_search_mode"),
         )
 
-    async def _agent_bundle_signature(self, streaming: bool) -> tuple[Any, ...]:
+    async def _agent_bundle_signature(
+        self,
+        streaming: bool,
+        tool_catalog: Optional[ToolCatalogSnapshot] = None,
+        subagent_catalog: Optional[ToolCatalogSnapshot] = None,
+    ) -> tuple[Any, ...]:
         """构造会话内 Agent 图缓存签名。"""
         runtime_config = await self._resolve_llm_runtime_config()
         return (
@@ -1188,6 +1236,14 @@ class MoviePilotAgent:
             self._public_runtime_config_signature(runtime_config),
             agent_runtime_manager.current_signature(),
             agent_mcp_manager.config_signature(),
+            (
+                (tool_catalog.signature, subagent_catalog.signature)
+                if tool_catalog is not None and subagent_catalog is not None
+                else (
+                    MoviePilotToolFactory.catalog_factory_revision(),
+                    PluginManager().get_plugin_agent_tools_revision(),
+                )
+            ),
         )
 
     def _get_cached_agent(
@@ -1209,6 +1265,9 @@ class MoviePilotAgent:
         signature: tuple[Any, ...],
         agent: Any,
         streaming: bool,
+        tool_catalog: ToolCatalogSnapshot,
+        subagent_catalog: ToolCatalogSnapshot,
+        mcp_config_signature: str,
     ) -> Any:
         """保存当前会话可复用的 Agent 图。"""
         self._compiled_agent_bundle = _CompiledAgentBundle(
@@ -1216,6 +1275,11 @@ class MoviePilotAgent:
             agent=agent,
             streaming=streaming,
             created_at=datetime.now(),
+            tool_catalog=tool_catalog,
+            subagent_catalog=subagent_catalog,
+            plugin_revision=tool_catalog.plugin_revision,
+            mcp_config_signature=mcp_config_signature,
+            catalog_checked_at=datetime.now(),
         )
         return agent
 
@@ -1244,7 +1308,7 @@ class MoviePilotAgent:
             allow_message_tools=False,
         )
 
-    async def _initialize_mcp_tools(self) -> List:
+    async def _initialize_mcp_tools(self, specs=None) -> List:
         """
         初始化外部 MCP 工具列表。
         """
@@ -1256,9 +1320,10 @@ class MoviePilotAgent:
             username=self.username,
             stream_handler=self.stream_handler,
             agent_context=self._tool_context,
+            specs=specs,
         )
 
-    async def _initialize_subagent_mcp_tools(self) -> List:
+    async def _initialize_subagent_mcp_tools(self, specs=None) -> List:
         """
         初始化子代理可用的外部 MCP 工具列表。
         """
@@ -1275,6 +1340,7 @@ class MoviePilotAgent:
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
             },
+            specs=specs,
         )
 
     async def _create_agent(self, streaming: bool = False):
@@ -1283,13 +1349,68 @@ class MoviePilotAgent:
         :param streaming: 是否启用流式输出
         """
         try:
-            bundle_signature = await self._agent_bundle_signature(streaming)
-            cached_agent = self._get_cached_agent(bundle_signature, streaming)
-            self._last_agent_cache_hit = bool(cached_agent)
-            if cached_agent:
-                logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
-                return cached_agent
-
+            runtime_config = await self._resolve_llm_runtime_config()
+            plugin_revision = PluginManager().get_plugin_agent_tools_revision()
+            mcp_config_signature = agent_mcp_manager.config_signature()
+            cached_bundle = self._compiled_agent_bundle
+            catalog_is_fresh = bool(
+                cached_bundle
+                and cached_bundle.streaming == streaming
+                and cached_bundle.tool_catalog is not None
+                and cached_bundle.subagent_catalog is not None
+                and cached_bundle.plugin_revision == plugin_revision
+                and cached_bundle.mcp_config_signature == mcp_config_signature
+                and cached_bundle.catalog_checked_at is not None
+                and (
+                    datetime.now() - cached_bundle.catalog_checked_at
+                ).total_seconds() < self.TOOL_CATALOG_REFRESH_SECONDS
+            )
+            if catalog_is_fresh:
+                bundle_signature = await self._agent_bundle_signature(
+                    streaming,
+                    tool_catalog=cached_bundle.tool_catalog,
+                    subagent_catalog=cached_bundle.subagent_catalog,
+                )
+                cached_agent = self._get_cached_agent(bundle_signature, streaming)
+                self._last_agent_cache_hit = bool(cached_agent)
+                if cached_agent:
+                    logger.debug(
+                        f"复用会话内 Agent 图: session_id={self.session_id}"
+                    )
+                    return cached_agent
+            web_search_resolution = ServerToolRegistry.resolve_web_search(
+                provider=str(runtime_config.get("provider") or ""),
+                model=str(runtime_config.get("model") or ""),
+                mode=runtime_config.get("web_search_mode"),
+                api_protocol=runtime_config.get("api_protocol"),
+                base_url=runtime_config.get("base_url"),
+            )
+            base_tool_catalog, base_subagent_catalog = (
+                self._initialize_local_tool_catalogs()
+            )
+            mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
+            local_tools = self._filter_local_web_search_tools(
+                base_tool_catalog.tools,
+                enabled=web_search_resolution.use_local_web_search,
+            )
+            mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
+            tools = [*local_tools, *select_legacy_mcp_tools(mcp_tools)]
+            local_subagent_tools = self._filter_local_web_search_tools(
+                base_subagent_catalog.tools,
+                enabled=web_search_resolution.use_local_web_search,
+            )
+            subagent_mcp_tools = await self._initialize_subagent_mcp_tools(
+                specs=mcp_specs
+            )
+            subagent_catalog = ToolCatalogSnapshot.from_tools(
+                [*local_subagent_tools, *subagent_mcp_tools],
+                plugin_revision=base_subagent_catalog.plugin_revision,
+                factory_revision=base_subagent_catalog.factory_revision,
+            )
+            subagent_tools = [
+                *local_subagent_tools,
+                *select_legacy_mcp_tools(subagent_mcp_tools),
+            ]
             # 系统提示词
             system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
 
@@ -1298,7 +1419,6 @@ class MoviePilotAgent:
             self._sync_model_profile(agent_model)
             # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
             server_tools = LLMHelper.get_server_tools(agent_model)
-            use_local_web_search = LLMHelper.should_use_local_web_search(agent_model)
 
             # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
             non_streaming_model = (
@@ -1306,13 +1426,6 @@ class MoviePilotAgent:
                 if not streaming
                 else await self._initialize_llm(streaming=False)
             )
-
-            # 工具列表
-            tools = self._filter_local_web_search_tools(
-                self._initialize_tools(),
-                enabled=use_local_web_search,
-            )
-            tools.extend(await self._initialize_mcp_tools())
             skills_middleware = SkillsMiddleware(
                 sources=[str(agent_runtime_manager.skills_dir)],
                 bundled_skills_dir=str(settings.ROOT_PATH / "skills"),
@@ -1329,11 +1442,6 @@ class MoviePilotAgent:
                 activity_log_tools = list(
                     getattr(activity_log_middleware, "tools", []) or []
                 )
-            subagent_tools = self._filter_local_web_search_tools(
-                self._initialize_subagent_tools(),
-                enabled=use_local_web_search,
-            )
-            subagent_tools.extend(await self._initialize_subagent_mcp_tools())
             policy_context = self._build_policy_context()
             subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
                 model=non_streaming_model,
@@ -1341,7 +1449,32 @@ class MoviePilotAgent:
                 server_tools=server_tools,
                 stream_handler=self.stream_handler,
                 policy_context=policy_context.for_subagent(),
+                catalog=subagent_catalog,
             )
+            # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
+            tool_catalog = ToolCatalogSnapshot.from_tools(
+                [
+                    *local_tools,
+                    *mcp_tools,
+                    *skill_tools,
+                    *activity_log_tools,
+                    *subagent_task_tools,
+                ],
+                plugin_revision=base_tool_catalog.plugin_revision,
+                factory_revision=base_tool_catalog.factory_revision,
+            )
+            bundle_signature = await self._agent_bundle_signature(
+                streaming,
+                tool_catalog=tool_catalog,
+                subagent_catalog=subagent_catalog,
+            )
+            cached_agent = self._get_cached_agent(bundle_signature, streaming)
+            self._last_agent_cache_hit = bool(cached_agent)
+            if cached_agent:
+                # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
+                cached_bundle.catalog_checked_at = datetime.now()
+                logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
+                return cached_agent
             max_tools = settings.LLM_MAX_TOOLS
             always_include_tools = (
                 MoviePilotToolFactory.get_tool_selector_always_include_names(tools)
@@ -1369,7 +1502,10 @@ class MoviePilotAgent:
             # 中间件
             middlewares = [
                 # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
-                AgentPolicyMiddleware(context=policy_context),
+                AgentPolicyMiddleware(
+                    context=policy_context,
+                    catalog=tool_catalog,
+                ),
                 # Skills
                 skills_middleware,
                 # Jobs 任务管理
@@ -1412,7 +1548,12 @@ class MoviePilotAgent:
 
             agent = create_agent(
                 model=agent_model,
-                tools=[*tools, *skill_tools, *activity_log_tools, *server_tools],
+                tools=[
+                    *tools,
+                    *skill_tools,
+                    *activity_log_tools,
+                    *server_tools,
+                ],
                 system_prompt=system_prompt,
                 middleware=middlewares,
                 checkpointer=InMemorySaver(),
@@ -1421,6 +1562,9 @@ class MoviePilotAgent:
                 signature=bundle_signature,
                 agent=agent,
                 streaming=streaming,
+                tool_catalog=tool_catalog,
+                subagent_catalog=subagent_catalog,
+                mcp_config_signature=mcp_config_signature,
             )
         except Exception as e:
             logger.error(f"创建 Agent 失败: {e}")

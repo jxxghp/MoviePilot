@@ -1,5 +1,6 @@
 """外部 MCP 工具适配器。"""
 
+import hashlib
 import json
 from typing import Any, Optional
 
@@ -77,6 +78,22 @@ class McpExternalTool(MoviePilotTool):
         return json.dumps(result, ensure_ascii=False, indent=2, default=str)
 
 
+def _mcp_binding_identity(spec: AgentMcpToolSpec) -> str:
+    """生成不暴露端点配置的稳定 MCP 工具绑定身份。"""
+    payload = json.dumps(
+        {
+            "agent_tool_name": spec.agent_tool_name,
+            "server_id": spec.server.id,
+            "tool_name": spec.name,
+        },
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 async def create_external_mcp_tools(
     *,
     session_id: str,
@@ -86,13 +103,41 @@ async def create_external_mcp_tools(
     username: Optional[str] = None,
     stream_handler=None,
     agent_context: Optional[dict] = None,
+    specs: Optional[list[AgentMcpToolSpec]] = None,
 ) -> list[McpExternalTool]:
     """创建当前已启用的外部 MCP Agent 工具列表。"""
     tools = []
-    for spec in await agent_mcp_manager.list_enabled_tool_specs():
+    current_specs = specs
+    if current_specs is None:
+        current_specs = await agent_mcp_manager.list_enabled_tool_specs()
+    for spec in current_specs:
         tool = McpExternalTool(spec=spec, session_id=session_id, user_id=user_id)
         tool.set_message_attr(channel=channel, source=source, username=username)
         tool.set_stream_handler(stream_handler=stream_handler)
         tool.set_agent_context(agent_context=agent_context)
+        object.__setattr__(
+            tool,
+            "_agent_tool_source",
+            f"mcp:{spec.server.id}",
+        )
+        object.__setattr__(
+            tool,
+            "_agent_tool_binding",
+            _mcp_binding_identity(spec),
+        )
         tools.append(tool)
     return tools
+
+
+def select_legacy_mcp_tools(
+    tools: list[McpExternalTool],
+) -> list[McpExternalTool]:
+    """保留跨服务器同名工具历史上的 first-wins 执行顺序。"""
+    selected = []
+    seen_names = set()
+    for tool in tools:
+        if tool.name in seen_names:
+            continue
+        selected.append(tool)
+        seen_names.add(tool.name)
+    return selected
