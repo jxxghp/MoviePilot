@@ -1,4 +1,4 @@
-moviepilot-rust~=0.2.7
+moviepilot-rust~=0.2.8
 pydantic>=2.13.4,<3.0.0
 pydantic-settings>=2.14.2,<3.0.0
 SQLAlchemy~=2.0.50
