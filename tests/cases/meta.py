@@ -1116,7 +1116,8 @@ meta_cases = [{
         "pix": "1080p",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 18165,
+        "media_source": "themoviedb",
+        "media_id": "18165",
         "fps": None
     }
 }, {
@@ -1133,7 +1134,8 @@ meta_cases = [{
         "pix": "1080p",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 27205,
+        "media_source": "themoviedb",
+        "media_id": "27205",
         "fps": None
     }
 }, {
@@ -1150,7 +1152,8 @@ meta_cases = [{
         "pix": "",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 1396
+        "media_source": "themoviedb",
+        "media_id": "1396"
     }
 }, {
     "path": "/movies/Breaking Bad (2008) [tmdb=1396]/S2/",
@@ -1166,7 +1169,8 @@ meta_cases = [{
         "pix": "",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 1396
+        "media_source": "themoviedb",
+        "media_id": "1396"
     }
 }, {
     "path": "/movies/Breaking Bad (2008) [tmdb=1396]/Season 1/Breaking.Bad.S01E01.1080p.mkv",
@@ -1182,7 +1186,8 @@ meta_cases = [{
         "pix": "1080p",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 1396,
+        "media_source": "themoviedb",
+        "media_id": "1396",
         "fps": None
     }
 }, {
@@ -1199,7 +1204,8 @@ meta_cases = [{
         "pix": "1080p",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 1399,
+        "media_source": "themoviedb",
+        "media_id": "1399",
         "fps": None
     }
 }, {
@@ -1216,7 +1222,8 @@ meta_cases = [{
         "pix": "1080p",
         "video_codec": "",
         "audio_codec": "",
-        "tmdbid": 19995,
+        "media_source": "themoviedb",
+        "media_id": "19995",
         "fps": None
     }
 }, {

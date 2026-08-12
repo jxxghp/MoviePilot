@@ -325,14 +325,6 @@ def manual_transfer(
             transer_item.type_name = (
                 history.type if history.type else transer_item.type_name
             )
-            transer_item.tmdbid = (
-                int(history.tmdbid) if history.tmdbid else transer_item.tmdbid
-            )
-            transer_item.doubanid = (
-                str(history.doubanid) if history.doubanid else transer_item.doubanid
-            )
-            transer_item.bangumiid = history.bangumiid or transer_item.bangumiid
-            transer_item.anilistid = history.anilistid or transer_item.anilistid
             transer_item.media_source = (
                 history.media_source or transer_item.media_source
             )
@@ -457,10 +449,6 @@ def manual_transfer(
                 fileitem=src_fileitem,
                 target_storage=transer_item.target_storage,
                 target_path=target_path,
-                tmdbid=transer_item.tmdbid,
-                doubanid=transer_item.doubanid,
-                bangumiid=transer_item.bangumiid,
-                anilistid=transer_item.anilistid,
                 media_source=transer_item.media_source,
                 media_id=transer_item.media_id,
                 music_type=transer_item.music_type,
@@ -545,10 +533,6 @@ def manual_transfer(
         fileitem=src_fileitem,
         target_storage=transer_item.target_storage,
         target_path=target_path,
-        tmdbid=transer_item.tmdbid,
-        doubanid=transer_item.doubanid,
-        bangumiid=transer_item.bangumiid,
-        anilistid=transer_item.anilistid,
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
         music_type=transer_item.music_type,

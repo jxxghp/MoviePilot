@@ -3,8 +3,10 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import app.modules.trimemedia.api as fnapi
 from app import schemas
+from app.helper.mediaserver import MediaServerIdentityHelper
 from app.log import logger
 from app.schemas import MediaType
+from app.schemas.types import MediaSource
 from app.utils.security import SecurityUtils
 from app.utils.url import UrlUtils
 
@@ -265,14 +267,17 @@ class TrimeMedia:
                 result.api.close()
 
     def get_movies(
-        self, title: str, year: Optional[str] = None, tmdb_id: Optional[int] = None
+        self, title: str, year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
     ) -> Optional[List[schemas.MediaServerItem]]:
         """
         根据标题和年份，检查电影是否在飞牛中存在，存在则返回列表
 
         :param title: 标题
         :param year: 年份，为空则不过滤
-        :param tmdb_id: TMDB ID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :return: 含title、year属性的字典列表
         """
         if not self.is_authenticated():
@@ -282,8 +287,13 @@ class TrimeMedia:
         for item in items:
             if item.type != fnapi.Type.MOVIE:
                 continue
+            item_source, item_media_id = MediaServerIdentityHelper.from_provider_ids(
+                {"tmdb_id": item.tmdb_id, "imdb_id": item.imdb_id}
+            )
             if (
-                (not tmdb_id or tmdb_id == item.tmdb_id)
+                MediaServerIdentityHelper.are_compatible(
+                    item_source, item_media_id, media_source, media_id
+                )
                 and title in [item.title, item.original_title]
                 and (not year or (item.release_date and item.release_date[:4] == year))
             ):
@@ -306,7 +316,8 @@ class TrimeMedia:
         item_id: Optional[str] = None,
         title: Optional[str] = None,
         year: Optional[str] = None,
-        tmdb_id: Optional[int] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
@@ -315,7 +326,8 @@ class TrimeMedia:
         :param item_id: 飞牛影视中的guid
         :param title: 标题
         :param year: 年份
-        :param tmdb_id: TMDBID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :param season: 季
         :return: 集号的列表
         """
@@ -339,9 +351,8 @@ class TrimeMedia:
         if not item_info:
             return None, {}
 
-        if tmdb_id and item_info.tmdbid:
-            if tmdb_id != item_info.tmdbid:
-                return None, {}
+        if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
+            return None, {}
 
         seasons = self._api.season_list(item_id)
         if not seasons:
@@ -465,6 +476,11 @@ class TrimeMedia:
         else:
             # 将飞牛的媒体类型转为MP能识别的
             item_type = "Series" if item.type == fnapi.Type.TV else item.type.value
+        media_source, media_id = MediaServerIdentityHelper.from_provider_ids({
+            "tmdb_id": item.tmdb_id,
+            "imdb_id": item.imdb_id,
+            "douban_id": item.douban_id,
+        })
         return schemas.MediaServerItem(
             server="trimemedia",
             library=item.ancestor_guid,
@@ -473,8 +489,8 @@ class TrimeMedia:
             title=item.title,
             original_title=item.original_title,
             year=year,
-            tmdbid=item.tmdb_id,
-            imdbid=item.imdb_id,
+            media_source=media_source,
+            media_id=media_id,
             user_state=user_state,
         )
 

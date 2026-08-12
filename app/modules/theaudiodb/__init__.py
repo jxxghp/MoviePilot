@@ -14,6 +14,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaRecognizeType,
+    MediaSource,
     MediaType,
     ModuleType,
 )
@@ -24,7 +25,7 @@ from app.utils.media import is_media_source_selected
 class TheAudioDbModule(_ModuleBase):
     """通过 TheAudioDB V1 API 提供音乐搜索、详情和手动识别能力。"""
 
-    _source = "theaudiodb"
+    _source = MediaSource.TheAudioDB
     _base_url = "https://www.theaudiodb.com/api/v1/json"
     _detail_url = "https://www.theaudiodb.com"
 
@@ -72,10 +73,10 @@ class TheAudioDbModule(_ModuleBase):
             self,
             meta: MetaMusic,
             limit: int = 20,
-            source: Optional[str] = None,
+            media_source: Optional[str] = None,
     ) -> Optional[list[MusicInfo]]:
         """按请求来源搜索 TheAudioDB 单曲、专辑和艺术家。"""
-        if not is_media_source_selected(source, self._source):
+        if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
         tracks = self._search_tracks(meta)
@@ -92,30 +93,30 @@ class TheAudioDbModule(_ModuleBase):
             self,
             meta: MetaBase = None,
             mtype: MediaType = None,
-            source: Optional[str] = None,
-            mediaid: Optional[str] = None,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
         """仅响应显式 TheAudioDB 音乐请求，并返回带原生 ID 的标准音乐信息。"""
         music_type = kwargs.get("music_type")
-        if source != self._source:
+        if media_source != self._source:
             return None
         if not isinstance(meta, MetaMusic):
-            if mtype == MediaType.MUSIC and mediaid:
+            if mtype == MediaType.MUSIC and media_id:
                 detail_kwargs = (
                     {"music_type": music_type} if music_type is not None else {}
                 )
                 return self.recognize_music(
-                    source, str(mediaid), **detail_kwargs
+                    media_source, str(media_id), **detail_kwargs
                 )
             return None
-        resolved_media_id = mediaid or meta.media_id
+        resolved_media_id = media_id or meta.media_id
         if resolved_media_id:
             detail_kwargs = (
                 {"music_type": music_type} if music_type is not None else {}
             )
             return self.recognize_music(
-                source, str(resolved_media_id), **detail_kwargs
+                media_source, str(resolved_media_id), **detail_kwargs
             )
         if music_type != MUSIC_ENTITY_ALBUM:
             matched = self._select_track(meta, self._search_tracks(meta))
@@ -130,26 +131,26 @@ class TheAudioDbModule(_ModuleBase):
             self,
             meta: MetaBase = None,
             mtype: MediaType = None,
-            source: Optional[str] = None,
-            mediaid: Optional[str] = None,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
         """异步识别 TheAudioDB 音乐详情或按元数据匹配单曲。"""
         music_type = kwargs.get("music_type")
-        if source != self._source:
+        if media_source != self._source:
             return None
         if not isinstance(meta, MetaMusic):
-            if mtype == MediaType.MUSIC and mediaid:
+            if mtype == MediaType.MUSIC and media_id:
                 return await self.async_recognize_music(
-                    source,
-                    str(mediaid),
+                    media_source,
+                    str(media_id),
                     music_type=music_type,
                 )
             return None
-        resolved_media_id = mediaid or meta.media_id
+        resolved_media_id = media_id or meta.media_id
         if resolved_media_id:
             return await self.async_recognize_music(
-                source,
+                media_source,
                 str(resolved_media_id),
                 music_type=music_type,
             )
@@ -170,12 +171,12 @@ class TheAudioDbModule(_ModuleBase):
 
     def recognize_music(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """按 TheAudioDB 原生 ID 和实体类型获取详情；空类型保留旧版探测顺序。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         if music_type != MUSIC_ENTITY_ALBUM:
             payload = self._request_json("track.php", {"h": media_id})
@@ -184,17 +185,17 @@ class TheAudioDbModule(_ModuleBase):
                 return self._track_to_info(track)
             if music_type == MUSIC_ENTITY_RECORDING:
                 return None
-        album = self.music_album(source, media_id)
+        album = self.music_album(media_source, media_id)
         return album.to_music_info() if album else None
 
     async def async_recognize_music(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步按 TheAudioDB 原生 ID 和实体类型获取详情。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         if music_type != MUSIC_ENTITY_ALBUM:
             payload = await self._async_request_json("track.php", {"h": media_id})
@@ -203,16 +204,16 @@ class TheAudioDbModule(_ModuleBase):
                 return self._track_to_info(track)
             if music_type == MUSIC_ENTITY_RECORDING:
                 return None
-        album = await self._async_music_album(source, media_id)
+        album = await self._async_music_album(media_source, media_id)
         return album.to_music_info() if album else None
 
     async def _async_music_album(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
     ) -> Optional[MusicAlbumInfo]:
         """异步按 TheAudioDB 专辑 ID 获取标准化专辑详情和曲目。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = await self._async_request_json("album.php", {"m": media_id})
         item = self._first_entity(payload, "album", "albums")
@@ -227,9 +228,9 @@ class TheAudioDbModule(_ModuleBase):
         ]
         return album
 
-    def music_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+    def music_album(self, media_source: str, media_id: str) -> Optional[MusicAlbumInfo]:
         """按 TheAudioDB 专辑 ID 获取标准化专辑详情和曲目。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = self._request_json("album.php", {"m": media_id})
         item = self._first_entity(payload, "album", "albums")
@@ -244,9 +245,9 @@ class TheAudioDbModule(_ModuleBase):
         ]
         return album
 
-    def music_artist(self, source: str, media_id: str) -> Optional[MusicArtistInfo]:
+    def music_artist(self, media_source: str, media_id: str) -> Optional[MusicArtistInfo]:
         """按 TheAudioDB 艺术家 ID 获取标准化艺术家详情。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = self._request_json("artist.php", {"i": media_id})
         item = self._first_entity(payload, "artists", "artist")
@@ -254,14 +255,14 @@ class TheAudioDbModule(_ModuleBase):
 
     def music_artist_albums(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             page: int = 1,
             count: int = 30,
             album_type: Optional[str] = None,
     ) -> list[MusicInfo]:
         """按 TheAudioDB 艺术家 ID 分页返回专辑列表。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return []
         payload = self._request_json("album.php", {"i": media_id})
         albums = [self._album_to_info(item) for item in self._entities(payload, "album", "albums")]
@@ -274,56 +275,14 @@ class TheAudioDbModule(_ModuleBase):
         start = max(page - 1, 0) * max(1, count)
         return [album.to_music_info() for album in albums[start:start + max(1, count)]]
 
-    def music_discover(
-            self,
-            source: str,
-            page: int = 1,
-            count: int = 30,
-            entity: str = MUSIC_ENTITY_ALBUM,
-            country: str = "us",
-    ) -> Optional[list[MusicInfo]]:
-        """读取 TheAudioDB iTunes 趋势榜并转换为可继续浏览的音乐实体。"""
-        if source != self._source:
-            return None
-        payload = self._request_json(
-            "trending.php",
-            {
-                "country": country.casefold(),
-                "type": "itunes",
-                "format": "singles" if entity == MUSIC_ENTITY_RECORDING else "albums",
-            },
-        )
-        items = self._entities(payload, "trending")
-        items.sort(
-            key=lambda item: self._optional_int(item.get("intChartPlace")) or 10_000
-        )
-        candidates = []
-        for item in items:
-            if entity == MUSIC_ENTITY_RECORDING:
-                info = self._track_to_info(item)
-            else:
-                info = self._album_to_info(item).to_music_info()
-            if not info.media_id or not info.title:
-                continue
-            info.category = self._text(item.get("strType")) or "iTunes"
-            info.raw_data.update(
-                {
-                    "chart_position": self._optional_int(item.get("intChartPlace")),
-                    "chart_country": self._text(item.get("strCountry")),
-                }
-            )
-            candidates.append(info)
-        start = max(page - 1, 0) * max(1, count)
-        return candidates[start:start + max(1, count)]
-
     def music_album_related(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             count: int = 24,
     ) -> Optional[list[MusicInfo]]:
         """按专辑主艺术家返回 TheAudioDB 同艺人专辑，供详情页关联浏览。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = self._request_json("album.php", {"m": media_id})
         album_item = self._first_entity(payload, "album", "albums")
@@ -466,7 +425,7 @@ class TheAudioDbModule(_ModuleBase):
         duration_ms = cls._optional_int(item.get("intDuration"))
         genres = cls._unique_texts([item.get("strGenre"), item.get("strStyle")])
         return MusicInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=media_id,
             title=title,
             artists=[artist] if artist else list(album.artists if album else []),
@@ -508,7 +467,7 @@ class TheAudioDbModule(_ModuleBase):
         if not release_date:
             release_date = cls._text(item.get("intYearReleased"))
         return MusicAlbumInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=media_id,
             title=title,
             artists=[artist] if artist else [],
@@ -540,7 +499,7 @@ class TheAudioDbModule(_ModuleBase):
         if website:
             links["official homepage"] = website
         return MusicArtistInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=media_id,
             name=name,
             disambiguation=cls._text(item.get("strArtistAlternate")),

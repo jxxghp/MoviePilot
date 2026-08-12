@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.chain.music import MusicChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
@@ -26,17 +25,24 @@ from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
     EventType,
     SystemConfigKey,
 )
-from app.utils.media import normalize_media_source, parse_media_key
+from app.utils.media import normalize_media_source
 
 router = APIRouter()
 
 
 def start_subscribe_add(
-    title: str, year: str, mtype: MediaType, tmdbid: int, season: int, username: str
+    title: str,
+    year: str,
+    mtype: MediaType,
+    media_source: MediaSource,
+    media_id: str,
+    season: int,
+    username: str,
 ):
     """
     启动订阅任务
@@ -45,7 +51,8 @@ def start_subscribe_add(
         title=title,
         year=year,
         mtype=mtype,
-        tmdbid=tmdbid,
+        media_source=media_source,
+        media_id=media_id,
         season=season,
         username=username,
     )
@@ -124,44 +131,20 @@ def matches_subscribe_music_type(
         or (music_type == MUSIC_ENTITY_RECORDING and subscribe_music_type is None)
 
 
-def music_subscribe_title_candidates(title: str) -> List[str]:
-    """生成音乐订阅标题兜底候选，保留精确标题并追加音乐语义解析结果。"""
-    parsed_title = MusicChain.parse_query(title).title
-    return list(dict.fromkeys(
-        candidate for candidate in (title, parsed_title) if candidate
-    ))
-
-
-async def list_subscribes_by_media_key(
+async def list_subscribes_by_media_identity(
         db: AsyncSession,
-        media_key: str,
+        media_source: MediaSource,
+        media_id: str,
         season: Optional[int] = None,
         music_type: Optional[str] = None,
 ) -> List[Subscribe]:
-    """按统一媒体键及音乐实体查询订阅，并兼容迁移前的专用 ID 字段。"""
-    source, media_id = parse_media_key(media_key)
-    if not source or not media_id:
-        subscribes = list(await Subscribe.async_list_by_mediaid(db, media_key))
-        return [
-            subscribe for subscribe in subscribes
-            if matches_subscribe_music_type(subscribe, music_type)
-        ]
-
+    """按媒体来源、原生 ID 及音乐实体查询订阅。"""
     subscribes = list(await Subscribe.async_list_by_media_identity(
         db,
-        media_source=source,
+        media_source=media_source,
         media_id=media_id,
         music_type=music_type,
     ))
-    if source == "themoviedb" and media_id.isdigit():
-        subscribes.extend(await Subscribe.async_get_by_tmdbid(db, int(media_id), season))
-    elif source == "douban":
-        subscribes.extend(await Subscribe.async_list_by_doubanid(db, media_id))
-    elif source == "bangumi" and media_id.isdigit():
-        subscribes.extend(await Subscribe.async_list_by_bangumiid(db, int(media_id)))
-    elif source == "anilist" and media_id.isdigit():
-        subscribes.extend(await Subscribe.async_list_by_anilistid(db, int(media_id)))
-
     unique_subscribes = {
         subscribe.id: subscribe
         for subscribe in subscribes
@@ -215,12 +198,8 @@ async def create_subscribe(
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
     if (
             mtype != MediaType.MUSIC
-            and (
-                subscribe_in.doubanid
-                or subscribe_in.bangumiid
-                or subscribe_in.anilistid
-                or normalize_media_source(subscribe_in.media_source) not in (None, "themoviedb")
-            )
+            and normalize_media_source(subscribe_in.media_source)
+            not in (None, MediaSource.TMDB)
     ):
         meta = MetaInfo(subscribe_in.name)
         subscribe_in.name = meta.name
@@ -323,9 +302,10 @@ async def update_subscribe_status(
     return schemas.Response(success=True)
 
 
-@router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
-async def subscribe_mediaid(
-    mediaid: str,
+@router.get("/media/{media_id}", summary="查询订阅", response_model=schemas.Subscribe)
+async def subscribe_media_identity(
+    media_id: str,
+    media_source: MediaSource,
     season: Optional[int] = None,
     title: Optional[str] = None,
     music_type: Optional[str] = None,
@@ -333,36 +313,12 @@ async def subscribe_mediaid(
     current_user: User = Depends(get_current_active_user_async),
 ) -> Any:
     """
-    根据 TMDB、豆瓣、Bangumi、AniList 或插件媒体键查询订阅。
+    根据媒体来源和原生 ID 查询订阅。
     """
-    subscribes = await list_subscribes_by_media_key(db, mediaid, season, music_type)
+    subscribes = await list_subscribes_by_media_identity(
+        db, media_source, media_id, season, music_type
+    )
     result = select_accessible_subscribe(subscribes, current_user)
-    source, _ = parse_media_key(mediaid)
-    title_check = not result and bool(title) and source != "themoviedb"
-    # 使用名称检查订阅
-    if title_check and title:
-        title_season = None
-        if music_type:
-            title_candidates = music_subscribe_title_candidates(title)
-        else:
-            title_meta = MetaInfo(title)
-            if season is not None:
-                title_meta.begin_season = season
-            title_season = title_meta.begin_season
-            title_candidates = [title_meta.name]
-        for candidate_title in title_candidates:
-            subscribes = await Subscribe.async_list_by_title(
-                db, title=candidate_title, season=title_season
-            )
-            if music_type:
-                subscribes = [
-                    subscribe for subscribe in subscribes
-                    if matches_subscribe_music_type(subscribe, music_type)
-                ]
-            result = select_accessible_subscribe(subscribes, current_user)
-            if result:
-                break
-
     return result if result else Subscribe()
 
 
@@ -491,9 +447,10 @@ async def search_subscribe(
     return schemas.Response(success=True)
 
 
-@router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
-async def delete_subscribe_by_mediaid(
-    mediaid: str,
+@router.delete("/media/{media_id}", summary="删除订阅", response_model=schemas.Response)
+async def delete_subscribe_by_media_identity(
+    media_id: str,
+    media_source: MediaSource,
     season: Optional[int] = None,
     music_type: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
@@ -502,7 +459,9 @@ async def delete_subscribe_by_mediaid(
     """
     根据任意媒体数据源 ID 删除订阅。
     """
-    delete_subscribes = await list_subscribes_by_media_key(db, mediaid, season, music_type)
+    delete_subscribes = await list_subscribes_by_media_identity(
+        db, media_source, media_id, season, music_type
+    )
     delete_events = []
     for subscribe in [
         subscribe
@@ -571,7 +530,8 @@ async def seerr_subscribe(
         background_tasks.add_task(
             start_subscribe_add,
             mtype=media_type,
-            tmdbid=tmdbId,
+            media_source=MediaSource.TMDB,
+            media_id=str(tmdbId),
             title=subject,
             year="",
             # 电影不传季号，避免被误判为剧集（S00）并污染通知标题
@@ -592,7 +552,8 @@ async def seerr_subscribe(
             background_tasks.add_task(
                 start_subscribe_add,
                 mtype=media_type,
-                tmdbid=tmdbId,
+                media_source=MediaSource.TMDB,
+                media_id=str(tmdbId),
                 title=subject,
                 year="",
                 season=season,
@@ -687,23 +648,17 @@ async def popular_subscribes(
                 continue
             media = MediaInfo()
             media.type = MediaType(sub.get("type"))
-            media.tmdb_id = sub.get("tmdbid")
+            media.media_source = normalize_media_source(sub.get("media_source"))
+            media.media_id = str(sub.get("media_id")) if sub.get("media_id") is not None else None
             # 处理标题
             title = sub.get("name")
             season = sub.get("season")
-            if season not in (None, "") and int(season) != 1 and media.tmdb_id:
+            if season not in (None, "") and int(season) != 1:
                 # 小写数据转大写
                 season_str = cn2an.an2cn(season, "low")
                 title = f"{title} 第{season_str}季"
             media.title = title
             media.year = sub.get("year")
-            media.douban_id = sub.get("doubanid")
-            media.bangumi_id = sub.get("bangumiid")
-            media.anilist_id = sub.get("anilistid")
-            media.source = sub.get("media_source")
-            media.media_id = sub.get("media_id")
-            media.tvdb_id = sub.get("tvdbid")
-            media.imdb_id = sub.get("imdbid")
             media.season = sub.get("season")
             media.overview = sub.get("description")
             media.vote_average = sub.get("vote")
@@ -929,10 +884,6 @@ async def delete_subscribe(
         # 统计订阅
         MoviePilotServerHelper.sub_done_async(
             {
-                "tmdbid": subscribe_info.get("tmdbid"),
-                "doubanid": subscribe_info.get("doubanid"),
-                "bangumiid": subscribe_info.get("bangumiid"),
-                "anilistid": subscribe_info.get("anilistid"),
                 "media_source": subscribe_info.get("media_source"),
                 "media_id": subscribe_info.get("media_id"),
                 "season": subscribe_info.get("season"),

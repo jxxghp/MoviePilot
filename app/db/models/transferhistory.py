@@ -45,13 +45,7 @@ class TransferHistory(Base):
     title = Column(String, index=True)
     # 年份
     year = Column(String)
-    tmdbid = Column(Integer, index=True)
-    imdbid = Column(String)
-    tvdbid = Column(Integer)
-    doubanid = Column(String)
-    bangumiid = Column(Integer, index=True)
-    anilistid = Column(Integer, index=True)
-    # 统一媒体数据源与原生ID
+    # 媒体数据源与原生ID
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
@@ -359,7 +353,12 @@ class TransferHistory(Base):
                 music_identities.add(cls._music_history_identity(history))
                 continue
 
-            identity = (history.tmdbid or 0, history.title or "", history.year or "")
+            identity = (
+                history.media_source or "",
+                history.media_id or "",
+                history.title or "",
+                history.year or "",
+            )
             if history.type == MediaType.MOVIE.value:
                 movie_identities.add(identity)
                 continue
@@ -476,34 +475,39 @@ class TransferHistory(Base):
     @db_query
     def list_by(cls, db: Session, mtype: Optional[str] = None, title: Optional[str] = None, year: Optional[str] = None,
                 season: Optional[str] = None,
-                episode: Optional[str] = None, tmdbid: Optional[int] = None, dest: Optional[str] = None):
+                episode: Optional[str] = None,
+                media_source: Optional[str] = None,
+                media_id: Optional[str] = None,
+                dest: Optional[str] = None):
         """
-        据tmdbid、season、season_episode查询转移记录
-        tmdbid + mtype 或 title + year 必输
+        按媒体身份、季集或标题年份查询整理记录。
         """
-        # TMDBID + 类型
-        if tmdbid and mtype:
+        if media_source and media_id and mtype:
             # 电视剧某季某集
             if season is not None and episode:
-                return db.query(cls).filter(cls.tmdbid == tmdbid,
+                return db.query(cls).filter(cls.media_source == str(media_source),
+                                            cls.media_id == str(media_id),
                                             cls.type == mtype,
                                             cls.seasons == season,
                                             cls.episodes == episode,
                                             cls.dest == dest).all()
             # 电视剧某季
             elif season is not None:
-                return db.query(cls).filter(cls.tmdbid == tmdbid,
+                return db.query(cls).filter(cls.media_source == str(media_source),
+                                            cls.media_id == str(media_id),
                                             cls.type == mtype,
                                             cls.seasons == season).all()
             else:
                 if dest:
                     # 电影
-                    return db.query(cls).filter(cls.tmdbid == tmdbid,
+                    return db.query(cls).filter(cls.media_source == str(media_source),
+                                                cls.media_id == str(media_id),
                                                 cls.type == mtype,
                                                 cls.dest == dest).all()
                 else:
                     # 电视剧所有季集
-                    return db.query(cls).filter(cls.tmdbid == tmdbid,
+                    return db.query(cls).filter(cls.media_source == str(media_source),
+                                                cls.media_id == str(media_id),
                                                 cls.type == mtype).all()
         # 标题 + 年份
         elif title and year:
@@ -529,7 +533,7 @@ class TransferHistory(Base):
                     # 电视剧所有季集
                     return db.query(cls).filter(cls.title == title,
                                                 cls.year == year).all()
-        # 类型 + 转移路径（emby webhook season无tmdbid场景）
+        # 类型 + 转移路径（媒体服务器 webhook 缺少远端身份场景）
         elif mtype and season is not None and dest:
             # 电视剧某季
             return db.query(cls).filter(cls.type == mtype,
@@ -539,12 +543,16 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def get_by_type_tmdbid(cls, db: Session, mtype: Optional[str] = None, tmdbid: Optional[int] = None):
-        """
-        据tmdbid、type查询转移记录
-        """
-        return db.query(cls).filter(cls.tmdbid == tmdbid,
-                                    cls.type == mtype).first()
+    def get_by_media_identity(
+            cls, db: Session, media_source: str, media_id: str,
+            mtype: Optional[str] = None,
+    ):
+        """按规范媒体身份和类型查询整理记录。"""
+        return db.query(cls).filter(
+            cls.media_source == str(media_source),
+            cls.media_id == str(media_id),
+            cls.type == mtype,
+        ).first()
 
     @classmethod
     @db_update

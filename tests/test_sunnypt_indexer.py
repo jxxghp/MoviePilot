@@ -13,7 +13,7 @@ from app.db.message_oper import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
-from app.schemas import MediaType, NotificationType
+from app.schemas import MediaSource, MediaType, NotificationType
 
 
 class _FakeResponse:
@@ -215,6 +215,23 @@ def test_sunnypt_async_search_uses_api_contract(monkeypatch):
     assert calls[0][1]["media_type"] == "tv"
     assert calls[0][1]["categories"] == "402,404"
     assert calls[0][2]["X-API-Key"] == "sunny-secret"
+
+
+def test_indexer_normalizes_spider_imdb_identity() -> None:
+    """Indexer 应在边界将 Spider 的 IMDb 字段转换为统一媒体身份。"""
+    torrents = IndexerModule._IndexerModule__parse_result(
+        site={"id": 1, "name": "Sunny"},
+        result_array=[{
+            "title": "Movie.2026.1080p.WEB-DL",
+            "imdbid": "tt1234567",
+        }],
+        seconds=1,
+    )
+
+    assert len(torrents) == 1
+    assert torrents[0].media_source == MediaSource.IMDb
+    assert torrents[0].media_id == "tt1234567"
+    assert "imdbid" not in torrents[0].to_dict()
 
 
 def test_sunnypt_user_parser_reads_profile_and_messages_without_marking_read(monkeypatch):

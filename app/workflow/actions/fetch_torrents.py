@@ -91,14 +91,12 @@ class FetchTorrentsAction(BaseAction):
             for media in context.medias:
                 if global_vars.is_workflow_stopped(workflow_id):
                     break
-                torrents = searchchain.search_by_id(tmdbid=media.tmdb_id,
-                                                    doubanid=media.douban_id,
-                                                    bangumiid=media.bangumi_id,
-                                                    anilistid=media.anilist_id,
-                                                    source=media.source,
-                                                    mediaid=media.media_id,
-                                                    mtype=MediaType(media.type),
-                                                    sites=params.sites)
+                torrents = searchchain.search_by_id(
+                    media_source=media.media_source,
+                    media_id=media.media_id,
+                    mtype=MediaType(media.type),
+                    sites=params.sites,
+                )
                 for torrent in torrents:
                     self._torrents.append(torrent)
 

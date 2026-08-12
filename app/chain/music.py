@@ -130,7 +130,7 @@ class MusicChain(ChainBase):
             self,
             query: str,
             limit: int = 20,
-            source: Optional[str] = None,
+            media_source: Optional[str] = None,
     ) -> list[MusicInfo]:
         """按请求来源调用音乐元数据模块搜索候选，未指定时默认使用 MusicBrainz。"""
         meta = self.parse_query(query)
@@ -138,7 +138,7 @@ class MusicChain(ChainBase):
             "search_music",
             meta=meta,
             limit=limit,
-            source=source or "musicbrainz",
+            media_source=media_source or "musicbrainz",
         )
         return self.normalize_candidates(candidates, limit=limit)
 
@@ -150,7 +150,7 @@ class MusicChain(ChainBase):
         """执行自动音乐识别，仅调用 MusicBrainz 主数据源。"""
         with fresh(not cache):
             return self.recognize_from_source(
-                source=self._primary_recognize_source,
+                media_source=self._primary_recognize_source,
                 meta=meta,
                 cache=cache,
                 music_type=MUSIC_ENTITY_RECORDING,
@@ -164,7 +164,7 @@ class MusicChain(ChainBase):
         """异步执行自动音乐识别，仅调用 MusicBrainz 主数据源。"""
         async with async_fresh(not cache):
             return await self.async_recognize_from_source(
-                source=self._primary_recognize_source,
+                media_source=self._primary_recognize_source,
                 meta=meta,
                 cache=cache,
                 music_type=MUSIC_ENTITY_RECORDING,
@@ -172,14 +172,14 @@ class MusicChain(ChainBase):
 
     def recognize_from_source(
             self,
-            source: str,
+            media_source: str,
             meta: Optional[MetaMusic] = None,
-            mediaid: Optional[str] = None,
+            media_id: Optional[str] = None,
             cache: bool = True,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """只调用指定音乐数据源识别指定实体，拒绝影视、未知来源和跨实体结果。"""
-        normalized_source = normalize_media_source(source)
+        normalized_source = normalize_media_source(media_source)
         if not is_music_media_source(normalized_source):
             return None
         normalized_music_type = normalize_music_type(
@@ -189,28 +189,28 @@ class MusicChain(ChainBase):
             return None
         result = self._recognize_from_source(
             meta=meta,
-            source=normalized_source,
+            media_source=normalized_source,
             cache=cache,
-            mediaid=mediaid,
+            media_id=media_id,
             music_type=normalized_music_type,
         )
         return self._validate_source_recognize_result(
             result=result,
-            source=normalized_source,
-            mediaid=mediaid,
+            media_source=normalized_source,
+            media_id=media_id,
             music_type=normalized_music_type,
         )
 
     async def async_recognize_from_source(
             self,
-            source: str,
+            media_source: str,
             meta: Optional[MetaMusic] = None,
-            mediaid: Optional[str] = None,
+            media_id: Optional[str] = None,
             cache: bool = True,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步只调用指定音乐数据源识别指定实体，拒绝影视、未知来源和跨实体结果。"""
-        normalized_source = normalize_media_source(source)
+        normalized_source = normalize_media_source(media_source)
         if not is_music_media_source(normalized_source):
             return None
         normalized_music_type = normalize_music_type(
@@ -220,15 +220,15 @@ class MusicChain(ChainBase):
             return None
         result = await self._async_recognize_from_source(
             meta=meta,
-            source=normalized_source,
+            media_source=normalized_source,
             cache=cache,
-            mediaid=mediaid,
+            media_id=media_id,
             music_type=normalized_music_type,
         )
         return self._validate_source_recognize_result(
             result=result,
-            source=normalized_source,
-            mediaid=mediaid,
+            media_source=normalized_source,
+            media_id=media_id,
             music_type=normalized_music_type,
         )
 
@@ -236,7 +236,7 @@ class MusicChain(ChainBase):
             self,
             query: str,
             limit: int = 20,
-            source: Optional[str] = None,
+            media_source: Optional[str] = None,
     ) -> list[MusicInfo]:
         """异步按请求来源搜索音乐候选，未指定时默认使用 MusicBrainz。"""
         meta = self.parse_query(query)
@@ -244,7 +244,7 @@ class MusicChain(ChainBase):
             "search_music",
             meta=meta,
             limit=limit,
-            source=source or "musicbrainz",
+            media_source=media_source or "musicbrainz",
         )
         return self.normalize_candidates(candidates, limit=limit)
 
@@ -316,47 +316,55 @@ class MusicChain(ChainBase):
 
     def discover(
             self,
-            source: str,
+            media_source: str,
             page: int = 1,
             count: int = 30,
             entity: str = MUSIC_ENTITY_ALBUM,
-            country: str = "us",
+            mode: str = "chart",
+            tags: str = "",
+            sort: str = "U",
     ) -> list[MusicInfo]:
         """按指定音乐源读取推荐榜单，并统一分页候选结构。"""
         candidates = self.run_module(
             "music_discover",
-            source=source,
+            media_source=media_source,
             page=page,
             count=count,
             entity=entity,
-            country=country,
+            mode=mode,
+            tags=tags,
+            sort=sort,
         )
         return self.normalize_candidates(candidates, limit=count)
 
     async def async_discover(
             self,
-            source: str,
+            media_source: str,
             page: int = 1,
             count: int = 30,
             entity: str = MUSIC_ENTITY_ALBUM,
-            country: str = "us",
+            mode: str = "chart",
+            tags: str = "",
+            sort: str = "U",
     ) -> list[MusicInfo]:
         """异步按指定音乐源读取推荐榜单，并统一分页候选结构。"""
         candidates = await self.async_run_module(
             "music_discover",
-            source=source,
+            media_source=media_source,
             page=page,
             count=count,
             entity=entity,
-            country=country,
+            mode=mode,
+            tags=tags,
+            sort=sort,
         )
         return self.normalize_candidates(candidates, limit=count)
 
-    async def async_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+    async def async_album(self, media_source: str, media_id: str) -> Optional[MusicAlbumInfo]:
         """异步按来源和专辑 ID 获取标准化专辑详情及曲目。"""
         result = await self.async_run_module(
             "music_album",
-            source=source,
+            media_source=media_source,
             media_id=media_id,
         )
         if isinstance(result, MusicAlbumInfo):
@@ -365,11 +373,11 @@ class MusicChain(ChainBase):
             return MusicAlbumInfo.from_dict(result)
         return None
 
-    def album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+    def album(self, media_source: str, media_id: str) -> Optional[MusicAlbumInfo]:
         """同步按来源和专辑 ID 获取标准化专辑详情及曲目。"""
         result = self.run_module(
             "music_album",
-            source=source,
+            media_source=media_source,
             media_id=media_id,
         )
         if isinstance(result, MusicAlbumInfo):
@@ -380,14 +388,14 @@ class MusicChain(ChainBase):
 
     async def async_album_related(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             count: int = 24,
     ) -> list[MusicInfo]:
         """异步读取指定来源的关联专辑，供专辑详情继续浏览。"""
         candidates = await self.async_run_module(
             "music_album_related",
-            source=source,
+            media_source=media_source,
             media_id=media_id,
             count=count,
         )
@@ -402,11 +410,11 @@ class MusicChain(ChainBase):
             return MusicLyrics.from_dict(result)
         return None
 
-    async def async_artist(self, source: str, media_id: str) -> Optional[MusicArtistInfo]:
+    async def async_artist(self, media_source: str, media_id: str) -> Optional[MusicArtistInfo]:
         """异步按来源和艺术家 ID 获取标准化艺术家详情。"""
         result = await self.async_run_module(
             "music_artist",
-            source=source,
+            media_source=media_source,
             media_id=media_id,
         )
         if isinstance(result, MusicArtistInfo):
@@ -417,7 +425,7 @@ class MusicChain(ChainBase):
 
     async def async_artist_albums(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             page: int = 1,
             count: int = 30,
@@ -426,7 +434,7 @@ class MusicChain(ChainBase):
         """异步分页读取艺术家名下的专辑、EP 和单曲。"""
         candidates = await self.async_run_module(
             "music_artist_albums",
-            source=source,
+            media_source=media_source,
             media_id=media_id,
             page=page,
             count=count,
@@ -436,14 +444,14 @@ class MusicChain(ChainBase):
 
     async def async_artist_related(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             count: int = 24,
     ) -> list[MusicArtistInfo]:
         """异步读取关联艺术家，供详情页继续浏览。"""
         candidates = await self.async_run_module(
             "music_artist_related",
-            source=source,
+            media_source=media_source,
             media_id=media_id,
             count=count,
         )
@@ -487,21 +495,21 @@ class MusicChain(ChainBase):
     @staticmethod
     def _validate_source_recognize_result(
             result: Optional[MusicInfo],
-            source: str,
-            mediaid: Optional[str],
+            media_source: str,
+            media_id: Optional[str],
             music_type: Optional[str],
     ) -> Optional[MusicInfo]:
         """校验指定来源的识别结果，显式 ID 不允许被另一实体或另一身份替代。"""
         if not isinstance(result, MusicInfo):
             return None
-        if result.source and result.source != source:
+        if result.media_source and result.media_source != media_source:
             return None
         if music_type and result.music_type != music_type:
             return None
-        if mediaid and (
-                not result.source
+        if media_id and (
+                not result.media_source
                 or not result.media_id
-                or str(result.media_id) != str(mediaid)
+                or str(result.media_id) != str(media_id)
         ):
             return None
         return result
@@ -509,21 +517,21 @@ class MusicChain(ChainBase):
     def _recognize_from_source(
             self,
             meta: Optional[MetaMusic],
-            source: str,
+            media_source: str,
             cache: bool,
-            mediaid: Optional[str] = None,
+            media_id: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """调用声明了指定音乐来源的系统模块，隔离单个来源的查询失败。"""
-        module = self._music_recognize_module(source)
+        module = self._music_recognize_module(media_source)
         if not module:
             return None
         try:
             recognize_kwargs = {
                 "meta": meta,
                 "mtype": MediaType.MUSIC,
-                "source": source,
-                "mediaid": mediaid,
+                "media_source": media_source,
+                "media_id": media_id,
                 "cache": cache,
             }
             if music_type is not None:
@@ -532,41 +540,41 @@ class MusicChain(ChainBase):
                 **recognize_kwargs,
             )
         except Exception as err:
-            logger.warning(f"{source} 音乐自动识别失败：{err}")
+            logger.warning(f"{media_source} 音乐自动识别失败：{err}")
             return None
 
     async def _async_recognize_from_source(
             self,
             meta: Optional[MetaMusic],
-            source: str,
+            media_source: str,
             cache: bool,
-            mediaid: Optional[str] = None,
+            media_id: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步调用指定音乐来源模块，单个来源失败不影响其它候选。"""
-        module = self._music_recognize_module(source)
+        module = self._music_recognize_module(media_source)
         if not module:
             return None
         try:
             recognize_kwargs = {
                 "meta": meta,
                 "mtype": MediaType.MUSIC,
-                "source": source,
-                "mediaid": mediaid,
+                "media_source": media_source,
+                "media_id": media_id,
                 "cache": cache,
             }
             if music_type is not None:
                 recognize_kwargs["music_type"] = music_type
             return await module.async_recognize_media(**recognize_kwargs)
         except Exception as err:
-            logger.warning(f"{source} 音乐自动识别失败：{err}")
+            logger.warning(f"{media_source} 音乐自动识别失败：{err}")
             return None
 
-    def _music_recognize_module(self, source: str) -> Optional[Any]:
+    def _music_recognize_module(self, media_source: str) -> Optional[Any]:
         """枚举运行中的系统模块并返回声明了指定音乐来源的实现。"""
         for module in self.modulemanager.get_running_modules("recognize_media"):
             get_music_source = getattr(module, "get_music_source", None)
-            if get_music_source and get_music_source() == source:
+            if get_music_source and get_music_source() == media_source:
                 return module
         return None
 
@@ -711,7 +719,7 @@ class MusicChain(ChainBase):
         )
         if not album:
             return {}
-        logger.info(f"目录 {dir_path.name} 匹配到专辑：{album.title_year}（{album.source}）")
+        logger.info(f"目录 {dir_path.name} 匹配到专辑：{album.title_year}（{album.media_source}）")
         matched: dict[str, MusicInfo] = {}
         for file, info in self._align_album_tracks(files, metas, album.tracks).items():
             matched[str(file.resolve())] = info
@@ -740,7 +748,7 @@ class MusicChain(ChainBase):
         )
         if not album:
             return {}
-        logger.info(f"目录 {dir_path.name} 匹配到专辑：{album.title_year}（{album.source}）")
+        logger.info(f"目录 {dir_path.name} 匹配到专辑：{album.title_year}（{album.media_source}）")
         matched: dict[str, MusicInfo] = {}
         for file, info in self._align_album_tracks(files, metas, album.tracks).items():
             matched[str(file.resolve())] = info
@@ -838,15 +846,15 @@ class MusicChain(ChainBase):
             bitrate=info.bitrate,
             duration=info.duration,
             isrc=info.isrc,
-            media_source=info.source,
+            media_source=info.media_source,
             media_id=info.media_id,
         )
 
     @classmethod
     def _candidate_identity(cls, info: MusicInfo) -> tuple[str, ...]:
         """构造跨来源稳定的候选去重键。"""
-        if info.source and info.media_id:
-            return "id", info.source.casefold(), info.music_type.casefold(), info.media_id.casefold()
+        if info.media_source and info.media_id:
+            return "id", info.media_source.casefold(), info.music_type.casefold(), info.media_id.casefold()
         return (
             "metadata",
             info.music_type.casefold(),

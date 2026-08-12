@@ -9,7 +9,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.subscribe_oper import SubscribeOper
 from app.core.context import MusicInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _media(episode_group):
@@ -18,16 +18,8 @@ def _media(episode_group):
         title="测试剧",
         year="2026",
         type=MediaType.TV,
-        source="themoviedb",
-        media_source="themoviedb",
+        media_source=MediaSource.TMDB,
         media_id="987654321",
-        mediaid="tmdb:987654321",
-        tmdb_id=987654321,
-        imdb_id=None,
-        tvdb_id=None,
-        douban_id=None,
-        bangumi_id=None,
-        anilist_id=None,
         episode_group=episode_group,
         vote_average=8.0,
         overview="测试简介",
@@ -102,7 +94,7 @@ def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
     persisted = SimpleNamespace(id=92)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
         title="晴天",
         cover_url="https://coverartarchive.org/release-group/example/front-500",
@@ -125,7 +117,7 @@ def test_music_subscribe_persists_numeric_year_as_string():
     persisted = SimpleNamespace(id=93)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="2af54891-e954-40e8-8b90-b7e98c740f21",
         title="心愿",
         year=2025,
@@ -148,7 +140,7 @@ def test_music_album_subscription_persists_entity_and_track_count():
     persisted = SimpleNamespace(id=94)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="release-group-1",
         music_type="album",
         title="叶惠美",
@@ -173,7 +165,7 @@ def test_music_recording_subscription_drops_album_track_count_and_scopes_identit
     persisted = SimpleNamespace(id=95)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="recording-1",
         music_type="recording",
         title="晴天",
@@ -271,44 +263,62 @@ def test_exists_defaults_to_main_season_episode_group():
     with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
         subscribe_model.exists.return_value = SimpleNamespace(id=1)
 
-        assert oper.exists(tmdbid=100, season=1) is True
+        assert oper.exists(
+            media_source=MediaSource.TMDB, media_id="100", season=1
+        ) is True
         assert subscribe_model.exists.call_args.kwargs["episode_group"] is None
 
-        assert oper.exists(tmdbid=100, season=1, episode_group="eg-1") is True
+        assert oper.exists(
+            media_source=MediaSource.TMDB,
+            media_id="100",
+            season=1,
+            episode_group="eg-1",
+        ) is True
         assert subscribe_model.exists.call_args.kwargs["episode_group"] == "eg-1"
 
     with patch("app.db.subscribe_oper.SubscribeHistory") as history_model:
         history_model.exists.return_value = SimpleNamespace(id=2)
 
-        assert oper.exist_history(tmdbid=100, season=1) is True
+        assert oper.exist_history(
+            media_source=MediaSource.TMDB, media_id="100", season=1
+        ) is True
         assert history_model.exists.call_args.kwargs["episode_group"] is None
 
-        assert oper.exist_history(tmdbid=100, season=1, episode_group="eg-1") is True
+        assert oper.exist_history(
+            media_source=MediaSource.TMDB,
+            media_id="100",
+            season=1,
+            episode_group="eg-1",
+        ) is True
         assert history_model.exists.call_args.kwargs["episode_group"] == "eg-1"
 
 
 def test_subscribe_exists_distinguishes_same_season_episode_groups():
     """同一媒体同一季的主季、自定义剧集组应分别命中各自订阅。"""
     oper = SubscribeOper()
-    tmdbid = -(900_000_000 + os.getpid())
+    media_id = str(-(900_000_000 + os.getpid()))
     created_ids = []
     rows = [
         Subscribe(name="主季订阅", type=MediaType.TV.value, state="N",
-                  tmdbid=tmdbid, season=1, episode_group=None),
+                  media_source=MediaSource.TMDB.value, media_id=media_id,
+                  season=1, episode_group=None),
         Subscribe(name="剧集组订阅", type=MediaType.TV.value, state="N",
-                  tmdbid=tmdbid, season=1, episode_group="eg-1"),
+                  media_source=MediaSource.TMDB.value, media_id=media_id,
+                  season=1, episode_group="eg-1"),
     ]
     try:
         for row in rows:
             row.create(oper._db)
 
         main_season = Subscribe.exists(
-            oper._db, tmdbid=tmdbid, season=1, episode_group=None,
+            oper._db, media_source=MediaSource.TMDB,
+            media_id=media_id, season=1, episode_group=None,
         )
         created_ids.append(main_season.id)
         main_name = main_season.name
         episode_group = Subscribe.exists(
-            oper._db, tmdbid=tmdbid, season=1, episode_group="eg-1",
+            oper._db, media_source=MediaSource.TMDB,
+            media_id=media_id, season=1, episode_group="eg-1",
         )
         created_ids.append(episode_group.id)
         episode_group_name = episode_group.name
@@ -317,7 +327,12 @@ def test_subscribe_exists_distinguishes_same_season_episode_groups():
         assert episode_group_name == "剧集组订阅"
 
         Subscribe.delete(oper._db, rid=created_ids.pop(0))
-        assert Subscribe.exists(oper._db, tmdbid=tmdbid, season=1) is None
+        assert Subscribe.exists(
+            oper._db,
+            media_source=MediaSource.TMDB,
+            media_id=media_id,
+            season=1,
+        ) is None
     finally:
         for subscribe_id in created_ids:
             Subscribe.delete(oper._db, rid=subscribe_id)
@@ -384,12 +399,8 @@ def test_subscribe_chain_exists_forwards_episode_group():
         assert SubscribeChain.exists(media, meta) is True
 
     subscribe_oper_cls.return_value.exists.assert_called_once_with(
-        tmdbid=media.tmdb_id,
-        doubanid=media.douban_id,
-        bangumiid=media.bangumi_id,
-        anilistid=media.anilist_id,
-        media_source="themoviedb",
-        media_id=str(media.tmdb_id),
+        media_source=MediaSource.TMDB,
+        media_id=media.media_id,
         music_type=None,
         season=1,
         episode_group="eg-1",

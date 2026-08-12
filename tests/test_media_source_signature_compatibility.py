@@ -6,53 +6,51 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 
 
-def _assert_parameter_prefix(method, expected: list[str]) -> None:
-    """断言新增媒体源参数未改变已有位置参数顺序。"""
-    parameters = list(inspect.signature(method).parameters)
-    assert parameters[:len(expected)] == expected
+LEGACY_MEDIA_ID_PARAMETERS = {
+    "tmdbid",
+    "doubanid",
+    "bangumiid",
+    "anilistid",
+    "imdbid",
+    "tvdbid",
+    "mediaid",
+}
 
 
-def test_search_chain_media_source_parameters_preserve_old_order() -> None:
-    """搜索链新增媒体源参数必须追加在原有位置参数之后。"""
-    resource_parameters = [
-        "self", "tmdbid", "doubanid", "mtype", "area", "season", "sites", "cache_local"
-    ]
-    subtitle_parameters = [
-        "self", "tmdbid", "doubanid", "mtype", "season", "episode", "sites", "cache_local"
-    ]
-
-    _assert_parameter_prefix(SearchChain.search_by_id, resource_parameters)
-    _assert_parameter_prefix(SearchChain.async_search_by_id, resource_parameters)
-    _assert_parameter_prefix(SearchChain.async_search_by_id_stream, resource_parameters)
-    _assert_parameter_prefix(SearchChain.async_search_subtitles_by_id, subtitle_parameters)
-    _assert_parameter_prefix(SearchChain.async_search_subtitles_by_id_stream, subtitle_parameters)
+def _assert_unified_media_identity(method, *, required: bool = True) -> None:
+    """断言通用媒体方法仅暴露成对的统一身份参数。"""
+    parameters = inspect.signature(method).parameters
+    assert "media_source" in parameters
+    assert "media_id" in parameters
+    assert not LEGACY_MEDIA_ID_PARAMETERS.intersection(parameters)
+    if required:
+        assert parameters["media_source"].default is inspect.Parameter.empty
+        assert parameters["media_id"].default is inspect.Parameter.empty
 
 
-def test_download_chain_media_source_parameters_preserve_old_order() -> None:
-    """字幕下载链新增媒体源参数必须追加在原有位置参数之后。"""
-    _assert_parameter_prefix(DownloadChain.download_subtitle, [
-        "self", "subtitle", "media_source", "media_id", "tmdbid", "doubanid",
-        "save_path", "username",
-    ])
+def test_search_chain_uses_unified_media_identity() -> None:
+    """精确资源与字幕搜索必须只接收统一媒体身份。"""
+    for method in (
+        SearchChain.search_by_id,
+        SearchChain.async_search_by_id,
+        SearchChain.async_search_by_id_stream,
+        SearchChain.async_search_subtitles_by_id,
+        SearchChain.async_search_subtitles_by_id_stream,
+    ):
+        _assert_unified_media_identity(method)
 
 
-def test_transfer_chain_media_source_parameters_preserve_old_order() -> None:
-    """整理链新增媒体源参数必须追加在原有位置参数之后。"""
-    _assert_parameter_prefix(TransferChain.manual_transfer, [
-        "self", "fileitem", "target_storage", "target_path", "tmdbid", "doubanid",
-        "media_source", "media_id", "mtype", "season", "episode_group", "transfer_type",
-        "epformat", "min_filesize", "scrape", "library_type_folder",
-        "library_category_folder", "force", "background", "downloader", "download_hash",
-        "preview", "sync_extra_files", "cleanup_dest_fileitem",
-    ])
+def test_download_chain_uses_unified_media_identity() -> None:
+    """字幕下载必须只接收统一媒体身份。"""
+    _assert_unified_media_identity(DownloadChain.download_subtitle)
 
 
-def test_subscribe_chain_media_source_parameters_preserve_old_order() -> None:
-    """订阅链新增媒体源参数必须追加在原有位置参数之后。"""
-    parameters = [
-        "self", "title", "year", "mtype", "tmdbid", "doubanid", "bangumiid", "mediaid",
-        "episode_group", "season", "channel", "source", "userid", "username", "message", "exist_ok",
-    ]
+def test_transfer_chain_uses_unified_media_identity() -> None:
+    """手动整理可选身份也必须使用成对的统一字段。"""
+    _assert_unified_media_identity(TransferChain.manual_transfer, required=False)
 
-    _assert_parameter_prefix(SubscribeChain.add, parameters)
-    _assert_parameter_prefix(SubscribeChain.async_add, parameters)
+
+def test_subscribe_chain_uses_unified_media_identity() -> None:
+    """订阅入口可选身份也必须使用成对的统一字段。"""
+    _assert_unified_media_identity(SubscribeChain.add, required=False)
+    _assert_unified_media_identity(SubscribeChain.async_add, required=False)

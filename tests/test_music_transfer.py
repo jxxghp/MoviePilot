@@ -20,7 +20,7 @@ from app.schemas.types import EventType, MediaType
 def _music_context() -> tuple[MetaMusic, MusicInfo]:
     """构造整理测试使用的音乐元数据和媒体信息。"""
     info = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="Get Lucky",
         artists=["Daft Punk", "Pharrell Williams"],
@@ -62,7 +62,7 @@ def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
     )
     media_chain = Mock()
     media_chain.recognize_media.return_value = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type="album",
         title="叶惠美",
@@ -108,7 +108,7 @@ def test_music_rename_prefers_track_meta_over_album_media():
         total_tracks=11,
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="album-1",
         music_type="album",
         title="完美的一天",
@@ -179,7 +179,7 @@ def test_music_scrape_batch_event_preserves_each_track_context():
             fileitem=source,
             meta=MetaMusic(title=title, track_number=number),
             mediainfo=MusicInfo(
-                source="musicbrainz",
+                media_source="musicbrainz",
                 media_id=f"recording-{number}",
                 title=title,
                 track_number=number,
@@ -260,7 +260,7 @@ def test_download_history_music_type_falls_back_to_versioned_note():
 def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_path, monkeypatch):
     """整专整理应保留选中的专辑身份，同时使用每个文件自己的曲名、艺术家和曲序。"""
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type="album",
         title="叶惠美",
@@ -461,14 +461,14 @@ def test_job_manager_separates_music_entity_namespaces_for_same_provider_id():
     """数据源 ID 相同但实体类型不同的单曲和专辑不能共享作业。"""
     manager = JobManager()
     recording = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="shared-id",
         music_type="recording",
         title="Track",
         artists=["Artist"],
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="shared-id",
         music_type="album",
         title="Album",
@@ -577,7 +577,7 @@ def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
         extension="flac",
     )
     recognized = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -681,7 +681,7 @@ def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monk
         extension="flac",
     )
     recognized = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="Get Lucky",
         artists=["Daft Punk"],
@@ -729,7 +729,7 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
     audio_path = tmp_path / "晴天.flac"
     audio_path.write_bytes(b"fake-flac")
     recognized = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],

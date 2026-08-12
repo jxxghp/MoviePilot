@@ -130,13 +130,13 @@ def test_recognize_album_directory_maps_files(tmp_path, music_chain, monkeypatch
         files.append(file)
 
     album = MusicAlbumInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="rg-1",
         title="七里香",
         artists=["周杰伦"],
         tracks=[
             MusicInfo(
-                source="musicbrainz",
+                media_source="musicbrainz",
                 media_id=f"rec-{index + 1}",
                 title=name,
                 artists=["周杰伦"],
@@ -182,13 +182,13 @@ def test_async_recognize_album_directory_calls_async_module(
         files.append(file)
 
     album = MusicAlbumInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="rg-1",
         title="七里香",
         artists=["周杰伦"],
         tracks=[
             MusicInfo(
-                source="musicbrainz",
+                media_source="musicbrainz",
                 media_id=f"rec-{index + 1}",
                 title=name,
                 artists=["周杰伦"],
@@ -274,7 +274,7 @@ def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch
     file.write_bytes(b"RIFF")
 
     matched_info = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="rec-1",
         title="我的地盘",
         artists=["周杰伦"],
@@ -306,7 +306,7 @@ def test_async_music_album_fallback_calls_async_directory_match(tmp_path, monkey
     file = album_dir / "01.我的地盘.wav"
     file.write_bytes(b"RIFF")
     matched_info = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="rec-1",
         title="我的地盘",
     )

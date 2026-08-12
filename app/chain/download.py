@@ -34,7 +34,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTorrent, Notification, ResourceSelectionEventData, \
     ResourceDownloadEventData
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.media import build_media_key, resolve_media_identity
@@ -446,14 +446,10 @@ class DownloadChain(ChainBase):
     def download_subtitle(
             self,
             subtitle: SubtitleInfo,
-            media_source: Optional[str] = None,
-            media_id: Optional[str] = None,
-            tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None,
+            media_source: MediaSource,
+            media_id: str,
             save_path: Optional[str] = None,
             username: Optional[str] = None,
-            bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None,
     ) -> Tuple[bool, str, List[str]]:
         """
         下载字幕文件并保存到媒体对应的下载目录。
@@ -461,10 +457,6 @@ class DownloadChain(ChainBase):
         :param subtitle: 字幕搜索结果
         :param media_source: 媒体数据源
         :param media_id: 数据源原生ID
-        :param tmdbid: TMDB ID
-        :param doubanid: 豆瓣 ID
-        :param bangumiid: Bangumi ID
-        :param anilistid: AniList ID
         :param save_path: 保存路径
         :param username: 调用下载的用户名
         :return: 成功状态、提示消息、保存文件列表
@@ -475,12 +467,8 @@ class DownloadChain(ChainBase):
         metainfo = MetaInfo(title=subtitle.title, subtitle=subtitle.description)
         mediainfo = MediaChain().recognize_media(
             meta=metainfo,
-            source=media_source,
-            mediaid=media_id,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
+            media_source=media_source,
+            media_id=media_id,
         )
         if not mediainfo:
             return False, "无法识别媒体信息", []
@@ -684,10 +672,6 @@ class DownloadChain(ChainBase):
                 type=getattr(getattr(media, "type", None), "value", getattr(media, "type", None)),
                 title=getattr(media, "title", None),
                 year=getattr(media, "year", None),
-                tmdbid=getattr(media, "tmdb_id", None),
-                doubanid=getattr(media, "douban_id", None),
-                bangumiid=media.bangumi_id,
-                anilistid=media.anilist_id,
                 media_source=media_source,
                 media_id=media_id,
                 seasons=getattr(meta, "season", None),
@@ -1033,12 +1017,6 @@ class DownloadChain(ChainBase):
                 type=_media.type.value,
                 title=_media.title,
                 year=_media.year,
-                tmdbid=_media.tmdb_id,
-                imdbid=_media.imdb_id,
-                tvdbid=_media.tvdb_id,
-                doubanid=_media.douban_id,
-                bangumiid=_media.bangumi_id,
-                anilistid=_media.anilist_id,
                 media_source=media_source,
                 media_id=media_id,
                 music_type=getattr(_media, "music_type", None),
@@ -1765,7 +1743,8 @@ class DownloadChain(ChainBase):
             # 电影
             itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
                                              title=mediainfo.title,
-                                             tmdbid=mediainfo.tmdb_id)
+                                             media_source=media_source,
+                                             media_id=media_id)
             exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
@@ -1790,12 +1769,8 @@ class DownloadChain(ChainBase):
             if not mediainfo.seasons:
                 # 补充媒体信息
                 mediainfo: MediaInfo = MediaChain().recognize_media(mtype=mediainfo.type,
-                                                            tmdbid=mediainfo.tmdb_id,
-                                                            doubanid=mediainfo.douban_id,
-                                                            bangumiid=mediainfo.bangumi_id,
-                                                            anilistid=mediainfo.anilist_id,
-                                                            source=media_source,
-                                                            mediaid=media_id,
+                                                            media_source=media_source,
+                                                            media_id=media_id,
                                                             episode_group=mediainfo.episode_group)
                 if not mediainfo:
                     logger.error(f"媒体信息识别失败！")
@@ -1806,7 +1781,8 @@ class DownloadChain(ChainBase):
             # 电视剧
             itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
                                              title=mediainfo.title,
-                                             tmdbid=mediainfo.tmdb_id,
+                                             media_source=media_source,
+                                             media_id=media_id,
                                              season=mediainfo.season)
             # 媒体库已存在的剧集
             exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
@@ -1916,7 +1892,8 @@ class DownloadChain(ChainBase):
             if history:
                 # 媒体信息
                 torrent.media = {
-                    "tmdbid": history.tmdbid,
+                    "media_source": history.media_source,
+                    "media_id": history.media_id,
                     "type": history.type,
                     "title": history.title,
                     "season": history.seasons,

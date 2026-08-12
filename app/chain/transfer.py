@@ -57,12 +57,12 @@ from app.schemas.types import (
     ContentType,
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
 )
 from app.utils.mixins import ConfigReloadMixin
 from app.utils.media import (
     normalize_media_source,
     normalize_music_type,
-    parse_media_key,
     resolve_media_identity,
 )
 from app.utils.singleton import Singleton
@@ -1137,7 +1137,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             merged_meta.track_number = info.track_number
         if info.total_tracks:
             merged_meta.total_tracks = info.total_tracks
-        merged_meta.media_source = info.source
+        merged_meta.media_source = info.media_source
         merged_meta.media_id = info.media_id
         merged_info = cls._music_info_from_meta(merged_meta)
         # 补齐曲目级远端信息，供后续刮削和展示使用
@@ -1222,11 +1222,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ):
             if getattr(file_tags, field_name, None):
                 setattr(file_meta, field_name, getattr(file_tags, field_name))
-        file_meta.media_source = saved_info.source or saved_meta.media_source
+        file_meta.media_source = saved_info.media_source or saved_meta.media_source
         file_meta.media_id = saved_info.media_id or saved_meta.media_id
 
         file_info = cls._music_info_from_meta(file_meta)
-        file_info.source = saved_info.source
+        file_info.media_source = saved_info.media_source
         file_info.media_id = saved_info.media_id
         file_info.music_type = saved_info.music_type
         file_info.artist_ids = list(saved_info.artist_ids)
@@ -1264,8 +1264,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if history.media_source and history.media_id:
             retry_info = MediaChain().recognize_media(
                 mtype=MediaType.MUSIC,
-                source=history.media_source,
-                mediaid=history.media_id,
+                media_source=history.media_source,
+                media_id=history.media_id,
                 music_type=getattr(history, "music_type", None),
             )
             if retry_info:
@@ -2097,24 +2097,15 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         task.meta, download_history
                     )
                     if (
-                            (
-                                download_history.media_id
-                                or download_history.tmdbid
-                                or download_history.doubanid
-                                or download_history.bangumiid
-                                or download_history.anilistid
-                            )
+                            download_history.media_source
+                            and download_history.media_id
                             and not history_year_conflict
                     ):
                         # 下载记录中已存在识别信息
                         mediainfo: Optional[MediaInfo] = MediaChain().recognize_media(
                             mtype=task.mtype or MediaType(download_history.type),
-                            tmdbid=download_history.tmdbid,
-                            doubanid=download_history.doubanid,
-                            bangumiid=download_history.bangumiid,
-                            anilistid=download_history.anilistid,
-                            source=download_history.media_source,
-                            mediaid=download_history.media_id,
+                            media_source=download_history.media_source,
+                            media_id=download_history.media_id,
                             music_type=self._download_history_music_type(download_history),
                             episode_group=download_history.episode_group,
                         )
@@ -2180,7 +2171,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             text=(
                                 "原因：未识别到媒体信息\n"
                                 "如果按钮不可用，可回复：\n"
-                                f"```\n/redo {his.id}\n/redo {his.id} [tmdbid]|[类型]\n```\n"
+                                f"```\n/redo {his.id}\n"
+                                f"/redo {his.id} [media_source]|[media_id]|[类型]\n```\n"
                                 "自动重试或手动识别整理。"
                             ),
                             username=task.username,
@@ -2231,10 +2223,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             # 只有 TMDB 主源沿用历史 TMDB 标题，避免辅助 ID 改写其它识别源标题。
             if (
                     not settings.SCRAP_FOLLOW_TMDB
-                    and normalize_media_source(mediainfo.source) == "themoviedb"
+                    and mediainfo.media_source == MediaSource.TMDB
             ):
-                transfer_history = transferhis.get_by_type_tmdbid(
-                    tmdbid=mediainfo.tmdb_id, mtype=mediainfo.type.value
+                transfer_history = transferhis.get_by_media_identity(
+                    media_source=mediainfo.media_source.value,
+                    media_id=mediainfo.media_id,
+                    mtype=mediainfo.type.value,
                 )
                 if transfer_history and mediainfo.title != transfer_history.title:
                     mediainfo.title = transfer_history.title
@@ -2652,12 +2646,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         # 识别媒体信息
                         mediainfo = MediaChain().recognize_media(
                             mtype=mtype,
-                            tmdbid=downloadhis.tmdbid,
-                            doubanid=downloadhis.doubanid,
-                            bangumiid=downloadhis.bangumiid,
-                            anilistid=downloadhis.anilistid,
-                            source=downloadhis.media_source,
-                            mediaid=downloadhis.media_id,
+                            media_source=downloadhis.media_source,
+                            media_id=downloadhis.media_id,
                             music_type=self._download_history_music_type(downloadhis),
                             episode_group=downloadhis.episode_group,
                         )
@@ -3248,6 +3238,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: MediaInfo = None,
             mtype: Optional[MediaType] = None,
             media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             target_directory: TransferDirectoryConf = None,
             target_storage: Optional[str] = None,
             target_path: Path = None,
@@ -3276,6 +3267,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param mediainfo: 媒体信息
         :param mtype: 未提供媒体信息时使用的媒体类型提示
         :param media_source: 请求级识别与刮削数据源
+        :param media_id: 数据源原生 ID；显式指定身份时与 media_source 成对传入
         :param target_directory:  目标目录配置
         :param target_storage: 目标存储器
         :param target_path: 目标路径
@@ -3874,6 +3866,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     meta=file_meta,
                     mediainfo=task_mediainfo,
                     media_source=media_source,
+                    media_id=media_id,
                     mtype=batch_mtype,
                     target_directory=target_directory,
                     target_storage=target_storage,
@@ -4073,7 +4066,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             source: Optional[str] = None,
     ):
         """
-        远程重新整理，参数 历史记录ID 来源前缀:媒体ID|类型
+        远程重新整理，参数为历史记录 ID，或媒体来源、原生 ID 与类型。
         """
 
         def args_error():
@@ -4081,7 +4074,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 Notification(
                     channel=channel,
                     source=source,
-                    title="请输入正确的命令格式：/redo [id] 或 /redo [id] [来源前缀:媒体ID]|[类型]，"
+                    title="请输入正确的命令格式：/redo [id] 或 "
+                          "/redo [id] [media_source]|[media_id]|[类型]，"
                           "[id] 为整理记录编号",
                     userid=userid,
                     save_history=False,
@@ -4115,14 +4109,17 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     )
                 )
             return
-        # 带来源前缀的媒体 ID；旧格式继续兼容纯数字 TMDB ID 和非数字豆瓣 ID。
+        # 显式媒体身份固定为来源、原生 ID 和媒体类型三个字段。
         id_strs = arg_strs[1].split("|")
-        media_id = id_strs[0]
-        if not logid.isdigit():
+        if len(id_strs) != 3:
             args_error()
             return
-        # 类型
-        type_str = id_strs[1] if len(id_strs) > 1 else None
+        media_source, media_id, type_str = id_strs
+        try:
+            normalized_source = MediaSource(media_source)
+        except ValueError:
+            args_error()
+            return
         if not type_str or type_str not in [
             MediaType.MOVIE.value,
             MediaType.TV.value,
@@ -4131,7 +4128,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             args_error()
             return
         state, errmsg = self.__re_transfer(
-            logid=int(logid), mtype=MediaType(type_str), mediaid=media_id
+            logid=int(logid),
+            mtype=MediaType(type_str),
+            media_source=normalized_source,
+            media_id=media_id,
         )
         if not state:
             self.post_message(
@@ -4173,13 +4173,18 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return self.__re_transfer(logid=history_id)
 
     def __re_transfer(
-            self, logid: int, mtype: MediaType = None, mediaid: Optional[str] = None
+            self,
+            logid: int,
+            mtype: MediaType = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         根据历史记录，重新识别整理，只支持简单条件
         :param logid: 历史记录ID
         :param mtype: 媒体类型
-        :param mediaid: 带来源前缀的媒体 ID，或旧格式 TMDB/豆瓣 ID
+        :param media_source: 媒体数据源
+        :param media_id: 数据源原生 ID，必须与 media_source 成对提供
         """
         # 查询历史记录
         history: TransferHistory = TransferHistoryOper().get(logid)
@@ -4191,32 +4196,42 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
         # 查询媒体信息
-        if mtype and mediaid:
-            media_source, source_media_id = parse_media_key(mediaid)
-            if mtype == MediaType.MUSIC and not media_source:
-                # 音乐原生 ID 未带来源前缀时默认按 MusicBrainz ID 处理
-                media_source, source_media_id = "musicbrainz", str(mediaid)
-            if media_source and source_media_id:
-                mediainfo = MediaChain().recognize_media(
-                    mtype=mtype,
-                    source=media_source,
-                    mediaid=source_media_id,
-                    music_type=(
-                        getattr(history, "music_type", None)
-                        if mtype == MediaType.MUSIC
-                        else None
-                    ),
-                    episode_group=history.episode_group,
-                )
-            else:
-                mediainfo = MediaChain().recognize_media(
-                    mtype=mtype,
-                    tmdbid=int(mediaid) if str(mediaid).isdigit() else None,
-                    doubanid=mediaid if not str(mediaid).isdigit() else None,
-                    episode_group=history.episode_group,
-                )
+        explicit_identity = media_source is not None or media_id is not None
+        if explicit_identity and (not media_source or not media_id):
+            return False, "媒体重新识别需要同时提供 media_source 和 media_id"
+        if mtype and media_source and media_id:
+            mediainfo = MediaChain().recognize_media(
+                mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=(
+                    getattr(history, "music_type", None)
+                    if mtype == MediaType.MUSIC
+                    else None
+                ),
+                episode_group=history.episode_group,
+            )
             if mediainfo and not isinstance(mediainfo, MusicInfo):
                 # 更新媒体图片
+                self.obtain_images(mediainfo=mediainfo)
+        elif history.media_source and history.media_id:
+            try:
+                history_type = mtype or MediaType(history.type)
+            except ValueError:
+                history_type = mtype
+            mediainfo = MediaChain().recognize_media(
+                mtype=history_type,
+                media_source=history.media_source,
+                media_id=history.media_id,
+                music_type=(
+                    getattr(history, "music_type", None)
+                    if history_type == MediaType.MUSIC
+                    else None
+                ),
+                episode_group=history.episode_group,
+            )
+            mtype = history_type
+            if mediainfo and not isinstance(mediainfo, MusicInfo):
                 self.obtain_images(mediainfo=mediainfo)
         elif mtype == MediaType.MUSIC or self._is_music_retry_source(history, src_path):
             # 音乐重新整理走音乐识别链，避免默认影视识别误入 TMDB
@@ -4231,7 +4246,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo = recognize_context.media_info if recognize_context else None
         # 音乐专辑目录允许无预识别信息，由整理链按音频后缀逐文件解析识别
         if not mediainfo and not (mtype == MediaType.MUSIC and src_path.is_dir()):
-            return False, f"未识别到媒体信息，类型：{mtype.value if mtype else None}，id：{mediaid}"
+            return False, (
+                f"未识别到媒体信息，类型：{mtype.value if mtype else None}，"
+                f"media_source：{media_source}，media_id：{media_id}"
+            )
         # 重新执行整理
         if mediainfo:
             logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
@@ -4263,9 +4281,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             fileitem: FileItem,
             target_storage: Optional[str] = None,
             target_path: Path = None,
-            tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             mtype: MediaType = None,
             season: Optional[int] = None,
@@ -4283,8 +4299,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             preview: Optional[bool] = False,
             sync_extra_files: Optional[bool] = True,
             cleanup_dest_fileitem: Optional[FileItem] = None,
-            bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None,
             reorganize: Optional[bool] = False,
             music_type: Optional[str] = None,
     ) -> Tuple[bool, Union[str, dict]]:
@@ -4293,12 +4307,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param fileitem: 文件项
         :param target_storage: 目标存储
         :param target_path: 目标路径
-        :param tmdbid: TMDB ID
-        :param doubanid: 豆瓣ID
-        :param bangumiid: Bangumi ID
-        :param anilistid: AniList ID
         :param media_source: 媒体数据源
-        :param media_id: 数据源原生ID
+        :param media_id: 数据源原生 ID，必须与 media_source 成对提供
         :param mtype: 媒体类型
         :param season: 季度
         :param episode_group: 剧集组
@@ -4319,15 +4329,14 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param music_type: 音乐实体类型；为保持位置参数兼容，必须追加在签名末尾
         """
         logger.info(f"手动整理：{fileitem.path} ...")
-        if tmdbid or doubanid or bangumiid or anilistid or media_id:
+        explicit_identity = media_source is not None or media_id is not None
+        if explicit_identity and (not media_source or not media_id):
+            return False, "手动整理需要同时提供 media_source 和 media_id"
+        if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
             mediainfo = MediaChain().recognize_media(
-                tmdbid=tmdbid,
-                doubanid=doubanid,
-                bangumiid=bangumiid,
-                anilistid=anilistid,
-                source=media_source,
-                mediaid=media_id,
+                media_source=media_source,
+                media_id=media_id,
                 music_type=music_type,
                 mtype=mtype,
                 episode_group=episode_group,
@@ -4335,8 +4344,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if not mediainfo:
                 return (
                     False,
-                    f"媒体信息识别失败，source：{media_source}，media_id：{media_id}，"
-                    f"tmdbid：{tmdbid}，doubanid：{doubanid}，"
+                    f"媒体信息识别失败，media_source：{media_source}，media_id：{media_id}，"
                     f"type: {mtype.value if mtype else None}",
                 )
             if media_source and not isinstance(mediainfo, MusicInfo):
@@ -4352,6 +4360,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 mediainfo=mediainfo,
                 mtype=mtype,
                 media_source=media_source,
+                media_id=media_id,
                 transfer_type=transfer_type,
                 season=season,
                 epformat=epformat,

@@ -155,7 +155,7 @@ class AudioMetadataHelper:
             media_id = getattr(music, "media_id", None)
             return str(media_id) if media_id else None
         if (
-                getattr(music, "source", None) == "musicbrainz"
+                getattr(music, "media_source", None) == "musicbrainz"
                 and getattr(music, "music_type", MUSIC_ENTITY_RECORDING)
                 == MUSIC_ENTITY_RECORDING
         ):

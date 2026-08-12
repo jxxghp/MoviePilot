@@ -8,6 +8,7 @@ from app.modules import _ModuleBase
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
     ModuleType,
     OtherModulesType,
 )
@@ -43,7 +44,7 @@ class ListenBrainzModule(_ModuleBase):
     _album_detail_url = "https://musicbrainz.org/release-group"
     _release_cover_url = "https://coverartarchive.org/release"
     _release_group_cover_url = "https://coverartarchive.org/release-group"
-    _source = "musicbrainz"
+    _source = MediaSource.MusicBrainz
     # 全站统计按实体分为不同接口，键为音乐实体类型，值为接口路径与数据字段
     _chart_entities = {
         MUSIC_ENTITY_RECORDING: ("recordings", "recordings"),
@@ -215,7 +216,7 @@ class ListenBrainzModule(_ModuleBase):
         release_name = str(recording.get("release_name") or "").strip()
         release_mbid = recording.get("caa_release_mbid") or recording.get("release_mbid")
         return MusicInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             music_type=MUSIC_ENTITY_RECORDING,
             title=str(title),
@@ -238,7 +239,7 @@ class ListenBrainzModule(_ModuleBase):
             return None
         artist_name = str(release_group.get("artist_name") or "").strip()
         return MusicInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             music_type=MUSIC_ENTITY_ALBUM,
             title=str(title),
@@ -269,7 +270,7 @@ class ListenBrainzModule(_ModuleBase):
             release.get("release_group_secondary_type"),
         ]
         return MusicInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             music_type=MUSIC_ENTITY_ALBUM,
             title=str(title),

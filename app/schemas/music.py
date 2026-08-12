@@ -1,8 +1,8 @@
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from app.schemas.types import MusicEntityType, MusicTargetEntityType
+from app.schemas.types import MediaSource, MusicEntityType, MusicTargetEntityType
 
 
 class MusicMeta(BaseModel):
@@ -31,7 +31,7 @@ class MusicMeta(BaseModel):
     bitrate: Optional[int] = None
     duration: Optional[int] = None
     isrc: Optional[str] = None
-    media_source: Optional[str] = None
+    media_source: Optional[Union[MediaSource, str]] = None
     media_id: Optional[str] = None
 
 
@@ -41,7 +41,7 @@ class MusicInfo(BaseModel):
     type: Literal["音乐"] = "音乐"
     # 音乐实体类型：recording 单曲、album 专辑、artist 艺术家
     music_type: MusicEntityType = "recording"
-    source: Optional[str] = None
+    media_source: Optional[Union[MediaSource, str]] = None
     media_id: Optional[str] = None
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
@@ -78,7 +78,6 @@ class MusicInfo(BaseModel):
     title_year: Optional[str] = None
     poster_path: Optional[str] = None
     backdrop_path: Optional[str] = None
-    mediaid_prefix: Optional[str] = None
     overview: Optional[str] = None
     vote_average: float = 0.0
 
@@ -103,7 +102,7 @@ class MusicAlbumInfo(BaseModel):
 
     type: Literal["音乐"] = "音乐"
     music_type: Literal["album"] = "album"
-    source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
@@ -129,7 +128,6 @@ class MusicAlbumInfo(BaseModel):
     title_year: Optional[str] = None
     poster_path: Optional[str] = None
     backdrop_path: Optional[str] = None
-    mediaid_prefix: Optional[str] = None
     overview: Optional[str] = None
     vote_average: float = 0.0
 
@@ -139,7 +137,7 @@ class MusicArtistInfo(BaseModel):
 
     type: Literal["音乐"] = "音乐"
     music_type: Literal["artist"] = "artist"
-    source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     name: Optional[str] = None
     title: Optional[str] = None
@@ -163,13 +161,12 @@ class MusicArtistInfo(BaseModel):
     album_count: Optional[int] = None
     raw_data: dict[str, Any] = Field(default_factory=dict)
     poster_path: Optional[str] = None
-    mediaid_prefix: Optional[str] = None
     overview: Optional[str] = None
 
 
 class MusicRecognizeRequest(BaseModel):
     """音乐元数据详情识别请求。"""
 
-    source: str
+    media_source: MediaSource
     media_id: str
     music_type: Optional[MusicTargetEntityType] = None

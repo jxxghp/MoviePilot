@@ -23,7 +23,7 @@ from app.modules.zspace.zspace import ZSpace
 def _recording() -> MusicInfo:
     """构造媒体库匹配使用的单曲目标。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         music_type="recording",
         title="晴天",
@@ -35,7 +35,7 @@ def _recording() -> MusicInfo:
 def _album() -> MusicInfo:
     """构造媒体库完整性匹配使用的专辑目标。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type="album",
         title="叶惠美",

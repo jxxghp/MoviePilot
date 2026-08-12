@@ -9,7 +9,7 @@ from app.agent.tools.tags import ToolTag
 from app.chain.subscribe import SubscribeChain
 from app.db.user_oper import UserOper
 from app.log import logger
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, MessageChannel
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, MessageChannel
 from ._music_utils import normalize_music_type
 
 
@@ -36,17 +36,10 @@ class AddSubscribeInput(BaseModel):
             "To subscribe multiple seasons or the full series, call this tool separately for each season."
         ),
     )
-    tmdb_id: Optional[int] = Field(
+    media_source: Optional[MediaSource] = Field(
         None,
-        description="TMDB database ID for precise media identification (optional, can be obtained from search_media tool)",
+        description="Media metadata source returned by search_media",
     )
-    douban_id: Optional[str] = Field(
-        None,
-        description="Douban ID for precise media identification (optional, alternative to tmdb_id)",
-    )
-    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
-    anilist_id: Optional[int] = Field(None, description="AniList media ID")
-    media_source: Optional[str] = Field(None, description="Media metadata source")
     media_id: Optional[str] = Field(None, description="Native ID for media_source")
     start_episode: Optional[int] = Field(
         None,
@@ -173,11 +166,7 @@ class AddSubscribeTool(MoviePilotTool):
         year: Optional[str] = None,
         music_type: Optional[str] = None,
         season: Optional[int] = None,
-        tmdb_id: Optional[int] = None,
-        douban_id: Optional[str] = None,
-        bangumi_id: Optional[int] = None,
-        anilist_id: Optional[int] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         start_episode: Optional[int] = None,
         total_episode: Optional[int] = None,
@@ -197,7 +186,8 @@ class AddSubscribeTool(MoviePilotTool):
         """校验实体语义后调用订阅链添加精确订阅。"""
         logger.info(
             f"执行工具: {self.name}, 参数: title={title}, year={year}, media_type={media_type}, "
-            f"music_type={music_type}, season={season}, tmdb_id={tmdb_id}, douban_id={douban_id}, "
+            f"music_type={music_type}, season={season}, media_source={media_source}, "
+            f"media_id={media_id}, "
             f"start_episode={start_episode}, "
             f"total_episode={total_episode}, quality={quality}, resolution={resolution}, "
             f"effect={effect}, filter_groups={filter_groups}, sites={sites}"
@@ -226,6 +216,8 @@ class AddSubscribeTool(MoviePilotTool):
                     return "错误：音乐订阅没有季集参数，不能传入 season、start_episode 或 total_episode"
             elif music_type:
                 return "错误：music_type 仅能与 media_type='music' 一起使用"
+            if (media_source is None) != (media_id is None):
+                return "错误：media_source 和 media_id 必须同时提供"
             audio_filter_values = (
                 audio_quality, audio_format, min_bitrate, min_bit_depth, min_sample_rate
             )
@@ -277,10 +269,6 @@ class AddSubscribeTool(MoviePilotTool):
                 mtype=media_type_enum,
                 title=title,
                 year=year or "",
-                tmdbid=tmdb_id,
-                doubanid=douban_id,
-                bangumiid=bangumi_id,
-                anilistid=anilist_id,
                 media_source=media_source,
                 media_id=media_id,
                 season=season,

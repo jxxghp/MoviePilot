@@ -14,7 +14,7 @@ from app.schemas.types import MediaType
 def _music_info() -> MusicInfo:
     """构造下载测试使用的标准音乐信息。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -28,7 +28,7 @@ def _music_info() -> MusicInfo:
 def _album_info(total_tracks: int | None = 3) -> MusicInfo:
     """构造整张专辑下载校验使用的目标信息。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",

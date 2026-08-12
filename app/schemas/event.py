@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.message import MessageChannel
 from app.schemas.file import FileItem
+from app.schemas.types import MediaSource
 
 
 class Event(BaseModel):
@@ -480,7 +481,7 @@ class DiscoverMediaSource(BaseModel):
     """
 
     name: str = Field(..., description="数据源名称")
-    mediaid_prefix: str = Field(..., description="媒体ID的前缀，不含:")
+    media_source: MediaSource = Field(..., description="媒体来源枚举")
     api_path: str = Field(..., description="媒体数据源API地址")
     filter_params: Optional[Dict[str, Any]] = Field(
         default=None, description="过滤参数"
@@ -537,20 +538,22 @@ class MediaRecognizeConvertEventData(ChainEventData):
 
     Attributes:
         # 输入参数
-        mediaid (str): 媒体ID，格式为`前缀:ID值`，如 tmdb:12345、douban:1234567
-        convert_type (str): 转换类型 仅支持：themoviedb/douban，需要转换为对应的媒体数据并返回
+        media_source (MediaSource): 输入媒体来源
+        media_id (str): 数据源原生 ID
+        target_media_source (MediaSource): 需要转换到的目标媒体来源
 
         # 输出参数
         media_dict (dict): TheMovieDb/豆瓣的媒体数据
     """
 
     # 输入参数
-    mediaid: str = Field(..., description="媒体ID")
-    convert_type: str = Field(..., description="转换类型（themoviedb/douban）")
+    media_source: MediaSource = Field(..., description="媒体来源")
+    media_id: str = Field(..., description="数据源原生 ID")
+    target_media_source: MediaSource = Field(..., description="目标媒体来源")
 
     # 输出参数
     media_dict: dict = Field(
-        default_factory=dict, description="转换后的媒体信息（TheMovieDb/豆瓣）"
+        default_factory=dict, description="转换后的媒体信息"
     )
 
 
@@ -582,8 +585,8 @@ class SubscribeEpisodesRefreshEventData(ChainEventData):
 
     Attributes:
         # 输入参数
-        tmdbid (Optional[int]): TMDB ID
-        doubanid (Optional[str]): 豆瓣 ID
+        media_source (Optional[MediaSource]): 媒体来源
+        media_id (Optional[str]): 数据源原生 ID
         season (Optional[int]): 季号
         mediainfo (Any): 媒体信息
         current_total_episode (int): 主程序本次识别到的 TMDB 当前季总集数
@@ -598,11 +601,7 @@ class SubscribeEpisodesRefreshEventData(ChainEventData):
     """
 
     # 输入参数
-    tmdbid: Optional[int] = Field(default=None, description="TMDB ID")
-    doubanid: Optional[str] = Field(default=None, description="豆瓣 ID")
-    bangumiid: Optional[int] = Field(default=None, description="Bangumi ID")
-    anilistid: Optional[int] = Field(default=None, description="AniList ID")
-    media_source: Optional[str] = Field(default=None, description="媒体数据源")
+    media_source: Optional[MediaSource] = Field(default=None, description="媒体数据源")
     media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
     season: Optional[int] = Field(default=None, description="季号")
     mediainfo: Any = Field(default=None, description="媒体信息")

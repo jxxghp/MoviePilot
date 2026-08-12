@@ -144,7 +144,7 @@ def test_normalize_candidates_deduplicates_source_identity():
     """同一来源和媒体 ID 的音乐候选应只保留一次。"""
     results = MusicChain.normalize_candidates(
         [
-            MusicInfo(source="musicbrainz", media_id="recording-1", title="A"),
+            MusicInfo(media_source="musicbrainz", media_id="recording-1", title="A"),
             {
                 "type": "音乐",
                 "source": "musicbrainz",
@@ -162,8 +162,8 @@ def test_normalize_candidates_keeps_different_entities_with_same_source_id():
     """同一来源 ID 在不同音乐实体命名空间下不能互相去重。"""
     results = MusicChain.normalize_candidates(
         [
-            MusicInfo(source="musicbrainz", media_id="shared-id", music_type="recording", title="Song"),
-            MusicInfo(source="musicbrainz", media_id="shared-id", music_type="album", title="Album"),
+            MusicInfo(media_source="musicbrainz", media_id="shared-id", music_type="recording", title="Song"),
+            MusicInfo(media_source="musicbrainz", media_id="shared-id", music_type="album", title="Album"),
         ]
     )
 
@@ -185,7 +185,7 @@ def test_normalize_candidates_deduplicates_metadata_without_id():
 def test_to_meta_preserves_selected_identity():
     """候选转换后应保留下载和整理所需的标准身份。"""
     info = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -212,8 +212,8 @@ def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
         """记录榜单模块调用并返回重复候选。"""
         requested.update(method=method, **kwargs)
         return [
-            MusicInfo(source="musicbrainz", media_id="recording-1", title="晴天"),
-            MusicInfo(source="musicbrainz", media_id="recording-1", title="晴天"),
+            MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天"),
+            MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天"),
         ]
 
     monkeypatch.setattr(chain, "run_module", fake_run_module)
@@ -237,17 +237,17 @@ def test_async_chart_applies_music_explore_filters(monkeypatch):
         """返回包含不同热度和封面状态的榜单候选。"""
         assert method == "music_chart"
         return [
-            MusicInfo(media_id="1", source="musicbrainz", title="A", listen_count=300),
+            MusicInfo(media_id="1", media_source="musicbrainz", title="A", listen_count=300),
             MusicInfo(
                 media_id="2",
-                source="musicbrainz",
+                media_source="musicbrainz",
                 title="B",
                 listen_count=120,
                 cover_url="https://coverartarchive.org/release/2/front-500",
             ),
             MusicInfo(
                 media_id="3",
-                source="musicbrainz",
+                media_source="musicbrainz",
                 title="C",
                 listen_count=240,
                 cover_url="https://coverartarchive.org/release/3/front-500",
@@ -275,9 +275,9 @@ def test_musicbrainz_module_select_candidate_prefers_matching_audio_tags():
     """文件识别应优先选择标题、艺术家和专辑均匹配的 MusicBrainz 候选。"""
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidates = [
-        MusicInfo(source="musicbrainz", media_id="1", title="晴天", artists=["其他歌手"]),
+        MusicInfo(media_source="musicbrainz", media_id="1", title="晴天", artists=["其他歌手"]),
         MusicInfo(
-            source="musicbrainz",
+            media_source="musicbrainz",
             media_id="2",
             title="晴天",
             artists=["周杰伦"],
@@ -285,7 +285,7 @@ def test_musicbrainz_module_select_candidate_prefers_matching_audio_tags():
         ),
     ]
 
-    selected = MusicBrainzModule._select_candidate(meta, candidates, source="musicbrainz")
+    selected = MusicBrainzModule._select_candidate(meta, candidates, media_source="musicbrainz")
 
     assert selected is candidates[1]
 
@@ -302,7 +302,7 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
         duration=221,
     )
     info = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="眼泪成诗",
         artists=["孙燕姿"],
@@ -349,7 +349,7 @@ def test_recognize_best_only_queries_musicbrainz(monkeypatch):
         year=2003,
     )
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="mb-1",
         title="晴天",
         artists=["周杰伦"],
@@ -363,7 +363,7 @@ def test_recognize_best_only_queries_musicbrainz(monkeypatch):
 
     assert result is expected
     recognize_source.assert_called_once_with(
-        source="musicbrainz",
+        media_source="musicbrainz",
         meta=meta,
         cache=True,
         music_type="recording",
@@ -375,7 +375,7 @@ def test_recognize_from_source_selects_only_declared_music_module(monkeypatch):
     chain = MusicChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -391,7 +391,7 @@ def test_recognize_from_source_selects_only_declared_music_module(monkeypatch):
     )
 
     result = chain.recognize_from_source(
-        source="musicbrainz",
+        media_source="musicbrainz",
         meta=meta,
         cache=True,
     )
@@ -401,7 +401,7 @@ def test_recognize_from_source_selects_only_declared_music_module(monkeypatch):
     music_module.recognize_media.assert_called_once_with(
         meta=meta,
         mtype=MediaType.MUSIC,
-        source="musicbrainz",
+        media_source="musicbrainz",
         mediaid=None,
         cache=True,
     )
@@ -426,7 +426,7 @@ def test_async_recognize_best_only_queries_musicbrainz(monkeypatch):
     chain = MusicChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -438,7 +438,7 @@ def test_async_recognize_best_only_queries_musicbrainz(monkeypatch):
 
     assert result is expected
     recognize_source.assert_awaited_once_with(
-        source="musicbrainz",
+        media_source="musicbrainz",
         meta=meta,
         cache=True,
         music_type="recording",
@@ -449,7 +449,7 @@ def test_async_recognize_from_source_calls_module_async_method(monkeypatch):
     """单源异步识别必须直接等待模块异步入口。"""
     chain = MusicChain()
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
     )
@@ -505,7 +505,7 @@ def test_async_chart_forwards_album_entity(monkeypatch):
         return [
             MusicInfo(
                 media_id="release-group-1",
-                source="musicbrainz",
+                media_source="musicbrainz",
                 music_type="album",
                 title="ARIRANG",
                 listen_count=10,
@@ -533,10 +533,10 @@ def test_async_fresh_releases_keeps_official_order(monkeypatch):
         """记录新发行请求参数并返回带封面与不带封面的候选。"""
         requested.update(method=method, **kwargs)
         return [
-            MusicInfo(media_id="b", source="musicbrainz", music_type="album", title="B"),
+            MusicInfo(media_id="b", media_source="musicbrainz", music_type="album", title="B"),
             MusicInfo(
                 media_id="a",
-                source="musicbrainz",
+                media_source="musicbrainz",
                 music_type="album",
                 title="A",
                 cover_url="https://coverartarchive.org/release/a/front-500",
@@ -565,16 +565,16 @@ def test_async_artist_related_deduplicates_artists(monkeypatch):
         """返回重复的关联艺术家候选。"""
         assert method == "music_artist_related"
         return [
-            MusicArtistInfo(source="musicbrainz", media_id="artist-1", name="Brian May"),
-            MusicArtistInfo(source="musicbrainz", media_id="artist-1", name="Brian May"),
-            MusicArtistInfo(source="musicbrainz", media_id="artist-2", name="John Deacon"),
+            MusicArtistInfo(media_source="musicbrainz", media_id="artist-1", name="Brian May"),
+            MusicArtistInfo(media_source="musicbrainz", media_id="artist-1", name="Brian May"),
+            MusicArtistInfo(media_source="musicbrainz", media_id="artist-2", name="John Deacon"),
         ]
 
     monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
 
     import asyncio
 
-    results = asyncio.run(chain.async_artist_related(source="musicbrainz", media_id="artist-0"))
+    results = asyncio.run(chain.async_artist_related(media_source="musicbrainz", media_id="artist-0"))
 
     assert [item.media_id for item in results] == ["artist-1", "artist-2"]
 
@@ -587,7 +587,7 @@ def test_async_album_restores_dataclass_from_plugin_dict(monkeypatch):
         """模拟插件模块以字典形式返回专辑详情。"""
         assert method == "music_album"
         return MusicAlbumInfo(
-            source="musicbrainz",
+            media_source="musicbrainz",
             media_id="release-group-1",
             title="A Night at the Opera",
             artists=["Queen"],
@@ -598,7 +598,7 @@ def test_async_album_restores_dataclass_from_plugin_dict(monkeypatch):
 
     import asyncio
 
-    album = asyncio.run(chain.async_album(source="musicbrainz", media_id="release-group-1"))
+    album = asyncio.run(chain.async_album(media_source="musicbrainz", media_id="release-group-1"))
 
     assert album is not None
     assert album.year == 1975

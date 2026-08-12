@@ -9,7 +9,7 @@ from app.core.metainfo import MetaInfo, MetaInfoPath, find_metainfo
 from app.core.meta import MetaBase, MetaMusic
 from app.core.meta.metaanime import MetaAnime
 from app.helper.torrent import TorrentHelper
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from tests.cases.meta import meta_cases
 
 
@@ -39,8 +39,9 @@ def test_metainfo():
             "fps": meta_info.fps or None,
         }
 
-        if info.get("target").get("tmdbid"):
-            target["tmdbid"] = meta_info.tmdbid
+        if info.get("target").get("media_source"):
+            target["media_source"] = str(meta_info.media_source)
+            target["media_id"] = meta_info.media_id
 
         expected = info.get("target")
         if "fps" not in expected:
@@ -67,11 +68,11 @@ def test_emby_format_ids():
         ("/movies/Avatar (2009) {tmdb-19995}/Avatar.2009.1080p.mkv", 19995),
     ]
 
-    for path_str, expected_tmdbid in test_paths:
+    for path_str, expected_media_id in test_paths:
         meta = MetaInfoPath(Path(path_str))
-        assert meta.tmdbid == expected_tmdbid, (
-            f"路径 {path_str} 期望的tmdbid为 {expected_tmdbid}，实际识别为 {meta.tmdbid}"
-        )
+        assert meta.media_source == MediaSource.TMDB
+        assert meta.media_id == str(expected_media_id)
+        assert not hasattr(meta, "tmdbid")
 
 
 def test_metainfopath_with_custom_words():
@@ -129,11 +130,7 @@ def test_torrent_title_match_ignores_question_mark_variants():
         season_years={},
     )
     torrent_meta = SimpleNamespace(
-        tmdbid=None,
-        doubanid=None,
-        bangumiid=None,
-        anilistid=None,
-        cn_name=None,
+                                        cn_name=None,
         en_name="Otaku ni Yasashii Gal wa Inai",
         type=MediaType.TV,
         year=None,
@@ -143,8 +140,7 @@ def test_torrent_title_match_ignores_question_mark_variants():
         site_name="MiKan",
         title="[今晚月色真美][Otaku ni Yasashii Gal wa Inai!?][12][1080P]",
         category=MediaType.TV.value,
-        imdbid=None,
-        description=None,
+                description=None,
     )
 
     assert TorrentHelper.match_torrent(
@@ -390,7 +386,8 @@ def test_custom_words_episode_offset_supports_multiplication_expression():
         )
 
     assert meta.name == "哈哈哈哈哈"
-    assert meta.tmdbid == 112732
+    assert meta.media_source == MediaSource.TMDB
+    assert meta.media_id == "112732"
     assert meta.begin_season == 6
     assert meta.episode == "E05"
     assert meta.apply_words == custom_words
@@ -427,7 +424,8 @@ def test_custom_words_support_episode_group_parameter():
         f"Bakemonogatari => 物语系列 {{[tmdbid=46195;type=tv;g={group_id};s=1]}}"
     ]
     meta = MetaInfo(title="Bakemonogatari 01", custom_words=custom_words)
-    assert meta.tmdbid == 46195
+    assert meta.media_source == MediaSource.TMDB
+    assert meta.media_id == "46195"
     assert meta.type.value == "电视剧"
     assert meta.begin_season == 1
     assert meta.episode_group == group_id
@@ -443,7 +441,8 @@ def test_custom_words_support_special_season_zero_parameter():
     with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
         meta = MetaInfo(title="Test Show 01", custom_words=custom_words)
 
-    assert meta.tmdbid == 12345
+    assert meta.media_source == MediaSource.TMDB
+    assert meta.media_id == "12345"
     assert meta.type.value == "电视剧"
     assert meta.begin_season == 0
 
@@ -559,8 +558,22 @@ def test_streaming_platform_word_kept_in_movie_title():
 def test_emby_tmdbid_overrides_braced_metainfo_tmdbid():
     """测试 Emby [tmdbid] 标签保持历史优先级。"""
     title, metainfo = find_metainfo("Movie {[tmdbid=111;type=movies]} [tmdbid=222]")
-    assert metainfo["tmdbid"] == "222"
+    assert metainfo["media_source"] == MediaSource.TMDB
+    assert metainfo["media_id"] == "222"
+    assert "tmdbid" not in metainfo
     assert "[tmdbid=222]" not in title
+
+
+def test_generic_media_identity_tag_is_the_only_output_contract():
+    """通用标签应产生枚举来源和字符串ID，且不暴露来源专用字段。"""
+    title, metainfo = find_metainfo(
+        "Movie {[media_source=themoviedb;media_id=550;type=movies]}"
+    )
+
+    assert title.strip() == "Movie"
+    assert metainfo["media_source"] == MediaSource.TMDB
+    assert metainfo["media_id"] == "550"
+    assert {"tmdbid", "doubanid", "bangumiid", "anilistid"}.isdisjoint(metainfo)
 
 
 def test_metainfopath_auxiliary_chinese_stem_uses_parent_title():

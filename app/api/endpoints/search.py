@@ -8,17 +8,12 @@ from fastapi import APIRouter, Depends, Body, Request
 from fastapi.responses import StreamingResponse
 
 from app import schemas
-from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.core.config import settings
-from app.core.event import eventmanager
-from app.core.metainfo import MetaInfo
 from app.core.security import verify_resource_token, verify_token
 from app.helper.locale import LocaleHelper
 from app.log import logger
-from app.schemas import MediaRecognizeConvertEventData
-from app.schemas.types import MediaType, ChainEventType
-from app.utils.media import normalize_music_type, parse_media_key, resolve_media_identity
+from app.schemas.types import MediaSource, MediaType
+from app.utils.media import normalize_music_type
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
@@ -58,14 +53,15 @@ def _resolve_media_season(
 
 
 async def _resolve_media_search_params(
-        mediaid: str,
+        media_source: MediaSource,
+        media_id: str,
         media_type: Optional[MediaType] = None,
-        title: Optional[str] = None,
-        year: Optional[str] = None,
-        media_season: Optional[int] = None,
         music_type: Optional[str] = None,
 ) -> tuple[Optional[dict], str]:
-    """将任意来源媒体键解析为 SearchChain 可直接使用的识别参数。"""
+    """校验统一媒体身份并构造 SearchChain 精确搜索参数。"""
+    normalized_media_id = str(media_id or "").strip()
+    if not normalized_media_id:
+        return None, "媒体 ID 不能为空"
     normalized_music_type = None
     if music_type:
         normalized_music_type = normalize_music_type(music_type, allow_artist=False)
@@ -74,53 +70,13 @@ async def _resolve_media_search_params(
         if media_type != MediaType.MUSIC:
             return None, "music_type 仅能用于音乐资源搜索"
 
-    def build_params(source: str, source_media_id: str) -> dict:
-        """构造带可选音乐实体命名空间的精确搜索参数。"""
-        params = {"source": source, "mediaid": source_media_id}
-        if normalized_music_type:
-            params["music_type"] = normalized_music_type
-        return params
-
-    source, source_media_id = parse_media_key(mediaid)
-    if source and source_media_id:
-        if source in {"themoviedb", "bangumi", "anilist"} \
-                and not source_media_id.isdigit():
-            return None, "媒体ID格式错误"
-        return build_params(source, source_media_id), ""
-
-    event_data = MediaRecognizeConvertEventData(
-        mediaid=mediaid, convert_type=settings.RECOGNIZE_SOURCE
-    )
-    event = await eventmanager.async_send_event(
-        ChainEventType.MediaRecognizeConvert, event_data
-    )
-    if event and event.event_data and event.event_data.media_dict:
-        event_data = event.event_data
-        search_id = event_data.media_dict.get("id")
-        if search_id is not None:
-            return build_params(event_data.convert_type, str(search_id)), ""
-
-    if not title:
-        return None, "未知的媒体ID"
-
-    meta = MetaInfo(title)
-    if year:
-        meta.year = year
-    if media_type:
-        meta.type = media_type
-    if media_season is not None:
-        meta.type = MediaType.TV
-        meta.begin_season = media_season
-    recognize_kwargs = {"obtain_images": False}
+    params = {
+        "media_source": media_source,
+        "media_id": normalized_media_id,
+    }
     if normalized_music_type:
-        recognize_kwargs["music_type"] = normalized_music_type
-    mediainfo = await MediaChain().async_recognize_by_meta(meta, **recognize_kwargs)
-    if not mediainfo:
-        return None, "未识别到媒体信息"
-    source, source_media_id = resolve_media_identity(media=mediainfo)
-    if not source or not source_media_id:
-        return None, "媒体信息缺少有效ID"
-    return build_params(source, source_media_id), ""
+        params["music_type"] = normalized_music_type
+    return params, ""
 
 
 def _sse_event(data: dict, locale: Optional[str] = None) -> str:
@@ -393,21 +349,20 @@ async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token))
     )
 
 
-@router.get("/media/{mediaid}/stream", summary="渐进式精确搜索资源")
+@router.get("/media/{media_id}/stream", summary="渐进式精确搜索资源")
 async def search_by_id_stream(
     request: Request,
-    mediaid: str,
+    media_id: str,
+    media_source: MediaSource,
     mtype: Optional[str] = None,
     area: Optional[str] = "title",
-    title: Optional[str] = None,
-    year: Optional[str] = None,
     season: Optional[str] = None,
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
-    根据TMDBID/豆瓣ID渐进式搜索站点资源，返回格式为SSE
+    根据媒体来源和原生 ID 渐进式搜索站点资源，返回格式为 SSE。
     """
 
     media_type = _parse_media_type(mtype)
@@ -418,11 +373,9 @@ async def search_by_id_stream(
     async def event_source():
         """解析媒体身份并输出精确搜索流事件。"""
         search_params, message = await _resolve_media_search_params(
-            mediaid=mediaid,
+            media_source=media_source,
+            media_id=media_id,
             media_type=media_type,
-            title=title,
-            year=year,
-            media_season=media_season,
             music_type=music_type,
         )
         if not search_params:
@@ -446,29 +399,26 @@ async def search_by_id_stream(
     )
 
 
-@router.get("/media/{mediaid}", summary="精确搜索资源", response_model=schemas.Response)
+@router.get("/media/{media_id}", summary="精确搜索资源", response_model=schemas.Response)
 async def search_by_id(
-    mediaid: str,
+    media_id: str,
+    media_source: MediaSource,
     mtype: Optional[str] = None,
     area: Optional[str] = "title",
-    title: Optional[str] = None,
-    year: Optional[str] = None,
     season: Optional[str] = None,
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据带来源前缀的媒体 ID 精确搜索站点资源。
+    根据媒体来源和原生 ID 精确搜索站点资源。
     """
     media_type = _parse_media_type(mtype)
     media_season = int(season) if season else None
     search_params, message = await _resolve_media_search_params(
-        mediaid=mediaid,
+        media_source=media_source,
+        media_id=media_id,
         media_type=media_type,
-        title=title,
-        year=year,
-        media_season=media_season,
         music_type=music_type,
     )
     if not search_params:
@@ -586,17 +536,16 @@ async def search_subtitle_by_title(
 
 
 async def _build_subtitle_search_source(
-    mediaid: str,
+    media_source: MediaSource,
+    media_id: str,
     mtype: Optional[str] = None,
-    title: Optional[str] = None,
-    year: Optional[str] = None,
     season: Optional[str] = None,
     episode: Optional[str] = None,
     sites: Optional[str] = None,
     stream: bool = False,
 ) -> Any:
     """
-    根据媒体ID构建字幕精确搜索调用，兼容多种媒体ID来源。
+    根据媒体来源和原生 ID 构建字幕精确搜索调用。
     """
     media_type = _parse_media_type(mtype)
     media_season = int(season) if season else None
@@ -621,37 +570,33 @@ async def _build_subtitle_search_source(
         return search_chain.async_search_subtitles_by_id(**params)
 
     search_params, message = await _resolve_media_search_params(
-        mediaid=mediaid,
+        media_source=media_source,
+        media_id=media_id,
         media_type=media_type,
-        title=title,
-        year=year,
-        media_season=media_season,
     )
     if not search_params:
         return None, message
     return call_search(**search_params), ""
 
 
-@router.get("/subtitle/media/{mediaid}/stream", summary="渐进式精确搜索字幕")
+@router.get("/subtitle/media/{media_id}/stream", summary="渐进式精确搜索字幕")
 async def search_subtitle_by_id_stream(
     request: Request,
-    mediaid: str,
+    media_id: str,
+    media_source: MediaSource,
     mtype: Optional[str] = None,
-    title: Optional[str] = None,
-    year: Optional[str] = None,
     season: Optional[str] = None,
     episode: Optional[str] = None,
     sites: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
-    根据带来源前缀的媒体 ID 渐进式精确搜索站点字幕资源，返回格式为SSE。
+    根据媒体来源和原生 ID 渐进式精确搜索站点字幕资源，返回格式为 SSE。
     """
     subtitles, message = await _build_subtitle_search_source(
-        mediaid=mediaid,
+        media_source=media_source,
+        media_id=media_id,
         mtype=mtype,
-        title=title,
-        year=year,
         season=season,
         episode=episode,
         sites=sites,
@@ -678,25 +623,23 @@ async def search_subtitle_by_id_stream(
     )
 
 
-@router.get("/subtitle/media/{mediaid}", summary="精确搜索字幕", response_model=schemas.Response)
+@router.get("/subtitle/media/{media_id}", summary="精确搜索字幕", response_model=schemas.Response)
 async def search_subtitle_by_id(
-    mediaid: str,
+    media_id: str,
+    media_source: MediaSource,
     mtype: Optional[str] = None,
-    title: Optional[str] = None,
-    year: Optional[str] = None,
     season: Optional[str] = None,
     episode: Optional[str] = None,
     sites: Optional[str] = None,
     _: schemas.TokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据带来源前缀的媒体 ID 精确搜索站点字幕资源。
+    根据媒体来源和原生 ID 精确搜索站点字幕资源。
     """
     subtitles, message = await _build_subtitle_search_source(
-        mediaid=mediaid,
+        media_source=media_source,
+        media_id=media_id,
         mtype=mtype,
-        title=title,
-        year=year,
         season=season,
         episode=episode,
         sites=sites,

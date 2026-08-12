@@ -44,14 +44,14 @@ def test_select_candidate_matches_traditional_chinese_title():
     meta = MetaMusic(title="永遠是朋友", artists=["毛阿敏"])
     candidates = [
         MusicInfo(
-            source="musicbrainz",
+            media_source="musicbrainz",
             media_id="recording-1",
             title="永远是朋友",
             artists=["毛阿敏"],
         ),
     ]
 
-    selected = MusicBrainzModule._select_candidate(meta, candidates, source="musicbrainz")
+    selected = MusicBrainzModule._select_candidate(meta, candidates, media_source="musicbrainz")
 
     assert selected is candidates[0]
 
@@ -640,14 +640,14 @@ def test_select_candidate_matches_traditional_chinese_recording():
     """条目为繁体写法时，简体资源标题仍应命中候选。"""
     meta = MetaMusic(title="芸开了", artists=["许茹芸"])
     candidate = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="recording",
         media_id="recording-1",
         title="芸開了",
         artists=["許茹芸"],
     )
 
-    matched = MusicBrainzModule._select_candidate(meta, [candidate], source="musicbrainz")
+    matched = MusicBrainzModule._select_candidate(meta, [candidate], media_source="musicbrainz")
 
     assert matched is not None
     assert matched.media_id == "recording-1"
@@ -697,7 +697,7 @@ def test_select_album_candidate_matches_lead_token_structure():
     """条目「主体名 补充说明」结构与资源主体名首段一致时应弱匹配命中。"""
     meta = MetaMusic(title="许茹芸的爱情电影主题曲", artists=["许茹芸"], year=2003)
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-1",
         title="愛情電影主題曲 雲且留住",
@@ -715,7 +715,7 @@ def test_select_album_candidate_matches_performance_suffix():
     """资源标题带演出后缀（S.H.E十七音乐会）时，条目本体一致应弱匹配命中。"""
     meta = MetaMusic(title="S.H.E十七音乐会", artists=["S.H.E"], year=2018)
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-1",
         title="十七",
@@ -733,7 +733,7 @@ def test_select_album_candidate_strips_volume_suffix():
     """系列专辑卷号后缀（Vol. 3）是发行分卷标记，本体名一致应弱匹配命中。"""
     meta = MetaMusic(title="好歌茹芸, Vol. 3", artists=["许茹芸"], year=2011)
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-1",
         title="好歌, 茹芸: Valen Hsu Greatest Hits",
@@ -751,7 +751,7 @@ def test_select_album_candidate_rejects_wrong_volume():
     """资源带卷号时其他分卷候选不能被弱匹配采信。"""
     meta = MetaMusic(title="Ibiza Lounge Moments, Vol. 1", artists=["Various Artists"], year=2022)
     wrong_volume = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-wrong",
         title="Ibiza Lounge Moments, Vol. 3",
@@ -770,7 +770,7 @@ def test_select_album_candidate_matches_contained_title():
         year=2019,
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-1",
         title="Quentin Tarantino's Once Upon a Time in Hollywood: "
@@ -820,7 +820,7 @@ def test_select_album_candidate_matches_soundtrack_body():
         year=1994,
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-1",
         title="Pulp Fiction: Music From the Motion Picture",
@@ -838,21 +838,21 @@ def test_select_candidate_rejects_wrong_artist_same_title():
     """已知艺术家时，同名异曲的候选不能因标题相等被采信。"""
     meta = MetaMusic(title="因为有你", artists=["毛阿敏"])
     wrong_artist = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="recording",
         media_id="recording-wrong",
         title="因为有你",
         artists=["张蔷"],
     )
 
-    assert MusicBrainzModule._select_candidate(meta, [wrong_artist], source="musicbrainz") is None
+    assert MusicBrainzModule._select_candidate(meta, [wrong_artist], media_source="musicbrainz") is None
 
 
 def test_select_candidate_rejects_artist_only_match():
     """CJK 逐字 OR 检索召回宽，标题未命中的候选不能仅凭艺术家署名被采信。"""
     meta = MetaMusic(title="茹此精彩十三首", artists=["许茹芸"])
     same_artist_other_song = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="recording",
         media_id="recording-wrong",
         title="半首歌",
@@ -860,14 +860,14 @@ def test_select_candidate_rejects_artist_only_match():
     )
 
     assert MusicBrainzModule._select_candidate(
-        meta, [same_artist_other_song], source="musicbrainz") is None
+        meta, [same_artist_other_song], media_source="musicbrainz") is None
 
 
 def test_select_album_candidate_requires_title_and_artist():
     """专辑候选需标题（含去括号弱匹配）与艺术家同时命中才采信。"""
     meta = MetaMusic(title="我爱夜 (新歌+精选)", artists=["许茹芸"], year=2003)
     album_hit = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-1",
         title="我爱夜",
@@ -881,7 +881,7 @@ def test_select_album_candidate_requires_title_and_artist():
     assert matched.media_id == "album-1"
 
     album_wrong_artist = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-2",
         title="我爱夜",
@@ -895,7 +895,7 @@ def test_select_album_candidate_matches_colon_subtitle():
     """条目「主标题：副标题」结构应与资源主标题弱匹配命中。"""
     meta = MetaMusic(title="天国的情人", artists=["邓丽君"])
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-colon",
         title="天國的情人：鄧麗君逝世十周年紀念聲影存集",
@@ -912,7 +912,7 @@ def test_select_album_candidate_matches_head_title():
     """条目「曲名-歌手《巡演名》」连字符前置命名应与资源曲名弱匹配命中。"""
     meta = MetaMusic(title="为你盛开", artists=["许巍"])
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         music_type="album",
         media_id="album-head",
         title="为你盛开-许巍《无尽光芒》巡回演唱会现场纪念",

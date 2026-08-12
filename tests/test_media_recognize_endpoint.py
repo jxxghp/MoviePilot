@@ -67,7 +67,7 @@ def test_recognize_musicbrainz_source_parses_music_meta() -> None:
     chain.async_recognize_by_meta = AsyncMock(return_value=None)
 
     with patch("app.api.endpoints.media.MediaChain", return_value=chain):
-        asyncio.run(recognize(title="周杰伦 - 晴天", source="musicbrainz", _=Mock()))
+        asyncio.run(recognize(title="周杰伦 - 晴天", media_source="musicbrainz", _=Mock()))
 
     metainfo = chain.async_recognize_by_meta.await_args.args[0]
     assert isinstance(metainfo, MetaMusic)

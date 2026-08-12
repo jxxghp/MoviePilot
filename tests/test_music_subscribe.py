@@ -20,7 +20,7 @@ from app.schemas.types import MediaType
 def _music_info() -> MusicInfo:
     """构造音乐订阅测试使用的标准目标。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -321,7 +321,7 @@ def test_album_best_version_requires_confirmed_full_coverage():
         current_priority=90,
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -543,7 +543,7 @@ def test_legacy_music_subscription_rejects_artist_recognition_result():
     """旧订阅缺少实体类型时不得把艺术家识别结果迁移成可下载订阅。"""
     subscribe = _subscribe(music_type=None)
     artist = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="artist-1",
         music_type=MUSIC_ENTITY_ARTIST,
         title="周杰伦",
@@ -567,7 +567,7 @@ def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it(
         media_id="release-group-1",
     )
     remote = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -618,7 +618,7 @@ def test_music_subscribe_target_validation_enforces_entity_semantics():
     recording = _music_info()
     recording.total_tracks = 11
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -662,7 +662,7 @@ def test_album_target_sync_does_not_clear_stable_track_count():
         total_tracks=11,
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -686,7 +686,7 @@ def test_prepare_music_subscription_rejects_album_without_track_count():
         total_tracks=None,
     )
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-unknown",
         music_type=MUSIC_ENTITY_ALBUM,
         title="未知专辑",

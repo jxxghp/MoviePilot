@@ -27,12 +27,6 @@ class DownloadHistory(Base):
     title = Column(String, nullable=False)
     # 年份
     year = Column(String)
-    tmdbid = Column(Integer, index=True)
-    imdbid = Column(String)
-    tvdbid = Column(Integer)
-    doubanid = Column(String)
-    bangumiid = Column(Integer, index=True)
-    anilistid = Column(Integer, index=True)
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
@@ -124,32 +118,21 @@ class DownloadHistory(Base):
 
     @classmethod
     @db_query
-    def get_by_mediaid(
-            cls, db: Session, tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None,
+    def get_by_media_identity(
+            cls, db: Session, media_source: str, media_id: str,
             music_type: Optional[str] = None,
     ):
-        """按统一媒体身份或兼容 ID 查询下载历史。"""
+        """按规范媒体身份查询下载历史。"""
+        if not media_source or media_id is None or not str(media_id).strip():
+            return []
         query = db.query(DownloadHistory)
-        if media_source and media_id:
-            query = query.filter(
-                DownloadHistory.media_source == media_source,
-                DownloadHistory.media_id == str(media_id),
-            )
-            if music_type:
-                query = query.filter(DownloadHistory.music_type == music_type)
-            return query.all()
-        if tmdbid is not None:
-            return query.filter(DownloadHistory.tmdbid == tmdbid).all()
-        if doubanid:
-            return query.filter(DownloadHistory.doubanid == doubanid).all()
-        if bangumiid is not None:
-            return query.filter(DownloadHistory.bangumiid == bangumiid).all()
-        if anilistid is not None:
-            return query.filter(DownloadHistory.anilistid == anilistid).all()
-        return []
+        query = query.filter(
+            DownloadHistory.media_source == str(media_source),
+            DownloadHistory.media_id == str(media_id).strip(),
+        )
+        if music_type:
+            query = query.filter(DownloadHistory.music_type == music_type)
+        return query.all()
 
     @classmethod
     @db_query
@@ -222,20 +205,20 @@ class DownloadHistory(Base):
         year: Optional[str] = None,
         season: Optional[str] = None,
         episode: Optional[str] = None,
-        tmdbid: Optional[int] = None,
+        media_source: Optional[str] = None,
+        media_id: Optional[str] = None,
     ):
         """
-        据tmdbid、season、season_episode查询下载记录
-        tmdbid + mtype 或 title + year
+        按媒体身份、季集或标题年份查询下载记录。
         """
-        # TMDBID + 类型
-        if tmdbid and mtype:
+        if media_source and media_id and mtype:
             # 电视剧某季某集
             if season is not None and episode:
                 return (
                     db.query(DownloadHistory)
                     .filter(
-                        DownloadHistory.tmdbid == tmdbid,
+                        DownloadHistory.media_source == str(media_source),
+                        DownloadHistory.media_id == str(media_id),
                         DownloadHistory.type == mtype,
                         DownloadHistory.seasons == season,
                         DownloadHistory.episodes == episode,
@@ -248,7 +231,8 @@ class DownloadHistory(Base):
                 return (
                     db.query(DownloadHistory)
                     .filter(
-                        DownloadHistory.tmdbid == tmdbid,
+                        DownloadHistory.media_source == str(media_source),
+                        DownloadHistory.media_id == str(media_id),
                         DownloadHistory.type == mtype,
                         DownloadHistory.seasons == season,
                     )
@@ -260,7 +244,9 @@ class DownloadHistory(Base):
                 return (
                     db.query(DownloadHistory)
                     .filter(
-                        DownloadHistory.tmdbid == tmdbid, DownloadHistory.type == mtype
+                        DownloadHistory.media_source == str(media_source),
+                        DownloadHistory.media_id == str(media_id),
+                        DownloadHistory.type == mtype,
                     )
                     .order_by(DownloadHistory.id.desc())
                     .all()
@@ -335,7 +321,8 @@ class DownloadHistory(Base):
         db: Session,
         date: str,
         type: str,
-        tmdbid: str,
+        media_source: str,
+        media_id: str,
         seasons: Optional[str] = None,
     ):
         """
@@ -347,7 +334,8 @@ class DownloadHistory(Base):
                 .filter(
                     DownloadHistory.date > date,
                     DownloadHistory.type == type,
-                    DownloadHistory.tmdbid == tmdbid,
+                    DownloadHistory.media_source == str(media_source),
+                    DownloadHistory.media_id == str(media_id),
                     DownloadHistory.seasons == seasons,
                 )
                 .order_by(DownloadHistory.id.desc())
@@ -359,7 +347,8 @@ class DownloadHistory(Base):
                 .filter(
                     DownloadHistory.date > date,
                     DownloadHistory.type == type,
-                    DownloadHistory.tmdbid == tmdbid,
+                    DownloadHistory.media_source == str(media_source),
+                    DownloadHistory.media_id == str(media_id),
                 )
                 .order_by(DownloadHistory.id.desc())
                 .all()

@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from app.schemas.types import MusicTargetEntityType
+from app.schemas.types import MediaSource, MusicTargetEntityType
 
 from app.schemas.context import MetaInfo, MediaInfo
 from app.schemas.music import MusicInfo, MusicMeta
@@ -65,7 +65,8 @@ class TransferTask(BaseModel):
     fileitem: FileItem
     meta: Optional[Any] = None
     mediainfo: Optional[Any] = None
-    media_source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
     mtype: Optional[MediaType] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
@@ -199,9 +200,7 @@ class EpisodeFormatRecommendItem(BaseModel):
 
 
 class ManualTransferItem(BaseModel):
-    """
-    手动整理请求，兼容历史数据源ID字段并支持统一来源与原生ID
-    """
+    """手动整理请求，媒体身份只接受来源枚举与原生 ID。"""
 
     # 文件项
     fileitem: FileItem = None
@@ -215,16 +214,8 @@ class ManualTransferItem(BaseModel):
     target_storage: Optional[str] = None
     # 目标路径
     target_path: Optional[str] = None
-    # TMDB ID
-    tmdbid: Optional[int] = None
-    # 豆瓣ID
-    doubanid: Optional[str] = None
-    # Bangumi ID
-    bangumiid: Optional[int] = None
-    # AniList ID
-    anilistid: Optional[int] = None
     # 媒体数据源
-    media_source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     # 数据源原生ID
     media_id: Optional[str] = None
     # 音乐实体类型

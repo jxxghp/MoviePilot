@@ -23,6 +23,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaRecognizeType,
+    MediaSource,
     MediaType,
     ModuleType,
 )
@@ -34,7 +35,7 @@ from app.utils.zhconv import convert as zhconv_convert
 class MusicBrainzModule(_ModuleBase):
     """通过 MusicBrainz 提供音乐元数据搜索和详情识别。"""
 
-    _source = "musicbrainz"
+    _source = MediaSource.MusicBrainz
     _base_url = "https://musicbrainz.org/ws/2"
     _detail_url = "https://musicbrainz.org/recording"
     _album_detail_url = "https://musicbrainz.org/release-group"
@@ -145,10 +146,10 @@ class MusicBrainzModule(_ModuleBase):
             self,
             meta: MetaMusic,
             limit: int = 20,
-            source: Optional[str] = None,
+            media_source: Optional[str] = None,
     ) -> Optional[list[MusicInfo]]:
         """搜索单曲、专辑和艺术家，并交错返回可浏览的 MusicBrainz 候选。"""
-        if not is_media_source_selected(source, self._source):
+        if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
         recordings = self._search_recordings(meta, limit=normalized_limit)
@@ -720,7 +721,7 @@ class MusicBrainzModule(_ModuleBase):
         group_id = release_group.get("id")
         artists, artist_ids = cls._artist_credits(detail.get("artist-credit"))
         album = MusicAlbumInfo(
-            source=cls._source,
+            media_source=cls._source,
             # 优先使用 Release Group ID，与专辑详情和封面入口保持一致
             media_id=str(group_id or release_id),
             title=str(title),
@@ -746,31 +747,31 @@ class MusicBrainzModule(_ModuleBase):
             self,
             meta: MetaBase = None,
             mtype: MediaType = None,
-            source: Optional[str] = None,
-            mediaid: Optional[str] = None,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
         """跟随统一媒体识别分发，仅在音乐类型请求下返回 MusicBrainz 识别结果。"""
         music_type = kwargs.get("music_type")
         # 显式选择其它音乐源时必须让出识别管线，且不能复用 MusicBrainz 缓存。
-        if source and source != self._source:
+        if media_source and media_source != self._source:
             return None
         # 非音乐请求交给影视识别模块，不占用识别管线
-        if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and source != self._source:
+        if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and media_source != self._source:
             return None
         # 无 MetaMusic 元数据时仅响应本数据源的详情识别请求
         if not isinstance(meta, MetaMusic):
-            if source == self._source and mediaid:
+            if media_source == self._source and media_id:
                 detail_kwargs = (
                     {"music_type": music_type} if music_type is not None else {}
                 )
                 return self.recognize_music(
-                    source, str(mediaid), **detail_kwargs
+                    media_source, str(media_id), **detail_kwargs
                 )
             return None
         # 显式身份只允许按该 ID 和实体类型读取，失败后不能按标题替换成其它目标。
-        resolved_source = source or meta.media_source
-        resolved_media_id = mediaid or meta.media_id
+        resolved_source = media_source or meta.media_source
+        resolved_media_id = media_id or meta.media_id
         if resolved_source and resolved_media_id:
             detail_kwargs = (
                 {"music_type": music_type} if music_type is not None else {}
@@ -801,7 +802,7 @@ class MusicBrainzModule(_ModuleBase):
         # 无身份时按标题搜索并挑选可信候选，检索不到时返回元数据兑底
         # 文件识别只能从 Recording 中挑选，专辑或艺术家同名结果不能成为音轨身份。
         candidates = self._search_recordings(meta, limit=10)
-        matched = self._select_candidate(meta, candidates, source=resolved_source or self._source)
+        matched = self._select_candidate(meta, candidates, media_source=resolved_source or self._source)
         # 整专/单曲发行类资源在 Recording 检索无果时，回退按专辑实体识别；
         # 专辑挑选要求标题与艺术家同时命中，无艺术家线索时回退检索必然无果，
         # 直接跳过避免浪费限流配额（批量识别场景可减少约半数请求）
@@ -828,7 +829,7 @@ class MusicBrainzModule(_ModuleBase):
             return None
         if not isinstance(meta, MetaMusic) or not isinstance(mediainfo, MusicInfo):
             return None
-        if mediainfo.source != self._source:
+        if mediainfo.media_source != self._source:
             return None
         self._update_recognize_cache(meta, mediainfo)
         return True
@@ -845,26 +846,26 @@ class MusicBrainzModule(_ModuleBase):
             self,
             meta: MetaBase = None,
             mtype: MediaType = None,
-            source: Optional[str] = None,
-            mediaid: Optional[str] = None,
+            media_source: Optional[str] = None,
+            media_id: Optional[str] = None,
             **kwargs,
     ) -> Optional[MusicInfo]:
         """异步识别 MusicBrainz 音乐详情或按元数据匹配单曲。"""
         music_type = kwargs.get("music_type")
-        if source and source != self._source:
+        if media_source and media_source != self._source:
             return None
-        if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and source != self._source:
+        if not isinstance(meta, MetaMusic) and mtype != MediaType.MUSIC and media_source != self._source:
             return None
         if not isinstance(meta, MetaMusic):
-            if source == self._source and mediaid:
+            if media_source == self._source and media_id:
                 return await self.async_recognize_music(
-                    source,
-                    str(mediaid),
+                    media_source,
+                    str(media_id),
                     music_type=music_type,
                 )
             return None
-        resolved_source = source or meta.media_source
-        resolved_media_id = mediaid or meta.media_id
+        resolved_source = media_source or meta.media_source
+        resolved_media_id = media_id or meta.media_id
         if resolved_source and resolved_media_id:
             info = await self.async_recognize_music(
                 resolved_source,
@@ -891,7 +892,7 @@ class MusicBrainzModule(_ModuleBase):
         matched = self._select_candidate(
             meta,
             candidates,
-            source=resolved_source or self._source,
+            media_source=resolved_source or self._source,
         )
         if not matched and meta.artists and music_type != MUSIC_ENTITY_RECORDING:
             albums = await self._async_search_albums(meta, limit=10)
@@ -901,9 +902,9 @@ class MusicBrainzModule(_ModuleBase):
         return result
 
     @classmethod
-    def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], source: str) -> Optional[MusicInfo]:
+    def _select_candidate(cls, meta: MetaMusic, candidates: Iterable[MusicInfo], media_source: str) -> Optional[MusicInfo]:
         """按标题、艺术家和专辑匹配度选择最可信的搜索候选。"""
-        normalized_source = cls._normalize_text(source).casefold()
+        normalized_source = cls._normalize_text(media_source).casefold()
         # 资源标题携带的音质标记先剥离，再与候选曲名比对；
         # 曲名开头的艺术家署名前缀是命名习惯，用主体名比对
         clean_title = cls._strip_artist_prefix(cls._search_title(meta.title), meta.artists)
@@ -913,7 +914,7 @@ class MusicBrainzModule(_ModuleBase):
         bare_title = cls._strip_volume_suffix(cls._strip_parenthetical(clean_title))
         ranked: list[tuple[int, MusicInfo]] = []
         for candidate in candidates:
-            if normalized_source and (candidate.source or "").casefold() != normalized_source:
+            if normalized_source and str(candidate.media_source or "").casefold() != normalized_source:
                 continue
             score = 0
             title_match = False
@@ -1143,12 +1144,12 @@ class MusicBrainzModule(_ModuleBase):
 
     def recognize_music(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """按 MusicBrainz 标准 ID 和实体类型获取详情；空类型保留旧版探测顺序。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         if music_type != MUSIC_ENTITY_ALBUM:
             payload = self._request_json(
@@ -1163,17 +1164,17 @@ class MusicBrainzModule(_ModuleBase):
             if music_type == MUSIC_ENTITY_RECORDING:
                 return None
         # MusicBrainz 各实体共用 UUID 形式，统一详情入口在 Recording 未命中后继续探测专辑。
-        album = self.music_album(source, media_id)
+        album = self.music_album(media_source, media_id)
         return album.to_music_info() if album else None
 
     async def async_recognize_music(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步按 MusicBrainz 标准 ID 和实体类型获取详情。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         if music_type != MUSIC_ENTITY_ALBUM:
             payload = await self._async_request_json(
@@ -1187,16 +1188,16 @@ class MusicBrainzModule(_ModuleBase):
                 return self._recording_to_info(payload)
             if music_type == MUSIC_ENTITY_RECORDING:
                 return None
-        album = await self._async_music_album(source, media_id)
+        album = await self._async_music_album(media_source, media_id)
         return album.to_music_info() if album else None
 
     async def _async_music_album(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
     ) -> Optional[MusicAlbumInfo]:
         """异步按 MusicBrainz Release Group ID 获取专辑详情及曲目。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = await self._async_request_json(
             f"/release-group/{media_id}",
@@ -1217,9 +1218,9 @@ class MusicBrainzModule(_ModuleBase):
         )
         return album
 
-    def music_album(self, source: str, media_id: str) -> Optional[MusicAlbumInfo]:
+    def music_album(self, media_source: str, media_id: str) -> Optional[MusicAlbumInfo]:
         """按 MusicBrainz Release Group ID 获取标准化专辑详情及曲目。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = self._request_json(
             f"/release-group/{media_id}",
@@ -1237,9 +1238,9 @@ class MusicBrainzModule(_ModuleBase):
         album.tracks = self._album_tracks(album, payload.get("releases") or [])
         return album
 
-    def music_artist(self, source: str, media_id: str) -> Optional[MusicArtistInfo]:
+    def music_artist(self, media_source: str, media_id: str) -> Optional[MusicArtistInfo]:
         """按 MusicBrainz Artist ID 获取标准化艺术家详情。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return None
         payload = self._request_json(
             f"/artist/{media_id}",
@@ -1249,14 +1250,14 @@ class MusicBrainzModule(_ModuleBase):
 
     def music_artist_albums(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             page: int = 1,
             count: int = 30,
             album_type: Optional[str] = None,
     ) -> list[MusicInfo]:
         """按 MusicBrainz Artist ID 分页浏览该艺术家的专辑、EP 和单曲。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return []
         limit = max(1, min(count, 100))
         params: dict[str, Any] = {
@@ -1280,12 +1281,12 @@ class MusicBrainzModule(_ModuleBase):
 
     def music_artist_related(
             self,
-            source: str,
+            media_source: str,
             media_id: str,
             count: int = 24,
     ) -> list[MusicArtistInfo]:
         """按 MusicBrainz 艺术家关系返回可继续浏览的关联艺术家。"""
-        if source != self._source or not media_id:
+        if media_source != self._source or not media_id:
             return []
         payload = self._request_json(
             f"/artist/{media_id}",
@@ -1374,7 +1375,7 @@ class MusicBrainzModule(_ModuleBase):
         category_parts = [release_group.get("primary-type")]
         category_parts.extend(release_group.get("secondary-types") or [])
         return MusicInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             title=str(title),
             artists=artists,
@@ -1406,7 +1407,7 @@ class MusicBrainzModule(_ModuleBase):
         artists, artist_ids = cls._artist_credits(release_group.get("artist-credit"))
         rating = release_group.get("rating") or {}
         return MusicAlbumInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             title=str(title),
             artists=artists,
@@ -1549,7 +1550,7 @@ class MusicBrainzModule(_ModuleBase):
             track.get("artist-credit") or recording.get("artist-credit")
         )
         return MusicInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             title=str(title),
             artists=artists or list(album.artists),
@@ -1636,7 +1637,7 @@ class MusicBrainzModule(_ModuleBase):
         begin_area = artist.get("begin-area") or {}
         relations = artist.get("relations") or []
         return MusicArtistInfo(
-            source=cls._source,
+            media_source=cls._source,
             media_id=str(media_id),
             name=str(name),
             sort_name=artist.get("sort-name") or None,

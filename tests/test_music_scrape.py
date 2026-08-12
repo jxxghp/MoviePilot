@@ -17,7 +17,7 @@ def _media_chain() -> MediaChain:
 def _album_info() -> MusicInfo:
     """构造专辑批量刮削使用的标准目标。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -140,7 +140,7 @@ def test_generic_scrape_dispatches_music_without_entering_video_handlers() -> No
     chain = _media_chain()
     chain.scrape_music_metadata = Mock(return_value=(True, "已刮削 1 个音频文件"))
     music = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -176,7 +176,7 @@ def test_default_scraping_config_enables_missing_only_music_lyrics() -> None:
 def test_album_track_match_uses_disc_track_title_and_duration() -> None:
     """整张专辑刮削时应把本地音轨绑定到对应 Recording，不能复用专辑级身份。"""
     album = MusicAlbumInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="album-1",
         title="叶惠美",
         tracks=[
@@ -347,7 +347,7 @@ def test_music_scrape_event_preserves_independent_policy_overwrite() -> None:
     chain.scrape_music_metadata = Mock(return_value=(True, "done"))
     fileitem = FileItem(storage="local", path="/music/叶惠美", type="dir")
     mediainfo = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="album-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -390,8 +390,8 @@ def test_music_scrape_event_uses_only_batch_files_and_per_track_contexts() -> No
     ]
     chain.storagechain.get_file_item.side_effect = audio_files
     recordings = [
-        MusicInfo(source="musicbrainz", media_id="recording-1", title="以父之名"),
-        MusicInfo(source="musicbrainz", media_id="recording-3", title="晴天"),
+        MusicInfo(media_source="musicbrainz", media_id="recording-1", title="以父之名"),
+        MusicInfo(media_source="musicbrainz", media_id="recording-3", title="晴天"),
     ]
 
     chain.scrape_metadata_event(Event(
@@ -434,8 +434,8 @@ def test_music_scrape_batch_applies_each_recording_to_its_own_file() -> None:
         FileItem(storage="local", path="/music/02.flac", type="file", name="02.flac"),
     ]
     recordings = [
-        MusicInfo(source="musicbrainz", media_id="recording-1", title="Track 1"),
-        MusicInfo(source="musicbrainz", media_id="recording-2", title="Track 2"),
+        MusicInfo(media_source="musicbrainz", media_id="recording-1", title="Track 1"),
+        MusicInfo(media_source="musicbrainz", media_id="recording-2", title="Track 2"),
     ]
 
     success, message = chain.scrape_music_metadata(

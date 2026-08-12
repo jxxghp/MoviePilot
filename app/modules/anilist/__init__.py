@@ -8,7 +8,7 @@ from app.helper.scraper import MediaScraperHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
-from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
+from app.schemas.types import MediaRecognizeType, MediaSource, MediaType, ModuleType
 from app.utils.media import is_media_source_enabled
 
 
@@ -61,14 +61,14 @@ class AniListModule(_ModuleBase):
         return 4
 
     @staticmethod
-    def _source_enabled(source: Optional[str]) -> bool:
+    def _source_enabled(media_source: Optional[MediaSource]) -> bool:
         """
         判断本次识别是否指定 AniList。
 
-        :param source: 请求级识别数据源
+        :param media_source: 请求级识别数据源
         :return: 是否启用 AniList 识别
         """
-        return (source or settings.RECOGNIZE_SOURCE) == "anilist"
+        return (media_source or settings.RECOGNIZE_SOURCE) == MediaSource.AniList
 
     @staticmethod
     def _media_type(info: dict) -> MediaType:
@@ -217,16 +217,16 @@ class AniListModule(_ModuleBase):
     def recognize_media(
         self,
         meta: MetaBase = None,
-        anilistid: Optional[int] = None,
-        source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         **kwargs,
     ) -> Optional[MediaInfo]:
         """
         按 AniList ID 或标题识别动画媒体信息。
 
         :param meta: 标题解析元数据
-        :param anilistid: AniList 媒体 ID
-        :param source: 请求级识别数据源
+        :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生ID
         :return: 统一媒体信息
         """
         # AniList 只处理动画影视，不能在音乐模块未响应时接管音乐请求。
@@ -235,7 +235,14 @@ class AniListModule(_ModuleBase):
                 or getattr(meta, "type", None) == MediaType.MUSIC
         ):
             return None
-        if not anilistid and (not meta or not self._source_enabled(source)):
+        if media_source and media_source != MediaSource.AniList:
+            return None
+        if media_id is not None and (
+                media_source != MediaSource.AniList or not str(media_id).isdigit()
+        ):
+            return None
+        anilistid = int(media_id) if media_id is not None else None
+        if not anilistid and (not meta or not self._source_enabled(media_source)):
             return None
         info = self.anilist_api.detail(anilistid) if anilistid else self._match_by_meta(meta)
         if not info:
@@ -252,16 +259,16 @@ class AniListModule(_ModuleBase):
     async def async_recognize_media(
         self,
         meta: MetaBase = None,
-        anilistid: Optional[int] = None,
-        source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         **kwargs,
     ) -> Optional[MediaInfo]:
         """
         异步按 AniList ID 或标题识别动画媒体信息。
 
         :param meta: 标题解析元数据
-        :param anilistid: AniList 媒体 ID
-        :param source: 请求级识别数据源
+        :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生ID
         :return: 统一媒体信息
         """
         # 与同步入口保持同一类型边界，音乐请求不得进入 AniList。
@@ -270,7 +277,14 @@ class AniListModule(_ModuleBase):
                 or getattr(meta, "type", None) == MediaType.MUSIC
         ):
             return None
-        if not anilistid and (not meta or not self._source_enabled(source)):
+        if media_source and media_source != MediaSource.AniList:
+            return None
+        if media_id is not None and (
+                media_source != MediaSource.AniList or not str(media_id).isdigit()
+        ):
+            return None
+        anilistid = int(media_id) if media_id is not None else None
+        if not anilistid and (not meta or not self._source_enabled(media_source)):
             return None
         info = (
             await self.anilist_api.async_detail(anilistid)
@@ -313,16 +327,16 @@ class AniListModule(_ModuleBase):
         return None
 
     def search_medias(
-        self, meta: MetaBase, source: Optional[str] = None
+        self, meta: MetaBase, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索 AniList 动画媒体信息。
 
         :param meta: 标题解析元数据
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 统一媒体信息列表
         """
-        if not is_media_source_enabled(source, "anilist"):
+        if not is_media_source_enabled(media_source, "anilist"):
             return None
         if not meta or not meta.name:
             return []
@@ -333,16 +347,16 @@ class AniListModule(_ModuleBase):
         ]
 
     async def async_search_medias(
-        self, meta: MetaBase, source: Optional[str] = None
+        self, meta: MetaBase, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         异步搜索 AniList 动画媒体信息。
 
         :param meta: 标题解析元数据
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 统一媒体信息列表
         """
-        if not is_media_source_enabled(source, "anilist"):
+        if not is_media_source_enabled(media_source, "anilist"):
             return None
         if not meta or not meta.name:
             return []

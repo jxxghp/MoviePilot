@@ -7,9 +7,10 @@ from requests import Response
 
 from app import schemas
 from app.core.config import settings
-from app.helper.mediaserver import MusicMediaServerHelper
+from app.helper.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.log import logger
 from app.schemas import MediaType
+from app.schemas.types import MediaSource
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
 from app.schemas import MediaServerItem
@@ -437,12 +438,14 @@ class Jellyfin:
     def get_movies(self,
                    title: str,
                    year: Optional[str] = None,
-                   tmdb_id: Optional[int] = None) -> Optional[List[schemas.MediaServerItem]]:
+                   media_source: Optional[MediaSource] = None,
+                   media_id: Optional[str] = None) -> Optional[List[schemas.MediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Jellyfin中存在，存在则返回列表
         :param title: 标题
         :param year: 年份，为空则不过滤
-        :param tmdb_id: TMDB ID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :return: 含title、year属性的字典列表
         """
         if not self._host or not self._apikey or not self.user:
@@ -468,7 +471,9 @@ class Jellyfin:
                             continue
                         mediaserver_item = self.__format_item_info(item)
                         if mediaserver_item:
-                            if (not tmdb_id or mediaserver_item.tmdbid == tmdb_id) and \
+                            if MediaServerIdentityHelper.is_compatible(
+                                    mediaserver_item, media_source, media_id
+                            ) and \
                                     mediaserver_item.title == title and \
                                     (not year or str(mediaserver_item.year) == str(year)):
                                 ret_movies.append(mediaserver_item)
@@ -510,14 +515,16 @@ class Jellyfin:
                         item_id: Optional[str] = None,
                         title: Optional[str] = None,
                         year: Optional[str] = None,
-                        tmdb_id: Optional[int] = None,
+                        media_source: Optional[MediaSource] = None,
+                        media_id: Optional[str] = None,
                         season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
         根据标题和年份和季，返回Jellyfin中的剧集列表
         :param item_id: Jellyfin中的Id
         :param title: 标题
         :param year: 年份
-        :param tmdb_id: TMDBID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :param season: 季
         :return: 集号的列表
         """
@@ -531,7 +538,7 @@ class Jellyfin:
                 return None, None
             if not item_id:
                 return None, {}
-        # 验证tmdbid是否相同
+        # 校验媒体服务器返回的主身份是否与目标冲突
         item_info = self.get_iteminfo(item_id)
         if not item_info and cached_item_id and title:
             # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
@@ -544,10 +551,8 @@ class Jellyfin:
             item_info = self.get_iteminfo(item_id)
         if not item_info:
             return None, {}
-        if item_info:
-            if tmdb_id and item_info.tmdbid:
-                if str(tmdb_id) != str(item_info.tmdbid):
-                    return None, {}
+        if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
+            return None, {}
         if season is None:
             season = None
         url = f"{self._host}Shows/{item_id}/Episodes"
@@ -894,7 +899,9 @@ class Jellyfin:
                     play_count=item.get("UserData", {}).get("PlayCount"),
                     percentage=item.get("UserData", {}).get("PlayedPercentage"),
                 )
-            tmdbid = item.get("ProviderIds", {}).get("Tmdb")
+            media_source, media_id = MediaServerIdentityHelper.from_provider_ids(
+                item.get("ProviderIds")
+            )
             return schemas.MediaServerItem(
                 server="jellyfin",
                 library=item.get("ParentId"),
@@ -903,9 +910,8 @@ class Jellyfin:
                 title=item.get("Name"),
                 original_title=item.get("OriginalTitle"),
                 year=item.get("ProductionYear"),
-                tmdbid=int(tmdbid) if tmdbid else None,
-                imdbid=item.get("ProviderIds", {}).get("Imdb"),
-                tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
+                media_source=media_source,
+                media_id=media_id,
                 path=item.get("Path"),
                 note=MusicMediaServerHelper.build_note(item)
                 if item.get("Type") in {"MusicAlbum", "Audio"} else None,

@@ -13,10 +13,21 @@ from app.core.security import verify_apikey
 from app.db import get_db, get_async_db
 from app.db.models.subscribe import Subscribe
 from app.schemas import RadarrMovie, SonarrSeries
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from version import APP_VERSION
 
 arr_router = APIRouter(tags=["servarr"])
+
+
+def _subscribe_tmdb_id(subscribe: Subscribe) -> int | None:
+    """将通用订阅身份投影为 Servarr 固定使用的 TMDB ID。"""
+    if (
+        subscribe.media_source == MediaSource.TMDB.value
+        and subscribe.media_id
+        and str(subscribe.media_id).isdigit()
+    ):
+        return int(subscribe.media_id)
+    return None
 
 
 @arr_router.get("/system/status", summary="系统状态")
@@ -234,8 +245,7 @@ async def arr_movies(
                 year=subscribe.year,
                 isAvailable=True,
                 monitored=True,
-                tmdbId=subscribe.tmdbid,
-                imdbId=subscribe.imdbid,
+                tmdbId=_subscribe_tmdb_id(subscribe),
                 profileId=1,
                 qualityProfileId=1,
                 hasFile=False,
@@ -256,7 +266,11 @@ def arr_movie_lookup(
     """
     tmdbid = term.replace("tmdb:", "")
     # 查询媒体信息
-    mediainfo = MediaChain().recognize_media(mtype=MediaType.MOVIE, tmdbid=int(tmdbid))
+    mediainfo = MediaChain().recognize_media(
+        mtype=MediaType.MOVIE,
+        media_source=MediaSource.TMDB,
+        media_id=tmdbid,
+    )
     if not mediainfo:
         return [RadarrMovie()]
     # 查询是否已存在
@@ -268,7 +282,9 @@ def arr_movie_lookup(
         # 文件存在
         hasfile = True
     # 查询是否已订阅
-    subscribes = Subscribe.get_by_tmdbid(db, int(tmdbid))
+    subscribes = Subscribe.list_by_media_identity(
+        db, MediaSource.TMDB.value, tmdbid
+    )
     if subscribes:
         # 订阅ID
         subid = subscribes[0].id
@@ -315,8 +331,7 @@ async def arr_movie(
             year=subscribe.year,
             isAvailable=True,
             monitored=True,
-            tmdbId=subscribe.tmdbid,
-            imdbId=subscribe.imdbid,
+            tmdbId=_subscribe_tmdb_id(subscribe),
             profileId=1,
             qualityProfileId=1,
             hasFile=False,
@@ -335,15 +350,18 @@ async def arr_add_movie(
     新增Rardar电影订阅
     """
     # 检查订阅是否已存在
-    subscribe = await Subscribe.async_get_by_tmdbid(db, movie.tmdbId)
-    if subscribe:
-        return {"id": subscribe.id}
+    subscribes = await Subscribe.async_list_by_media_identity(
+        db, MediaSource.TMDB.value, str(movie.tmdbId)
+    )
+    if subscribes:
+        return {"id": subscribes[0].id}
     # 添加订阅
     sid, message = await SubscribeChain().async_add(
         title=movie.title,
         year=movie.year,
         mtype=MediaType.MOVIE,
-        tmdbid=movie.tmdbId,
+        media_source=MediaSource.TMDB,
+        media_id=str(movie.tmdbId),
         username="Seerr",
     )
     if sid:
@@ -501,9 +519,7 @@ async def arr_series(
                 ],
                 remotePoster=subscribe.poster,
                 year=subscribe.year,
-                tmdbId=subscribe.tmdbid,
-                tvdbId=subscribe.tvdbid,
-                imdbId=subscribe.imdbid,
+                tmdbId=_subscribe_tmdb_id(subscribe),
                 profileId=1,
                 languageProfileId=1,
                 qualityProfileId=1,
@@ -571,7 +587,9 @@ def arr_series_lookup(
 
         # 查询订阅信息
         seasons: List[dict] = []
-        subscribes = Subscribe.get_by_tmdbid(db, mediainfo.tmdb_id)
+        subscribes = Subscribe.list_by_media_identity(
+            db, MediaSource.TMDB.value, str(mediainfo.tmdb_id)
+        )
         if subscribes:
             # 已监控
             monitored = True
@@ -646,9 +664,7 @@ async def arr_serie(
             ],
             year=subscribe.year,
             remotePoster=subscribe.poster,
-            tmdbId=subscribe.tmdbid,
-            tvdbId=subscribe.tvdbid,
-            imdbId=subscribe.imdbid,
+            tmdbId=_subscribe_tmdb_id(subscribe),
             profileId=1,
             languageProfileId=1,
             qualityProfileId=1,
@@ -672,8 +688,11 @@ async def arr_add_series(
     # 检查订阅是否存在
     left_seasons = []
     for season in tv.seasons:
-        subscribe = await Subscribe.async_get_by_tmdbid(
-            db, tmdbid=tv.tmdbId, season=season.get("seasonNumber")
+        subscribe = await Subscribe.async_exists(
+            db,
+            media_source=MediaSource.TMDB.value,
+            media_id=str(tv.tmdbId),
+            season=season.get("seasonNumber"),
         )
         if subscribe:
             continue
@@ -691,7 +710,8 @@ async def arr_add_series(
             title=tv.title,
             year=tv.year,
             season=season.get("seasonNumber"),
-            tmdbid=tv.tmdbId,
+            media_source=MediaSource.TMDB,
+            media_id=str(tv.tmdbId),
             mtype=MediaType.TV,
             username="Seerr",
         )

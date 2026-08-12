@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from app.modules.zspace.zspace import ZSpace
+from app.schemas.types import MediaSource
 
 
 class _FakeResponse:
@@ -125,7 +126,11 @@ def test_get_items_expands_boxset_movies() -> None:
         items = list(client.get_items(parent="library-id"))
 
     assert [item.item_id for item in items] == ["movie-1", "movie-2"]
-    assert [item.tmdbid for item in items] == [269149, 1084242]
+    assert [item.media_source for item in items] == [
+        MediaSource.TMDB,
+        MediaSource.TMDB,
+    ]
+    assert [item.media_id for item in items] == ["269149", "1084242"]
     calls = request_utils_cls.return_value.get_res.call_args_list
     assert calls[0].kwargs["params"]["Recursive"] == "true"
     assert calls[1].kwargs["params"]["ParentId"] == "collection-1"
@@ -171,7 +176,11 @@ def test_get_items_expands_boxset_series() -> None:
         items = list(client.get_items(parent="library-id"))
 
     assert [item.item_id for item in items] == ["series-1", "series-2"]
-    assert [item.tmdbid for item in items] == [1396, 1396]
+    assert [item.media_source for item in items] == [
+        MediaSource.TMDB,
+        MediaSource.TMDB,
+    ]
+    assert [item.media_id for item in items] == ["1396", "1396"]
 
 
 def test_get_items_loads_detail_when_list_metadata_is_incomplete() -> None:
@@ -212,8 +221,8 @@ def test_get_items_loads_detail_when_list_metadata_is_incomplete() -> None:
 
     assert len(items) == 1
     assert items[0].item_id == "movie-1"
-    assert items[0].tmdbid == 269149
-    assert items[0].imdbid == "tt2948356"
+    assert items[0].media_source == MediaSource.TMDB
+    assert items[0].media_id == "269149"
     assert items[0].year == 2016
     assert items[0].path.endswith("疯狂动物城.mkv")
     assert request_utils_cls.return_value.get_res.call_args_list[1].args[0] == (

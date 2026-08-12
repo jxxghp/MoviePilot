@@ -23,7 +23,7 @@ from app.schemas.types import MediaType
 def _music_info() -> MusicInfo:
     """构造带远端身份的标准音乐信息，用于断言路由返回值。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -40,7 +40,7 @@ def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
     monkeypatch.setattr(chain, "recognize_media", Mock(return_value=expected))
 
     result = chain.recognize_by_meta(
-        meta, source="musicbrainz", mtype=MediaType.MUSIC
+        meta, media_source="musicbrainz", mtype=MediaType.MUSIC
     )
 
     # 音乐不再旁路辅助识别选择流程，原生识别带共享元数据与剧集组参数
@@ -61,7 +61,7 @@ def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypa
 
     async def runner():
         return await chain.async_recognize_by_meta(
-            meta, source="musicbrainz", mtype=MediaType.MUSIC
+            meta, media_source="musicbrainz", mtype=MediaType.MUSIC
         )
 
     result = asyncio.run(runner())
@@ -95,7 +95,7 @@ def test_media_chain_recognize_by_path_routes_musicbrainz_source_to_music_chain(
     recognize_music = Mock(return_value=(expected_meta, expected_info))
     monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_music)
 
-    context = MediaChain().recognize_by_path("/downloads/晴天", source="musicbrainz")
+    context = MediaChain().recognize_by_path("/downloads/晴天", media_source="musicbrainz")
 
     recognize_music.assert_called_once()
     assert recognize_music.call_args.kwargs["source"] == "musicbrainz"
@@ -149,7 +149,7 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
     tag_meta = MetaMusic(title="Tagged Title")
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id=recording_id,
         title="Get Lucky",
     )
@@ -187,7 +187,7 @@ def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatc
     )
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id=recording_id,
         title="Tagged Title",
     )
@@ -219,7 +219,7 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     tag_meta = MetaMusic(title="Tagged Title")
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-from-filename",
         title="Filename Title",
     )
@@ -251,7 +251,7 @@ def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkey
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     merged = MetaMusic(title="Get Lucky")
     expected = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id=recording_id,
         title="Get Lucky",
     )
@@ -304,13 +304,13 @@ def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatc
     ):
         result = chain.recognize_media(
             mtype=MediaType.MUSIC,
-            source="musicbrainz",
+            media_source="musicbrainz",
             mediaid="recording-1",
         )
 
     assert result is expected
     recognize_source.assert_called_once_with(
-        source="musicbrainz",
+        media_source="musicbrainz",
         meta=None,
         mediaid="recording-1",
         cache=True,
@@ -325,7 +325,7 @@ def test_music_chain_rejects_cross_entity_detail_result(monkeypatch):
     monkeypatch.setattr(chain, "_recognize_from_source", recognize_source)
 
     result = chain.recognize_from_source(
-        source="musicbrainz",
+        media_source="musicbrainz",
         mediaid="recording-1",
         music_type=MUSIC_ENTITY_ALBUM,
     )
@@ -342,7 +342,7 @@ def test_music_chain_rejects_replaced_explicit_identity(monkeypatch):
     monkeypatch.setattr(chain, "_recognize_from_source", Mock(return_value=replaced))
 
     result = chain.recognize_from_source(
-        source="musicbrainz",
+        media_source="musicbrainz",
         mediaid="recording-requested",
         music_type="recording",
     )
@@ -457,7 +457,7 @@ def test_musicbrainz_module_recognize_media_uses_detail_when_meta_has_identity(m
     recording_search = Mock(return_value=[])
     monkeypatch.setattr(module, "_search_recordings", recording_search)
 
-    result = module.recognize_media(meta=meta, source="musicbrainz")
+    result = module.recognize_media(meta=meta, media_source="musicbrainz")
 
     module.recognize_music.assert_called_once_with("musicbrainz", "recording-1")
     recording_search.assert_not_called()
@@ -497,7 +497,7 @@ def test_musicbrainz_module_recognize_media_by_music_type_and_media_id(monkeypat
     monkeypatch.setattr(module, "recognize_music", Mock(return_value=expected))
 
     result = module.recognize_media(
-        mtype=MediaType.MUSIC, source="musicbrainz", mediaid="recording-1"
+        mtype=MediaType.MUSIC, media_source="musicbrainz", mediaid="recording-1"
     )
 
     module.recognize_music.assert_called_once_with("musicbrainz", "recording-1")
@@ -526,7 +526,7 @@ def test_theaudiodb_module_async_recognize_media(monkeypatch):
     """异步 TheAudioDB 识别应直接调用异步检索而不进入同步入口。"""
     module = TheAudioDbModule()
     expected = MusicInfo(
-        source="theaudiodb",
+        media_source="theaudiodb",
         media_id="track-1",
         title="晴天",
     )
@@ -538,7 +538,7 @@ def test_theaudiodb_module_async_recognize_media(monkeypatch):
     result = asyncio.run(module.async_recognize_media(
         meta=MetaMusic(title="晴天"),
         mtype=MediaType.MUSIC,
-        source="theaudiodb",
+        media_source="theaudiodb",
     ))
 
     async_search.assert_awaited_once()

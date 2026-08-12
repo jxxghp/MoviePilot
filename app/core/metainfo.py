@@ -13,8 +13,9 @@ from app.core.meta.infopath import (
 )
 from app.core.meta.words import WordsMatcher
 from app.log import logger
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.utils import rust_accel
+from app.utils.media import normalize_media_source, resolve_media_identity
 
 
 _ANIME_BRACKET_RE = re.compile(r'【[+0-9XVPI-]+】\s*【', re.IGNORECASE)
@@ -27,6 +28,8 @@ _VIDEO_SEASON_EPISODE_RE = re.compile(
 _ANIME_SQUARE_BRACKET_RE = re.compile(r'\[[+0-9XVPI-]+]\s*\[', re.IGNORECASE)
 
 _BRACED_METAINFO_RE = re.compile(r'(?<={\[)[\W\w]+(?=]})')
+_BRACED_MEDIA_SOURCE_RE = re.compile(r'(?:^|;)media_source=([^;]+)(?=;|$)', re.IGNORECASE)
+_BRACED_MEDIA_ID_RE = re.compile(r'(?:^|;)media_id=([^;]+)(?=;|$)', re.IGNORECASE)
 _BRACED_TMDBID_RE = re.compile(r'(?<=tmdbid=)\d+')
 _BRACED_DOUBANID_RE = re.compile(r'(?<=doubanid=)\d+')
 _BRACED_BANGUMIID_RE = re.compile(r'(?<=bangumiid=)\d+')
@@ -61,7 +64,21 @@ _EXTENDED_MEDIA_ID_TAG_RE = re.compile(
     r'(?:bangumi(?:id)?|anilist(?:id)?)[=\-]\d+',
     re.IGNORECASE,
 )
+_GENERIC_MEDIA_ID_TAG_RE = re.compile(r'(?:^|[;\[])media_(?:source|id)=', re.IGNORECASE)
 _RUST_PARSE_OPTIONS_CACHE_KEY = "_cache_key"
+
+_LEGACY_BRACED_ID_PATTERNS = (
+    (MediaSource.TMDB, _BRACED_TMDBID_RE),
+    (MediaSource.Douban, _BRACED_DOUBANID_RE),
+    (MediaSource.Bangumi, _BRACED_BANGUMIID_RE),
+    (MediaSource.AniList, _BRACED_ANILISTID_RE),
+)
+_LEGACY_ID_KEYS = (
+    (MediaSource.TMDB, "tmdbid"),
+    (MediaSource.Douban, "doubanid"),
+    (MediaSource.Bangumi, "bangumiid"),
+    (MediaSource.AniList, "anilistid"),
+)
 
 
 def _empty_metainfo() -> dict:
@@ -69,10 +86,6 @@ def _empty_metainfo() -> dict:
     返回媒体标签的默认结构，避免不同识别请求之间共享可变状态。
     """
     return {
-        'tmdbid': None,
-        'doubanid': None,
-        'bangumiid': None,
-        'anilistid': None,
         'media_source': None,
         'media_id': None,
         'type': None,
@@ -84,6 +97,27 @@ def _empty_metainfo() -> dict:
         'end_episode': None,
         'total_episode': None,
     }
+
+
+def _normalize_metainfo_identity(metainfo: dict) -> dict:
+    """
+    将解析器输出归一为唯一媒体身份，并移除历史来源专用字段。
+
+    Rust扩展或旧缓存仍可能返回专用字段，因此兼容只保留在这一输入边界。
+    """
+    normalized = dict(metainfo or {})
+    media_source, media_id = resolve_media_identity(media=normalized)
+    if not media_source:
+        for source, key in _LEGACY_ID_KEYS:
+            value = normalized.get(key)
+            if value is not None and str(value).strip():
+                media_source, media_id = source, str(value).strip()
+                break
+    for _, key in _LEGACY_ID_KEYS:
+        normalized.pop(key, None)
+    normalized["media_source"] = media_source
+    normalized["media_id"] = media_id
+    return normalized
 
 
 def _apply_range_total(metainfo: dict, begin_key: str, end_key: str, total_key: str) -> None:
@@ -125,28 +159,27 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
     使用 Python 解析标题中的显式媒体标签，作为 Rust 入口不可用时的兜底。
     """
     metainfo = _empty_metainfo()
+    legacy_identities = {}
+    generic_identity = (None, None)
     if not title:
         return title, metainfo
-    # 从标题中提取媒体信息 格式为{[tmdbid=xxx;type=xxx;g=xxx;s=xxx;e=xxx]}
+    # 当前格式为 {[media_source=...;media_id=...]}，历史专用标签仅在此处兼容读取。
     results = _BRACED_METAINFO_RE.findall(title)
     if results:
         for result in results:
-            # 查找tmdbid信息
-            tmdbid = _BRACED_TMDBID_RE.search(result)
-            if tmdbid and tmdbid.group(0).isdigit():
-                metainfo['tmdbid'] = tmdbid.group(0)
-            # 查找豆瓣id信息
-            doubanid = _BRACED_DOUBANID_RE.search(result)
-            if doubanid and doubanid.group(0).isdigit():
-                metainfo['doubanid'] = doubanid.group(0)
-            # 查找Bangumi ID信息
-            bangumiid = _BRACED_BANGUMIID_RE.search(result)
-            if bangumiid and bangumiid.group(0).isdigit():
-                metainfo['bangumiid'] = bangumiid.group(0)
-            # 查找AniList ID信息
-            anilistid = _BRACED_ANILISTID_RE.search(result)
-            if anilistid and anilistid.group(0).isdigit():
-                metainfo['anilistid'] = anilistid.group(0)
+            source_match = _BRACED_MEDIA_SOURCE_RE.search(result)
+            media_id_match = _BRACED_MEDIA_ID_RE.search(result)
+            if source_match and media_id_match:
+                generic_identity = resolve_media_identity(
+                    media_source=source_match.group(1).strip(),
+                    media_id=media_id_match.group(1).strip(),
+                )
+            legacy_matches = []
+            for source, pattern in _LEGACY_BRACED_ID_PATTERNS:
+                legacy_match = pattern.search(result)
+                if legacy_match and legacy_match.group(0).isdigit():
+                    legacy_identities[source] = legacy_match.group(0)
+                    legacy_matches.append(legacy_match)
             # 查找媒体类型
             mtype = _BRACED_TYPE_RE.search(result)
             if mtype:
@@ -175,10 +208,9 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
                 metainfo['end_episode'] = int(end_episode.group(0))
             # 去除title中该部分
             if (
-                tmdbid
-                or doubanid
-                or bangumiid
-                or anilistid
+                source_match
+                or media_id_match
+                or legacy_matches
                 or mtype
                 or episode_group
                 or begin_season
@@ -191,46 +223,42 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
     # 支持Emby格式的ID标签；第一个 [tmdbid] 历史上始终优先处理，用于覆盖前面 {[...]} 中的旧标签。
     tmdb_match = _EMBY_TMDB_RE_LIST[0].search(title)
     if tmdb_match:
-        metainfo['tmdbid'] = tmdb_match.group(1)
+        legacy_identities[MediaSource.TMDB] = tmdb_match.group(1)
         title = _EMBY_TMDB_RE_LIST[0].sub('', title).strip()
-    elif not metainfo['tmdbid']:
+    elif MediaSource.TMDB not in legacy_identities:
         # 保持原有优先级：[tmdbid] > [tmdb] > {tmdbid} > {tmdb}
         for tmdb_re in _EMBY_TMDB_RE_LIST[1:]:
             tmdb_match = tmdb_re.search(title)
             if tmdb_match:
-                metainfo['tmdbid'] = tmdb_match.group(1)
+                legacy_identities[MediaSource.TMDB] = tmdb_match.group(1)
                 title = tmdb_re.sub('', title).strip()
                 break
 
-    for source, patterns in _EXTENDED_MEDIA_ID_RE_LIST.items():
-        key = f"{source}id"
-        if metainfo.get(key):
+    for source_name, patterns in _EXTENDED_MEDIA_ID_RE_LIST.items():
+        source = normalize_media_source(source_name)
+        if not source or source in legacy_identities:
             continue
         for media_id_re in patterns:
             media_id_match = media_id_re.search(title)
             if not media_id_match:
                 continue
-            metainfo[key] = media_id_match.group(1)
+            legacy_identities[source] = media_id_match.group(1)
             title = media_id_re.sub('', title).strip()
             break
 
-    if metainfo.get('tmdbid'):
-        metainfo['media_source'] = 'themoviedb'
-        metainfo['media_id'] = metainfo['tmdbid']
-    elif metainfo.get('doubanid'):
-        metainfo['media_source'] = 'douban'
-        metainfo['media_id'] = metainfo['doubanid']
-    elif metainfo.get('bangumiid'):
-        metainfo['media_source'] = 'bangumi'
-        metainfo['media_id'] = metainfo['bangumiid']
-    elif metainfo.get('anilistid'):
-        metainfo['media_source'] = 'anilist'
-        metainfo['media_id'] = metainfo['anilistid']
+    media_source, media_id = generic_identity
+    if not media_source:
+        for source, _ in _LEGACY_ID_KEYS:
+            if legacy_identities.get(source):
+                media_source, media_id = source, legacy_identities[source]
+                break
+    metainfo['media_source'] = media_source
+    metainfo['media_id'] = media_id
 
     # 计算季集总数
     _apply_range_total(metainfo, 'begin_season', 'end_season', 'total_season')
     _apply_range_total(metainfo, 'begin_episode', 'end_episode', 'total_episode')
-    return title, metainfo
+    return title, _normalize_metainfo_identity(metainfo)
 
 
 def _build_meta_info(
@@ -263,17 +291,10 @@ def _build_meta_info(
     # 记录使用的识别词
     meta.apply_words = apply_words or []
     # 修正媒体信息
-    if metainfo.get('tmdbid'):
-        try:
-            meta.tmdbid = int(metainfo['tmdbid'])
-        except ValueError as _:
-            logger.warn("tmdbid 必须是数字")
-    if metainfo.get('doubanid'):
-        meta.doubanid = metainfo['doubanid']
-    if metainfo.get('media_source'):
-        meta.media_source = metainfo['media_source']
-    if metainfo.get('media_id'):
-        meta.media_id = str(metainfo['media_id'])
+    media_source, media_id = resolve_media_identity(media=metainfo)
+    if media_source and media_id:
+        meta.media_source = media_source
+        meta.media_id = media_id
     if metainfo.get('type'):
         meta.type = MediaType(metainfo['type']) if isinstance(metainfo['type'], str) else metainfo['type']
     if metainfo.get('episode_group'):
@@ -355,6 +376,7 @@ def _meta_from_rust(parsed: dict) -> Optional[MetaBase]:
     """
     if not parsed:
         return None
+    parsed = _normalize_metainfo_identity(parsed)
     meta = MetaAnime("") if parsed.get("kind") == "anime" else MetaVideo("")
     type_map = {
         MediaType.MOVIE.value: MediaType.MOVIE,
@@ -389,8 +411,6 @@ def _meta_from_rust(parsed: dict) -> Optional[MetaBase]:
         "video_bit": parsed.get("video_bit"),
         "audio_encode": parsed.get("audio_encode"),
         "apply_words": parsed.get("apply_words") or [],
-        "tmdbid": parsed.get("tmdbid"),
-        "doubanid": parsed.get("doubanid"),
         "media_source": parsed.get("media_source"),
         "media_id": parsed.get("media_id"),
         "episode_group": parsed.get("episode_group"),
@@ -413,6 +433,8 @@ def _requires_python_metainfo(
     :return: 是否必须使用Python解析器
     """
     candidates = [title or "", *(custom_words or [])]
+    if any(_GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates):
+        return True
     contains_extended_id = any(
         _EXTENDED_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
     )
@@ -526,5 +548,5 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
     if not _requires_python_metainfo(title):
         rust_result = rust_accel.find_metainfo(title)
     if rust_result:
-        return rust_result["title"], rust_result["metainfo"]
+        return rust_result["title"], _normalize_metainfo_identity(rust_result["metainfo"])
     return _find_metainfo_python(title)

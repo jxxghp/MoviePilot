@@ -12,7 +12,12 @@ from app.agent.tools.tags import ToolTag
 from app.chain.mediaserver import MediaServerChain
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, media_type_to_agent
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MediaSource,
+    MediaType,
+    media_type_to_agent,
+)
 from ._music_utils import normalize_music_type
 
 
@@ -78,12 +83,8 @@ def _build_tv_server_result(existing_seasons: OrderedDict, total_seasons: Ordere
 
 class QueryLibraryExistsInput(BaseModel):
     """查询媒体库工具的输入参数模型"""
-    tmdb_id: Optional[int] = Field(None, description="TMDB media ID")
-    douban_id: Optional[str] = Field(None, description="Douban media ID")
-    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
-    anilist_id: Optional[int] = Field(None, description="AniList media ID")
-    media_source: Optional[str] = Field(None, description="Media metadata source")
-    media_id: Optional[str] = Field(None, description="Native ID for media_source")
+    media_source: MediaSource = Field(..., description="Media metadata source")
+    media_id: str = Field(..., description="Native ID for media_source")
     media_type: Optional[str] = Field(None, description="Allowed values: movie, tv, music")
     music_type: Optional[str] = Field(
         None,
@@ -110,17 +111,8 @@ class QueryLibraryExistsTool(MoviePilotTool):
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据查询参数生成友好的提示消息"""
         media_type = kwargs.get("media_type")
-        identities = (
-            ("TMDB", kwargs.get("tmdb_id")),
-            ("豆瓣", kwargs.get("douban_id")),
-            ("Bangumi", kwargs.get("bangumi_id")),
-            ("AniList", kwargs.get("anilist_id")),
-            (kwargs.get("media_source") or "媒体源", kwargs.get("media_id")),
-        )
-        label, identity = next(
-            ((label, identity) for label, identity in identities if identity is not None),
-            (None, None),
-        )
+        label = kwargs.get("media_source") or "媒体源"
+        identity = kwargs.get("media_id")
         message = f"查询媒体库: {label}={identity}" if label else "查询媒体库"
         if media_type:
             message += f" [{media_type}]"
@@ -136,16 +128,17 @@ class QueryLibraryExistsTool(MoviePilotTool):
         """同步查询单个媒体服务器的存在性信息。"""
         return MediaServerChain().media_exists(mediainfo=mediainfo, server=server)
 
-    async def run(self, tmdb_id: Optional[int] = None, douban_id: Optional[str] = None,
-                  bangumi_id: Optional[int] = None, anilist_id: Optional[int] = None,
-                  media_source: Optional[str] = None, media_id: Optional[str] = None,
+    async def run(self, media_source: MediaSource, media_id: str,
                   media_type: Optional[str] = None,
                   music_type: Optional[str] = None, **kwargs) -> str:
         """识别精确媒体身份并按服务器汇总存在性或完整性。"""
-        logger.info(f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}")
+        logger.info(
+            f"执行工具: {self.name}, 参数: media_source={media_source}, "
+            f"media_id={media_id}, media_type={media_type}"
+        )
         try:
-            if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
-                return "参数错误：至少需要提供一个媒体 ID，请先使用 search_media 工具获取媒体信息。"
+            if not str(media_id or "").strip():
+                return "参数错误：必须提供 media_id，请先使用 search_media 工具获取媒体信息。"
 
             media_type_enum = None
             if media_type:
@@ -171,17 +164,12 @@ class QueryLibraryExistsTool(MoviePilotTool):
 
             media_chain = MediaServerChain()
             mediainfo = await media_chain.async_recognize_media(
-                tmdbid=tmdb_id,
-                doubanid=douban_id,
-                bangumiid=bangumi_id,
-                anilistid=anilist_id,
-                source=media_source,
-                mediaid=media_id,
+                media_source=media_source,
+                media_id=media_id,
                 mtype=media_type_enum,
             )
             if not mediainfo:
-                identity = media_id or tmdb_id or douban_id or bangumi_id or anilist_id
-                return f"未识别到媒体信息: {identity}"
+                return f"未识别到媒体信息: {media_source}:{media_id}"
             if normalized_music_type and (
                 getattr(mediainfo, "music_type", None) != normalized_music_type
             ):
@@ -273,7 +261,7 @@ class QueryLibraryExistsTool(MoviePilotTool):
                     "artists": list(mediainfo.artists or []),
                     "album": mediainfo.album,
                     "total_tracks": mediainfo.total_tracks,
-                    "media_source": mediainfo.source,
+                    "media_source": mediainfo.media_source,
                     "media_id": mediainfo.media_id,
                 })
 

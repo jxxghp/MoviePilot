@@ -46,6 +46,28 @@ class MediaType(Enum):
         }.get(self, self.value)
 
 
+class MediaSource(str, Enum):
+    """媒体主身份的数据来源。"""
+
+    TMDB = "themoviedb"
+    Douban = "douban"
+    Bangumi = "bangumi"
+    AniList = "anilist"
+    IMDb = "imdb"
+    TVDB = "tvdb"
+    MusicBrainz = "musicbrainz"
+    TheAudioDB = "theaudiodb"
+    DoubanMusic = "doubanmusic"
+    Bilibili = "bilibili"
+    MangoTV = "mangguodiscover"
+    MiguVideo = "migu"
+    TencentVideo = "tencentvideodiscover"
+
+    def __str__(self) -> str:
+        """返回可直接用于 API 和数据库的规范值。"""
+        return self.value
+
+
 def media_type_to_agent(value) -> Optional[str]:
     """将枚举、Agent 键或数据库枚举值统一转换为 Agent 媒体类型。"""
     if isinstance(value, MediaType):

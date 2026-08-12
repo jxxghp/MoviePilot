@@ -9,7 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.log import logger
 from app.schemas import FileItem, MediaType
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource
 from ._music_utils import normalize_music_type
 
 
@@ -37,16 +37,7 @@ class TransferFileInput(BaseModel):
         None,
         description="For music: recording for one audio file or album for one album directory. Artists cannot be transferred",
     )
-    tmdbid: Optional[int] = Field(
-        None,
-        description="TMDB ID for precise media identification (optional but recommended for accuracy)",
-    )
-    doubanid: Optional[str] = Field(
-        None, description="Douban ID for media identification (optional)"
-    )
-    bangumiid: Optional[int] = Field(None, description="Bangumi media ID")
-    anilistid: Optional[int] = Field(None, description="AniList media ID")
-    media_source: Optional[str] = Field(
+    media_source: Optional[MediaSource] = Field(
         None,
         description="Media metadata source; for music use the MusicBrainz recording or album source from search_media",
     )
@@ -137,11 +128,7 @@ class TransferFileTool(MoviePilotTool):
         target_storage: Optional[str] = None,
         media_type: Optional[str] = None,
         music_type: Optional[str] = None,
-        tmdbid: Optional[int] = None,
-        doubanid: Optional[str] = None,
-        bangumiid: Optional[int] = None,
-        anilistid: Optional[int] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         season: Optional[int] = None,
         transfer_type: Optional[str] = None,
@@ -213,10 +200,6 @@ class TransferFileTool(MoviePilotTool):
             fileitem=fileitem,
             target_storage=target_storage,
             target_path=target_path_obj,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
             media_source=media_source,
             media_id=media_id,
             mtype=media_type_enum,
@@ -248,11 +231,7 @@ class TransferFileTool(MoviePilotTool):
         target_storage: Optional[str] = None,
         media_type: Optional[str] = None,
         music_type: Optional[str] = None,
-        tmdbid: Optional[int] = None,
-        doubanid: Optional[str] = None,
-        bangumiid: Optional[int] = None,
-        anilistid: Optional[int] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         season: Optional[int] = None,
         transfer_type: Optional[str] = None,
@@ -263,7 +242,7 @@ class TransferFileTool(MoviePilotTool):
         logger.info(
             f"执行工具: {self.name}, 参数: file_path={file_path}, storage={storage}, target_path={target_path}, "
             f"target_storage={target_storage}, media_type={media_type}, music_type={music_type}, "
-            f"tmdbid={tmdbid}, doubanid={doubanid}, "
+            f"media_source={media_source}, media_id={media_id}, "
             f"season={season}, transfer_type={transfer_type}, background={background}"
         )
 
@@ -277,10 +256,6 @@ class TransferFileTool(MoviePilotTool):
                 target_storage,
                 media_type,
                 music_type,
-                tmdbid,
-                doubanid,
-                bangumiid,
-                anilistid,
                 media_source,
                 media_id,
                 season,

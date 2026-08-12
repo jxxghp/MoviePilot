@@ -238,12 +238,7 @@ class RecognizeMediaTool(MoviePilotTool):
                     "year": media_info.get("year"),
                     "type": media_type_to_agent(media_info.get("type")),
                     "season": media_info.get("season"),
-                    "tmdb_id": media_info.get("tmdb_id"),
-                    "imdb_id": media_info.get("imdb_id"),
-                    "douban_id": media_info.get("douban_id"),
-                    "bangumi_id": media_info.get("bangumi_id"),
-                    "anilist_id": media_info.get("anilist_id"),
-                    "media_source": media_info.get("source"),
+                    "media_source": media_info.get("media_source"),
                     "media_id": media_info.get("media_id"),
                     "overview": media_info.get("overview"),
                     "vote_average": media_info.get("vote_average"),
@@ -251,7 +246,6 @@ class RecognizeMediaTool(MoviePilotTool):
                     "backdrop_path": media_info.get("backdrop_path"),
                     "detail_link": media_info.get("detail_link"),
                     "title_year": media_info.get("title_year"),
-                    "source": media_info.get("source")
                 }
         
         # 处理元数据信息
@@ -281,10 +275,6 @@ class RecognizeMediaTool(MoviePilotTool):
                     "part": meta_info.get("part"),
                     "season_episode": meta_info.get("season_episode"),
                     "episode_list": meta_info.get("episode_list"),
-                    "tmdbid": meta_info.get("tmdbid"),
-                    "doubanid": meta_info.get("doubanid"),
-                    "bangumiid": meta_info.get("bangumiid"),
-                    "anilistid": meta_info.get("anilistid"),
                     "media_source": meta_info.get("media_source"),
                     "media_id": meta_info.get("media_id"),
                 }

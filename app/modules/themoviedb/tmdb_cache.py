@@ -8,7 +8,7 @@ from app.core.cache import FileCache, TTLCache
 from app.core.config import settings
 from app.core.meta import MetaBase
 from app.log import logger
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.utils.singleton import WeakSingleton
 
 lock = RLock()
@@ -141,7 +141,8 @@ class TmdbCache(metaclass=WeakSingleton):
         """
         获取缓存KEY
         """
-        return f"[{meta.type.value if meta.type else '未知'}][{settings.TMDB_LOCALE}]{meta.tmdbid or meta.name}-{meta.year}-{meta.begin_season}"
+        media_id = meta.media_id if meta.media_source == MediaSource.TMDB else None
+        return f"[{meta.type.value if meta.type else '未知'}][{settings.TMDB_LOCALE}]{media_id or meta.name}-{meta.year}-{meta.begin_season}"
 
     def get(self, meta: MetaBase):
         """

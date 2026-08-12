@@ -120,17 +120,6 @@ class QueryTransferHistoryTool(MoviePilotTool):
                 # 如果失败，添加错误信息
                 if not record.status and record.errmsg:
                     simplified["errmsg"] = record.errmsg
-                # 添加媒体ID信息（如果有）
-                if record.tmdbid:
-                    simplified["tmdbid"] = record.tmdbid
-                if record.imdbid:
-                    simplified["imdbid"] = record.imdbid
-                if record.doubanid:
-                    simplified["doubanid"] = record.doubanid
-                if record.bangumiid:
-                    simplified["bangumiid"] = record.bangumiid
-                if record.anilistid:
-                    simplified["anilistid"] = record.anilistid
                 if record.media_source:
                     simplified["media_source"] = record.media_source
                 if record.media_id:

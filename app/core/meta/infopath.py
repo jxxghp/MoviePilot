@@ -23,10 +23,7 @@ def should_use_parent_title_for_file_stem(
     """
     if not file_meta.isfile or not stem or not parent_dir_name:
         return False
-    if any((
-            file_meta.tmdbid, file_meta.doubanid,
-            file_meta.bangumiid, file_meta.anilistid, file_meta.media_id,
-    )):
+    if file_meta.media_source and file_meta.media_id:
         return False
     if not PARENT_LATIN_TITLE_RE.search(parent_dir_name):
         return False

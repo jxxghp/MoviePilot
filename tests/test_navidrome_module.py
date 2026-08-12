@@ -127,7 +127,7 @@ def test_navidrome_album_exists_requires_complete_track_count(monkeypatch):
     service.search_music.return_value = []
     monkeypatch.setattr(module, "get_instances", lambda: {"music": service})
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type="album",
         title="叶惠美",

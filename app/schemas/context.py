@@ -3,6 +3,7 @@ from typing import Optional, Dict, List, Union, Any
 from pydantic import BaseModel, Field
 
 from app.schemas.music import MusicInfo, MusicMeta
+from app.schemas.types import MediaSource
 
 
 class MetaInfo(BaseModel):
@@ -66,25 +67,17 @@ class MetaInfo(BaseModel):
     # 剧集组
     episode_group: Optional[str] = None
     # 显式媒体数据源
-    media_source: Optional[str] = None
+    media_source: Optional[Union[MediaSource, str]] = None
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
-    # TMDB ID
-    tmdbid: Optional[int] = None
-    # 豆瓣 ID
-    doubanid: Optional[str] = None
-    # Bangumi ID
-    bangumiid: Optional[int] = None
-    # AniList ID
-    anilistid: Optional[int] = None
 
 
 class MediaInfo(BaseModel):
     """
     识别媒体信息
     """
-    # 来源：themoviedb、douban、bangumi、anilist
-    source: Optional[str] = None
+    # 媒体主身份来源
+    media_source: Optional[Union[MediaSource, str]] = None
     # 请求级刮削来源
     scrape_source: Optional[str] = None
     # 类型 电影、电视剧、合集
@@ -99,27 +92,18 @@ class MediaInfo(BaseModel):
     title_year: Optional[str] = None
     # 当前指定季，如有
     season: Optional[int] = None
-    # TMDB ID
+    # 数据源返回的辅助 ID，仅作为元数据输出
     tmdb_id: Optional[int] = None
-    # IMDB ID
     imdb_id: Optional[str] = None
-    # TVDB ID
     tvdb_id: Optional[int] = None
-    # TVDB Slug（别名，用于构建 TheTvDb 直达链接）
     tvdb_slug: Optional[str] = None
-    # 豆瓣ID
     douban_id: Optional[str] = None
-    # Bangumi ID
     bangumi_id: Optional[int] = None
-    # AniList ID
     anilist_id: Optional[int] = None
-    # AniDB ID
     anidb_id: Optional[int] = None
     # 合集ID
     collection_id: Optional[int] = None
-    # 其它媒体ID前缀
-    mediaid_prefix: Optional[str] = None
-    # 其它媒体ID值
+    # 当前来源原生 ID
     media_id: Optional[str] = None
     # 媒体原语种
     original_language: Optional[str] = None
@@ -226,8 +210,9 @@ class TorrentInfo(BaseModel):
     title: Optional[str] = None
     # 种子副标题
     description: Optional[str] = None
-    # IMDB ID
-    imdbid: Optional[str] = None
+    # 种子页面声明的媒体身份
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
     # 种子链接
     enclosure: Optional[str] = None
     # 详情页面
@@ -323,14 +308,14 @@ class Context(BaseModel):
     上下文
     """
     # 元数据
-    meta_info: Optional[Union[MusicMeta, MetaInfo, Any]] = None
+    meta_info: Optional[Union[MusicMeta, MetaInfo]] = None
     # 媒体信息
-    media_info: Optional[Union[MusicInfo, MediaInfo, Any]] = None
+    media_info: Optional[Union[MusicInfo, MediaInfo]] = None
     # 种子信息
     torrent_info: Optional[TorrentInfo] = None
     # 候选资源来源：rss、spider、search、unknown
     resource_source: Optional[str] = "unknown"
-    # 候选匹配来源：tmdbid、doubanid、bangumiid、anilistid、imdbid、title、plugin、unknown
+    # 候选匹配来源：MediaSource 枚举值、title、unknown
     match_source: Optional[str] = "unknown"
     # 候选自身是否已经识别出有效媒体 ID
     candidate_recognized: Optional[bool] = False

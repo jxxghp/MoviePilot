@@ -1,6 +1,6 @@
 """TheAudioDB 与豆瓣音乐识别源的标准化和路由测试。"""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 
@@ -37,11 +37,11 @@ def test_theaudiodb_module_maps_track_and_album(monkeypatch):
 
     results = module.search_music(
         MetaMusic(title="Yellow", artists=["Coldplay"]),
-        source="theaudiodb",
+        media_source="theaudiodb",
     )
 
     assert results and len(results) == 1
-    assert results[0].source == "theaudiodb"
+    assert results[0].media_source == "theaudiodb"
     assert results[0].media_id == "32793500"
     assert results[0].album_id == "2109619"
     assert results[0].duration == 269
@@ -54,10 +54,10 @@ def test_theaudiodb_module_ignores_other_sources(monkeypatch):
     request = Mock()
     monkeypatch.setattr(module, "_request_json", request)
 
-    searched = module.search_music(MetaMusic(title="Yellow"), source="musicbrainz")
+    searched = module.search_music(MetaMusic(title="Yellow"), media_source="musicbrainz")
     recognized = module.recognize_media(
         meta=MetaMusic(title="Yellow"),
-        source="doubanmusic",
+        media_source="doubanmusic",
     )
 
     assert searched is None
@@ -79,44 +79,6 @@ def test_theaudiodb_detail_respects_requested_entity(monkeypatch):
 
     assert result is None
     request.assert_called_once_with("album.php", {"m": "2109619"})
-
-
-def test_theaudiodb_discover_maps_and_sorts_trending_albums(monkeypatch):
-    """TheAudioDB 探索应按榜位排序并保留趋势来源元数据。"""
-    module = TheAudioDbModule()
-    request = Mock(return_value={
-        "trending": [
-            {
-                "idAlbum": "album-2",
-                "strAlbum": "Second",
-                "strArtist": "Artist",
-                "intChartPlace": "2",
-                "strCountry": "GB",
-            },
-            {
-                "idAlbum": "album-1",
-                "strAlbum": "First",
-                "strArtist": "Artist",
-                "intChartPlace": "1",
-                "strCountry": "GB",
-            },
-        ]
-    })
-    monkeypatch.setattr(module, "_request_json", request)
-
-    results = module.music_discover(
-        source="theaudiodb",
-        entity=MUSIC_ENTITY_ALBUM,
-        country="GB",
-    )
-
-    assert results and [item.media_id for item in results] == ["album-1", "album-2"]
-    assert results[0].source == "theaudiodb"
-    assert results[0].raw_data["chart_position"] == 1
-    request.assert_called_once_with(
-        "trending.php",
-        {"country": "gb", "type": "itunes", "format": "albums"},
-    )
 
 
 def test_theaudiodb_album_related_excludes_current_album(monkeypatch):
@@ -195,13 +157,13 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
 
     results = module.search_music(
         MetaMusic(title="范特西", artists=["周杰伦"]),
-        source="doubanmusic",
+        media_source="doubanmusic",
     )
     album = module.music_album("doubanmusic", "1401853")
 
-    assert results and results[0].source == "doubanmusic"
+    assert results and results[0].media_source == "doubanmusic"
     assert results[0].music_type == MUSIC_ENTITY_ALBUM
-    assert album and album.source == "doubanmusic"
+    assert album and album.media_source == "doubanmusic"
     assert album.year == 2001
     assert album.artists == ["周杰伦"]
     assert album.album_type == "CD"
@@ -212,7 +174,7 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
 
 
 def test_douban_music_discover_and_related_accept_collection_wrappers(monkeypatch):
-    """豆瓣音乐合集与相关推荐应兼容 subject 包装并保留专辑身份。"""
+    """豆瓣新碟榜与相关推荐应兼容 subject 包装并保留专辑身份。"""
     module = DoubanModule()
     module.doubanapi = Mock()
     wrapped_item = {
@@ -225,23 +187,50 @@ def test_douban_music_discover_and_related_accept_collection_wrappers(monkeypatc
             "cover": {"url": "https://img.example/fantasy.jpg"},
         },
     }
-    module.doubanapi.music_single.return_value = {
+    module.doubanapi.music_chart.return_value = {
         "subject_collection_items": [wrapped_item]
     }
     module.doubanapi.music_recommendations.return_value = [wrapped_item["subject"]]
 
-    discovered = module.music_discover("doubanmusic", page=2, count=10)
+    discovered = module.music_discover("doubanmusic", page=1, count=10)
     related = module.music_album_related("doubanmusic", "album-1", count=6)
 
     assert discovered and discovered[0].media_id == "1401853"
     assert discovered[0].cover_url == "https://img.example/fantasy.jpg"
-    assert related and related[0].source == "doubanmusic"
-    module.doubanapi.music_single.assert_called_once_with(start=10, count=10)
+    assert related and related[0].media_source == "doubanmusic"
+    module.doubanapi.music_chart.assert_called_once_with()
     module.doubanapi.music_recommendations.assert_called_once_with(
         subject_id="album-1",
         start=0,
         count=6,
     )
+
+
+def test_douban_music_tag_discover_intersects_official_tag_results():
+    """豆瓣音乐组合筛选应按原生条目 ID 求交集，并保持主风格排序。"""
+    module = DoubanModule()
+    module.doubanapi = Mock()
+    module.doubanapi.music_tag.side_effect = [
+        {"items": [
+            {"id": "1", "type": "music", "title": "流行华语一"},
+            {"id": "2", "type": "music", "title": "仅流行"},
+            {"id": "3", "type": "music", "title": "流行华语二"},
+        ]},
+        {"items": [
+            {"id": "3", "type": "music", "title": "流行华语二"},
+            {"id": "1", "type": "music", "title": "流行华语一"},
+        ]},
+    ]
+
+    results = module.music_discover(
+        "doubanmusic", mode="tag", tags="流行,华语", sort="S", count=20
+    )
+
+    assert [item.media_id for item in results] == ["1", "3"]
+    assert module.doubanapi.music_tag.call_args_list == [
+        call(tag="流行", start=0, count=100, sort="S"),
+        call(tag="华语", start=0, count=100, sort="S"),
+    ]
 
 
 def test_douban_music_recognize_expands_album_to_matching_track(monkeypatch):
@@ -275,7 +264,7 @@ def test_douban_music_recognize_expands_album_to_matching_track(monkeypatch):
             album="范特西",
             track_number=2,
         ),
-        source="doubanmusic",
+        media_source="doubanmusic",
     )
 
     assert result and result.music_type == "recording"
@@ -325,7 +314,7 @@ async def test_douban_music_async_recognize_maps_real_songs(monkeypatch):
             artists=["周杰伦"],
             album="范特西",
         ),
-        source="doubanmusic",
+        media_source="doubanmusic",
     )
 
     assert result and result.media_id == "1401853:1"
@@ -335,9 +324,9 @@ async def test_douban_music_async_recognize_maps_real_songs(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_douban_recognize_media_routes_only_douban_music(monkeypatch):
-    """豆瓣音乐使用独立 source，不能与影视豆瓣入口或其它音乐源串线。"""
+    """豆瓣音乐使用独立数据源，不能与影视豆瓣入口或其它音乐源串线。"""
     module = DoubanModule()
-    expected = MusicInfo(source="doubanmusic", media_id="1401853", title="范特西")
+    expected = MusicInfo(media_source="doubanmusic", media_id="1401853", title="范特西")
     recognize_music = Mock(return_value=expected)
     recognize_video = Mock()
     async_recognize_music = AsyncMock(return_value=expected)
@@ -347,17 +336,17 @@ async def test_douban_recognize_media_routes_only_douban_music(monkeypatch):
 
     recognized = module.recognize_media(
         meta=MetaMusic(title="范特西"),
-        source="doubanmusic",
-        mediaid="1401853",
+        media_source="doubanmusic",
+        media_id="1401853",
     )
     ignored = module.recognize_media(
         meta=MetaMusic(title="范特西"),
-        source="theaudiodb",
+        media_source="theaudiodb",
     )
     async_recognized = await module.async_recognize_media(
         mtype=MediaType.MUSIC,
-        source="doubanmusic",
-        mediaid="1401853",
+        media_source="doubanmusic",
+        media_id="1401853",
     )
 
     assert recognized is expected
@@ -376,25 +365,25 @@ async def test_music_chain_defaults_to_musicbrainz_and_forwards_explicit_source(
     monkeypatch.setattr(chain, "async_run_module", async_run_module)
 
     chain.search("Yellow")
-    await chain.async_search("范特西", source="doubanmusic")
+    await chain.async_search("范特西", media_source="doubanmusic")
 
-    assert run_module.call_args.kwargs["source"] == "musicbrainz"
-    assert async_run_module.await_args.kwargs["source"] == "doubanmusic"
+    assert run_module.call_args.kwargs["media_source"] == "musicbrainz"
+    assert async_run_module.await_args.kwargs["media_source"] == "doubanmusic"
 
 
 def test_music_scrape_resolves_with_selected_source(tmp_path, monkeypatch):
     """无显式 ID 的音乐刮削应使用用户选择的来源识别本地音频。"""
     path = tmp_path / "Yellow.flac"
     path.write_bytes(b"audio")
-    expected = MusicInfo(source="theaudiodb", media_id="32793500", title="Yellow")
+    expected = MusicInfo(media_source="theaudiodb", media_id="32793500", title="Yellow")
     recognize = Mock(return_value=(MetaMusic(title="Yellow"), expected))
     monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize)
 
     result = MediaChain._resolve_music_scrape_info(
         path,
         mediainfo=None,
-        source="theaudiodb",
+        media_source="theaudiodb",
     )
 
     assert result is expected
-    recognize.assert_called_once_with(path, source="theaudiodb")
+    recognize.assert_called_once_with(path, media_source="theaudiodb")

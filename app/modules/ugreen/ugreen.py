@@ -7,11 +7,11 @@ from urllib.parse import parse_qs, urlparse
 
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.mediaserver import MusicMediaServerHelper
+from app.helper.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.log import logger
 from app.modules.ugreen.api import Api
 from app.schemas import MediaType
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import MediaSource, SystemConfigKey
 from app.utils.url import UrlUtils
 
 
@@ -354,7 +354,8 @@ class Ugreen:
             title=video_info.get("name"),
             original_title=video_info.get("original_name"),
             year=Ugreen.__parse_year(video_info),
-            tmdbid=tmdb_id,
+            media_source=MediaSource.TMDB if tmdb_id else None,
+            media_id=str(tmdb_id) if tmdb_id else None,
             user_state=user_state,
         )
 
@@ -635,7 +636,9 @@ class Ugreen:
         return result
 
     def get_movies(
-        self, title: str, year: Optional[str] = None, tmdb_id: Optional[int] = None
+        self, title: str, year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
     ) -> Optional[List[schemas.MediaServerItem]]:
         if not self.is_authenticated() or not self._api or not title:
             return None
@@ -647,7 +650,12 @@ class Ugreen:
         movies = []
         for info in self.__extract_video_info_list(data.get("movies_list")):
             info_tmdb = info.get("tmdb_id")
-            if tmdb_id and tmdb_id != info_tmdb:
+            if not MediaServerIdentityHelper.are_compatible(
+                    MediaSource.TMDB if info_tmdb else None,
+                    str(info_tmdb) if info_tmdb else None,
+                    media_source,
+                    media_id,
+            ):
                 continue
             if title not in [info.get("name"), info.get("original_name")]:
                 continue
@@ -687,7 +695,12 @@ class Ugreen:
                     results.append(media_item)
         return results
 
-    def __search_tv_item(self, title: str, year: Optional[str] = None, tmdb_id: Optional[int] = None) -> Optional[dict]:
+    def __search_tv_item(
+            self, title: str, year: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """按标题、年份与统一媒体身份查找电视剧条目。"""
         if not self._api:
             return None
         data = self._api.search(title)
@@ -695,7 +708,13 @@ class Ugreen:
             return None
 
         for info in self.__extract_video_info_list(data.get("tv_list")):
-            if tmdb_id and tmdb_id != info.get("tmdb_id"):
+            info_tmdb = info.get("tmdb_id")
+            if not MediaServerIdentityHelper.are_compatible(
+                    MediaSource.TMDB if info_tmdb else None,
+                    str(info_tmdb) if info_tmdb else None,
+                    media_source,
+                    media_id,
+            ):
                 continue
             if title not in [info.get("name"), info.get("original_name")]:
                 continue
@@ -710,15 +729,17 @@ class Ugreen:
         item_id: Optional[str] = None,
         title: Optional[str] = None,
         year: Optional[str] = None,
-        tmdb_id: Optional[int] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> tuple[Optional[str], Optional[Dict[int, list]]]:
         """
-        根据标题、年份、TMDB ID和季号查询绿联媒体库中的电视剧已入库集数。
+        根据标题、年份、媒体身份和季号查询绿联媒体库中的电视剧已入库集数。
         :param item_id: 绿联媒体库中的剧集ID，存在缓存ID时优先使用
         :param title: 标题
         :param year: 年份
-        :param tmdb_id: TMDB ID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :param season: 季号
         :return: 命中的剧集ID及每季已入库集数
         """
@@ -729,7 +750,9 @@ class Ugreen:
         if not item_id:
             if not title:
                 return None, None
-            if not (tv_info := self.__search_tv_item(title, year, tmdb_id)):
+            if not (tv_info := self.__search_tv_item(
+                    title, year, media_source, media_id
+            )):
                 return None, None
             found_item_id = tv_info.get("ug_video_info_id")
             if found_item_id is None:
@@ -742,7 +765,9 @@ class Ugreen:
         if not item_info and cached_item_id and title:
             # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
             logger.warning(f"绿联缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
-            if not (tv_info := self.__search_tv_item(title, year, tmdb_id)):
+            if not (tv_info := self.__search_tv_item(
+                    title, year, media_source, media_id
+            )):
                 return None, {}
             found_item_id = tv_info.get("ug_video_info_id")
             if found_item_id is None:
@@ -751,7 +776,7 @@ class Ugreen:
             item_info = self.get_iteminfo(item_id)
         if not item_info:
             return None, {}
-        if tmdb_id and item_info.tmdbid and tmdb_id != item_info.tmdbid:
+        if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
             return None, {}
 
         tv_detail = self._api.get_tv(item_id, folder_path="ALL")

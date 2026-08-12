@@ -79,10 +79,13 @@ class MediaServerOper(DbOper):
         """
         判断媒体服务器数据是否存在
         """
-        if kwargs.get("tmdbid"):
-            # 优先按TMDBID查
-            item = MediaServerItem.exist_by_tmdbid(self._db, tmdbid=kwargs.get("tmdbid"),
-                                                   mtype=kwargs.get("mtype"))
+        if kwargs.get("media_source") and kwargs.get("media_id"):
+            item = MediaServerItem.exist_by_media_identity(
+                self._db,
+                media_source=kwargs.get("media_source"),
+                media_id=kwargs.get("media_id"),
+                mtype=kwargs.get("mtype"),
+            )
         elif kwargs.get("title"):
             # 按标题、类型、年份查
             item = MediaServerItem.exists_by_title(self._db, title=kwargs.get("title"),
@@ -105,10 +108,13 @@ class MediaServerOper(DbOper):
         """
         异步判断媒体服务器数据是否存在
         """
-        if kwargs.get("tmdbid"):
-            # 优先按TMDBID查
-            item = await MediaServerItem.async_exist_by_tmdbid(self._db, tmdbid=kwargs.get("tmdbid"),
-                                                               mtype=kwargs.get("mtype"))
+        if kwargs.get("media_source") and kwargs.get("media_id"):
+            item = await MediaServerItem.async_exist_by_media_identity(
+                self._db,
+                media_source=kwargs.get("media_source"),
+                media_id=kwargs.get("media_id"),
+                mtype=kwargs.get("mtype"),
+            )
         elif kwargs.get("title"):
             # 按标题、类型、年份查
             item = await MediaServerItem.async_exists_by_title(self._db, title=kwargs.get("title"),

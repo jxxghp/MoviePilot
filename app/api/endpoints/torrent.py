@@ -17,6 +17,7 @@ from app.db.user_oper import (
 )
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
     MusicTargetEntityType,
 )
@@ -191,11 +192,7 @@ def refresh_cache(_: User = Depends(get_current_active_superuser)):
 async def reidentify_cache(
     domain: str,
     torrent_hash: str,
-    tmdbid: Optional[int] = None,
-    doubanid: Optional[str] = None,
-    bangumiid: Optional[int] = None,
-    anilistid: Optional[int] = None,
-    media_source: Optional[str] = None,
+    media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     music_type: Optional[MusicTargetEntityType] = None,
     _: User = Depends(get_current_active_superuser_async),
@@ -204,10 +201,6 @@ async def reidentify_cache(
     重新识别指定的种子
     :param domain: 站点域名
     :param torrent_hash: 种子hash（使用title+description的md5）
-    :param tmdbid: 手动指定的TMDB ID
-    :param doubanid: 手动指定的豆瓣ID
-    :param bangumiid: 手动指定的 Bangumi ID
-    :param anilistid: 手动指定的 AniList ID
     :param media_source: 媒体数据源
     :param media_id: 数据源原生 ID
     :param music_type: 音乐实体类型，仅支持单曲或专辑
@@ -281,19 +274,18 @@ async def reidentify_cache(
                 subtitle=target_context.torrent_info.description,
             )
 
-        has_explicit_id = bool(
-            tmdbid or doubanid or bangumiid or anilistid or media_id
-        )
+        has_explicit_id = media_source is not None or media_id is not None
+        if has_explicit_id and (not media_source or not media_id):
+            return schemas.Response(
+                success=False,
+                message="媒体来源和媒体 ID 必须同时提供",
+            )
         if has_explicit_id:
             # 手动指定媒体身份时执行精确识别。
             mediainfo = await media_chain.async_recognize_media(
                 meta=meta,
-                tmdbid=tmdbid,
-                doubanid=doubanid,
-                bangumiid=bangumiid,
-                anilistid=anilistid,
-                source=media_source,
-                mediaid=media_id,
+                media_source=media_source,
+                media_id=media_id,
                 mtype=MediaType.MUSIC if is_music else None,
                 music_type=normalized_music_type,
             )
@@ -301,7 +293,7 @@ async def reidentify_cache(
             # 未指定 ID 时按标题识别，请求级来源仍用于约束本次识别。
             mediainfo = await media_chain.async_recognize_by_meta(
                 meta,
-                source=media_source,
+                media_source=media_source,
                 mtype=MediaType.MUSIC if is_music else None,
                 music_type=normalized_music_type,
             )
@@ -337,7 +329,7 @@ async def reidentify_cache(
                 "media_type": mediainfo.type.value
                 if mediainfo and mediainfo.type
                 else "",
-                "media_source": getattr(mediainfo, "source", None),
+                "media_source": getattr(mediainfo, "media_source", None),
                 "media_id": getattr(mediainfo, "media_id", None),
                 "music_type": getattr(mediainfo, "music_type", None),
             },

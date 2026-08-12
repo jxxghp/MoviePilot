@@ -44,7 +44,7 @@ def test_music_meta_round_trip_preserves_list_isolation():
 def test_music_info_serializes_shared_media_display_fields():
     """MusicInfo 应输出现有媒体卡片可复用的展示字段。"""
     info = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-1",
         title="七里香",
         artists=["周杰伦"],
@@ -68,7 +68,7 @@ def test_core_context_serializes_music_models_without_video_fields():
     context = Context(
         meta_info=MetaMusic(title="七里香", artists=["周杰伦"]),
         media_info=MusicInfo(
-            source="musicbrainz",
+            media_source="musicbrainz",
             media_id="release-1",
             title="七里香",
             artists=["周杰伦"],

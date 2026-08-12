@@ -20,15 +20,7 @@ class DownloadFailure(Base):
     title = Column(String)
     # 年份
     year = Column(String)
-    # TMDBID
-    tmdbid = Column(Integer)
-    # 豆瓣ID
-    doubanid = Column(String)
-    # Bangumi ID
-    bangumiid = Column(Integer)
-    # AniList ID
-    anilistid = Column(Integer)
-    # 统一媒体数据源与原生ID
+    # 媒体数据源与原生ID
     media_source = Column(String)
     media_id = Column(String)
     # Sxx
@@ -63,7 +55,6 @@ class DownloadFailure(Base):
     __table_args__ = (
         Index("ux_downloadfailure_fingerprint", "fingerprint", unique=True),
         Index("ix_downloadfailure_next_retry_at", "next_retry_at"),
-        Index("ix_downloadfailure_media_site", "type", "tmdbid", "doubanid", "site"),
         Index("ix_downloadfailure_media_identity_site", "type", "media_source", "media_id", "site"),
     )
 

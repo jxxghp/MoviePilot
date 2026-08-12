@@ -57,15 +57,13 @@ class SubscribeOper(DbOper):
         username = kwargs.get("username") if owner_scope else None
         media_source, media_id = resolve_media_identity(
             media=mediainfo,
-            source=kwargs.get("media_source"),
+            media_source=kwargs.get("media_source"),
             media_id=kwargs.get("media_id"),
         )
+        if not media_source or not media_id:
+            return 0, "媒体身份不完整"
         identity_params = {
-            "tmdbid": mediainfo.tmdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
-            "media_source": media_source,
+            "media_source": str(media_source),
             "media_id": media_id,
             "music_type": getattr(mediainfo, "music_type", None)
             if mediainfo.type == MediaType.MUSIC else None,
@@ -82,13 +80,7 @@ class SubscribeOper(DbOper):
             "name": mediainfo.title,
             "year": _normalize_year(mediainfo.year),
             "type": mediainfo.type.value,
-            "tmdbid": mediainfo.tmdb_id,
-            "imdbid": mediainfo.imdb_id,
-            "tvdbid": mediainfo.tvdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
-            "media_source": media_source,
+            "media_source": str(media_source),
             "media_id": media_id,
             "episode_group": mediainfo.episode_group,
             "poster": mediainfo.get_poster_image(),
@@ -122,15 +114,13 @@ class SubscribeOper(DbOper):
         username = kwargs.get("username") if owner_scope else None
         media_source, media_id = resolve_media_identity(
             media=mediainfo,
-            source=kwargs.get("media_source"),
+            media_source=kwargs.get("media_source"),
             media_id=kwargs.get("media_id"),
         )
+        if not media_source or not media_id:
+            return 0, "媒体身份不完整"
         identity_params = {
-            "tmdbid": mediainfo.tmdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
-            "media_source": media_source,
+            "media_source": str(media_source),
             "media_id": media_id,
             "music_type": getattr(mediainfo, "music_type", None)
             if mediainfo.type == MediaType.MUSIC else None,
@@ -147,13 +137,7 @@ class SubscribeOper(DbOper):
             "name": mediainfo.title,
             "year": _normalize_year(mediainfo.year),
             "type": mediainfo.type.value,
-            "tmdbid": mediainfo.tmdb_id,
-            "imdbid": mediainfo.imdb_id,
-            "tvdbid": mediainfo.tvdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
-            "media_source": media_source,
+            "media_source": str(media_source),
             "media_id": media_id,
             "episode_group": mediainfo.episode_group,
             "poster": mediainfo.get_poster_image(),
@@ -180,9 +164,7 @@ class SubscribeOper(DbOper):
             return subscribe.id, "订阅已存在"
 
     def exists(
-            self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+            self, media_source: str, media_id: str,
             season: Optional[int] = None, episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> bool:
@@ -190,10 +172,6 @@ class SubscribeOper(DbOper):
         按媒体身份、季号及可选剧集组判断订阅是否存在。
         """
         identity_params = {
-            "tmdbid": tmdbid,
-            "doubanid": doubanid,
-            "bangumiid": bangumiid,
-            "anilistid": anilistid,
             "media_source": media_source,
             "media_id": media_id,
             "music_type": music_type,
@@ -215,33 +193,27 @@ class SubscribeOper(DbOper):
         return await Subscribe.async_get(self._db, rid=sid)
 
     def get_by(
-            self, type: str, season: Optional[str] = None,
-            tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+            self, type: str, media_source: str, media_id: str,
+            season: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
         """
         根据条件查询订阅
         """
         return Subscribe.get_by(
-            self._db, type, season, tmdbid, doubanid, bangumiid, anilistid,
-            media_source, media_id, music_type,
+            self._db, type, media_source, media_id, season, music_type,
         )
 
     async def async_get_by(
-            self, type: str, season: Optional[str] = None,
-            tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+            self, type: str, media_source: str, media_id: str,
+            season: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
         """
         根据条件查询订阅
         """
         return await Subscribe.async_get_by(
-            self._db, type, season, tmdbid, doubanid, bangumiid, anilistid,
-            media_source, media_id, music_type,
+            self._db, type, media_source, media_id, season, music_type,
         )
 
     def list(self, state: Optional[str] = None) -> List[Subscribe]:
@@ -298,12 +270,6 @@ class SubscribeOper(DbOper):
             subscribe.update(self._db, payload)
         return subscribe
 
-    def list_by_tmdbid(self, tmdbid: int, season: Optional[int] = None) -> List[Subscribe]:
-        """
-        获取指定tmdb_id的订阅
-        """
-        return Subscribe.get_by_tmdbid(self._db, tmdbid=tmdbid, season=season)
-
     def list_by_username(self, username: str, state: Optional[str] = None,
                          mtype: Optional[str] = None) -> List[Subscribe]:
         """
@@ -333,9 +299,7 @@ class SubscribeOper(DbOper):
         subscribe.create(self._db)
 
     def exist_history(
-            self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+            self, media_source: str, media_id: str,
             season: Optional[int] = None, episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> bool:
@@ -343,10 +307,6 @@ class SubscribeOper(DbOper):
         按媒体身份、季号及可选剧集组判断订阅历史是否存在。
         """
         identity_params = {
-            "tmdbid": tmdbid,
-            "doubanid": doubanid,
-            "bangumiid": bangumiid,
-            "anilistid": anilistid,
             "media_source": media_source,
             "media_id": media_id,
             "music_type": music_type,

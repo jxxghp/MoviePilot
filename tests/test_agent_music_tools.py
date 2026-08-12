@@ -11,8 +11,14 @@ from app.agent.tools.impl._torrent_search_utils import simplify_search_result
 from app.agent.tools.impl.add_download_tasks import AddDownloadTasksTool
 from app.agent.tools.impl.add_subscribe import AddSubscribeTool
 from app.agent.tools.impl.get_recommendations import GetRecommendationsTool
-from app.agent.tools.impl.query_library_exists import QueryLibraryExistsTool
-from app.agent.tools.impl.query_media_detail import QueryMediaDetailTool
+from app.agent.tools.impl.query_library_exists import (
+    QueryLibraryExistsInput,
+    QueryLibraryExistsTool,
+)
+from app.agent.tools.impl.query_media_detail import (
+    QueryMediaDetailInput,
+    QueryMediaDetailTool,
+)
 from app.agent.tools.impl.query_subscribe_shares import QuerySubscribeSharesTool
 from app.agent.tools.impl.query_subscribe_history import QuerySubscribeHistoryTool
 from app.agent.tools.impl.recognize_media import RecognizeMediaTool
@@ -29,13 +35,13 @@ from app.core.context import (
     TorrentInfo,
 )
 from app.core.meta import MetaMusic
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _recording() -> MusicInfo:
     """构造 Agent 工具测试使用的单曲信息。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -75,7 +81,7 @@ def test_search_torrents_forwards_album_namespace_before_recognition():
 def _album() -> MusicInfo:
     """构造 Agent 工具测试使用的整张专辑信息。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -198,7 +204,7 @@ def test_add_subscribe_rejects_artist_as_browse_only_entity():
 def test_query_album_detail_exposes_complete_track_contract():
     """专辑详情应返回预期曲目总数和曲目身份，供整包搜索与校验使用。"""
     album = MusicAlbumInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="release-group-1",
         title="叶惠美",
         artists=["周杰伦"],
@@ -278,7 +284,7 @@ def test_scrape_album_uses_unified_entity_recognition(tmp_path):
 def test_query_artist_detail_marks_entity_as_non_subscribable():
     """艺术家详情应明确标记为不可订阅，避免 Agent 混入获取流程。"""
     artist = MusicArtistInfo(
-        source="musicbrainz",
+        media_source=MediaSource.MusicBrainz,
         media_id="artist-1",
         name="周杰伦",
         artist_type="Person",
@@ -397,10 +403,6 @@ def test_query_subscribe_history_uses_database_media_values_and_music_fields(mon
         year="2003",
         type=MediaType.MUSIC.value,
         season=None,
-        tmdbid=None,
-        doubanid=None,
-        bangumiid=None,
-        anilistid=None,
         media_source="musicbrainz",
         media_id="release-group-1",
         music_type="album",
@@ -530,6 +532,14 @@ def test_query_library_exists_treats_album_as_atomic_complete_entity():
         "complete": True,
         "expected_tracks": 11,
     }
+
+
+def test_agent_identity_schemas_only_expose_media_source_and_media_id():
+    """Agent 精确媒体工具不得继续暴露任一数据源专用 ID 输入字段。"""
+    legacy_fields = {"tmdb_id", "douban_id", "bangumi_id", "anilist_id"}
+    for schema in (QueryMediaDetailInput, QueryLibraryExistsInput):
+        assert legacy_fields.isdisjoint(schema.model_fields)
+        assert schema.model_fields["media_source"].annotation is MediaSource
 
 
 def test_listenbrainz_album_chart_preserves_entity_and_bounded_page_size():

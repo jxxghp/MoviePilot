@@ -283,7 +283,7 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     success = AudioMetadataHelper.write(
         Path("/music/08 - Get Lucky.flac"),
         MusicInfo(
-            source="musicbrainz",
+            media_source="musicbrainz",
             media_id=RECORDING_ID,
             title="Get Lucky",
             artists=["Daft Punk", "Pharrell Williams"],

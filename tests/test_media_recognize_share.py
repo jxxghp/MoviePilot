@@ -452,7 +452,7 @@ def test_async_recognize_by_meta_can_skip_obtain_images():
 def _music_info() -> MusicInfo:
     """构造带远端身份的标准音乐信息。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -609,7 +609,7 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
     assert result is music
     recognize_best.assert_called_once_with(meta=meta, cache=False)
     recognize_source.assert_called_once_with(
-        source="musicbrainz",
+        media_source="musicbrainz",
         meta=meta,
         mediaid="recording-1",
         cache=False,
@@ -724,7 +724,7 @@ def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
         keyword_meta=meta,
     )
     recognize_source.assert_awaited_once_with(
-        source="musicbrainz",
+        media_source="musicbrainz",
         meta=meta,
         mediaid="recording-1",
         cache=False,

@@ -2097,12 +2097,8 @@ class MediaInteractionChain(ChainBase):
             if not mediainfo.seasons:
                 mediainfo = MediaChain().recognize_media(
                     mtype=mediainfo.type,
-                    tmdbid=mediainfo.tmdb_id,
-                    doubanid=mediainfo.douban_id,
-                    bangumiid=mediainfo.bangumi_id,
-                    anilistid=mediainfo.anilist_id,
-                    source=resolve_media_identity(media=mediainfo)[0],
-                    mediaid=resolve_media_identity(media=mediainfo)[1],
+                    media_source=resolve_media_identity(media=mediainfo)[0],
+                    media_id=resolve_media_identity(media=mediainfo)[1],
                     cache=False,
                 )
                 if not mediainfo:
@@ -2721,7 +2717,8 @@ class MediaInteractionChain(ChainBase):
             title=mediainfo.title,
             year=mediainfo.year,
             mtype=mediainfo.type,
-            tmdbid=mediainfo.tmdb_id,
+            media_source=mediainfo.media_source,
+            media_id=mediainfo.media_id,
             season=request.meta.begin_season,
             channel=channel,
             source=source,
@@ -3031,7 +3028,8 @@ class MediaInteractionChain(ChainBase):
             title=request.current_media.title,
             year=request.current_media.year,
             mtype=request.current_media.type,
-            tmdbid=request.current_media.tmdb_id,
+            media_source=request.current_media.media_source,
+            media_id=request.current_media.media_id,
             season=request.meta.begin_season,
             channel=channel,
             source=source,

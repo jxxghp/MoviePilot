@@ -1,49 +1,55 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 from app.core.config import settings
 from app.schemas.types import (
-    MUSIC_ENTITY_ALBUM,
-    MUSIC_ENTITY_ARTIST,
-    MUSIC_ENTITY_RECORDING,
     MUSIC_ENTITY_TYPES,
     MUSIC_SUBSCRIBABLE_TYPES,
+    MediaSource,
 )
 
-
 MEDIA_SOURCE_ALIASES = {
-    "tmdb": "themoviedb",
-    "themoviedb": "themoviedb",
-    "douban": "douban",
-    "bangumi": "bangumi",
-    "anilist": "anilist",
-    "musicbrainz": "musicbrainz",
-    "theaudiodb": "theaudiodb",
-    "audio_db": "theaudiodb",
-    "doubanmusic": "doubanmusic",
-    "douban_music": "doubanmusic",
+    "tmdb": MediaSource.TMDB,
+    "themoviedb": MediaSource.TMDB,
+    "douban": MediaSource.Douban,
+    "bangumi": MediaSource.Bangumi,
+    "anilist": MediaSource.AniList,
+    "imdb": MediaSource.IMDb,
+    "tvdb": MediaSource.TVDB,
+    "musicbrainz": MediaSource.MusicBrainz,
+    "theaudiodb": MediaSource.TheAudioDB,
+    "audio_db": MediaSource.TheAudioDB,
+    "doubanmusic": MediaSource.DoubanMusic,
+    "douban_music": MediaSource.DoubanMusic,
+    "bilibili": MediaSource.Bilibili,
+    "mangguodiscover": MediaSource.MangoTV,
+    "mango_tv": MediaSource.MangoTV,
+    "migu": MediaSource.MiguVideo,
+    "migu_video": MediaSource.MiguVideo,
+    "tencentvideodiscover": MediaSource.TencentVideo,
+    "tencent_video": MediaSource.TencentVideo,
 }
 
 MEDIA_SOURCE_PREFIXES = {
-    "themoviedb": "tmdb",
-    "douban": "douban",
-    "bangumi": "bangumi",
-    "anilist": "anilist",
-    "musicbrainz": "musicbrainz",
-    "theaudiodb": "theaudiodb",
-    "doubanmusic": "doubanmusic",
+    MediaSource.TMDB: "tmdb",
+    MediaSource.Douban: "douban",
+    MediaSource.Bangumi: "bangumi",
+    MediaSource.AniList: "anilist",
+    MediaSource.IMDb: "imdb",
+    MediaSource.TVDB: "tvdb",
+    MediaSource.MusicBrainz: "musicbrainz",
+    MediaSource.TheAudioDB: "theaudiodb",
+    MediaSource.DoubanMusic: "doubanmusic",
+    MediaSource.Bilibili: "bilibili",
+    MediaSource.MangoTV: "mangguodiscover",
+    MediaSource.MiguVideo: "migu",
+    MediaSource.TencentVideo: "tencentvideodiscover",
 }
 
-MEDIA_SOURCE_ID_FIELDS = {
-    "themoviedb": ("tmdb_id", "tmdbid"),
-    "douban": ("douban_id", "doubanid"),
-    "bangumi": ("bangumi_id", "bangumiid"),
-    "anilist": ("anilist_id", "anilistid"),
-    "musicbrainz": ("media_id",),
-    "theaudiodb": ("media_id", "theaudiodb_id"),
-    "doubanmusic": ("media_id", "douban_id", "doubanid"),
-}
-
-MUSIC_MEDIA_SOURCE_ORDER = ("musicbrainz", "theaudiodb", "doubanmusic")
+MUSIC_MEDIA_SOURCE_ORDER = (
+    MediaSource.MusicBrainz,
+    MediaSource.TheAudioDB,
+    MediaSource.DoubanMusic,
+)
 MUSIC_MEDIA_SOURCES = frozenset(MUSIC_MEDIA_SOURCE_ORDER)
 
 
@@ -58,52 +64,73 @@ def normalize_music_type(
     return normalized if normalized in allowed else None
 
 
-def is_music_media_source(source: Optional[str]) -> bool:
+def is_music_media_source(
+        source: Optional[Union[MediaSource, str]],
+) -> bool:
     """判断单个请求级来源是否为内置音乐元数据源。"""
     return normalize_media_source(source) in MUSIC_MEDIA_SOURCES
 
 
-def normalize_media_source(source: Optional[str]) -> Optional[str]:
-    """规范化媒体数据源名称，兼容外部使用的 ``tmdb`` 前缀。"""
+def normalize_media_source(
+        source: Optional[Union[MediaSource, str]],
+) -> Optional[MediaSource]:
+    """将来源别名规范化为固定枚举，未知来源返回 None。"""
     if not source:
         return None
+    if isinstance(source, MediaSource):
+        return source
     normalized = str(source).strip().casefold()
-    return MEDIA_SOURCE_ALIASES.get(normalized, normalized or None)
+    return MEDIA_SOURCE_ALIASES.get(normalized)
 
 
-def is_media_source_selected(source: Optional[str], source_key: str) -> bool:
+def is_media_source_selected(
+        media_source: Optional[Union[MediaSource, str]],
+        source_key: Union[MediaSource, str],
+) -> bool:
     """
-    判断请求级搜索数据源列表（逗号分隔，可为多个）中是否包含指定数据源。
+    判断请求级媒体数据源集合是否包含当前模块。
 
-    :param source: 请求级搜索数据源，逗号分隔多个来源，空表示不作限制
+    :param media_source: 请求级媒体数据源，支持逗号分隔，空表示不作限制
     :param source_key: 当前模块对应的数据源标识
     :return: 是否包含
     """
-    if not source:
+    if not media_source:
         return True
-    normalized_key = normalize_media_source(source_key) or source_key
-    return normalized_key in [
-        normalize_media_source(item) for item in str(source).split(",")
-    ]
+    normalized_key = normalize_media_source(source_key)
+    selected_sources = {
+        normalize_media_source(item)
+        for item in str(media_source).split(",")
+    }
+    return bool(normalized_key and normalized_key in selected_sources)
 
 
-def is_media_source_enabled(source: Optional[str], source_key: str) -> bool:
+def is_media_source_enabled(
+        media_source: Optional[Union[MediaSource, str]],
+        source_key: Union[MediaSource, str],
+) -> bool:
     """
-    判断媒体搜索时数据源是否启用：请求级 source（逗号分隔多数据源）优先，
-    未指定时回退到全局 SEARCH_SOURCE 配置，两者均未配置时全部启用。
+    判断媒体搜索时数据源是否启用：请求级来源集合优先，未指定时回退到
+    全局 SEARCH_SOURCE 多来源配置，两者均未配置时全部启用。
 
-    :param source: 请求级搜索数据源，逗号分隔多个来源
+    :param media_source: 请求级媒体数据源，支持逗号分隔
     :param source_key: 当前模块对应的数据源标识
     :return: 是否启用
     """
-    if source:
-        return is_media_source_selected(source, source_key)
+    if media_source:
+        return is_media_source_selected(media_source, source_key)
     if settings.SEARCH_SOURCE:
-        return is_media_source_selected(settings.SEARCH_SOURCE, source_key)
+        normalized_key = normalize_media_source(source_key)
+        configured_sources = {
+            normalize_media_source(item)
+            for item in str(settings.SEARCH_SOURCE).split(",")
+        }
+        return normalized_key in configured_sources
     return True
 
 
-def parse_media_key(media_key: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+def parse_media_key(
+        media_key: Optional[str],
+) -> Tuple[Optional[MediaSource], Optional[str]]:
     """解析带来源前缀的媒体键，返回规范化数据源与原生 ID。"""
     if not media_key or ":" not in str(media_key):
         return None, None
@@ -117,67 +144,49 @@ def parse_media_key(media_key: Optional[str]) -> Tuple[Optional[str], Optional[s
 
 def resolve_media_identity(
         media: Any = None,
-        source: Optional[str] = None,
+        media_source: Optional[Union[MediaSource, str]] = None,
         media_id: Optional[Any] = None,
-        tmdbid: Optional[Any] = None,
-        doubanid: Optional[Any] = None,
-        bangumiid: Optional[Any] = None,
-        anilistid: Optional[Any] = None,
-) -> Tuple[Optional[str], Optional[str]]:
+) -> Tuple[Optional[MediaSource], Optional[str]]:
     """
-    从统一媒体对象、通用身份或兼容 ID 中解析主媒体身份。
+    从统一媒体对象或显式字段解析主媒体身份。
 
-    显式 ``source/media_id`` 优先；未指定来源时按 TMDB、豆瓣、Bangumi、
-    AniList 的兼容顺序选择首个有效 ID。
+    :param media: 包含 ``media_source`` 和 ``media_id`` 的媒体对象
+    :param media_source: 显式媒体来源
+    :param media_id: 显式来源原生 ID
+    :return: 枚举化来源和字符串 ID；任一字段无效时返回空身份
     """
-    normalized_source = normalize_media_source(source)
-    if normalized_source and media_id is not None and str(media_id).strip():
-        return normalized_source, str(media_id).strip()
+    normalized_source = normalize_media_source(media_source)
+    if media_source is not None or media_id is not None:
+        if normalized_source and media_id is not None and str(media_id).strip():
+            return normalized_source, str(media_id).strip()
+        return None, None
 
-    values = {
-        "themoviedb": tmdbid,
-        "douban": doubanid,
-        "bangumi": bangumiid,
-        "anilist": anilistid,
-    }
-    if media is not None:
-        normalized_source = normalized_source or normalize_media_source(
-            getattr(media, "source", None) or getattr(media, "media_source", None)
-        )
-        object_media_id = getattr(media, "media_id", None)
-        if normalized_source and object_media_id is not None and str(object_media_id).strip():
-            return normalized_source, str(object_media_id).strip()
-        for media_source, fields in MEDIA_SOURCE_ID_FIELDS.items():
-            for field in fields:
-                value = getattr(media, field, None)
-                if value is not None and str(value).strip():
-                    values[media_source] = value
-                    break
-
-        legacy_source, legacy_media_id = parse_media_key(
-            getattr(media, "mediaid", None)
-        )
-        if not normalized_source and legacy_source and legacy_media_id:
-            return legacy_source, legacy_media_id
-
-    if normalized_source:
-        value = values.get(normalized_source)
-        return (
-            normalized_source,
-            str(value).strip() if value is not None and str(value).strip() else None,
-        )
-
-    for media_source in MEDIA_SOURCE_ID_FIELDS:
-        value = values.get(media_source)
-        if value is not None and str(value).strip():
-            return media_source, str(value).strip()
+    if media is None:
+        return None, None
+    normalized_source = normalize_media_source(
+        getattr(media, "media_source", None)
+        if not isinstance(media, dict)
+        else media.get("media_source")
+    )
+    object_media_id = (
+        getattr(media, "media_id", None)
+        if not isinstance(media, dict)
+        else media.get("media_id")
+    )
+    if normalized_source and object_media_id is not None:
+        normalized_id = str(object_media_id).strip()
+        if normalized_id:
+            return normalized_source, normalized_id
     return None, None
 
 
-def build_media_key(source: Optional[str], media_id: Optional[Any]) -> str:
+def build_media_key(
+        media_source: Optional[Union[MediaSource, str]],
+        media_id: Optional[Any],
+) -> str:
     """构造 API 使用的带来源前缀媒体键。"""
-    normalized_source = normalize_media_source(source)
+    normalized_source = normalize_media_source(media_source)
     if not normalized_source or media_id is None or not str(media_id).strip():
         return ""
-    prefix = MEDIA_SOURCE_PREFIXES.get(normalized_source, normalized_source)
+    prefix = MEDIA_SOURCE_PREFIXES[normalized_source]
     return f"{prefix}:{str(media_id).strip()}"

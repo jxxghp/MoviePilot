@@ -106,7 +106,6 @@ class QueryDownloadTasksTool(MoviePilotTool):
             return
         if hasattr(torrent, "media"):
             media_payload = {
-                "tmdbid": history.tmdbid,
                 "type": history.type,
                 "title": history.title,
                 "season": history.seasons,
@@ -351,7 +350,6 @@ class QueryDownloadTasksTool(MoviePilotTool):
                     media = getattr(d, "media", None)
                     if media:
                         simplified["media"] = {
-                            "tmdbid": media.get("tmdbid"),
                             "type": media_type_to_agent(media.get("type")),
                             "title": media.get("title"),
                             "season": media.get("season"),

@@ -10,8 +10,10 @@ from requests import Response, Session
 
 from app import schemas
 from app.core.cache import cached
+from app.helper.mediaserver import MediaServerIdentityHelper
 from app.log import logger
 from app.schemas import MediaType
+from app.schemas.types import MediaSource
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
 from app.schemas import MediaServerItem
@@ -196,13 +198,15 @@ class Plex:
                    title: str,
                    original_title: Optional[str] = None,
                    year: Optional[str] = None,
-                   tmdb_id: Optional[int] = None) -> Optional[List[schemas.MediaServerItem]]:
+                   media_source: Optional[MediaSource] = None,
+                   media_id: Optional[str] = None) -> Optional[List[schemas.MediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
         :param title: 标题
         :param original_title: 原产地标题
         :param year: 年份，为空则不过滤
-        :param tmdb_id: TMDB ID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :return: 含title、year属性的字典列表
         """
         if not self._plex:
@@ -225,9 +229,11 @@ class Plex:
                                                         libtype="movie"))
         for item in set(movies):
             ids = self.__get_ids(item.guids)
-            if tmdb_id and ids['tmdb_id']:
-                if str(ids['tmdb_id']) != str(tmdb_id):
-                    continue
+            item_source, item_media_id = MediaServerIdentityHelper.from_provider_ids(ids)
+            if not MediaServerIdentityHelper.are_compatible(
+                    item_source, item_media_id, media_source, media_id
+            ):
+                continue
             path = None
             if item.locations:
                 path = item.locations[0]
@@ -240,9 +246,8 @@ class Plex:
                     title=item.title,
                     original_title=item.originalTitle,
                     year=item.year,
-                    tmdbid=ids['tmdb_id'],
-                    imdbid=ids['imdb_id'],
-                    tvdbid=ids['tvdb_id'],
+                    media_source=item_source,
+                    media_id=item_media_id,
                     path=path,
                 )
             )
@@ -295,7 +300,8 @@ class Plex:
                         title: Optional[str] = None,
                         original_title: Optional[str] = None,
                         year: Optional[str] = None,
-                        tmdb_id: Optional[int] = None,
+                        media_source: Optional[MediaSource] = None,
+                        media_id: Optional[str] = None,
                         season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
         根据标题、年份、季查询电视剧所有集信息
@@ -303,7 +309,8 @@ class Plex:
         :param title: 标题
         :param original_title: 原产地标题
         :param year: 年份，可以为空，为空时不按年份过滤
-        :param tmdb_id: TMDB ID
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :param season: 季号，数字
         :return: 所有集的列表
         """
@@ -327,10 +334,13 @@ class Plex:
             return None, {}
         if isinstance(videos, list):
             videos = videos[0]
-        video_tmdbid = self.__get_ids(videos.guids).get('tmdb_id')
-        if tmdb_id and video_tmdbid:
-            if str(video_tmdbid) != str(tmdb_id):
-                return None, {}
+        video_source, video_media_id = MediaServerIdentityHelper.from_provider_ids(
+            self.__get_ids(videos.guids)
+        )
+        if not MediaServerIdentityHelper.are_compatible(
+                video_source, video_media_id, media_source, media_id
+        ):
+            return None, {}
         episodes = videos.episodes()
         season_episodes = {}
         for episode in episodes:
@@ -642,9 +652,8 @@ class Plex:
             title=item.title,
             original_title=item.originalTitle,
             year=item.year,
-            tmdbid=ids.get("tmdb_id"),
-            imdbid=ids.get("imdb_id"),
-            tvdbid=ids.get("tvdb_id"),
+            media_source=MediaServerIdentityHelper.from_provider_ids(ids)[0],
+            media_id=MediaServerIdentityHelper.from_provider_ids(ids)[1],
             path=path,
             user_state=user_state,
         )

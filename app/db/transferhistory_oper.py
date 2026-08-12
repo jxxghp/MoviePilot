@@ -165,7 +165,8 @@ class TransferHistoryOper(DbOper):
         return TransferHistory.statistic(self._db, days)
 
     def get_by(self, title: Optional[str] = None, year: Optional[str] = None, mtype: Optional[str] = None,
-               season: Optional[str] = None, episode: Optional[str] = None, tmdbid: Optional[int] = None,
+               season: Optional[str] = None, episode: Optional[str] = None,
+               media_source: Optional[str] = None, media_id: Optional[str] = None,
                dest: Optional[str] = None) -> List[TransferHistory]:
         """
         按类型、标题、年份、季集查询转移记录
@@ -177,15 +178,20 @@ class TransferHistoryOper(DbOper):
                                        year=year,
                                        season=season,
                                        episode=episode,
-                                       tmdbid=tmdbid)
+                                       media_source=media_source,
+                                       media_id=media_id)
 
-    def get_by_type_tmdbid(self, mtype: Optional[str] = None, tmdbid: Optional[int] = None) -> TransferHistory:
-        """
-        按类型、tmdb查询转移记录
-        """
-        return TransferHistory.get_by_type_tmdbid(db=self._db,
-                                                  mtype=mtype,
-                                                  tmdbid=tmdbid)
+    def get_by_media_identity(
+            self, media_source: str, media_id: str,
+            mtype: Optional[str] = None,
+    ) -> TransferHistory:
+        """按规范媒体身份和类型查询整理记录。"""
+        return TransferHistory.get_by_media_identity(
+            db=self._db,
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+        )
 
     def delete(self, historyid):
         """
@@ -254,14 +260,8 @@ class TransferHistoryOper(DbOper):
             category=mediainfo.category,
             title=self._history_title(meta, mediainfo),
             year=mediainfo.year,
-            tmdbid=mediainfo.tmdb_id,
-            imdbid=mediainfo.imdb_id,
-            tvdbid=mediainfo.tvdb_id,
-            doubanid=mediainfo.douban_id,
-            bangumiid=mediainfo.bangumi_id,
-            anilistid=mediainfo.anilist_id,
-            media_source=mediainfo.source,
-            media_id=mediainfo.to_dict().get("media_id"),
+            media_source=str(mediainfo.media_source),
+            media_id=mediainfo.media_id,
             music_type=getattr(mediainfo, "music_type", None),
             total_tracks=getattr(mediainfo, "total_tracks", None),
             audio_format=getattr(meta, "audio_format", None),
@@ -296,14 +296,8 @@ class TransferHistoryOper(DbOper):
                 category=mediainfo.category,
                 title=self._history_title(meta, mediainfo),
                 year=mediainfo.year or meta.year,
-                tmdbid=mediainfo.tmdb_id,
-                imdbid=mediainfo.imdb_id,
-                tvdbid=mediainfo.tvdb_id,
-                doubanid=mediainfo.douban_id,
-                bangumiid=mediainfo.bangumi_id,
-                anilistid=mediainfo.anilist_id,
-                media_source=mediainfo.source,
-                media_id=mediainfo.to_dict().get("media_id"),
+                media_source=str(mediainfo.media_source),
+                media_id=mediainfo.media_id,
                 music_type=getattr(mediainfo, "music_type", None),
                 total_tracks=getattr(mediainfo, "total_tracks", None),
                 audio_format=getattr(meta, "audio_format", None),
@@ -326,11 +320,7 @@ class TransferHistoryOper(DbOper):
                 type=meta.type.value if meta.type else None,
                 title=self._history_title(meta),
                 year=meta.year,
-                tmdbid=meta.tmdbid,
-                doubanid=meta.doubanid,
-                bangumiid=meta.bangumiid,
-                anilistid=meta.anilistid,
-                media_source=meta.media_source,
+                media_source=str(meta.media_source) if meta.media_source else None,
                 media_id=meta.media_id,
                 music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
                 audio_format=getattr(meta, "audio_format", None),

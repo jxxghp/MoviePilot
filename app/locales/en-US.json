@@ -97,6 +97,8 @@
     }
   },
   "messages": {
+    "媒体来源和媒体 ID 必须同时提供": "Media source and media ID must be provided together",
+    "media_source 和 media_id 必须同时提供": "media_source and media_id must be provided together",
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",

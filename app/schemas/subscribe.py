@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any, ClassVar
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]:
@@ -60,12 +60,7 @@ class Subscribe(BaseModel):
     type: Optional[str] = None
     # 搜索关键字
     keyword: Optional[str] = None
-    tmdbid: Optional[int] = None
-    doubanid: Optional[str] = None
-    bangumiid: Optional[int] = None
-    anilistid: Optional[int] = None
-    mediaid: Optional[str] = None
-    media_source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     # 音乐实体类型：recording 单曲、album 专辑
     music_type: Optional[str] = None
@@ -162,7 +157,7 @@ class Subscribe(BaseModel):
         """
         将前端清空输入框后残留的空字符串视为未提供，移除该键由字段默认值兜底。
 
-        音乐等媒体类型的 tmdbid、season、total_episode、episode_priority 等数值或容器字段
+        音乐等媒体类型的 season、total_episode、episode_priority 等数值或容器字段
         在表单中常以空字符串提交，而 Pydantic 不会把空字符串自动转为 None，会直接抛出
         校验异常导致接口返回 422。这里把空字符串键移除，等价于该字段未提供，从而复用字段
         默认值（如 ``total_episode`` 回退为 0、``sites`` 回退为空列表）。
@@ -211,11 +206,7 @@ class SubscribeShare(BaseModel):
     type: Optional[str] = None
     # 搜索关键字
     keyword: Optional[str] = None
-    tmdbid: Optional[int] = None
-    doubanid: Optional[str] = None
-    bangumiid: Optional[int] = None
-    anilistid: Optional[int] = None
-    media_source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     # 音乐实体类型：recording 单曲、album 专辑
     music_type: Optional[str] = None

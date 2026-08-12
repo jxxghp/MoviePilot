@@ -1418,30 +1418,21 @@ class MoviePilotServerHelper:
     @classmethod
     def to_recognize_params(cls, item: Optional[dict]) -> Optional[dict]:
         """
-        将服务端返回的共享识别结果转成本地识别参数，音乐仅携带数据源原生 ID。
+        将服务端返回的共享识别结果转成本地统一识别参数。
         """
         if not isinstance(item, dict):
             return None
 
         media_type = cls._normalize_media_type(item.get("type"))
         mtype = MediaType.from_agent(media_type) if media_type else None
-        tmdbid = item.get("tmdbid")
-        doubanid = item.get("doubanid")
-        bangumiid = item.get("bangumiid")
-        anilistid = item.get("anilistid")
-        media_source = item.get("media_source")
-        media_id = item.get("media_id")
-        if not any([tmdbid, doubanid, bangumiid, anilistid, media_id]):
+        media_source, media_id = resolve_media_identity(media=item)
+        if not media_source or not media_id:
             return None
 
         return {
             "mtype": mtype,
-            "tmdbid": tmdbid,
-            "doubanid": doubanid,
-            "bangumiid": bangumiid,
-            "anilistid": anilistid,
-            "source": media_source,
-            "mediaid": media_id,
+            "media_source": media_source,
+            "media_id": media_id,
             "music_type": normalize_music_type(item.get("music_type"))
             or (MUSIC_ENTITY_RECORDING if mtype == MediaType.MUSIC else None),
             "season": item.get("season"),
@@ -1613,11 +1604,7 @@ class MoviePilotServerHelper:
                 meta=meta,
                 mediainfo=mediainfo,
             ),
-            "tmdbid": mediainfo.tmdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
-            "media_source": media_source,
+            "media_source": str(media_source),
             "media_id": media_id,
             "music_type": (
                 normalize_music_type(getattr(mediainfo, "music_type", None))

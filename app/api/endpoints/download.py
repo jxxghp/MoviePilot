@@ -1,4 +1,4 @@
-from typing import Any, List, Annotated, Literal, Optional, Union
+from typing import Any, List, Annotated, Optional, Union
 
 from fastapi import APIRouter, Depends, Body
 
@@ -16,6 +16,7 @@ from app.db.user_oper import get_current_active_user
 from app.helper.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
     MusicTargetEntityType,
     SystemConfigKey,
@@ -24,15 +25,6 @@ from app.utils.media import is_music_media_source, normalize_music_type
 from app.utils.security import SecurityUtils
 
 router = APIRouter()
-MediaSource = Literal[
-    "themoviedb",
-    "douban",
-    "bangumi",
-    "anilist",
-    "musicbrainz",
-    "theaudiodb",
-    "doubanmusic",
-]
 
 
 def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
@@ -114,10 +106,6 @@ def download(
 )
 def add(
     torrent_in: schemas.TorrentInfo,
-    tmdbid: Annotated[int | None, Body()] = None,
-    doubanid: Annotated[str | None, Body()] = None,
-    bangumiid: Annotated[int | None, Body()] = None,
-    anilistid: Annotated[int | None, Body()] = None,
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
@@ -134,6 +122,11 @@ def add(
         return schemas.Response(
             success=False,
             message="音乐实体类型无效，仅支持 recording 或 album",
+        )
+    if (media_source is None) != (media_id is None):
+        return schemas.Response(
+            success=False,
+            message="媒体来源和媒体 ID 必须同时提供",
         )
     is_music = (
         torrent_in.category in (MediaType.MUSIC, MediaType.MUSIC.value, "music")
@@ -154,22 +147,18 @@ def add(
         else MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
     )
     # 媒体信息
-    if tmdbid or doubanid or bangumiid or anilistid or media_id:
+    if media_source and media_id:
         mediainfo = MediaChain().recognize_media(
             meta=metainfo,
-            source=media_source,
-            mediaid=media_id,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
+            media_source=media_source,
+            media_id=media_id,
             mtype=MediaType.MUSIC if is_music else None,
             music_type=normalized_music_type,
         )
     else:
         mediainfo = MediaChain().recognize_by_meta(
             metainfo,
-            source=media_source,
+            media_source=media_source,
             obtain_images=False,
             mtype=MediaType.MUSIC if is_music else None,
             music_type=normalized_music_type,
@@ -199,12 +188,8 @@ def add(
 @router.post("/subtitle", summary="下载字幕", response_model=schemas.Response)
 def download_subtitle(
     subtitle_in: schemas.SubtitleInfo,
-    tmdbid: Annotated[int | None, Body()] = None,
-    doubanid: Annotated[str | None, Body()] = None,
-    bangumiid: Annotated[int | None, Body()] = None,
-    anilistid: Annotated[int | None, Body()] = None,
-    media_source: Annotated[MediaSource | None, Body()] = None,
-    media_id: Annotated[str | None, Body()] = None,
+    media_source: Annotated[MediaSource, Body()],
+    media_id: Annotated[str, Body()],
     save_path: Annotated[str | None, Body()] = None,
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -221,10 +206,6 @@ def download_subtitle(
         subtitle=subtitle_info,
         media_source=media_source,
         media_id=media_id,
-        tmdbid=tmdbid,
-        doubanid=doubanid,
-        bangumiid=bangumiid,
-        anilistid=anilistid,
         save_path=save_path,
         username=current_user.name,
     )

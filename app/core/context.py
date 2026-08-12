@@ -17,8 +17,10 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
 )
+from app.utils.media import normalize_media_source
 from app.utils.string import StringUtils
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
@@ -129,7 +131,7 @@ class MusicInfo:
     """标准化音乐元数据信息。"""
 
     type: MediaType = field(default=MediaType.MUSIC, init=False)
-    source: str | None = None
+    media_source: MediaSource | None = None
     media_id: str | None = None
     # 音乐实体类型，用于区分单曲、专辑和艺术家三类可浏览对象
     music_type: str = MUSIC_ENTITY_RECORDING
@@ -165,6 +167,10 @@ class MusicInfo:
     listen_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """将构造参数中的数据源规范化为统一枚举。"""
+        self.media_source = normalize_media_source(self.media_source)
+
     @property
     def artist(self) -> str:
         """返回兼容现有展示组件的艺术家文本。"""
@@ -190,46 +196,6 @@ class MusicInfo:
         return format_audio_quality(
             self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
         )
-
-    @property
-    def tmdb_id(self) -> None:
-        """音乐不使用 TMDB ID，兼容现有下载历史字段。"""
-        return None
-
-    @property
-    def imdb_id(self) -> None:
-        """音乐不使用 IMDB ID，兼容现有下载历史字段。"""
-        return None
-
-    @property
-    def tvdb_id(self) -> None:
-        """音乐不使用 TVDB ID，兼容现有下载历史字段。"""
-        return None
-
-    @property
-    def tvdb_slug(self) -> None:
-        """音乐不使用 TVDB Slug，兼容现有字段。"""
-        return None
-
-    @property
-    def douban_id(self) -> str | None:
-        """豆瓣音乐来源返回原生条目 ID，其它音乐源保持兼容空值。"""
-        return self.media_id if self.source == "doubanmusic" else None
-
-    @property
-    def theaudiodb_id(self) -> str | None:
-        """TheAudioDB 来源返回原生条目 ID，供通用身份解析复用。"""
-        return self.media_id if self.source == "theaudiodb" else None
-
-    @property
-    def bangumi_id(self) -> None:
-        """音乐不使用 Bangumi ID，兼容现有下载历史字段。"""
-        return None
-
-    @property
-    def anilist_id(self) -> None:
-        """音乐不使用 AniList ID，兼容现有下载历史字段。"""
-        return None
 
     @property
     def episode_group(self) -> None:
@@ -286,16 +252,20 @@ class MusicInfo:
         self.raw_data.clear()
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为兼容现有 Context 外层结构的字典。"""
+        """转换为统一媒体身份的 Context 外层字典。"""
         payload = asdict(self)
         payload.update(
             {
                 "type": self.type.value,
+                "media_source": (
+                    self.media_source.value
+                    if isinstance(self.media_source, MediaSource)
+                    else self.media_source
+                ),
                 "artist": self.artist,
                 "title_year": self.title_year,
                 "poster_path": self.poster_path,
                 "backdrop_path": self.backdrop_path,
-                "mediaid_prefix": self.source,
                 "overview": self.overview,
                 "vote_average": self.vote_average,
                 "audio_quality": self.audio_quality,
@@ -310,6 +280,7 @@ class MusicInfo:
         """从字典恢复标准化音乐元数据。"""
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
+        values["media_source"] = normalize_media_source(values.get("media_source"))
         values["artists"] = _music_string_list(values.get("artists") or data.get("artist"))
         values["artist_ids"] = _music_aligned_list(values.get("artist_ids"))
         values["genres"] = _music_string_list(values.get("genres"))
@@ -338,7 +309,7 @@ class MusicInfo:
     def from_meta(cls, meta: MetaMusic) -> Self:
         """将文件名和音频标签解析结果转换为无远端依赖的标准音乐信息。"""
         return cls(
-            source=meta.media_source,
+            media_source=normalize_media_source(meta.media_source),
             media_id=meta.media_id,
             title=meta.title,
             artists=list(meta.artists),
@@ -400,7 +371,7 @@ class MusicAlbumInfo:
 
     type: MediaType = field(default=MediaType.MUSIC, init=False)
     music_type: str = field(default=MUSIC_ENTITY_ALBUM, init=False)
-    source: str | None = None
+    media_source: MediaSource | None = None
     media_id: str | None = None
     title: str | None = None
     artists: list[str] = field(default_factory=list)
@@ -421,6 +392,10 @@ class MusicAlbumInfo:
     # 同一专辑下的其它发行版本
     releases: list[MusicRelease] = field(default_factory=list)
     raw_data: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """将构造参数中的数据源规范化为统一枚举。"""
+        self.media_source = normalize_media_source(self.media_source)
 
     @property
     def artist(self) -> str:
@@ -490,7 +465,11 @@ class MusicAlbumInfo:
                 "title_year": self.title_year,
                 "poster_path": self.poster_path,
                 "backdrop_path": self.backdrop_path,
-                "mediaid_prefix": self.source,
+                "media_source": (
+                    self.media_source.value
+                    if isinstance(self.media_source, MediaSource)
+                    else self.media_source
+                ),
                 "overview": self.overview,
                 "vote_average": self.rating,
                 "tracks": [track.to_dict() for track in self.tracks],
@@ -504,6 +483,7 @@ class MusicAlbumInfo:
         """从字典恢复标准化专辑信息。"""
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
+        values["media_source"] = normalize_media_source(values.get("media_source"))
         for key in ("artists", "secondary_types", "genres", "tags"):
             values[key] = _music_string_list(values.get(key))
         values["artist_ids"] = _music_aligned_list(values.get("artist_ids"))
@@ -523,7 +503,7 @@ class MusicAlbumInfo:
     def to_music_info(self) -> MusicInfo:
         """转换为专辑卡片使用的音乐信息，供列表接口统一返回。"""
         return MusicInfo(
-            source=self.source,
+            media_source=self.media_source,
             media_id=self.media_id,
             music_type=MUSIC_ENTITY_ALBUM,
             title=self.title,
@@ -551,7 +531,7 @@ class MusicArtistInfo:
 
     type: MediaType = field(default=MediaType.MUSIC, init=False)
     music_type: str = field(default=MUSIC_ENTITY_ARTIST, init=False)
-    source: str | None = None
+    media_source: MediaSource | None = None
     media_id: str | None = None
     name: str | None = None
     sort_name: str | None = None
@@ -576,6 +556,10 @@ class MusicArtistInfo:
     external_links: dict[str, str] = field(default_factory=dict)
     album_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """将构造参数中的数据源规范化为统一枚举。"""
+        self.media_source = normalize_media_source(self.media_source)
 
     @property
     def title(self) -> str | None:
@@ -617,7 +601,11 @@ class MusicArtistInfo:
                 "life_span": self.life_span,
                 "overview": self.overview,
                 "poster_path": self.poster_path,
-                "mediaid_prefix": self.source,
+                "media_source": (
+                    self.media_source.value
+                    if isinstance(self.media_source, MediaSource)
+                    else self.media_source
+                ),
             }
         )
         return payload
@@ -625,7 +613,7 @@ class MusicArtistInfo:
     def to_music_info(self) -> MusicInfo:
         """转换为统一搜索列表使用的音乐信息，但不赋予下载或订阅语义。"""
         return MusicInfo(
-            source=self.source,
+            media_source=self.media_source,
             media_id=self.media_id,
             music_type=MUSIC_ENTITY_ARTIST,
             title=self.name,
@@ -643,6 +631,7 @@ class MusicArtistInfo:
         """从字典恢复标准化艺术家信息。"""
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
+        values["media_source"] = normalize_media_source(values.get("media_source"))
         for key in ("genres", "tags", "aliases"):
             values[key] = _music_string_list(values.get(key))
         values["ended"] = bool(values.get("ended"))
@@ -680,8 +669,9 @@ class TorrentInfo:
     title: str = None
     # 种子副标题
     description: str = None
-    # IMDB ID
-    imdbid: str = None
+    # 种子页面声明的媒体身份
+    media_source: MediaSource = None
+    media_id: str = None
     # 种子链接
     enclosure: str = None
     # 详情页面
@@ -736,6 +726,9 @@ class TorrentInfo:
             if key in properties:
                 continue
             setattr(self, key, value)
+        self.media_source = normalize_media_source(self.media_source)
+        if self.media_id is not None:
+            self.media_id = str(self.media_id)
 
     @staticmethod
     def get_free_string(upload_volume_factor: float, download_volume_factor: float) -> str:
@@ -795,6 +788,12 @@ class TorrentInfo:
         返回字典
         """
         dicts = vars(self).copy()
+        dicts["media_source"] = (
+            self.media_source.value
+            if isinstance(self.media_source, MediaSource)
+            else self.media_source
+        )
+        dicts["media_id"] = str(self.media_id) if self.media_id is not None else None
         dicts["volume_factor"] = self.volume_factor
         dicts["freedate_diff"] = self.freedate_diff
         return dicts
@@ -895,9 +894,9 @@ class MediaInfo:
 
     # 内部标记：是否命中本地识别缓存，不参与序列化
     recognize_cache_hit = False
-    # 来源：themoviedb、douban、bangumi、anilist
-    source: str = None
-    # 当前数据源原生ID，主要用于保留插件自定义数据源身份
+    # 媒体主身份来源
+    media_source: MediaSource = None
+    # 当前数据源原生 ID
     media_id: str = None
     # 请求级刮削来源；为空时使用系统设置
     scrape_source: str = None
@@ -917,21 +916,14 @@ class MediaInfo:
     year: str = None
     # 季
     season: int = None
-    # TMDB ID
+    # 数据源返回的辅助 ID，仅作为元数据输出，不参与通用身份传递或持久化
     tmdb_id: int = None
-    # IMDB ID
     imdb_id: str = None
-    # TVDB ID
     tvdb_id: int = None
-    # TVDB Slug（别名，用于构建 TheTvDb 直达链接）
     tvdb_slug: str = None
-    # 豆瓣ID
     douban_id: str = None
-    # Bangumi ID
     bangumi_id: int = None
-    # AniList ID
     anilist_id: int = None
-    # AniDB ID（AniList外部映射）
     anidb_id: int = None
     # 合集ID
     collection_id: int = None
@@ -1029,6 +1021,8 @@ class MediaInfo:
     episode_group: str = None
 
     def __post_init__(self):
+        """规范化媒体来源，并从各来源原始数据初始化统一字段。"""
+        self.media_source = normalize_media_source(self.media_source)
         # 设置媒体信息
         if self.tmdb_info:
             self.set_tmdb_info(self.tmdb_info)
@@ -1038,6 +1032,7 @@ class MediaInfo:
             self.set_bangumi_info(self.bangumi_info)
         if self.anilist_info:
             self.set_anilist_info(self.anilist_info)
+        self.media_source = normalize_media_source(self.media_source)
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
@@ -1062,6 +1057,7 @@ class MediaInfo:
             if key in properties:
                 continue
             setattr(self, key, value)
+        self.media_source = normalize_media_source(self.media_source)
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
@@ -1133,7 +1129,7 @@ class MediaInfo:
         if not info:
             return
         # 来源
-        self.source = "themoviedb"
+        self.media_source = MediaSource.TMDB
         # 本体
         self.tmdb_info = info
         # 类型
@@ -1143,11 +1139,11 @@ class MediaInfo:
             self.type = MediaType.MOVIE if info.get("media_type") == "movie" else MediaType.TV
         else:
             self.type = MediaType.MOVIE if info.get("title") else MediaType.TV
-        # TMDBID
+        # 当前来源原生 ID
+        self.media_id = str(info.get('id')) if info.get('id') is not None else None
         self.tmdb_id = info.get('id')
-        if not self.tmdb_id:
+        if not self.media_id:
             return
-        # 额外ID
         if info.get("external_ids"):
             self.tvdb_id = info.get("external_ids", {}).get("tvdb_id")
             self.imdb_id = info.get("external_ids", {}).get("imdb_id")
@@ -1251,11 +1247,12 @@ class MediaInfo:
         if not info:
             return
         # 来源
-        self.source = "douban"
+        self.media_source = MediaSource.Douban
         # 本体
         self.douban_info = info
         # 豆瓣ID
-        self.douban_id = str(info.get("id"))
+        self.media_id = str(info.get("id")) if info.get("id") is not None else None
+        self.douban_id = self.media_id
         # 类型
         if not self.type:
             if isinstance(info.get('media_type'), MediaType):
@@ -1405,10 +1402,11 @@ class MediaInfo:
         if not info:
             return
         # 来源
-        self.source = "bangumi"
+        self.media_source = MediaSource.Bangumi
         # 本体
         self.bangumi_info = info
         # Bangumi ID
+        self.media_id = str(info.get("id")) if info.get("id") is not None else None
         self.bangumi_id = info.get("id")
         # 类型
         if not self.type:
@@ -1562,8 +1560,9 @@ class MediaInfo:
         """
         if not info:
             return
-        self.source = "anilist"
+        self.media_source = MediaSource.AniList
         self.anilist_info = info
+        self.media_id = str(info.get("id")) if info.get("id") is not None else None
         self.anilist_id = info.get("id")
         self.type = self.type or self.get_anilist_media_type(info)
 
@@ -1663,17 +1662,21 @@ class MediaInfo:
         """
         TMDB媒体详情页地址
         """
-        if self.tmdb_id:
+        if self.media_source == MediaSource.TMDB and self.media_id:
             if self.type == MediaType.MOVIE:
-                return "https://www.themoviedb.org/movie/%s" % self.tmdb_id
+                return f"https://www.themoviedb.org/movie/{self.media_id}"
             else:
-                return "https://www.themoviedb.org/tv/%s" % self.tmdb_id
-        elif self.douban_id:
-            return "https://movie.douban.com/subject/%s" % self.douban_id
-        elif self.bangumi_id:
-            return "http://bgm.tv/subject/%s" % self.bangumi_id
-        elif self.anilist_id:
-            return "https://anilist.co/anime/%s" % self.anilist_id
+                return f"https://www.themoviedb.org/tv/{self.media_id}"
+        if self.media_source == MediaSource.Douban and self.media_id:
+            return f"https://movie.douban.com/subject/{self.media_id}"
+        if self.media_source == MediaSource.Bangumi and self.media_id:
+            return f"https://bgm.tv/subject/{self.media_id}"
+        if self.media_source == MediaSource.AniList and self.media_id:
+            return f"https://anilist.co/anime/{self.media_id}"
+        if self.media_source == MediaSource.IMDb and self.media_id:
+            return f"https://www.imdb.com/title/{self.media_id}"
+        if self.media_source == MediaSource.TVDB and self.media_id:
+            return f"https://thetvdb.com/search?query={self.media_id}"
         return ""
 
     @property
@@ -1739,20 +1742,12 @@ class MediaInfo:
         dicts["douban_info"] = None
         dicts["bangumi_info"] = None
         dicts["anilist_info"] = None
-        source_ids = {
-            "themoviedb": self.tmdb_id,
-            "douban": self.douban_id,
-            "bangumi": self.bangumi_id,
-            "anilist": self.anilist_id,
-        }
-        media_source = self.source or next(
-            (source for source, media_id in source_ids.items() if media_id is not None),
-            None,
+        dicts["media_source"] = (
+            self.media_source.value
+            if isinstance(self.media_source, MediaSource)
+            else self.media_source
         )
-        dicts["source"] = media_source
-        dicts["mediaid_prefix"] = media_source
-        media_id = self.media_id or source_ids.get(media_source)
-        dicts["media_id"] = str(media_id) if media_id is not None else None
+        dicts["media_id"] = str(self.media_id) if self.media_id is not None else None
         return dicts
 
     def clear(self):
@@ -1793,7 +1788,7 @@ class Context:
     media_recognize_fail_count: int = 0
     # 候选资源来源：rss、spider、search、unknown。
     resource_source: str = "unknown"
-    # 候选匹配来源：tmdbid、doubanid、bangumiid、anilistid、imdbid、title、plugin、unknown。
+    # 候选匹配来源：MediaSource 枚举值、title、unknown。
     match_source: str = "unknown"
     # 候选自身是否已经识别出有效媒体 ID。
     candidate_recognized: bool = False

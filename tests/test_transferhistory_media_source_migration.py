@@ -210,7 +210,7 @@ def test_transfer_history_preserves_album_entity_context() -> None:
     oper = object.__new__(TransferHistoryOper)
     oper.add_force = Mock(return_value=SimpleNamespace(id=1))
     media = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",

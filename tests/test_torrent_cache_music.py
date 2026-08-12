@@ -13,7 +13,7 @@ from app.utils.crypto import HashUtils
 def _album_context() -> Context:
     """构造带完整专辑身份的缓存上下文。"""
     album = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="release-group-1",
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",

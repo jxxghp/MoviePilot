@@ -14,7 +14,13 @@ from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.schemas.category import CategoryConfig
-from app.schemas.types import MediaType, MediaImageType, ModuleType, MediaRecognizeType
+from app.schemas.types import (
+    MediaImageType,
+    MediaRecognizeType,
+    MediaSource,
+    MediaType,
+    ModuleType,
+)
 from app.utils.http import RequestUtils
 from app.utils.media import is_media_source_enabled, is_media_source_selected
 from app.utils.zhconv import convert as zhconv_convert
@@ -96,20 +102,20 @@ class TheMovieDbModule(_ModuleBase):
     def _validate_recognize_params(
         meta: MetaBase,
         tmdbid: Optional[int],
-        source: Optional[str] = None,
+        media_source: Optional[str] = None,
     ) -> bool:
         """
         验证识别参数
 
         :param meta: 标题解析元数据
         :param tmdbid: TMDB ID
-        :param source: 请求级识别数据源
+        :param media_source: 请求级识别数据源
         :return: 参数是否可用于TMDB识别
         """
         if not tmdbid and not meta:
             return False
 
-        if meta and not tmdbid and (source or settings.RECOGNIZE_SOURCE) != "themoviedb":
+        if meta and not tmdbid and (media_source or settings.RECOGNIZE_SOURCE) != "themoviedb":
             return False
 
         if meta and not meta.name and not tmdbid:
@@ -463,15 +469,17 @@ class TheMovieDbModule(_ModuleBase):
 
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
-                        tmdbid: Optional[int] = None,
+                        media_source: Optional[MediaSource] = None,
+                        media_id: Optional[str] = None,
                         episode_group: Optional[str] = None,
                         cache: Optional[bool] = True,
                         **kwargs) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta:     识别的元数据
-        :param mtype:    识别的媒体类型，与tmdbid配套
-        :param tmdbid:   tmdbid
+        :param mtype:    识别的媒体类型
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :param episode_group:  剧集组
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
@@ -479,8 +487,15 @@ class TheMovieDbModule(_ModuleBase):
         # TMDB 只处理影视；音乐识别模块异常时也不能把音乐请求回退成电视剧搜索。
         if mtype == MediaType.MUSIC or getattr(meta, "type", None) == MediaType.MUSIC:
             return None
+        if media_source and media_source != MediaSource.TMDB:
+            return None
+        if media_id is not None and (
+                media_source != MediaSource.TMDB or not str(media_id).isdigit()
+        ):
+            return None
+        tmdbid = int(media_id) if media_id is not None else None
         # 验证参数
-        if not self._validate_recognize_params(meta, tmdbid, kwargs.get("source")):
+        if not self._validate_recognize_params(meta, tmdbid, media_source):
             return None
 
         if not meta:
@@ -491,7 +506,8 @@ class TheMovieDbModule(_ModuleBase):
             if mtype:
                 meta.type = mtype
             if tmdbid:
-                meta.tmdbid = tmdbid
+                meta.media_source = MediaSource.TMDB
+                meta.media_id = str(tmdbid)
             cache_info = self.cache.get(meta) if cache else {}
 
         # 查询剧集组
@@ -552,15 +568,17 @@ class TheMovieDbModule(_ModuleBase):
 
     async def async_recognize_media(self, meta: MetaBase = None,
                                     mtype: MediaType = None,
-                                    tmdbid: Optional[int] = None,
+                                    media_source: Optional[MediaSource] = None,
+                                    media_id: Optional[str] = None,
                                     episode_group: Optional[str] = None,
                                     cache: Optional[bool] = True,
                                     **kwargs) -> Optional[MediaInfo]:
         """
         识别媒体信息（异步版本）
         :param meta:     识别的元数据
-        :param mtype:    识别的媒体类型，与tmdbid配套
-        :param tmdbid:   tmdbid
+        :param mtype:    识别的媒体类型
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
         :param episode_group:  剧集组
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
@@ -568,8 +586,15 @@ class TheMovieDbModule(_ModuleBase):
         # 与同步入口保持同一类型边界，音乐请求不得进入 TMDB。
         if mtype == MediaType.MUSIC or getattr(meta, "type", None) == MediaType.MUSIC:
             return None
+        if media_source and media_source != MediaSource.TMDB:
+            return None
+        if media_id is not None and (
+                media_source != MediaSource.TMDB or not str(media_id).isdigit()
+        ):
+            return None
+        tmdbid = int(media_id) if media_id is not None else None
         # 验证参数
-        if not self._validate_recognize_params(meta, tmdbid, kwargs.get("source")):
+        if not self._validate_recognize_params(meta, tmdbid, media_source):
             return None
 
         if not meta:
@@ -580,7 +605,8 @@ class TheMovieDbModule(_ModuleBase):
             if mtype:
                 meta.type = mtype
             if tmdbid:
-                meta.tmdbid = tmdbid
+                meta.media_source = MediaSource.TMDB
+                meta.media_id = str(tmdbid)
             cache_info = self.cache.get(meta) if cache else {}
 
         # 查询剧集组
@@ -717,7 +743,7 @@ class TheMovieDbModule(_ModuleBase):
         """
         if not meta or not mediainfo:
             return None
-        if mediainfo.source != "themoviedb" or not mediainfo.tmdb_info:
+        if mediainfo.media_source != "themoviedb" or not mediainfo.tmdb_info:
             return None
         self.cache.update(meta, mediainfo.tmdb_info)
         return True
@@ -743,15 +769,15 @@ class TheMovieDbModule(_ModuleBase):
         }
 
     def search_medias(
-        self, meta: MetaBase, source: Optional[str] = None
+        self, meta: MetaBase, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 媒体信息列表
         """
-        if not is_media_source_enabled(source, "themoviedb"):
+        if not is_media_source_enabled(media_source, "themoviedb"):
             return None
         if not meta.name:
             return []
@@ -775,15 +801,15 @@ class TheMovieDbModule(_ModuleBase):
         return self._build_search_medias_result(meta, results)
 
     def search_persons(
-        self, name: str, source: Optional[str] = None
+        self, name: str, media_source: Optional[MediaSource] = None
     ) -> Optional[List[schemas.MediaPerson]]:
         """
         搜索人物信息
         :param name: 人物名称
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if not is_media_source_enabled(source, "themoviedb"):
+        if not is_media_source_enabled(media_source, "themoviedb"):
             return None
         if not name:
             return []
@@ -793,15 +819,15 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     async def async_search_persons(
-        self, name: str, source: Optional[str] = None
+        self, name: str, media_source: Optional[MediaSource] = None
     ) -> Optional[List[schemas.MediaPerson]]:
         """
         异步搜索人物信息
         :param name: 人物名称
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 人物信息列表
         """
-        if not is_media_source_enabled(source, "themoviedb"):
+        if not is_media_source_enabled(media_source, "themoviedb"):
             return None
         if not name:
             return []
@@ -811,15 +837,15 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     def search_collections(
-        self, name: str, source: Optional[str] = None
+        self, name: str, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索集合信息
         :param name: 合集名称
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 合集信息列表
         """
-        if source and not is_media_source_selected(source, "themoviedb"):
+        if media_source and not is_media_source_selected(media_source, "themoviedb"):
             return None
         if not name:
             return []
@@ -829,15 +855,15 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     async def async_search_collections(
-        self, name: str, source: Optional[str] = None
+        self, name: str, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         异步搜索集合信息
         :param name: 合集名称
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 合集信息列表
         """
-        if source and not is_media_source_selected(source, "themoviedb"):
+        if media_source and not is_media_source_selected(media_source, "themoviedb"):
             return None
         if not name:
             return []
@@ -998,7 +1024,7 @@ class TheMovieDbModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :return: None 表示不处理，MediaInfo 表示继续处理
         """
-        if mediainfo.source != "themoviedb" and settings.RECOGNIZE_SOURCE != "themoviedb":
+        if mediainfo.media_source != "themoviedb" and settings.RECOGNIZE_SOURCE != "themoviedb":
             return None
         if not mediainfo.tmdb_id:
             return mediainfo
@@ -1225,15 +1251,15 @@ class TheMovieDbModule(_ModuleBase):
 
     # 异步方法
     async def async_search_medias(
-        self, meta: MetaBase, source: Optional[str] = None
+        self, meta: MetaBase, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
         :param meta:  识别的元数据
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 媒体信息列表
         """
-        if not is_media_source_enabled(source, "themoviedb"):
+        if not is_media_source_enabled(media_source, "themoviedb"):
             return None
         if not meta.name:
             return []

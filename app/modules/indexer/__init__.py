@@ -16,6 +16,8 @@ from app.modules.indexer.spider.rousi import RousiSpider
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
+from app.schemas.types import MediaSource
+from app.utils.media import resolve_media_identity
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
@@ -156,14 +158,26 @@ class IndexerModule(_ModuleBase):
             return []
         logger.info(
             f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
-        return [TorrentInfo(site=site.get("id"),
-                            site_name=site.get("name"),
-                            site_cookie=site.get("cookie"),
-                            site_ua=site.get("ua"),
-                            site_proxy=site.get("proxy"),
-                            site_order=site.get("pri"),
-                            site_downloader=site.get("downloader"),
-                            **result) for result in result_array]
+        torrents = []
+        for result in result_array:
+            result = dict(result)
+            legacy_imdb_id = result.pop("imdbid", None)
+            media_source, media_id = resolve_media_identity(media=result)
+            if not media_source and legacy_imdb_id:
+                media_source, media_id = MediaSource.IMDb, str(legacy_imdb_id)
+            result["media_source"] = media_source
+            result["media_id"] = media_id
+            torrents.append(TorrentInfo(
+                site=site.get("id"),
+                site_name=site.get("name"),
+                site_cookie=site.get("cookie"),
+                site_ua=site.get("ua"),
+                site_proxy=site.get("proxy"),
+                site_order=site.get("pri"),
+                site_downloader=site.get("downloader"),
+                **result,
+            ))
+        return torrents
 
     @staticmethod
     def __parse_subtitle_result(site: dict, result_array: list, seconds: int) -> List[SubtitleInfo]:

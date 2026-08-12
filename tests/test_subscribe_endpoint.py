@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.api.endpoints.subscribe import create_subscribe
 from app.schemas.subscribe import Subscribe
-from app.schemas.types import EventType, MediaType
+from app.schemas.types import EventType, MediaSource, MediaType
 
 
 class SubscribeEndpointTest(TestCase):
@@ -331,25 +331,27 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(response.message, "订阅不存在")
         sub_share.assert_not_awaited()
 
-    def test_subscribe_mediaid_returns_owner_when_other_candidate_matches_first(self):
+    def test_subscribe_media_identity_returns_owner_when_other_candidate_matches_first(self):
         """
         按媒体查询订阅时，他人订阅不能挡住当前用户自己的订阅。
         """
-        from app.api.endpoints.subscribe import subscribe_mediaid
+        from app.api.endpoints.subscribe import subscribe_media_identity
 
-        other = _EndpointSubscribe(id=13, username="bob", tmdbid=123, season=1)
-        own = _EndpointSubscribe(id=14, username="alice", tmdbid=123, season=1)
+        other = _EndpointSubscribe(
+            id=13, username="bob", media_source="themoviedb", media_id="123", season=1
+        )
+        own = _EndpointSubscribe(
+            id=14, username="alice", media_source="themoviedb", media_id="123", season=1
+        )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_exists",
-            new=AsyncMock(return_value=other),
-        ), patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get_by_tmdbid",
+            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
             new=AsyncMock(return_value=[other, own]),
         ):
             result = asyncio.run(
-                subscribe_mediaid(
-                    mediaid="tmdb:123",
+                subscribe_media_identity(
+                    media_id="123",
+                    media_source=MediaSource.TMDB,
                     season=1,
                     db=object(),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
@@ -358,9 +360,9 @@ class SubscribeEndpointTest(TestCase):
 
         self.assertEqual(result.id, 14)
 
-    def test_subscribe_mediaid_distinguishes_recording_and_album_entities(self):
+    def test_subscribe_media_identity_distinguishes_recording_and_album_entities(self):
         """同一来源身份下查询专辑时不能返回单曲订阅。"""
-        from app.api.endpoints.subscribe import subscribe_mediaid
+        from app.api.endpoints.subscribe import subscribe_media_identity
 
         recording = _EndpointSubscribe(
             id=21,
@@ -384,8 +386,9 @@ class SubscribeEndpointTest(TestCase):
             new=AsyncMock(return_value=[recording, album]),
         ) as list_by_identity:
             result = asyncio.run(
-                subscribe_mediaid(
-                    mediaid="musicbrainz:shared-id",
+                subscribe_media_identity(
+                    media_id="shared-id",
+                    media_source=MediaSource.MusicBrainz,
                     music_type="album",
                     db=object(),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
@@ -395,29 +398,21 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(result.id, 22)
         self.assertEqual(list_by_identity.await_args.kwargs["music_type"], "album")
 
-    def test_subscribe_mediaid_uses_music_title_parser_for_fallback(self):
-        """音乐身份未命中时应先查原题，再按艺术家与曲名语义查询，不能套影视解析。"""
-        from app.api.endpoints.subscribe import subscribe_mediaid
-
-        recording = _EndpointSubscribe(
-            id=23,
-            username="alice",
-            type=MediaType.MUSIC.value,
-            music_type="recording",
-            name="晴天",
-        )
-        title_lookup = AsyncMock(side_effect=[[], [recording]])
+    def test_subscribe_media_identity_does_not_fallback_to_title(self):
+        """统一身份未命中时不得按标题串联其他来源的订阅。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
 
         with patch(
-            "app.api.endpoints.subscribe.list_subscribes_by_media_key",
+            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
             new=AsyncMock(return_value=[]),
         ), patch(
             "app.api.endpoints.subscribe.Subscribe.async_list_by_title",
-            new=title_lookup,
-        ):
+            new=AsyncMock(),
+        ) as title_lookup:
             result = asyncio.run(
-                subscribe_mediaid(
-                    mediaid="musicbrainz:legacy-recording",
+                subscribe_media_identity(
+                    media_id="legacy-recording",
+                    media_source=MediaSource.MusicBrainz,
                     title="周杰伦 - 晴天",
                     music_type="recording",
                     db=object(),
@@ -425,42 +420,37 @@ class SubscribeEndpointTest(TestCase):
                 )
             )
 
-        self.assertEqual(result.id, 23)
-        self.assertEqual(
-            [call.kwargs for call in title_lookup.await_args_list],
-            [
-                {"title": "周杰伦 - 晴天", "season": None},
-                {"title": "晴天", "season": None},
-            ],
-        )
+        self.assertIsNone(result.id)
+        title_lookup.assert_not_awaited()
 
-    def test_delete_subscribe_by_mediaid_deletes_owner_when_other_douban_match_first(self):
+    def test_delete_subscribe_by_media_identity_deletes_owner_candidate(self):
         """
         按媒体删除订阅时，应在候选集合中删除当前用户自己的订阅。
         """
-        from app.api.endpoints.subscribe import delete_subscribe_by_mediaid
+        from app.api.endpoints.subscribe import delete_subscribe_by_media_identity
 
-        other = _EndpointSubscribe(id=15, username="bob", doubanid="douban-1")
-        own = _EndpointSubscribe(id=16, username="alice", doubanid="douban-1")
+        other = _EndpointSubscribe(
+            id=15, username="bob", media_source="douban", media_id="douban-1"
+        )
+        own = _EndpointSubscribe(
+            id=16, username="alice", media_source="douban", media_id="douban-1"
+        )
         db = _EndpointAsyncDb()
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get_by_doubanid",
-            new=AsyncMock(return_value=other),
-        ), patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_doubanid",
+            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
             new=AsyncMock(return_value=[other, own]),
-            create=True,
         ), patch(
             "app.api.endpoints.subscribe.build_subscribe_event_payload",
-            return_value={"id": 16, "doubanid": "douban-1"},
+            return_value={"id": 16, "media_source": "douban", "media_id": "douban-1"},
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
             new=AsyncMock(),
         ) as send_event:
             response = asyncio.run(
-                delete_subscribe_by_mediaid(
-                    mediaid="douban:douban-1",
+                delete_subscribe_by_media_identity(
+                    media_id="douban-1",
+                    media_source=MediaSource.Douban,
                     db=db,
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
@@ -470,18 +460,19 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(db.deleted, [own])
         send_event.assert_awaited_once()
 
-    def test_delete_subscribe_by_mediaid_forwards_music_entity(self):
+    def test_delete_subscribe_by_media_identity_forwards_music_entity(self):
         """取消专辑订阅时必须把实体类型传给统一身份查询。"""
-        from app.api.endpoints.subscribe import delete_subscribe_by_mediaid
+        from app.api.endpoints.subscribe import delete_subscribe_by_media_identity
 
         db = _EndpointAsyncDb()
         with patch(
-            "app.api.endpoints.subscribe.list_subscribes_by_media_key",
+            "app.api.endpoints.subscribe.list_subscribes_by_media_identity",
             new=AsyncMock(return_value=[]),
         ) as list_by_key:
             response = asyncio.run(
-                delete_subscribe_by_mediaid(
-                    mediaid="musicbrainz:release-group-1",
+                delete_subscribe_by_media_identity(
+                    media_id="release-group-1",
+                    media_source=MediaSource.MusicBrainz,
                     music_type="album",
                     db=db,
                     current_user=_EndpointUser(name="alice", is_superuser=False),
@@ -491,7 +482,8 @@ class SubscribeEndpointTest(TestCase):
         self.assertTrue(response.success)
         list_by_key.assert_awaited_once_with(
             db,
-            "musicbrainz:release-group-1",
+            MediaSource.MusicBrainz,
+            "release-group-1",
             None,
             "album",
         )
@@ -826,7 +818,7 @@ class SubscribeEndpointTest(TestCase):
         ):
             self.assertNotIn(field, payload)
 
-    def test_create_subscribe_preserves_special_season_zero_with_doubanid(self):
+    def test_create_subscribe_preserves_special_season_zero_with_douban_identity(self):
         """
         新增订阅带豆瓣 ID 且显式指定 S0 时，标题规整不应覆盖调用方传入的季号。
         """
@@ -834,7 +826,8 @@ class SubscribeEndpointTest(TestCase):
             name="测试剧集",
             year="2026",
             type=MediaType.TV.value,
-            doubanid="12345",
+            media_source=MediaSource.Douban,
+            media_id="12345",
             season=0,
             total_episode=5,
             lack_episode=5,
@@ -1169,12 +1162,8 @@ class _EndpointMediaInfo:
     title = "测试剧集"
     year = "2026"
     type = MediaType.TV
-    tmdb_id = 123
-    imdb_id = "tt123"
-    tvdb_id = 456
-    douban_id = "douban-1"
-    bangumi_id = 789
-    anilist_id = 154587
+    media_source = MediaSource.TMDB
+    media_id = "123"
     episode_group = None
     vote_average = 8.0
     overview = "测试简介"
@@ -1222,9 +1211,8 @@ def test_subscribe_accepts_empty_strings_for_numeric_fields():
     subscribe = Subscribe(
         name="Random Access Memories",
         type=MediaType.MUSIC.value,
-        tmdbid="",
-        bangumiid="",
-        anilistid="",
+        media_source="",
+        media_id="",
         season="",
         total_episode="",
         start_episode="",
@@ -1238,7 +1226,8 @@ def test_subscribe_accepts_empty_strings_for_numeric_fields():
         filter_groups="",
     )
 
-    assert subscribe.tmdbid is None
+    assert subscribe.media_source is None
+    assert subscribe.media_id is None
     assert subscribe.season is None
     assert subscribe.best_version is None
     assert subscribe.episode_priority is None
@@ -1258,7 +1247,8 @@ def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
         name="测试剧集",
         type=MediaType.TV.value,
         season="2",
-        tmdbid="123",
+        media_source=MediaSource.TMDB,
+        media_id="123",
         total_episode=0,
         start_episode=0,
         search_imdbid=0,
@@ -1266,7 +1256,8 @@ def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
     )
 
     assert subscribe.season == 2
-    assert subscribe.tmdbid == 123
+    assert subscribe.media_source == MediaSource.TMDB
+    assert subscribe.media_id == "123"
     assert subscribe.total_episode == 0
     assert subscribe.start_episode == 0
     assert subscribe.search_imdbid == 0
@@ -1280,7 +1271,8 @@ def test_create_subscribe_accepts_music_payload_with_empty_strings():
         type=MediaType.MUSIC.value,
         music_type="album",
         total_tracks=13,
-        tmdbid="",
+        media_source="",
+        media_id="",
         season="",
         total_episode="",
         episode_priority="",
@@ -1301,7 +1293,8 @@ def test_create_subscribe_accepts_music_payload_with_empty_strings():
     assert response.success is True
     payload = async_add.await_args.kwargs
     # 空字符串回退默认值后应正确传入持久化链路
-    assert payload["tmdbid"] is None
+    assert payload["media_source"] is None
+    assert payload["media_id"] is None
     assert payload["total_episode"] == 0
     assert payload["sites"] == []
     assert payload["type"] == MediaType.MUSIC.value

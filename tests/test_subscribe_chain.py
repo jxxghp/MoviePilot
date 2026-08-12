@@ -426,16 +426,9 @@ class SubscribeChainTest(TestCase):
             "state": "R",
             "note": [],
             "manual_total_episode": 0,
-            "tmdbid": 1,
-            "doubanid": None,
             "year": "2026",
-            "imdbid": None,
-            "tvdbid": None,
-            "bangumiid": None,
-            "anilistid": None,
             "media_source": "themoviedb",
             "media_id": "1",
-            "mediaid": "tmdb:1",
             "episode_group": None,
             "poster": None,
             "backdrop": None,
@@ -454,7 +447,7 @@ class SubscribeChainTest(TestCase):
             torrent_info=SimpleNamespace(pri_order=priority),
             selected_episodes=selected_episodes,
             meta_info=SimpleNamespace(season_list=[1], episode_list=meta_episodes or selected_episodes or []),
-            media_info=SimpleNamespace(type=MediaType.TV, tmdb_id=1, douban_id=None),
+            media_info=SimpleNamespace(type=MediaType.TV, media_source="themoviedb", media_id="1"),
             confirmed_full_coverage=False,
         )
 
@@ -513,7 +506,6 @@ class SubscribeChainTest(TestCase):
         subscribe = self._build_subscribe(
             best_version=0,
             custom_words=None,
-            doubanid=None,
             episode_group=None,
             sites=[],
             tmdbid=1,
@@ -569,7 +561,6 @@ class SubscribeChainTest(TestCase):
         subscribe = self._build_subscribe(
             best_version=0,
             custom_words=None,
-            doubanid=None,
             episode_group=None,
             filter_groups=[],
             keyword=None,
@@ -578,21 +569,20 @@ class SubscribeChainTest(TestCase):
             search_imdbid=False,
             season=0,
             sites=[],
-            tmdbid=1,
             username="",
             downloader=None,
         )
         mediainfo = SimpleNamespace(
             clear=lambda: None,
-            douban_id=None,
+            media_source="themoviedb",
+            media_id="1",
             title_year="Test Show (2026)",
-            tmdb_id=1,
             type=MediaType.TV,
         )
         torrent_media = SimpleNamespace(
             clear=lambda: None,
-            douban_id=None,
-            tmdb_id=1,
+            media_source="themoviedb",
+            media_id="1",
             type=MediaType.TV,
         )
         context = SimpleNamespace(
@@ -2025,10 +2015,8 @@ class SubscribeNoteTrackingTest(TestCase):
             meta_info=SimpleNamespace(season_list=[1], episode_list=list(episodes)),
             media_info=SimpleNamespace(
                 type=MediaType.TV,
-                tmdb_id=1,
-                douban_id=None,
-                bangumi_id=None,
-                anilist_id=None,
+                media_source="themoviedb",
+                media_id="1",
             ),
             torrent_info=SimpleNamespace(pri_order=99, title="fake-torrent"),
             selected_episodes=list(episodes),
@@ -2064,8 +2052,12 @@ class SubscribeNoteTrackingTest(TestCase):
             chain.finish_subscribe_or_not(
                 subscribe=subscribe,
                 meta=SimpleNamespace(type=MediaType.TV),
-                mediainfo=SimpleNamespace(title_year="Test Show (2026)", type=MediaType.TV,
-                                          tmdb_id=1, douban_id=None),
+                mediainfo=SimpleNamespace(
+                    title_year="Test Show (2026)",
+                    type=MediaType.TV,
+                    media_source="themoviedb",
+                    media_id="1",
+                ),
                 downloads=downloads,
                 lefts=None,
             )
@@ -2168,8 +2160,8 @@ class SubscribeProgressEntrypointTest(TestCase):
             "current_priority": None,
             "episode_priority": {},
             "last_update": None,
-            "tmdbid": 10001,
-            "doubanid": None,
+            "media_source": "themoviedb",
+            "media_id": "10001",
             "year": "2026",
             "manual_total_episode": 0,
         }
@@ -2189,14 +2181,14 @@ class SubscribeProgressEntrypointTest(TestCase):
     def test_compute_lack_episode_normal_tv_no_exists_boundaries(self):
         subscribe = self._build_subscribe(best_version=0, note=[1])
         missing_all = {
-            10001: {
+            "tmdb:10001": {
                 1: self.module.schemas.NotExistMediaInfo(
                     season=1, episodes=[], total_episode=5, start_episode=1
                 )
             }
         }
         missing_some = {
-            10001: {
+            "tmdb:10001": {
                 1: self.module.schemas.NotExistMediaInfo(
                     season=1, episodes=[2, 4], total_episode=5, start_episode=1
                 )
@@ -2495,13 +2487,13 @@ class SubscribeProgressEntrypointTest(TestCase):
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
         mediainfo = SimpleNamespace(
             type=MediaType.TV,
-            tmdb_id=10001,
-            douban_id=None,
+            media_source="themoviedb",
+            media_id="10001",
             title_year="测试剧 (2026)",
             seasons={1: [1, 2, 3, 4, 5]},
         )
         no_exists = {
-            10001: {
+            "tmdb:10001": {
                 1: self.module.schemas.NotExistMediaInfo(
                     season=1, episodes=[2, 4], total_episode=5, start_episode=1
                 )
@@ -2606,11 +2598,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             title="总集增长剧",
             title_year="总集增长剧 (2026)",
             year="2026",
-            tmdb_id=31000,
-            douban_id=None,
-            bangumi_id=None,
-            anilist_id=None,
-            source="themoviedb",
+            media_source="themoviedb",
+            media_id="31000",
             vote_average=9.5,
             overview="overview",
             imdb_id="tt1234567",
@@ -2652,8 +2641,8 @@ class SubscribeProgressConsolidationTest(TestCase):
                 10,
                 season=1,
                 mediainfo=self._mediainfo(total_episode=10),
-                tmdbid=31030,
-                doubanid=None,
+                media_source="themoviedb",
+                media_id="31030",
                 subscribe_id=31,
                 scene="precheck",
             )
@@ -2671,8 +2660,8 @@ class SubscribeProgressConsolidationTest(TestCase):
                 10,
                 season=1,
                 mediainfo=self._mediainfo(total_episode=10),
-                tmdbid=31030,
-                doubanid=None,
+                media_source="themoviedb",
+                media_id="31030",
                 subscribe_id=31,
                 scene="precheck",
             ))
@@ -2696,8 +2685,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=80,
             episode_priority=None,
             note=[],
-            tmdbid=31031,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31031",
             manual_total_episode=0,
         )
         mediainfo = self._mediainfo(total_episode=5)
@@ -2738,8 +2727,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=None,
             episode_priority={str(episode): 80 for episode in range(1, 101)},
             note=[],
-            tmdbid=31034,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31034",
             manual_total_episode=0,
         )
         updates = []
@@ -2790,8 +2779,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=100,
             episode_priority={str(episode): 100 for episode in range(1, 101)},
             note=[],
-            tmdbid=31040,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31040",
             manual_total_episode=0,
         )
         updates = []
@@ -2838,8 +2827,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=82,
             episode_priority={"1": 90, "2": 80, "3": 82},
             note=[1, 2, 3],
-            tmdbid=31041,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31041",
             manual_total_episode=0,
         )
 
@@ -2868,8 +2857,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=82,
             episode_priority={},
             note=[],
-            tmdbid=31045,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31045",
             manual_total_episode=0,
         )
 
@@ -2896,8 +2885,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=82,
             episode_priority={"1": 90, "2": 80, "3": 82, "4": 70, "5": 60},
             note=[1, 2, 3, 4, 5],
-            tmdbid=31043,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31043",
             manual_total_episode=0,
         )
 
@@ -2926,8 +2915,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=100,
             episode_priority={str(episode): 100 for episode in range(11, 101)},
             note=[],
-            tmdbid=31042,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31042",
             manual_total_episode=0,
         )
         updates = []
@@ -2975,8 +2964,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=100,
             episode_priority={str(episode): 100 for episode in range(11, 101)},
             note=[],
-            tmdbid=31044,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31044",
             manual_total_episode=0,
         )
         updates = []
@@ -3024,8 +3013,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=None,
             episode_priority={},
             note=[],
-            tmdbid=31035,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31035",
             manual_total_episode=0,
         )
         updates = []
@@ -3065,8 +3054,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=None,
             episode_priority={},
             note=[],
-            tmdbid=31037,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31037",
             manual_total_episode=1,
         )
 
@@ -3106,8 +3095,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             current_priority=None,
             episode_priority={},
             note=[],
-            tmdbid=31038,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31038",
             manual_total_episode=0,
         )
 
@@ -3149,8 +3138,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             note=[],
             year="2026",
             episode_group=None,
-            tmdbid=31033,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31033",
             manual_total_episode=0,
         )
         updates = []
@@ -3194,8 +3183,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             note=[],
             year="2026",
             episode_group=None,
-            tmdbid=31039,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31039",
             manual_total_episode=0,
         )
         updates = []
@@ -3239,8 +3228,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             note=[],
             year="2026",
             episode_group=None,
-            tmdbid=31043,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31043",
             manual_total_episode=0,
         )
         updates = []
@@ -3257,7 +3246,7 @@ class SubscribeProgressConsolidationTest(TestCase):
         chain.resolve_subscribe_missing = lambda **kwargs: (
             False,
             {
-                31043: {
+                "tmdb:31043": {
                     1: SimpleNamespace(
                         season=1,
                         episodes=list(range(91, 101)),
@@ -3298,8 +3287,8 @@ class SubscribeProgressConsolidationTest(TestCase):
             note=[],
             year="2026",
             episode_group=None,
-            tmdbid=31045,
-            doubanid=None,
+                media_source="themoviedb",
+                media_id="31045",
             manual_total_episode=0,
         )
         updates = []
@@ -3351,7 +3340,8 @@ class SubscribeProgressConsolidationTest(TestCase):
                 title="总集创建剧",
                 year="2026",
                 mtype=MediaType.TV,
-                tmdbid=31041,
+                media_source="themoviedb",
+                media_id="31041",
                 season=1,
                 message=False,
             )
@@ -3439,8 +3429,8 @@ class SubscribeDownloadFactsTest(TestCase):
             "best_version_full": 0,
             "current_priority": None,
             "episode_priority": {},
-            "tmdbid": 30003,
-            "doubanid": None,
+            "media_source": "themoviedb",
+            "media_id": "30003",
             "manual_total_episode": 0,
         }
         values.update(overrides)
@@ -3454,10 +3444,8 @@ class SubscribeDownloadFactsTest(TestCase):
             meta_info=SimpleNamespace(episode_list=episodes or [], season_list=[1]),
             media_info=SimpleNamespace(
                 type=MediaType.TV,
-                tmdb_id=30003,
-                douban_id=None,
-                bangumi_id=None,
-                anilist_id=None,
+                media_source="themoviedb",
+                media_id="30003",
             ),
         )
 
@@ -3611,7 +3599,8 @@ class SubscribeDownloadFactsTest(TestCase):
             current_priority=60,
             episode_priority={},
             note=[],
-            tmdbid=30003,
+            media_source="themoviedb",
+            media_id="30003",
             total_episode=1,
             lack_episode=1,
         )
@@ -3650,7 +3639,8 @@ class SubscribeDownloadFactsTest(TestCase):
             current_priority=60,
             episode_priority={},
             note=[],
-            tmdbid=30003,
+            media_source="themoviedb",
+            media_id="30003",
             total_episode=1,
             lack_episode=1,
         )
@@ -3686,7 +3676,8 @@ class SubscribeDownloadFactsTest(TestCase):
             current_priority=None,
             episode_priority={},
             note=[],
-            tmdbid=30003,
+            media_source="themoviedb",
+            media_id="30003",
             total_episode=1,
             lack_episode=1,
         )
@@ -3722,7 +3713,8 @@ class SubscribeDownloadFactsTest(TestCase):
             current_priority=None,
             episode_priority={},
             note=[],
-            tmdbid=30003,
+            media_source="themoviedb",
+            media_id="30003",
             total_episode=1,
             lack_episode=1,
         )

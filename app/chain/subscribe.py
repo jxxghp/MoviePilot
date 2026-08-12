@@ -46,15 +46,14 @@ from app.helper.mediaserver import MediaServerHelper
 from app.helper.server import MoviePilotServerHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import (MediaRecognizeConvertEventData, SubscribeEpisodesRefreshEventData,
+from app.schemas import (SubscribeEpisodesRefreshEventData,
                          SubscribeCompletionCheckEventData)
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
     ContentType
 from app.utils.media import (
     MUSIC_SUBSCRIBABLE_TYPES,
     build_media_key,
     normalize_media_source,
-    parse_media_key,
     resolve_media_identity,
 )
 
@@ -88,38 +87,26 @@ def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
     meta.year = subscribe.year
     meta.begin_season = subscribe.season
     meta.type = MediaType(subscribe.type)
-    meta.tmdbid = subscribe.tmdbid
-    meta.doubanid = subscribe.doubanid
-    meta.bangumiid = subscribe.bangumiid
-    meta.anilistid = subscribe.anilistid
     meta.media_source = subscribe.media_source
     meta.media_id = subscribe.media_id
     return meta
 
 
 def _media_recognize_kwargs(mediainfo: MediaInfo) -> dict:
-    """从统一媒体信息构造完整的识别 ID 参数。"""
+    """从统一媒体信息构造规范识别身份参数。"""
     media_source, media_id = resolve_media_identity(media=mediainfo)
     return {
-        "source": media_source,
-        "mediaid": media_id,
-        "tmdbid": mediainfo.tmdb_id,
-        "doubanid": mediainfo.douban_id,
-        "bangumiid": mediainfo.bangumi_id,
-        "anilistid": mediainfo.anilist_id,
+        "media_source": media_source,
+        "media_id": media_id,
     }
 
 
 def _subscribe_recognize_kwargs(subscribe: Subscribe) -> dict:
-    """从订阅记录构造完整的识别 ID 参数。"""
+    """从订阅记录构造规范识别身份参数。"""
     media_source, media_id = resolve_media_identity(media=subscribe)
     return {
-        "source": media_source,
-        "mediaid": media_id,
-        "tmdbid": subscribe.tmdbid,
-        "doubanid": subscribe.doubanid,
-        "bangumiid": subscribe.bangumiid,
-        "anilistid": subscribe.anilistid,
+        "media_source": media_source,
+        "media_id": media_id,
     }
 
 
@@ -130,15 +117,11 @@ def _subscribe_media_key(subscribe: Subscribe) -> Union[str, int, None]:
 
 
 def _subscribe_media_keys(subscribe: Subscribe) -> List[Union[str, int]]:
-    """返回新旧缺失集缓存均可识别的订阅媒体键。"""
+    """返回缺失集缓存可识别的规范媒体键。"""
     media_source, media_id = resolve_media_identity(media=subscribe)
     candidates = [
         build_media_key(media_source, media_id),
-        subscribe.mediaid,
-        subscribe.tmdbid,
-        subscribe.doubanid,
-        subscribe.bangumiid,
-        subscribe.anilistid,
+        media_id,
     ]
     return [candidate for candidate in candidates if candidate not in (None, "")]
 
@@ -814,54 +797,6 @@ class SubscribeChain(ChainBase):
             custom_words=subscribe.custom_words,
         )
 
-    @staticmethod
-    def __get_event_media(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
-        """
-        广播事件解析媒体信息
-        """
-        event_data = MediaRecognizeConvertEventData(
-            mediaid=_mediaid,
-            convert_type=settings.RECOGNIZE_SOURCE
-        )
-        event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
-        # 使用事件返回的上下文数据
-        if event and event.event_data:
-            event_data: MediaRecognizeConvertEventData = event.event_data
-            if event_data.media_dict:
-                mediachain = MediaChain()
-                new_id = event_data.media_dict.get("id")
-                if new_id is not None and event_data.convert_type:
-                    return mediachain.recognize_media(
-                        meta=_meta,
-                        source=event_data.convert_type,
-                        mediaid=str(new_id),
-                    )
-        return None
-
-    @staticmethod
-    async def __async_get_event_meida(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
-        """
-        广播事件解析媒体信息
-        """
-        event_data = MediaRecognizeConvertEventData(
-            mediaid=_mediaid,
-            convert_type=settings.RECOGNIZE_SOURCE
-        )
-        event = await eventmanager.async_send_event(ChainEventType.MediaRecognizeConvert, event_data)
-        # 使用事件返回的上下文数据
-        if event and event.event_data:
-            event_data: MediaRecognizeConvertEventData = event.event_data
-            if event_data.media_dict:
-                mediachain = MediaChain()
-                new_id = event_data.media_dict.get("id")
-                if new_id is not None and event_data.convert_type:
-                    return await mediachain.async_recognize_media(
-                        meta=_meta,
-                        source=event_data.convert_type,
-                        mediaid=str(new_id),
-                    )
-        return None
-
     def __get_default_kwargs(self, mtype: MediaType, **kwargs) -> dict:
         """
         获取订阅默认配置
@@ -915,10 +850,6 @@ class SubscribeChain(ChainBase):
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
-            tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None,
-            mediaid: Optional[str] = None,
             episode_group: Optional[str] = None,
             season: Optional[int] = None,
             channel: MessageChannel = None,
@@ -927,8 +858,7 @@ class SubscribeChain(ChainBase):
             username: Optional[str] = None,
             message: Optional[bool] = True,
             exist_ok: Optional[bool] = False,
-            anilistid: Optional[int] = None,
-            media_source: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs) -> Tuple[Optional[int], str]:
         """
@@ -936,6 +866,14 @@ class SubscribeChain(ChainBase):
         """
 
         logger.info(f'开始添加订阅，标题：{title} ...')
+
+        explicit_identity = media_source is not None or media_id is not None
+        media_source, media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if explicit_identity and (not media_source or not media_id):
+            return None, "媒体来源和媒体 ID 必须同时提供"
 
         mediainfo = None
         requested_music_type = kwargs.get("music_type")
@@ -947,71 +885,49 @@ class SubscribeChain(ChainBase):
         if season is not None:
             metainfo.type = MediaType.TV
             metainfo.begin_season = season
-        if not media_source and not media_id and mediaid:
-            media_source, media_id = parse_media_key(mediaid)
-        resolved_source, resolved_media_id = resolve_media_identity(
-            source=media_source,
-            media_id=media_id,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
-        )
-        if resolved_source and resolved_media_id:
-            media_source, media_id = resolved_source, resolved_media_id
         # 音乐身份同步落到 meta；显式来源与 ID 直接走统一识别入口，不允许失败后换目标。
         if mtype == MediaType.MUSIC and media_id:
             metainfo.media_id = str(media_id)
-        has_music_identity = bool(
-            mtype == MediaType.MUSIC and media_source and media_id
-        )
-        if has_music_identity:
-            mediainfo = MediaChain().recognize_media(
-                meta=metainfo,
-                mtype=MediaType.MUSIC,
-                source=media_source,
-                mediaid=str(media_id),
-                music_type=requested_music_type,
-                cache=False,
-            )
-        elif mtype != MediaType.MUSIC and any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
+        if media_source and media_id:
             mediainfo = MediaChain().recognize_media(
                 meta=metainfo,
                 mtype=mtype,
-                source=media_source,
-                mediaid=media_id,
-                tmdbid=tmdbid,
-                doubanid=doubanid,
-                bangumiid=bangumiid,
-                anilistid=anilistid,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=requested_music_type,
                 episode_group=episode_group,
                 cache=False,
             )
-        elif mtype != MediaType.MUSIC and mediaid:
-            mediainfo = self.__get_event_media(mediaid, metainfo)
 
-        if mtype != MediaType.MUSIC and mediainfo and mediainfo.source != "themoviedb":
+        if (
+            mtype != MediaType.MUSIC
+            and mediainfo
+            and mediainfo.media_source != MediaSource.TMDB
+        ):
             meta = MetaInfo(mediainfo.title)
             mediainfo.title = meta.name
             if season is None:
                 season = meta.begin_season
 
         # 没有稳定音乐身份时才允许按名称识别；影视保留原有同源兜底行为。
-        if not mediainfo and not has_music_identity:
+        if not mediainfo and not explicit_identity:
             mediainfo = MediaChain().recognize_by_meta(
                 metainfo,
-                source=media_source,
+                media_source=media_source,
                 episode_group=episode_group,
                 obtain_images=False,
                 music_type=requested_music_type,
             )
             # 音乐 recognize_by_meta 未命中远端时返回离线兜底，订阅创建要求真实命中
-            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.source:
+            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.media_source:
                 mediainfo = None
 
         # 识别失败
         if not mediainfo:
-            logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
+            logger.warn(
+                f"未识别到媒体信息，标题：{title}，媒体来源：{media_source}，"
+                f"媒体 ID：{media_id}"
+            )
             return None, "未识别到媒体信息"
 
         if mtype == MediaType.MUSIC:
@@ -1039,20 +955,18 @@ class SubscribeChain(ChainBase):
                         logger.error(f"媒体信息识别失败！")
                         return None, "媒体信息识别失败"
                     if not mediainfo.seasons:
-                        logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
+                        logger.error(f"媒体信息中没有季集信息，标题：{title}")
                         return None, "媒体信息中没有季集信息"
                 current_total_episode = len(mediainfo.seasons.get(season) or [])
                 # 创建场景没有旧订阅事实，仅允许外部补正未知或扩展总集数。
                 total_episode = self.__apply_episodes_refresh(
                     current_total_episode, season=season, mediainfo=mediainfo,
-                    tmdbid=mediainfo.tmdb_id, doubanid=mediainfo.douban_id,
-                    bangumiid=mediainfo.bangumi_id, anilistid=mediainfo.anilist_id,
                     media_source=resolve_media_identity(media=mediainfo)[0],
                     media_id=resolve_media_identity(media=mediainfo)[1], scene="create")
                 if current_total_episode and total_episode < current_total_episode:
                     total_episode = current_total_episode
                 if not total_episode:
-                    logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}, doubanid：{doubanid}')
+                    logger.error(f'未获取到总集数，标题：{title}')
                     return None, f"未获取到第 {season} 季的总集数"
                 kwargs.update({
                     'total_episode': total_episode
@@ -1069,17 +983,7 @@ class SubscribeChain(ChainBase):
         # 更新媒体图片
         if mediainfo.type != MediaType.MUSIC:
             self.obtain_images(mediainfo=mediainfo)
-        # 合并信息
-        if doubanid and mediainfo.type != MediaType.MUSIC:
-            mediainfo.douban_id = doubanid
-        if bangumiid and mediainfo.type != MediaType.MUSIC:
-            mediainfo.bangumi_id = bangumiid
-        if anilistid and mediainfo.type != MediaType.MUSIC:
-            mediainfo.anilist_id = anilistid
-
-        media_source, media_id = resolve_media_identity(
-            media=mediainfo, source=media_source, media_id=media_id
-        )
+        media_source, media_id = resolve_media_identity(media=mediainfo)
         kwargs.update({"media_source": media_source, "media_id": media_id})
 
         # 添加订阅
@@ -1134,12 +1038,6 @@ class SubscribeChain(ChainBase):
             "name": title,
             "year": year,
             "type": metainfo.type.value,
-            "tmdbid": mediainfo.tmdb_id,
-            "imdbid": mediainfo.imdb_id,
-            "tvdbid": mediainfo.tvdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
             "music_type": getattr(mediainfo, "music_type", None),
@@ -1156,10 +1054,6 @@ class SubscribeChain(ChainBase):
 
     async def async_add(self, title: str, year: str,
                         mtype: MediaType = None,
-                        tmdbid: Optional[int] = None,
-                        doubanid: Optional[str] = None,
-                        bangumiid: Optional[int] = None,
-                        mediaid: Optional[str] = None,
                         episode_group: Optional[str] = None,
                         season: Optional[int] = None,
                         channel: MessageChannel = None,
@@ -1168,8 +1062,7 @@ class SubscribeChain(ChainBase):
                         username: Optional[str] = None,
                         message: Optional[bool] = True,
                         exist_ok: Optional[bool] = False,
-                        anilistid: Optional[int] = None,
-                        media_source: Optional[str] = None,
+                        media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
                         **kwargs) -> Tuple[Optional[int], str]:
         """
@@ -1177,6 +1070,14 @@ class SubscribeChain(ChainBase):
         """
 
         logger.info(f'开始添加订阅，标题：{title} ...')
+
+        explicit_identity = media_source is not None or media_id is not None
+        media_source, media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if explicit_identity and (not media_source or not media_id):
+            return None, "媒体来源和媒体 ID 必须同时提供"
 
         mediainfo = None
         requested_music_type = kwargs.get("music_type")
@@ -1188,71 +1089,49 @@ class SubscribeChain(ChainBase):
         if season is not None:
             metainfo.type = MediaType.TV
             metainfo.begin_season = season
-        if not media_source and not media_id and mediaid:
-            media_source, media_id = parse_media_key(mediaid)
-        resolved_source, resolved_media_id = resolve_media_identity(
-            source=media_source,
-            media_id=media_id,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
-        )
-        if resolved_source and resolved_media_id:
-            media_source, media_id = resolved_source, resolved_media_id
         # 音乐身份同步落到 meta；显式来源与 ID 直接走统一识别入口，不允许失败后换目标。
         if mtype == MediaType.MUSIC and media_id:
             metainfo.media_id = str(media_id)
-        has_music_identity = bool(
-            mtype == MediaType.MUSIC and media_source and media_id
-        )
-        if has_music_identity:
-            mediainfo = await MediaChain().async_recognize_media(
-                meta=metainfo,
-                mtype=MediaType.MUSIC,
-                source=media_source,
-                mediaid=str(media_id),
-                music_type=requested_music_type,
-                cache=False,
-            )
-        elif mtype != MediaType.MUSIC and any((media_id, tmdbid, doubanid, bangumiid, anilistid)):
+        if media_source and media_id:
             mediainfo = await MediaChain().async_recognize_media(
                 meta=metainfo,
                 mtype=mtype,
-                source=media_source,
-                mediaid=media_id,
-                tmdbid=tmdbid,
-                doubanid=doubanid,
-                bangumiid=bangumiid,
-                anilistid=anilistid,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=requested_music_type,
                 episode_group=episode_group,
                 cache=False,
             )
-        elif mtype != MediaType.MUSIC and mediaid:
-            mediainfo = await self.__async_get_event_meida(mediaid, metainfo)
 
-        if mtype != MediaType.MUSIC and mediainfo and mediainfo.source != "themoviedb":
+        if (
+            mtype != MediaType.MUSIC
+            and mediainfo
+            and mediainfo.media_source != MediaSource.TMDB
+        ):
             meta = MetaInfo(mediainfo.title)
             mediainfo.title = meta.name
             if season is None:
                 season = meta.begin_season
 
         # 没有稳定音乐身份时才允许按名称识别；影视保留原有同源兜底行为。
-        if not mediainfo and not has_music_identity:
+        if not mediainfo and not explicit_identity:
             mediainfo = await MediaChain().async_recognize_by_meta(
                 metainfo,
-                source=media_source,
+                media_source=media_source,
                 episode_group=episode_group,
                 obtain_images=False,
                 music_type=requested_music_type,
             )
             # 音乐 recognize_by_meta 未命中远端时返回离线兜底，订阅创建要求真实命中
-            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.source:
+            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.media_source:
                 mediainfo = None
 
         # 识别失败
         if not mediainfo:
-            logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
+            logger.warn(
+                f"未识别到媒体信息，标题：{title}，媒体来源：{media_source}，"
+                f"媒体 ID：{media_id}"
+            )
             return None, "未识别到媒体信息"
 
         if mtype == MediaType.MUSIC:
@@ -1280,20 +1159,18 @@ class SubscribeChain(ChainBase):
                         logger.error(f"媒体信息识别失败！")
                         return None, "媒体信息识别失败"
                     if not mediainfo.seasons:
-                        logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
+                        logger.error(f"媒体信息中没有季集信息，标题：{title}")
                         return None, "媒体信息中没有季集信息"
                 current_total_episode = len(mediainfo.seasons.get(season) or [])
                 # 创建场景没有旧订阅事实，仅允许外部补正未知或扩展总集数。
                 total_episode = await self.__async_apply_episodes_refresh(
                     current_total_episode, season=season, mediainfo=mediainfo,
-                    tmdbid=mediainfo.tmdb_id, doubanid=mediainfo.douban_id,
-                    bangumiid=mediainfo.bangumi_id, anilistid=mediainfo.anilist_id,
                     media_source=resolve_media_identity(media=mediainfo)[0],
                     media_id=resolve_media_identity(media=mediainfo)[1], scene="create")
                 if current_total_episode and total_episode < current_total_episode:
                     total_episode = current_total_episode
                 if not total_episode:
-                    logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}, doubanid：{doubanid}')
+                    logger.error(f'未获取到总集数，标题：{title}')
                     return None, f"未获取到第 {season} 季的总集数"
                 kwargs.update({
                     'total_episode': total_episode
@@ -1310,17 +1187,7 @@ class SubscribeChain(ChainBase):
         # 更新媒体图片
         if mediainfo.type != MediaType.MUSIC:
             await self.async_obtain_images(mediainfo=mediainfo)
-        # 合并信息
-        if doubanid and mediainfo.type != MediaType.MUSIC:
-            mediainfo.douban_id = doubanid
-        if bangumiid and mediainfo.type != MediaType.MUSIC:
-            mediainfo.bangumi_id = bangumiid
-        if anilistid and mediainfo.type != MediaType.MUSIC:
-            mediainfo.anilist_id = anilistid
-
-        media_source, media_id = resolve_media_identity(
-            media=mediainfo, source=media_source, media_id=media_id
-        )
+        media_source, media_id = resolve_media_identity(media=mediainfo)
         kwargs.update({"media_source": media_source, "media_id": media_id})
 
         # 列新默认参数
@@ -1375,12 +1242,6 @@ class SubscribeChain(ChainBase):
             "name": title,
             "year": year,
             "type": metainfo.type.value,
-            "tmdbid": mediainfo.tmdb_id,
-            "imdbid": mediainfo.imdb_id,
-            "tvdbid": mediainfo.tvdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
             "media_source": media_source,
             "media_id": media_id,
             "music_type": getattr(mediainfo, "music_type", None),
@@ -1402,10 +1263,6 @@ class SubscribeChain(ChainBase):
         """
         media_source, media_id = resolve_media_identity(media=mediainfo)
         if SubscribeOper().exists(
-                tmdbid=mediainfo.tmdb_id,
-                doubanid=mediainfo.douban_id,
-                bangumiid=mediainfo.bangumi_id,
-                anilistid=mediainfo.anilist_id,
                 media_source=media_source,
                 media_id=media_id,
                 music_type=getattr(mediainfo, "music_type", None)
@@ -1478,8 +1335,8 @@ class SubscribeChain(ChainBase):
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             mediainfo = MediaChain().recognize_media(
-                source=subscribe.media_source,
-                mediaid=str(subscribe.media_id),
+                media_source=subscribe.media_source,
+                media_id=str(subscribe.media_id),
                 mtype=MediaType.MUSIC,
                 music_type=getattr(subscribe, "music_type", None),
             )
@@ -1496,7 +1353,7 @@ class SubscribeChain(ChainBase):
         mediainfo = MediaChain().recognize_media(
             meta=build_subscribe_meta(subscribe),
             mtype=MediaType.MUSIC,
-            source=subscribe.media_source,
+            media_source=subscribe.media_source,
             music_type=MUSIC_ENTITY_RECORDING,
         )
         return SubscribeChain._ensure_music_subscribe_entity(subscribe, mediainfo)
@@ -1507,8 +1364,8 @@ class SubscribeChain(ChainBase):
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             mediainfo = await MediaChain().async_recognize_media(
-                source=subscribe.media_source,
-                mediaid=str(subscribe.media_id),
+                media_source=subscribe.media_source,
+                media_id=str(subscribe.media_id),
                 mtype=MediaType.MUSIC,
                 music_type=getattr(subscribe, "music_type", None),
             )
@@ -1522,7 +1379,7 @@ class SubscribeChain(ChainBase):
         mediainfo = await MediaChain().async_recognize_media(
             meta=build_subscribe_meta(subscribe),
             mtype=MediaType.MUSIC,
-            source=subscribe.media_source,
+            media_source=subscribe.media_source,
             music_type=MUSIC_ENTITY_RECORDING,
         )
         return SubscribeChain._ensure_music_subscribe_entity(subscribe, mediainfo)
@@ -1539,7 +1396,7 @@ class SubscribeChain(ChainBase):
             artist.strip() for artist in artist_text.split(" / ") if artist.strip()
         ]
         return MusicInfo(
-            source=subscribe.media_source,
+            media_source=subscribe.media_source,
             media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
             music_type=music_type,
             title=subscribe.name,
@@ -1673,7 +1530,7 @@ class SubscribeChain(ChainBase):
                 torrent.pri_order = music_priority
             context.meta_info = meta
             context.media_info = mediainfo
-            context.match_source = mediainfo.source or "title"
+            context.match_source = str(mediainfo.media_source or "title")
             context.candidate_recognized = False
             context.media_info_is_target = True
             if subscribe.media_category:
@@ -1881,7 +1738,9 @@ class SubscribeChain(ChainBase):
                         )
                         if not mediainfo:
                             logger.warn(
-                                f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                                f"未识别到媒体信息，标题：{subscribe.name}，"
+                                f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
+                            )
                             continue
 
                         # 如果媒体已存在或已下载完毕，跳过当前订阅处理
@@ -2362,7 +2221,9 @@ class SubscribeChain(ChainBase):
                     )
                     if not mediainfo:
                         logger.warn(
-                            f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                            f"未识别到媒体信息，标题：{subscribe.name}，"
+                            f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
+                        )
                         continue
 
                     # 如果媒体已存在或已下载完毕，跳过当前订阅处理
@@ -2691,7 +2552,9 @@ class SubscribeChain(ChainBase):
                 )
             if not mediainfo:
                 logger.warn(
-                    f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                    f"未识别到媒体信息，标题：{subscribe.name}，"
+                    f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
+                )
                 continue
             # 对于电视剧，获取当前季的总集数
             episodes = (mediainfo.seasons.get(subscribe.season) or []) \
@@ -2702,9 +2565,6 @@ class SubscribeChain(ChainBase):
                 # 外部事件只能向上覆盖主程序本次识别到的 TMDB 当前季总集数，已有订阅按最终 total 跟随持久化。
                 total_episode = self.__apply_episodes_refresh(
                     current_total_episode, season=subscribe.season, mediainfo=mediainfo,
-                    tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
-                    bangumiid=subscribe.bangumiid,
-                    anilistid=subscribe.anilistid,
                     media_source=subscribe.media_source,
                     media_id=subscribe.media_id,
                     subscribe_id=subscribe.id, scene="refresh")
@@ -2744,12 +2604,6 @@ class SubscribeChain(ChainBase):
                 "poster": mediainfo.get_poster_image(),
                 "backdrop": mediainfo.get_backdrop_image(),
                 "description": mediainfo.overview,
-                "imdbid": mediainfo.imdb_id,
-                "tvdbid": mediainfo.tvdb_id,
-                "tmdbid": mediainfo.tmdb_id,
-                "doubanid": mediainfo.douban_id,
-                "bangumiid": mediainfo.bangumi_id,
-                "anilistid": mediainfo.anilist_id,
                 "media_source": resolve_media_identity(media=mediainfo)[0],
                 "media_id": resolve_media_identity(media=mediainfo)[1],
                 "total_episode": total_episode,
@@ -2786,9 +2640,7 @@ class SubscribeChain(ChainBase):
         valid_fields = {
             k: v for k, v in source_keyword.items()
             if k in [
-                "type", "season", "tmdbid", "doubanid", "bangumiid",
-                "anilistid", "media_source", "media_id",
-                "music_type",
+                "type", "season", "media_source", "media_id", "music_type",
             ]
         }
         # 暂时不考虑订阅历史, 若有必要再添加
@@ -2829,22 +2681,14 @@ class SubscribeChain(ChainBase):
             uid = share_sub.get("share_uid")
             if uid and uid in follow_users:
                 # 订阅已存在则跳过
-                if subscribeoper.exists(tmdbid=share_sub.get("tmdbid"),
-                                        doubanid=share_sub.get("doubanid"),
-                                        bangumiid=share_sub.get("bangumiid"),
-                                        anilistid=share_sub.get("anilistid"),
-                                        media_source=share_sub.get("media_source"),
+                if subscribeoper.exists(media_source=share_sub.get("media_source"),
                                         media_id=share_sub.get("media_id"),
                                         music_type=share_sub.get("music_type"),
                                         season=share_sub.get("season"),
                                         episode_group=share_sub.get("episode_group")):
                     continue
                 # 已经订阅过跳过
-                if subscribeoper.exist_history(tmdbid=share_sub.get("tmdbid"),
-                                               doubanid=share_sub.get("doubanid"),
-                                               bangumiid=share_sub.get("bangumiid"),
-                                               anilistid=share_sub.get("anilistid"),
-                                               media_source=share_sub.get("media_source"),
+                if subscribeoper.exist_history(media_source=share_sub.get("media_source"),
                                                media_id=share_sub.get("media_id"),
                                                music_type=share_sub.get("music_type"),
                                                season=share_sub.get("season"),
@@ -2857,13 +2701,11 @@ class SubscribeChain(ChainBase):
                 # 类型转换
                 subscribe_in = schemas.Subscribe(**share_sub)
                 mtype = MediaType(subscribe_in.type)
-                # 豆瓣标题处理
-                if mtype != MediaType.MUSIC and (
-                        subscribe_in.doubanid
-                        or subscribe_in.bangumiid
-                        or subscribe_in.anilistid
-                        or normalize_media_source(subscribe_in.media_source)
-                        not in (None, "themoviedb")
+                # 非 TMDB 标题可能携带季号，入库前统一拆分。
+                if (
+                    mtype != MediaType.MUSIC
+                    and normalize_media_source(subscribe_in.media_source)
+                    not in (None, MediaSource.TMDB)
                 ):
                     meta = MetaInfo(subscribe_in.name)
                     subscribe_in.name = meta.name
@@ -2877,12 +2719,8 @@ class SubscribeChain(ChainBase):
                 sid, message = SubscribeChain().add(mtype=mtype,
                                                     title=title,
                                                     year=subscribe_in.year,
-                                                    tmdbid=subscribe_in.tmdbid,
                                                     season=subscribe_in.season,
                                                     episode_group=subscribe_in.episode_group,
-                                                    doubanid=subscribe_in.doubanid,
-                                                    bangumiid=subscribe_in.bangumiid,
-                                                    anilistid=subscribe_in.anilistid,
                                                     media_source=subscribe_in.media_source,
                                                     media_id=subscribe_in.media_id,
                                                     music_type=subscribe_in.music_type,
@@ -2964,7 +2802,11 @@ class SubscribeChain(ChainBase):
                     f'未识别到媒体信息，标题：{subscribe.name}，'
                     f'媒体源：{subscribe.media_source}，媒体ID：{subscribe.media_id}')
                 continue
-            if mtype == MediaType.TV and mediainfo.source == "themoviedb" and mediainfo.tmdb_id:
+            if (
+                mtype == MediaType.TV
+                and mediainfo.media_source == MediaSource.TMDB
+                and mediainfo.tmdb_id
+            ):
                 episodes = await TmdbChain().async_tmdb_episodes(tmdbid=mediainfo.tmdb_id,
                                                                  season=subscribe.season,
                                                                  episode_group=subscribe.episode_group)
@@ -2996,26 +2838,14 @@ class SubscribeChain(ChainBase):
         for context in downloads:
             meta = context.meta_info
             mediainfo = context.media_info
-            if subscribe.tmdbid and mediainfo.tmdb_id \
-                    and mediainfo.tmdb_id != subscribe.tmdbid:
-                continue
-            if subscribe.doubanid and mediainfo.douban_id \
-                    and mediainfo.douban_id != subscribe.doubanid:
-                continue
-            subscribe_bangumiid = subscribe.bangumiid
-            media_bangumiid = mediainfo.bangumi_id
-            if subscribe_bangumiid and media_bangumiid \
-                    and media_bangumiid != subscribe_bangumiid:
-                continue
-            subscribe_anilistid = subscribe.anilistid
-            media_anilistid = mediainfo.anilist_id
-            if subscribe_anilistid and media_anilistid \
-                    and media_anilistid != subscribe_anilistid:
-                continue
             subscribe_source, subscribe_media_id = resolve_media_identity(media=subscribe)
             media_source, media_id = resolve_media_identity(media=mediainfo)
-            if subscribe_source == media_source and subscribe_media_id and media_id \
-                    and subscribe_media_id != media_id:
+            if (
+                subscribe_source != media_source
+                or not subscribe_media_id
+                or not media_id
+                or subscribe_media_id != media_id
+            ):
                 continue
             items = []
             if mediainfo.type == MediaType.TV:
@@ -3291,9 +3121,9 @@ class SubscribeChain(ChainBase):
 
         for download in downloads:
             media = download.media_info
-            if subscribe.tmdbid and media.tmdb_id and media.tmdb_id != subscribe.tmdbid:
-                continue
-            if subscribe.doubanid and media.douban_id and media.douban_id != subscribe.doubanid:
+            subscribe_identity = resolve_media_identity(media=subscribe)
+            media_identity = resolve_media_identity(media=media)
+            if subscribe_identity != media_identity:
                 continue
 
             if subscribe.type == MediaType.MOVIE.value and media.type == MediaType.MOVIE:
@@ -3420,10 +3250,6 @@ class SubscribeChain(ChainBase):
         })
         # 统计订阅
         MoviePilotServerHelper.sub_done_async({
-            "tmdbid": mediainfo.tmdb_id,
-            "doubanid": mediainfo.douban_id,
-            "bangumiid": mediainfo.bangumi_id,
-            "anilistid": mediainfo.anilist_id,
             "media_source": subscribe.media_source,
             "media_id": subscribe.media_id,
             "season": subscribe.season,
@@ -4079,10 +3905,6 @@ class SubscribeChain(ChainBase):
             subscribeoper.delete(subscribe_id)
             MoviePilotServerHelper.sub_done_async(
                 {
-                    "tmdbid": subscribe.tmdbid,
-                    "doubanid": subscribe.doubanid,
-                    "bangumiid": subscribe.bangumiid,
-                    "anilistid": subscribe.anilistid,
                     "media_source": subscribe.media_source,
                     "media_id": subscribe.media_id,
                     "season": subscribe.season,
@@ -4132,10 +3954,6 @@ class SubscribeChain(ChainBase):
             subscribeoper.delete(subscribe_id)
             # 统计订阅
             MoviePilotServerHelper.sub_done_async({
-                "tmdbid": subscribe.tmdbid,
-                "doubanid": subscribe.doubanid,
-                "bangumiid": subscribe.bangumiid,
-                "anilistid": subscribe.anilistid,
                 "media_source": subscribe.media_source,
                 "media_id": subscribe.media_id,
                 "season": subscribe.season,
@@ -4366,10 +4184,15 @@ class SubscribeChain(ChainBase):
 
         # 所有集的数据
         episodes: Dict[int, schemas.SubscribeEpisodeInfo] = {}
-        if subscribe.tmdbid and subscribe.type == MediaType.TV.value:
+        if (
+            subscribe.media_source == MediaSource.TMDB.value
+            and subscribe.media_id
+            and str(subscribe.media_id).isdigit()
+            and subscribe.type == MediaType.TV.value
+        ):
             # 查询TMDB中的集信息
             tmdb_episodes = TmdbChain().tmdb_episodes(
-                tmdbid=subscribe.tmdbid,
+                tmdbid=int(subscribe.media_id),
                 season=subscribe.season,
                 episode_group=subscribe.episode_group
             )
@@ -4394,11 +4217,7 @@ class SubscribeChain(ChainBase):
 
         # 所有下载记录
         downloadhis = DownloadHistoryOper()
-        download_his = downloadhis.get_by_mediaid(
-            tmdbid=subscribe.tmdbid,
-            doubanid=subscribe.doubanid,
-            bangumiid=subscribe.bangumiid,
-            anilistid=subscribe.anilistid,
+        download_his = downloadhis.get_by_media_identity(
             media_source=subscribe.media_source,
             media_id=subscribe.media_id,
             music_type=getattr(subscribe, "music_type", None),
@@ -4444,7 +4263,9 @@ class SubscribeChain(ChainBase):
         )
         if not mediainfo:
             logger.warn(
-                f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                f"未识别到媒体信息，标题：{subscribe.name}，"
+                f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
+            )
             return subscribe_info
 
         # 所有媒体库文件记录
@@ -4767,11 +4588,7 @@ class SubscribeChain(ChainBase):
     @staticmethod
     def __apply_episodes_refresh(current_total: int, season: Optional[int], *,
                                  mediainfo: Optional[MediaInfo] = None,
-                                 tmdbid: Optional[int] = None,
-                                 doubanid: Optional[str] = None,
-                                 bangumiid: Optional[int] = None,
-                                 anilistid: Optional[int] = None,
-                                 media_source: Optional[str] = None,
+                                 media_source: Optional[MediaSource] = None,
                                  media_id: Optional[str] = None,
                                  subscribe_id: Optional[int] = None,
                                  scene: Optional[str] = None) -> int:
@@ -4785,8 +4602,7 @@ class SubscribeChain(ChainBase):
         :return: 最终采用的总集数
         """
         event_data = SubscribeEpisodesRefreshEventData(
-            tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid,
-            anilistid=anilistid, media_source=media_source, media_id=media_id,
+            media_source=media_source, media_id=media_id,
             season=season, mediainfo=mediainfo,
             current_total_episode=current_total, subscribe_id=subscribe_id, scene=scene)
         event = eventmanager.send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
@@ -4800,11 +4616,7 @@ class SubscribeChain(ChainBase):
     @staticmethod
     async def __async_apply_episodes_refresh(current_total: int, season: Optional[int], *,
                                              mediainfo: Optional[MediaInfo] = None,
-                                             tmdbid: Optional[int] = None,
-                                             doubanid: Optional[str] = None,
-                                             bangumiid: Optional[int] = None,
-                                             anilistid: Optional[int] = None,
-                                             media_source: Optional[str] = None,
+                                             media_source: Optional[MediaSource] = None,
                                              media_id: Optional[str] = None,
                                              subscribe_id: Optional[int] = None,
                                              scene: Optional[str] = None) -> int:
@@ -4812,8 +4624,7 @@ class SubscribeChain(ChainBase):
         __apply_episodes_refresh 的异步版本
         """
         event_data = SubscribeEpisodesRefreshEventData(
-            tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid,
-            anilistid=anilistid, media_source=media_source, media_id=media_id,
+            media_source=media_source, media_id=media_id,
             season=season, mediainfo=mediainfo,
             current_total_episode=current_total, subscribe_id=subscribe_id, scene=scene)
         event = await eventmanager.async_send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
@@ -4845,9 +4656,6 @@ class SubscribeChain(ChainBase):
         # 外部事件只能向上覆盖主程序本次识别到的 TMDB 当前季总集数，已有订阅回落由主程序跟随本次识别结果持久化。
         new_total_episode = self.__apply_episodes_refresh(
             current_total_episode, season=subscribe.season, mediainfo=mediainfo,
-            tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid,
-            bangumiid=subscribe.bangumiid,
-            anilistid=subscribe.anilistid,
             media_source=subscribe.media_source,
             media_id=subscribe.media_id,
             subscribe_id=subscribe.id, scene="precheck")
@@ -4900,16 +4708,9 @@ class SubscribeChain(ChainBase):
         """
         返回候选自身识别命中的明确媒体 ID 类型。
         """
-        if mediainfo and mediainfo.tmdb_id:
-            return "tmdbid"
-        if mediainfo and mediainfo.douban_id:
-            return "doubanid"
-        if mediainfo and mediainfo.bangumi_id:
-            return "bangumiid"
-        if mediainfo and mediainfo.anilist_id:
-            return "anilistid"
-        if mediainfo and all(resolve_media_identity(media=mediainfo)):
-            return "plugin"
+        media_source, media_id = resolve_media_identity(media=mediainfo)
+        if media_source and media_id:
+            return str(media_source)
         return "unknown"
 
     @staticmethod
@@ -4933,16 +4734,21 @@ class SubscribeChain(ChainBase):
         :param context: 当前订阅使用的候选上下文副本
         :return: 可继续匹配的媒体信息，拒绝时返回 None
         """
-        identity_pairs = (
-            ("TMDB", candidate_mediainfo.tmdb_id, target_mediainfo.tmdb_id),
-            ("豆瓣", candidate_mediainfo.douban_id, target_mediainfo.douban_id),
+        candidate_source, candidate_id = resolve_media_identity(
+            media=candidate_mediainfo
         )
-        conflicts = [
-            (source, str(candidate_id), str(target_id) if target_id is not None else None)
-            for source, candidate_id, target_id in identity_pairs
-            if candidate_id is not None
-            and str(candidate_id) != (str(target_id) if target_id is not None else None)
-        ]
+        target_source, target_id = resolve_media_identity(media=target_mediainfo)
+        conflicts = []
+        if candidate_source and candidate_id and (
+            candidate_source != target_source or candidate_id != target_id
+        ):
+            conflicts.append(
+                (
+                    str(candidate_source),
+                    candidate_id,
+                    f"{target_source}:{target_id}" if target_source and target_id else None,
+                )
+            )
         if not conflicts:
             return candidate_mediainfo
 
@@ -5017,12 +4823,6 @@ class SubscribeChain(ChainBase):
             'type': subscribe.type,
             'season': subscribe.season,
             'episode_group': subscribe.episode_group,
-            'tmdbid': subscribe.tmdbid,
-            'imdbid': subscribe.imdbid,
-            'tvdbid': subscribe.tvdbid,
-            'doubanid': subscribe.doubanid,
-            'bangumiid': subscribe.bangumiid,
-            'anilistid': subscribe.anilistid,
             'media_source': subscribe.media_source,
             'media_id': subscribe.media_id,
             'music_type': getattr(subscribe, 'music_type', None),

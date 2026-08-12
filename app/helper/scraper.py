@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from xml.dom import minidom
 
 from app.core.context import MediaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.utils.dom import DomUtils
 
 
@@ -14,21 +14,16 @@ class MediaScraperHelper:
     """
 
     @staticmethod
-    def _media_identity(mediainfo: MediaInfo) -> tuple[Optional[str], Optional[str]]:
+    def _media_identity(
+        mediainfo: MediaInfo,
+    ) -> tuple[Optional[MediaSource], Optional[str]]:
         """
         获取媒体信息中的来源与来源原生 ID。
 
         :param mediainfo: 统一媒体信息
         :return: 数据源名称与原生 ID
         """
-        source_ids = {
-            "themoviedb": mediainfo.tmdb_id,
-            "douban": mediainfo.douban_id,
-            "bangumi": mediainfo.bangumi_id,
-            "anilist": mediainfo.anilist_id,
-        }
-        media_id = source_ids.get(mediainfo.source)
-        return mediainfo.source, str(media_id) if media_id is not None else None
+        return mediainfo.media_source, mediainfo.media_id
 
     @staticmethod
     def _image_extension(url: str) -> str:
@@ -69,7 +64,7 @@ class MediaScraperHelper:
         source, media_id = cls._media_identity(mediainfo)
         if source and media_id:
             unique_id = DomUtils.add_node(doc, root, "uniqueid", media_id)
-            unique_id.setAttribute("type", source)
+            unique_id.setAttribute("type", str(source))
             unique_id.setAttribute("default", "true")
 
         for genre in mediainfo.genres or []:

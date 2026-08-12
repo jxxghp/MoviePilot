@@ -6,7 +6,7 @@ import cn2an
 import regex as re
 
 from app.log import logger
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.utils.string import StringUtils
 
 
@@ -94,12 +94,8 @@ class MetaBase(object):
     audio_encode: Optional[str] = None
     # 应用的识别词信息
     apply_words: Optional[List[str]] = None
-    # 附加信息
-    tmdbid: int = None
-    doubanid: str = None
-    bangumiid: int = None
-    anilistid: int = None
-    media_source: Optional[str] = None
+    # 媒体主身份；来源与ID必须成对使用
+    media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     episode_group: Optional[str] = None
     # 帧率信息（纯数值）
@@ -681,17 +677,13 @@ class MetaBase(object):
         # Part
         if not self.part:
             self.part = meta.part
-        # tmdbid
-        if not self.tmdbid and meta.tmdbid:
-            self.tmdbid = meta.tmdbid
-        # doubanid
-        if not self.doubanid and meta.doubanid:
-            self.doubanid = meta.doubanid
-        # 通用媒体来源与ID
-        if not self.media_source and meta.media_source:
-            self.media_source = meta.media_source
-        if not self.media_id and meta.media_id:
-            self.media_id = meta.media_id
+        # 媒体身份必须原子合并，不能将不同目录层级的来源和ID拼成一对
+        if not (self.media_source and self.media_id) and meta.media_source and meta.media_id:
+            try:
+                self.media_source = MediaSource(meta.media_source)
+                self.media_id = str(meta.media_id)
+            except ValueError:
+                pass
         # 剧集组
         if not self.episode_group and meta.episode_group:
             self.episode_group = meta.episode_group

@@ -15,7 +15,7 @@ from app.db.models import MediaServerItem
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.mediaserver import MediaServerHelper
 from app.schemas import MediaType, NotExistMediaInfo
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import MediaSource, SystemConfigKey
 from app.utils.media import build_media_key, resolve_media_identity
 
 router = APIRouter()
@@ -70,7 +70,8 @@ async def exists_local(
     title: Optional[str] = None,
     year: Optional[str] = None,
     mtype: Optional[str] = None,
-    tmdbid: Optional[int] = None,
+    media_source: Optional[MediaSource] = None,
+    media_id: Optional[str] = None,
     season: Optional[int] = None,
     db: AsyncSession = Depends(get_async_db),
     _: schemas.TokenPayload = Depends(verify_token),
@@ -78,14 +79,24 @@ async def exists_local(
     """
     判断本地是否存在
     """
-    meta = MetaInfo(title)
+    if bool(media_source) != bool(media_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="media_source 和 media_id 必须同时提供",
+        )
+    meta = MetaInfo(title) if title else None
     if season is None:
-        season = meta.begin_season
+        season = meta.begin_season if meta else None
     # 返回对象
     ret_info = {}
     # 本地数据库是否存在
     exist: MediaServerItem = await MediaServerOper(db).async_exists(
-        title=meta.name, year=year, mtype=mtype, tmdbid=tmdbid, season=season
+        title=meta.name if meta else None,
+        year=year,
+        mtype=mtype,
+        media_source=media_source,
+        media_id=media_id,
+        season=season,
     )
     if exist:
         ret_info = {"id": exist.item_id}

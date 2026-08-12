@@ -18,6 +18,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.utils.http import RequestUtils
+from app.utils.media import resolve_media_identity
 from app.utils.string import StringUtils
 
 
@@ -410,27 +411,16 @@ class TorrentHelper:
         :param torrent_meta: 种子识别信息
         :param torrent: 种子信息
         """
-        # 比对词条指定的tmdbid
-        if any((
-                torrent_meta.tmdbid, torrent_meta.doubanid,
-                torrent_meta.bangumiid, torrent_meta.anilistid,
-        )):
-            if torrent_meta.tmdbid and torrent_meta.tmdbid == mediainfo.tmdb_id:
-                logger.info(
-                    f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
-                return True
-            if torrent_meta.doubanid and torrent_meta.doubanid == mediainfo.douban_id:
-                logger.info(
-                    f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
-                return True
-            if torrent_meta.bangumiid and torrent_meta.bangumiid == mediainfo.bangumi_id:
-                logger.info(
-                    f'{mediainfo.title} 通过词表指定 Bangumi ID 匹配到资源：{torrent.site_name} - {torrent.title}')
-                return True
-            if torrent_meta.anilistid and torrent_meta.anilistid == mediainfo.anilist_id:
-                logger.info(
-                    f'{mediainfo.title} 通过词表指定 AniList ID 匹配到资源：{torrent.site_name} - {torrent.title}')
-                return True
+        # 显式标题标签与识别结果使用同一主身份比较。
+        torrent_identity = resolve_media_identity(media=torrent_meta)
+        media_identity = resolve_media_identity(media=mediainfo)
+        if all(torrent_identity) and torrent_identity == media_identity:
+            logger.info(
+                f'{mediainfo.title} 通过词表指定媒体身份 '
+                f'{torrent_identity[0]}:{torrent_identity[1]} 匹配到资源：'
+                f'{torrent.site_name} - {torrent.title}'
+            )
+            return True
         # 要匹配的媒体标题、原标题
         media_titles = {
                            StringUtils.clear_upper(mediainfo.title),

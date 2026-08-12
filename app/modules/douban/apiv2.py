@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import re
 from datetime import datetime
 from random import choice
 from typing import Optional, Union
@@ -9,6 +10,7 @@ from urllib import parse
 
 import httpx
 import requests
+from bs4 import BeautifulSoup
 
 from app.core.cache import cached
 from app.core.config import settings
@@ -17,6 +19,8 @@ from app.utils.singleton import WeakSingleton
 
 
 class DoubanApi(metaclass=WeakSingleton):
+    """封装豆瓣 Frodo API 与音乐官网公开浏览页面。"""
+
     _urls = {
         # 搜索类
         # sort=U:近期热门 T:标记最多 S:评分最高 R:最新上映
@@ -152,6 +156,7 @@ class DoubanApi(metaclass=WeakSingleton):
     _api_key2 = "0ab215a8b1977939201640fa14c66bab"
     _base_url = "https://frodo.douban.com/api/v2"
     _api_url = "https://api.douban.com/v2"
+    _music_web_url = "https://music.douban.com"
 
     def __init__(self):
         self._session = requests.Session()
@@ -634,6 +639,133 @@ class DoubanApi(metaclass=WeakSingleton):
         return await self.__async_invoke_recommend(
             self._urls["music_single"], start=start, count=count
         )
+
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta, skip_none=True)
+    def music_tag(
+            self,
+            tag: str,
+            start: int = 0,
+            count: int = 20,
+            sort: str = "U",
+    ) -> dict:
+        """从豆瓣音乐官方标签页读取专辑，并适配为统一的音乐条目列表。"""
+        normalized_tag = str(tag or "").strip()
+        if not normalized_tag:
+            return {"items": []}
+        page_size = 20
+        first_page = max(start, 0) // page_size
+        first_offset = max(start, 0) % page_size
+        required = first_offset + max(count, 1)
+        items = []
+        page = first_page
+        while len(items) < required:
+            url = f"{self._music_web_url}/tag/{parse.quote(normalized_tag, safe='')}"
+            response = RequestUtils(
+                ua=settings.NORMAL_USER_AGENT,
+                proxies=settings.PROXY,
+                timeout=20,
+                accept_type="text/html,application/xhtml+xml",
+            ).get_res(url=url, params={"start": page * page_size, "type": sort})
+            page_items = self._parse_music_tag_page(response.content if response else b"")
+            if not page_items:
+                break
+            items.extend(page_items)
+            if len(page_items) < page_size:
+                break
+            page += 1
+        return {"items": items[first_offset:first_offset + max(count, 1)]}
+
+    @cached(maxsize=settings.CONF.douban, ttl=settings.CONF.meta, skip_none=True)
+    def music_chart(self) -> dict:
+        """从豆瓣音乐官方榜单页读取新碟榜，并补充专辑详情供卡片展示。"""
+        response = RequestUtils(
+            ua=settings.NORMAL_USER_AGENT,
+            proxies=settings.PROXY,
+            timeout=20,
+            accept_type="text/html,application/xhtml+xml",
+        ).get_res(url=f"{self._music_web_url}/chart")
+        chart_items = self._parse_music_chart_page(response.content if response else b"")
+        items = []
+        for chart_item in chart_items:
+            detail = self.music_detail(subject_id=chart_item["id"])
+            if isinstance(detail, dict) and detail:
+                detail.setdefault("id", chart_item["id"])
+                detail.setdefault("title", chart_item["title"])
+                if chart_item.get("artists") and not detail.get("artists"):
+                    detail["artists"] = chart_item["artists"]
+                items.append(detail)
+            else:
+                items.append(chart_item)
+        return {"items": items}
+
+    @staticmethod
+    def _parse_music_tag_page(content: bytes) -> list[dict]:
+        """解析豆瓣音乐标签页中的专辑 ID、封面、发行信息和评分。"""
+        if not content:
+            return []
+        soup = BeautifulSoup(content, "html.parser")
+        items = []
+        for row in soup.select("tr.item[id]"):
+            media_id = str(row.get("id") or "").strip()
+            title_link = row.select_one("div.pl2 > a[href*='/subject/']")
+            if not media_id or not title_link:
+                continue
+            title = next(title_link.stripped_strings, "").strip()
+            metadata = row.select_one("div.pl2 > p.pl")
+            metadata_text = metadata.get_text(" ", strip=True) if metadata else ""
+            parts = [part.strip() for part in metadata_text.split("/") if part.strip()]
+            release_date = next(
+                (part for part in parts if re.fullmatch(r"\d{4}(?:-\d{1,2}(?:-\d{1,2})?)?", part)),
+                None,
+            )
+            image = row.select_one("a.nbg img")
+            rating_node = row.select_one("span.rating_nums")
+            votes_node = row.select_one("div.star span.pl")
+            votes_match = re.search(r"(\d+)\s*人评价", votes_node.get_text(" ", strip=True) if votes_node else "")
+            item = {
+                "id": media_id,
+                "type": "music",
+                "title": title,
+                "artists": [{"name": parts[0]}] if parts else [],
+                "pubdate": [release_date] if release_date else [],
+                "year": release_date[:4] if release_date else None,
+                "cover_url": image.get("src") if image else None,
+                "rating": {
+                    "value": rating_node.get_text(strip=True) if rating_node else None,
+                    "count": votes_match.group(1) if votes_match else None,
+                },
+            }
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _parse_music_chart_page(content: bytes) -> list[dict]:
+        """解析豆瓣新碟榜的专辑 ID、标题和艺术家。"""
+        if not content:
+            return []
+        soup = BeautifulSoup(content, "html.parser")
+        heading = next(
+            (node for node in soup.select("h2") if "豆瓣新碟榜" in node.get_text()),
+            None,
+        )
+        container = heading.parent if heading else None
+        items = []
+        for row in container.select("ul.col3 li") if container else []:
+            link = row.select_one("p.entry a[href*='/subject/']")
+            if not link:
+                continue
+            match = re.search(r"/subject/(\d+)", str(link.get("href") or ""))
+            if not match:
+                continue
+            entry_text = row.select_one("p.entry").get_text(" ", strip=True)
+            artist = entry_text.split("/", 1)[1].strip() if "/" in entry_text else ""
+            items.append({
+                "id": match.group(1),
+                "type": "music",
+                "title": link.get_text(" ", strip=True),
+                "artists": [{"name": artist}] if artist else [],
+            })
+        return items
 
     def music_recommendations(
             self,

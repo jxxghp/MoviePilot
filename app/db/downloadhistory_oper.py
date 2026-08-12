@@ -34,28 +34,18 @@ class DownloadHistoryOper(DbOper):
             if history and history.download_hash
         }
 
-    def get_by_mediaid(
-            self, tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+    def get_by_media_identity(
+            self, media_source: str, media_id: str,
             music_type: Optional[str] = None,
     ) -> List[DownloadHistory]:
         """
-        按媒体ID查询下载记录
-        :param tmdbid: tmdbid
-        :param doubanid: doubanid
-        :param bangumiid: Bangumi ID
-        :param anilistid: AniList ID
+        按规范媒体身份查询下载记录。
         :param media_source: 媒体数据源
         :param media_id: 数据源原生 ID
         :param music_type: 音乐实体类型
         """
-        return DownloadHistory.get_by_mediaid(
+        return DownloadHistory.get_by_media_identity(
             self._db,
-            tmdbid=tmdbid,
-            doubanid=doubanid,
-            bangumiid=bangumiid,
-            anilistid=anilistid,
             media_source=media_source,
             media_id=media_id,
             music_type=music_type,
@@ -146,10 +136,12 @@ class DownloadHistoryOper(DbOper):
         DownloadHistory.truncate(self._db)
 
     def get_last_by(self, mtype=None, title: Optional[str] = None, year: Optional[str] = None,
-                    season: Optional[str] = None, episode: Optional[str] = None, tmdbid=None) -> List[DownloadHistory]:
+                    season: Optional[str] = None, episode: Optional[str] = None,
+                    media_source: Optional[str] = None,
+                    media_id: Optional[str] = None) -> List[DownloadHistory]:
         """
         按类型、标题、年份、季集查询下载记录
-        tmdbid + mtype 或 title + year
+        媒体身份 + mtype 或 title + year
         """
         return DownloadHistory.get_last_by(db=self._db,
                                            mtype=mtype,
@@ -157,7 +149,8 @@ class DownloadHistoryOper(DbOper):
                                            year=year,
                                            season=season,
                                            episode=episode,
-                                           tmdbid=tmdbid)
+                                           media_source=media_source,
+                                           media_id=media_id)
 
     def list_by_user_date(self, date: str, username: Optional[str] = None) -> List[DownloadHistory]:
         """
@@ -167,14 +160,18 @@ class DownloadHistoryOper(DbOper):
                                                  date=date,
                                                  username=username)
 
-    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: Optional[str] = None) -> List[DownloadHistory]:
+    def list_by_date(
+            self, date: str, type: str, media_source: str, media_id: str,
+            seasons: Optional[str] = None,
+    ) -> List[DownloadHistory]:
         """
         查询某时间之后的下载历史
         """
         return DownloadHistory.list_by_date(db=self._db,
                                             date=date,
                                             type=type,
-                                            tmdbid=tmdbid,
+                                            media_source=media_source,
+                                            media_id=media_id,
                                             seasons=seasons)
 
     def list_by_type(self, mtype: str, days: Optional[int] = 7) -> List[DownloadHistory]:

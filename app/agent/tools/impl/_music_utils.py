@@ -42,7 +42,7 @@ def simplify_music_info(info: MusicInfo) -> dict[str, Any]:
         "genres": list(info.genres or []),
         "category": info.category,
         "listen_count": info.listen_count,
-        "media_source": info.source,
+        "media_source": info.media_source,
         "media_id": info.media_id,
         "poster_path": info.poster_path,
         "detail_link": info.detail_link,
@@ -86,7 +86,7 @@ def simplify_music_artist(info: MusicArtistInfo) -> dict[str, Any]:
     payload.pop("raw_data", None)
     payload.pop("mediaid_prefix", None)
     payload["type"] = media_type_to_agent(info.type)
-    payload["media_source"] = info.source
+    payload["media_source"] = info.media_source
     payload["media_id"] = info.media_id
     payload["subscribable"] = False
     return {key: value for key, value in payload.items() if value not in (None, "", [])}

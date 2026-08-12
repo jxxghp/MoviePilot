@@ -11,7 +11,7 @@ from app.chain.search import SearchChain
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
-from app.schemas.types import MediaType, SystemConfigKey
+from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 from ._music_utils import normalize_music_type
 from ._torrent_search_utils import (
     SEARCH_RESULT_CACHE_FILE,
@@ -21,12 +21,8 @@ from ._torrent_search_utils import (
 
 class SearchTorrentsInput(BaseModel):
     """搜索种子工具的输入参数模型"""
-    tmdb_id: Optional[int] = Field(None, description="TMDB media ID")
-    douban_id: Optional[str] = Field(None, description="Douban media ID")
-    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
-    anilist_id: Optional[int] = Field(None, description="AniList media ID")
-    media_source: Optional[str] = Field(None, description="Media metadata source")
-    media_id: Optional[str] = Field(None, description="Native ID for media_source")
+    media_source: MediaSource = Field(..., description="Media metadata source")
+    media_id: str = Field(..., description="Native ID for media_source")
     media_type: Optional[str] = Field(None, description="Allowed values: movie, tv, music")
     music_type: Optional[str] = Field(
         None,
@@ -50,25 +46,16 @@ class SearchTorrentsTool(MoviePilotTool):
     description: str = (
         "Search for torrent files by media ID across configured indexer sites, cache the matched results, "
         "and return available filter options for follow-up selection. "
-        "Accepts a TMDB, Douban, Bangumi, AniList, MusicBrainz, or plugin source-native media ID. "
+        "Accepts one MediaSource enum value and its source-native media ID. "
         "Music targets are one recording or one complete album; artists are browse-only.")
     args_schema: Type[BaseModel] = SearchTorrentsInput
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据搜索参数生成友好的提示消息"""
         media_type = kwargs.get("media_type")
-        identities = (
-            ("TMDB", kwargs.get("tmdb_id")),
-            ("豆瓣", kwargs.get("douban_id")),
-            ("Bangumi", kwargs.get("bangumi_id")),
-            ("AniList", kwargs.get("anilist_id")),
-            (kwargs.get("media_source") or "媒体源", kwargs.get("media_id")),
-        )
-        label, identity = next(
-            ((label, identity) for label, identity in identities if identity is not None),
-            (None, None),
-        )
-        message = f"搜索种子: {label}={identity}" if label else "搜索种子"
+        source = kwargs.get("media_source")
+        media_id = kwargs.get("media_id")
+        message = f"搜索种子: {source}={media_id}" if source and media_id else "搜索种子"
         if media_type:
             message += f" [{media_type}]"
         return message
@@ -78,18 +65,18 @@ class SearchTorrentsTool(MoviePilotTool):
         """同步读取默认搜索站点列表。"""
         return SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
 
-    async def run(self, tmdb_id: Optional[int] = None, douban_id: Optional[str] = None,
-                  bangumi_id: Optional[int] = None, anilist_id: Optional[int] = None,
-                  media_source: Optional[str] = None, media_id: Optional[str] = None,
+    async def run(self, media_source: MediaSource, media_id: str,
                   media_type: Optional[str] = None, area: Optional[str] = None,
                   sites: Optional[List[int]] = None,
                   music_type: Optional[str] = None, **kwargs) -> str:
         """执行精确资源搜索并缓存带完整音乐上下文的候选。"""
         logger.info(
-            f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, media_type={media_type}, area={area}, sites={sites}")
+            f"执行工具: {self.name}, 参数: media_source={media_source}, "
+            f"media_id={media_id}, media_type={media_type}, area={area}, sites={sites}"
+        )
 
-        if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
-            return "参数错误：至少需要提供一个媒体 ID，请先使用 search_media 工具获取媒体信息。"
+        if not media_source or not str(media_id or "").strip():
+            return "参数错误：media_source 和 media_id 必须同时提供。"
 
         try:
             search_chain = SearchChain()
@@ -113,18 +100,12 @@ class SearchTorrentsTool(MoviePilotTool):
                 if media_type_enum != MediaType.MUSIC:
                     return "错误：music_type 仅能与 media_type='music' 一起使用"
             if media_type_enum == MediaType.MUSIC:
-                if not media_source or not media_id:
-                    return "错误：音乐资源搜索必须同时提供 media_source 和 media_id"
                 if area == "imdbid":
                     return "错误：音乐不支持按 IMDb ID 搜索"
 
             filtered_torrents = await search_chain.async_search_by_id(
-                tmdbid=tmdb_id,
-                doubanid=douban_id,
-                bangumiid=bangumi_id,
-                anilistid=anilist_id,
-                source=media_source,
-                mediaid=media_id,
+                media_source=media_source,
+                media_id=media_id,
                 mtype=media_type_enum,
                 music_type=normalized_music_type,
                 area=area or "title",
@@ -151,9 +132,8 @@ class SearchTorrentsTool(MoviePilotTool):
                 }, ensure_ascii=False, indent=2)
                 return result_json
             else:
-                identity = media_id or tmdb_id or douban_id or bangumi_id or anilist_id
                 result_json = json.dumps({
-                    "message": f"未找到相关种子资源: {identity}",
+                    "message": f"未找到相关种子资源: {media_source}:{media_id}",
                     "all_sites": all_sites,
                     "search_site_ids": search_site_ids,
                 }, ensure_ascii=False, indent=2)

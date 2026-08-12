@@ -22,13 +22,6 @@ class Subscribe(Base):
     type = Column(String)
     # 搜索关键字
     keyword = Column(String)
-    tmdbid = Column(Integer, index=True)
-    imdbid = Column(String)
-    tvdbid = Column(Integer)
-    doubanid = Column(String, index=True)
-    bangumiid = Column(Integer, index=True)
-    anilistid = Column(Integer, index=True)
-    mediaid = Column(String, index=True)
     media_source = Column(String, index=True)
     media_id = Column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
@@ -128,44 +121,32 @@ class Subscribe(Base):
             cls,
             media_source: Optional[str] = None,
             media_id: Optional[str] = None,
-            tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None,
             music_type: Optional[str] = None,
     ):
         """按统一媒体身份优先级构造订阅查询条件。"""
-        if media_source and media_id:
-            condition = (cls.media_source == media_source) & (cls.media_id == str(media_id))
-            if music_type == MUSIC_ENTITY_RECORDING:
-                # 旧音乐订阅没有实体字段，历史语义等同单曲，查询时保持向后兼容。
-                return condition & or_(cls.music_type == music_type, cls.music_type.is_(None))
-            if music_type:
-                return condition & (cls.music_type == music_type)
-            return condition
-        if tmdbid is not None:
-            return cls.tmdbid == tmdbid
-        if doubanid:
-            return cls.doubanid == doubanid
-        if bangumiid is not None:
-            return cls.bangumiid == bangumiid
-        if anilistid is not None:
-            return cls.anilistid == anilistid
-        return None
+        if not media_source or media_id is None or not str(media_id).strip():
+            return None
+        condition = (
+            (cls.media_source == str(media_source))
+            & (cls.media_id == str(media_id).strip())
+        )
+        if music_type == MUSIC_ENTITY_RECORDING:
+            return condition & or_(cls.music_type == music_type, cls.music_type.is_(None))
+        if music_type:
+            return condition & (cls.music_type == music_type)
+        return condition
 
     @classmethod
     @db_query
     def exists(
-            cls, db: Session, tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None, season: Optional[int] = None,
+            cls, db: Session, media_source: str, media_id: str,
+            season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """按媒体身份、季号与剧集组查询已有订阅。"""
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
+            media_source, media_id, music_type
         )
         if condition is None:
             return None
@@ -178,16 +159,14 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_exists(
-            cls, db: AsyncSession, tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None, season: Optional[int] = None,
+            cls, db: AsyncSession, media_source: str, media_id: str,
+            season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """异步按媒体身份、季号与剧集组查询已有订阅。"""
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
+            media_source, media_id, music_type
         )
         if condition is None:
             return None
@@ -201,10 +180,8 @@ class Subscribe(Base):
     @classmethod
     @db_query
     def exists_by_username(
-            cls, db: Session, username: str, tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None, season: Optional[int] = None,
+            cls, db: Session, username: str, media_source: str, media_id: str,
+            season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
@@ -214,7 +191,7 @@ class Subscribe(Base):
         if not username:
             return None
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
+            media_source, media_id, music_type
         )
         if condition is None:
             return None
@@ -227,10 +204,8 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_exists_by_username(
-            cls, db: AsyncSession, username: str, tmdbid: Optional[int] = None,
-            doubanid: Optional[str] = None, bangumiid: Optional[int] = None,
-            anilistid: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None, season: Optional[int] = None,
+            cls, db: AsyncSession, username: str, media_source: str,
+            media_id: str, season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
@@ -240,7 +215,7 @@ class Subscribe(Base):
         if not username:
             return None
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
+            media_source, media_id, music_type
         )
         if condition is None:
             return None
@@ -313,82 +288,19 @@ class Subscribe(Base):
 
     @classmethod
     @db_query
-    def get_by_tmdbid(cls, db: Session, tmdbid: int, season: Optional[int] = None):
-        if season is not None:
-            return db.query(cls).filter(cls.tmdbid == tmdbid,
-                                        cls.season == season).all()
-        else:
-            return db.query(cls).filter(cls.tmdbid == tmdbid).all()
-
-    @classmethod
-    @async_db_query
-    async def async_get_by_tmdbid(cls, db: AsyncSession, tmdbid: int, season: Optional[int] = None):
-        if season is not None:
-            result = await db.execute(
-                select(cls).filter(cls.tmdbid == tmdbid, cls.season == season)
-            )
-        else:
-            result = await db.execute(
-                select(cls).filter(cls.tmdbid == tmdbid)
-            )
-        return result.scalars().all()
-
-    @classmethod
-    @db_query
-    def get_by_doubanid(cls, db: Session, doubanid: str):
-        return db.query(cls).filter(cls.doubanid == doubanid).first()
-
-    @classmethod
-    @async_db_query
-    async def async_get_by_doubanid(cls, db: AsyncSession, doubanid: str):
-        result = await db.execute(
-            select(cls).filter(cls.doubanid == doubanid)
+    def list_by_media_identity(
+            cls, db: Session, media_source: str, media_id: str,
+            music_type: Optional[str] = None,
+    ):
+        """同步按统一媒体身份查询候选订阅列表。"""
+        condition = cls._identity_condition(
+            media_source=media_source,
+            media_id=media_id,
+            music_type=music_type,
         )
-        return result.scalars().first()
-
-    @classmethod
-    @async_db_query
-    async def async_list_by_doubanid(cls, db: AsyncSession, doubanid: str):
-        """
-        异步按豆瓣 ID 查询候选订阅列表。
-        """
-        result = await db.execute(
-            select(cls).filter(cls.doubanid == doubanid)
-        )
-        return result.scalars().all()
-
-    @classmethod
-    @db_query
-    def get_by_bangumiid(cls, db: Session, bangumiid: int):
-        return db.query(cls).filter(cls.bangumiid == bangumiid).first()
-
-    @classmethod
-    @async_db_query
-    async def async_get_by_bangumiid(cls, db: AsyncSession, bangumiid: int):
-        result = await db.execute(
-            select(cls).filter(cls.bangumiid == bangumiid)
-        )
-        return result.scalars().first()
-
-    @classmethod
-    @async_db_query
-    async def async_list_by_bangumiid(cls, db: AsyncSession, bangumiid: int):
-        """
-        异步按 Bangumi ID 查询候选订阅列表。
-        """
-        result = await db.execute(
-            select(cls).filter(cls.bangumiid == bangumiid)
-        )
-        return result.scalars().all()
-
-    @classmethod
-    @async_db_query
-    async def async_list_by_anilistid(cls, db: AsyncSession, anilistid: int):
-        """异步按 AniList ID 查询候选订阅列表。"""
-        result = await db.execute(
-            select(cls).filter(cls.anilistid == anilistid)
-        )
-        return result.scalars().all()
+        if condition is None:
+            return []
+        return db.query(cls).filter(condition).all()
 
     @classmethod
     @async_db_query
@@ -402,47 +314,23 @@ class Subscribe(Base):
             media_id=media_id,
             music_type=music_type,
         )
+        if condition is None:
+            return []
         result = await db.execute(select(cls).filter(condition))
         return result.scalars().all()
 
     @classmethod
     @db_query
-    def get_by_mediaid(cls, db: Session, mediaid: str):
-        return db.query(cls).filter(cls.mediaid == mediaid).first()
-
-    @classmethod
-    @async_db_query
-    async def async_get_by_mediaid(cls, db: AsyncSession, mediaid: str):
-        result = await db.execute(
-            select(cls).filter(cls.mediaid == mediaid)
-        )
-        return result.scalars().first()
-
-    @classmethod
-    @async_db_query
-    async def async_list_by_mediaid(cls, db: AsyncSession, mediaid: str):
-        """
-        异步按自定义媒体 ID 查询候选订阅列表。
-        """
-        result = await db.execute(
-            select(cls).filter(cls.mediaid == mediaid)
-        )
-        return result.scalars().all()
-
-    @classmethod
-    @db_query
     def get_by(
-            cls, db: Session, type: str, season: Optional[str] = None,
-            tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+            cls, db: Session, type: str, media_source: str, media_id: str,
+            season: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """
         根据条件查询订阅
         """
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
+            media_source, media_id, music_type
         )
         if condition is None:
             return None
@@ -454,17 +342,15 @@ class Subscribe(Base):
     @classmethod
     @async_db_query
     async def async_get_by(
-            cls, db: AsyncSession, type: str, season: Optional[str] = None,
-            tmdbid: Optional[int] = None, doubanid: Optional[str] = None,
-            bangumiid: Optional[int] = None, anilistid: Optional[int] = None,
-            media_source: Optional[str] = None, media_id: Optional[str] = None,
+            cls, db: AsyncSession, type: str, media_source: str, media_id: str,
+            season: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """
         根据条件查询订阅
         """
         condition = cls._identity_condition(
-            media_source, media_id, tmdbid, doubanid, bangumiid, anilistid, music_type
+            media_source, media_id, music_type
         )
         if condition is None:
             return None
@@ -475,45 +361,32 @@ class Subscribe(Base):
         return result.scalars().first()
 
     @db_update
-    def delete_by_tmdbid(self, db: Session, tmdbid: int, season: int):
-        subscrbies = self.get_by_tmdbid(db, tmdbid, season)
-        for subscrbie in subscrbies:
-            subscrbie.delete(db, subscrbie.id)
+    def delete_by_media_identity(
+            self, db: Session, media_source: str, media_id: str,
+            season: Optional[int] = None,
+    ) -> bool:
+        """按规范媒体身份删除订阅。"""
+        query = db.query(type(self)).filter(
+            type(self).media_source == media_source,
+            type(self).media_id == str(media_id),
+        )
+        if season is not None:
+            query = query.filter(type(self).season == season)
+        query.delete(synchronize_session=False)
         return True
 
     @async_db_update
-    async def async_delete_by_tmdbid(self, db: AsyncSession, tmdbid: int, season: int):
-        subscrbies = await self.async_get_by_tmdbid(db, tmdbid, season)
-        for subscrbie in subscrbies:
-            await subscrbie.async_delete(db, subscrbie.id)
-        return True
-
-    @db_update
-    def delete_by_doubanid(self, db: Session, doubanid: str):
-        subscribe = self.get_by_doubanid(db, doubanid)
-        if subscribe:
-            subscribe.delete(db, subscribe.id)
-        return True
-
-    @async_db_update
-    async def async_delete_by_doubanid(self, db: AsyncSession, doubanid: str):
-        subscribe = await self.async_get_by_doubanid(db, doubanid)
-        if subscribe:
-            await subscribe.async_delete(db, subscribe.id)
-        return True
-
-    @db_update
-    def delete_by_mediaid(self, db: Session, mediaid: str):
-        subscribe = self.get_by_mediaid(db, mediaid)
-        if subscribe:
-            subscribe.delete(db, subscribe.id)
-        return True
-
-    @async_db_update
-    async def async_delete_by_mediaid(self, db: AsyncSession, mediaid: str):
-        subscribe = await self.async_get_by_mediaid(db, mediaid)
-        if subscribe:
-            await subscribe.async_delete(db, subscribe.id)
+    async def async_delete_by_media_identity(
+            self, db: AsyncSession, media_source: str, media_id: str,
+            season: Optional[int] = None,
+    ) -> bool:
+        """异步按规范媒体身份删除订阅。"""
+        rows = await self.async_list_by_media_identity(
+            db, media_source=media_source, media_id=media_id
+        )
+        for row in rows:
+            if season is None or row.season == season:
+                await row.async_delete(db, row.id)
         return True
 
     @classmethod

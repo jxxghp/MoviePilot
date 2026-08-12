@@ -10,7 +10,12 @@ from app.agent.tools.tags import ToolTag
 from app.db.subscribe_oper import SubscribeOper
 from app.log import logger
 from app.schemas.subscribe import Subscribe as SubscribeSchema
-from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
+from app.schemas.types import (
+    MUSIC_ENTITY_RECORDING,
+    MediaSource,
+    MediaType,
+    media_type_to_agent,
+)
 from ._music_utils import normalize_music_type
 
 PAGE_SIZE = 100
@@ -20,10 +25,6 @@ QUERY_SUBSCRIBE_OUTPUT_FIELDS = [
     "name",
     "year",
     "type",
-    "tmdbid",
-    "doubanid",
-    "bangumiid",
-    "anilistid",
     "media_source",
     "media_id",
     "music_type",
@@ -81,17 +82,9 @@ class QuerySubscribesInput(BaseModel):
         None,
         description="Optional music subscription filter: recording or album",
     )
-    tmdb_id: Optional[int] = Field(
-        None,
-        description="Filter by TMDB ID to check if a specific media is already subscribed",
+    media_source: Optional[MediaSource] = Field(
+        None, description="Filter by media source"
     )
-    douban_id: Optional[str] = Field(
-        None,
-        description="Filter by Douban ID to check if a specific media is already subscribed",
-    )
-    bangumi_id: Optional[int] = Field(None, description="Filter by Bangumi ID")
-    anilist_id: Optional[int] = Field(None, description="Filter by AniList ID")
-    media_source: Optional[str] = Field(None, description="Filter by media source")
     media_id: Optional[str] = Field(None, description="Filter by source-native media ID")
     page: Optional[int] = Field(
         1, description="Page number for pagination (default: 1, 100 items per page)"
@@ -135,11 +128,7 @@ class QuerySubscribesTool(MoviePilotTool):
         status: Optional[str] = "all",
         media_type: Optional[str] = "all",
         music_type: Optional[str] = None,
-        tmdb_id: Optional[int] = None,
-        douban_id: Optional[str] = None,
-        bangumi_id: Optional[int] = None,
-        anilist_id: Optional[int] = None,
-        media_source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         page: Optional[int] = 1,
         **kwargs,
@@ -147,7 +136,9 @@ class QuerySubscribesTool(MoviePilotTool):
         """按状态、媒体身份及音乐实体类型筛选订阅。"""
         page = max(1, page or 1)
         logger.info(
-            f"执行工具: {self.name}, 参数: status={status}, media_type={media_type}, tmdb_id={tmdb_id}, douban_id={douban_id}, page={page}"
+            f"执行工具: {self.name}, 参数: status={status}, "
+            f"media_type={media_type}, media_source={media_source}, "
+            f"media_id={media_id}, page={page}"
         )
         try:
             if media_type != "all" and not MediaType.from_agent(media_type):
@@ -177,15 +168,7 @@ class QuerySubscribesTool(MoviePilotTool):
                     and sub.type != MediaType.from_agent(media_type).value
                 ):
                     continue
-                if tmdb_id is not None and sub.tmdbid != tmdb_id:
-                    continue
-                if douban_id is not None and sub.doubanid != douban_id:
-                    continue
-                if bangumi_id is not None and sub.bangumiid != bangumi_id:
-                    continue
-                if anilist_id is not None and sub.anilistid != anilist_id:
-                    continue
-                if media_source is not None and sub.media_source != media_source:
+                if media_source is not None and sub.media_source != str(media_source):
                     continue
                 if media_id is not None and sub.media_id != media_id:
                     continue

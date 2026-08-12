@@ -11,7 +11,7 @@ def test_music_context_builder_keeps_only_music_category():
     """精确音乐搜索只应保留明确标记为音乐分类的站点资源。"""
     chain = SearchChain()
     music = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="Get Lucky",
         artists=["Daft Punk"],
@@ -53,7 +53,7 @@ def test_music_search_continues_after_unrelated_first_keyword_results():
     """首组关键词只命中其它专辑时应继续尝试后续关键词，不能提前返回空结果。"""
     chain = SearchChain()
     music = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="Get Lucky",
         artists=["Daft Punk"],
@@ -85,7 +85,7 @@ def test_music_search_continues_after_unrelated_first_keyword_results():
 def test_music_search_matches_artist_from_resource_description():
     """精确音乐搜索应使用副标题中的艺术家，兼容主标题只有曲名的站点。"""
     music = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -103,7 +103,7 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
     """MusicBrainz 精确身份搜索应经统一识别入口识别后进入现有搜索处理链。"""
     chain = SearchChain()
     music = MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -117,7 +117,7 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
         patch.object(chain, "process", return_value=expected) as process,
     ):
         result = chain.search_by_id(
-            source="musicbrainz",
+            media_source="musicbrainz",
             mediaid="recording-1",
             mtype=MediaType.MUSIC,
             music_type="recording",
@@ -126,7 +126,7 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
 
     assert result == expected
     media_chain.recognize_media.assert_called_once_with(
-        source="musicbrainz",
+        media_source="musicbrainz",
         mediaid="recording-1",
         tmdbid=None,
         doubanid=None,

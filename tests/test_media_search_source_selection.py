@@ -1,10 +1,14 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
+from fastapi import FastAPI
 
+from app.api.endpoints import media as media_endpoints
 from app.api.endpoints.media import search
 from app.chain import ChainBase
+from app.core.security import verify_token
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
 from app.schemas.types import MediaType
@@ -30,13 +34,13 @@ def test_media_search_endpoint_forwards_source(
             search(
                 title="测试",
                 type=search_type,
-                source=source,
+                media_source=source,
                 _=Mock(),
             )
         )
 
     assert result == []
-    search_method.assert_awaited_once_with(name="测试", source=source)
+    search_method.assert_awaited_once_with(name="测试", media_source=source)
 
 
 def test_media_search_endpoint_forwards_multi_source() -> None:
@@ -49,14 +53,47 @@ def test_media_search_endpoint_forwards_multi_source() -> None:
             search(
                 title="测试",
                 type="media",
-                source="themoviedb,douban",
+                media_source="themoviedb,douban",
                 _=Mock(),
             )
         )
 
     assert result == []
     chain.async_search.assert_awaited_once_with(
-        title="测试", source="themoviedb,douban"
+        title="测试", media_source="themoviedb,douban"
+    )
+
+
+@pytest.mark.anyio
+async def test_media_search_route_accepts_comma_separated_music_sources() -> None:
+    """真实 FastAPI 路由应接受逗号分隔的数据源，而不能在参数校验阶段返回 422。"""
+    chain = Mock()
+    chain.async_search = AsyncMock(return_value=[])
+    app = FastAPI()
+    app.include_router(media_endpoints.router, prefix="/api/v1/media")
+    app.dependency_overrides[verify_token] = lambda: Mock()
+
+    with patch("app.api.endpoints.media.MusicChain", return_value=chain):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get(
+                "/api/v1/media/search",
+                params={
+                    "title": "周杰伦",
+                    "type": "music",
+                    "count": 30,
+                    "media_source": "musicbrainz,theaudiodb,doubanmusic",
+                },
+            )
+
+    assert response.status_code == 200
+    assert response.json() == []
+    chain.async_search.assert_awaited_once_with(
+        query="周杰伦",
+        limit=30,
+        media_source="musicbrainz,theaudiodb,doubanmusic",
     )
 
 
@@ -78,7 +115,7 @@ def test_chain_forwards_source_to_modules(
         getattr(ChainBase, method_name)(
             chain,
             name="测试",
-            source="themoviedb",
+            media_source="themoviedb",
         )
     )
 
@@ -86,7 +123,7 @@ def test_chain_forwards_source_to_modules(
     chain.async_run_module.assert_awaited_once_with(
         module_method_name,
         name="测试",
-        source="themoviedb",
+        media_source="themoviedb",
     )
 
 
@@ -98,10 +135,10 @@ def test_tmdb_person_search_respects_explicit_source(monkeypatch) -> None:
     module.tmdb.async_search_persons = AsyncMock(return_value=[])
 
     skipped = asyncio.run(
-        module.async_search_persons(name="测试", source="douban")
+        module.async_search_persons(name="测试", media_source="douban")
     )
     result = asyncio.run(
-        module.async_search_persons(name="测试", source="themoviedb")
+        module.async_search_persons(name="测试", media_source="themoviedb")
     )
 
     assert skipped is None
@@ -119,10 +156,10 @@ def test_douban_person_search_respects_explicit_source(monkeypatch) -> None:
     module.doubanapi.async_person_search = AsyncMock(return_value={})
 
     skipped = asyncio.run(
-        module.async_search_persons(name="测试", source="themoviedb")
+        module.async_search_persons(name="测试", media_source="themoviedb")
     )
     result = asyncio.run(
-        module.async_search_persons(name="测试", source="douban")
+        module.async_search_persons(name="测试", media_source="douban")
     )
 
     assert skipped is None
@@ -137,7 +174,7 @@ def test_tmdb_collection_search_rejects_unsupported_source() -> None:
     module.tmdb.async_search_collections = AsyncMock(return_value=[])
 
     result = asyncio.run(
-        module.async_search_collections(name="测试", source="douban")
+        module.async_search_collections(name="测试", media_source="douban")
     )
 
     assert result is None
@@ -152,7 +189,7 @@ def test_tmdb_collection_search_supports_multi_source_request() -> None:
 
     result = asyncio.run(
         module.async_search_collections(
-            name="测试", source="themoviedb,douban"
+            name="测试", media_source="themoviedb,douban"
         )
     )
 
@@ -171,8 +208,8 @@ def test_tmdb_media_search_supports_multi_source_request(monkeypatch) -> None:
     meta.type = MediaType.UNKNOWN
     meta.year = None
 
-    skipped = module.search_medias(meta=meta, source="douban")
-    result = module.search_medias(meta=meta, source="themoviedb,douban")
+    skipped = module.search_medias(meta=meta, media_source="douban")
+    result = module.search_medias(meta=meta, media_source="themoviedb,douban")
 
     assert skipped is None
     assert result == []
@@ -189,7 +226,7 @@ def test_douban_media_search_supports_multi_source_request(monkeypatch) -> None:
     meta.name = "测试"
 
     result = asyncio.run(
-        module.async_search_medias(meta=meta, source="themoviedb,douban")
+        module.async_search_medias(meta=meta, media_source="themoviedb,douban")
     )
 
     assert result == []
@@ -206,7 +243,7 @@ def test_multi_source_request_keeps_missing_module_skipped(monkeypatch) -> None:
     meta.name = "测试"
 
     skipped = asyncio.run(
-        module.async_search_medias(meta=meta, source="themoviedb")
+        module.async_search_medias(meta=meta, media_source="themoviedb")
     )
 
     assert skipped is None

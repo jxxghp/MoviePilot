@@ -3,7 +3,7 @@ from typing import Optional, Dict, Union, List, Any
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 class ExistMediaInfo(BaseModel):
@@ -121,12 +121,9 @@ class MediaServerItem(BaseModel):
     original_title: Optional[str] = None
     # 年份
     year: Optional[Union[str, int]] = None
-    # TMDBID
-    tmdbid: Optional[int] = None
-    # IMDBID
-    imdbid: Optional[str] = None
-    # TVDBID
-    tvdbid: Optional[str] = None
+    # 媒体数据源与原生ID
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
     # 路径
     path: Optional[str] = None
     # 季集

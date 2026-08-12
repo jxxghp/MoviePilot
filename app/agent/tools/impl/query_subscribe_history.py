@@ -210,10 +210,6 @@ class QuerySubscribeHistoryTool(MoviePilotTool):
                 "year": record.year,
                 "type": media_type_to_agent(record.type),
                 "season": record.season,
-                "tmdbid": record.tmdbid,
-                "doubanid": record.doubanid,
-                "bangumiid": record.bangumiid,
-                "anilistid": record.anilistid,
                 "media_source": record.media_source,
                 "media_id": record.media_id,
                 "music_type": getattr(record, "music_type", None) or (

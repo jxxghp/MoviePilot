@@ -164,22 +164,13 @@ class TemplateContextBuilder:
                 "category": mediainfo.category,
                 "poster": mediainfo.get_poster_image(),
                 "backdrop": mediainfo.get_backdrop_image(),
-                "media_source": mediainfo.source,
+                "media_source": mediainfo.media_source,
                 "media_id": mediainfo.media_id,
             })
             return
         season_fmt = f"S{mediainfo.season:02d}" if mediainfo.season is not None else None
-        source_ids = {
-            "themoviedb": mediainfo.tmdb_id,
-            "douban": mediainfo.douban_id,
-            "bangumi": mediainfo.bangumi_id,
-            "anilist": mediainfo.anilist_id,
-        }
-        media_source = mediainfo.source or next(
-            (source for source, media_id in source_ids.items() if media_id is not None),
-            None,
-        )
-        media_id = mediainfo.media_id or source_ids.get(media_source)
+        media_source = mediainfo.media_source
+        media_id = mediainfo.media_id
         base_info = {
             # 标题
             "title": cls.__convert_invalid_characters(mediainfo.title),

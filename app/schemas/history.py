@@ -2,6 +2,8 @@ from typing import Optional, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.types import MediaSource
+
 
 class DownloadHistory(BaseModel):
     """
@@ -18,20 +20,8 @@ class DownloadHistory(BaseModel):
     title: Optional[str] = None
     # 年份
     year: Optional[str] = None
-    # TMDBID
-    tmdbid: Optional[int] = None
-    # IMDBID
-    imdbid: Optional[str] = None
-    # TVDBID
-    tvdbid: Optional[int] = None
-    # 豆瓣ID
-    doubanid: Optional[str] = None
-    # Bangumi ID
-    bangumiid: Optional[int] = None
-    # AniList ID
-    anilistid: Optional[int] = None
     # 媒体数据源
-    media_source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     # 数据源原生ID
     media_id: Optional[str] = None
     # 音乐实体类型：recording 单曲、album 专辑
@@ -91,20 +81,8 @@ class TransferHistory(BaseModel):
     title: Optional[str] = None
     # 年份
     year: Optional[str] = None
-    # TMDBID
-    tmdbid: Optional[int] = None
-    # IMDBID
-    imdbid: Optional[str] = None
-    # TVDBID
-    tvdbid: Optional[int] = None
-    # 豆瓣ID
-    doubanid: Optional[str] = None
-    # Bangumi ID
-    bangumiid: Optional[int] = None
-    # AniList ID
-    anilistid: Optional[int] = None
     # 媒体数据源
-    media_source: Optional[str] = None
+    media_source: Optional[MediaSource] = None
     # 数据源原生ID
     media_id: Optional[str] = None
     # 音乐实体类型：recording 单曲、album 专辑

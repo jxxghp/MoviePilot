@@ -6,7 +6,72 @@ from app import schemas
 from app.core.context import MusicInfo
 from app.helper.service import ServiceBaseHelper
 from app.schemas import MediaServerConf, ServiceInfo
-from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey, ModuleType
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MediaSource,
+    ModuleType,
+    SystemConfigKey,
+)
+from app.utils.media import normalize_media_source, resolve_media_identity
+
+
+class MediaServerIdentityHelper:
+    """将媒体服务器专有 ProviderIds 适配为统一媒体身份。"""
+
+    _provider_keys = (
+        (MediaSource.TMDB, ("Tmdb", "TMDB", "tmdb", "tmdb_id")),
+        (MediaSource.Douban, ("Douban", "douban", "douban_id")),
+        (MediaSource.Bangumi, ("Bangumi", "bangumi", "bangumi_id")),
+        (MediaSource.AniList, ("AniList", "Anilist", "anilist", "anilist_id")),
+        (MediaSource.IMDb, ("Imdb", "IMDb", "imdb", "imdb_id")),
+        (MediaSource.TVDB, ("Tvdb", "TVDB", "tvdb", "tvdb_id")),
+        (MediaSource.MusicBrainz, ("MusicBrainz", "musicbrainz", "musicbrainz_id")),
+    )
+
+    @classmethod
+    def from_provider_ids(cls, provider_ids: Optional[Mapping[str, Any]]) -> tuple[Optional[MediaSource], Optional[str]]:
+        """按固定优先级从外部 ProviderIds 选择一个规范媒体身份。"""
+        if not isinstance(provider_ids, Mapping):
+            return None, None
+        for media_source, keys in cls._provider_keys:
+            for key in keys:
+                value = provider_ids.get(key)
+                if value is not None and str(value).strip():
+                    return media_source, str(value).strip()
+        return None, None
+
+    @staticmethod
+    def are_compatible(
+            left_source: Optional[MediaSource | str],
+            left_id: Optional[str],
+            right_source: Optional[MediaSource | str],
+            right_id: Optional[str],
+    ) -> bool:
+        """判断两组身份是否没有可证实的同来源ID冲突。"""
+        left_source, left_id = resolve_media_identity(
+            media_source=left_source,
+            media_id=left_id,
+        )
+        right_source, right_id = resolve_media_identity(
+            media_source=right_source,
+            media_id=right_id,
+        )
+        if not left_source or not right_source:
+            return True
+        if normalize_media_source(left_source) != normalize_media_source(right_source):
+            return True
+        return left_id == right_id
+
+    @classmethod
+    def is_compatible(
+            cls,
+            item: schemas.MediaServerItem,
+            media_source: Optional[MediaSource | str],
+            media_id: Optional[str],
+    ) -> bool:
+        """判断目标与媒体库条目是否无明确身份冲突。"""
+        item_source, item_id = resolve_media_identity(media=item)
+        return cls.are_compatible(item_source, item_id, media_source, media_id)
 
 
 class MusicMediaServerHelper:

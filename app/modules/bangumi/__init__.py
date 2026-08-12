@@ -8,7 +8,7 @@ from app.helper.scraper import MediaScraperHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
-from app.schemas.types import MediaRecognizeType, MediaType, ModuleType
+from app.schemas.types import MediaRecognizeType, MediaSource, MediaType, ModuleType
 from app.utils.http import RequestUtils
 from app.utils.media import is_media_source_enabled
 
@@ -82,15 +82,15 @@ class BangumiModule(_ModuleBase):
     def recognize_media(
         self,
         meta: MetaBase = None,
-        bangumiid: int = None,
-        source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         **kwargs,
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta: 识别的元数据
-        :param bangumiid: 识别的Bangumi ID
-        :param source: 请求级识别数据源
+        :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生ID
         :return: 识别的媒体信息，包括剧集信息
         """
         # Bangumi 只处理影视，不能在音乐模块未响应时接管音乐请求。
@@ -99,8 +99,15 @@ class BangumiModule(_ModuleBase):
                 or getattr(meta, "type", None) == MediaType.MUSIC
         ):
             return None
+        if media_source and media_source != MediaSource.Bangumi:
+            return None
+        if media_id is not None and (
+                media_source != MediaSource.Bangumi or not str(media_id).isdigit()
+        ):
+            return None
+        bangumiid = int(media_id) if media_id is not None else None
         if not bangumiid and (
-            not meta or (source or settings.RECOGNIZE_SOURCE) != "bangumi"
+            not meta or (media_source or settings.RECOGNIZE_SOURCE) != MediaSource.Bangumi
         ):
             return None
 
@@ -124,15 +131,15 @@ class BangumiModule(_ModuleBase):
     async def async_recognize_media(
         self,
         meta: MetaBase = None,
-        bangumiid: int = None,
-        source: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         **kwargs,
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息（异步版本）
         :param meta: 识别的元数据
-        :param bangumiid: 识别的Bangumi ID
-        :param source: 请求级识别数据源
+        :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生ID
         :return: 识别的媒体信息，包括剧集信息
         """
         # 与同步入口保持同一类型边界，音乐请求不得进入 Bangumi。
@@ -141,8 +148,15 @@ class BangumiModule(_ModuleBase):
                 or getattr(meta, "type", None) == MediaType.MUSIC
         ):
             return None
+        if media_source and media_source != MediaSource.Bangumi:
+            return None
+        if media_id is not None and (
+                media_source != MediaSource.Bangumi or not str(media_id).isdigit()
+        ):
+            return None
+        bangumiid = int(media_id) if media_id is not None else None
         if not bangumiid and (
-            not meta or (source or settings.RECOGNIZE_SOURCE) != "bangumi"
+            not meta or (media_source or settings.RECOGNIZE_SOURCE) != MediaSource.Bangumi
         ):
             return None
 
@@ -207,15 +221,15 @@ class BangumiModule(_ModuleBase):
         return None
 
     def search_medias(
-        self, meta: MetaBase, source: Optional[str] = None
+        self, meta: MetaBase, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(source, "bangumi"):
+        if not is_media_source_enabled(media_source, "bangumi"):
             return None
         if not meta.name:
             return []
@@ -227,15 +241,15 @@ class BangumiModule(_ModuleBase):
         return []
 
     async def async_search_medias(
-        self, meta: MetaBase, source: Optional[str] = None
+        self, meta: MetaBase, media_source: Optional[MediaSource] = None
     ) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息（异步版本）
         :param meta:  识别的元数据
-        :param source: 请求级搜索数据源
+        :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(source, "bangumi"):
+        if not is_media_source_enabled(media_source, "bangumi"):
             return None
         if not meta.name:
             return []

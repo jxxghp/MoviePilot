@@ -22,7 +22,7 @@ def _fallback_music(title: str = "晴天", **kwargs) -> MusicInfo:
 def _remote_music() -> MusicInfo:
     """构造带远端身份的标准音乐识别结果。"""
     return MusicInfo(
-        source="musicbrainz",
+        media_source="musicbrainz",
         media_id="recording-1",
         title="晴天",
         artists=["周杰伦"],
@@ -68,7 +68,7 @@ def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
     with patch("app.chain.media.eventmanager") as em:
         em.check.return_value = True
         em.send_event.return_value = event
-        result = chain.recognize_by_meta(meta, source="musicbrainz")
+        result = chain.recognize_by_meta(meta, media_source="musicbrainz")
 
     assert result is remote
     assert em.check.call_args.args[0] == ChainEventType.MusicNameRecognize

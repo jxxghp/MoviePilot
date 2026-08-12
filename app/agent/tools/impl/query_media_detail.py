@@ -15,6 +15,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
 )
 from ._music_utils import (
@@ -31,12 +32,8 @@ SEASON_PREVIEW_LIMIT = 100
 
 class QueryMediaDetailInput(BaseModel):
     """查询媒体详情工具的输入参数模型"""
-    tmdb_id: Optional[int] = Field(None, description="TMDB ID of the media (movie or TV series, can be obtained from search_media tool)")
-    douban_id: Optional[str] = Field(None, description="Douban ID of the media (alternative to tmdb_id)")
-    bangumi_id: Optional[int] = Field(None, description="Bangumi media ID")
-    anilist_id: Optional[int] = Field(None, description="AniList media ID")
-    media_source: Optional[str] = Field(None, description="Media metadata source")
-    media_id: Optional[str] = Field(None, description="Native ID for media_source")
+    media_source: MediaSource = Field(..., description="Media metadata source")
+    media_id: str = Field(..., description="Native ID for media_source")
     media_type: str = Field(..., description="Allowed values: movie, tv, music")
     music_type: Optional[str] = Field(
         None,
@@ -75,25 +72,14 @@ class QueryMediaDetailTool(MoviePilotTool):
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据查询参数生成友好的提示消息"""
-        identities = (
-            ("TMDB", kwargs.get("tmdb_id")),
-            ("豆瓣", kwargs.get("douban_id")),
-            ("Bangumi", kwargs.get("bangumi_id")),
-            ("AniList", kwargs.get("anilist_id")),
-        )
-        for label, identity in identities:
-            if identity is not None:
-                return f"查询媒体详情: {label} ID {identity}"
         return (
             f"查询媒体详情: {kwargs.get('media_source') or '媒体源'} "
             f"ID {kwargs.get('media_id')}"
         )
 
     async def run(
-            self, media_type: str, tmdb_id: Optional[int] = None,
-            douban_id: Optional[str] = None, bangumi_id: Optional[int] = None,
-            anilist_id: Optional[int] = None, media_source: Optional[str] = None,
-            media_id: Optional[str] = None, music_type: Optional[str] = None,
+            self, media_type: str, media_source: MediaSource,
+            media_id: str, music_type: Optional[str] = None,
             include_artist_albums: Optional[bool] = False,
             include_related_artists: Optional[bool] = False,
             page: Optional[int] = 1, count: Optional[int] = 20,
@@ -101,15 +87,15 @@ class QueryMediaDetailTool(MoviePilotTool):
     ) -> str:
         """执行媒体详情查询，并限制音乐目录型结果的上下文大小。"""
         logger.info(
-            f"执行工具: {self.name}, 参数: tmdb_id={tmdb_id}, douban_id={douban_id}, "
-            f"media_type={media_type}, music_type={music_type}, media_source={media_source}, "
+            f"执行工具: {self.name}, 参数: media_type={media_type}, "
+            f"music_type={music_type}, media_source={media_source}, "
             f"media_id={media_id}"
         )
 
-        if not any((tmdb_id, douban_id, bangumi_id, anilist_id, media_id)):
+        if not str(media_id or "").strip():
             return json.dumps({
                 "success": False,
-                "message": "必须提供至少一个媒体 ID"
+                "message": "必须提供 media_id"
             }, ensure_ascii=False)
 
         try:
@@ -168,7 +154,7 @@ class QueryMediaDetailTool(MoviePilotTool):
                         pending.append((
                             "albums",
                             music_chain.async_artist_albums(
-                                source=media_source,
+                                media_source=media_source,
                                 media_id=media_id,
                                 page=normalized_page,
                                 count=normalized_count,
@@ -179,7 +165,7 @@ class QueryMediaDetailTool(MoviePilotTool):
                         pending.append((
                             "related_artists",
                             music_chain.async_artist_related(
-                                source=media_source,
+                                media_source=media_source,
                                 media_id=media_id,
                                 count=normalized_count,
                             ),
@@ -197,8 +183,8 @@ class QueryMediaDetailTool(MoviePilotTool):
 
                 media_chain = MediaChain()
                 mediainfo = await media_chain.async_recognize_media(
-                    source=media_source,
-                    mediaid=media_id,
+                    media_source=media_source,
+                    media_id=media_id,
                     mtype=MediaType.MUSIC,
                     music_type=normalized_music_type,
                 )
@@ -219,24 +205,15 @@ class QueryMediaDetailTool(MoviePilotTool):
 
             media_chain = MediaChain()
             mediainfo = await media_chain.async_recognize_media(
-                tmdbid=tmdb_id,
-                doubanid=douban_id,
-                bangumiid=bangumi_id,
-                anilistid=anilist_id,
-                source=media_source,
-                mediaid=media_id,
+                media_source=media_source,
+                media_id=media_id,
                 mtype=media_type_enum,
             )
 
             if not mediainfo:
-                id_info = (
-                    f"{media_source or '媒体源'} ID {media_id}"
-                    if media_id else
-                    f"媒体 ID {tmdb_id or douban_id or bangumi_id or anilist_id}"
-                )
                 return json.dumps({
                     "success": False,
-                    "message": f"未找到 {id_info} 的媒体信息"
+                    "message": f"未找到 {media_source} ID {media_id} 的媒体信息"
                 }, ensure_ascii=False)
 
             # 精简 genres - 只保留名称
@@ -309,10 +286,6 @@ class QueryMediaDetailTool(MoviePilotTool):
             return json.dumps({
                 "success": False,
                 "message": error_message,
-                "tmdb_id": tmdb_id,
-                "douban_id": douban_id,
-                "bangumi_id": bangumi_id,
-                "anilist_id": anilist_id,
                 "media_source": media_source,
                 "media_id": media_id,
             }, ensure_ascii=False)

@@ -176,7 +176,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                         )
                 movies = s.get_movies(title=mediainfo.title,
                                       year=mediainfo.year,
-                                      tmdb_id=mediainfo.tmdb_id)
+                                      media_source=mediainfo.media_source,
+                                      media_id=mediainfo.media_id)
                 if not movies:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
@@ -191,7 +192,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             else:
                 itemid, tvs = s.get_tv_episodes(title=mediainfo.title,
                                                 year=mediainfo.year,
-                                                tmdb_id=mediainfo.tmdb_id,
+                                                media_source=mediainfo.media_source,
+                                                media_id=mediainfo.media_id,
                                                 item_id=itemid)
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")

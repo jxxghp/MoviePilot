@@ -187,7 +187,8 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                 movies = s.get_movies(title=mediainfo.title,
                                       original_title=mediainfo.original_title,
                                       year=mediainfo.year,
-                                      tmdb_id=mediainfo.tmdb_id)
+                                      media_source=mediainfo.media_source,
+                                      media_id=mediainfo.media_id)
                 if not movies:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
@@ -203,7 +204,8 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                 item_id, tvs = s.get_tv_episodes(title=mediainfo.title,
                                                  original_title=mediainfo.original_title,
                                                  year=mediainfo.year,
-                                                 tmdb_id=mediainfo.tmdb_id,
+                                                 media_source=mediainfo.media_source,
+                                                 media_id=mediainfo.media_id,
                                                  item_id=itemid)
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")

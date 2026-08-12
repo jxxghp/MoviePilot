@@ -28,12 +28,9 @@ class MediaServerItem(Base):
     original_title = Column(String)
     # 年份
     year = Column(String)
-    # TMDBID
-    tmdbid = Column(Integer)
-    # IMDBID
-    imdbid = Column(String, index=True)
-    # TVDBID
-    tvdbid = Column(String, index=True)
+    # 媒体数据源与原生ID
+    media_source = Column(String, index=True)
+    media_id = Column(String, index=True)
     # 路径
     path = Column(String)
     # 季集
@@ -45,7 +42,10 @@ class MediaServerItem(Base):
 
     __table_args__ = (
         Index('ux_mediaserveritem_server_item_id', 'server', 'item_id', unique=True),
-        Index('ix_mediaserveritem_tmdbid_item_type', 'tmdbid', 'item_type'),
+        Index(
+            'ix_mediaserveritem_media_identity_type',
+            'media_source', 'media_id', 'item_type',
+        ),
     )
 
     @classmethod
@@ -84,9 +84,15 @@ class MediaServerItem(Base):
 
     @classmethod
     @db_query
-    def exist_by_tmdbid(cls, db: Session, tmdbid: int, mtype: str):
-        return db.query(cls).filter(cls.tmdbid == tmdbid,
-                                    cls.item_type == mtype).first()
+    def exist_by_media_identity(
+            cls, db: Session, media_source: str, media_id: str, mtype: str,
+    ):
+        """按规范媒体身份和类型查询媒体服务器条目。"""
+        return db.query(cls).filter(
+            cls.media_source == str(media_source),
+            cls.media_id == str(media_id),
+            cls.item_type == mtype,
+        ).first()
 
     @classmethod
     @db_query
@@ -111,9 +117,15 @@ class MediaServerItem(Base):
 
     @classmethod
     @async_db_query
-    async def async_exist_by_tmdbid(cls, db: AsyncSession, tmdbid: int, mtype: str):
-        result = await db.execute(select(cls).filter(cls.tmdbid == tmdbid,
-                                                     cls.item_type == mtype))
+    async def async_exist_by_media_identity(
+            cls, db: AsyncSession, media_source: str, media_id: str, mtype: str,
+    ):
+        """异步按规范媒体身份和类型查询媒体服务器条目。"""
+        result = await db.execute(select(cls).filter(
+            cls.media_source == str(media_source),
+            cls.media_id == str(media_id),
+            cls.item_type == mtype,
+        ))
         return result.scalars().first()
 
     @classmethod
