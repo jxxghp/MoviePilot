@@ -29,6 +29,7 @@ from app.agent.policy import (
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.ask_user_choice import AskUserChoiceTool
+from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -613,6 +614,51 @@ def test_direct_manager_and_agent_middleware_share_policy_resolution() -> None:
         ToolOrigin.OPERATOR_DIRECT,
     ]
     assert observations[0].policy == observations[1].policy
+
+
+def test_agent_middleware_secret_setting_result_stays_out_of_receipt_logs() -> None:
+    """Agent ToolNode 可接收管理员请求的原值，但策略回执不得记录该值。"""
+    secret_marker = "middleware-secret-setting-marker"
+    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
+    tool.set_agent_context({"is_admin": True})
+    middleware = AgentPolicyMiddleware(context=_interactive_context())
+    request = SimpleNamespace(
+        tool=tool,
+        tool_call={
+            "id": "call-secret-setting",
+            "name": tool.name,
+            "args": {"setting_key": "COOKIECLOUD_KEY", "show_secrets": True},
+        },
+    )
+    mock_logger = MagicMock()
+
+    async def _handler(_request):
+        result = await tool._arun(
+            setting_key="COOKIECLOUD_KEY",
+            show_secrets=True,
+        )
+        return ToolMessage(content=result, tool_call_id="call-secret-setting")
+
+    with (
+        patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value=secret_marker,
+        ),
+        patch("app.agent.policy.orchestrator.logger", mock_logger),
+    ):
+        result = asyncio.run(middleware.awrap_tool_call(request, _handler))
+
+    assert secret_marker in result.content
+    logged = "\n".join(
+        str(call)
+        for call in (
+            mock_logger.debug.call_args_list + mock_logger.info.call_args_list
+        )
+    )
+    assert secret_marker not in logged
+    assert '"value": "***"' in logged
+    assert '"value_preview": "***"' in logged
 
 
 def test_main_agent_registers_policy_middleware_as_outermost() -> None:

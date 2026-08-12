@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from app.agent.policy.secret_fields import is_secret_setting_key
 from app.core.config import Settings
 from app.schemas.types import SystemConfigKey
 
@@ -366,26 +367,6 @@ def list_setting_specs(
 
 def get_default_list_match_field(setting_key: str) -> Optional[str]:
     return LIST_ITEM_MATCH_FIELD_DEFAULTS.get(setting_key)
-
-
-SECRET_KEYWORDS = (
-    "api_key",
-    "apikey",
-    "token",
-    "secret",
-    "password",
-    "passwd",
-    "cookie",
-    "authorization",
-    "refresh_token",
-    "access_token",
-)
-
-
-def is_secret_setting_key(key: str) -> bool:
-    """判断设置键名是否疑似敏感字段。"""
-    normalized = _normalize_token(key)
-    return any(keyword in normalized for keyword in SECRET_KEYWORDS)
 
 
 def redact_secret_value(value: Any, *, redact_scalar: bool = False) -> Any:

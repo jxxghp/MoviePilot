@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import AliasChoices, AliasPath, BaseModel, ValidationError
 
+from app.agent.policy.secret_fields import is_secret_setting_key
+
 
 REDACTED_VALUE = "***"
 _MAX_DEPTH = 8
@@ -60,6 +62,31 @@ _SECRET_CONTAINER_ENDINGS = tuple(
     f"_{suffix}" for suffix in _SECRET_CONTAINER_SUFFIXES
 )
 _COMPACT_SECRET_CONTAINERS = frozenset(("oauth", "oauth2"))
+_SECRET_IDENTITY_FIELDS = frozenset(
+    {
+        "config_key",
+        "field_name",
+        "key",
+        "name",
+        "property_name",
+        "setting_key",
+    }
+)
+_SECRET_IDENTITY_VALUE_FIELDS = frozenset(
+    {
+        "current",
+        "current_value",
+        "default",
+        "default_value",
+        "new_value",
+        "old_value",
+        "previous",
+        "previous_value",
+        "saved_value",
+        "value",
+        "value_preview",
+    }
+)
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")
 _BASIC_AUTH_PATTERN = re.compile(
     r"(?i)(\bbasic\s+)([A-Za-z0-9+/]+={0,2})(?![A-Za-z0-9+/=])"
@@ -107,6 +134,18 @@ def _is_secret_key(key: Any) -> bool:
     ):
         return True
     return compact.endswith(_COMPACT_SECRET_SUFFIXES)
+
+
+def _mapping_has_secret_identity(
+    entries: list[tuple[str, str, bool, Any]],
+) -> bool:
+    """判断同一结构是否声明了凭据设置身份，不把语义传播到嵌套对象。"""
+    return any(
+        _normalize_key(key_text) in _SECRET_IDENTITY_FIELDS
+        and type(item) is str
+        and is_secret_setting_key(item)
+        for key_text, _output_key, _secret_key, item in entries
+    )
 
 
 def _advance_quote_context(
@@ -346,8 +385,12 @@ def _assignment_value_end(
     )
 
 
-def _sanitize_assignments(value: str) -> str:
-    """按结构化字段的同一判敏规则清理文本赋值。"""
+def _sanitize_assignments(
+    value: str,
+    *,
+    redact_identity_values: bool = False,
+) -> str:
+    """按结构化字段语义清理文本赋值与身份不明的通用值。"""
     fragments = []
     emitted_until = 0
     search_from = 0
@@ -361,7 +404,11 @@ def _sanitize_assignments(value: str) -> str:
             match_start,
             active_quote,
         )
-        if _is_secret_key(key):
+        secret_value = _is_secret_key(key) or (
+            redact_identity_values
+            and _normalize_key(key) in _SECRET_IDENTITY_VALUE_FIELDS
+        )
+        if secret_value:
             fragments.append(value[emitted_until:match_start])
             fragments.append(value[match_start:value_start])
             fragments.append(REDACTED_VALUE)
@@ -519,6 +566,7 @@ def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
     """清理非结构化文本中的常见凭据表达。"""
     truncated = truncated_input or len(value) > _MAX_TEXT_CHARS
     bounded_value = value[:_MAX_TEXT_CHARS]
+    truncated_json = truncated and bounded_value.lstrip().startswith(("{", "["))
     sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, bounded_value)
     sanitized = _PRIVATE_KEY_OPEN_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _SENSITIVE_HEADER_PATTERN.sub(r"\1***", sanitized)
@@ -528,7 +576,10 @@ def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
         sanitized,
     )
     sanitized = _sanitize_uri_userinfo(sanitized, truncated=truncated)
-    sanitized = _sanitize_assignments(sanitized)
+    sanitized = _sanitize_assignments(
+        sanitized,
+        redact_identity_values=truncated_json,
+    )
     sanitized = _OPENAI_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
     return f"{sanitized}<truncated>" if truncated else sanitized
 
@@ -865,16 +916,24 @@ def sanitize_for_host(
             if is_mapping:
                 sanitized = {}
                 items = iter(value.items())
+                entries: list[tuple[str, str, bool, Any]] = []
+                identity_scan_complete = True
                 for index in range(_MAX_ITEMS + 1):
                     if not _consume_work_item(budget):
-                        sanitized["<work-limit>"] = "more items"
+                        identity_scan_complete = False
+                        entries.append(
+                            ("<work-limit>", "<work-limit>", False, "more items")
+                        )
                         break
                     try:
                         key, item = next(items)
                     except StopIteration:
                         break
                     if index >= _MAX_ITEMS:
-                        sanitized["<truncated>"] = "more items"
+                        identity_scan_complete = False
+                        entries.append(
+                            ("<truncated>", "<truncated>", False, "more items")
+                        )
                         break
                     try:
                         key_snapshot = _bounded_mapping_key_text(key)
@@ -887,11 +946,25 @@ def sanitize_for_host(
                         )
                         secret_key = _is_secret_key(key_text)
                     except Exception:
+                        identity_scan_complete = False
+                        key_text = ""
                         output_key = f"<key:{stable_type_name(key)}>"
                         secret_key = True
+                    entries.append((key_text, output_key, secret_key, item))
+
+                secret_identity = _mapping_has_secret_identity(entries)
+                for key_text, output_key, secret_key, item in entries:
+                    identity_value_field = (
+                        _normalize_key(key_text)
+                        in _SECRET_IDENTITY_VALUE_FIELDS
+                    )
+                    contextual_secret = (
+                        identity_value_field
+                        and (secret_identity or not identity_scan_complete)
+                    )
                     sanitized[output_key] = (
                         REDACTED_VALUE
-                        if secret_key
+                        if secret_key or contextual_secret
                         else sanitize_for_host(
                             item,
                             _depth=_depth + 1,

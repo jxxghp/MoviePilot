@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 from statistics import median
 from time import perf_counter
 from typing import Annotated, NamedTuple
@@ -21,6 +22,7 @@ from pydantic.dataclasses import dataclass as pydantic_dataclass
 import app.agent.policy.sanitizer as sanitizer_module
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
 from app.agent.tools.base import MoviePilotTool, serialize_tool_result_for_agent
+from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.manager import MoviePilotToolsManager
 
 
@@ -210,6 +212,115 @@ def test_recursive_sanitizer_redacts_nested_structures_and_json_text() -> None:
     assert "normal-name" in serialized
     assert sanitized["token_count"] == 12
     assert "***" in serialized
+
+
+@pytest.mark.parametrize("as_json_text", [False, True])
+def test_recursive_sanitizer_redacts_values_identified_by_secret_setting_key(
+    as_json_text: bool,
+) -> None:
+    """设置项身份为凭据时，同一结构中的通用值字段也必须脱敏。"""
+    payload = {
+        "settings": [
+            {
+                "setting_key": "API_TOKEN",
+                "value": SECRET_MARKER,
+                "value_preview": SECRET_MARKER,
+                "metadata": {"value": "visible-nested-value"},
+            }
+        ],
+        "value": "visible-outer-value",
+    }
+    source = json.dumps(payload, ensure_ascii=False) if as_json_text else payload
+
+    sanitized = sanitize_for_host(source)
+    if as_json_text:
+        sanitized = json.loads(sanitized)
+
+    setting = sanitized["settings"][0]
+    assert setting["value"] == "***"
+    assert setting["value_preview"] == "***"
+    assert setting["metadata"]["value"] == "visible-nested-value"
+    assert sanitized["value"] == "visible-outer-value"
+    assert SECRET_MARKER not in json.dumps(sanitized, ensure_ascii=False)
+
+
+def test_recursive_sanitizer_preserves_values_for_nonsecret_setting_key() -> None:
+    """普通设置的 value 字段仍应保留可诊断内容。"""
+    payload = {
+        "setting_key": "PROJECT_NAME",
+        "value": "MoviePilot",
+        "value_preview": "MoviePilot",
+    }
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized == payload
+
+
+@pytest.mark.parametrize(
+    "setting_key",
+    [
+        "API_TOKEN",
+        "LLM_API_KEY",
+        "COOKIECLOUD_KEY",
+        "COOKIECLOUD_AUTH_HEADER",
+        "SUPERUSER_PASSWORD",
+        "DB_POSTGRESQL_PASSWORD",
+        "GITHUB_TOKEN",
+        "FEISHU_VERIFICATION_TOKEN",
+        "SECRET_KEY",
+        "RESOURCE_SECRET_KEY",
+    ],
+)
+def test_recursive_sanitizer_redacts_shared_secret_setting_identities(
+    setting_key: str,
+) -> None:
+    """宿主回执必须与系统设置工具共享敏感设置身份语义。"""
+    payload = {
+        "setting_key": setting_key,
+        "value": SECRET_MARKER,
+        "value_preview": SECRET_MARKER,
+    }
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized["value"] == "***"
+    assert sanitized["value_preview"] == "***"
+
+
+@pytest.mark.parametrize(
+    "setting_key",
+    [
+        "PROJECT_NAME",
+        "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "LLM_MAX_CONTEXT_TOKENS",
+        "COOKIECLOUD_INTERVAL",
+    ],
+)
+def test_recursive_sanitizer_preserves_shared_nonsecret_setting_identities(
+    setting_key: str,
+) -> None:
+    """名称中提及凭据概念的普通设置仍应保留诊断值。"""
+    payload = {
+        "setting_key": setting_key,
+        "value": "visible-value",
+        "value_preview": "visible-value",
+    }
+
+    assert sanitize_for_host(payload) == payload
+
+
+def test_recursive_sanitizer_fails_closed_when_setting_identity_is_truncated() -> None:
+    """设置身份扫描不完整时，已捕获的通用值字段不能按明文放行。"""
+    payload = {"value": SECRET_MARKER}
+    payload.update({f"padding_{index}": index for index in range(100)})
+    payload["setting_key"] = "API_TOKEN"
+
+    sanitized = sanitize_for_host(payload)
+
+    assert sanitized["value"] == "***"
+    assert sanitized["<truncated>"] == "more items"
+    assert SECRET_MARKER not in json.dumps(sanitized, ensure_ascii=False)
 
 
 @pytest.mark.parametrize(
@@ -1478,6 +1589,30 @@ def test_sanitizer_bounds_json_shaped_text_before_parsing() -> None:
     assert len(sanitized) < 17000
 
 
+def test_sanitizer_fails_closed_for_oversized_json_identity_values() -> None:
+    """超长 JSON 无法确认对象身份时，窗口内通用值字段必须脱敏。"""
+    secret_marker = "oversized-setting-secret-marker"
+    source = json.dumps(
+        {
+            "setting_key": "API_TOKEN",
+            "value_preview": secret_marker,
+            "value": secret_marker + "x" * sanitizer_module._MAX_TEXT_CHARS,
+        }
+    )
+
+    with patch(
+        "app.agent.policy.sanitizer.json.loads",
+        side_effect=AssertionError("oversized JSON must not be parsed"),
+    ) as mock_loads:
+        sanitized = str(sanitize_for_host(source))
+
+    mock_loads.assert_not_called()
+    assert secret_marker not in sanitized
+    assert '"value_preview": ***' in sanitized
+    assert '"value": ***' in sanitized
+    assert sanitized.endswith("<truncated>")
+
+
 def test_sanitizer_handles_cyclic_command_without_raising() -> None:
     """循环 LangGraph Command 必须生成有界摘要而不是破坏工具成功结果。"""
     cycle = []
@@ -1567,6 +1702,69 @@ def test_direct_manager_logs_are_sanitized_but_result_is_unchanged() -> None:
     logged = _logged_text(mock_logger)
     assert SECRET_MARKER not in logged
     assert "visible" in logged
+
+
+def test_direct_secret_setting_result_is_returned_without_entering_policy_logs() -> None:
+    """管理员显式读取凭据时，原值只返回调用方，不进入宿主策略日志。"""
+    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
+    tool.set_agent_context({"is_admin": True})
+    manager = MoviePilotToolsManager(is_admin=True)
+    manager.tools = [tool]
+    mock_logger = MagicMock()
+
+    with (
+        patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value=SECRET_MARKER,
+        ),
+        patch("app.agent.tools.manager.logger", mock_logger),
+        patch("app.agent.policy.orchestrator.logger", mock_logger),
+    ):
+        result = asyncio.run(
+            manager.call_tool(
+                tool.name,
+                {"setting_key": "API_TOKEN", "show_secrets": True},
+            )
+        )
+
+    assert SECRET_MARKER in result
+    logged = _logged_text(mock_logger)
+    assert SECRET_MARKER not in logged
+    assert '"value": "***"' in logged
+    assert '"value_preview": "***"' in logged
+
+
+def test_oversized_direct_secret_setting_result_stays_out_of_policy_logs() -> None:
+    """超长管理员读取结果仍只返回调用方，不进入 direct 策略回执。"""
+    secret_marker = "oversized-direct-secret-marker"
+    secret_value = secret_marker + "x" * sanitizer_module._MAX_TEXT_CHARS
+    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
+    tool.set_agent_context({"is_admin": True})
+    manager = MoviePilotToolsManager(is_admin=True)
+    manager.tools = [tool]
+    mock_logger = MagicMock()
+
+    with (
+        patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value=secret_value,
+        ),
+        patch("app.agent.tools.manager.logger", mock_logger),
+        patch("app.agent.policy.orchestrator.logger", mock_logger),
+    ):
+        result = asyncio.run(
+            manager.call_tool(
+                tool.name,
+                {"setting_key": "API_TOKEN", "show_secrets": True},
+            )
+        )
+
+    assert secret_marker in result
+    logged = _logged_text(mock_logger)
+    assert secret_marker not in logged
+    assert '"value_preview": ***' in logged
 
 
 def test_tool_error_does_not_echo_secret_to_logs_or_result() -> None:
