@@ -1,6 +1,6 @@
 # 03 — Commands
 
-Only suggest or execute commands that appear in this document. Do not assume standard tool defaults, global flags, or operating-system-specific behavior unless explicitly listed here.
+This document is the project command reference, not an exhaustive shell allowlist. Prefer these commands and their documented variants. Standard inspection, Git, GitHub, and focused verification commands may also be used when necessary, scoped to the current task, and allowed by the active workflow and maintainer authorization. Do not assume destructive or environment-specific flags.
 
 ---
 

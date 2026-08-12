@@ -136,6 +136,6 @@ Before marking any task as complete:
 - [ ] If MCP/API behavior changed: `docs/mcp-api.md` and related skill files are updated
 - [ ] If database schema changed: a new Alembic migration exists under `database/versions/`
 - [ ] No secrets are included in code, logs, or committed files
-- [ ] Public classes and methods have Chinese docstrings
+- [ ] Public or cross-module contracts and non-obvious business behavior have useful Chinese documentation
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-13*

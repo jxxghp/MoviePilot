@@ -41,7 +41,7 @@ ci: improve docker build cache
 
 ### Rules
 
-- **Only create a commit when the user explicitly asks for one.**
+- Local commits follow the active workflow, an approved plan, or current user authorization. Existing authorization does not require a second confirmation; push, PR, merge, and release remain separate delivery boundaries.
 - Keep the subject line under 72 characters.
 - Use the imperative mood in the subject line ("add", "fix", "remove", not "added", "fixed", "removed").
 - If a commit introduces a breaking change, append `!` after the type and include `BREAKING CHANGE:` in the footer.
@@ -50,9 +50,10 @@ ci: improve docker build cache
 
 ## Branch Policy
 
-- Do not casually create, rename, or delete branches without user instruction.
+- When review or PR intent is already known, create or switch to a focused topic branch before editing. If that intent appears later, preserve valid work while moving it to a suitable branch.
 - The main development branch is the project default — check `git branch` rather than assuming it is `main` or `master`.
 - Feature work lives on dedicated branches and is merged via pull request.
+- Read-only investigation, throwaway diagnosis, and work explicitly kept local do not require a branch solely for process formality.
 - Do not force-push to shared branches.
 
 ---

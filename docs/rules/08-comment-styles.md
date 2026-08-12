@@ -1,16 +1,16 @@
 # 08 — Comments and Documentation Style
 
-## ⚠️ Mandatory Gate
+## Documentation Gate
 
-All **public classes**, **public methods**, and **public functions** in this project must have Chinese docstrings. Code submitted without compliant docstrings on public interfaces will be **rejected at review**. No exceptions.
+Public and cross-module contracts, structured business models, lifecycle behavior, compatibility paths, and non-obvious side effects require useful Chinese documentation. Small self-evident private helpers, temporary test scaffolding, and local structures whose contract is already clear may omit formal docstrings.
 
-"Public" means anything not prefixed with `_`. This includes all methods on `ChainBase` subclasses, `_ModuleBase` subclasses, Pydantic schema classes, and endpoint functions.
+Names without a leading `_` are review candidates, not an automatic documentation requirement. Apply the gate to the behavior and contract actually exposed. Methods on `ChainBase` subclasses, `_ModuleBase` subclasses, Pydantic schema classes, and endpoint functions normally cross a meaningful boundary and should be documented unless the surrounding contract already makes their role self-evident.
 
 ---
 
 ## Docstring Format
 
-Short, label-style docstrings should follow the surrounding code style and must not gain a period mechanically. Complete sentences that explain non-obvious behavior should use normal Chinese punctuation.
+Short, label-style docstrings, field descriptions, and single-line comments should follow the surrounding code style and must not gain a period mechanically. Complete sentences that explain non-obvious behavior should use normal Chinese punctuation.
 
 ### Single-line (for simple, obvious descriptions)
 
@@ -137,6 +137,6 @@ When modifying code, update or remove any comment that no longer accurately desc
 | `# FIXME` left in submitted code | Fix it now or document exactly why it cannot be fixed |
 | `# this is important` | Every line of code is important; this adds nothing |
 | Commented-out dead code | Delete it; git history preserves it |
-| Docstrings in English on new public interfaces | Violation of the mandatory Chinese docstring gate |
+| New contract documentation in English inside an otherwise Chinese file | Breaks the repository's default documentation language and local consistency |
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-13*
