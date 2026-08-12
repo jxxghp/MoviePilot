@@ -11,6 +11,11 @@ from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 
 from app.agent import StreamingHandler
+from app.agent.policy.sanitizer import (
+    summarize_error,
+    summarize_input,
+    summarize_result,
+)
 from app.agent.tools.tags import ToolTag
 from app.chain import ChainBase
 from app.core.config import settings
@@ -39,7 +44,9 @@ def serialize_tool_result_for_agent(result: Any) -> str:
     try:
         return json.dumps(result, ensure_ascii=False, indent=2, default=str)
     except Exception as e:
-        logger.warning(f"工具结果转换为JSON失败: {e}, 使用字符串表示")
+        logger.warning(
+            f"工具结果转换为JSON失败: {summarize_error(e)}, 使用字符串表示"
+        )
         return str(result)
 
 
@@ -303,27 +310,26 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             # 未启用流式传输，不发送任何工具消息内容
             pass
 
-        logger.debug(f"Executing tool {self.name} with args: {kwargs}")
+        logger.debug(
+            f"Executing tool {self.name} with input summary: {summarize_input(kwargs)}"
+        )
 
         # 执行具体工具逻辑
         try:
             result = await self.run_with_timeout(**kwargs)
             
-            # 记录工具执行结果摘要日志
-            str_result = serialize_tool_result_for_agent(result)
-            if len(str_result) > 500:
-                summary = str_result[:500] + f"...(已截断，总长度: {len(str_result)})"
-            else:
-                summary = str_result
-            logger.info(f"Agent工具 {self.name} 执行完成，结果摘要: {summary}")
+            logger.info(
+                f"Agent工具 {self.name} 执行完成，"
+                f"结果摘要: {summarize_result(result)}"
+            )
             
         except ToolExecutionTimeoutError as e:
-            error_message = str(e)
+            error_message = summarize_error(e)
             logger.warning(error_message)
             result = error_message
         except Exception as e:
-            error_message = f"工具执行异常 ({type(e).__name__}): {str(e)}"
-            logger.error(f"Tool {self.name} execution failed: {e}", exc_info=True)
+            error_message = f"工具执行异常: {summarize_error(e)}"
+            logger.error(f"Tool {self.name} execution failed: {summarize_error(e)}")
             result = error_message
 
         return format_tool_result_for_agent(
@@ -625,7 +631,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
                         return False
         except Exception as e:
-            logger.error(f"检查权限失败: {e}")
+            logger.error(f"检查权限失败: {summarize_error(e)}")
 
         return False
 

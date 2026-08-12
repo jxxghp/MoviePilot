@@ -149,6 +149,24 @@ class TestAgentToolStreaming:
 
         assert buffered_message == "处理中：\n\n（执行了 2 次搜索，读取了 2 个文件）\n\n继续分析"
 
+    def test_tool_summary_does_not_retain_secret_arguments(self):
+        """流式聚合状态只能保留递归脱敏后的工具参数。"""
+        secret_marker = "stream-secret-marker-1947"
+        handler = StreamingHandler()
+
+        handler.record_tool_call(
+            tool_name="execute_command",
+            tool_message=f"Authorization: Bearer {secret_marker}",
+            tool_kwargs={
+                "command": f"curl -H 'Authorization: Bearer {secret_marker}'",
+                "headers": {"X-API-Key": secret_marker},
+            },
+        )
+
+        pending_state = str(handler._pending_tool_stats)
+        assert secret_marker not in pending_state
+        assert "***" in pending_state
+
     def test_non_verbose_tool_summary_counts_subagents(self):
         """校验非详细模式统计子代理调用次数。"""
         async def _run():

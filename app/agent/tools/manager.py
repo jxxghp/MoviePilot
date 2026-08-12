@@ -3,6 +3,16 @@ import threading
 import uuid
 from typing import Any, Dict, List, Optional
 
+from app.agent.policy import (
+    DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+    AgentToolPolicyOrchestrator,
+    AuthSource,
+    PrincipalType,
+    ToolOrigin,
+    ToolPolicyContext,
+    call_policy_hook,
+    summarize_error,
+)
 from app.agent.tools.base import ToolExecutionTimeoutError, format_tool_result_for_agent
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.core.plugin import PluginManager
@@ -30,6 +40,7 @@ class MoviePilotToolsManager:
         user_id: str = "api_user",
         session_id: str = uuid.uuid4(),
         is_admin: bool = True,
+        policy_orchestrator: Optional[AgentToolPolicyOrchestrator] = None,
     ):
         """
         初始化工具管理器
@@ -41,6 +52,19 @@ class MoviePilotToolsManager:
         self.user_id = user_id
         self.session_id = session_id
         self.is_admin = is_admin
+        self.policy_orchestrator = (
+            policy_orchestrator or DEFAULT_TOOL_POLICY_ORCHESTRATOR
+        )
+        self._policy_context = ToolPolicyContext(
+            session_id=session_id,
+            user_id=user_id,
+            origin=ToolOrigin.OPERATOR_DIRECT,
+            principal_type=PrincipalType.SYSTEM_ADMIN_INTEGRATION,
+            auth_source=AuthSource.API_TOKEN,
+            channel=None,
+            source="api",
+            agent_context={"is_admin": is_admin},
+        )
         self.tools: List[Any] = []
         self._tools_lock = threading.Lock()
         self._plugin_agent_tools_revision = -1
@@ -74,7 +98,7 @@ class MoviePilotToolsManager:
             self._plugin_agent_tools_revision = plugin_tools_revision
             logger.info(f"成功加载 {len(self.tools)} 个工具")
         except Exception as e:
-            logger.error(f"加载工具失败: {e}", exc_info=True)
+            logger.error(f"加载工具失败: {summarize_error(e)}")
             self.tools = []
             self._plugin_agent_tools_revision = -1
 
@@ -231,7 +255,7 @@ class MoviePilotToolsManager:
             schema = args_schema.model_json_schema()
             properties = schema.get("properties", {})
         except Exception as e:
-            logger.warning(f"获取工具schema失败: {e}")
+            logger.warning(f"获取工具schema失败: {summarize_error(e)}")
             return arguments
 
         # 规范化参数
@@ -286,6 +310,7 @@ class MoviePilotToolsManager:
             )
             return error_msg
 
+        observation = None
         try:
             permission_error = self._check_tool_permission(tool_instance)
             if permission_error:
@@ -293,38 +318,50 @@ class MoviePilotToolsManager:
 
             # 规范化参数类型
             normalized_arguments = self._normalize_arguments(tool_instance, arguments)
+            self._policy_context.agent_context["is_admin"] = self.is_admin
+            observation = call_policy_hook(
+                "start",
+                self.policy_orchestrator.start,
+                context=self._policy_context,
+                tool=tool_instance,
+                arguments=normalized_arguments,
+            )
 
             # 调用工具的run方法。HTTP/MCP 工具调用不会经过 BaseTool._arun，
             # 因此这里也必须复用同一套返回值格式化和兜底截断逻辑。
             result = await tool_instance.run_with_timeout(**normalized_arguments)
-            
-            # 记录工具执行结果摘要日志
             str_result = format_tool_result_for_agent(
                 result,
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
-            if len(str_result) > 500:
-                summary = str_result[:500] + f"...(已截断，总长度: {len(str_result)})"
-            else:
-                summary = str_result
-            logger.info(f"Agent工具 {tool_name} 执行完成，结果摘要: {summary}")
-            
-            return str_result
         except ToolExecutionTimeoutError as e:
-            logger.warning(str(e))
+            if observation:
+                call_policy_hook("fail", self.policy_orchestrator.fail, observation, e)
+            logger.warning(summarize_error(e))
             return format_tool_result_for_agent(
-                str(e),
+                summarize_error(e),
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
         except Exception as e:
-            logger.error(f"调用工具 {tool_name} 时发生错误: {e}", exc_info=True)
+            if observation:
+                call_policy_hook("fail", self.policy_orchestrator.fail, observation, e)
+            error_summary = summarize_error(e)
+            logger.error(f"调用工具 {tool_name} 时发生错误: {error_summary}")
             error_msg = json.dumps(
-                {"error": f"调用工具 '{tool_name}' 时发生错误: {str(e)}"},
+                {"error": f"调用工具 '{tool_name}' 时发生错误: {error_summary}"},
                 ensure_ascii=False,
             )
             return error_msg
+        if observation:
+            call_policy_hook(
+                "finish",
+                self.policy_orchestrator.finish,
+                observation,
+                str_result,
+            )
+        return str_result
 
     @staticmethod
     def _convert_to_json_schema(args_schema: Any) -> Dict[str, Any]:

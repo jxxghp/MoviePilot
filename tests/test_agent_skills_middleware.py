@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from anyio import Path as AsyncPath
@@ -171,3 +172,59 @@ async def test_skill_tool_call_records_streaming_summary(tmp_path):
             },
         }
     ]
+
+
+@pytest.mark.anyio
+async def test_skill_middleware_sanitizes_its_own_logs(tmp_path):
+    """Skill 中间件读取参数和异常写日志时必须脱敏。"""
+    secret_marker = "skill-secret-marker-2471"
+    stream_handler = SimpleNamespace(
+        is_streaming=True,
+        record_tool_call=MagicMock(),
+    )
+    middleware = SkillsMiddleware(
+        sources=[str(tmp_path)],
+        stream_handler=stream_handler,
+    )
+    request = SimpleNamespace(
+        tool=SimpleNamespace(name=SKILL_TOOL_NAME),
+        tool_call={"args": {"name": f"api_key={secret_marker}"}},
+    )
+    mock_logger = MagicMock()
+
+    async def _failing_handler(_request):
+        raise RuntimeError(f"Authorization: Bearer {secret_marker}")
+
+    with (
+        patch("app.agent.middleware.skills.logger", mock_logger),
+        pytest.raises(RuntimeError),
+    ):
+        await middleware.awrap_tool_call(request, _failing_handler)
+
+    assert secret_marker not in str(mock_logger.method_calls)
+    assert "***" in str(mock_logger.method_calls)
+
+
+@pytest.mark.anyio
+async def test_skill_provider_error_does_not_echo_secret(tmp_path):
+    """Skill provider 内部捕获的异常不能进入日志或模型错误结果。"""
+    secret_marker = "skill-provider-secret-6518"
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+    mock_logger = MagicMock()
+
+    with (
+        patch.object(
+            middleware._skill_provider,
+            "_find_skill",
+            new=AsyncMock(
+                side_effect=RuntimeError(f"DATABASE_PASSWORD={secret_marker}")
+            ),
+        ),
+        patch("app.agent.middleware.skills.logger", mock_logger),
+    ):
+        result = await middleware._skill_provider.load_skill("visible-skill")
+
+    assert secret_marker not in result
+    assert secret_marker not in str(mock_logger.method_calls)
+    assert "***" in result
+    assert "***" in str(mock_logger.method_calls)
