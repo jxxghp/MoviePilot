@@ -608,6 +608,11 @@ def _build_web_agent_sse(
     :param locale: 当前请求语言
     :return: 符合 SSE 格式的字符串
     """
+    if event_type == "interaction-protected":
+        return (
+            "event: interaction-protected\n"
+            f"data: {json.dumps(data or {}, ensure_ascii=False)}\n\n"
+        )
     payload = {"type": event_type, **(data or {})}
     message = payload.get("message")
     if event_type == "error" and isinstance(message, str):
@@ -1936,6 +1941,37 @@ async def web_agent_stream(
     prompt = payload.text.strip()
     locale = LocaleHelper.get_locale_from_request(request)
     display_prompt = (payload.display_text or payload.text).strip()
+    session_id = _build_web_agent_session_id(current_user, payload.session_id)
+    is_secret_confirmation_candidate = (
+        prompt in {"确认", "取消"}
+        and not payload.images
+        and not payload.audio_refs
+        and not payload.files
+    )
+    is_secret_confirmation_control = (
+        is_secret_confirmation_candidate
+        and agent_manager.matches_secret_confirmation(
+            session_id,
+            str(current_user.id),
+            channel=MessageChannel.WebAgent.value,
+            source=WEB_AGENT_SOURCE,
+            original_chat_id=str(payload.original_chat_id or ""),
+        )
+    )
+    protected_transport_supported = (
+        getattr(request, "headers", {}).get("X-MoviePilot-Agent-Interaction") == "1"
+    )
+    if is_secret_confirmation_control and not protected_transport_supported:
+        return StreamingResponse(
+            iter([
+                _build_web_agent_sse(
+                    "error",
+                    {"message": "当前客户端不支持安全交付敏感设置，未执行操作。"},
+                    locale=locale,
+                )
+            ]),
+            media_type="text/event-stream",
+        )
     is_traditional_message = (
         _is_web_agent_traditional_message(prompt)
         or _has_web_agent_traditional_interaction(str(current_user.id))
@@ -1966,7 +2002,6 @@ async def web_agent_stream(
                 media_type="text/event-stream",
             )
 
-        session_id = _build_web_agent_session_id(current_user, payload.session_id)
         user_attachments = _build_web_agent_input_attachments(
             images=payload.images or [],
             files=[
@@ -2100,7 +2135,6 @@ async def web_agent_stream(
             media_type="text/event-stream",
         )
 
-    session_id = _build_web_agent_session_id(current_user, payload.session_id)
     MessageChain().bind_user_session(str(current_user.id), session_id)
     event_publisher = _WebAgentEventPublisher()
     user_attachments = _build_web_agent_input_attachments(
@@ -2112,7 +2146,7 @@ async def web_agent_stream(
         audio_refs=payload.audio_refs or [],
     )
     display_messages = []
-    if payload.echo_user:
+    if payload.echo_user and not is_secret_confirmation_control:
         user_display_message = MoviePilotAgent.build_display_message(
             role="user",
             content=display_prompt or prompt,
@@ -2143,6 +2177,15 @@ async def web_agent_stream(
             _apply_web_agent_display_event(item, assistant_display_message)
             event_publisher.publish(item)
 
+    def protected_output_callback(content: str) -> None:
+        """将敏感文本封装为不进入普通展示快照的命名 SSE 事件。"""
+        event_publisher.publish(
+            {
+                "type": "interaction-protected",
+                "content": content,
+            }
+        )
+
     async def event_generator() -> AsyncIterator[str]:
         """
         生成前端 Agent SSE 事件。
@@ -2172,6 +2215,11 @@ async def web_agent_stream(
                     reply_mode=ReplyMode.CAPTURE_ONLY,
                     allow_message_tools=True,
                     output_callback=output_callback,
+                    protected_output_callback=(
+                        protected_output_callback
+                        if protected_transport_supported
+                        else None
+                    ),
                     notification_callback=notification_callback,
                     agent_factory=_WebAgentMoviePilotAgent,
                     wait_for_completion=True,
@@ -2241,8 +2289,7 @@ async def web_agent_stream(
                 except asyncio.CancelledError:
                     pass
             await event_publisher.aclose()
-            # 客户端退到后台导致 SSE 断开时，保留后台 Agent 继续执行；完成后会保存展示快照，
-            # 前端恢复可见时可通过会话详情接口拉取最终状态。
+            # 客户端断线后保留 Agent 继续执行；发布器关闭后不再接受受保护结果。
 
     return StreamingResponse(
         event_generator(),
@@ -2251,5 +2298,10 @@ async def web_agent_stream(
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            **(
+                {"X-MoviePilot-Agent-Control": "secret-confirmation"}
+                if is_secret_confirmation_control
+                else {}
+            ),
         },
     )

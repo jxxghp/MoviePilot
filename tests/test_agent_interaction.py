@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.agent.prompt import prompt_manager
@@ -253,3 +254,47 @@ class TestAgentInteraction(unittest.TestCase):
             )
 
         handle_ai_message.assert_called_once()
+
+    def test_secret_confirmation_preempts_plugin_interaction_on_message_channels(self):
+        """TG/飞书确认必须回到已有 Agent 会话，不被其它输入会话消费。"""
+        chain = MessageChain()
+        MessageChain._user_sessions["10001"] = ("session-secret", datetime.now())
+
+        try:
+            for channel in (MessageChannel.Telegram, MessageChannel.Feishu):
+                with patch(
+                    "app.chain.message.agent_manager.matches_secret_confirmation",
+                    return_value=True,
+                ), patch.object(
+                    chain,
+                    "_handle_ai_message",
+                    return_value=True,
+                ) as handle_ai_message, patch.object(
+                    chain,
+                    "_handle_plugin_input_interaction",
+                ) as handle_plugin_interaction, patch.object(
+                    chain,
+                    "_mark_message_processing_started",
+                ) as mark_processing_started:
+                    chain.handle_message(
+                        channel=channel,
+                        source=f"{channel.value}-test",
+                        userid="10001",
+                        username="tester",
+                        text="确认",
+                        original_message_id="message-1",
+                        original_chat_id="chat-1",
+                        images=None,
+                        audio_refs=None,
+                        files=None,
+                    )
+
+                handle_ai_message.assert_called_once()
+                handle_plugin_interaction.assert_not_called()
+                mark_processing_started.assert_not_called()
+                self.assertEqual(
+                    handle_ai_message.call_args.kwargs["session_id"],
+                    "session-secret",
+                )
+        finally:
+            MessageChain._user_sessions.clear()

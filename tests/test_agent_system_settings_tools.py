@@ -86,6 +86,55 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         self.assertFalse(item["redacted"])
         self.assertEqual("site-api-key", item["value"][0]["apikey"])
 
+    def test_agent_tool_refuses_unconfirmed_secret_read(self):
+        """Agent 宿主要求确认时，工具自身也不得直接返回密钥。"""
+        tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
+        tool.set_agent_context(
+            {
+                "is_admin": True,
+                "require_secret_confirmation": True,
+                "secret_read_confirmed": False,
+            }
+        )
+
+        with patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value="must-not-load",
+        ) as load_value:
+            result = asyncio.run(
+                tool.run(setting_key="TMDB_API_KEY", show_secrets=True)
+            )
+
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("确认", payload["message"])
+        load_value.assert_not_called()
+
+    def test_agent_tool_ignores_forged_confirmation_context(self):
+        """模型可影响的共享上下文不得伪造宿主确认。"""
+        tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
+        tool.set_agent_context(
+            {
+                "is_admin": True,
+                "require_secret_confirmation": True,
+                "secret_read_confirmed": True,
+            }
+        )
+
+        with patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value="must-not-load",
+        ) as load_value:
+            result = asyncio.run(
+                tool.run(setting_key="TMDB_API_KEY", show_secrets=True)
+            )
+
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        load_value.assert_not_called()
+
     def test_query_system_settings_group_defaults_to_summary_for_multiple_items(self):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
