@@ -154,6 +154,25 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
     ]
 
 
+def test_application_does_not_start_server_after_migration_failure(monkeypatch):
+    """数据库迁移失败时不得启动 API 服务。"""
+    from app import main
+
+    migration_error = RuntimeError("migration failed")
+    server_run = MagicMock()
+    monkeypatch.setattr(main.signal, "signal", MagicMock())
+    monkeypatch.setattr(main, "start_tray", MagicMock())
+    monkeypatch.setattr(main, "init_db", MagicMock())
+    monkeypatch.setattr(main, "update_db", MagicMock(side_effect=migration_error))
+    monkeypatch.setattr(main.Server, "run", server_run)
+
+    with pytest.raises(RuntimeError) as raised:
+        main.run_application()
+
+    assert raised.value is migration_error
+    server_run.assert_not_called()
+
+
 def test_uvicorn_preserves_stop_requested_before_serve(monkeypatch):
     """Uvicorn 启动不能清除数据库初始化阶段已经发布的停止请求"""
     from app import main
