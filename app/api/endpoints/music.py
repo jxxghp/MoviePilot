@@ -29,7 +29,7 @@ MusicExploreSourceParam = Annotated[
     str,
     Query(pattern="^(musicbrainz|doubanmusic)$"),
 ]
-MusicModeParam = Annotated[str, Query(pattern="^(chart|fresh|tag)$")]
+MusicModeParam = Annotated[str, Query(pattern="^(chart|fresh)$")]
 MusicEntityParam = Annotated[str, Query(pattern="^(recording|album)$")]
 MusicRangeParam = Annotated[str, Query(pattern=f"^({'|'.join(LISTENBRAINZ_CHART_RANGES)})$")]
 MusicSortParam = Annotated[str, Query(pattern="^listen_count\\.(desc|asc)$")]
@@ -153,7 +153,7 @@ async def explore_music(
         douban_sort: DoubanMusicSortParam = "U",
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
-    """按音乐来源返回可订阅的榜单或新发行候选。"""
+    """MusicBrainz 返回榜单或新发行，豆瓣音乐固定按官方标签分类浏览。"""
     chain = MusicChain()
     if media_source != "musicbrainz":
         results = await chain.async_discover(
@@ -161,7 +161,7 @@ async def explore_music(
             page=page,
             count=count,
             entity=entity,
-            mode=mode,
+            mode="tag",
             tags=tags,
             sort=douban_sort,
         )

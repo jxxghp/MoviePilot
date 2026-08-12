@@ -187,18 +187,18 @@ music on configured music-capable media servers; it does not manage playlists.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or `source=musicbrainz`. Params: `title`, `type`, `count` |
-| POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `source`, `media_id` |
-| GET | `/api/v1/music/explore` | Explore music by `source`: MusicBrainz charts/fresh releases, TheAudioDB country trends, or Douban music recommendations. Params: `source`, `mode`, `entity`, `country`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
-| GET | `/api/v1/music/album/{album_id}` | Album detail with tracks and releases. Params: `source` |
-| GET | `/api/v1/music/album/{album_id}/related` | Related albums for the selected source. Params: `source`, `count` |
-| GET | `/api/v1/music/artist/{artist_id}` | Browse artist detail. Params: `source` |
-| GET | `/api/v1/music/artist/{artist_id}/albums` | Browse artist albums/EPs/singles. Params: `source`, `page`, `count`, `album_type` |
-| GET | `/api/v1/music/artist/{artist_id}/related` | Browse related artists. Params: `source`, `count` |
+| GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or a music `media_source`. Params: `title`, `type`, `count`, `media_source` |
+| POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `media_source`, `media_id` |
+| GET | `/api/v1/music/explore` | Explore by `media_source`: MusicBrainz supports `mode=chart|fresh`; Douban Music always uses official tag categories with `tags` and `douban_sort=U|S|R|O`. Other params: `entity`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
+| GET | `/api/v1/music/album/{album_id}` | Album detail with tracks and releases. Params: `media_source` |
+| GET | `/api/v1/music/album/{album_id}/related` | Related albums for the selected source. Params: `media_source`, `count` |
+| GET | `/api/v1/music/artist/{artist_id}` | Browse artist detail. Params: `media_source` |
+| GET | `/api/v1/music/artist/{artist_id}/albums` | Browse artist albums/EPs/singles. Params: `media_source`, `page`, `count`, `album_type` |
+| GET | `/api/v1/music/artist/{artist_id}/related` | Browse related artists. Params: `media_source`, `count` |
 
 Music acquisition rules:
 
-- Reuse `source`, `media_id`, and `music_type` from search/detail results. Never substitute a same-name entity.
+- Reuse `media_source`, `media_id`, and `music_type` from search/detail results. Never substitute a same-name entity.
 - Subscribe/download one recording as one track. Subscribe/download one album as a complete multi-track pack.
 - Album torrent validation compares supported audio files with `total_tracks`; incomplete resources do not complete the subscription.
 - Artist IDs are never subscription, torrent, download, transfer, or library-existence targets.
@@ -474,9 +474,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/recommend/source` | Recommendation data sources |
 | GET | `/api/v1/recommend/bangumi_calendar` | Bangumi daily schedule. Params: `page`, `count` |
 | GET | `/api/v1/recommend/music_weekly` | ListenBrainz weekly site-wide music chart. Params: `page`, `count` |
-| GET | `/api/v1/recommend/music_theaudiodb_albums` | TheAudioDB trending albums. Params: `country`, `page`, `count` |
-| GET | `/api/v1/recommend/music_theaudiodb_tracks` | TheAudioDB trending tracks. Params: `country`, `page`, `count` |
-| GET | `/api/v1/recommend/music_douban` | Douban music recommendations. Params: `page`, `count` |
+| GET | `/api/v1/recommend/music_douban` | Douban new album chart. Params: `page`, `count` |
 | GET | `/api/v1/recommend/douban_showing` | Douban now showing. Params: `page`, `count` |
 | GET | `/api/v1/recommend/douban_movies` | Douban movies. Params: `sort`, `tags`, `page`, `count` |
 | GET | `/api/v1/recommend/douban_tvs` | Douban TV. Params: `sort`, `tags`, `page`, `count` |

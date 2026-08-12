@@ -194,18 +194,16 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/media/search` | 当 `type=music` 或 `source=musicbrainz` 时按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`title`、`type`、`count` |
-| POST | `/api/v1/music/recognize` | 按 `source` + `media_id` 识别音乐详情，请求体：`MusicRecognizeRequest` |
-| GET | `/api/v1/music/explore` | 按来源浏览音乐；`source=musicbrainz` 支持热门榜单与新发行，`source=theaudiodb` 支持国家/地区趋势专辑或单曲，`source=doubanmusic` 支持豆瓣音乐推荐。参数：`source`、`mode=chart|fresh`、`entity=recording|album`、`country`、`range_name`、`sort_by`、`sort`、`days`、`past`、`future`、`min_listen_count`、`with_cover`、`page`、`count` |
-| GET | `/api/v1/music/album/{album_id}` | 按来源专辑 ID 查询专辑详情、完整曲目和发行版本，参数：`source` |
-| GET | `/api/v1/music/album/{album_id}/related` | 按来源查询关联专辑，参数：`source`、`count` |
-| GET | `/api/v1/music/artist/{artist_id}` | 查询艺术家详情；艺术家为只读浏览实体，参数：`source` |
-| GET | `/api/v1/music/artist/{artist_id}/albums` | 分页查询艺术家的专辑、EP 和单曲，参数：`source`、`page`、`count`、`album_type` |
-| GET | `/api/v1/music/artist/{artist_id}/related` | 查询关联艺术家，参数：`source`、`count` |
+| GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`title`、`type`、`count`、`media_source` |
+| POST | `/api/v1/music/recognize` | 按 `media_source` + `media_id` 识别音乐详情，请求体：`MusicRecognizeRequest` |
+| GET | `/api/v1/music/explore` | 按来源浏览音乐；`media_source=musicbrainz` 支持 `mode=chart|fresh` 榜单与新发行，`media_source=doubanmusic` 固定按官方标签分类浏览，使用 `tags` 和 `douban_sort=U|S|R|O` 筛选。其它参数：`entity=recording|album`、`range_name`、`sort_by`、`sort`、`days`、`past`、`future`、`min_listen_count`、`with_cover`、`page`、`count` |
+| GET | `/api/v1/music/album/{album_id}` | 按来源专辑 ID 查询专辑详情、完整曲目和发行版本，参数：`media_source` |
+| GET | `/api/v1/music/album/{album_id}/related` | 按来源查询关联专辑，参数：`media_source`、`count` |
+| GET | `/api/v1/music/artist/{artist_id}` | 查询艺术家详情；艺术家为只读浏览实体，参数：`media_source` |
+| GET | `/api/v1/music/artist/{artist_id}/albums` | 分页查询艺术家的专辑、EP 和单曲，参数：`media_source`、`page`、`count`、`album_type` |
+| GET | `/api/v1/music/artist/{artist_id}/related` | 查询关联艺术家，参数：`media_source`、`count` |
 | GET | `/api/v1/recommend/music_weekly` | 浏览本周热门音乐，参数：`page`、`count` |
-| GET | `/api/v1/recommend/music_theaudiodb_albums` | 浏览 TheAudioDB 热门专辑，参数：`country`、`page`、`count` |
-| GET | `/api/v1/recommend/music_theaudiodb_tracks` | 浏览 TheAudioDB 热门单曲，参数：`country`、`page`、`count` |
-| GET | `/api/v1/recommend/music_douban` | 浏览豆瓣音乐推荐，参数：`page`、`count` |
+| GET | `/api/v1/recommend/music_douban` | 浏览豆瓣音乐新碟榜，参数：`page`、`count` |
 
 专辑下载与订阅按“整包”处理：下载层会读取种子文件清单并以专辑 `total_tracks` 校验独立音频文件数量；未确认完整覆盖时不会把专辑订阅销订，也不会把部分曲目报告为完整专辑已入库。音乐刮削遵循 `music` 的标签、封面和歌词策略，歌词通过带有界 TTL/LRU 缓存的 LRCLIB 模块保存为同名 `.lrc` 或 `.txt` 旁挂文件。
 

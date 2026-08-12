@@ -258,8 +258,8 @@ def test_explore_music_supports_official_fresh_release_mode():
     )
 
 
-def test_explore_music_forwards_douban_music_source():
-    """豆瓣音乐探索应走可扩展发现链而不是 ListenBrainz。"""
+def test_explore_music_forces_douban_music_to_tag_browsing():
+    """豆瓣音乐探索即使收到榜单模式也应固定分类浏览，不与推荐页重复。"""
     chain = Mock()
     chain.async_discover = AsyncMock(
         return_value=[
@@ -277,7 +277,7 @@ def test_explore_music_forwards_douban_music_source():
             explore_music(
                 media_source="doubanmusic",
                 entity="album",
-                mode="tag",
+                mode="chart",
                 tags="流行,华语",
                 douban_sort="S",
                 page=2,
