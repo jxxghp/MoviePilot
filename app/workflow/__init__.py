@@ -2,6 +2,8 @@ import threading
 from time import monotonic, sleep
 from typing import Any, Dict, List, Optional, Tuple
 
+from pydantic import BaseModel
+
 from app.core.config import global_vars
 from app.core.event import eventmanager, Event
 from app.db.models import Workflow
@@ -212,6 +214,8 @@ class WorkFlowManager(metaclass=Singleton):
 
     def _get_retry_config(self, action: Action) -> dict:
         retry_config = action.retry or self._get_action_data_value(action, "retry") or {}
+        if isinstance(retry_config, BaseModel):
+            retry_config = retry_config.model_dump(exclude_none=True)
         if not isinstance(retry_config, dict):
             retry_config = {}
         return {

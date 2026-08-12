@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 12
+version: 13
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
@@ -75,22 +75,21 @@ python scripts/mp-api.py <METHOD> <PATH> [key=value ...] [--json '<body>']
 
 ### API versions and response envelopes
 
-- `/api/v1` preserves the existing endpoint-specific response shapes by
-  default; the login wallpaper URL is now returned in `data`.
-- `/api/v2` reuses the same routes, parameters, authentication dependencies,
-  and business handlers, but wraps ordinary JSON responses in the shared
-  `Response` envelope.
-- A successful raw v1 payload becomes
-  `{"success":true,"message":"","data":<original payload>}` in v2.
-- Existing `Response` payloads are not wrapped again. HTTP errors on both v1
-  and v2 keep their original status code and expose the error text in
-  `message` with `data={}`. Non-business HTTP exceptions are not translated.
-- SSE, files, images, empty responses, and OpenAI, Anthropic, or MCP protocol
-  endpoints keep their protocol-native response body.
-
-Use `/api/v2` for app clients that require one JSON envelope. Any ordinary
-REST path listed below can switch from `/api/v1/...` to `/api/v2/...` without
-changing its method, parameters, request body, or authentication.
+- `/api/v1` is the only MoviePilot application REST API version; the former
+  `/api/v2` wrapping layer is no longer available.
+- Every ordinary JSON endpoint returns exactly
+  `{"success":<boolean>,"message":<string>,"data":<endpoint data>}`. Only the
+  `data` schema varies between endpoints, and the concrete envelope is visible
+  in `/docs` and `/api/v1/openapi.json`.
+- HTTP errors keep their status code and use `success=false`; validation errors
+  include their structured details in `data`.
+- Send `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` or `Accept-Language` when the
+  response message must match a specific language. The backend returns the
+  translated text directly in `message` and falls back to the original text
+  when no translation exists.
+- SSE, files, images, HTML, empty responses, OAuth2 login, and OpenAI,
+  Anthropic, or MCP JSON-RPC protocol endpoints keep their protocol-native
+  response body and explicit OpenAPI declaration.
 
 ### Examples
 
@@ -107,8 +106,8 @@ python scripts/mp-api.py DELETE /api/v1/subscribe/123
 # Endpoints that require ?token= auth
 python scripts/mp-api.py GET /api/v1/dashboard/statistic2 --token-param
 
-# Uniform v2 JSON response envelope
-python scripts/mp-api.py GET /api/v2/dashboard/cpu
+# Uniform v1 JSON response envelope
+python scripts/mp-api.py GET /api/v1/dashboard/cpu
 ```
 
 ## Complete API Reference

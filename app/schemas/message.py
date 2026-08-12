@@ -4,6 +4,7 @@ from typing import Optional, Union, List, Dict, Set, Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.common import JsonData
 from app.schemas.types import ContentType, NotificationType, MessageChannel
 
 
@@ -47,7 +48,7 @@ class MessageResponse(BaseModel):
     # 消息来源
     source: Optional[str] = None
     # 渠道自定义上下文（如飞书流式卡片 card_id/element_id/sequence）
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, JsonData]] = None
     # 是否发送成功
     success: bool = False
 
@@ -80,7 +81,17 @@ class NotificationHistoryItem(BaseModel):
     # 消息方向：0-接收消息，1-发送消息
     action: Optional[int] = None
     # 附件json
-    note: Optional[Union[list, dict]] = None
+    note: Optional[JsonData] = None
+
+
+class WebMessageItem(NotificationHistoryItem):
+    """Web 消息历史记录。"""
+
+
+class NotificationClearData(BaseModel):
+    """通知中心各范围的清理时间。"""
+
+    clear_before: NotificationClearBefore = Field(description="各范围清理时间")
 
 
 class CommingMessage(BaseModel):
@@ -300,7 +311,7 @@ class Subscription(BaseModel):
     """
 
     endpoint: Optional[str] = None
-    keys: Optional[dict] = Field(default_factory=dict)
+    keys: Optional[dict[str, str]] = Field(default_factory=dict)
 
 
 class SubscriptionMessage(BaseModel):
@@ -312,7 +323,7 @@ class SubscriptionMessage(BaseModel):
     body: Optional[str] = None
     icon: Optional[str] = None
     url: Optional[str] = None
-    data: Optional[dict] = Field(default_factory=dict)
+    data: Optional[dict[str, JsonData]] = Field(default_factory=dict)
 
 
 class AgentWebChatRequest(BaseModel):
@@ -345,7 +356,7 @@ class AgentWebChatRequest(BaseModel):
     # 文件附件列表
     files: Optional[List[AgentWebChatFile]] = Field(default_factory=list)
     # 用户通过按钮选择时的完整选择快照
-    choice_selection: Optional[Dict[str, Any]] = Field(default=None)
+    choice_selection: Optional[Dict[str, JsonData]] = Field(default=None)
     # WebAgent 按钮回调关联的原消息 ID，用于传统交互原地编辑卡片
     original_message_id: Optional[Union[str, int]] = Field(default=None)
     # WebAgent 按钮回调关联的原聊天 ID，用于传统交互原地编辑卡片

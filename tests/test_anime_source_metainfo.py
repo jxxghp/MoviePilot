@@ -71,27 +71,9 @@ def test_extended_ids_fall_back_when_installed_rust_is_old() -> None:
     assert metainfo["media_id"] == "154587"
 
 
-def test_generic_identity_falls_back_when_installed_rust_is_old() -> None:
-    """旧 Rust 扩展缺少通用字段时应直接使用 Python 解析器。"""
-    with patch(
-        "app.core.metainfo.rust_accel.supports_unified_media_identity",
-        return_value=False,
-    ), patch(
-        "app.core.metainfo.rust_accel.find_metainfo",
-        side_effect=AssertionError("旧 Rust 扩展不应处理通用媒体身份"),
-    ):
-        _, metainfo = find_metainfo(
-            "Frieren {[media_source=anilist;media_id=154587]}"
-        )
-
-    assert metainfo["media_source"] == "anilist"
-    assert metainfo["media_id"] == "154587"
-
-
 @pytest.mark.parametrize(
     "title",
     [
-        "Movie {[media_source=themoviedb;media_id=0;type=movies]}",
         "Movie {[tmdbid=0;type=movies]}",
         "Movie [tmdbid=0]",
         "Anime [anilist=0]",

@@ -1,15 +1,16 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 from app import schemas
+from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.core.auth import build_token_response, consume_plugin_auth_ticket
 from app.core.plugin import PluginManager
 from app.db.models.passkey import PassKey
 from app.db.models.user import User
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 class AuthExchangeRequest(BaseModel):
@@ -39,7 +40,11 @@ def _system_auth_providers() -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/providers", summary="查询登录认证提供方", response_model=list[dict])
+@router.get(
+    "/providers",
+    summary="查询登录认证提供方",
+    response_model=list[schemas.AuthProviderInfo],
+)
 def auth_providers() -> list[dict[str, Any]]:
     """
     查询系统和插件提供的登录认证入口。
@@ -51,7 +56,12 @@ def auth_providers() -> list[dict[str, Any]]:
     return [provider for provider in providers if provider.get("enabled", True)]
 
 
-@router.post("/exchange", summary="兑换插件认证登录票据", response_model=schemas.Token)
+@router.post(
+    "/exchange",
+    summary="兑换插件认证登录票据",
+    response_model=schemas.Token,
+    openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
+)
 def auth_exchange(body: AuthExchangeRequest) -> schemas.Token:
     """
     将插件认证成功后生成的一次性票据兑换为系统 Token。

@@ -2,10 +2,11 @@ from pathlib import Path
 from typing import Annotated, Any, List, Optional, Union
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import Depends, Query
 from pydantic import BeforeValidator
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
@@ -27,7 +28,7 @@ from app.utils.media import (
     resolve_media_identity,
 )
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _split_media_source_query(value: object) -> tuple[str, ...]:
@@ -235,7 +236,11 @@ async def recognize_file2(
     return await recognize_file(path, media_source)
 
 
-@router.get("/search", summary="搜索媒体/人物信息", response_model=List[dict])
+@router.get(
+    "/search",
+    summary="搜索媒体/人物信息",
+    response_model=schemas.MediaSearchResults,
+)
 async def search(
     title: str,
     type: Optional[str] = "media",
@@ -316,7 +321,7 @@ async def search(
 
 
 @router.post(
-    "/scrape/{storage}", summary="刮削媒体信息", response_model=schemas.Response
+    "/scrape/{storage}", summary="刮削媒体信息", response_model=schemas.Response[None]
 )
 def scrape(
     fileitem: schemas.FileItem,
@@ -426,7 +431,9 @@ def scrape(
 
 
 @router.get(
-    "/category/config", summary="获取分类策略配置", response_model=schemas.Response
+    "/category/config",
+    summary="获取分类策略配置",
+    response_model=schemas.Response[schemas.CategoryConfig],
 )
 def get_category_config(_: User = Depends(get_current_active_user)):
     """
@@ -437,7 +444,7 @@ def get_category_config(_: User = Depends(get_current_active_user)):
 
 
 @router.post(
-    "/category/config", summary="保存分类策略配置", response_model=schemas.Response
+    "/category/config", summary="保存分类策略配置", response_model=schemas.Response[None]
 )
 def save_category_config(
     config: CategoryConfig, _: User = Depends(get_current_active_superuser)
@@ -451,7 +458,11 @@ def save_category_config(
         return schemas.Response(success=False, message="保存失败")
 
 
-@router.get("/category", summary="查询自动分类配置", response_model=dict)
+@router.get(
+    "/category",
+    summary="查询自动分类配置",
+    response_model=schemas.MediaCategoryMap,
+)
 async def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询自动分类配置
@@ -479,7 +490,11 @@ async def group_seasons(
     return await TmdbChain().async_tmdb_group_seasons(group_id=normalized_group_id)
 
 
-@router.get("/groups/{tmdbid}", summary="查询媒体剧集组", response_model=List[dict])
+@router.get(
+    "/groups/{tmdbid}",
+    summary="查询媒体剧集组",
+    response_model=List[schemas.MediaEpisodeGroup],
+)
 async def groups(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询媒体剧集组列表（themoviedb）

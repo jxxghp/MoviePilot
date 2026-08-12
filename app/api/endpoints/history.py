@@ -3,11 +3,12 @@ import time
 from pathlib import Path
 from typing import List, Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.agent import ReplyMode, agent_manager
 from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
@@ -30,7 +31,7 @@ from app.helper.progress import ProgressHelper
 from app.schemas.types import EventType
 from app.utils.jieba import cut as jieba_cut
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def normalize_history_ids(history_ids: list[int]) -> list[int]:
@@ -145,7 +146,11 @@ async def download_history(
     return await DownloadHistory.async_list_by_page(db, page, count)
 
 
-@router.delete("/download", summary="删除下载历史记录", response_model=schemas.Response)
+@router.delete(
+    "/download",
+    summary="删除下载历史记录",
+    response_model=schemas.Response[None],
+)
 async def delete_download_history(
     history_in: schemas.DownloadHistory,
     db: AsyncSession = Depends(get_async_db),
@@ -166,7 +171,11 @@ def _glob_to_like(pattern: str) -> str:
     return result.replace("*", "%").replace("?", "_")
 
 
-@router.get("/transfer", summary="查询整理记录", response_model=schemas.Response)
+@router.get(
+    "/transfer",
+    summary="查询整理记录",
+    response_model=schemas.Response[schemas.TransferHistoryPage],
+)
 async def transfer_history(
     title: Optional[str] = None,
     page: Optional[int] = 1,
@@ -218,7 +227,7 @@ async def transfer_history(
     )
 
 
-@router.delete("/transfer", summary="删除整理记录", response_model=schemas.Response)
+@router.delete("/transfer", summary="删除整理记录", response_model=schemas.Response[None])
 def delete_transfer_history(
     history_in: schemas.TransferHistory,
     deletesrc: Optional[bool] = False,
@@ -260,7 +269,7 @@ def delete_transfer_history(
 @router.post(
     "/transfer/{history_id}/ai-redo",
     summary="智能助手重新整理",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.ProgressKeyData],
 )
 def ai_redo_transfer_history(
     history_id: int,
@@ -289,7 +298,9 @@ def ai_redo_transfer_history(
 
 
 @router.post(
-    "/transfer/ai-redo", summary="智能助手批量重新整理", response_model=schemas.Response
+    "/transfer/ai-redo",
+    summary="智能助手批量重新整理",
+    response_model=schemas.Response[schemas.BatchProgressKeyData],
 )
 def batch_ai_redo_transfer_history(
     payload: schemas.BatchTransferHistoryRedoRequest,
@@ -336,7 +347,11 @@ def batch_ai_redo_transfer_history(
     )
 
 
-@router.get("/empty/transfer", summary="清空整理记录", response_model=schemas.Response)
+@router.get(
+    "/empty/transfer",
+    summary="清空整理记录",
+    response_model=schemas.Response[None],
+)
 async def empty_transfer_history(
     db: AsyncSession = Depends(get_async_db),
     _: User = Depends(get_current_active_superuser_async),

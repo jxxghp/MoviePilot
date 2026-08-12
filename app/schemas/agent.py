@@ -6,6 +6,8 @@ from typing import Any, List, Literal, Optional, Union
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
+from app.schemas.common import JsonData
+
 
 class ConversationMemory(BaseModel):
     """对话记忆模型"""
@@ -97,7 +99,7 @@ class AgentMcpServerToolInfo(BaseModel):
     name: str = Field(..., description="原始 MCP 工具名称")
     agent_tool_name: str = Field(..., description="注入 Agent 后的工具名称")
     description: str = Field(default="", description="工具说明")
-    input_schema: dict[str, Any] = Field(default_factory=dict, description="工具参数 Schema")
+    input_schema: dict[str, JsonData] = Field(default_factory=dict, description="工具参数 Schema")
 
 
 class AgentMcpServerTestResult(BaseModel):
@@ -217,8 +219,8 @@ class AgentChatSession(BaseModel):
     username: Optional[str] = Field(None, description="用户名")
     original_chat_id: Optional[str] = Field(None, description="原聊天 ID")
     message_count: int = Field(default=0, description="展示消息数量")
-    created_at: Optional[str] = Field(None, description="创建时间")
-    updated_at: Optional[str] = Field(None, description="更新时间")
+    created_at: Optional[datetime | str] = Field(None, description="创建时间")
+    updated_at: Optional[datetime | str] = Field(None, description="更新时间")
     messages: list[AgentChatMessage] = Field(default_factory=list, description="展示消息列表")
 
 
@@ -229,3 +231,84 @@ class AgentChatDisplaySaveRequest(BaseModel):
 
     messages: list[AgentChatMessage] = Field(default_factory=list, description="展示消息列表")
     title: Optional[str] = Field(None, description="会话标题")
+
+
+class AgentMcpServerListData(BaseModel):
+    """Agent MCP 服务器列表与启用统计。"""
+
+    servers: list[AgentMcpServerConfig] = Field(default_factory=list, description="服务器列表")
+    enabled_count: int = Field(default=0, description="已启用服务器数量")
+    total_count: int = Field(default=0, description="服务器总数")
+
+
+class AgentChatUploadAttachment(AgentChatAttachment):
+    """Web Agent 上传完成后的附件描述。"""
+
+    ref: str = Field(description="供 Agent 消费的附件引用")
+    status: str = Field(default="ready", description="附件处理状态")
+
+
+class AgentWebChoiceFeedback(BaseModel):
+    """Web Agent 选择回调的反馈快照。"""
+
+    request_id: str = Field(description="选择请求 ID")
+    title: Optional[str] = Field(default=None, description="选择标题")
+    prompt: str = Field(default="", description="选择提示")
+    selected_label: str = Field(description="已选择文案")
+    selected_value: str = Field(description="已选择值")
+    selected_description: Optional[str] = Field(default=None, description="已选择说明")
+    buttons: list[AgentChatChoiceButton] = Field(default_factory=list, description="按钮列表")
+    button_rows: list[list[AgentChatChoiceButton]] = Field(default_factory=list, description="按钮行")
+
+
+class AgentWebCallbackData(BaseModel):
+    """Web Agent 按钮回调后供前端继续发送的数据。"""
+
+    message: str = Field(description="下一条用户消息")
+    display_message: str = Field(default="", description="前端展示消息")
+    session_id: Optional[str] = Field(default=None, description="Agent 会话 ID")
+    traditional: bool = Field(default=False, description="是否为传统消息链回调")
+    original_message_id: Optional[str | int] = Field(default=None, description="原消息 ID")
+    original_chat_id: Optional[str | int] = Field(default=None, description="原聊天 ID")
+    choice_selection: Optional[AgentChatChoiceSelection] = Field(default=None, description="选择结果快照")
+    feedback: Optional[AgentWebChoiceFeedback] = Field(default=None, description="选择反馈")
+
+
+class AgentWebCommandInfo(BaseModel):
+    """Web Agent 可用斜杠命令摘要。"""
+
+    command: str = Field(description="命令")
+    description: str = Field(default="", description="命令说明")
+    category: str = Field(default="其他", description="命令分类")
+    type: str = Field(default="", description="命令类型")
+    pid: Optional[str | int] = Field(default=None, description="插件 ID")
+
+
+class AgentChatSessionSummary(BaseModel):
+    """Agent 历史会话摘要。"""
+
+    id: Optional[int] = Field(default=None, description="数据库 ID")
+    session_id: str = Field(description="Agent 内部会话 ID")
+    client_session_id: Optional[str] = Field(default=None, description="客户端会话 ID")
+    title: Optional[str] = Field(default=None, description="会话标题")
+    channel: Optional[str] = Field(default=None, description="消息渠道")
+    source: Optional[str] = Field(default=None, description="渠道来源")
+    user_id: Optional[str] = Field(default=None, description="用户 ID")
+    username: Optional[str] = Field(default=None, description="用户名")
+    original_chat_id: Optional[str] = Field(default=None, description="原聊天 ID")
+    message_count: int = Field(default=0, description="展示消息数量")
+    created_at: Optional[datetime | str] = Field(default=None, description="创建时间")
+    updated_at: Optional[datetime | str] = Field(default=None, description="更新时间")
+
+
+class AgentChatSessionDetail(AgentChatSessionSummary):
+    """Agent 历史会话详情。"""
+
+    messages: list[AgentChatMessage] = Field(default_factory=list, description="展示消息列表")
+    is_processing: bool = Field(default=False, description="会话是否正在处理")
+
+
+class AgentSessionStopData(BaseModel):
+    """Agent 会话停止结果。"""
+
+    stopped: bool = Field(description="是否停止了正在执行的任务")

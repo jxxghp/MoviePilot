@@ -1,8 +1,9 @@
 from typing import Any, List, Annotated, Optional, Union
 
-from fastapi import APIRouter, Depends, Body
+from fastapi import Depends, Body
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
@@ -24,7 +25,7 @@ from app.schemas.types import (
 from app.utils.media import is_music_media_source, normalize_music_type
 from app.utils.security import SecurityUtils
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
@@ -62,7 +63,11 @@ def current(
     return DownloadChain().downloading(name)
 
 
-@router.post("/", summary="添加下载（含媒体信息）", response_model=schemas.Response)
+@router.post(
+    "/",
+    summary="添加下载（含媒体信息）",
+    response_model=schemas.Response[schemas.DownloadAddedData],
+)
 def download(
     media_in: Union[schemas.MusicInfo, schemas.MediaInfo],
     torrent_in: schemas.TorrentInfo,
@@ -102,7 +107,9 @@ def download(
 
 
 @router.post(
-    "/add", summary="添加下载（不含媒体信息）", response_model=schemas.Response
+    "/add",
+    summary="添加下载（不含媒体信息）",
+    response_model=schemas.Response[schemas.DownloadAddedData],
 )
 def add(
     torrent_in: schemas.TorrentInfo,
@@ -185,7 +192,11 @@ def add(
     return schemas.Response(success=True, data={"download_id": did})
 
 
-@router.post("/subtitle", summary="下载字幕", response_model=schemas.Response)
+@router.post(
+    "/subtitle",
+    summary="下载字幕",
+    response_model=schemas.Response[schemas.SubtitleDownloadData],
+)
 def download_subtitle(
     subtitle_in: schemas.SubtitleInfo,
     media_source: Annotated[MediaSource, Body()],
@@ -216,7 +227,7 @@ def download_subtitle(
     )
 
 
-@router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response)
+@router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response[None])
 def start(
     hashString: str,
     name: Optional[str] = None,
@@ -229,7 +240,7 @@ def start(
     return schemas.Response(success=True if ret else False)
 
 
-@router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response)
+@router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response[None])
 def stop(
     hashString: str,
     name: Optional[str] = None,
@@ -242,7 +253,11 @@ def stop(
     return schemas.Response(success=True if ret else False)
 
 
-@router.get("/clients", summary="查询可用下载器", response_model=List[dict])
+@router.get(
+    "/clients",
+    summary="查询可用下载器",
+    response_model=List[schemas.ServiceClientInfo],
+)
 async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用下载器
@@ -282,7 +297,7 @@ def paths(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     ]
 
 
-@router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)
+@router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response[None])
 def delete(
     hashString: str,
     name: Optional[str] = None,

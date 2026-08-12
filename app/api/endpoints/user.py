@@ -2,10 +2,11 @@ import base64
 import re
 from typing import Annotated, Any, List, Union
 
-from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
+from fastapi import Body, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.core.security import get_password_hash
 from app.db import get_async_db
 from app.db.models.user import User
@@ -16,7 +17,7 @@ from app.db.user_oper import (
 )
 from app.db.userconfig_oper import UserConfigOper
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 @router.get("/", summary="所有用户", response_model=List[schemas.User])
@@ -30,7 +31,7 @@ async def list_users(
     return await current_user.async_list(db)
 
 
-@router.post("/", summary="新增用户", response_model=schemas.Response)
+@router.post("/", summary="新增用户", response_model=schemas.Response[None])
 async def create_user(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -51,7 +52,7 @@ async def create_user(
     return schemas.Response(success=True if user else False)
 
 
-@router.put("/", summary="更新用户", response_model=schemas.Response)
+@router.put("/", summary="更新用户", response_model=schemas.Response[None])
 async def update_user(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -98,7 +99,9 @@ async def read_current_user(
 
 
 @router.post(
-    "/avatar/{user_id}", summary="上传用户头像", response_model=schemas.Response
+    "/avatar/{user_id}",
+    summary="上传用户头像",
+    response_model=schemas.Response[schemas.FileNameData],
 )
 async def upload_avatar(
     user_id: int,
@@ -122,7 +125,11 @@ async def upload_avatar(
     return schemas.Response(success=True, data={"filename": file.filename})
 
 
-@router.get("/config/{key}", summary="查询用户配置", response_model=schemas.Response)
+@router.get(
+    "/config/{key}",
+    summary="查询用户配置",
+    response_model=schemas.Response[schemas.ValueData],
+)
 def get_config(key: str, current_user: User = Depends(get_current_active_user)):
     """
     查询用户配置
@@ -131,7 +138,7 @@ def get_config(key: str, current_user: User = Depends(get_current_active_user)):
     return schemas.Response(success=True, data={"value": value})
 
 
-@router.post("/config/{key}", summary="更新用户配置", response_model=schemas.Response)
+@router.post("/config/{key}", summary="更新用户配置", response_model=schemas.Response[None])
 def set_config(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
@@ -144,7 +151,7 @@ def set_config(
     return schemas.Response(success=True)
 
 
-@router.delete("/id/{user_id}", summary="删除用户", response_model=schemas.Response)
+@router.delete("/id/{user_id}", summary="删除用户", response_model=schemas.Response[None])
 async def delete_user_by_id(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -161,7 +168,7 @@ async def delete_user_by_id(
     return schemas.Response(success=True)
 
 
-@router.delete("/name/{user_name}", summary="删除用户", response_model=schemas.Response)
+@router.delete("/name/{user_name}", summary="删除用户", response_model=schemas.Response[None])
 async def delete_user_by_name(
     *,
     db: AsyncSession = Depends(get_async_db),

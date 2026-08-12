@@ -1,14 +1,15 @@
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.douban import DoubanChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 from app.schemas import MediaType
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 @router.get(

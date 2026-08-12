@@ -1,7 +1,8 @@
-from typing import Optional, Any
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource
 
@@ -52,7 +53,7 @@ class DownloadHistory(OptionalMediaIdentityMixin, BaseModel):
     # 创建时间
     date: Optional[str] = None
     # 备注
-    note: Optional[Any] = None
+    note: Optional[JsonData] = None
     # 自定义媒体类别
     media_category: Optional[str] = None
     # 自定义剧集组
@@ -121,4 +122,13 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
 
 class BatchTransferHistoryRedoRequest(BaseModel):
+    """批量重新整理历史请求。"""
+
     history_ids: list[int] = Field(default_factory=list)
+
+
+class TransferHistoryPage(BaseModel):
+    """整理历史分页数据。"""
+
+    list: List[TransferHistory] = Field(default_factory=list, description="整理历史列表")
+    total: int = Field(default=0, description="记录总数")

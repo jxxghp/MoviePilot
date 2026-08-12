@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, RootModel
 
 
 class CategoryRule(BaseModel):
@@ -29,3 +29,7 @@ class CategoryConfig(BaseModel):
     movie: Optional[Dict[str, Optional[CategoryRule]]] = {}
     # 电视剧分类策略
     tv: Optional[Dict[str, Optional[CategoryRule]]] = {}
+
+
+class MediaCategoryMap(RootModel[Dict[str, list[str]]]):
+    """媒体类型与自动分类名称列表的映射。"""

@@ -1,12 +1,13 @@
 from typing import Any, Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Request, Depends
+from fastapi import BackgroundTasks, Request, Depends
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.webhook import WebhookChain
 from app.core.security import verify_apitoken
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def start_webhook_chain(body: Any, form: Any, args: Any):
@@ -16,7 +17,7 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
     WebhookChain().message(body=body, form=form, args=args)
 
 
-@router.post("/", summary="Webhook消息响应", response_model=schemas.Response)
+@router.post("/", summary="Webhook消息响应", response_model=schemas.Response[None])
 async def webhook_message(
     background_tasks: BackgroundTasks,
     request: Request,
@@ -32,7 +33,7 @@ async def webhook_message(
     return schemas.Response(success=True)
 
 
-@router.get("/", summary="Webhook消息响应", response_model=schemas.Response)
+@router.get("/", summary="Webhook消息响应", response_model=schemas.Response[None])
 async def webhook_message_get(
     background_tasks: BackgroundTasks,
     request: Request,

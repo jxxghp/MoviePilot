@@ -3,6 +3,7 @@ from typing import Iterable, Optional, Dict, Any, List, Set, Callable
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.common import JsonData
 from app.schemas.message import MessageChannel
 from app.schemas.file import FileItem
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
@@ -484,11 +485,11 @@ class DiscoverMediaSource(BaseModel):
     name: str = Field(..., description="数据源名称")
     media_source: MediaSource = Field(..., description="媒体来源枚举")
     api_path: str = Field(..., description="媒体数据源API地址")
-    filter_params: Optional[Dict[str, Any]] = Field(
+    filter_params: Optional[Dict[str, JsonData]] = Field(
         default=None, description="过滤参数"
     )
-    filter_ui: Optional[List[dict]] = Field(default=[], description="过滤参数UI配置")
-    depends: Optional[Dict[str, list]] = Field(
+    filter_ui: Optional[List[Dict[str, JsonData]]] = Field(default=[], description="过滤参数UI配置")
+    depends: Optional[Dict[str, list[str]]] = Field(
         default=None, description="UI依赖关系字典"
     )
 

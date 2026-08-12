@@ -4,10 +4,11 @@ import time
 from typing import Any, AsyncIterator, Iterator, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Body, Request
+from fastapi import Depends, Body, Request
 from fastapi.responses import StreamingResponse
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.search import SearchChain
 from app.core.security import verify_resource_token, verify_token
 from app.helper.locale import LocaleHelper
@@ -16,7 +17,7 @@ from app.schemas.types import MediaSource, MediaType
 from app.utils.media import normalize_music_type, resolve_media_identity
 from app.utils.security import SecurityUtils
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 _SSE_APPEND_FLUSH_INTERVAL = 1
 _SSE_APPEND_MAX_ITEMS = 48
@@ -330,7 +331,11 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return [torrent.to_dict() for torrent in torrents]
 
 
-@router.get("/last/context", summary="查询上次搜索上下文", response_model=schemas.Response)
+@router.get(
+    "/last/context",
+    summary="查询上次搜索上下文",
+    response_model=schemas.Response[schemas.SearchLastContextData],
+)
 async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询上次搜索结果及其对应的搜索参数。
@@ -352,7 +357,18 @@ async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token))
     )
 
 
-@router.get("/media/{media_id}/stream", summary="渐进式精确搜索资源")
+@router.get(
+    "/media/{media_id}/stream",
+    summary="渐进式精确搜索资源",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "资源搜索 SSE 事件流",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def search_by_id_stream(
     request: Request,
     media_id: str,
@@ -401,7 +417,11 @@ async def search_by_id_stream(
     )
 
 
-@router.get("/media/{media_id}", summary="精确搜索资源", response_model=schemas.Response)
+@router.get(
+    "/media/{media_id}",
+    summary="精确搜索资源",
+    response_model=schemas.Response[list[schemas.TorrentInfo]],
+)
 async def search_by_id(
     media_id: str,
     media_source: MediaSource,
@@ -440,7 +460,18 @@ async def search_by_id(
     )
 
 
-@router.get("/title/stream", summary="渐进式模糊搜索资源")
+@router.get(
+    "/title/stream",
+    summary="渐进式模糊搜索资源",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "资源搜索 SSE 事件流",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def search_by_title_stream(
     request: Request,
     keyword: Optional[str] = None,
@@ -467,7 +498,11 @@ async def search_by_title_stream(
     )
 
 
-@router.get("/title", summary="模糊搜索资源", response_model=schemas.Response)
+@router.get(
+    "/title",
+    summary="模糊搜索资源",
+    response_model=schemas.Response[list[schemas.TorrentInfo]],
+)
 async def search_by_title(
     keyword: Optional[str] = None,
     mtype: Optional[str] = None,
@@ -492,7 +527,18 @@ async def search_by_title(
     )
 
 
-@router.get("/subtitle/title/stream", summary="渐进式模糊搜索字幕")
+@router.get(
+    "/subtitle/title/stream",
+    summary="渐进式模糊搜索字幕",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "字幕搜索 SSE 事件流",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def search_subtitle_by_title_stream(
     request: Request,
     keyword: Optional[str] = None,
@@ -517,7 +563,11 @@ async def search_subtitle_by_title_stream(
     )
 
 
-@router.get("/subtitle/title", summary="模糊搜索字幕", response_model=schemas.Response)
+@router.get(
+    "/subtitle/title",
+    summary="模糊搜索字幕",
+    response_model=schemas.Response[list[schemas.SubtitleInfo]],
+)
 async def search_subtitle_by_title(
     keyword: Optional[str] = None,
     page: Optional[int] = 0,
@@ -581,7 +631,18 @@ async def _build_subtitle_search_source(
     return call_search(**search_params), ""
 
 
-@router.get("/subtitle/media/{media_id}/stream", summary="渐进式精确搜索字幕")
+@router.get(
+    "/subtitle/media/{media_id}/stream",
+    summary="渐进式精确搜索字幕",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "字幕搜索 SSE 事件流",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def search_subtitle_by_id_stream(
     request: Request,
     media_id: str,
@@ -625,7 +686,11 @@ async def search_subtitle_by_id_stream(
     )
 
 
-@router.get("/subtitle/media/{media_id}", summary="精确搜索字幕", response_model=schemas.Response)
+@router.get(
+    "/subtitle/media/{media_id}",
+    summary="精确搜索字幕",
+    response_model=schemas.Response[list[schemas.SubtitleInfo]],
+)
 async def search_subtitle_by_id(
     media_id: str,
     media_source: MediaSource,
@@ -657,7 +722,11 @@ async def search_subtitle_by_id(
     )
 
 
-@router.post("/recommend", summary="AI推荐资源", response_model=schemas.Response)
+@router.post(
+    "/recommend",
+    summary="AI推荐资源",
+    response_model=schemas.Response[schemas.SearchRecommendStatusData],
+)
 async def recommend_search_results(
     filtered_indices: Optional[List[int]] = Body(
         None, embed=True, description="筛选后的索引列表"

@@ -1,14 +1,15 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.core.module import ModuleManager
 from app.db.models import User
 from app.db.user_oper import get_current_active_superuser
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _build_wechatclawbot_temp_client(
@@ -84,7 +85,7 @@ def _get_wechatclawbot_client(
 @router.get(
     "/wechatclawbot/status",
     summary="查询微信 ClawBot 登录状态",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.WechatClawBotData],
 )
 def wechatclawbot_status(
     source: Optional[str] = None,
@@ -121,7 +122,7 @@ def wechatclawbot_status(
 @router.post(
     "/wechatclawbot/refresh",
     summary="刷新微信 ClawBot 二维码",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.WechatClawBotData],
 )
 def refresh_wechatclawbot_qrcode(
     source: Optional[str] = None,
@@ -155,7 +156,7 @@ def refresh_wechatclawbot_qrcode(
 @router.post(
     "/wechatclawbot/logout",
     summary="退出微信 ClawBot 登录",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.WechatClawBotData],
 )
 def logout_wechatclawbot(
     source: Optional[str] = None,
@@ -189,7 +190,7 @@ def logout_wechatclawbot(
 @router.get(
     "/wechatclawbot/test",
     summary="测试微信 ClawBot 连通性",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 def test_wechatclawbot(
     source: Optional[str] = None,
@@ -219,7 +220,7 @@ def test_wechatclawbot(
 @router.post(
     "/wechatclawbot/migrate",
     summary="迁移微信 ClawBot 登录缓存",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 def migrate_wechatclawbot_cache(
     old_source: str,

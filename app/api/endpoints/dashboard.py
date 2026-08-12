@@ -1,10 +1,11 @@
 from pathlib import Path
 from typing import Any, List, Optional, Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.dashboard import DashboardChain
 from app.chain.storage import StorageChain
 from app.core.config import settings
@@ -16,7 +17,7 @@ from app.helper.directory import DirectoryHelper
 from app.scheduler import Scheduler
 from app.utils.system import SystemUtils
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _build_statistic(db: Session, name: Optional[str] = None) -> schemas.Statistic:
@@ -186,7 +187,7 @@ async def schedule(_: Any = Depends(get_current_active_superuser)) -> Any:
 @router.get(
     "/schedule/{job_id}/progress",
     summary="后台服务进度",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.ScheduleProgress],
 )
 async def schedule_progress(
     job_id: str, _: Any = Depends(get_current_active_superuser)
@@ -215,7 +216,7 @@ async def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 @router.get(
     "/schedule2/{job_id}/progress",
     summary="后台服务进度（API_TOKEN）",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.ScheduleProgress],
 )
 async def schedule_progress2(
     job_id: str, _: Annotated[str, Depends(verify_apitoken)]

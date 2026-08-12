@@ -5,13 +5,13 @@ from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import APIRouter, Depends, Header, HTTPException, Security
+from fastapi import Depends, Header, HTTPException, Security
 from fastapi.concurrency import run_in_threadpool
 from starlette import status
 from starlette.responses import StreamingResponse
 
 from app import schemas
-from app.api.apiv2_utils import API_V2_STR, OPENAPI_V2_PATH
+from app.api.response import ResponseAPIRouter
 from app.command import Command
 from app.core.cache import async_fresh
 from app.core.config import settings
@@ -39,15 +39,13 @@ from app.schemas.types import ChainEventType, SystemConfigKey
 
 PROTECTED_ROUTES = {
     "/api/v1/openapi.json",
-    OPENAPI_V2_PATH,
     "/docs",
     "/docs/oauth2-redirect",
     "/redoc",
 }
 PLUGIN_PREFIX = f"{settings.API_V1_STR}/plugin"
-PLUGIN_V2_PREFIX = f"{API_V2_STR}/plugin"
 
-router = APIRouter()
+router = ResponseAPIRouter()
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
 
 
@@ -166,11 +164,8 @@ def _update_plugin_api_routes(plugin_id: Optional[str], action: str):
                     elif Depends(verify_apikey) not in dependencies:
                         dependencies.append(Depends(verify_apikey))
                 app.add_api_route(**api, tags=["plugin"])
-                v2_api = api.copy()
-                v2_api["path"] = api_path.replace(PLUGIN_PREFIX, PLUGIN_V2_PREFIX, 1)
-                app.add_api_route(**v2_api, tags=["plugin"])
                 is_modified = True
-                logger.debug(f"Added plugin routes: {api_path}, {v2_api['path']}")
+                logger.debug(f"Added plugin route: {api_path}")
             except Exception as e:
                 logger.error(f"Error adding plugin route {api_path}: {str(e)}")
 
@@ -188,12 +183,9 @@ def _remove_routes(plugin_id: str) -> bool:
     """
     if not plugin_id:
         return False
-    prefixes = {
-        f"{PLUGIN_PREFIX}/{plugin_id}/",
-        f"{PLUGIN_V2_PREFIX}/{plugin_id}/",
-    }
+    prefix = f"{PLUGIN_PREFIX}/{plugin_id}/"
     routes_to_remove = [
-        route for route in app.routes if any(route.path.startswith(prefix) for prefix in prefixes)
+        route for route in app.routes if route.path.startswith(prefix)
     ]
     removed = False
     for route in routes_to_remove:
@@ -425,7 +417,11 @@ async def plugin_history(
     return plugin
 
 
-@router.get("/releases/{plugin_id}", summary="获取插件Release版本", response_model=dict)
+@router.get(
+    "/releases/{plugin_id}",
+    summary="获取插件Release版本",
+    response_model=schemas.PluginReleaseData,
+)
 async def plugin_releases(
     plugin_id: str,
     _: User = Depends(get_current_active_superuser_async),
@@ -484,7 +480,11 @@ async def plugin_releases(
     }
 
 
-@router.get("/statistic", summary="插件安装统计", response_model=dict)
+@router.get(
+    "/statistic",
+    summary="插件安装统计",
+    response_model=schemas.JsonObject,
+)
 async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     插件安装统计
@@ -495,7 +495,7 @@ async def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 @router.get(
     "/rating",
     summary="批量查询插件评分",
-    response_model=Dict[str, schemas.PluginRating],
+    response_model=schemas.PluginRatingMap,
 )
 async def plugin_ratings(
     plugin_ids: Optional[str] = None,
@@ -531,7 +531,7 @@ async def plugin_rating(
 @router.post(
     "/rating/{plugin_id}",
     summary="提交插件评分",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.PluginRating],
 )
 async def rate_plugin(
     plugin_id: str,
@@ -558,7 +558,7 @@ async def rate_plugin(
 
 
 @router.get(
-    "/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response
+    "/reload/{plugin_id}", summary="重新加载插件", response_model=schemas.Response[None]
 )
 def reload_plugin(
     plugin_id: str, _: User = Depends(get_current_active_superuser)
@@ -573,7 +573,7 @@ def reload_plugin(
     return schemas.Response(success=True)
 
 
-@router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
+@router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response[None])
 async def install(
     plugin_id: str,
     repo_url: Optional[str] = "",
@@ -623,7 +623,11 @@ async def install(
     return schemas.Response(success=True)
 
 
-@router.get("/remotes", summary="获取插件联邦组件列表", response_model=List[dict])
+@router.get(
+    "/remotes",
+    summary="获取插件联邦组件列表",
+    response_model=List[schemas.PluginRemoteInfo],
+)
 async def remotes(token: str) -> Any:
     """
     获取插件联邦组件列表
@@ -645,7 +649,11 @@ def plugin_sidebar_nav(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return PluginManager().get_plugin_sidebar_nav()
 
 
-@router.get("/form/{plugin_id}", summary="获取插件表单页面")
+@router.get(
+    "/form/{plugin_id}",
+    summary="获取插件表单页面",
+    response_model=schemas.JsonObject,
+)
 def plugin_form(
     plugin_id: str, _: User = Depends(get_current_active_superuser)
 ) -> dict:
@@ -677,7 +685,11 @@ def plugin_form(
     return {}
 
 
-@router.get("/page/{plugin_id}", summary="获取插件数据页面")
+@router.get(
+    "/page/{plugin_id}",
+    summary="获取插件数据页面",
+    response_model=schemas.JsonObject,
+)
 def plugin_page(
     plugin_id: str, _: User = Depends(get_current_active_superuser)
 ) -> dict:
@@ -701,7 +713,11 @@ def plugin_page(
     return {}
 
 
-@router.get("/dashboard/meta", summary="获取所有插件仪表板元信息")
+@router.get(
+    "/dashboard/meta",
+    summary="获取所有插件仪表板元信息",
+    response_model=List[schemas.PluginDashboardMetaItem],
+)
 def plugin_dashboard_meta(
     _: User = Depends(get_current_active_superuser),
 ) -> List[dict]:
@@ -737,7 +753,7 @@ def plugin_dashboard(
 
 
 @router.get(
-    "/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response
+    "/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response[None]
 )
 def reset_plugin(
     plugin_id: str, _: User = Depends(get_current_active_superuser)
@@ -761,7 +777,24 @@ def reset_plugin(
     return schemas.Response(success=True)
 
 
-@router.get("/file/{plugin_id}/{filepath:path}", summary="获取插件静态文件")
+@router.get(
+    "/file/{plugin_id}/{filepath:path}",
+    summary="获取插件静态文件",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "插件静态资源",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                },
+                "application/javascript": {"schema": {"type": "string"}},
+                "text/css": {"schema": {"type": "string"}},
+            },
+        }
+    },
+)
 async def plugin_static_file(
     plugin_id: str,
     filepath: str,
@@ -839,7 +872,11 @@ async def plugin_static_file(
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-@router.get("/folders", summary="获取插件文件夹配置", response_model=dict)
+@router.get(
+    "/folders",
+    summary="获取插件文件夹配置",
+    response_model=schemas.PluginFoldersData,
+)
 async def get_plugin_folders(
     _: User = Depends(get_current_active_superuser_async),
 ) -> dict:
@@ -854,7 +891,7 @@ async def get_plugin_folders(
         return {}
 
 
-@router.post("/folders", summary="保存插件文件夹配置", response_model=schemas.Response)
+@router.post("/folders", summary="保存插件文件夹配置", response_model=schemas.Response[None])
 async def save_plugin_folders(
     folders: dict, _: User = Depends(get_current_active_superuser_async)
 ) -> Any:
@@ -870,7 +907,7 @@ async def save_plugin_folders(
 
 
 @router.post(
-    "/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response
+    "/folders/{folder_name}", summary="创建插件文件夹", response_model=schemas.Response[None]
 )
 async def create_plugin_folder(
     folder_name: str, _: User = Depends(get_current_active_superuser_async)
@@ -890,7 +927,7 @@ async def create_plugin_folder(
 
 
 @router.delete(
-    "/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response
+    "/folders/{folder_name}", summary="删除插件文件夹", response_model=schemas.Response[None]
 )
 async def delete_plugin_folder(
     folder_name: str, _: User = Depends(get_current_active_superuser_async)
@@ -912,7 +949,7 @@ async def delete_plugin_folder(
 @router.put(
     "/folders/{folder_name}/plugins",
     summary="更新文件夹中的插件",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 async def update_folder_plugins(
     folder_name: str,
@@ -931,7 +968,7 @@ async def update_folder_plugins(
 
 
 @router.post(
-    "/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response
+    "/clone/{plugin_id}", summary="创建插件分身", response_model=schemas.Response[None]
 )
 def clone_plugin(
     plugin_id: str, clone_data: dict, _: User = Depends(get_current_active_superuser)
@@ -962,7 +999,11 @@ def clone_plugin(
         return schemas.Response(success=False, message=f"创建插件分身失败：{str(e)}")
 
 
-@router.get("/{plugin_id}", summary="获取插件配置")
+@router.get(
+    "/{plugin_id}",
+    summary="获取插件配置",
+    response_model=schemas.JsonObject,
+)
 async def plugin_config(
     plugin_id: str, _: User = Depends(get_current_active_superuser_async)
 ) -> dict:
@@ -972,7 +1013,7 @@ async def plugin_config(
     return PluginManager().get_plugin_config(plugin_id)
 
 
-@router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
+@router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response[None])
 def set_plugin_config(
     plugin_id: str, conf: dict, _: User = Depends(get_current_active_superuser)
 ) -> Any:
@@ -989,7 +1030,7 @@ def set_plugin_config(
     return schemas.Response(success=True)
 
 
-@router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
+@router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response[None])
 def uninstall_plugin(
     plugin_id: str, _: User = Depends(get_current_active_superuser)
 ) -> Any:

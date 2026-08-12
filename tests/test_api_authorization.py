@@ -325,6 +325,6 @@ def test_upload_avatar_returns_filename_in_data(monkeypatch):
 
     assert response.success is True
     assert response.data == {"filename": "avatar.png"}
-    assert response.message is None
-    assert response.message_i18n is None
+    assert response.message == ""
+    assert not hasattr(response, "message_i18n")
     assert fake_user.values == {"avatar": "data:image/ico;base64,b'YXZhdGFy'"}

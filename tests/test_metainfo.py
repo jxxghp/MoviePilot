@@ -564,16 +564,26 @@ def test_emby_tmdbid_overrides_braced_metainfo_tmdbid():
     assert "[tmdbid=222]" not in title
 
 
-def test_generic_media_identity_tag_is_the_only_output_contract():
-    """通用标签应产生枚举来源和字符串ID，且不暴露来源专用字段。"""
+def test_custom_identifier_uses_source_specific_id_and_returns_unified_identity():
+    """自定义识别词使用专用ID语法，解析结果仍转换为统一身份。"""
     title, metainfo = find_metainfo(
-        "Movie {[media_source=themoviedb;media_id=550;type=movies]}"
+        "Movie {[tmdbid=550;type=movies]}"
     )
 
     assert title.strip() == "Movie"
     assert metainfo["media_source"] == MediaSource.TMDB
     assert metainfo["media_id"] == "550"
     assert {"tmdbid", "doubanid", "bangumiid", "anilistid"}.isdisjoint(metainfo)
+
+
+def test_generic_media_identity_is_not_custom_identifier_syntax():
+    """通用身份字段不得被自定义识别词解析器接收。"""
+    _, metainfo = find_metainfo(
+        "Movie {[media_source=themoviedb;media_id=550;type=movies]}"
+    )
+
+    assert metainfo["media_source"] is None
+    assert metainfo["media_id"] is None
 
 
 def test_metainfopath_auxiliary_chinese_stem_uses_parent_title():

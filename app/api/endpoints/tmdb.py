@@ -1,8 +1,9 @@
 from typing import List, Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.security import verify_token
@@ -12,11 +13,13 @@ from app.db.user_oper import get_current_active_superuser_async
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.schemas.types import MediaType, SystemConfigKey
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 @router.get(
-    "/cache", summary="查询 TheMovieDb 识别缓存", response_model=schemas.Response
+    "/cache",
+    summary="查询 TheMovieDb 识别缓存",
+    response_model=schemas.Response[schemas.TmdbRecognitionCacheData],
 )
 async def tmdb_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
@@ -42,7 +45,7 @@ async def tmdb_recognition_cache(
 @router.delete(
     "/cache/{cache_key:path}",
     summary="删除指定 TheMovieDb 识别缓存",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 async def delete_tmdb_recognition_cache(
     cache_key: str,
@@ -56,7 +59,7 @@ async def delete_tmdb_recognition_cache(
 
 
 @router.delete(
-    "/cache", summary="清空 TheMovieDb 识别缓存", response_model=schemas.Response
+    "/cache", summary="清空 TheMovieDb 识别缓存", response_model=schemas.Response[None]
 )
 async def clear_tmdb_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),

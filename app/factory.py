@@ -1,13 +1,24 @@
 import json
 from typing import Any, Awaitable, Callable
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
-from app.api.apiv2_utils import OPENAPI_V2_PATH, V2ResponseMiddleware
+from app.api.response import ResponseAPIRoute
 from app.core.config import settings
 from app.helper.locale import LocaleHelper
+from app.log import logger
+from app.schemas.openai import (
+    AnthropicErrorDetail,
+    AnthropicErrorResponse,
+    OpenAIErrorDetail,
+    OpenAIErrorResponse,
+)
+from app.schemas.mcp import McpJsonRpcError, McpJsonRpcErrorDetail
+from app.schemas.response import Response as ApiResponse, ValidationIssue
 from app.startup.lifecycle import lifespan
 from version import APP_VERSION
 
@@ -24,26 +35,245 @@ def _get_http_exception_message(detail: Any) -> str:
         return str(detail)
 
 
+def _localize_exception_message(request: Request, message: str) -> str:
+    """直接按异常所属请求的语言翻译消息，避免中间件上下文已被恢复。"""
+    return LocaleHelper.translate_text(
+        message,
+        locale=LocaleHelper.get_locale_from_request(request),
+    )
+
+
+def _is_mcp_jsonrpc_request(request: Request) -> bool:
+    """判断请求是否指向保持原生响应的 MCP JSON-RPC 根端点。"""
+    request_path = getattr(getattr(request, "url", None), "path", "")
+    return request_path.rstrip("/") == f"{settings.API_V1_STR}/mcp"
+
+
+def _get_native_ai_protocol(request: Request) -> str | None:
+    """识别需要保持原生错误体的 OpenAI 或 Anthropic 兼容请求。"""
+    request_path = getattr(getattr(request, "url", None), "path", "")
+    if request_path.startswith(f"{settings.API_V1_STR}/openai/v1/"):
+        return "openai"
+    if request_path.startswith(f"{settings.API_V1_STR}/anthropic/v1/"):
+        return "anthropic"
+    return None
+
+
+def _native_ai_error_response(
+        protocol: str,
+        status_code: int,
+        message: str,
+) -> JSONResponse:
+    """按 OpenAI 或 Anthropic 兼容协议构造原生错误响应。"""
+    if protocol == "openai":
+        error_type = (
+            "authentication_error"
+            if status_code in {401, 403}
+            else "server_error"
+            if status_code >= 500
+            else "invalid_request_error"
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content=OpenAIErrorResponse(
+                error=OpenAIErrorDetail(
+                    message=message,
+                    type=error_type,
+                    code=error_type,
+                )
+            ).model_dump(mode="json"),
+        )
+
+    error_type = (
+        "authentication_error"
+        if status_code in {401, 403}
+        else "api_error"
+        if status_code >= 500
+        else "invalid_request_error"
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content=AnthropicErrorResponse(
+            error=AnthropicErrorDetail(type=error_type, message=message)
+        ).model_dump(mode="json"),
+    )
+
+
+def _mcp_jsonrpc_error_response(
+        status_code: int,
+        code: int,
+        message: str,
+) -> JSONResponse:
+    """构造带 HTTP 状态码的 MCP JSON-RPC 原生错误响应。"""
+    return JSONResponse(
+        status_code=status_code,
+        content=McpJsonRpcError(
+            jsonrpc="2.0",
+            id=None,
+            error=McpJsonRpcErrorDetail(code=code, message=message),
+        ).model_dump(mode="json"),
+    )
+
+
+def _protocol_validation_error_response(
+        request: Request,
+        exc: RequestValidationError,
+) -> JSONResponse | None:
+    """为 OpenAI 与 Anthropic 兼容端点生成协议原生的参数错误响应。"""
+    errors = exc.errors()
+    first_error = errors[0] if errors else {}
+    location = ".".join(
+        str(item)
+        for item in first_error.get("loc", ())
+        if item not in {"body"}
+    )
+    message = str(first_error.get("msg") or "Invalid request parameters.")
+    native_ai_protocol = _get_native_ai_protocol(request)
+
+    if native_ai_protocol == "openai":
+        return JSONResponse(
+            status_code=422,
+            content=OpenAIErrorResponse(
+                error=OpenAIErrorDetail(
+                    message=message,
+                    type="invalid_request_error",
+                    param=location or None,
+                    code="invalid_request_error",
+                )
+            ).model_dump(mode="json"),
+        )
+    if native_ai_protocol == "anthropic":
+        if location:
+            message = f"{location}: {message}"
+        return JSONResponse(
+            status_code=422,
+            content=AnthropicErrorResponse(
+                error=AnthropicErrorDetail(
+                    type="invalid_request_error",
+                    message=message,
+                )
+            ).model_dump(mode="json"),
+        )
+    if _is_mcp_jsonrpc_request(request):
+        if location:
+            message = f"{location}: {message}"
+        return _mcp_jsonrpc_error_response(
+            status_code=422,
+            code=-32602,
+            message=message,
+        )
+    return None
+
+
 async def localized_http_exception_handler(
-        _request: Request,
+        request: Request,
         exc: HTTPException,
 ) -> JSONResponse:
     """
     将 HTTPException 响应统一封装为 Response 结构并保留原始错误消息。
 
-    :param _request: 当前 HTTP 请求
+    :param request: 当前 HTTP 请求
     :param exc: FastAPI HTTP 异常
     :return: 统一 JSON 错误响应
     """
-    message = _get_http_exception_message(exc.detail)
+    message = _localize_exception_message(
+        request,
+        _get_http_exception_message(exc.detail),
+    )
+    native_ai_protocol = _get_native_ai_protocol(request)
+    if native_ai_protocol:
+        return _native_ai_error_response(
+            protocol=native_ai_protocol,
+            status_code=exc.status_code,
+            message=message,
+        )
+    if _is_mcp_jsonrpc_request(request):
+        error_codes = {
+            400: -32600,
+            401: -32001,
+            403: -32001,
+            404: -32601,
+            409: -32009,
+        }
+        return _mcp_jsonrpc_error_response(
+            status_code=exc.status_code,
+            code=error_codes.get(exc.status_code, -32000),
+            message=message,
+        )
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "success": False,
-            "message": message,
-            "data": {},
-        },
+        content=ApiResponse[None](success=False, message=message).model_dump(mode="json"),
         headers=exc.headers,
+    )
+
+
+async def localized_validation_exception_handler(
+        request: Request,
+        exc: RequestValidationError,
+) -> JSONResponse:
+    """
+    将请求参数校验错误转换为统一响应并保留结构化错误数据。
+
+    :param request: 当前 HTTP 请求
+    :param exc: FastAPI 请求参数校验异常
+    :return: 统一 JSON 错误响应
+    """
+    protocol_response = _protocol_validation_error_response(request, exc)
+    if protocol_response is not None:
+        return protocol_response
+
+    errors = [
+        ValidationIssue(
+            location=list(error.get("loc", ())),
+            message=str(error.get("msg") or "请求参数错误"),
+            error_type=str(error.get("type") or "validation_error"),
+        )
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content=ApiResponse[list[ValidationIssue]](
+            success=False,
+            message=_localize_exception_message(request, "请求参数不正确"),
+            data=errors,
+        ).model_dump(mode="json"),
+    )
+
+
+async def localized_unhandled_exception_handler(
+        request: Request,
+        exc: Exception,
+) -> JSONResponse:
+    """
+    将未捕获异常隐藏为统一的服务器错误响应，避免泄露内部细节。
+
+    :param request: 当前 HTTP 请求
+    :param exc: 未捕获异常
+    :return: 统一 JSON 错误响应
+    """
+    logger.error(
+        f"API 请求发生未捕获异常: {exc}",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    native_ai_protocol = _get_native_ai_protocol(request)
+    if native_ai_protocol:
+        return _native_ai_error_response(
+            protocol=native_ai_protocol,
+            status_code=500,
+            message="Internal server error.",
+        )
+    if _is_mcp_jsonrpc_request(request):
+        return _mcp_jsonrpc_error_response(
+            status_code=500,
+            code=-32603,
+            message="Internal error",
+        )
+    return JSONResponse(
+        status_code=500,
+        content=ApiResponse[None](
+            success=False,
+            message=_localize_exception_message(request, "未知错误"),
+        ).model_dump(mode="json"),
     )
 
 
@@ -54,16 +284,18 @@ def create_app() -> FastAPI:
     _app = FastAPI(
         title=settings.PROJECT_NAME,
         version=APP_VERSION,
-        openapi_url=OPENAPI_V2_PATH,
+        openapi_url=f"{settings.API_V1_STR}/openapi.json",
         lifespan=lifespan
     )
 
-    @_app.get(f"{settings.API_V1_STR}/openapi.json", include_in_schema=False)
-    def get_v1_openapi_schema() -> dict[str, Any]:
-        """保留旧版 OpenAPI 地址并返回当前完整接口文档。"""
-        return _app.openapi()
-
     _app.add_exception_handler(HTTPException, localized_http_exception_handler)
+    _app.add_exception_handler(
+        RequestValidationError,
+        localized_validation_exception_handler,
+    )
+    _app.add_exception_handler(Exception, localized_unhandled_exception_handler)
+    # 动态注册的插件接口也必须使用统一响应路由类。
+    _app.router.route_class = ResponseAPIRoute
 
     # 配置 CORS 中间件
     _app.add_middleware(
@@ -73,8 +305,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    _app.add_middleware(V2ResponseMiddleware)
-
     @_app.middleware("http")
     async def locale_context_middleware(
             request: Request,

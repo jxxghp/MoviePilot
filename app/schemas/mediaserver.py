@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Optional, Dict, Union, List, Any
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, RootModel, model_validator
 
+from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
 
@@ -14,13 +15,32 @@ class ExistMediaInfo(BaseModel):
     # 类型 电影、电视剧、音乐
     type: Optional[MediaType] = None
     # 季
-    seasons: Optional[Dict[int, list]] = Field(default_factory=dict)
+    seasons: Optional[Dict[int, List[int]]] = Field(default_factory=dict)
     # 媒体服务器类型：plex、jellyfin、emby、zspace、trimemedia、ugreen、navidrome
     server_type: Optional[str] = None
     # 媒体服务器名称
     server: Optional[str] = None
     # 媒体ID
     itemid: Optional[Union[str, int]] = None
+
+
+class MediaServerPlayData(BaseModel):
+    """媒体服务器在线播放地址。"""
+
+    url: str = Field(description="播放地址")
+    item_id: Optional[str] = Field(default=None, description="媒体项目 ID")
+    server_id: Optional[str] = Field(default=None, description="媒体服务器 ID")
+    server_type: Optional[str] = Field(default=None, description="媒体服务器类型")
+
+
+class MediaServerExistsData(BaseModel):
+    """本地媒体存在性查询结果。"""
+
+    item: Dict[str, str] = Field(default_factory=dict, description="命中的媒体项目")
+
+
+class MediaServerExistingEpisodes(RootModel[Dict[int, List[int]]]):
+    """媒体服务器中按季号归组的已存在集号。"""
 
 
 class NotExistMediaInfo(BaseModel):
@@ -30,7 +50,7 @@ class NotExistMediaInfo(BaseModel):
     # 季
     season: Optional[int] = None
     # 剧集列表
-    episodes: Optional[list] = Field(default_factory=list)
+    episodes: Optional[List[int]] = Field(default_factory=list)
     # 总集数
     total_episode: Optional[int] = 0
     # 开始集
@@ -70,7 +90,7 @@ class MediaServerLibrary(BaseModel):
     # 名称
     name: Optional[str] = None
     # 路径
-    path: Optional[Union[str, list]] = None
+    path: Optional[Union[str, List[str]]] = None
     # 类型
     type: Optional[str] = None
     # 媒体库内媒体数量
@@ -88,6 +108,8 @@ class MediaServerLibrary(BaseModel):
 
 
 class MediaServerItemUserState(BaseModel):
+    """媒体服务器条目的用户播放状态。"""
+
     # 已播放
     played: Optional[bool] = None
     # 继续播放
@@ -128,9 +150,9 @@ class MediaServerItem(OptionalMediaIdentityMixin, BaseModel):
     # 路径
     path: Optional[str] = None
     # 季集
-    seasoninfo: Optional[Dict[int, list]] = None
+    seasoninfo: Optional[Dict[int, List[int]]] = None
     # 备注
-    note: Optional[Any] = None
+    note: Optional[JsonData] = None
     # 同步时间
     lst_mod_date: Optional[str] = None
     user_state: Optional[MediaServerItemUserState] = None
@@ -172,7 +194,7 @@ class WebhookEventInfo(BaseModel):
     save_reason: Optional[str] = None
     item_isvirtual: Optional[bool] = None
     media_type: Optional[str] = None
-    json_object: Optional[dict] = Field(default_factory=dict)
+    json_object: Optional[dict[str, JsonData]] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -236,7 +258,7 @@ class MediaServerPlayItem(BaseModel):
     image: Optional[str] = None
     link: Optional[str] = None
     percent: Optional[float] = None
-    BackdropImageTags: Optional[list] = Field(default_factory=list)
+    BackdropImageTags: Optional[List[str]] = Field(default_factory=list)
     server_type: Optional[str] = None
     # 飞牛的图片需要Cookies
     use_cookies: Optional[bool] = None

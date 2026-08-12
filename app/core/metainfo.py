@@ -28,8 +28,6 @@ _VIDEO_SEASON_EPISODE_RE = re.compile(
 _ANIME_SQUARE_BRACKET_RE = re.compile(r'\[[+0-9XVPI-]+]\s*\[', re.IGNORECASE)
 
 _BRACED_METAINFO_RE = re.compile(r'(?<={\[)[\W\w]+(?=]})')
-_BRACED_MEDIA_SOURCE_RE = re.compile(r'(?:^|;)media_source=([^;]+)(?=;|$)', re.IGNORECASE)
-_BRACED_MEDIA_ID_RE = re.compile(r'(?:^|;)media_id=([^;]+)(?=;|$)', re.IGNORECASE)
 _BRACED_TMDBID_RE = re.compile(r'(?<=tmdbid=)\d+')
 _BRACED_DOUBANID_RE = re.compile(r'(?<=doubanid=)\d+')
 _BRACED_BANGUMIID_RE = re.compile(r'(?<=bangumiid=)\d+')
@@ -64,7 +62,6 @@ _EXTENDED_MEDIA_ID_TAG_RE = re.compile(
     r'(?:bangumi(?:id)?|anilist(?:id)?)[=\-]\d+',
     re.IGNORECASE,
 )
-_GENERIC_MEDIA_ID_TAG_RE = re.compile(r'(?:^|[;\[])media_(?:source|id)=', re.IGNORECASE)
 _RUST_PARSE_OPTIONS_CACHE_KEY = "_cache_key"
 
 _LEGACY_BRACED_ID_PATTERNS = (
@@ -161,20 +158,12 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
     """
     metainfo = _empty_metainfo()
     legacy_identities = {}
-    generic_identity = (None, None)
     if not title:
         return title, metainfo
-    # 当前格式为 {[media_source=...;media_id=...]}，历史专用标签仅在此处兼容读取。
+    # 自定义识别词是面向用户的独立语法，继续使用各数据源专用 ID 字段。
     results = _BRACED_METAINFO_RE.findall(title)
     if results:
         for result in results:
-            source_match = _BRACED_MEDIA_SOURCE_RE.search(result)
-            media_id_match = _BRACED_MEDIA_ID_RE.search(result)
-            if source_match and media_id_match:
-                generic_identity = resolve_media_identity(
-                    media_source=source_match.group(1).strip(),
-                    media_id=media_id_match.group(1).strip(),
-                )
             legacy_matches = []
             for source, pattern in _LEGACY_BRACED_ID_PATTERNS:
                 legacy_match = pattern.search(result)
@@ -211,9 +200,7 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
                 metainfo['end_episode'] = int(end_episode.group(0))
             # 去除title中该部分
             if (
-                source_match
-                or media_id_match
-                or legacy_matches
+                legacy_matches
                 or mtype
                 or episode_group
                 or begin_season
@@ -252,12 +239,11 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
             title = media_id_re.sub('', title).strip()
             break
 
-    media_source, media_id = generic_identity
-    if not media_source:
-        for source, _ in _LEGACY_ID_KEYS:
-            if legacy_identities.get(source):
-                media_source, media_id = source, legacy_identities[source]
-                break
+    media_source, media_id = None, None
+    for source, _ in _LEGACY_ID_KEYS:
+        if legacy_identities.get(source):
+            media_source, media_id = source, legacy_identities[source]
+            break
     metainfo['media_source'] = media_source
     metainfo['media_id'] = media_id
 
@@ -432,18 +418,13 @@ def _requires_python_metainfo(
     custom_words: Optional[List[str]] = None,
 ) -> bool:
     """
-    判断标题或临时识别词是否包含当前 Rust 扩展尚未支持的媒体身份标签。
+    判断标题或临时识别词是否包含当前 Rust 扩展尚未支持的数据源专用 ID 标签。
 
     :param title: 原始标题
     :param custom_words: 临时识别词
     :return: 是否必须使用Python解析器
     """
     candidates = [title or "", *(custom_words or [])]
-    contains_generic_id = any(
-        _GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
-    )
-    if contains_generic_id and not rust_accel.supports_unified_media_identity():
-        return True
     contains_extended_id = any(
         _EXTENDED_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
     )

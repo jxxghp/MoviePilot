@@ -1,9 +1,10 @@
 from typing import List, Any, Dict, Annotated, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from app import schemas
+from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.agent.tools.manager import moviepilot_tool_manager
 from app.core.security import verify_apikey
 from app.log import logger
@@ -14,7 +15,7 @@ try:
 except ImportError:
     APP_VERSION = "unknown"
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 # MCP 协议版本
 MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"]
@@ -26,6 +27,15 @@ MCP_HIDDEN_TOOLS = {
     "edit_file",
     "write_file",
     "read_file",
+}
+MCP_JSONRPC_ERROR_RESPONSES = {
+    400: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 请求错误"},
+    401: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 认证失败"},
+    403: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 访问被拒绝"},
+    404: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 方法不存在"},
+    409: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 请求冲突"},
+    422: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 参数校验失败"},
+    500: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 内部错误"},
 }
 
 
@@ -66,7 +76,24 @@ def create_jsonrpc_error(
     return error
 
 
-@router.post("", summary="MCP JSON-RPC 端点", response_model=None)
+@router.post(
+    "",
+    summary="MCP JSON-RPC 端点",
+    response_model=schemas.McpJsonRpcResponse,
+    openapi_extra={
+        RAW_RESPONSE_OPENAPI_KEY: True,
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {"schema": schemas.MCP_JSONRPC_REQUEST_SCHEMA}
+            },
+        },
+    },
+    responses={
+        **MCP_JSONRPC_ERROR_RESPONSES,
+        204: {"description": "JSON-RPC 通知已接收"},
+    },
+)
 async def mcp_jsonrpc(
     request: Request, _: Annotated[str, Depends(verify_apikey)] = None
 ) -> Union[JSONResponse, Response]:
@@ -111,7 +138,9 @@ async def mcp_jsonrpc(
             else:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "initialized must be a notification"},
+                    content=create_jsonrpc_error(
+                        request_id, -32600, "initialized must be a notification"
+                    ),
                 )
 
         # 处理工具列表请求
@@ -234,7 +263,17 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-@router.delete("", summary="终止 MCP 会话", response_model=None)
+@router.delete(
+    "",
+    summary="终止 MCP 会话",
+    status_code=204,
+    response_class=Response,
+    response_model=None,
+    responses={
+        **MCP_JSONRPC_ERROR_RESPONSES,
+        204: {"description": "MCP 会话已终止"},
+    },
+)
 async def delete_mcp_session(
     _: Annotated[str, Depends(verify_apikey)] = None,
 ) -> Union[JSONResponse, Response]:
@@ -247,7 +286,11 @@ async def delete_mcp_session(
 # ==================== 兼容的 RESTful API 端点 ====================
 
 
-@router.get("/tools", summary="列出所有可用工具", response_model=List[Dict[str, Any]])
+@router.get(
+    "/tools",
+    summary="列出所有可用工具",
+    response_model=List[schemas.McpToolInfo],
+)
 async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     获取所有可用的工具列表
@@ -274,7 +317,11 @@ async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
         raise HTTPException(status_code=500, detail=f"获取工具列表失败: {str(e)}")
 
 
-@router.post("/tools/call", summary="调用工具", response_model=schemas.ToolCallResponse)
+@router.post(
+    "/tools/call",
+    summary="调用工具",
+    response_model=schemas.Response[schemas.ToolCallData],
+)
 async def call_tool(
     request: schemas.ToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None
 ) -> Any:
@@ -292,13 +339,20 @@ async def call_tool(
             request.tool_name, request.arguments
         )
 
-        return schemas.ToolCallResponse(success=True, result=result_text)
+        return schemas.Response(
+            success=True,
+            data=schemas.ToolCallData(result=result_text),
+        )
     except Exception as e:
         logger.error(f"调用工具 {request.tool_name} 失败: {e}", exc_info=True)
-        return schemas.ToolCallResponse(success=False, error=f"调用工具失败: {str(e)}")
+        return schemas.Response(success=False, message="调用工具失败")
 
 
-@router.get("/tools/{tool_name}", summary="获取工具详情", response_model=Dict[str, Any])
+@router.get(
+    "/tools/{tool_name}",
+    summary="获取工具详情",
+    response_model=schemas.McpToolInfo,
+)
 async def get_tool_info(
     tool_name: str, _: Annotated[str, Depends(verify_apikey)]
 ) -> Any:
@@ -332,7 +386,7 @@ async def get_tool_info(
 @router.get(
     "/tools/{tool_name}/schema",
     summary="获取工具参数Schema",
-    response_model=Dict[str, Any],
+    response_model=schemas.McpJsonSchema,
 )
 async def get_tool_schema(
     tool_name: str, _: Annotated[str, Depends(verify_apikey)]

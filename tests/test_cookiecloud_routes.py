@@ -115,3 +115,22 @@ async def test_get_routes_do_not_require_auth_header(cookiecloud_app, monkeypatc
     assert get_response.json() == {"encrypted": "payload"}
     assert post_response.status_code == 200
     assert post_response.json() == {"encrypted": "payload"}
+
+
+def test_cookiecloud_openapi_declares_native_success_models(cookiecloud_app):
+    """CookieCloud 原生兼容响应也必须在 OpenAPI 中给出明确结构。"""
+    schema = cookiecloud_app.openapi()
+
+    root_content = schema["paths"]["/cookiecloud/"]["get"]["responses"]["200"][
+        "content"
+    ]
+    update_schema = schema["paths"]["/cookiecloud/update"]["post"]["responses"][
+        "200"
+    ]["content"]["application/json"]["schema"]
+    download_schema = schema["paths"]["/cookiecloud/get/{uuid}"]["get"][
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"]
+
+    assert root_content["text/plain"]["schema"] == {"type": "string"}
+    assert update_schema["$ref"].endswith("/CookieActionResponse")
+    assert download_schema["$ref"].endswith("/CookieEncryptedPayload")

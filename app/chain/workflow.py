@@ -122,8 +122,18 @@ class WorkflowExecutor:
         )
         self.actions = {action['id']: Action(**action) for action in workflow.actions}
         self.flows = [ActionFlow(**flow) for flow in workflow.flows]
-        self.execution_config = getattr(workflow, "execution_config", None) or {}
-        self.restored_execution_state = getattr(workflow, "execution_state", None) or {}
+        execution_config = getattr(workflow, "execution_config", None) or {}
+        execution_state = getattr(workflow, "execution_state", None) or {}
+        self.execution_config = (
+            execution_config.model_dump(exclude_none=True)
+            if isinstance(execution_config, BaseModel)
+            else execution_config
+        )
+        self.restored_execution_state = (
+            execution_state.model_dump(exclude_none=True)
+            if isinstance(execution_state, BaseModel)
+            else execution_state
+        )
         self.total_actions = len(self.actions)
         self.success = True
         self.has_failure = False

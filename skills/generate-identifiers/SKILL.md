@@ -52,15 +52,16 @@ Regex substitution. The left side is a regex pattern, the right side is the repl
 
 **Special replacement for direct ID specification:**
 ```
-被替换词 => {[media_source=themoviedb;media_id=xxx;type=movie/tv;s=xxx;e=xxx]}
-被替换词 => {[media_source=douban;media_id=xxx;type=movie/tv;s=xxx;e=xxx]}
+被替换词 => {[tmdbid=xxx;type=movie/tv;s=xxx;e=xxx]}
+被替换词 => {[doubanid=xxx;type=movie/tv;s=xxx;e=xxx]}
 ```
-`media_source` must use a `MediaSource` enum value and `media_id` must be that
-source's native ID. Where `s` (season) and `e` (episode) are optional. For TMDB
-TV recognition, add `g=xxx` to specify an episode group:
+Use the source-specific field that matches the target metadata provider:
+`tmdbid`, `doubanid`, `bangumiid`, or `anilistid`. Where `s` (season) and `e`
+(episode) are optional. For TMDB TV recognition, add `g=xxx` to specify an
+episode group:
 
 ```
-被替换词 => {[media_source=themoviedb;media_id=xxx;type=tv;g=xxx;s=xxx;e=xxx]}
+被替换词 => {[tmdbid=xxx;type=tv;g=xxx;s=xxx;e=xxx]}
 ```
 
 ### 3. Episode Offset (集偏移)
@@ -115,13 +116,13 @@ Bad (too broad for a global rule):
 ```
 REPACK
 1080p
-S01E01 => {[media_source=themoviedb;media_id=12345;type=tv;s=1;e=1]}
+S01E01 => {[tmdbid=12345;type=tv;s=1;e=1]}
 ```
 
 Better (scoped to the user's sample pattern):
 ```
 (\[SubGroup\].*?My\.Show.*?2024.*?)REPACK => \1
-Some\.Weird\.Name(?:\.2024)?(?:\.S01E\d+)? => {[media_source=themoviedb;media_id=12345;type=tv;s=1]}
+Some\.Weird\.Name(?:\.2024)?(?:\.S01E\d+)? => {[tmdbid=12345;type=tv;s=1]}
 \[Baha\] <> \[1080P\] >> EP-12
 ```
 
@@ -228,7 +229,7 @@ Tell the user:
 **Solution**: Direct ID specification with a sample-specific alias pattern:
 ```
 # 仅在 Some.Weird.Name 这一命名模式下强制绑定 TMDB ID 12345
-Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[media_source=themoviedb;media_id=12345;type=tv;s=1]}
+Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[tmdbid=12345;type=tv;s=1]}
 ```
 
 ### Force TMDB Episode Group Recognition
@@ -238,7 +239,7 @@ Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[media_source=themoviedb;media_i
 **Solution**: Direct TMDB ID specification with `g=...`:
 ```
 # 仅在 Some.Weird.Name 命名模式下绑定 TMDB ID 12345 并指定剧集组
-Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[media_source=themoviedb;media_id=12345;type=tv;g=5ad0ec240e0a26303f00d84d;s=1]}
+Some\.Weird\.Name(?:\.S01E\d+)?(?:\.1080p)? => {[tmdbid=12345;type=tv;g=5ad0ec240e0a26303f00d84d;s=1]}
 ```
 
 ### Combined Fix

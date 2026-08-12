@@ -1,13 +1,14 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import Depends, Query
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.anilist import AniListChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 PageParam = Annotated[int, Query(ge=1)]
 CountParam = Annotated[int, Query(ge=1, le=50)]

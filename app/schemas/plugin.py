@@ -1,6 +1,8 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
+
+from app.schemas.common import JsonData
 
 
 class Plugin(BaseModel):
@@ -51,7 +53,7 @@ class Plugin(BaseModel):
     # 安装次数
     install_count: Optional[int] = 0
     # 更新记录
-    history: Optional[dict] = Field(default_factory=dict)
+    history: Optional[dict[str, str]] = Field(default_factory=dict)
     # 添加时间，值越小表示越靠后发布
     add_time: Optional[int] = 0
     # 插件公钥
@@ -70,11 +72,11 @@ class PluginDashboard(Plugin):
     # 演染模式
     render_mode: Optional[str] = Field(default="vuetify")
     # 全局配置
-    attrs: Optional[dict] = Field(default_factory=dict)
+    attrs: Optional[dict[str, JsonData]] = Field(default_factory=dict)
     # col列数
-    cols: Optional[dict] = Field(default_factory=dict)
+    cols: Optional[dict[str, JsonData]] = Field(default_factory=dict)
     # 页面元素
-    elements: Optional[List[dict]] = Field(default_factory=list)
+    elements: Optional[List[dict[str, JsonData]]] = Field(default_factory=list)
 
 
 class PluginSidebarNavItem(BaseModel):
@@ -115,6 +117,10 @@ class PluginRating(BaseModel):
     user_rating: Optional[float] = Field(default=None, description="当前安装实例评分")
 
 
+class PluginRatingMap(RootModel[Dict[str, PluginRating]]):
+    """插件 ID 与评分结果的映射。"""
+
+
 class PluginMemoryInfo(BaseModel):
     """插件内存信息"""
     plugin_id: str = Field(description="插件ID")
@@ -126,4 +132,46 @@ class PluginMemoryInfo(BaseModel):
     calculation_time_ms: float = Field(description="计算耗时(毫秒)")
     timestamp: float = Field(description="统计时间戳")
     error: Optional[str] = Field(default=None, description="错误信息")
-    object_details: Optional[List[Dict[str, Any]]] = Field(default=None, description="大对象详情")
+    object_details: Optional[List[Dict[str, JsonData]]] = Field(default=None, description="大对象详情")
+
+
+class PluginRemoteInfo(BaseModel):
+    """插件模块联邦远程入口。"""
+
+    id: str
+    url: str
+    name: str
+
+
+class PluginReleaseItem(BaseModel):
+    """可安装的插件 Release 版本。"""
+
+    version: str
+    tag_name: str
+    name: str
+    published_at: Optional[str] = None
+    body: str = ""
+    asset_name: str
+    is_latest: bool = False
+    is_current: bool = False
+
+
+class PluginReleaseData(BaseModel):
+    """插件 Release 能力与版本列表。"""
+
+    release_supported: bool = False
+    latest_version: Optional[str] = None
+    current_version: Optional[str] = None
+    items: List[PluginReleaseItem] = Field(default_factory=list)
+
+
+class PluginFoldersData(RootModel[Dict[str, List[str]]]):
+    """插件文件夹与插件 ID 列表映射。"""
+
+
+class PluginDashboardMetaItem(BaseModel):
+    """插件仪表板入口摘要。"""
+
+    id: str
+    name: Optional[str] = None
+    key: Optional[str] = None

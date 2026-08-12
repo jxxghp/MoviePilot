@@ -1,29 +1,48 @@
-from typing import Any, Optional
+from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.helper.locale import LocaleHelper
 
 
-class Response(BaseModel):
-    """通用接口响应结构"""
+DataT = TypeVar("DataT")
+
+
+class Response(BaseModel, Generic[DataT]):
+    """统一接口响应结构，仅允许业务数据类型随接口变化。"""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"required": ["success", "message", "data"]}
+    )
 
     # 状态
     success: bool
     # 消息文本
-    message: Optional[str] = None
-    # 多语言消息文本
-    message_i18n: Optional[str] = None
+    message: str = ""
     # 数据
-    data: Optional[Any] = Field(default_factory=dict)
+    data: Optional[DataT] = None
 
-    @model_validator(mode="after")
-    def fill_message_i18n(self) -> "Response":
-        """
-        自动补充响应消息的多语言文本。
-        """
-        if self.message and self.message_i18n is None:
-            self.message_i18n = LocaleHelper.translate_text(
-                self.message, locale=LocaleHelper.get_current_locale()
-            )
-        return self
+    @field_validator("message", mode="before")
+    @classmethod
+    def localize_message(cls, value: Any) -> str:
+        """按当前请求语言直接本地化消息文本，并将空消息归一为空字符串。"""
+        if value is None:
+            return ""
+        message = str(value)
+        if not message:
+            return ""
+        return LocaleHelper.translate_text(
+            message, locale=LocaleHelper.get_current_locale()
+        )
+
+
+class ValidationIssue(BaseModel):
+    """请求参数校验失败时返回的单项错误信息。"""
+
+    # 参数位置
+    location: list[str | int]
+    # 错误说明
+    message: str
+    # 错误类型
+    error_type: str

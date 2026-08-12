@@ -1,11 +1,12 @@
 import re
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Body, Depends, Request
+from fastapi import Body, Depends, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.agent.llm import (
     LLMHelper,
     LLMProviderManager,
@@ -20,7 +21,7 @@ from app.db.user_oper import (
 )
 from app.log import logger
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 class LlmTestRequest(BaseModel):
@@ -85,7 +86,11 @@ def _sanitize_llm_error(message: str, api_key: Optional[str] = None) -> str:
     return sanitized
 
 
-@router.get("/models", summary="获取LLM模型列表", response_model=schemas.Response)
+@router.get(
+    "/models",
+    summary="获取LLM模型列表",
+    response_model=schemas.Response[schemas.LLMModelCatalogData],
+)
 async def get_llm_models(
     provider: str,
     api_key: Optional[str] = None,
@@ -125,7 +130,11 @@ async def get_llm_models(
         )
 
 
-@router.get("/providers", summary="获取LLM提供商目录", response_model=schemas.Response)
+@router.get(
+    "/providers",
+    summary="获取LLM提供商目录",
+    response_model=schemas.Response[list[schemas.LLMProviderInfo]],
+)
 async def get_llm_providers(
     _: User = Depends(get_current_active_user_async),
 ):
@@ -142,7 +151,7 @@ async def get_llm_providers(
 @router.post(
     "/provider-auth/start",
     summary="启动LLM提供商授权",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.LLMProviderAuthSession],
 )
 async def start_llm_provider_auth(
     payload: LlmProviderAuthStartRequest,
@@ -173,7 +182,7 @@ async def start_llm_provider_auth(
 @router.get(
     "/provider-auth/{session_id}",
     summary="获取LLM提供商授权会话状态",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.LLMProviderAuthSession],
 )
 async def get_llm_provider_auth_session(
     session_id: str,
@@ -192,7 +201,7 @@ async def get_llm_provider_auth_session(
 @router.post(
     "/provider-auth/{session_id}/poll",
     summary="轮询LLM提供商授权会话",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.LLMProviderAuthSession],
 )
 async def poll_llm_provider_auth_session(
     session_id: str,
@@ -211,7 +220,7 @@ async def poll_llm_provider_auth_session(
 @router.delete(
     "/provider-auth/{provider_id}",
     summary="断开LLM提供商授权",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 async def delete_llm_provider_auth(
     provider_id: str,
@@ -230,8 +239,15 @@ async def delete_llm_provider_auth(
 @router.get(
     "/provider-auth/callback/{provider_id}",
     summary="LLM提供商OAuth回调",
-    response_class=HTMLResponse,
+    response_class=Response,
     name="llm_provider_auth_callback",
+    response_model=None,
+    responses={
+        200: {
+            "description": "OAuth 授权结果页面",
+            "content": {"text/html": {"schema": {"type": "string"}}},
+        }
+    },
 )
 async def llm_provider_auth_callback(
     provider_id: str,
@@ -253,7 +269,11 @@ async def llm_provider_auth_callback(
     return HTMLResponse(content=render_auth_result_html(success, message))
 
 
-@router.post("/test", summary="测试LLM调用", response_model=schemas.Response)
+@router.post(
+    "/test",
+    summary="测试LLM调用",
+    response_model=schemas.Response[schemas.LLMTestResult],
+)
 async def llm_test(
     payload: Annotated[Optional[LlmTestRequest], Body()] = None,
     _: User = Depends(get_current_active_superuser_async),

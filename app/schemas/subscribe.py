@@ -110,7 +110,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     # 已完成集数
     completed_episode: Optional[int] = None
     # 附加信息
-    note: Optional[Any] = None
+    note: Optional[List[int]] = None
     # 状态：N-新建， R-订阅中
     state: Optional[str] = None
     # 最后更新时间
@@ -197,6 +197,8 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
 
 
 class SubscribeShare(OptionalMediaIdentityMixin, BaseModel):
+    """可供其他用户复用的订阅分享信息。"""
+
     # 分享ID
     id: Optional[int] = None
     # 订阅ID
@@ -268,6 +270,8 @@ class SubscribeShare(OptionalMediaIdentityMixin, BaseModel):
 
 
 class SubscribeShareStatistics(BaseModel):
+    """单个用户的订阅分享数量与复用统计。"""
+
     # 分享人
     share_user: Optional[str] = None
     # 分享数量
@@ -277,6 +281,8 @@ class SubscribeShareStatistics(BaseModel):
 
 
 class SubscribeDownloadFileInfo(BaseModel):
+    """订阅剧集关联的下载文件信息。"""
+
     # 种子名称
     torrent_title: Optional[str] = None
     # 站点名称
@@ -290,6 +296,8 @@ class SubscribeDownloadFileInfo(BaseModel):
 
 
 class SubscribeLibraryFileInfo(BaseModel):
+    """订阅剧集关联的媒体库文件信息。"""
+
     # 存储
     storage: Optional[str] = "local"
     # 文件路径
@@ -303,6 +311,8 @@ class SubscribeLibraryFileInfo(BaseModel):
 
 
 class SubscribeEpisodeInfo(BaseModel):
+    """订阅单集的元数据及关联文件。"""
+
     # 标题
     title: Optional[str] = None
     # 描述
@@ -316,6 +326,8 @@ class SubscribeEpisodeInfo(BaseModel):
 
 
 class SubscrbieInfo(BaseModel):
+    """订阅详情及按集号归组的文件信息。"""
+
     # 订阅信息
     subscribe: Optional[Subscribe] = None
     # 集信息 {集号: {download: 文件路径，library: 文件路径, backdrop: url, title: 标题, description: 描述}}

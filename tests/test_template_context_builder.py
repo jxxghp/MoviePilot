@@ -14,7 +14,8 @@ from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.core.meta import MetaMusic
 from app.helper.message import TemplateContextBuilder
-from app.schemas.types import MediaType
+from app.modules.filemanager.transhandler import TransHandler
+from app.schemas.types import MediaSource, MediaType
 from app.schemas.tmdb import TmdbEpisode
 
 
@@ -139,6 +140,34 @@ def test_build_preserves_special_season_context() -> None:
     assert context["season"] == "0"
     assert context["season_fmt"] == "S00"
     assert context["season_year"] == "2024"
+
+
+def test_file_rename_context_keeps_source_specific_id_variables() -> None:
+    """文件重命名沿用原专用ID变量，不暴露统一身份字段。"""
+    mediainfo = MediaInfo(
+        media_source=MediaSource.AniList,
+        media_id="170942",
+        type=MediaType.TV,
+        title="测试动画",
+        tmdb_id=24680,
+        imdb_id="tt1234567",
+        douban_id="35000000",
+        bangumi_id=499390,
+        anilist_id=170942,
+    )
+
+    context = TransHandler.get_naming_dict(
+        meta=MetaInfo("Test.Show.S01E01"),
+        mediainfo=mediainfo,
+    )
+
+    assert context["tmdbid"] == 24680
+    assert context["imdbid"] == "tt1234567"
+    assert context["doubanid"] == "35000000"
+    assert context["bangumiid"] == 499390
+    assert context["anilistid"] == 170942
+    assert "media_source" not in context
+    assert "media_id" not in context
 
 
 def test_build_exposes_music_audio_specs_for_notifications() -> None:

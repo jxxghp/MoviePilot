@@ -1220,12 +1220,16 @@ class TransHandler:
         :param file_ext: 文件扩展名
         :param episodes_info: 当前季的全部集信息
         """
-        return TemplateHelper().builder.build(
+        naming_context = TemplateHelper().builder.build(
             meta=meta,
             mediainfo=mediainfo,
             file_extension=file_ext,
             episodes_info=episodes_info,
         )
+        # 重命名格式是独立的用户配置契约，继续只暴露各数据源原有 ID 变量。
+        naming_context.pop("media_source", None)
+        naming_context.pop("media_id", None)
+        return naming_context
 
     @staticmethod
     def __delete_version_files(storage_oper: StorageBase, path: Path) -> bool:

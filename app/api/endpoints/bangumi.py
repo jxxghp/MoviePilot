@@ -1,13 +1,14 @@
 from typing import List, Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.bangumi import BangumiChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 @router.get(

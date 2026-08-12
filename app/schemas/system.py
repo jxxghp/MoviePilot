@@ -3,6 +3,9 @@ from typing import Optional, Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.context import MediaInfo, MetaInfo, TorrentInfo
+from app.schemas.rule import FilterRuleGroup
+
 
 @dataclass
 class ServiceInfo:
@@ -130,6 +133,61 @@ class StorageConf(BaseModel):
     name: Optional[str] = None
     # 配置
     config: Optional[dict] = Field(default_factory=dict)
+
+
+class SystemEnvironmentUpdateData(BaseModel):
+    """环境配置更新的成功项和失败项。"""
+
+    success_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
+    failed_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
+
+
+class PluginMarketSyncData(BaseModel):
+    """Wiki 插件市场仓库同步结果。"""
+
+    value: str
+    repos: list[str] = Field(default_factory=list)
+    wiki_repos: list[str] = Field(default_factory=list)
+    added_count: int = 0
+    total_count: int = 0
+    source_url: str
+
+
+class RuleTestData(BaseModel):
+    """过滤规则测试的输入、识别和匹配明细。"""
+
+    title: str
+    subtitle: Optional[str] = None
+    rulegroup_name: str
+    rulegroup: Optional[FilterRuleGroup] = None
+    meta_info: MetaInfo
+    media_info: Optional[MediaInfo] = None
+    torrent_info: TorrentInfo
+    priority: Optional[int] = None
+    matched: bool = False
+
+
+class NetTestTarget(BaseModel):
+    """前端可选择的网络测试目标。"""
+
+    id: str
+    name: str
+    icon: str
+
+
+class SystemModuleInfo(BaseModel):
+    """已加载系统模块摘要。"""
+
+    id: str
+    name: str
+    name_i18n: str
+    name_key: str
+
+
+class SystemModuleListData(BaseModel):
+    """已加载系统模块列表。"""
+
+    modules: list[SystemModuleInfo] = Field(default_factory=list)
 
 
 class TransferDirectoryConf(BaseModel):

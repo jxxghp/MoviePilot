@@ -1,7 +1,8 @@
-from typing import Any, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource, MusicEntityType, MusicTargetEntityType
 
@@ -75,7 +76,7 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     names: list[str] = Field(default_factory=list)
     detail_link: Optional[str] = None
     listen_count: Optional[int] = None
-    raw_data: dict[str, Any] = Field(default_factory=dict)
+    raw_data: dict[str, JsonData] = Field(default_factory=dict)
     title_year: Optional[str] = None
     poster_path: Optional[str] = None
     backdrop_path: Optional[str] = None
@@ -125,7 +126,7 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     detail_link: Optional[str] = None
     tracks: list[MusicInfo] = Field(default_factory=list)
     releases: list[MusicRelease] = Field(default_factory=list)
-    raw_data: dict[str, Any] = Field(default_factory=dict)
+    raw_data: dict[str, JsonData] = Field(default_factory=dict)
     title_year: Optional[str] = None
     poster_path: Optional[str] = None
     backdrop_path: Optional[str] = None
@@ -160,7 +161,7 @@ class MusicArtistInfo(OptionalMediaIdentityMixin, BaseModel):
     detail_link: Optional[str] = None
     external_links: dict[str, str] = Field(default_factory=dict)
     album_count: Optional[int] = None
-    raw_data: dict[str, Any] = Field(default_factory=dict)
+    raw_data: dict[str, JsonData] = Field(default_factory=dict)
     poster_path: Optional[str] = None
     overview: Optional[str] = None
 
@@ -171,3 +172,25 @@ class MusicRecognizeRequest(RequiredMediaIdentityMixin, BaseModel):
     media_source: MediaSource
     media_id: str
     music_type: Optional[MusicTargetEntityType] = None
+
+
+class MusicRecognitionCacheItem(BaseModel):
+    """单条 MusicBrainz 识别缓存。"""
+
+    key: str
+    media_id: str = ""
+    title: str = ""
+    artists: list[str] = Field(default_factory=list)
+    album: str = ""
+    year: str | int = ""
+    music_type: str = "recording"
+    cover_url: str = ""
+
+
+class MusicRecognitionCacheData(BaseModel):
+    """MusicBrainz 识别缓存统计及明细。"""
+
+    count: int = 0
+    recognized: int = 0
+    unrecognized: int = 0
+    data: list[MusicRecognitionCacheItem] = Field(default_factory=list)

@@ -2,11 +2,12 @@ import json
 from datetime import datetime
 from typing import List, Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.workflow import WorkflowChain
 from app.core.config import global_vars
 from app.core.plugin import PluginManager
@@ -23,7 +24,7 @@ from app.helper.server import MoviePilotServerHelper
 from app.scheduler import Scheduler
 from app.schemas.types import EventType, EVENT_TYPE_NAMES
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 WORKFLOW_TRIGGER_TIMER = "timer"
 WORKFLOW_TRIGGER_EVENT = "event"
@@ -41,7 +42,7 @@ async def list_workflows(
     return await WorkflowOper(db).async_list()
 
 
-@router.post("/", summary="创建工作流", response_model=schemas.Response)
+@router.post("/", summary="创建工作流", response_model=schemas.Response[None])
 async def create_workflow(
     workflow: schemas.Workflow,
     db: AsyncSession = Depends(get_async_db),
@@ -63,7 +64,11 @@ async def create_workflow(
     return schemas.Response(success=True, message="创建工作流成功")
 
 
-@router.get("/plugin/actions", summary="查询插件动作", response_model=List[dict])
+@router.get(
+    "/plugin/actions",
+    summary="查询插件动作",
+    response_model=List[schemas.PluginWorkflowActionGroup],
+)
 def list_plugin_actions(
     plugin_id: str = None, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
@@ -73,7 +78,11 @@ def list_plugin_actions(
     return PluginManager().get_plugin_actions(plugin_id)
 
 
-@router.get("/actions", summary="所有动作", response_model=List[dict])
+@router.get(
+    "/actions",
+    summary="所有动作",
+    response_model=List[schemas.WorkflowActionDefinition],
+)
 async def list_actions(_: User = Depends(get_current_active_manage_user_async)) -> Any:
     """
     获取所有动作
@@ -81,7 +90,11 @@ async def list_actions(_: User = Depends(get_current_active_manage_user_async)) 
     return WorkFlowManager().list_actions()
 
 
-@router.get("/event_types", summary="获取所有事件类型", response_model=List[dict])
+@router.get(
+    "/event_types",
+    summary="获取所有事件类型",
+    response_model=List[schemas.NameValueOption],
+)
 async def get_event_types(_: User = Depends(get_current_active_manage_user_async)) -> Any:
     """
     获取所有事件类型
@@ -95,7 +108,7 @@ async def get_event_types(_: User = Depends(get_current_active_manage_user_async
     ]
 
 
-@router.post("/share", summary="分享工作流", response_model=schemas.Response)
+@router.post("/share", summary="分享工作流", response_model=schemas.Response[None])
 async def workflow_share(
     workflow: schemas.WorkflowShare, _: User = Depends(get_current_active_manage_user_async)
 ) -> Any:
@@ -116,7 +129,7 @@ async def workflow_share(
     return schemas.Response(success=state, message=errmsg)
 
 
-@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response)
+@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response[None])
 async def workflow_share_delete(
     share_id: int, _: User = Depends(get_current_active_manage_user_async)
 ) -> Any:
@@ -127,7 +140,7 @@ async def workflow_share_delete(
     return schemas.Response(success=state, message=errmsg)
 
 
-@router.post("/fork", summary="复用工作流", response_model=schemas.Response)
+@router.post("/fork", summary="复用工作流", response_model=schemas.Response[None])
 async def workflow_fork(
     workflow: schemas.WorkflowShare,
     db: AsyncSession = Depends(get_async_db),
@@ -206,7 +219,7 @@ async def workflow_shares(
 
 
 @router.post(
-    "/{workflow_id}/run", summary="执行工作流", response_model=schemas.Response
+    "/{workflow_id}/run", summary="执行工作流", response_model=schemas.Response[None]
 )
 def run_workflow(
     workflow_id: int,
@@ -223,7 +236,7 @@ def run_workflow(
 
 
 @router.post(
-    "/{workflow_id}/start", summary="启用工作流", response_model=schemas.Response
+    "/{workflow_id}/start", summary="启用工作流", response_model=schemas.Response[None]
 )
 def start_workflow(
     workflow_id: int,
@@ -257,7 +270,7 @@ def start_workflow(
 
 
 @router.post(
-    "/{workflow_id}/pause", summary="停用工作流", response_model=schemas.Response
+    "/{workflow_id}/pause", summary="停用工作流", response_model=schemas.Response[None]
 )
 def pause_workflow(
     workflow_id: int,
@@ -285,7 +298,7 @@ def pause_workflow(
 
 
 @router.post(
-    "/{workflow_id}/reset", summary="重置工作流", response_model=schemas.Response
+    "/{workflow_id}/reset", summary="重置工作流", response_model=schemas.Response[None]
 )
 async def reset_workflow(
     workflow_id: int,
@@ -319,7 +332,7 @@ async def get_workflow(
     return await WorkflowOper(db).async_get(workflow_id)
 
 
-@router.put("/{workflow_id}", summary="更新工作流", response_model=schemas.Response)
+@router.put("/{workflow_id}", summary="更新工作流", response_model=schemas.Response[None])
 def update_workflow(
     workflow: schemas.Workflow,
     db: Session = Depends(get_db),
@@ -349,7 +362,7 @@ def update_workflow(
     return schemas.Response(success=True, message="更新成功")
 
 
-@router.delete("/{workflow_id}", summary="删除工作流", response_model=schemas.Response)
+@router.delete("/{workflow_id}", summary="删除工作流", response_model=schemas.Response[None])
 def delete_workflow(
     workflow_id: int,
     db: Session = Depends(get_db),

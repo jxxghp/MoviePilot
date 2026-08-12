@@ -20,7 +20,15 @@ from app.core.config import settings
 from app.core.security import anthropic_api_key_header
 from app.schemas.types import MessageChannel
 
-router = APIRouter()
+ANTHROPIC_ERROR_RESPONSES = {
+    400: {"model": schemas.AnthropicErrorResponse, "description": "请求格式错误"},
+    401: {"model": schemas.AnthropicErrorResponse, "description": "认证失败"},
+    422: {"model": schemas.AnthropicErrorResponse, "description": "请求参数校验失败"},
+    500: {"model": schemas.AnthropicErrorResponse, "description": "服务内部错误"},
+    503: {"model": schemas.AnthropicErrorResponse, "description": "AI Agent 不可用"},
+}
+
+router = APIRouter(responses=ANTHROPIC_ERROR_RESPONSES)
 
 SESSION_PREFIX = "anthropic:"
 
@@ -100,6 +108,14 @@ async def _stream_anthropic_response(
     "/messages",
     summary="Anthropic compatible messages",
     response_model=schemas.AnthropicMessagesResponse,
+    responses={
+        200: {
+            "description": "Anthropic message 或 SSE 数据流",
+            "content": {
+                "text/event-stream": {"schema": {"type": "string"}},
+            },
+        }
+    },
 )
 async def messages(
     payload: schemas.AnthropicMessagesRequest,

@@ -41,10 +41,30 @@ class DownloaderTorrent(BaseModel):
     ratio_limit: Optional[float] = None
     seeding_time_limit: Optional[int] = None
     trackers: Optional[List[str]] = Field(default_factory=list)
-    media: Optional[dict] = Field(default_factory=dict)
+    media: Optional["DownloadTaskMedia"] = None
     userid: Optional[str] = None
     username: Optional[str] = None
     left_time: Optional[str] = None
+
+
+class DownloadTaskMedia(OptionalMediaIdentityMixin, BaseModel):
+    """下载任务关联的影视或音乐媒体摘要。"""
+
+    type: Optional[str] = None
+    title: Optional[str] = None
+    season: Optional[list[int] | int | str] = None
+    episode: Optional[list[int] | int | str] = None
+    image: Optional[str] = None
+    poster: Optional[str] = None
+    backdrop: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    artists: list[str] = Field(default_factory=list)
+    album: Optional[str] = None
+    album_id: Optional[str] = None
+    total_tracks: Optional[int] = None
+    track_number: Optional[int] = None
 
 
 class TransferTorrent(DownloaderTorrent):
@@ -281,3 +301,60 @@ class ManualTransferTargetPath(BaseModel):
     library_type_folder: Optional[bool] = False
     # 媒体库类别子目录
     library_category_folder: Optional[bool] = False
+
+
+class ManualTransferPreviewSummary(BaseModel):
+    """手动整理预览数量统计。"""
+
+    total: int = 0
+    success: int = 0
+    failed: int = 0
+
+
+class ManualTransferPreviewItem(BaseModel):
+    """单个文件的手动整理预览。"""
+
+    source: Optional[str] = None
+    target: Optional[str] = None
+    target_dir: Optional[str] = None
+    success: bool = False
+    message: Optional[str] = None
+    type: Optional[str] = None
+    title: Optional[str] = None
+    season: Optional[int] = None
+    episode: Optional[int] = None
+    episode_end: Optional[int] = None
+    part: Optional[int | str] = None
+    org_string: Optional[str] = None
+    apply_words: list[str] = Field(default_factory=list)
+    resource_team: Optional[str] = None
+    customization: Optional[str] = None
+
+
+class ManualTransferResultData(BaseModel):
+    """手动整理预览或执行结果数据。"""
+
+    summary: Optional[ManualTransferPreviewSummary] = None
+    items: list[ManualTransferPreviewItem] = Field(default_factory=list)
+    message: Optional[str] = None
+
+
+class EpisodeFormatRecommendData(BaseModel):
+    """集数定位模板推荐结果。"""
+
+    rule_name: str
+    episode_format: str
+    sample_file: str
+    pattern: Optional[str] = None
+    rule_index: Optional[int] = None
+    min_file_size_mb: Optional[int] = None
+    sample_count: Optional[int] = None
+    majority_count: Optional[int] = None
+    confidence: Optional[str] = None
+    size_filter_relaxed: Optional[bool] = None
+    native_verified_count: Optional[int] = None
+    native_fallback_count: Optional[int] = None
+    native_conflict_count: Optional[int] = None
+    reason: Optional[str] = None
+    reasons: list[str] = Field(default_factory=list)
+    message: Optional[str] = None

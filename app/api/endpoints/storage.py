@@ -4,10 +4,11 @@ import re
 from pathlib import Path
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from starlette.responses import FileResponse, Response
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
@@ -23,10 +24,14 @@ from app.helper.progress import ProgressHelper
 from app.schemas.types import ProgressKey
 from app.utils.string import StringUtils
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
-@router.get("/qrcode/{name}", summary="生成二维码内容", response_model=schemas.Response)
+@router.get(
+    "/qrcode/{name}",
+    summary="生成二维码内容",
+    response_model=schemas.Response[schemas.StorageQrCodeData],
+)
 def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     生成二维码
@@ -38,7 +43,9 @@ def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get(
-    "/auth_url/{name}", summary="获取 OAuth2 授权 URL", response_model=schemas.Response
+    "/auth_url/{name}",
+    summary="获取 OAuth2 授权 URL",
+    response_model=schemas.Response[schemas.StorageAuthUrlData],
 )
 def auth_url(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -50,7 +57,11 @@ def auth_url(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return schemas.Response(success=False, message=errmsg)
 
 
-@router.get("/check/{name}", summary="二维码登录确认", response_model=schemas.Response)
+@router.get(
+    "/check/{name}",
+    summary="二维码登录确认",
+    response_model=schemas.Response[schemas.StorageLoginStatusData],
+)
 def check(
     name: str,
     ck: Optional[str] = None,
@@ -69,7 +80,7 @@ def check(
     return schemas.Response(success=False, message=errmsg)
 
 
-@router.post("/save/{name}", summary="保存存储配置", response_model=schemas.Response)
+@router.post("/save/{name}", summary="保存存储配置", response_model=schemas.Response[None])
 def save(name: str, conf: dict, _: User = Depends(get_current_active_superuser)) -> Any:
     """
     保存存储配置
@@ -78,7 +89,7 @@ def save(name: str, conf: dict, _: User = Depends(get_current_active_superuser))
     return schemas.Response(success=True)
 
 
-@router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response)
+@router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response[None])
 def reset(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重置存储配置
@@ -114,7 +125,7 @@ def list_files(
     return file_list
 
 
-@router.post("/mkdir", summary="创建目录", response_model=schemas.Response)
+@router.post("/mkdir", summary="创建目录", response_model=schemas.Response[None])
 def mkdir(
     fileitem: schemas.FileItem,
     name: str,
@@ -134,7 +145,7 @@ def mkdir(
     return schemas.Response(success=False)
 
 
-@router.post("/delete", summary="删除文件或目录", response_model=schemas.Response)
+@router.post("/delete", summary="删除文件或目录", response_model=schemas.Response[None])
 def delete(
     fileitem: schemas.FileItem, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
@@ -149,7 +160,23 @@ def delete(
     return schemas.Response(success=False)
 
 
-@router.post("/download", summary="下载文件")
+@router.post(
+    "/download",
+    summary="下载文件",
+    response_model=None,
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "文件内容",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+        },
+        404: {"model": schemas.Response[None], "description": "文件下载失败"},
+    },
+)
 def download(
     fileitem: schemas.FileItem, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
@@ -165,7 +192,20 @@ def download(
     return schemas.Response(success=False)
 
 
-@router.post("/image", summary="预览图片")
+@router.post(
+    "/image",
+    summary="预览图片",
+    response_model=None,
+    response_class=Response,
+    responses={
+        200: {
+            "description": "图片内容",
+            "content": {
+                "image/jpeg": {"schema": {"type": "string", "format": "binary"}}
+            },
+        }
+    },
+)
 def image(
     fileitem: schemas.FileItem, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
@@ -181,7 +221,7 @@ def image(
     return Response(content=tmp_file.read_bytes(), media_type="image/jpeg")
 
 
-@router.post("/rename", summary="重命名文件或目录", response_model=schemas.Response)
+@router.post("/rename", summary="重命名文件或目录", response_model=schemas.Response[None])
 def rename(
     fileitem: schemas.FileItem,
     new_name: str,

@@ -236,25 +236,28 @@ def test_locale_helper_translates_common_backend_response_messages():
         assert LocaleHelper.translate_text(message, locale="en-US") == expected
 
 
-def test_response_auto_fills_message_i18n_from_locale_context():
-    """通用 Response 应根据请求语言上下文自动补充多语言消息。"""
+def test_response_localizes_message_from_locale_context():
+    """通用 Response 应根据请求语言上下文直接翻译消息。"""
     token = LocaleHelper.set_current_locale("en-US")
     try:
         response = Response(success=False, message="模块不支持测试")
     finally:
         LocaleHelper.reset_current_locale(token)
 
-    assert response.message == "模块不支持测试"
-    assert response.message_i18n == "Module does not support testing"
+    assert response.message == "Module does not support testing"
+    assert not hasattr(response, "message_i18n")
 
 
-def test_http_exception_handler_returns_untranslated_response_envelope():
-    """HTTPException 响应应统一封装并保留原始错误文本。"""
+def test_http_exception_handler_returns_localized_response_envelope():
+    """HTTPException 响应应统一封装并直接翻译错误文本。"""
     token = LocaleHelper.set_current_locale("en-US")
     try:
         response = asyncio.run(
             localized_http_exception_handler(
-                None,
+                SimpleNamespace(
+                    query_params={},
+                    headers={"accept-language": "en-US"},
+                ),
                 HTTPException(status_code=401, detail="用户名或密码错误"),
             )
         )
@@ -265,18 +268,19 @@ def test_http_exception_handler_returns_untranslated_response_envelope():
     payload = json.loads(response.body)
     assert payload == {
         "success": False,
-        "message": "用户名或密码错误",
-        "data": {},
+        "message": "Incorrect username or password",
+        "data": None,
     }
 
 
-def test_application_docs_use_v2_openapi_and_backend_version():
-    """默认接口文档应展示 v2 地址并使用真实后端版本号。"""
+def test_application_docs_use_v1_openapi_and_backend_version():
+    """默认接口文档应展示 v1 地址并使用真实后端版本号。"""
     app = create_app()
 
-    assert app.openapi_url == "/api/v2/openapi.json"
+    assert app.openapi_url == "/api/v1/openapi.json"
     assert app.version == APP_VERSION
     assert "/api/v1/openapi.json" in {route.path for route in app.routes}
+    assert "/api/v2/openapi.json" not in {route.path for route in app.routes}
 
 
 def test_progress_helper_get_adds_i18n_fields_without_mutating_cache():

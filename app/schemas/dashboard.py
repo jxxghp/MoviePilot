@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, model_validator
 
 from app.helper.locale import LocaleHelper
+from app.schemas.common import JsonData
 
 
 class Statistic(BaseModel):
@@ -120,7 +121,7 @@ class ScheduleProgress(BaseModel):
     # 多语言错误信息
     error_i18n: Optional[str] = None
     # 扩展数据
-    data: Optional[dict] = Field(default_factory=dict)
+    data: Optional[dict[str, JsonData]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def fill_i18n_fields(self) -> "ScheduleProgress":

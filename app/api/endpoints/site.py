@@ -1,11 +1,12 @@
 from typing import List, Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
@@ -33,7 +34,7 @@ from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType, MediaType
 from app.utils.string import StringUtils
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
@@ -129,7 +130,7 @@ async def read_sites_by_media_type(
     ]
 
 
-@router.post("/", summary="新增站点", response_model=schemas.Response)
+@router.post("/", summary="新增站点", response_model=schemas.Response[None])
 async def add_site(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -168,7 +169,7 @@ async def add_site(
     return schemas.Response(success=True)
 
 
-@router.put("/", summary="更新站点", response_model=schemas.Response)
+@router.put("/", summary="更新站点", response_model=schemas.Response[None])
 async def update_site(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -199,7 +200,7 @@ async def update_site(
     return schemas.Response(success=True)
 
 
-@router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
+@router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response[None])
 async def cookie_cloud_sync(
     background_tasks: BackgroundTasks,
     _: User = Depends(get_current_active_superuser_async),
@@ -211,7 +212,7 @@ async def cookie_cloud_sync(
     return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
-@router.get("/reset", summary="重置站点", response_model=schemas.Response)
+@router.get("/reset", summary="重置站点", response_model=schemas.Response[None])
 def reset(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_active_superuser)
 ) -> Any:
@@ -229,7 +230,7 @@ def reset(
 
 
 @router.post(
-    "/priorities", summary="批量更新站点优先级", response_model=schemas.Response
+    "/priorities", summary="批量更新站点优先级", response_model=schemas.Response[None]
 )
 async def update_sites_priority(
     priorities: List[dict],
@@ -281,7 +282,7 @@ def _update_site_cookie(
 
 
 @router.post(
-    "/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response
+    "/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response[None]
 )
 def update_cookie_by_body(
     site_id: int,
@@ -302,7 +303,7 @@ def update_cookie_by_body(
 
 
 @router.get(
-    "/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response
+    "/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response[None]
 )
 def update_cookie(
     site_id: int,
@@ -325,7 +326,9 @@ def update_cookie(
 
 
 @router.post(
-    "/userdata/{site_id}", summary="更新站点用户数据", response_model=schemas.Response
+    "/userdata/{site_id}",
+    summary="更新站点用户数据",
+    response_model=schemas.Response[schemas.SiteUserData],
 )
 def refresh_userdata(
     site_id: int,
@@ -369,7 +372,9 @@ async def read_userdata_latest(
 
 
 @router.get(
-    "/userdata/{site_id}", summary="查询某站点用户数据", response_model=schemas.Response
+    "/userdata/{site_id}",
+    summary="查询某站点用户数据",
+    response_model=schemas.Response[list[schemas.SiteUserData]],
 )
 async def read_userdata(
     site_id: int,
@@ -394,7 +399,7 @@ async def read_userdata(
     return schemas.Response(success=True, data=[data.to_dict() for data in user_datas])
 
 
-@router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response)
+@router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response[None])
 def test_site(
     site_id: int,
     db: Session = Depends(get_db),
@@ -413,7 +418,11 @@ def test_site(
     return schemas.Response(success=status, message=message)
 
 
-@router.get("/icon/{site_id}", summary="站点图标", response_model=schemas.Response)
+@router.get(
+    "/icon/{site_id}",
+    summary="站点图标",
+    response_model=schemas.Response[schemas.SiteIconData],
+)
 async def site_icon(
     site_id: int,
     db: AsyncSession = Depends(get_async_db),
@@ -576,7 +585,7 @@ async def read_rss_sites(
     return rss_sites
 
 
-@router.get("/auth", summary="查询认证站点", response_model=dict)
+@router.get("/auth", summary="查询认证站点", response_model=schemas.JsonObject)
 async def read_auth_sites(_: schemas.TokenPayload = Depends(verify_token)) -> dict:
     """
     获取可认证站点列表
@@ -584,7 +593,7 @@ async def read_auth_sites(_: schemas.TokenPayload = Depends(verify_token)) -> di
     return SitesHelper().get_authsites()
 
 
-@router.post("/auth", summary="用户站点认证", response_model=schemas.Response)
+@router.post("/auth", summary="用户站点认证", response_model=schemas.Response[None])
 def auth_site(
     auth_info: schemas.SiteAuth, _: User = Depends(get_current_active_superuser)
 ) -> Any:
@@ -604,7 +613,9 @@ def auth_site(
 
 
 @router.get(
-    "/mapping", summary="获取站点域名到名称的映射", response_model=schemas.Response
+    "/mapping",
+    summary="获取站点域名到名称的映射",
+    response_model=schemas.Response[schemas.SiteMappingData],
 )
 async def site_mapping(_: User = Depends(get_current_active_superuser_async)):
     """
@@ -620,7 +631,11 @@ async def site_mapping(_: User = Depends(get_current_active_superuser_async)):
         return schemas.Response(success=False, message=f"获取映射失败：{str(e)}")
 
 
-@router.get("/supporting", summary="获取支持的站点列表", response_model=dict)
+@router.get(
+    "/supporting",
+    summary="获取支持的站点列表",
+    response_model=schemas.JsonObject,
+)
 async def support_sites(_: User = Depends(get_current_active_superuser_async)):
     """
     获取支持的站点列表
@@ -646,7 +661,7 @@ async def read_site(
     return site
 
 
-@router.delete("/{site_id}", summary="删除站点", response_model=schemas.Response)
+@router.delete("/{site_id}", summary="删除站点", response_model=schemas.Response[None])
 async def delete_site(
     site_id: int,
     db: AsyncSession = Depends(get_async_db),

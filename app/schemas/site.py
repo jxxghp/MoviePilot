@@ -1,9 +1,20 @@
-from typing import Optional, Any, Union, Dict
+from typing import Optional, Union, Dict
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, RootModel
+
+from app.schemas.common import JsonData
+
+
+SiteUnreadMessage = Union[
+    tuple[Optional[str], Optional[str], Optional[str]],
+    tuple[Optional[str], Optional[str], Optional[str], Optional[str]],
+]
+"""站点未读消息，第四项为部分站点提供的持久化去重来源。"""
 
 
 class Site(BaseModel):
+    """站点配置及运行状态。"""
+
     # ID
     id: Optional[int] = None
     # 站点名称
@@ -33,7 +44,7 @@ class Site(BaseModel):
     # 是否公开站点
     public: Optional[int] = 0
     # 备注
-    note: Optional[Any] = None
+    note: Optional[JsonData] = None
     # 超时时间
     timeout: Optional[int] = 15
     # 流控单位周期
@@ -51,6 +62,8 @@ class Site(BaseModel):
 
 
 class SiteStatistic(BaseModel):
+    """单个站点的访问成功率与耗时统计。"""
+
     # 站点ID
     domain: Optional[str] = None
     # 成功次数
@@ -64,12 +77,14 @@ class SiteStatistic(BaseModel):
     # 最后修改时间
     lst_mod_date: Optional[str] = None
     # 备注
-    note: Optional[Any] = None
+    note: Optional[Dict[str, int]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class SiteUserData(BaseModel):
+    """站点用户账户、流量、做种和未读消息数据。"""
+
     # 站点域名
     domain: Optional[str] = None
     # 用户名
@@ -97,11 +112,11 @@ class SiteUserData(BaseModel):
     # 下载体积
     leeching_size: Optional[int] = 0
     # 做种人数, 种子大小
-    seeding_info: Optional[list] = Field(default_factory=list)
+    seeding_info: Optional[list[tuple[int, int]]] = Field(default_factory=list)
     # 未读消息
     message_unread: Optional[int] = 0
     # 未读消息内容
-    message_unread_contents: Optional[list] = Field(default_factory=list)
+    message_unread_contents: Optional[list[SiteUnreadMessage]] = Field(default_factory=list)
     # 错误信息
     err_msg: Optional[str] = None
     # 更新日期
@@ -111,6 +126,8 @@ class SiteUserData(BaseModel):
 
 
 class SiteAuth(BaseModel):
+    """站点认证模块及其参数。"""
+
     site: Optional[str] = None
     params: Optional[Dict[str, Union[int, str]]] = Field(default_factory=dict)
 
@@ -125,6 +142,18 @@ class SiteCookieUpdate(BaseModel):
 
 
 class SiteCategory(BaseModel):
+    """站点资源分类。"""
+
     id: Optional[int] = None
     cat: Optional[str] = None
     desc: Optional[str] = None
+
+
+class SiteIconData(BaseModel):
+    """站点图标地址或 Base64 内容。"""
+
+    icon: str
+
+
+class SiteMappingData(RootModel[dict[str, str]]):
+    """站点域名到显示名称的映射。"""

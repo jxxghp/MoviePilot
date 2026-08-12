@@ -54,7 +54,8 @@ class UpdateCustomIdentifiersTool(MoviePilotTool):
         "4) Combined: '被替换词 => 替换词 && 前定位词 <> 后定位词 >> EP±N'; "
         "Lines starting with '#' are comments. "
         "The replacement target supports: "
-        "{[media_source=themoviedb;media_id=xxx;type=movie/tv;g=xxx;s=xxx;e=xxx]}; "
+        "{[tmdbid=xxx;type=movie/tv;g=xxx;s=xxx;e=xxx]}; "
+        "tmdbid may be replaced with doubanid, bangumiid, or anilistid; "
         "g is an optional episode group ID for TV recognition."
     )
     require_admin: bool = True

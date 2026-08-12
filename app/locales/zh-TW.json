@@ -97,6 +97,7 @@
     }
   },
   "messages": {
+    "调用工具失败": "調用工具失敗",
     "媒体来源和媒体 ID 必须同时提供": "媒體來源和媒體 ID 必須同時提供",
     "media_source 和 media_id 必须同时提供": "media_source 和 media_id 必須同時提供",
     "模块不支持测试": "模組不支援測試",
@@ -1365,6 +1366,10 @@
     {
       "source": "同步媒体服务器 - {name}",
       "target": "同步媒體伺服器 - {name}"
+    },
+    {
+      "source": "调用工具失败: {error}",
+      "target": "調用工具失敗: {error}"
     },
     {
       "source": "{name} 执行完成",

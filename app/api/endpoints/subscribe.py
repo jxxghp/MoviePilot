@@ -1,11 +1,12 @@
 from typing import List, Any, Annotated, Optional
 
 import cn2an
-from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
+from fastapi import Request, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
@@ -32,7 +33,7 @@ from app.schemas.types import (
 )
 from app.utils.media import normalize_media_source, resolve_media_identity
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def start_subscribe_add(
@@ -181,7 +182,11 @@ async def list_subscribes(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     return await Subscribe.async_list()
 
 
-@router.post("/", summary="新增订阅", response_model=schemas.Response)
+@router.post(
+    "/",
+    summary="新增订阅",
+    response_model=schemas.Response[schemas.IdData],
+)
 async def create_subscribe(
     *,
     subscribe_in: schemas.Subscribe,
@@ -242,7 +247,7 @@ async def create_subscribe(
     return schemas.Response(success=bool(sid), message=message, data={"id": sid})
 
 
-@router.put("/", summary="更新订阅", response_model=schemas.Response)
+@router.put("/", summary="更新订阅", response_model=schemas.Response[None])
 async def update_subscribe(
     *,
     subscribe_in: schemas.Subscribe,
@@ -314,7 +319,7 @@ async def update_subscribe(
     return schemas.Response(success=True)
 
 
-@router.put("/status/{subid}", summary="更新订阅状态", response_model=schemas.Response)
+@router.put("/status/{subid}", summary="更新订阅状态", response_model=schemas.Response[None])
 async def update_subscribe_status(
     subid: int,
     state: str,
@@ -367,7 +372,7 @@ async def subscribe_media_identity(
     return result if result else Subscribe()
 
 
-@router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
+@router.get("/refresh", summary="刷新订阅", response_model=schemas.Response[None])
 def refresh_subscribes(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -380,7 +385,7 @@ def refresh_subscribes(
     return schemas.Response(success=True)
 
 
-@router.get("/reset/{subid}", summary="重置订阅", response_model=schemas.Response)
+@router.get("/reset/{subid}", summary="重置订阅", response_model=schemas.Response[None])
 async def reset_subscribes(
     subid: int,
     db: AsyncSession = Depends(get_async_db),
@@ -428,7 +433,7 @@ async def reset_subscribes(
     return schemas.Response(success=False, message="订阅不存在")
 
 
-@router.get("/check", summary="刷新订阅 TMDB 信息", response_model=schemas.Response)
+@router.get("/check", summary="刷新订阅 TMDB 信息", response_model=schemas.Response[None])
 def check_subscribes(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -441,7 +446,7 @@ def check_subscribes(
     return schemas.Response(success=True)
 
 
-@router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
+@router.get("/search", summary="搜索所有订阅", response_model=schemas.Response[None])
 async def search_subscribes(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_async_db),
@@ -470,7 +475,7 @@ async def search_subscribes(
 
 
 @router.get(
-    "/search/{subscribe_id}", summary="搜索订阅", response_model=schemas.Response
+    "/search/{subscribe_id}", summary="搜索订阅", response_model=schemas.Response[None]
 )
 async def search_subscribe(
     subscribe_id: int,
@@ -492,7 +497,7 @@ async def search_subscribe(
     return schemas.Response(success=True)
 
 
-@router.delete("/media/{media_id}", summary="删除订阅", response_model=schemas.Response)
+@router.delete("/media/{media_id}", summary="删除订阅", response_model=schemas.Response[None])
 async def delete_subscribe_by_media_identity(
     media_id: str,
     media_source: MediaSource,
@@ -536,7 +541,7 @@ async def delete_subscribe_by_media_identity(
 
 
 @router.post(
-    "/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response
+    "/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response[None]
 )
 async def seerr_subscribe(
     request: Request,
@@ -640,7 +645,7 @@ async def subscribe_history(
 
 
 @router.delete(
-    "/history/{history_id}", summary="删除订阅历史", response_model=schemas.Response
+    "/history/{history_id}", summary="删除订阅历史", response_model=schemas.Response[None]
 )
 async def delete_subscribe_history(
     history_id: int,
@@ -750,7 +755,7 @@ def subscribe_files(
     return schemas.SubscrbieInfo()
 
 
-@router.post("/share", summary="分享订阅", response_model=schemas.Response)
+@router.post("/share", summary="分享订阅", response_model=schemas.Response[None])
 async def subscribe_share(
     sub: schemas.SubscribeShare,
     db: AsyncSession = Depends(get_async_db),
@@ -771,7 +776,7 @@ async def subscribe_share(
     return schemas.Response(success=state, message=errmsg)
 
 
-@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response)
+@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response[None])
 async def subscribe_share_delete(
     share_id: int, _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
@@ -782,7 +787,7 @@ async def subscribe_share_delete(
     return schemas.Response(success=state, message=errmsg)
 
 
-@router.post("/fork", summary="复用订阅", response_model=schemas.Response)
+@router.post("/fork", summary="复用订阅", response_model=schemas.Response[None])
 async def subscribe_fork(
     sub: schemas.SubscribeShare,
     current_user: User = Depends(get_current_active_user_async),
@@ -811,7 +816,7 @@ async def followed_subscribers(_: schemas.TokenPayload = Depends(verify_token)) 
     return SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
 
 
-@router.post("/follow", summary="Follow订阅分享人", response_model=schemas.Response)
+@router.post("/follow", summary="Follow订阅分享人", response_model=schemas.Response[None])
 async def follow_subscriber(
     share_uid: Optional[str] = None, _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
@@ -828,7 +833,7 @@ async def follow_subscriber(
 
 
 @router.delete(
-    "/follow", summary="取消Follow订阅分享人", response_model=schemas.Response
+    "/follow", summary="取消Follow订阅分享人", response_model=schemas.Response[None]
 )
 async def unfollow_subscriber(
     share_uid: Optional[str] = None, _: schemas.TokenPayload = Depends(verify_token)
@@ -902,7 +907,7 @@ async def read_subscribe(
     return subscribe if subscribe else Subscribe()
 
 
-@router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response)
+@router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response[None])
 async def delete_subscribe(
     subscribe_id: int,
     db: AsyncSession = Depends(get_async_db),

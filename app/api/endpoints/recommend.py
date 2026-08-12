@@ -1,8 +1,9 @@
 from typing import Any, Awaitable, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.recommend import RecommendChain
 from app.core.event import eventmanager
 from app.core.security import verify_token
@@ -10,7 +11,7 @@ from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
 from app.schemas import RecommendSourceEventData
 from app.schemas.types import ChainEventType
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 async def _require_tmdb_result(operation: Awaitable[List[Any]]) -> List[Any]:

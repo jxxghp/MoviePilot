@@ -1,7 +1,7 @@
 import gzip
 import hmac
 import json
-from typing import Annotated, Callable, Any, Dict, Optional
+from typing import Annotated, Callable, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -10,13 +10,17 @@ from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRoute
 
 from app import schemas
+from app.api.response import ERROR_RESPONSES
 from app.core.config import settings
 from app.log import logger
 from app.utils.crypto import CryptoJsUtils, HashUtils
 
 
 class GzipRequest(Request):
+    """按请求头透明解压 gzip 请求体。"""
+
     async def body(self) -> bytes:
+        """读取请求体，并在需要时完成 gzip 解压。"""
         if not hasattr(self, "_body"):
             body = await super().body()
             if "gzip" in self.headers.getlist("Content-Encoding"):
@@ -26,17 +30,21 @@ class GzipRequest(Request):
 
 
 class GzipRoute(APIRoute):
+    """为 CookieCloud 路由注入 gzip 请求对象。"""
+
     def get_route_handler(self) -> Callable:
+        """返回支持 gzip 请求体的路由处理器。"""
         original_route_handler = super().get_route_handler()
 
         async def custom_route_handler(request: Request) -> Response:
+            """将原始请求替换为可解压的请求对象后继续处理。"""
             request = GzipRequest(request.scope, request.receive)
             return await original_route_handler(request)
 
         return custom_route_handler
 
 
-async def verify_server_enabled():
+async def verify_server_enabled() -> bool:
     """
     校验CookieCloud服务路由是否打开
     """
@@ -49,7 +57,7 @@ async def verify_update_auth(
     x_cookiecloud_auth: Annotated[
         Optional[str], Header(alias="X-CookieCloud-Auth")
     ] = None,
-):
+) -> bool:
     """
     校验CookieCloud上传接口的可选共享认证头。
     """
@@ -67,21 +75,48 @@ cookie_router = APIRouter(
     route_class=GzipRoute,
     tags=["servcookie"],
     dependencies=[Depends(verify_server_enabled)],
+    responses=ERROR_RESPONSES,
 )
 
 
-@cookie_router.get("/", response_class=PlainTextResponse)
-async def get_root():
-    return "Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud"
+@cookie_router.get(
+    "/",
+    response_model=None,
+    response_class=Response,
+    responses={
+        200: {
+            "description": "CookieCloud 服务说明",
+            "content": {"text/plain": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def get_root() -> PlainTextResponse:
+    """返回 CookieCloud 兼容服务的根路径说明。"""
+    return PlainTextResponse("Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud")
 
 
-@cookie_router.post("/", response_class=PlainTextResponse)
-async def post_root():
-    return "Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud"
+@cookie_router.post(
+    "/",
+    response_model=None,
+    response_class=Response,
+    responses={
+        200: {
+            "description": "CookieCloud 服务说明",
+            "content": {"text/plain": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def post_root() -> PlainTextResponse:
+    """通过 POST 返回 CookieCloud 兼容服务的根路径说明。"""
+    return PlainTextResponse("Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud")
 
 
-@cookie_router.post("/update", dependencies=[Depends(verify_update_auth)])
-async def update_cookie(req: schemas.CookieData):
+@cookie_router.post(
+    "/update",
+    dependencies=[Depends(verify_update_auth)],
+    response_model=schemas.CookieActionResponse,
+)
+async def update_cookie(req: schemas.CookieData) -> schemas.CookieActionResponse:
     """
     上传Cookie数据
     """
@@ -92,31 +127,31 @@ async def update_cookie(req: schemas.CookieData):
     async with aiofiles.open(file_path, encoding="utf-8", errors="replace", mode="r") as file:
         read_content = await file.read()
     if read_content == content:
-        return {"action": "done"}
+        return schemas.CookieActionResponse(action="done")
     else:
-        return {"action": "error"}
+        return schemas.CookieActionResponse(action="error")
 
 
-async def load_encrypt_data(uuid: str) -> Dict[str, Any]:
+async def load_encrypt_data(uuid: str) -> schemas.CookieEncryptedPayload:
     """
     加载本地加密原始数据
     """
     file_path = AsyncPath(settings.COOKIE_PATH) / f"{uuid}.json"
 
     # 检查文件是否存在
-    if not file_path.exists():
+    if not await file_path.exists():
         raise HTTPException(status_code=404, detail="Item not found")
 
     # 读取文件
     async with aiofiles.open(file_path, encoding="utf-8", errors="replace", mode="r") as file:
         read_content = await file.read()
     data = json.loads(read_content.encode("utf-8"))
-    return data
+    return schemas.CookieEncryptedPayload.model_validate(data)
 
 
 def get_decrypted_cookie_data(
     uuid: str, password: str, encrypted: str
-) -> Optional[Dict[str, Any]]:
+) -> Optional[schemas.CookieDecryptedPayload]:
     """
     加载本地加密数据并解密为Cookie
     """
@@ -128,7 +163,7 @@ def get_decrypted_cookie_data(
             decrypted_data = CryptoJsUtils.decrypt(encrypted, aes_key).decode("utf-8")
             decrypted_data = json.loads(decrypted_data)
             if "cookie_data" in decrypted_data:
-                return decrypted_data
+                return schemas.CookieDecryptedPayload.model_validate(decrypted_data)
         except Exception as e:
             logger.error(f"解密Cookie数据失败：{str(e)}")
             return None
@@ -136,26 +171,33 @@ def get_decrypted_cookie_data(
         return None
 
 
-@cookie_router.get("/get/{uuid}")
+@cookie_router.get("/get/{uuid}", response_model=schemas.CookieEncryptedPayload)
 async def get_cookie(
     uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
-):
+) -> schemas.CookieEncryptedPayload:
     """
     GET 下载加密数据
     """
-    return await load_encrypt_data(uuid)
+    return schemas.CookieEncryptedPayload.model_validate(
+        await load_encrypt_data(uuid)
+    )
 
 
-@cookie_router.post("/get/{uuid}")
+@cookie_router.post(
+    "/get/{uuid}",
+    response_model=schemas.CookieEncryptedPayload | schemas.CookieDecryptedPayload | None,
+)
 async def post_cookie(
     uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
     request: Optional[schemas.CookiePassword] = Body(None),
-):
+) -> schemas.CookieEncryptedPayload | schemas.CookieDecryptedPayload | None:
     """
     POST 下载加密数据
     """
-    data = await load_encrypt_data(uuid)
+    data = schemas.CookieEncryptedPayload.model_validate(
+        await load_encrypt_data(uuid)
+    )
     if request is not None:
-        return get_decrypted_cookie_data(uuid, request.password, data["encrypted"])
+        return get_decrypted_cookie_data(uuid, request.password, data.encrypted)
     else:
         return data

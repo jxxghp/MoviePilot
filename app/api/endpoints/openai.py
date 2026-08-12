@@ -20,7 +20,15 @@ from app.core.config import settings
 from app.core.security import openai_bearer_scheme
 from app.schemas.types import MessageChannel
 
-router = APIRouter()
+OPENAI_ERROR_RESPONSES = {
+    400: {"model": schemas.OpenAIErrorResponse, "description": "请求格式错误"},
+    401: {"model": schemas.OpenAIErrorResponse, "description": "认证失败"},
+    422: {"model": schemas.OpenAIErrorResponse, "description": "请求参数校验失败"},
+    500: {"model": schemas.OpenAIErrorResponse, "description": "服务内部错误"},
+    503: {"model": schemas.OpenAIErrorResponse, "description": "AI Agent 不可用"},
+}
+
+router = APIRouter(responses=OPENAI_ERROR_RESPONSES)
 
 MODEL_ID = "moviepilot-agent"
 SESSION_PREFIX = "openai:"
@@ -274,6 +282,14 @@ async def list_models(
     "/chat/completions",
     summary="OpenAI compatible chat completions",
     response_model=schemas.OpenAIChatCompletionResponse,
+    responses={
+        200: {
+            "description": "OpenAI chat completion 或 SSE 数据流",
+            "content": {
+                "text/event-stream": {"schema": {"type": "string"}},
+            },
+        }
+    },
 )
 async def chat_completions(
     payload: schemas.OpenAIChatCompletionsRequest,

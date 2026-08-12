@@ -1,8 +1,9 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.recommend import RecommendChain
 from app.schemas.types import MediaSource, MediaType
@@ -17,7 +18,7 @@ from app.modules.listenbrainz import (
 )
 from app.modules.musicbrainz.music_cache import MusicBrainzCache
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 CountParam = Annotated[int, Query(ge=1, le=100)]
 PageParam = Annotated[int, Query(ge=1)]
@@ -107,7 +108,9 @@ async def recognize_music(
 
 
 @router.get(
-    "/cache", summary="查询音乐识别缓存", response_model=schemas.Response
+    "/cache",
+    summary="查询音乐识别缓存",
+    response_model=schemas.Response[schemas.MusicRecognitionCacheData],
 )
 async def music_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
@@ -129,7 +132,7 @@ async def music_recognition_cache(
 @router.delete(
     "/cache/{cache_key:path}",
     summary="删除指定音乐识别缓存",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 async def delete_music_recognition_cache(
     cache_key: str,
@@ -143,7 +146,7 @@ async def delete_music_recognition_cache(
 
 
 @router.delete(
-    "/cache", summary="清空音乐识别缓存", response_model=schemas.Response
+    "/cache", summary="清空音乐识别缓存", response_model=schemas.Response[None]
 )
 async def clear_music_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),

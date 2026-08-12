@@ -1,10 +1,11 @@
 from pathlib import Path
 from typing import Any, List, Annotated, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings, global_vars
@@ -25,10 +26,14 @@ from app.schemas import (
     EpisodeFormatRecommendItem,
 )
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
-@router.get("/name", summary="查询整理后的名称", response_model=schemas.Response)
+@router.get(
+    "/name",
+    summary="查询整理后的名称",
+    response_model=schemas.Response[schemas.NameData],
+)
 def query_name(
     path: str, filetype: str, _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
@@ -79,7 +84,7 @@ async def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.delete(
-    "/queue", summary="从整理队列中删除任务", response_model=schemas.Response
+    "/queue", summary="从整理队列中删除任务", response_model=schemas.Response[None]
 )
 async def remove_queue(
     fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)
@@ -181,7 +186,7 @@ def _get_manual_transfer_target_key(
 @router.post(
     "/manual/target-path",
     summary="匹配手动转移目的路径",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.ManualTransferTargetPath],
 )
 def match_manual_transfer_target_path(
     transer_item: ManualTransferItem,
@@ -244,7 +249,7 @@ def match_manual_transfer_target_path(
 @router.post(
     "/manual/history",
     summary="查询手动转移成功历史",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.ManualTransferHistoryInfo],
 )
 def query_manual_transfer_history(
     transer_item: ManualTransferItem,
@@ -275,7 +280,11 @@ def query_manual_transfer_history(
     return schemas.Response(success=True, data=history_info.model_dump())
 
 
-@router.post("/manual", summary="手动转移", response_model=schemas.Response)
+@router.post(
+    "/manual",
+    summary="手动转移",
+    response_model=schemas.Response[schemas.ManualTransferResultData],
+)
 def manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool] = False,
@@ -574,7 +583,7 @@ def manual_transfer(
 @router.post(
     "/episode-format/recommend",
     summary="推荐集数定位模板",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.EpisodeFormatRecommendData],
 )
 def recommend_episode_format(
     recommend_item: EpisodeFormatRecommendItem,
@@ -600,7 +609,7 @@ def recommend_episode_format(
     return schemas.Response(success=True, data=data)
 
 
-@router.get("/now", summary="立即执行下载器文件整理", response_model=schemas.Response)
+@router.get("/now", summary="立即执行下载器文件整理", response_model=schemas.Response[None])
 def now(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     立即执行下载器文件整理 API_TOKEN认证（?token=xxx）

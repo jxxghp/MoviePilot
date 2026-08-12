@@ -1,9 +1,10 @@
 from typing import Any, List, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
 from app.core.context import MediaInfo
@@ -18,7 +19,7 @@ from app.schemas import MediaType, NotExistMediaInfo
 from app.schemas.types import MediaSource, SystemConfigKey
 from app.utils.media import build_media_key, resolve_media_identity
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _require_mediaserver_result(result: Optional[List[Any]]) -> List[Any]:
@@ -33,7 +34,11 @@ def _require_mediaserver_result(result: Optional[List[Any]]) -> List[Any]:
     return result
 
 
-@router.get("/play/{itemid:path}", summary="在线播放")
+@router.get(
+    "/play/{itemid:path}",
+    summary="在线播放",
+    response_model=schemas.Response[schemas.MediaServerPlayData],
+)
 def play_item(
     itemid: str, _: schemas.TokenPayload = Depends(verify_token)
 ) -> schemas.Response:
@@ -64,7 +69,9 @@ def play_item(
 
 
 @router.get(
-    "/exists", summary="查询本地是否存在（数据库）", response_model=schemas.Response
+    "/exists",
+    summary="查询本地是否存在（数据库）",
+    response_model=schemas.Response[schemas.MediaServerExistsData],
 )
 async def exists_local(
     title: Optional[str] = None,
@@ -106,7 +113,7 @@ async def exists_local(
 @router.post(
     "/exists_remote",
     summary="查询已存在的剧集信息（媒体服务器）",
-    response_model=Dict[int, list],
+    response_model=schemas.MediaServerExistingEpisodes,
 )
 def exists(
     media_in: schemas.MediaInfo, _: schemas.TokenPayload = Depends(verify_token)
@@ -225,7 +232,11 @@ def library(
     )
 
 
-@router.get("/clients", summary="查询可用媒体服务器", response_model=List[dict])
+@router.get(
+    "/clients",
+    summary="查询可用媒体服务器",
+    response_model=List[schemas.ServiceClientInfo],
+)
 async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用媒体服务器

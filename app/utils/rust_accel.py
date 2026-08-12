@@ -264,27 +264,6 @@ def supports_extended_media_ids() -> bool:
     )
 
 
-@lru_cache(maxsize=1)
-def supports_unified_media_identity() -> bool:
-    """判断当前 Rust 扩展是否支持固定来源的通用媒体身份标签。"""
-    if not is_enabled():
-        return False
-    try:
-        result = _moviepilot_rust.find_metainfo_fast(
-            "test {[media_source=musicbrainz;media_id=recording-1]}"
-        )
-    except BaseException as err:
-        _raise_non_rust_panic(err)
-        logger.debug(f"检测 Rust 通用媒体身份能力失败：{err}")
-        return False
-    metainfo = result.get("metainfo") if isinstance(result, dict) else None
-    return bool(
-        metainfo
-        and metainfo.get("media_source") == "musicbrainz"
-        and metainfo.get("media_id") == "recording-1"
-    )
-
-
 def _raise_non_rust_panic(err: BaseException) -> None:
     """
     只吞掉 Rust 扩展 panic/异常，保留用户中断和进程退出语义。

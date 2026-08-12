@@ -92,7 +92,7 @@ async def test_media_search_route_accepts_comma_separated_music_sources() -> Non
             )
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {"success": True, "message": "", "data": []}
     chain.async_search_music.assert_awaited_once_with(
         query="周杰伦",
         limit=30,

@@ -114,21 +114,19 @@ MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所�
 
 #### REST API 版本
 
-- `/api/v1` 默认保持原有响应结构，已有客户端无需迁移；登录壁纸接口的 URL 已统一放入 `data`。
-- `/api/v2` 复用 `/api/v1` 的同一套路由、请求参数、鉴权依赖和业务实现，只统一普通 JSON 响应结构。
-- v1 中已经使用通用 `Response` 的接口在 v2 中保持原样；其他成功 JSON 响应转换为 `{"success": true, "message": "", "data": <原响应>}`。
-- HTTP 错误保留原状态码，并统一返回 `{"success": false, "message": <错误详情>, "data": {}}`；非业务异常不做多语言翻译。
-- SSE、文件、图片、空响应，以及 OpenAI、Anthropic、MCP 等标准协议接口保持原始响应格式，不进行通用封装。
+- 普通 JSON REST 接口统一使用 `/api/v1`，不再提供 `/api/v2` 套壳版本。
+- 成功和失败响应都只包含 `success`、`message`、`data` 三个顶层字段；各接口只有 `data` 的模型可以变化。
+- 成功响应为 `{"success": true, "message": "", "data": <接口数据>}`。HTTP 错误保留原状态码，返回 `{"success": false, "message": <错误原因>, "data": null}`；请求参数校验错误会在 `data` 中附带结构化错误列表。
+- 每个普通 JSON 端点都会在 OpenAPI 中声明具体的 `Response[DataModel]`，调用方可从 `/docs` 或 `/api/v1/openapi.json` 查询数据结构。
+- SSE、文件、图片、HTML、空响应，以及 OAuth2 登录、OpenAI、Anthropic、MCP JSON-RPC 等标准协议端点保持协议原生响应体；它们会在 OpenAPI 中显式声明对应的流、文件或协议模型。
 
-因此，普通 REST 接口可将文档中的 `/api/v1/...` 路径直接替换为 `/api/v2/...`。例如 `/api/v1/download/` 对应 `/api/v2/download/`。
+客户端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`。后端会按当前请求语言直接翻译顶层 `message`；未提供语言头时使用简体中文，翻译缺失时回退原文本。SSE 和业务数据中原有的 `text_i18n`、`error_i18n` 等展示字段继续保留。
 
-通用 REST 响应包含 `success`、`message`、`message_i18n`、`data` 字段。为兼容 App 和第三方客户端，`message` 继续保留原中文或原始后端文本；新版前端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`，并优先展示 `message_i18n`。未提供语言头或翻译缺失时，`message_i18n` 会回退为原文本。
+`GET /api/v1/login/wallpaper` 会将壁纸 URL 放在 `data` 字段中。`POST /api/v1/user/avatar/{user_id}` 会以 `data.filename` 返回原始文件名。上述接口的 `message` 均不承载业务数据。
 
-`GET /api/v1/login/wallpaper` 及对应的 v2 路径会将壁纸 URL 放在 `data` 字段中。`POST /api/v1/user/avatar/{user_id}` 及对应的 v2 路径会以 `data.filename` 返回原始文件名。上述接口的 `message` 均不再承载业务数据。
+FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返回顶层 `detail` / `detail_i18n`。
 
-FastAPI 的 HTTP 异常在 v1、v2 均统一使用 `message`，不再返回顶层 `detail` / `detail_i18n`。
-
-交互式接口文档 `/docs` 默认读取 `/api/v2/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。旧地址 `/api/v1/openapi.json` 继续保留并返回同一份完整接口文档。
+交互式接口文档 `/docs` 读取 `/api/v1/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。
 
 #### 媒体识别 / 整理
 
@@ -242,7 +240,7 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 | GET | `/api/v1/system/setting/public/{key}` | 登录用户读取白名单内非敏感系统设置，仅支持目录、存储、站点范围、默认订阅规则、Follow 订阅者和插件市场地址等前端必需配置 |
 | POST | `/api/v1/system/setting/PLUGIN_MARKET/sync-wiki` | 管理员从 MoviePilot Wiki 的插件文档同步公开插件仓库清单，和本地 `PLUGIN_MARKET` 合并去重后写入配置 |
 | GET | `/api/v1/system/modulelist` | 查询已加载模块，保留 `name` 原始中文字段，并提供 `name_i18n` 和 `name_key` 给多语言前端展示 |
-| GET | `/api/v1/system/moduletest/{moduleid}` | 测试指定模块可用性，保留原 `message`，并在标准响应顶层返回 `message_i18n` |
+| GET | `/api/v1/system/moduletest/{moduleid}` | 测试指定模块可用性，标准响应的 `message` 会按请求语言直接返回翻译文本 |
 | GET | `/api/v1/message/agent/mcp/servers` | 管理员查询 Agent 外部 MCP 服务器配置 |
 | POST | `/api/v1/message/agent/mcp/servers` | 管理员保存 Agent 外部 MCP 服务器配置 |
 | POST | `/api/v1/message/agent/mcp/servers/test` | 管理员测试单个 Agent 外部 MCP 服务器并读取工具列表 |
@@ -341,28 +339,26 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 
 **响应示例**:
 ```json
-[
-  {
-    "name": "add_subscribe",
-    "description": "Add media subscription to create automated download rules...",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string",
-          "description": "The title of the media to subscribe to"
+{
+  "success": true,
+  "message": "",
+  "data": [
+    {
+      "name": "add_subscribe",
+      "description": "Add media subscription to create automated download rules...",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The title of the media to subscribe to"
+          }
         },
-        "year": {
-          "type": "string",
-          "description": "Release year of the media"
-        },
-        ...
-      },
-      "required": ["title", "media_type"]
+        "required": ["title", "media_type"]
+      }
     }
-  },
-  ...
-]
+  ]
+}
 ```
 
 #### 系统诊断工具
@@ -393,8 +389,10 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 ```json
 {
   "success": true,
-  "result": "成功添加订阅：流浪地球 (2019)",
-  "error": null
+  "message": "",
+  "data": {
+    "result": "成功添加订阅：流浪地球 (2019)"
+  }
 }
 ```
 
@@ -402,8 +400,8 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 ```json
 {
   "success": false,
-  "result": null,
-  "error": "调用工具失败: 参数验证失败"
+  "message": "调用工具失败: 参数验证失败",
+  "data": null
 }
 ```
 
@@ -421,18 +419,21 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 **响应示例**:
 ```json
 {
-  "name": "add_subscribe",
-  "description": "Add media subscription to create automated download rules...",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "title": {
-        "type": "string",
-        "description": "The title of the media to subscribe to"
+  "success": true,
+  "message": "",
+  "data": {
+    "name": "add_subscribe",
+    "description": "Add media subscription to create automated download rules...",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the media to subscribe to"
+        }
       },
-      ...
-    },
-    "required": ["title", "media_type"]
+      "required": ["title", "media_type"]
+    }
   }
 }
 ```
@@ -451,18 +452,21 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 **响应示例**:
 ```json
 {
-  "type": "object",
-  "properties": {
-    "title": {
-      "type": "string",
-      "description": "The title of the media to subscribe to"
+  "success": true,
+  "message": "",
+  "data": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "The title of the media to subscribe to"
+      },
+      "year": {
+        "type": "string",
+        "description": "Release year of the media"
+      }
     },
-    "year": {
-      "type": "string",
-      "description": "Release year of the media"
-    },
-    ...
-  },
-  "required": ["title", "year", "media_type"]
+    "required": ["title", "year", "media_type"]
+  }
 }
 ```

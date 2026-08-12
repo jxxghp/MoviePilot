@@ -13,12 +13,13 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, AsyncIterator, Callable, Optional, Union
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.agent import MoviePilotAgent, ReplyMode, StreamingHandler, agent_manager
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
@@ -40,7 +41,7 @@ from app.helper.locale import LocaleHelper
 from app.log import logger
 from app.schemas.types import EventType, MessageChannel
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 WEB_AGENT_SESSION_PREFIX = "web-agent:"
 WEB_AGENT_SOURCE = "web-agent"
@@ -169,7 +170,11 @@ def _ensure_superuser(user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
-@router.get("/mcp/servers", summary="查询 Agent MCP 服务器配置", response_model=schemas.Response)
+@router.get(
+    "/mcp/servers",
+    summary="查询 Agent MCP 服务器配置",
+    response_model=schemas.Response[schemas.AgentMcpServerListData],
+)
 async def list_agent_mcp_servers(
     current_user: User = Depends(get_current_active_user),
 ) -> schemas.Response:
@@ -189,7 +194,11 @@ async def list_agent_mcp_servers(
     )
 
 
-@router.post("/mcp/servers", summary="保存 Agent MCP 服务器配置", response_model=schemas.Response)
+@router.post(
+    "/mcp/servers",
+    summary="保存 Agent MCP 服务器配置",
+    response_model=schemas.Response[None],
+)
 async def save_agent_mcp_servers(
     request: schemas.AgentMcpServersSaveRequest,
     current_user: User = Depends(get_current_active_user),
@@ -205,7 +214,11 @@ async def save_agent_mcp_servers(
     )
 
 
-@router.post("/mcp/servers/test", summary="测试 Agent MCP 服务器", response_model=schemas.Response)
+@router.post(
+    "/mcp/servers/test",
+    summary="测试 Agent MCP 服务器",
+    response_model=schemas.Response[schemas.AgentMcpServerTestResult],
+)
 async def test_agent_mcp_server(
     request: schemas.AgentMcpServerTestRequest,
     current_user: User = Depends(get_current_active_user),
@@ -1574,7 +1587,22 @@ def _split_web_agent_output(text: str) -> list[dict]:
     return events
 
 
-@router.get("/file/{file_id}", summary="下载 Web 智能助手附件")
+@router.get(
+    "/file/{file_id}",
+    summary="下载 Web 智能助手附件",
+    response_model=None,
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "Agent 附件文件",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+        }
+    },
+)
 async def download_web_agent_file(file_id: str) -> FileResponse:
     """
     下载 Web 智能助手本轮生成的临时附件。
@@ -1599,7 +1627,11 @@ async def download_web_agent_file(file_id: str) -> FileResponse:
     )
 
 
-@router.post("/upload", summary="上传 Web 智能助手附件", response_model=schemas.Response)
+@router.post(
+    "/upload",
+    summary="上传 Web 智能助手附件",
+    response_model=schemas.Response[schemas.AgentChatUploadAttachment],
+)
 async def upload_web_agent_file(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form(None),
@@ -1639,7 +1671,11 @@ async def upload_web_agent_file(
     return schemas.Response(success=True, data=attachment)
 
 
-@router.post("/callback", summary="Web 智能助手按钮回调", response_model=schemas.Response)
+@router.post(
+    "/callback",
+    summary="Web 智能助手按钮回调",
+    response_model=schemas.Response[schemas.AgentWebCallbackData],
+)
 async def web_agent_callback(
     payload: schemas.AgentWebChoiceRequest,
     current_user: User = Depends(get_current_active_user),
@@ -1673,7 +1709,11 @@ async def web_agent_callback(
     return schemas.Response(success=True, data=result)
 
 
-@router.get("/commands", summary="获取 Web 智能助手可用命令", response_model=schemas.Response)
+@router.get(
+    "/commands",
+    summary="获取 Web 智能助手可用命令",
+    response_model=schemas.Response[list[schemas.AgentWebCommandInfo]],
+)
 async def list_web_agent_commands(
     current_user: User = Depends(get_current_active_user),
 ) -> schemas.Response:
@@ -1689,7 +1729,11 @@ async def list_web_agent_commands(
     return schemas.Response(success=True, data=_build_web_agent_command_items())
 
 
-@router.get("/sessions", summary="获取 Agent 历史会话", response_model=schemas.Response)
+@router.get(
+    "/sessions",
+    summary="获取 Agent 历史会话",
+    response_model=schemas.Response[list[schemas.AgentChatSessionSummary]],
+)
 async def list_agent_chat_sessions(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_async_db),
@@ -1719,7 +1763,11 @@ async def list_agent_chat_sessions(
     )
 
 
-@router.get("/sessions/{session_id}", summary="获取 Agent 历史会话详情", response_model=schemas.Response)
+@router.get(
+    "/sessions/{session_id}",
+    summary="获取 Agent 历史会话详情",
+    response_model=schemas.Response[schemas.AgentChatSessionDetail],
+)
 async def get_agent_chat_session(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
@@ -1757,7 +1805,11 @@ async def get_agent_chat_session(
     return schemas.Response(success=True, data=data)
 
 
-@router.put("/sessions/{session_id}/display", summary="保存 Agent 展示会话", response_model=schemas.Response)
+@router.put(
+    "/sessions/{session_id}/display",
+    summary="保存 Agent 展示会话",
+    response_model=schemas.Response[schemas.AgentChatSessionSummary],
+)
 async def save_agent_chat_display(
     session_id: str,
     payload: schemas.AgentChatDisplaySaveRequest,
@@ -1795,7 +1847,11 @@ async def save_agent_chat_display(
     return schemas.Response(success=True, data=AgentChatOper.to_summary(chat))
 
 
-@router.delete("/sessions/{session_id}", summary="删除 Agent 历史会话", response_model=schemas.Response)
+@router.delete(
+    "/sessions/{session_id}",
+    summary="删除 Agent 历史会话",
+    response_model=schemas.Response[None],
+)
 async def delete_agent_chat_session(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
@@ -1817,7 +1873,11 @@ async def delete_agent_chat_session(
     return schemas.Response(success=deleted, message="删除成功" if deleted else "删除失败")
 
 
-@router.post("/sessions/{session_id}/stop", summary="停止 Web 智能助手当前任务", response_model=schemas.Response)
+@router.post(
+    "/sessions/{session_id}/stop",
+    summary="停止 Web 智能助手当前任务",
+    response_model=schemas.Response[schemas.AgentSessionStopData],
+)
 async def stop_web_agent_session_task(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
@@ -1848,7 +1908,18 @@ async def stop_web_agent_session_task(
     )
 
 
-@router.post("/stream", summary="Web智能助手流式对话")
+@router.post(
+    "/stream",
+    summary="Web智能助手流式对话",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "Agent SSE 事件流",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def web_agent_stream(
     payload: schemas.AgentWebChatRequest,
     request: Request,

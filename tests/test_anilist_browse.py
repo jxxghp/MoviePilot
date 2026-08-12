@@ -274,7 +274,8 @@ def test_anilist_module_normalizes_voice_actor_and_person_detail() -> None:
     assert credits[0].source == "anilist"
     assert credits[0].name == "種﨑敦美"
     assert credits[0].character == "フリーレン"
-    assert credits[0].images["large"] == "https://img.example/actor.jpg"
+    assert credits[0].images is not None
+    assert credits[0].images.large == "https://img.example/actor.jpg"
     assert person is not None
     assert person.birthday == "1990-09-27"
     assert person.career == ["Voice Actor"]

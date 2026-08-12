@@ -1,8 +1,9 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings
@@ -27,10 +28,14 @@ from app.utils.media import (
     resolve_media_identity,
 )
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
-@router.get("/cache", summary="获取种子缓存", response_model=schemas.Response)
+@router.get(
+    "/cache",
+    summary="获取种子缓存",
+    response_model=schemas.Response[schemas.TorrentCacheData],
+)
 async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
     """
     获取当前种子缓存数据
@@ -97,7 +102,7 @@ async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
 @router.delete(
     "/cache/{domain}/{torrent_hash}",
     summary="删除指定种子缓存",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 async def delete_cache(
     domain: str,
@@ -145,7 +150,7 @@ async def delete_cache(
         return schemas.Response(success=False, message=f"删除失败：{str(e)}")
 
 
-@router.delete("/cache", summary="清理种子缓存", response_model=schemas.Response)
+@router.delete("/cache", summary="清理种子缓存", response_model=schemas.Response[None])
 async def clear_cache(_: User = Depends(get_current_active_superuser_async)):
     """
     清理所有种子缓存
@@ -159,7 +164,7 @@ async def clear_cache(_: User = Depends(get_current_active_superuser_async)):
         return schemas.Response(success=False, message=f"清理失败：{str(e)}")
 
 
-@router.post("/cache/refresh", summary="刷新种子缓存", response_model=schemas.Response)
+@router.post("/cache/refresh", summary="刷新种子缓存", response_model=schemas.Response[None])
 def refresh_cache(_: User = Depends(get_current_active_superuser)):
     """
     刷新种子缓存
@@ -186,7 +191,7 @@ def refresh_cache(_: User = Depends(get_current_active_superuser)):
 @router.post(
     "/cache/reidentify/{domain}/{torrent_hash}",
     summary="重新识别种子",
-    response_model=schemas.Response,
+    response_model=schemas.Response[schemas.TorrentReidentifyData],
 )
 async def reidentify_cache(
     domain: str,

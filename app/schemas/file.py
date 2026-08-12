@@ -10,6 +10,8 @@ WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 class FileURI(BaseModel):
+    """带存储类型的文件 URI。"""
+
     # 文件路径
     path: Optional[str] = "/"
     # 存储类型
@@ -45,6 +47,8 @@ class FileURI(BaseModel):
 
 
 class FileItem(FileURI):
+    """文件或目录条目，目录可递归包含子条目。"""
+
     # 类型 dir/file
     type: Optional[str] = None
     # 文件名
@@ -58,7 +62,7 @@ class FileItem(FileURI):
     # 修改时间
     modify_time: Optional[float] = None
     # 子节点
-    children: Optional[list] = Field(default_factory=list)
+    children: Optional[list["FileItem"]] = Field(default_factory=list)
     # ID
     fileid: Optional[str] = None
     # 父ID
@@ -74,6 +78,8 @@ class FileItem(FileURI):
 
 
 class StorageUsage(BaseModel):
+    """存储空间使用情况。"""
+
     # 总空间
     total: float = 0.0
     # 剩余空间
@@ -81,5 +87,7 @@ class StorageUsage(BaseModel):
 
 
 class StorageTransType(BaseModel):
+    """存储支持的传输类型及其显示名称。"""
+
     # 传输类型
-    transtype: Optional[dict] = Field(default_factory=dict)
+    transtype: Optional[dict[str, str]] = Field(default_factory=dict)

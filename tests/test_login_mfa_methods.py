@@ -68,8 +68,9 @@ def test_login_mfa_response_contains_methods_after_password_verification(monkeyp
     assert response.status_code == 401
     assert response.headers["x-mfa-required"] == "true"
     assert json.loads(response.body) == {
-        "detail": "需要二次验证",
-        "mfa_methods": ["otp"],
+        "success": False,
+        "message": "需要二次验证",
+        "data": {"mfa_methods": ["otp"]},
     }
 
 
@@ -113,5 +114,5 @@ def test_wallpaper_returns_url_in_data(monkeypatch):
 
     assert response.success is True
     assert response.data == "https://images.example/wallpaper.jpg"
-    assert response.message is None
-    assert response.message_i18n is None
+    assert response.message == ""
+    assert not hasattr(response, "message_i18n")

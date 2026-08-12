@@ -2,12 +2,13 @@ import json
 import time
 from typing import Union, Any, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import BackgroundTasks, Depends, Request
 from pywebpush import WebPushException, webpush
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import PlainTextResponse
 
 from app import schemas
+from app.api.response import ResponseAPIRouter
 from app.chain.message import MessageChain
 from app.core.config import settings, global_vars
 from app.core.security import verify_token, verify_apitoken
@@ -22,7 +23,7 @@ from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel, SystemConfigKey
 
-router = APIRouter()
+router = ResponseAPIRouter()
 
 
 def _normalize_notification_clear_timestamp(value: Any) -> int:
@@ -69,7 +70,7 @@ def start_message_chain(body: Any, form: Any, args: Any):
     MessageChain().process(body=body, form=form, args=args)
 
 
-@router.post("/", summary="接收用户消息", response_model=schemas.Response)
+@router.post("/", summary="接收用户消息", response_model=schemas.Response[None])
 async def user_message(
     background_tasks: BackgroundTasks,
     request: Request,
@@ -109,7 +110,7 @@ async def user_message(
     return schemas.Response(success=True)
 
 
-@router.post("/web", summary="接收WEB消息", response_model=schemas.Response)
+@router.post("/web", summary="接收WEB消息", response_model=schemas.Response[None])
 async def web_message(
     request: Request,
     text: Optional[str] = None,
@@ -148,7 +149,7 @@ async def web_message(
     return schemas.Response(success=True)
 
 
-@router.get("/web", summary="获取WEB消息", response_model=List[dict])
+@router.get("/web", summary="获取WEB消息", response_model=List[schemas.WebMessageItem])
 async def get_web_message(
     _: schemas.TokenPayload = Depends(verify_token),
     db: AsyncSession = Depends(get_async_db),
@@ -190,7 +191,11 @@ async def get_notification_message(
     return [schemas.NotificationHistoryItem(**message.to_dict()) for message in messages]
 
 
-@router.delete("/notification", summary="清理通知消息", response_model=schemas.Response)
+@router.delete(
+    "/notification",
+    summary="清理通知消息",
+    response_model=schemas.Response[schemas.NotificationClearData],
+)
 async def clear_notification_message(
     scope: schemas.NotificationClearScope = schemas.NotificationClearScope.All,
     _: schemas.TokenPayload = Depends(verify_token),
@@ -260,7 +265,25 @@ def vocechat_verify() -> Any:
     return {"status": "OK"}
 
 
-@router.get("/", summary="回调请求验证")
+@router.get(
+    "/",
+    summary="回调请求验证",
+    response_model=None,
+    responses={
+        200: {
+            "description": "消息平台原生验证响应",
+            "content": {
+                "text/plain": {"schema": {"type": "string"}},
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"status": {"type": "string"}},
+                    }
+                },
+            },
+        }
+    },
+)
 def incoming_verify(
     token: Optional[str] = None,
     echostr: Optional[str] = None,
@@ -285,7 +308,7 @@ def incoming_verify(
 @router.post(
     "/webpush/subscribe",
     summary="客户端webpush通知订阅",
-    response_model=schemas.Response,
+    response_model=schemas.Response[None],
 )
 async def subscribe(
     subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)
@@ -300,7 +323,7 @@ async def subscribe(
 
 
 @router.post(
-    "/webpush/send", summary="发送webpush通知", response_model=schemas.Response
+    "/webpush/send", summary="发送webpush通知", response_model=schemas.Response[None]
 )
 def send_notification(
     payload: schemas.SubscriptionMessage,

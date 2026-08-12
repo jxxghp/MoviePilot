@@ -97,6 +97,7 @@
     }
   },
   "messages": {
+    "调用工具失败": "Tool call failed",
     "无效的媒体来源": "Invalid media source",
     "该媒体来源不支持此音乐接口": "This media source is not supported by this music endpoint",
     "媒体来源和媒体 ID 必须同时提供": "Media source and media ID must be provided together",
@@ -1369,6 +1370,10 @@
     {
       "source": "同步媒体服务器 - {name}",
       "target": "Sync Media Server - {name}"
+    },
+    {
+      "source": "调用工具失败: {error}",
+      "target": "Tool call failed: {error}"
     },
     {
       "source": "{name} 执行完成",
