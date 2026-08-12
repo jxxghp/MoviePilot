@@ -261,3 +261,16 @@ def test_backend_ready_timeout_accepts_leading_zero_decimal(tmp_path: Path) -> N
 
     assert "MOVIEPILOT_BACKEND_READY_TIMEOUT=08 无效" not in output
     assert "MoviePilot Web 已可访问" in output
+
+
+def test_backend_failure_keepalive_contract_is_explicit() -> None:
+    """后端异常默认保活诊断，显式关闭后才退出容器。"""
+    content = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    function = content.split(
+        "function diagnostic_keepalive() {", 1
+    )[1].split("\n}", 1)[0]
+
+    assert 'MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE:-true' in function
+    assert 'if [ "${keepalive}" = "false" ]' in function
+    assert 'graceful_exit "$exit_code" "python_exit"' in function
+    assert "容器将保持运行以便执行 moviepilot doctor" in function
