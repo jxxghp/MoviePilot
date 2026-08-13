@@ -373,7 +373,9 @@ def test_middleware_observation_failure_does_not_replace_success(
 ) -> None:
     """shadow start/finish 故障不能阻止 handler 或替换成功结果。"""
     orchestrator = MagicMock()
-    orchestrator.start.return_value = object()
+    orchestrator.start.return_value = SimpleNamespace(
+        decision=SimpleNamespace(allowed=True)
+    )
     getattr(orchestrator, failed_phase).side_effect = RuntimeError(
         f"policy-{failed_phase}-failure"
     )
@@ -402,7 +404,9 @@ def test_middleware_observation_failure_does_not_replace_success(
 def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
     """shadow fail hook 故障后仍必须抛出原始工具异常。"""
     orchestrator = MagicMock()
-    orchestrator.start.return_value = object()
+    orchestrator.start.return_value = SimpleNamespace(
+        decision=SimpleNamespace(allowed=True)
+    )
     orchestrator.fail.side_effect = RuntimeError("policy-fail-hook-failure")
     middleware = AgentPolicyMiddleware(
         context=_interactive_context(),
@@ -421,6 +425,32 @@ def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
         asyncio.run(middleware.awrap_tool_call(request, _handler))
 
     assert error_info.value is tool_error
+
+
+def test_middleware_keeps_shadow_observation_until_strict_runtime_takeover() -> None:
+    """普通 ToolNode 在严格策略接管前不得因观测决策改变既有行为。"""
+    orchestrator = MagicMock()
+    orchestrator.start.return_value = SimpleNamespace(
+        decision=SimpleNamespace(allowed=False)
+    )
+    middleware = AgentPolicyMiddleware(
+        context=_interactive_context(),
+        orchestrator=orchestrator,
+    )
+    request = SimpleNamespace(
+        tool=_EchoTool(session_id="session-1", user_id="user-1"),
+        tool_call={"id": "call-1", "name": "policy_echo", "args": {"query": "same"}},
+    )
+    handler = AsyncMock(
+        return_value=ToolMessage(content="same", tool_call_id="call-1")
+    )
+
+    result = asyncio.run(middleware.awrap_tool_call(request, handler))
+
+    assert result.content == "same"
+    handler.assert_awaited_once_with(request)
+    orchestrator.finish.assert_called_once()
+    orchestrator.fail.assert_not_called()
 
 
 def test_policy_hook_failure_logs_only_stable_type_information() -> None:

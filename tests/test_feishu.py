@@ -1155,6 +1155,45 @@ class TestFeishu(unittest.TestCase):
         self.assertEqual(response.message_id, "om_789")
         self.assertEqual(response.chat_id, "oc_789")
 
+    def test_module_plain_direct_message_uses_literal_text_transport(self):
+        """纯文本直发不得进入会解释密钥字符的 Markdown 卡片路径。"""
+        module = FeishuModule()
+        module._channel = MessageChannel.Feishu
+        conf = SimpleNamespace(name="feishu-main")
+        client = MagicMock()
+        client.send_text.return_value = {
+            "success": True,
+            "message_id": "om_plain",
+            "chat_id": "oc_plain",
+        }
+        literal_text = "G2A1_PROTECTED_MARKER_20260812\n**literal markdown**\n<img src=x>"
+
+        with (
+            patch.object(module, "get_configs", return_value={"feishu-main": conf}),
+            patch.object(module, "check_message", return_value=True),
+            patch.object(module, "get_instance", return_value=client),
+        ):
+            response = module.send_direct_message(
+                Notification(
+                    channel=MessageChannel.Feishu,
+                    source="feishu-main",
+                    userid="ou_target",
+                    text=literal_text,
+                    private_delivery=True,
+                    parse_mode="plain",
+                )
+            )
+
+        client.send_text.assert_called_once_with(
+            text=literal_text,
+            userid="ou_target",
+            chat_id=None,
+            receive_id_type=None,
+            original_message_id=None,
+        )
+        client.send_notification.assert_not_called()
+        self.assertTrue(response.success)
+
     def test_run_ws_client_binds_thread_local_event_loop(self):
         client = self._build_client()
         original_loop = object()
@@ -1514,6 +1553,20 @@ class TestFeishu(unittest.TestCase):
         )
         self.assertIsNone(userid)
         self.assertEqual(chat_id, "oc_config")
+
+    def test_module_private_delivery_ignores_original_group_chat(self):
+        """私聊投递只保留用户身份，并让客户端按已记录 ID 类型发送。"""
+        userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
+            Notification(
+                userid="user_target",
+                original_chat_id="oc_group",
+                private_delivery=True,
+            )
+        )
+
+        self.assertEqual(userid, "user_target")
+        self.assertIsNone(chat_id)
+        self.assertIsNone(receive_id_type)
 
     def test_module_post_message_replies_to_original_chat_for_group_message(self):
         """携带原会话上下文的回复应定向到原会话（群聊）。"""

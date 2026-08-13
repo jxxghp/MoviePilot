@@ -262,9 +262,11 @@ class Notification(BaseModel):
     original_message_id: Optional[Union[str, int]] = None
     # 原消息的聊天ID，用于编辑消息
     original_chat_id: Optional[str] = None
+    # 是否必须按用户身份投递到私聊，禁止回退原会话或最近会话映射
+    private_delivery: bool = False
     # 是否禁用链接预览（仅Telegram支持）
     disable_web_page_preview: Optional[bool] = None
-    # Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
+    # 消息文本格式；Telegram 支持 MarkdownV2、HTML、plain，飞书直发支持 plain
     parse_mode: Optional[str] = None
     # 是否写入消息历史
     save_history: bool = True

@@ -58,7 +58,10 @@ class QuerySystemSettingsInput(BaseModel):
         False,
         description=(
             "Whether to return raw secret values such as API keys, tokens, cookies, and passwords. "
-            "Defaults to false; secret-like fields are redacted in returned values and previews."
+            "Defaults to false; secret-like fields are redacted in returned values and previews. "
+            "Set this to true when the user explicitly asks for an unredacted secret; the host verifies "
+            "administrator authority, requests confirmation, and delivers the result outside the ordinary "
+            "model response. Do not refuse the tool call solely because the requested value is sensitive."
         ),
     )
 

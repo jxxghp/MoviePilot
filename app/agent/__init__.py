@@ -317,7 +317,6 @@ class _PendingSecretConfirmation:
     user_id: str
     channel: str
     source: str
-    original_chat_id: str
 
 
 class MoviePilotAgent:
@@ -339,7 +338,7 @@ class MoviePilotAgent:
             replay_mode: ReplyMode = ReplyMode.DISPATCH,
             allow_message_tools: bool = True,
             output_callback: Optional[Callable[[str], None]] = None,
-            protected_output_callback: Optional[Callable[[str], None]] = None,
+            protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
     ):
         self.session_id = session_id
         self.user_id = user_id
@@ -771,7 +770,7 @@ class MoviePilotAgent:
 
     def set_protected_output_callback(
             self,
-            protected_output_callback: Optional[Callable[[str], None]],
+            protected_output_callback: Optional[Callable[[str], Optional[bool]]],
     ) -> None:
         """更新仅供当前请求接收的受保护文本输出回调。"""
         self.protected_output_callback = protected_output_callback
@@ -790,7 +789,7 @@ class MoviePilotAgent:
         """判断当前渠道能否把密钥结果直接交付给原用户。"""
         if self.channel == MessageChannel.WebAgent.value:
             return callable(self.protected_output_callback)
-        return self.channel in {
+        return bool(self.user_id and self.source) and self.channel in {
             MessageChannel.Telegram.value,
             MessageChannel.Feishu.value,
         }
@@ -831,15 +830,6 @@ class MoviePilotAgent:
             self._pending_secret_confirmation = None
             return permission_result
 
-        self._pending_secret_confirmation = _PendingSecretConfirmation(
-            tool=tool,
-            arguments=validated_arguments,
-            created_at=datetime.now(),
-            user_id=str(self.user_id or ""),
-            channel=str(self.channel or ""),
-            source=str(self.source or ""),
-            original_chat_id=str(self.original_chat_id or ""),
-        )
         target = validated_arguments.get("setting_key") or (
             validated_arguments.get("group") or "all"
         )
@@ -849,34 +839,73 @@ class MoviePilotAgent:
             "请在 5 分钟内回复“确认”继续，或回复“取消”放弃。"
         )
         if self.channel == MessageChannel.WebAgent.value:
+            self._pending_secret_confirmation = _PendingSecretConfirmation(
+                tool=tool,
+                arguments=validated_arguments,
+                created_at=datetime.now(),
+                user_id=str(self.user_id or ""),
+                channel=str(self.channel or ""),
+                source=str(self.source or ""),
+            )
             self._emit_output(confirmation_message)
         else:
-            await self.send_agent_message(confirmation_message)
+            delivered = await self._deliver_private_channel_message(
+                confirmation_message
+            )
+            if not delivered:
+                self._pending_secret_confirmation = None
+                return "无法向当前用户建立私聊，未执行敏感设置读取。"
+            self._pending_secret_confirmation = _PendingSecretConfirmation(
+                tool=tool,
+                arguments=validated_arguments,
+                created_at=datetime.now(),
+                user_id=str(self.user_id or ""),
+                channel=str(self.channel or ""),
+                source=str(self.source or ""),
+            )
             self._tool_context["user_reply_sent"] = True
         return confirmation_message
 
-    async def _deliver_protected_output(self, content: str) -> None:
+    async def _deliver_private_channel_message(self, content: str) -> bool:
+        """按渠道用户身份私聊投递，禁止回退群聊或广播。"""
+        if self.channel not in {
+            MessageChannel.Telegram.value,
+            MessageChannel.Feishu.value,
+        }:
+            return False
+        try:
+            response = await run_in_threadpool(
+                AgentChain().send_direct_message,
+                Notification(
+                    channel=self.channel,
+                    source=self.source,
+                    mtype=NotificationType.Agent,
+                    userid=self.user_id,
+                    username=self.username,
+                    text=content,
+                    private_delivery=True,
+                    parse_mode="plain",
+                    save_history=False,
+                ),
+            )
+        except Exception as error:
+            logger.error(
+                f"Agent私聊投递失败: channel={self.channel}, "
+                f"error_type={type(error).__name__}"
+            )
+            return False
+        return bool(response and response.success)
+
+    async def _deliver_protected_output(self, content: str) -> bool:
         """绕过模型与会话历史，把敏感结果直接交付给当前用户。"""
         if callable(self.protected_output_callback):
             try:
-                self.protected_output_callback(content)
+                delivered = self.protected_output_callback(content)
             except Exception as e:
                 logger.error(f"受保护输出回调失败: {e}")
-            return
-
-        await AgentChain().async_post_message(
-            Notification(
-                channel=self.channel,
-                source=self.source,
-                mtype=NotificationType.Agent,
-                userid=self.user_id,
-                username=self.username,
-                original_message_id=self.original_message_id,
-                original_chat_id=self.original_chat_id,
-                text=content,
-                save_history=False,
-            )
-        )
+                return False
+            return delivered is not False
+        return await self._deliver_private_channel_message(content)
 
     async def _handle_secret_confirmation_control(
             self,
@@ -899,7 +928,6 @@ class MoviePilotAgent:
             pending.user_id != str(self.user_id or "")
             or pending.channel != str(self.channel or "")
             or pending.source != str(self.source or "")
-            or pending.original_chat_id != str(self.original_chat_id or "")
         ):
             return None
         if datetime.now() - pending.created_at > SECRET_CONFIRMATION_TTL:
@@ -913,16 +941,37 @@ class MoviePilotAgent:
             await self._deliver_protected_output(message_text)
             return message_text
 
-        permission_result = await pending.tool._check_permission()
-        if permission_result:
-            await self._deliver_protected_output(permission_result)
-            return permission_result
-
         if not self._can_confirm_secret_read():
             return "当前入口不支持安全交付敏感设置，未执行读取。"
 
-        result = await pending.tool._run_confirmed(**pending.arguments)
-        await self._deliver_protected_output(result)
+        async def _execute_confirmed() -> str:
+            permission_result = await pending.tool._check_permission()
+            if permission_result:
+                return permission_result
+            return await pending.tool._run_confirmed(**pending.arguments)
+
+        policy = AgentPolicyMiddleware(
+            context=self._build_policy_context(),
+            tools=[pending.tool],
+        )
+        try:
+            _, result = await policy.execute_tool_call(
+                tool=pending.tool,
+                arguments=pending.arguments,
+                invocation_id=f"secret-confirmation-{uuid.uuid4().hex}",
+                handler=_execute_confirmed,
+            )
+        except Exception:
+            message_text = "敏感设置读取失败，请稍后重试。"
+            await self._deliver_protected_output(message_text)
+            return message_text
+        delivered = await self._deliver_protected_output(result)
+        if not delivered:
+            message_text = "敏感设置读取已完成，但结果投递失败，请重新发起。"
+            self._emit_output(message_text)
+            if self.should_dispatch_reply:
+                await self.send_agent_message(message_text)
+            return message_text
         return "敏感设置确认已处理。"
 
     def _build_policy_context(self) -> ToolPolicyContext:
@@ -2166,7 +2215,7 @@ class _MessageTask:
     reply_mode: ReplyMode = ReplyMode.DISPATCH
     allow_message_tools: bool = True
     output_callback: Optional[Callable[[str], None]] = None
-    protected_output_callback: Optional[Callable[[str], None]] = None
+    protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None
     notification_callback: Optional[Callable[[Any], None]] = None
     agent_factory: Optional[Callable[..., MoviePilotAgent]] = None
     completion_future: Optional[asyncio.Future] = None
@@ -2227,7 +2276,6 @@ class AgentManager:
             user_id: str,
             channel: Optional[str] = None,
             source: Optional[str] = None,
-            original_chat_id: Optional[str] = None,
     ) -> bool:
         """判断指定用户是否可继续当前会话的敏感设置确认。"""
         agent = self.active_agents.get(session_id)
@@ -2238,10 +2286,6 @@ class AgentManager:
             and str(agent.user_id) == str(user_id)
             and (channel is None or pending.channel == str(channel))
             and (source is None or pending.source == str(source))
-            and (
-                original_chat_id is None
-                or pending.original_chat_id == str(original_chat_id)
-            )
         )
 
     async def initialize(self):
@@ -2345,7 +2389,7 @@ class AgentManager:
             reply_mode: ReplyMode = ReplyMode.DISPATCH,
             allow_message_tools: bool = True,
             output_callback: Optional[Callable[[str], None]] = None,
-            protected_output_callback: Optional[Callable[[str], None]] = None,
+            protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
             notification_callback: Optional[Callable[[Any], None]] = None,
             agent_factory: Optional[Callable[..., MoviePilotAgent]] = None,
             wait_for_completion: bool = False,

@@ -47,10 +47,13 @@ from app.utils.string import StringUtils  # noqa: E402
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
 TELEGRAM_PARSE_MODE_HTML = "HTML"
+TELEGRAM_PARSE_MODE_PLAIN = ""
 TELEGRAM_PARSE_MODE_ALIASES = {
     "markdownv2": TELEGRAM_PARSE_MODE_MARKDOWN,
     "mdv2": TELEGRAM_PARSE_MODE_MARKDOWN,
     "html": TELEGRAM_PARSE_MODE_HTML,
+    "plain": TELEGRAM_PARSE_MODE_PLAIN,
+    "text": TELEGRAM_PARSE_MODE_PLAIN,
 }
 
 
@@ -295,10 +298,13 @@ class Telegram:
     @staticmethod
     def _normalize_parse_mode(parse_mode: Optional[str] = None) -> str:
         """规范化 Telegram 消息格式类型。"""
-        if not parse_mode:
+        if parse_mode is None:
             return TELEGRAM_PARSE_MODE_MARKDOWN
+        normalized = str(parse_mode).strip()
+        if not normalized:
+            return TELEGRAM_PARSE_MODE_PLAIN
         return TELEGRAM_PARSE_MODE_ALIASES.get(
-            str(parse_mode).strip().lower(), TELEGRAM_PARSE_MODE_MARKDOWN
+            normalized.lower(), TELEGRAM_PARSE_MODE_MARKDOWN
         )
 
     @staticmethod
@@ -307,10 +313,17 @@ class Telegram:
         return Telegram._normalize_parse_mode(parse_mode) == TELEGRAM_PARSE_MODE_HTML
 
     @staticmethod
+    def _is_plain_parse_mode(parse_mode: Optional[str] = None) -> bool:
+        """判断本次发送是否禁用 Telegram 文本格式解析。"""
+        return Telegram._normalize_parse_mode(parse_mode) == TELEGRAM_PARSE_MODE_PLAIN
+
+    @staticmethod
     def _format_title(title: Optional[str], parse_mode: Optional[str] = None) -> Optional[str]:
         """按 parse_mode 生成 Telegram 标题文本。"""
         if not title:
             return None
+        if Telegram._is_plain_parse_mode(parse_mode):
+            return title.removesuffix("\n")
         if Telegram._is_html_parse_mode(parse_mode):
             return f"<b>{html_utils.escape(title).removesuffix(chr(10))}</b>"
         return f"**{standardize(title).removesuffix(chr(10))}**"
@@ -318,6 +331,8 @@ class Telegram:
     @staticmethod
     def _format_link(label: str, link: str, parse_mode: Optional[str] = None) -> str:
         """按 parse_mode 生成 Telegram 链接文本。"""
+        if Telegram._is_plain_parse_mode(parse_mode):
+            return f"{label}: {link}"
         if Telegram._is_html_parse_mode(parse_mode):
             return (
                 f'<a href="{html_utils.escape(link, quote=True)}">'
@@ -328,6 +343,8 @@ class Telegram:
     @staticmethod
     def _format_italic(text: str, parse_mode: Optional[str] = None) -> str:
         """按 parse_mode 生成 Telegram 斜体文本。"""
+        if Telegram._is_plain_parse_mode(parse_mode):
+            return text
         if Telegram._is_html_parse_mode(parse_mode):
             return f"<i>{html_utils.escape(text)}</i>"
         return f"_{text}_"
@@ -342,7 +359,10 @@ class Telegram:
         """按 parse_mode 生成 Telegram 可发送文本。"""
         if not text:
             return None
-        if Telegram._is_html_parse_mode(parse_mode):
+        if (
+                Telegram._is_plain_parse_mode(parse_mode)
+                or Telegram._is_html_parse_mode(parse_mode)
+        ):
             return text
         return standardize(text)
 
@@ -595,6 +615,7 @@ class Telegram:
             disable_web_page_preview: Optional[bool] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            private_delivery: bool = False,
     ) -> Optional[dict]:
         """
         发送Telegram消息
@@ -610,6 +631,7 @@ class Telegram:
         :param disable_web_page_preview: 是否禁用链接预览
         :param stop_typing: 发送完成后是否立即停止 typing
         :param parse_mode: Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
+        :param private_delivery: 是否绕过最近会话映射，直接以用户 ID 作为私聊目标
         :return: 包含 message_id, chat_id, success 的字典
         """
         if not self._telegram_token or not self._telegram_chat_id:
@@ -617,7 +639,11 @@ class Telegram:
 
         parse_mode = self._normalize_parse_mode(parse_mode)
         # Determine target chat_id with improved logic using user mapping
-        chat_id = self._determine_target_chat_id(userid, original_chat_id)
+        chat_id = self._determine_target_chat_id(
+            userid,
+            original_chat_id,
+            private_delivery=private_delivery,
+        )
         if not title and not text:
             logger.warn("标题和内容不能同时为空")
             self._stop_typing_if_needed(chat_id, stop_typing)
@@ -836,7 +862,10 @@ class Telegram:
             return {"success": False}
 
     def _determine_target_chat_id(
-            self, userid: Optional[str] = None, original_chat_id: Optional[str] = None
+            self,
+            userid: Optional[str] = None,
+            original_chat_id: Optional[str] = None,
+            private_delivery: bool = False,
     ) -> str:
         """
         确定目标聊天ID，使用用户映射确保回复到正确的聊天
@@ -844,6 +873,10 @@ class Telegram:
         :param original_chat_id: 原消息的聊天ID
         :return: 目标聊天ID
         """
+        # 私聊投递以渠道用户 ID 为目标，最近会话映射可能指向群聊，不能参与解析。
+        if private_delivery and userid:
+            return str(userid)
+
         # 1. 优先使用原消息的聊天ID (编辑消息场景)
         if original_chat_id:
             return original_chat_id
@@ -1354,7 +1387,10 @@ class Telegram:
                 ret = self.__send_short_message(image, caption,
                                                 disable_web_page_preview=disable_web_page_preview,
                                                 **kwargs)
-            elif self._is_html_parse_mode(parse_mode):
+            elif (
+                    self._is_plain_parse_mode(parse_mode)
+                    or self._is_html_parse_mode(parse_mode)
+            ):
                 ret = self.__send_long_plain_message(
                     image,
                     caption,

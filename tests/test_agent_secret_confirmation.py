@@ -2,7 +2,8 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
@@ -288,7 +289,6 @@ def test_expired_confirmation_reaches_agent_expiry_receipt() -> None:
                 "1",
                 channel=MessageChannel.WebAgent.value,
                 source="web-agent",
-                original_chat_id="",
             )
             return await agent.process("确认")
         finally:
@@ -324,7 +324,7 @@ def test_background_agent_refuses_secret_read_without_pending() -> None:
 
 
 def test_message_channel_receives_confirmation_prompt_once() -> None:
-    """TG/飞书应由宿主直接发送确认提示，不依赖图状态转成渠道输出。"""
+    """TG/飞书应先向用户私聊发送提示，再登记待确认操作。"""
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
@@ -347,17 +347,79 @@ def test_message_channel_receives_confirmation_prompt_once() -> None:
         new=AsyncMock(return_value=True),
     ), patch.object(
         agent,
-        "send_agent_message",
-        new=AsyncMock(),
+        "_deliver_private_channel_message",
+        new=AsyncMock(return_value=True),
     ) as send_message:
         prompt = asyncio.run(scenario())
 
     send_message.assert_awaited_once_with(prompt)
     assert agent._tool_context["user_reply_sent"] is True
+    assert agent.has_pending_secret_confirmation() is True
 
 
-def test_pending_secret_read_keeps_original_owner_and_action() -> None:
-    """新请求不得覆盖 pending，错误交付目标也不得消费它。"""
+def test_message_channel_does_not_register_pending_when_private_delivery_fails() -> None:
+    """无法建立私聊时不得等待确认，更不能回退群聊投递结果。"""
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.Feishu.value,
+        source="feishu-main",
+        username="admin",
+        original_chat_id="group-1",
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(
+            agent,
+            "_deliver_private_channel_message",
+            new=AsyncMock(return_value=False),
+        ) as deliver,
+    ):
+        result = asyncio.run(
+            agent._register_secret_confirmation(
+                tool,
+                {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+            )
+        )
+
+    assert result == "无法向当前用户建立私聊，未执行敏感设置读取。"
+    deliver.assert_awaited_once()
+    assert agent.has_pending_secret_confirmation() is False
+
+
+def test_private_delivery_requests_literal_plain_text() -> None:
+    """敏感提示与结果均须请求渠道按纯文本私聊投递。"""
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="admin",
+        original_chat_id="group-1",
+    )
+    response = SimpleNamespace(success=True)
+
+    with patch(
+        "app.agent.AgentChain.send_direct_message",
+        return_value=response,
+    ) as send_direct:
+        delivered = asyncio.run(
+            agent._deliver_private_channel_message(
+                "G2A1_PROTECTED_MARKER_20260812\n**literal markdown**\n<img src=x>"
+            )
+        )
+
+    assert delivered is True
+    notification = send_direct.call_args.args[0]
+    assert notification.private_delivery is True
+    assert notification.parse_mode == "plain"
+    assert notification.original_chat_id is None
+
+
+def test_pending_secret_read_keeps_actor_and_action_across_chat_targets() -> None:
+    """新请求不得覆盖 pending，同一用户可从私聊消费群聊发起的确认。"""
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
@@ -367,6 +429,8 @@ def test_pending_secret_read_keeps_original_owner_and_action() -> None:
         original_chat_id="chat-1",
     )
     tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+    delivered = []
 
     async def scenario() -> tuple[str, str, str]:
         first = await agent._register_secret_confirmation(
@@ -384,12 +448,254 @@ def test_pending_secret_read_keeps_original_owner_and_action() -> None:
     with (
         patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
         patch.object(agent, "_execute_agent", new=AsyncMock(return_value="普通回复")),
-        patch.object(QuerySystemSettingsTool, "_load_setting_value") as load_value,
+        patch.object(
+            agent,
+            "_deliver_private_channel_message",
+            new=AsyncMock(side_effect=lambda content: delivered.append(content) or True),
+        ),
+        patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value="secret-marker",
+        ) as load_value,
     ):
         first, second, result = asyncio.run(scenario())
 
     assert "TMDB_API_KEY" in first
     assert "已有待确认" in second
-    assert result == "普通回复"
-    load_value.assert_not_called()
-    assert agent.has_pending_secret_confirmation() is True
+    assert result == "敏感设置确认已处理。"
+    load_value.assert_called_once()
+    assert "secret-marker" in delivered[-1]
+    assert agent.has_pending_secret_confirmation() is False
+
+
+def test_confirm_reports_result_delivery_failure_without_secret() -> None:
+    """工具已读取但受保护结果未送达时，只能通过普通渠道报告非敏感失败。"""
+    secret_marker = "confirmed-secret-marker"
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="admin",
+        original_chat_id="group-1",
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        return await agent.process("确认")
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(
+            agent,
+            "_deliver_private_channel_message",
+            new=AsyncMock(side_effect=[True, False]),
+        ) as deliver,
+        patch.object(agent, "send_agent_message", new=AsyncMock()) as send_notice,
+        patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value=secret_marker,
+        ),
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "敏感设置读取已完成，但结果投递失败，请重新发起。"
+    assert deliver.await_count == 2
+    assert secret_marker in deliver.await_args_list[-1].args[0]
+    send_notice.assert_awaited_once_with(result)
+    assert secret_marker not in send_notice.await_args.args[0]
+
+
+def test_web_protected_callback_failure_returns_ordinary_safe_notice() -> None:
+    """Web 受保护回调失败时，普通流只能收到不含敏感结果的提示。"""
+    secret_marker = "confirmed-secret-marker"
+    ordinary_output = []
+
+    def broken_protected_callback(_content: str) -> None:
+        raise RuntimeError("delivery unavailable")
+
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        output_callback=ordinary_output.append,
+        protected_output_callback=broken_protected_callback,
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        ordinary_output.clear()
+        return await agent.process("确认")
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(
+            QuerySystemSettingsTool,
+            "_load_setting_value",
+            return_value=secret_marker,
+        ),
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "敏感设置读取已完成，但结果投递失败，请重新发起。"
+    assert ordinary_output == [result]
+    assert secret_marker not in ordinary_output[0]
+
+
+def test_confirm_reuses_policy_lifecycle() -> None:
+    """确认后的冻结调用必须生成与 ToolNode 相同的 start/finish 生命周期。"""
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        protected_output_callback=lambda _content: None,
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        return await agent.process("确认")
+
+    from app.agent.policy import DEFAULT_TOOL_POLICY_ORCHESTRATOR
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(QuerySystemSettingsTool, "_load_setting_value", return_value="secret"),
+        patch.object(
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            "start",
+            wraps=DEFAULT_TOOL_POLICY_ORCHESTRATOR.start,
+        ) as start,
+        patch.object(
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            "finish",
+            wraps=DEFAULT_TOOL_POLICY_ORCHESTRATOR.finish,
+        ) as finish,
+        patch.object(
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            "fail",
+            wraps=DEFAULT_TOOL_POLICY_ORCHESTRATOR.fail,
+        ) as fail,
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "敏感设置确认已处理。"
+    start.assert_called_once()
+    finish.assert_called_once()
+    fail.assert_not_called()
+
+
+def test_confirm_respects_policy_denial_without_running_tool() -> None:
+    """确认不能覆盖宿主策略的拒绝决定。"""
+    protected_output = []
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        protected_output_callback=protected_output.append,
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+    denied = SimpleNamespace(decision=SimpleNamespace(allowed=False))
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        return await agent.process("确认")
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch("app.agent.middleware.policy.DEFAULT_TOOL_POLICY_ORCHESTRATOR.start", return_value=denied),
+        patch.object(QuerySystemSettingsTool, "_run_confirmed", new=AsyncMock()) as run_tool,
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "敏感设置确认已处理。"
+    assert protected_output[-1] == "当前宿主策略不允许执行该工具。"
+    run_tool.assert_not_awaited()
+
+
+def test_confirm_records_policy_failure_and_returns_protected_error() -> None:
+    """确认执行异常必须闭合 fail 生命周期，且不把异常交给普通对话。"""
+    protected_output = []
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        protected_output_callback=protected_output.append,
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+    orchestrator = MagicMock()
+    orchestrator.start.return_value = SimpleNamespace(
+        decision=SimpleNamespace(allowed=True)
+    )
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        return await agent.process("确认")
+
+    from app.agent.policy import DEFAULT_TOOL_POLICY_ORCHESTRATOR
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            "start",
+            return_value=orchestrator.start.return_value,
+        ),
+        patch.object(
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            "fail",
+            side_effect=orchestrator.fail,
+        ) as fail,
+        patch.object(
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            "finish",
+            side_effect=orchestrator.finish,
+        ) as finish,
+        patch.object(
+            QuerySystemSettingsTool,
+            "_run_confirmed",
+            new=AsyncMock(side_effect=RuntimeError("secret-bearing-error")),
+        ),
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "敏感设置读取失败，请稍后重试。"
+    assert protected_output[-1] == result
+    fail.assert_called_once()
+    finish.assert_not_called()
