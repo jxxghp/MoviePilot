@@ -562,7 +562,8 @@ class LLMHelper:
                     record_input,
                     metadata_input,
                     profile_input,
-                    configured_input or cls._DEFAULT_MAX_INPUT_TOKENS,
+                    configured_input,
+                    cls._DEFAULT_MAX_INPUT_TOKENS,
                 )
                 if candidate is not None
             ]

@@ -278,6 +278,21 @@ class LlmHelperTestCallTest(unittest.TestCase):
 
         self.assertEqual(profile["max_input_tokens"], 16000)
 
+    def test_normalize_model_profile_keeps_builtin_cap_for_unmatched_known_endpoint(self):
+        """未匹配的已知 provider 端点不能由较大的用户配置放宽保守上限。"""
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 512):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 1000000},
+                runtime={
+                    "provider_id": "deepseek",
+                    "model_profile_endpoint_matched": False,
+                    "model_record": {"context_tokens": 1000000},
+                    "model_metadata": {"limit": {"input": 1000000}},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 256000)
+
     def test_normalize_model_profile_caps_generic_openai_endpoint(self):
         with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 32):
             profile = llm_module.LLMHelper._normalize_model_profile(
@@ -293,6 +308,20 @@ class LlmHelperTestCallTest(unittest.TestCase):
             )
 
         self.assertEqual(profile["max_input_tokens"], 32000)
+
+    def test_normalize_model_profile_keeps_builtin_cap_for_generic_endpoint(self):
+        """通用兼容端点同时受用户配置和内建保守上限约束。"""
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 512):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 1000000},
+                runtime={
+                    "provider_id": "openai",
+                    "model_record": {"input_tokens": 1000000},
+                    "model_metadata": {"limit": {"context": 1000000}},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 256000)
 
     def test_normalize_model_profile_keeps_smaller_generic_profile_limit(self):
         with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 256):
