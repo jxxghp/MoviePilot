@@ -520,6 +520,77 @@ class LlmProviderRegistryTest(unittest.TestCase):
         self.assertEqual(runtime["provider_id"], "moonshot")
         self.assertEqual(runtime["runtime"], "anthropic_compatible")
         self.assertEqual(runtime["base_url"], "https://api.kimi.com/coding")
+        self.assertTrue(runtime["model_profile_endpoint_matched"])
+
+    def test_resolve_runtime_marks_unmatched_custom_endpoint_for_profile_cap(self):
+        manager = LLMProviderManager()
+
+        runtime = asyncio.run(
+            manager.resolve_runtime(
+                provider_id="deepseek",
+                model="deepseek-chat",
+                api_key="sk-test",
+                base_url="https://proxy.example.com/v1",
+            )
+        )
+
+        self.assertFalse(runtime["model_profile_endpoint_matched"])
+
+    def test_resolve_runtime_rejects_preset_identity_for_different_url(self):
+        manager = LLMProviderManager()
+
+        runtime = asyncio.run(
+            manager.resolve_runtime(
+                provider_id="moonshot",
+                model="kimi-k2.5",
+                api_key="sk-test",
+                base_url="https://proxy.example.com/v1",
+                base_url_preset_id="moonshot-cn",
+            )
+        )
+
+        self.assertFalse(runtime["model_profile_endpoint_matched"])
+
+    def test_resolve_runtime_rejects_preset_metadata_when_url_falls_back(self):
+        manager = LLMProviderManager()
+
+        runtime = asyncio.run(
+            manager.resolve_runtime(
+                provider_id="moonshot",
+                model="kimi-k2.5",
+                api_key="sk-test",
+                base_url_preset_id="moonshot-kimi-coding",
+            )
+        )
+
+        self.assertFalse(runtime["model_profile_endpoint_matched"])
+
+    def test_resolve_runtime_never_trusts_generic_openai_model_metadata(self):
+        manager = LLMProviderManager()
+
+        runtime = asyncio.run(
+            manager.resolve_runtime(
+                provider_id="openai",
+                model="gpt-4o",
+                api_key="sk-test",
+                base_url="https://api.openai.com/v1",
+            )
+        )
+
+        self.assertFalse(runtime["model_profile_endpoint_matched"])
+
+    def test_resolve_runtime_matches_native_provider_without_base_url(self):
+        manager = LLMProviderManager()
+
+        runtime = asyncio.run(
+            manager.resolve_runtime(
+                provider_id="google",
+                model="gemini-2.5-flash",
+                api_key="sk-test",
+            )
+        )
+
+        self.assertTrue(runtime["model_profile_endpoint_matched"])
 
     def test_resolve_model_list_strategy_prefers_kimi_for_coding_preset(self):
         manager = LLMProviderManager()
