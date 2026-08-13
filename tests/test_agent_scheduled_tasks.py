@@ -88,6 +88,49 @@ def _future_time(minutes: int = 10) -> str:
     )
 
 
+def _past_time(minutes: int = 10) -> str:
+    """生成系统时区内的过去时间字符串。"""
+    timezone = pytz.timezone(settings.TZ)
+    return (datetime.now(timezone) - timedelta(minutes=minutes)).isoformat(
+        timespec="seconds"
+    )
+
+
+def _invalid_time() -> str:
+    """返回无法构造自动触发器的遗留时间值。"""
+    return "invalid-run-at"
+
+
+def _add_agent_task(trigger_type: str, trigger_value: str, prefix: str):
+    """创建带隔离用户上下文的 Agent 定时任务。"""
+    user_id = f"{prefix}-{uuid4().hex}"
+    return AgentTaskOper().add(
+        name=f"{prefix} 检查",
+        content="检查资源并报告",
+        trigger_type=trigger_type,
+        cron_expression=trigger_value if trigger_type == "cron" else None,
+        run_at=trigger_value if trigger_type == "date" else None,
+        user_id=user_id,
+        username="admin",
+        session_id=f"session-{user_id}",
+        channel="Telegram",
+        source="telegram-test",
+        original_chat_id="chat-1",
+    )
+
+
+def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
+    """构造不启动后台线程的 Agent 任务调度器。"""
+    scheduler = object.__new__(Scheduler)
+    scheduler._lock = threading.RLock()
+    scheduler._jobs = {}
+    scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
+    scheduler._agent_task_interruptions_reconciled = False
+    if reconcile:
+        scheduler._reconcile_agent_task_interruptions()
+    return scheduler
+
+
 def _build_tool(tool_class, user_id: str):
     """构造带当前用户消息上下文的 Agent 工具。"""
     tool = tool_class(session_id=f"session-{user_id}", user_id=user_id)
@@ -289,6 +332,240 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
         assert job_id not in scheduler._jobs
     finally:
         scheduler._scheduler.shutdown(wait=False)
+
+
+@pytest.mark.parametrize(
+    "run_time_factory",
+    [_past_time, _future_time, _invalid_time],
+)
+def test_scheduler_restart_keeps_interrupted_date_task_manual_only(
+        run_time_factory,
+) -> None:
+    """重启不得自动补跑结果未知的一次任务，但必须保留显式重跑入口。"""
+    task = _add_agent_task("date", run_time_factory(), "restart-date")
+    assert AgentTaskOper().mark_running(task.id)
+
+    scheduler = _build_agent_task_scheduler(reconcile=True)
+    scheduler.init_agent_task_jobs()
+    scheduler.init_agent_task_jobs()
+
+    recovered = AgentTaskOper().get(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    assert recovered.last_status == "interrupted"
+    assert "可能已有部分操作" in recovered.last_result
+    assert recovered.last_run_at is not None
+    assert recovered.run_count == 0
+    assert job_id in scheduler._jobs
+    assert scheduler._scheduler.get_job(job_id) is None
+    assert scheduler.get_agent_task_next_run(task.id) is None
+
+    scheduler.start = Mock()
+    assert scheduler.start_agent_task(task.id) is True
+    scheduler.start.assert_called_once_with(job_id)
+
+
+@pytest.mark.anyio
+async def test_interrupted_date_task_manual_run_disables_and_removes_job(
+        monkeypatch,
+) -> None:
+    """用户显式重跑中断的一次任务后，应按原有单次任务语义正常收口。"""
+    task = _add_agent_task("date", _past_time(), "restart-date-manual")
+    assert AgentTaskOper().mark_running(task.id)
+
+    scheduler = _build_agent_task_scheduler(reconcile=True)
+    scheduler.init_agent_task_jobs()
+
+    process_message = AsyncMock(return_value="执行完成")
+    monkeypatch.setattr("app.agent.agent_manager.process_message", process_message)
+
+    assert await scheduler.execute_agent_task(task.id) == (True, "执行完成")
+    process_message.assert_awaited_once()
+
+    finished = AgentTaskOper().get(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    assert finished.last_status == "success"
+    assert finished.run_count == 1
+    assert finished.enabled is False
+    assert job_id not in scheduler._jobs
+
+
+@pytest.mark.parametrize("run_time_factory", [_future_time, _invalid_time])
+@pytest.mark.anyio
+async def test_interrupted_date_task_enable_toggle_stays_manual_only(
+        monkeypatch,
+        run_time_factory,
+) -> None:
+    """暂停或恢复中断的一次任务不得重新注册原自动触发。"""
+    task = _add_agent_task("date", run_time_factory(), "interrupted-toggle")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+    assert oper.mark_interrupted(task.id, "执行结果未知")
+
+    scheduler = _build_agent_task_scheduler()
+    scheduler.init_agent_task_jobs()
+    monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    tool = _build_tool(UpdateAgentTaskTool, task.user_id)
+
+    paused = json.loads(await tool.run(task_id=task.id, enabled=False))
+    assert paused["enabled"] is False
+    assert paused["last_status"] == "interrupted"
+    assert paused["next_run_at"] is None
+
+    resumed = json.loads(await tool.run(task_id=task.id, enabled=True))
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    assert resumed["enabled"] is True
+    assert resumed["last_status"] == "interrupted"
+    assert resumed["next_run_at"] is None
+    assert job_id in scheduler._jobs
+    assert scheduler._scheduler.get_job(job_id) is None
+
+
+@pytest.mark.anyio
+async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) -> None:
+    """用户明确重设触发时间时，可以清除中断状态并重新安排单次任务。"""
+    task = _add_agent_task("date", _future_time(), "interrupted-reschedule")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+    assert oper.mark_interrupted(task.id, "执行结果未知")
+
+    scheduler = _build_agent_task_scheduler()
+    scheduler.init_agent_task_jobs()
+    monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    updated = json.loads(
+        await _build_tool(UpdateAgentTaskTool, task.user_id).run(
+            task_id=task.id,
+            trigger_type="date",
+            delay_minutes=20,
+            enabled=True,
+        )
+    )
+
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    assert updated["last_status"] == "waiting"
+    assert updated["last_result"] is None
+    assert updated["next_run_at"] is not None
+    assert scheduler._scheduler.get_job(job_id) is not None
+
+
+def test_agent_task_interruption_transition_preserves_execution_evidence() -> None:
+    """中断迁移只能消费 running 状态，并保留既有执行次数与开始时间。"""
+    task = _add_agent_task("cron", "0 * * * *", "interrupt-state")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+    running = oper.get(task.id)
+    assert running.last_run_at is not None
+
+    assert oper.mark_interrupted(task.id, "执行结果未知")
+    assert not oper.mark_interrupted(task.id, "不得覆盖")
+
+    interrupted = oper.get(task.id)
+    assert interrupted.last_status == "interrupted"
+    assert interrupted.last_result == "执行结果未知"
+    assert interrupted.last_run_at == running.last_run_at
+    assert interrupted.run_count == running.run_count == 0
+
+
+def test_scheduler_restart_keeps_unstarted_date_task_misfire_behavior() -> None:
+    """停机期间仅错过触发时间的一次任务仍应按原有语义补跑。"""
+    task = _add_agent_task("date", _past_time(), "restart-waiting")
+
+    scheduler = _build_agent_task_scheduler()
+
+    scheduler.init_agent_task_jobs()
+
+    recovered = AgentTaskOper().get(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    runtime_job = scheduler._scheduler.get_job(job_id)
+    assert recovered.last_status == "waiting"
+    assert runtime_job is not None
+    assert runtime_job.misfire_grace_time is None
+
+
+@pytest.mark.parametrize("success", [True, False])
+def test_scheduler_restart_keeps_finished_date_task_misfire_behavior(
+        success: bool,
+) -> None:
+    """已有单次任务终态仍沿用原调度语义，不被中断策略扩大影响。"""
+    task = _add_agent_task("date", _past_time(), f"restart-finished-{success}")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+    assert oper.finish(task.id, success=success, result="已收口")
+
+    scheduler = _build_agent_task_scheduler()
+
+    scheduler.init_agent_task_jobs()
+
+    recovered = oper.get(task.id)
+    runtime_job = scheduler._scheduler.get_job(
+        scheduler._get_agent_task_job_id(task.id)
+    )
+    assert recovered.last_status == ("success" if success else "failed")
+    assert runtime_job is not None
+    assert runtime_job.misfire_grace_time is None
+
+
+@pytest.mark.anyio
+async def test_scheduler_config_reload_does_not_interrupt_running_agent_task() -> None:
+    """同进程重建调度时不得把仍在执行的任务误判为进程中断。"""
+    scheduler = _build_agent_task_scheduler(reconcile=True)
+
+    task = _add_agent_task("cron", "0 * * * *", "reload-running")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+
+    scheduler._reconcile_agent_task_interruptions()
+    scheduler.init_agent_task_jobs()
+
+    running = oper.get(task.id)
+    assert running.last_status == "running"
+    assert not oper.mark_running(task.id)
+
+    manager = AgentManager()
+    manager.process_message = AsyncMock()
+    success, result = await manager.execute_scheduled_task(task.id)
+    assert success is False
+    assert result == "Agent 定时任务当前不可执行"
+    manager.process_message.assert_not_awaited()
+
+
+def test_scheduler_restart_keeps_interrupted_cron_future_schedule() -> None:
+    """周期任务中断后只保留下次正常调度，不抹掉本轮中断事实。"""
+    task = _add_agent_task("cron", "0 * * * *", "restart-cron")
+    assert AgentTaskOper().mark_running(task.id)
+
+    scheduler = _build_agent_task_scheduler(reconcile=True)
+    scheduler.init_agent_task_jobs()
+    scheduler.init_agent_task_jobs()
+
+    recovered = AgentTaskOper().get(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    runtime_job = scheduler._scheduler.get_job(job_id)
+    assert recovered.last_status == "interrupted"
+    assert "可能已有部分操作" in recovered.last_result
+    assert recovered.last_run_at is not None
+    assert recovered.run_count == 0
+    assert runtime_job is not None
+    assert scheduler.get_agent_task_next_run(task.id) is not None
+
+    scheduler.start = Mock()
+    assert scheduler.start_agent_task(task.id) is True
+    scheduler.start.assert_called_once_with(job_id)
+
+
+def test_scheduler_restart_reconciles_disabled_running_agent_task() -> None:
+    """停用状态不应掩盖上个进程遗留的运行中事实。"""
+    task = _add_agent_task("cron", "0 * * * *", "restart-disabled")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+    assert oper.update(task_id=task.id, payload={"enabled": False})
+
+    scheduler = _build_agent_task_scheduler(reconcile=True)
+    scheduler.init_agent_task_jobs()
+
+    recovered = oper.get(task.id)
+    assert recovered.last_status == "interrupted"
+    assert recovered.enabled is False
+    assert scheduler._get_agent_task_job_id(task.id) not in scheduler._jobs
 
 
 def test_scheduler_starts_registered_agent_task_without_waiting() -> None:

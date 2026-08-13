@@ -36,6 +36,7 @@ class AgentTask(Base):
     last_status = Column(String, nullable=False, default="waiting")
     last_run_at = Column(String)
     last_result = Column(Text)
+    # 已收口执行次数；进程中断的未完成尝试不计入
     run_count = Column(Integer, nullable=False, default=0)
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
@@ -142,6 +143,30 @@ class AgentTask(Base):
                     "last_status": "running",
                     "last_run_at": run_at,
                     "updated_at": updated_at,
+                }
+            )
+        )
+
+    @classmethod
+    @db_update
+    def mark_interrupted(cls, db: Session, task_id: int, result: str) -> bool:
+        """
+        将服务重启时遗留的运行中任务标记为结果未知。
+
+        该状态保留原执行时间和计数，避免把可能已经产生副作用的执行误记为
+        从未开始或完整失败。
+        """
+        return bool(
+            db.query(cls)
+            .filter(
+                cls.id == task_id,
+                cls.last_status == "running",
+            )
+            .update(
+                {
+                    "last_status": "interrupted",
+                    "last_result": result,
+                    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
             )
         )

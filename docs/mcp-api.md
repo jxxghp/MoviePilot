@@ -316,6 +316,8 @@ Agent 音乐流程与影视共用同一采集管线，但实体边界不同：�
 
 `trigger_type=date` 表示单次执行：“30 分钟后检查”这类相对时间传 `delay_minutes=30`，由后端计算精确时间；固定时间则传 ISO 8601 `trigger`，支持精确到秒。`trigger_type=cron` 使用标准五段 cron（分、时、日、月、周），适合周期检查。未显式携带时区的时间按 MoviePilot 的 `TZ` 配置解释。任务由内存调度器精确触发，配置持久化到数据库，服务重启后会自动恢复；触发后 Agent 在原会话中执行 `content`，执行过程及最终结果均不绑定创建任务时的消息渠道，而是通过 MoviePilot 已配置的通知渠道广播。如果 Agent 在执行过程中已通过消息工具发送完整结果，任务结束时不会再次发送相同的最终回复。
 
+服务重启时仍处于运行中的任务会显示为 `interrupted`，表示上次结果未知且可能已有部分操作。中断的一次任务不会自动补跑，暂停后恢复也仍保留中断状态；需要先核对实际结果，再用 `run_agent_task` 明确立即重跑，或通过 `update_agent_task` 提供新的 `trigger_type` 与未来触发时间重新安排。
+
 Agent 自主任务工具使用数据库中的整数 `task_id`。`query_schedulers` 与 `run_scheduler` 仅面向系统、插件和工作流注册的运行时定时服务，使用字符串 `job_id`，不会返回或执行 `agent-task-*`。两类 ID 不可混用；需要立即执行自主任务时，应先通过 `query_agent_tasks` 确认归属和状态，再调用 `run_agent_task`。立即执行只提交任务，不在当前工具调用内等待结果，从而避免同一 Agent 会话互相等待；执行结果仍按上述通知规则广播。
 
 上述过滤只约束 Agent 工具，避免模型混用两类任务。前端系统设置和仪表盘使用的 `/api/v1/dashboard/schedule` 仍返回完整运行时列表，其中包含 `provider=[Agent]` 的自主任务；前端通过 `/api/v1/system/runscheduler` 立即执行这类列表项的行为也保持不变。
