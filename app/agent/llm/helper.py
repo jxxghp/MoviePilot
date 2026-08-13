@@ -500,6 +500,94 @@ def _patch_openai_responses_empty_output_support():
 class LLMHelper:
     """LLM模型相关辅助功能"""
 
+    _DEFAULT_MAX_INPUT_TOKENS = 256_000
+
+    @staticmethod
+    def _positive_token_limit(value: Any) -> int | None:
+        """只接受可直接作为模型窗口上限的正整数。"""
+        return value if type(value) is int and value > 0 else None
+
+    @classmethod
+    def _source_input_limit(cls, source: dict[str, Any]) -> int | None:
+        """合并同一事实源的 input/context 上限，采用更严格的约束。"""
+        candidates = [
+            cls._positive_token_limit(source.get("input_tokens")),
+            cls._positive_token_limit(source.get("context_tokens")),
+        ]
+        valid = [candidate for candidate in candidates if candidate is not None]
+        return min(valid) if valid else None
+
+    @classmethod
+    def _normalize_model_profile(
+            cls,
+            model_profile: Any,
+            runtime: dict[str, Any],
+    ) -> dict[str, Any]:
+        """把当前端点的窗口事实合并到 LangChain model profile。"""
+        profile = dict(model_profile) if isinstance(model_profile, dict) else {}
+        model_record = runtime.get("model_record") or {}
+        model_metadata = runtime.get("model_metadata") or {}
+        metadata_limit = model_metadata.get("limit") or {}
+        metadata_source = {
+            "input_tokens": metadata_limit.get("input"),
+            "context_tokens": metadata_limit.get("context"),
+        }
+
+        record_input = cls._source_input_limit(model_record)
+        metadata_input = cls._source_input_limit(metadata_source)
+        profile_input = cls._positive_token_limit(profile.get("max_input_tokens"))
+        configured_k = cls._positive_token_limit(settings.LLM_MAX_CONTEXT_TOKENS)
+        configured_input = configured_k * 1000 if configured_k else None
+
+        endpoint_matched = runtime.get("model_profile_endpoint_matched") is True
+
+        if endpoint_matched:
+            max_input_tokens = next(
+                (
+                    candidate
+                    for candidate in (
+                        record_input,
+                        metadata_input,
+                        profile_input,
+                        configured_input,
+                    )
+                    if candidate is not None
+                ),
+                cls._DEFAULT_MAX_INPUT_TOKENS,
+            )
+        else:
+            constraints = [
+                candidate
+                for candidate in (
+                    record_input,
+                    metadata_input,
+                    profile_input,
+                    configured_input,
+                    cls._DEFAULT_MAX_INPUT_TOKENS,
+                )
+                if candidate is not None
+            ]
+            max_input_tokens = min(constraints)
+        profile["max_input_tokens"] = max_input_tokens
+
+        record_output = (
+            cls._positive_token_limit(model_record.get("output_tokens"))
+            if endpoint_matched
+            else None
+        )
+        metadata_output = (
+            cls._positive_token_limit(metadata_limit.get("output"))
+            if endpoint_matched
+            else None
+        )
+        profile_output = cls._positive_token_limit(profile.get("max_output_tokens"))
+        max_output_tokens = record_output or metadata_output or profile_output
+        if max_output_tokens is not None:
+            profile["max_output_tokens"] = max_output_tokens
+        else:
+            profile.pop("max_output_tokens", None)
+        return profile
+
     _SUPPORTED_THINKING_LEVELS = frozenset(
         {"off", "auto", "minimal", "low", "medium", "high", "max", "xhigh"}
     )
@@ -1328,28 +1416,15 @@ class LLMHelper:
                 **openai_model_kwargs,
             )
 
-        # 优先使用 provider / models.dev 目录中的上下文上限，减少用户手填成本。
-        model_profile = getattr(model, "profile", None)
-        if model_profile:
-            # ChatBedrockConverse 等模型类没有 model 属性，模型名存放在 model_id。
-            logged_model_name = getattr(model, "model", None) or getattr(
-                model, "model_id", model_name
-            )
-            logger.debug(f"使用LLM模型: {logged_model_name}，Profile: {model_profile}")
-        else:
-            model_record = runtime.get("model_record") or {}
-            model_metadata = runtime.get("model_metadata") or {}
-            metadata_limit = model_metadata.get("limit") or {}
-            max_input_tokens = (
-                    model_record.get("input_tokens")
-                    or model_record.get("context_tokens")
-                    or metadata_limit.get("input")
-                    or metadata_limit.get("context")
-                    or settings.LLM_MAX_CONTEXT_TOKENS * 1000
-            )
-            model.profile = {
-                "max_input_tokens": int(max_input_tokens),
-            }
+        model.profile = cls._normalize_model_profile(
+            model_profile=getattr(model, "profile", None),
+            runtime=runtime,
+        )
+        # ChatBedrockConverse 等模型类没有 model 属性，模型名存放在 model_id。
+        logged_model_name = getattr(model, "model", None) or getattr(
+            model, "model_id", model_name
+        )
+        logger.debug(f"使用LLM模型: {logged_model_name}，Profile: {model.profile}")
 
         cls._attach_runtime_metadata(model, runtime)
         cls._attach_server_tool_metadata(model, server_tool_resolution)

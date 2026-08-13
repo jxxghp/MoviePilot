@@ -1479,6 +1479,7 @@ class MoviePilotAgent:
             self.is_background,
             settings.AI_AGENT_VERBOSE,
             settings.LLM_TEMPERATURE,
+            settings.LLM_MAX_CONTEXT_TOKENS,
             settings.LLM_MAX_TOOLS,
             settings.LLM_MAX_ITERATIONS,
             self._public_runtime_config_signature(runtime_config),

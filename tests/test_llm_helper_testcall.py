@@ -195,6 +195,25 @@ class _OfflineProviderManager:
         }
 
 
+class _OfflineProviderError(RuntimeError):
+    """离线 provider 替身使用的兼容异常类型。"""
+
+
+def _render_offline_auth_result(*_args, **_kwargs):
+    """满足 LLM provider 包导出的最小 HTML renderer 契约。"""
+    return ""
+
+
+def _build_provider_module(manager_cls):
+    """构造满足 ``app.agent.llm`` 包导入契约的 provider 替身。"""
+    provider_module = ModuleType("app.agent.llm.provider")
+    provider_module.LLMProviderManager = manager_cls
+    provider_module.LLMProviderError = _OfflineProviderError
+    provider_module.LLMProviderAuthError = _OfflineProviderError
+    provider_module.render_auth_result_html = _render_offline_auth_result
+    return provider_module
+
+
 class LlmHelperTestCallTest(unittest.TestCase):
     def setUp(self):
         """为每个用例默认注入离线 provider，确保 get_llm 不会真访问 models.dev。
@@ -202,11 +221,201 @@ class LlmHelperTestCallTest(unittest.TestCase):
         需要校验特定 resolve_runtime 行为的用例，可在自身 patch.dict 中再覆盖
         ``sys.modules['app.agent.llm.provider']``；用例结束后由 addCleanup 还原。
         """
-        provider_module = ModuleType("app.agent.llm.provider")
-        provider_module.LLMProviderManager = _OfflineProviderManager
+        provider_module = _build_provider_module(_OfflineProviderManager)
         patcher = patch.dict(sys.modules, {"app.agent.llm.provider": provider_module})
         patcher.start()
         self.addCleanup(patcher.stop)
+
+    def test_normalize_model_profile_fills_partial_profile_from_provider_record(self):
+        profile = llm_module.LLMHelper._normalize_model_profile(
+            model_profile={
+                "tool_calling": True,
+                "max_output_tokens": 8192,
+            },
+            runtime={
+                "provider_id": "google",
+                "model_profile_endpoint_matched": True,
+                "model_record": {
+                    "input_tokens": 64000,
+                    "output_tokens": 4096,
+                },
+                "model_metadata": {},
+            },
+        )
+
+        self.assertEqual(profile["max_input_tokens"], 64000)
+        self.assertEqual(profile["max_output_tokens"], 4096)
+        self.assertTrue(profile["tool_calling"])
+
+    def test_normalize_model_profile_prefers_known_provider_context_limit(self):
+        profile = llm_module.LLMHelper._normalize_model_profile(
+            model_profile={"max_input_tokens": 128000, "image_inputs": True},
+            runtime={
+                "provider_id": "deepseek",
+                "model_profile_endpoint_matched": True,
+                "model_record": {
+                    "input_tokens": 64000,
+                    "context_tokens": 32768,
+                },
+                "model_metadata": {"limit": {"context": 64000}},
+            },
+        )
+
+        self.assertEqual(profile["max_input_tokens"], 32768)
+        self.assertTrue(profile["image_inputs"])
+
+    def test_normalize_model_profile_caps_unmatched_known_provider_endpoint(self):
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 16):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 128000},
+                runtime={
+                    "provider_id": "deepseek",
+                    "model_profile_endpoint_matched": False,
+                    "model_record": {"context_tokens": 128000},
+                    "model_metadata": {},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 16000)
+
+    def test_normalize_model_profile_keeps_builtin_cap_for_unmatched_known_endpoint(self):
+        """未匹配的已知 provider 端点不能由较大的用户配置放宽保守上限。"""
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 512):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 1000000},
+                runtime={
+                    "provider_id": "deepseek",
+                    "model_profile_endpoint_matched": False,
+                    "model_record": {"context_tokens": 1000000},
+                    "model_metadata": {"limit": {"input": 1000000}},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 256000)
+
+    def test_normalize_model_profile_caps_generic_openai_endpoint(self):
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 32):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 128000},
+                runtime={
+                    "provider_id": "openai",
+                    "model_record": {
+                        "input_tokens": 128000,
+                        "source": "models.dev-cache",
+                    },
+                    "model_metadata": {"limit": {"input": 128000}},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 32000)
+
+    def test_normalize_model_profile_keeps_builtin_cap_for_generic_endpoint(self):
+        """通用兼容端点同时受用户配置和内建保守上限约束。"""
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 512):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 1000000},
+                runtime={
+                    "provider_id": "openai",
+                    "model_record": {"input_tokens": 1000000},
+                    "model_metadata": {"limit": {"context": 1000000}},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 256000)
+
+    def test_normalize_model_profile_keeps_smaller_generic_profile_limit(self):
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 256):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={
+                    "max_input_tokens": 64000,
+                    "max_output_tokens": 4096,
+                },
+                runtime={
+                    "provider_id": "openai",
+                    "model_record": {
+                        "context_tokens": 128000,
+                        "output_tokens": 16384,
+                    },
+                    "model_metadata": {"limit": {"output": 8192}},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 64000)
+        self.assertEqual(profile["max_output_tokens"], 4096)
+
+    def test_normalize_model_profile_uses_builtin_cap_when_config_is_invalid(self):
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", -1):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={"max_input_tokens": 1000000},
+                runtime={
+                    "provider_id": "openai",
+                    "model_record": {},
+                    "model_metadata": {},
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 256000)
+
+    def test_normalize_model_profile_rejects_invalid_limits_and_uses_default(self):
+        with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 0):
+            profile = llm_module.LLMHelper._normalize_model_profile(
+                model_profile={
+                    "max_input_tokens": False,
+                    "max_output_tokens": "8192",
+                    "structured_output": True,
+                },
+                runtime={
+                    "provider_id": "google",
+                    "model_profile_endpoint_matched": True,
+                    "model_record": {
+                        "input_tokens": True,
+                        "context_tokens": -1,
+                        "output_tokens": 0,
+                    },
+                    "model_metadata": {
+                        "limit": {
+                            "input": "64000",
+                            "context": 0.0,
+                            "output": -2,
+                        }
+                    },
+                },
+            )
+
+        self.assertEqual(profile["max_input_tokens"], 256000)
+        self.assertNotIn("max_output_tokens", profile)
+        self.assertTrue(profile["structured_output"])
+
+    def test_get_llm_partial_profile_supports_fraction_summarization(self):
+        from langchain.agents.middleware import SummarizationMiddleware
+
+        class _FakeChatOpenAI:
+            def __init__(self, **kwargs):
+                self.model = kwargs["model"]
+                self.profile = {"tool_calling": True}
+
+        with patch.dict(
+            sys.modules,
+            {"langchain_openai": SimpleNamespace(ChatOpenAI=_FakeChatOpenAI)},
+        ), patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 32):
+            model = asyncio.run(
+                llm_module.LLMHelper.get_llm(
+                    provider="openai",
+                    model="custom-model",
+                    api_key="sk-test",
+                    base_url="https://custom.example.com/v1",
+                )
+            )
+
+        middleware = SummarizationMiddleware(
+            model=model,
+            trigger=("fraction", 0.85),
+            token_counter=lambda _messages: 0,
+        )
+
+        self.assertEqual(model.profile["max_input_tokens"], 32000)
+        self.assertTrue(model.profile["tool_calling"])
+        self.assertIs(middleware.model, model)
 
     def test_extract_text_content_ignores_non_text_blocks(self):
         content = [
@@ -606,8 +815,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = None
 
-        provider_module = ModuleType("app.agent.llm.provider")
-        provider_module.LLMProviderManager = _FakeProviderManager
+        provider_module = _build_provider_module(_FakeProviderManager)
         openai_module = ModuleType("langchain_openai")
         openai_module.ChatOpenAI = _FakeChatOpenAI
 
@@ -670,8 +878,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = None
 
-        provider_module = ModuleType("app.agent.llm.provider")
-        provider_module.LLMProviderManager = _FakeProviderManager
+        provider_module = _build_provider_module(_FakeProviderManager)
         anthropic_module = ModuleType("langchain_anthropic")
         anthropic_module.ChatAnthropic = _FakeChatAnthropic
 
@@ -785,8 +992,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
                     "model_metadata": {},
                 }
 
-        provider_module = ModuleType("app.agent.llm.provider")
-        provider_module.LLMProviderManager = _FakeProviderManager
+        provider_module = _build_provider_module(_FakeProviderManager)
         fake_openai_modules, _ = _build_fake_openai_modules()
 
         with patch.dict(
@@ -1035,8 +1241,7 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = None
 
-        provider_module = ModuleType("app.agent.llm.provider")
-        provider_module.LLMProviderManager = _FakeProviderManager
+        provider_module = _build_provider_module(_FakeProviderManager)
 
         with patch.dict(
             sys.modules,

@@ -1447,6 +1447,33 @@ class LLMProviderManager(metaclass=Singleton):
 
         return spec.models_dev_provider_id
 
+    @classmethod
+    def _is_model_profile_endpoint_matched(
+            cls,
+            spec: ProviderSpec,
+            base_url: Optional[str],
+            base_url_preset_id: Optional[str] = None,
+    ) -> bool:
+        """判断模型目录上限是否与当前 provider 端点具有明确对应关系。"""
+        if spec.id == "openai":
+            return False
+
+        preset = cls._resolve_provider_preset(spec, base_url, base_url_preset_id)
+        if preset:
+            effective_base_url = (
+                cls._sanitize_base_url(base_url)
+                or cls._default_base_url_for_provider(spec)
+            )
+            preset_base_url = cls._sanitize_base_url(preset.value)
+            return effective_base_url == preset_base_url
+
+        default_base_url = cls._default_base_url_for_provider(spec)
+        effective_base_url = cls._sanitize_base_url(base_url)
+        if not effective_base_url and not default_base_url:
+            return bool(spec.models_dev_provider_id)
+        effective_base_url = effective_base_url or default_base_url
+        return bool(default_base_url and effective_base_url == default_base_url)
+
     def resolve_model_list_base_url(
             self,
             provider_id: str,
@@ -3139,6 +3166,13 @@ class LLMProviderManager(metaclass=Singleton):
             "model_id": model,
             "model_record": model_record,
             "model_metadata": model_metadata,
+            "model_profile_endpoint_matched": (
+                self._is_model_profile_endpoint_matched(
+                    spec,
+                    base_url,
+                    base_url_preset_id=normalized_base_url_preset_id,
+                )
+            ),
             "supports_prompt_cache": self._metadata_supports_prompt_cache(
                 model_metadata
             ),
